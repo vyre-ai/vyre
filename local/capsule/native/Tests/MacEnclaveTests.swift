@@ -53,7 +53,7 @@ let macEnclaveSuite = Suite("mac enclave") { t in
 
     t.test("the page's bridge carries the two enclave calls") {
         MainActor.assumeIsolated {
-            for piece in ["enclave.public", "enclave.sign", "enclavePublic", "enclaveSign"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
+            for piece in ["enclave.public", "enclave.sign", "enclavePublic", "enclaveSign", "presence.key", "presenceKey"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
         }
     }
 }

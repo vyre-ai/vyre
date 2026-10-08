@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { coreEnrolProof, withCoreProof, p1363ToDer, presenceKeyId, spkiOfPoint } from "./core-proof.js";
+import { coreEnrolProof, withCoreProof, p1363ToDer, presenceKeyId } from "./core-proof.js";
 import { startCore, openStore } from "../../../../core/vyre-core/server.js";
 import { armFirstKey, fingerprintOf } from "../../../../core/vyre-core/firstkey.js";
 import { coreTool } from "../../../../lib/vyre-core-client.js";
@@ -43,17 +43,12 @@ test("with no setup key, or no Secure Enclave key, the hello is left as it was",
   assert.equal(await withCoreProof(undefined, { pageKey: await pageKey(), name: "n" }), undefined);
 });
 
-test("the Mac's Secure Enclave key is offered as the server's Capsule key, handed over by the setup key, and a release-kind core ends with that one hardware key", async t => {
+test("the Mac app's Capsule key is offered as the server's Capsule key, handed over by the setup key, and a release-kind core ends with that one hardware key", async t => {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "cp2-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const page = await pageKey();
   const enclave = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const spki = enclave.publicKey.export({ format: "der", type: "spki" });
-  const point = Buffer.from(enclave.publicKey.export({ format: "jwk" }).x + "", "base64url"); // x only, to prove the SPKI builder against a real point below
-  const jwk = enclave.publicKey.export({ format: "jwk" });
-  const uncompressed = Buffer.concat([Buffer.from([4]), Buffer.from(String(jwk.x), "base64url"), Buffer.from(String(jwk.y), "base64url")]).toString("base64url");
-  assert.equal(spkiOfPoint(uncompressed), spki.toString("base64url"), "a Secure Enclave point becomes the SPKI core stores");
-  assert.equal(point.length, 32);
   const pageB64 = Buffer.from(page.spki).toString("base64url");
   const opened = openStore(path.join(dir, "data")); armFirstKey(opened.db, /** @type {string} */ (fingerprintOf(pageB64))); opened.db.close();
   const socket = path.join(dir, "c.sock");
@@ -62,7 +57,7 @@ test("the Mac's Secure Enclave key is offered as the server's Capsule key, hande
   c.presence.softwareOk = () => false; // a release core
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ header) => coreTool(tool, input, { socket, coreUid: uid, ...(header ? { presence: header } : {}) });
   assert.ok((await call("presence.enroll.first", { kind: "device", name: "setup page", public_key: pageB64, alg: -7 })).data);
-  const offered = await withCoreProof({ public_key: "ignored", alg: -7 }, { pageKey: page, name: "the test Mac", enclave: spkiOfPoint(uncompressed) });
+  const offered = await withCoreProof({ public_key: "ignored", alg: -7 }, { pageKey: page, name: "the test Mac", enclave: spki.toString("base64url") });
   assert.equal(offered.kind, "capsule"); assert.equal(offered.public_key, spki.toString("base64url")); assert.equal(offered.storage, "hardware");
   const got = await call("presence.enroll.capsule", { kind: "capsule", name: offered.core_name, public_key: offered.public_key, alg: -7, proof: offered.core_proof });
   assert.ok(got.data, JSON.stringify(got));
