@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(app): the Mac app's window claims a name with the Mac's own key, not a browser passkey ("Open app.vyre.run to create your name", IR-32).
 - fix(lumen): a failed identity key step says the shell's own reason on screen and in ~/Library/Logs/Vyre/app.log, and `defaults write sh.vyre.capsule inspect -bool true` makes the window inspectable (IR-31).
 
 ## 0.2.11 (8 Oct 2026)
