@@ -184,8 +184,9 @@ try {
 
   // The stand-in gives the reservation code the web page would have.
   const name = "winproof" + Math.floor(Math.random() * 90000 + 10000);
-  const reserved = await (await fetch(`${NAMES}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json();
-  note(`  reserved ${name}: ${reserved.code ? "a code" : JSON.stringify(reserved)}`);
+  const reservedRes = await (await fetch(`${NAMES}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json();
+  const reserved = reservedRes.data || reservedRes; // the Worker answers { data: { name, code, expires } }
+  note(`  reserved ${name}: ${reserved.code ? "a code" : JSON.stringify(reservedRes)}`);
   let recovery = "";
   await check("first run: Start, paste the code, Continue, the recovery code shows", async () => {
     await page.getByText("Start", { exact: true }).first().click({ timeout: 30000 });
