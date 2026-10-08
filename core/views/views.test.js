@@ -88,14 +88,14 @@ test("views: a board frame groups the cards into the declared columns, puts a st
   assert.ok(!JSON.stringify(f).includes("cards.move"));
 });
 
-test("views: moving a card runs the module's own tool AS the module with the column filled in, and only a declared column", async t => {
+test("views: moving a card runs the module's own tool AS the module with the column filled in, and an undeclared column moves nothing", async t => {
   const { c } = await world(t);
   await c("views.get", { module: "cards", command: "board" });
   assert.equal((await c("views.act", { module: "cards", command: "board", action: "move", id: "c1", column: "doing" })).data.kind, "done");
   assert.equal((await c("views.act", { module: "cards", command: "board", action: "move", id: "c1", column: "../../etc" })).data.kind, "done");
   assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => [x.tool, x.input, x.caller]), [
     ["move", { id: "c1", status: "doing" }, "module:cards"],
-    ["move", { id: "c1", status: "" }, "module:cards"],
+    ["move", { id: "c1", status: "todo" }, "module:cards"], // an undeclared column is ignored: the card stays where its row says
   ]);
 });
 
