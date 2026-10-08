@@ -1169,7 +1169,8 @@ export function createRecords(cfg) {
           const was = linkBefore.get(`${x.type}/${x.id}/${x.field}`);
           const upd = await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf, was, dropUrn, keepUrn) }, cur.version);
           undo.push(() => api.update(chain, x.type, x.id, { [x.field]: was }, upd.version));
-          done.push({ type: x.type, id: x.id, field: x.field });
+          // a list that already held `keep` ends the merge with one entry, and unmerge must give the dropped record its entry back without taking `keep`'s away: say which lists those were
+          done.push({ type: x.type, id: x.id, field: x.field, ...(Array.isArray(was) && was.some((/** @type {any} */ y) => y && y.urn === keepUrn) ? { had_keep: true } : {}) });
         }
         let kept = keep;
         if (Object.keys(patch).length) {
@@ -1209,7 +1210,9 @@ export function createRecords(cfg) {
         const v = cur && !cur.deleted_at ? cur.data[x.field] : null;
         if (!v || !(Array.isArray(v) ? v.some((/** @type {any} */ y) => y && y.urn === keepUrn) : v.urn === keepUrn)) continue;
         const ldefs = await store.types(); const lf = ldefs.find((/** @type {any} */ t) => t.name === x.type)?.fields.find((/** @type {any} */ g) => g.name === x.field);
-        await api.update(chain, x.type, x.id, { [x.field]: swapLink(lf || {}, v, keepUrn, dropUrn) }, cur.version); relinked++;
+        // a list that held both before the merge holds both again; one that held only `drop` gets it back in `keep`'s place
+        const next = x.had_keep && Array.isArray(v) ? [...v.filter((/** @type {any} */ y) => y && y.urn !== dropUrn), { urn: dropUrn }] : swapLink(lf || {}, v, keepUrn, dropUrn);
+        await api.update(chain, x.type, x.id, { [x.field]: next }, cur.version); relinked++;
       }
       log.append(chain, { type: "records.unmerged", sv: 1, subject: keepUrn, corr: mergeId, data: { type: m.type, keep: m.keep, drop: m.drop, relinked, edited_since: edited } }, { decision: dk.decision });
       return { keep: await api.get(chain, m.type, m.keep), restored: restored.urn, relinked, edited_since: edited };
