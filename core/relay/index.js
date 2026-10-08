@@ -325,7 +325,7 @@ export default {
       let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
       const pk = hello.presenceKey;
       if (pk && typeof pk.public_key === "string") {
-        const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7, ...(typeof pk.core_proof === "string" && pk.core_proof ? { core_proof: pk.core_proof } : {}) });
         if (r && r.data && (r.data.keyId || r.data.id)) {
           presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" };
           // kept briefly, for the module that owns the pairing when the ticket was not gated (a server's typed code); a P-256 key only, which is what a paired session binds to

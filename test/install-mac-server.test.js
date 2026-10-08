@@ -377,6 +377,11 @@ test("install-mac-server.sh: the default is the system service, under one sudo, 
   assert.equal(a[0], "install");
   assert.equal(a[a.indexOf("--owner-uid") + 1], String(process.getuid?.()), "the person's own uid, never root");
   assert.equal(a[a.indexOf("--vyred-wrapper") + 1], path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-serve"));
+  // the full install is a server, and core is told which key the install line named: the last 16 bytes of the code, as hex (the secret half never goes)
+  assert.ok(a.includes("--server"));
+  assert.equal(a[a.indexOf("--first-key-fp") + 1], Buffer.from(CODE, "base64url").subarray(16).toString("hex"));
+  assert.ok(!JSON.stringify(a).includes(Buffer.from(CODE, "base64url").subarray(0, 16).toString("hex")), "not the secret half");
+  assert.ok(!JSON.stringify(a).includes(CODE), "not the code");
   // Root ran the installer, its node and its release files from a root-made folder, never from the person's.
   const roottmp = path.join(m.base, "roottmp");
   assert.ok(calls[0].from.startsWith(roottmp + path.sep) || calls[0].from.includes("/roottmp/"), calls[0].from);

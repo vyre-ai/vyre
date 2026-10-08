@@ -18,6 +18,7 @@
 //     presence.verify {tool, input, proof} read: does this proof (a header string) prove that call?
 //     presence.enroll / presence.remove    write: needs a proof over this exact input
 //     presence.session.open                write: after a capsule, device or passkey proof only
+//     presence.enroll.first                write: a SERVER's first key only (firstkey.js): the key the install line named, within the hour, from outside every Claude session
 //     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign, keys.device.exists/ensure/pub/dh   the relay's keys (phase 5), never a private half
 
 import fs from "node:fs";
@@ -30,6 +31,7 @@ import { readPeerCred } from "./peercred.js";
 import { procTable } from "./procs.js";
 import { openVault } from "./vault.js";
 import { openKeys } from "./keys.js";
+import { enrollFirst, migrateFirstKey } from "./firstkey.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
@@ -84,6 +86,7 @@ export function notModelOf(pid, { look = procTable() } = {}) {
 export function openStore(dataDir, o = {}) {
   fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const db = open(path.join(dataDir, "core.db"));
+  migrateFirstKey(db);
   const presence = new Presence({
     db, log: o.log || (() => {}), role: "local", now: o.now, touchid: null, webauthn: o.webauthn,
     // core has no terminal and shows no dialog: nothing it does may reach the person's screen.
@@ -96,8 +99,8 @@ export function openStore(dataDir, o = {}) {
  * Start vyre-core on a unix socket.
  * @param {{ socket: string, dataDir: string, ownerUid: number, version?: string, log?: (m: string) => void, now?: () => number,
  *   peerCred?: (s: import("node:net").Socket) => Promise<{ pid: number, uid: number } | null>,
- *   personOf?: (pid: number) => { person: boolean, why: string }, notModel?: (pid: number) => boolean, webauthn?: any }} o
- *   peerCred, personOf, notModel and webauthn: tests only.
+ *   personOf?: (pid: number) => { person: boolean, why: string }, notModel?: (pid: number) => boolean, webauthn?: any, server?: boolean }} o
+ *   peerCred, personOf, notModel and webauthn: tests only. `server`: this core belongs to a Mac that is a server (the installer's plist says so; vyred cannot), which is the only core that takes a first key by presence.enroll.first.
  */
 export async function startCore(o) {
   const log = o.log || (() => {});
@@ -319,6 +322,15 @@ export async function startCore(o) {
         return send(res, 200, { data: await vaults.write[tool](input, `${who} (${p.method})`) });
       }
 
+      // The first key of a Mac server (firstkey.js): no proof exists yet, so the key is checked against the fingerprint the install line named, from a process outside every Claude session.
+      if (tool === "presence.enroll.first") {
+        if (o.server !== true) return send(res, 403, { error: { code: "not_server", message: "this vyre-core is not a server's: its first key comes from the Capsule" } });
+        if (!notModel(c.pid)) return send(res, 403, { error: { code: "not_person_side", message: "a server's first key is enrolled only by a process outside every Claude session" } });
+        const k = enrollFirst({ db, presence, now: o.now }, input);
+        log(`vyre-core: the first key (${k.kind} ${k.id}) enrolled for this server by pid ${c.pid}`);
+        emit("presence.first-key", { id: k.id });
+        return send(res, 200, { data: k });
+      }
       if (!WRITE[tool]) return send(res, 404, { error: { code: "unknown_tool", message: `vyre-core has no tool ${tool}` } });
       const asked = parse(header);
       if (tool === "presence.enroll" && asked && asked.method === "code") {

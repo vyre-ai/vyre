@@ -56,9 +56,19 @@ export default {
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
-        device: str },
+        device: str, core_proof: str },
         ["kind", "public_key"]),
       run: async (input, meta = {}) => {
+        // On a Mac server the keys are vyre-core's. The relay, and only the relay, takes a paired device's key to core: with a device proof from a key core already has (`core_proof`, over this exact
+        // input) as any later key needs, or with none for a server's first key, which core takes only for the key the install line named, within the hour (core/vyre-core/firstkey.js). People, the
+        // CLI and every other caller keep core_owned, from Presence.enroll below. Nothing here proves anything: core decides.
+        if (presence.coreLink && meta.caller === "module:relay" && input.kind === "device" && input.device === undefined) {
+          const body = { kind: "device", name: input.name, public_key: input.public_key, alg: input.alg ?? -7 };
+          const r = input.core_proof ? await presence.coreLink.call("presence.enroll", body, String(input.core_proof)) : await presence.coreLink.call("presence.enroll.first", body);
+          if (r.error || !r.data) throw Object.assign(new Error((r.error && r.error.message) || "vyre-core gave no answer"), { code: (r.error && r.error.code) || "failed" });
+          ctx.events.emit("presence.enrolled", { id: r.data.id, kind: r.data.kind, name: r.data.name });
+          return r.data;
+        }
         // A passkey a browser made at relay pairing (ADR 0032 part 2b): only the relay module enrolls
         // one, for the device it just paired, under an allowed app's name (app.vyre.run). It proves
         // only for that device, from that origin.
