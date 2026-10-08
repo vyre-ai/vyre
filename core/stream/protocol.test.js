@@ -38,7 +38,7 @@ test("protocol: every kind validates with its data and is refused without it", (
     assert.equal(f.corr, "3");
     assert.equal(validate({ ...f, data: {} }).ok, false, `${k} with empty data`);
   }
-  assert.equal(KINDS.length, 21);
+  assert.equal(KINDS.length, 22);
 });
 
 test("protocol: a hidden stub keeps a cursor and holds nothing", () => {
