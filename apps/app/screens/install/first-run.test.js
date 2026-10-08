@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { afterQuestion, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { FIRST, firstChoices, codeRoute, installLine, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -23,9 +23,9 @@ test("a browser that cannot claim starts at Open Vyre on your phone; everything 
 
 test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
-  assert.equal(WELCOME.start, "Get started");
-  assert.equal(WELCOME.have, "I already have Vyre");
-  assert.equal(backOf("name", { welcome: true }), "question", "Get started goes to setup's one question first");
+  assert.equal(WELCOME.start, "Start");
+  assert.equal(WELCOME.have, "I already have a name");
+  assert.equal(backOf("name", { welcome: true }), "welcome", "Get started goes to the reservation code");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
   assert.equal(backOf("welcome"), null);
@@ -35,14 +35,6 @@ test("a browser's pairing goes back to its own screen, and the not-set-up screen
   assert.equal(backOf("scanwords", { browser: true }), "browser");
   assert.equal(backOf("nosetup"), "browser");
   assert.equal(backOf("browser"), null);
-});
-
-test("a Mac chooses where Vyre runs before the space, and goes on without asking again", () => {
-  assert.equal(backOf("create", { macFlow: true }), "macwhere");
-  assert.equal(backOf("cmd", { macFlow: true }), "create");
-  assert.equal(backOf("here", { macFlow: true }), "create");
-  assert.equal(backOf("create"), "spaces");
-  assert.equal(backOf("here"), "where");
 });
 
 test("the empty-state actions open the routes that exist", () => {
@@ -92,8 +84,7 @@ test("a browser that cannot reach the Vyre says This browser, a phone says Your 
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {
   for (const s of [BROWSER.title, BROWSER.line, BROWSER.notSetTitle, BROWSER.notSetLine, NO_VYRE.line, NO_VYRE.share]) assert.doesNotMatch(s, /curl|\| sh/);
-  assert.match(MAC_WHERE.serverLine, /one line/);
-  assert.equal(ADD_PHONE.skip, "Skip");
+  assert.equal(ADD_PHONE.skip, "Not now");
 });
 
 test("who it is for: three answers, and a space for one person has nobody to invite", () => {
@@ -116,18 +107,6 @@ test("who it is for is kept with the progress and with what the box keeps", () =
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });
 
-test("the Mac's boxless window types the server's code: the words follow the prototype, three wrong tries end it", () => {
-  assert.ok(isBoxlessMac({ boxless: true }) && !isBoxlessMac({}) && !isBoxlessMac(null));
-  assert.equal(MAC_SERVER.title, "Type the code your server shows");
-  assert.equal(MAC_SERVER.ackTitle, "Type this on your server");
-  assert.equal(MAC_SERVER.doneTitle, "Connected to your server");
-  assert.deepEqual(macServerSay("wrong", 2), { title: "That code is not right", line: "Check the code on your server and type it again. 2 tries left.", over: false });
-  assert.equal(macServerSay("wrong", 1).line.includes("1 try left"), true);
-  assert.equal(macServerSay("wrong", 0).over, true);
-  assert.deepEqual(macServerSay("expired", 3), { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true });
-  assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
-});
-
 test("the install line is the release candidate's own only for a hyphenated version; a plain release and an unknown version get the stable one", () => {
   const STABLE = "curl -fsSL vyre.run/i | sh";
   const rc = (v) => `curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v${v}/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v${v}/ sh`;
@@ -135,7 +114,6 @@ test("the install line is the release candidate's own only for a hyphenated vers
   assert.equal(installLine(" 0.3.0-rc1 "), rc("0.3.0-rc1"));
   assert.equal(installLine("0.3.0"), STABLE);
   for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /", "0.3.0-rc.1; ls", "-rc1"]) assert.equal(installLine(v), STABLE, String(v));
-  assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
 });
 
 test("whose a server is: a browser reads it as the server said it, a phone as this Vyre", () => {
@@ -163,7 +141,6 @@ test("the short typed code is on in release and gated on RC.typedCode, so the ki
     assert.match(src, /export function TypeCode\(p: TypeCodeProps\) \{ return RC\.typedCode \?/, "the typed field renders nothing only while the kill switch is set");
     assert.match(src, /export function AckCode\(p: \{ offer: string; onDone: \(\) => void \}\) \{ return RC\.typedCode \?/, "so does the ack box");
   }
-  assert.match(readFileSync(new URL("./MacServer.tsx", import.meta.url), "utf8"), /if \(!RC\.typedCode\)/, "and the Mac's typed-code window");
 });
 
 test("the words step after a long code uses the session's own kind: a real (watch) session shows the words and waits for the yes, never the typed-words form", async () => {
@@ -181,14 +158,46 @@ test("a phone's long code adds this device to the name (a browser too); a server
   assert.equal(codeRoute(null), "pair-server");
 });
 
-test("a fresh device that picks I have my own server reaches the name screen before it pairs anything; a device with a name goes straight to My Cloud", async () => {
-  assert.equal(afterQuestion("own", false), "name", "no name, no identity to pair with: the name comes first");
-  assert.equal(afterQuestion("own", true), "mycloud");
-  assert.equal(afterQuestion("join", false), "name");
-  assert.equal(afterQuestion("join", true), "name");
+test("Get started goes to the reservation code; there is no question, and My Cloud is the one card that adds a server", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  assert.match(src, /setStep\(afterQuestion\("own", Boolean\(w\)\)\)/, "the question's own answer goes through afterQuestion, not straight to the My Cloud page");
-  assert.doesNotMatch(src, /QUESTION\.own\.title\}[^\n]*setStep\("mycloud"\)/);
-  assert.match(src, /ownServer\.current \? "mycloud"/, "after the name and the recovery code, an own-server first run carries on to My Cloud");
+  assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("name"\)\}/, "Start opens the code step");
+  assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
+  assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
+  assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
+  assert.match(src, /<AddServerCard onDone=\{\(\) => doMake\("server"\)\} \/>/, "a new space on no server runs the same add-a-server piece, then makes the space");
+});
+
+test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
+  assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
+  for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
+  assert.match(FIRST.windows, /alone is coming/);
+  assert.equal(FIRST.server.upgrades.mac, "This upgrades My Home to My Cloud.");
+  assert.equal(FIRST.server.upgrades.windows, "This sets up My Cloud.");
+});
+
+test("the paste check accepts every character the directory can put in a code", async () => {
+  await import("../../../../names/worker/index.js"); // the Worker module first: ids.js and index.js import each other
+  const { ALPHA32 } = await import("../../../../names/worker/ids.js");
+  const { codeLooksRight } = await import("./first-run.js");
+  for (const ch of ALPHA32) assert.equal(codeLooksRight(`vyre-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), true, ch);
+  assert.equal(codeLooksRight("VYRE-IIII-OOOO-0000-1111"), false);
+});
+
+test("a Mac server's line runs the Mac installer with the same code and Records choice; the others are unchanged", () => {
+  const code = "A".repeat(43);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "sqlite", os: "mac" }), `curl -fsSL vyre.run/box/install-mac-server.sh | VYRE_CODE=${code} VYRE_STORE=sqlite sh`);
+  const base = "https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/";
+  assert.equal(installLine("0.3.0-rc.1", { code, store: "auto", os: "mac" }), `curl -fsSL ${base}install-mac-server.sh | VYRE_BOX_URL=${base} VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+  assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+});
+
+test("the paste-your-code screen has a Windows Hello line and the Mac and phone line, in the words the lead approved", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN."));
+  assert.ok(src.includes("Vyre makes your key on this Mac, and the key never leaves it."));
+  assert.ok(src.includes('title="Paste your code"'));
 });

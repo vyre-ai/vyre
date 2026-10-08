@@ -53,7 +53,8 @@ test("a phone's server pairing sends owner.pin and signs sig and esig together (
   assert.match(p, /owner: \{ id: mine\.id, name: plainName\(mine\.name\), vyre: mine\.name, pin: mine\.pin \}/);
   assert.match(p, /signListChange\(m, /);
   assert.match(p, /esig: toB64u\(esig\)/);
-  assert.match(p, /deviceKind: macKeyAvailable\(\) \? "computer" : phoneKeys \? "phone" : "web", keyStorage: phoneKeys \? "hardware" : "software"/);
+  assert.match(p, /deviceKind: \(macKeyAvailable\(\) \? "computer" : phoneKeys \? "phone" : "web"\)/);
+  assert.match(p, /keyStorage: \(phoneKeys \? "hardware" : "software"\)/);
   assert.match(p, /kind === "secure-enclave" \|\| kind === "keystore"/);
 });
 

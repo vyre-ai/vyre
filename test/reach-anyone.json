@@ -905,10 +905,6 @@
    "module": "names",
    "reason": "read-only: whether a name is free; no side effect"
   },
-  "names.claim": {
-   "module": "names",
-   "reason": "the steward check in the tool: a callers list of the person's surfaces plus module, narrowed by name to module:onboard and module:launch; refuses an agent claim, a model session, a hook, a guest and any other module (test/names-reach.test.js)"
-  },
   "names.status": {
    "module": "names",
    "reason": "read-only; no secret, no side effect"

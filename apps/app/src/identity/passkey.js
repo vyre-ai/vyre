@@ -97,10 +97,16 @@ export const WRONG_ORIGIN_SAY = "Open app.vyre.run to create your name.";
 
 /**
  * The relying-party id a passkey may be made for on this page, or null. A release build accepts only https://app.vyre.run; a development build also accepts http://localhost (any port), for walks and tests.
- * @param {string | undefined} origin the page's origin @param {{ dev?: boolean }} [o] @returns {string | null}
+ * The Windows app's window (`shell`) may also make one for its own pages: the server it is paired to (`https://<name>.vyre.run`, an own domain is not taken) and the shell's bundled first-run page
+ * (`https://vyreapp.localhost`). The Hello prompt names that site every time, so a script on the page cannot use the passkey silently; and a passkey is only ever good for the site it was made for.
+ * @param {string | undefined} origin the page's origin @param {{ dev?: boolean, shell?: boolean }} [o] @returns {string | null}
  */
-export function passkeyRp(origin, { dev = false } = {}) {
+export function passkeyRp(origin, { dev = false, shell = false } = {}) {
   if (origin === PASSKEY_ORIGIN) return "app.vyre.run";
+  if (shell && typeof origin === "string") {
+    const m = /^https:\/\/((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+vyre\.run|vyreapp\.localhost)$/.exec(origin);
+    if (m) return m[1];
+  }
   if (dev && typeof origin === "string" && /^http:\/\/localhost(:\d{1,5})?$/.test(origin)) return "localhost";
   return null;
 }

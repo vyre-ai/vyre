@@ -283,7 +283,7 @@ async function offerVia(w, drive, location, kind = "usb-disk") {
   return drive("device:dev_home", { ...d, step: "seal", ...sealSecret(pub, OFFER.id, secret) });
 }
 
-test("Z-1: a link under a shared root that leaves the root is refused, and so is a root that is itself a link out; the folder served is the real one", async () => {
+test("Z-1: a link under a shared root that leaves the root is refused, and so is a root that is itself a link out; the folder served is the real one", async t => {
   const w = world();
   const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-root-")));
   const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "z1-out-")));
@@ -296,6 +296,7 @@ test("Z-1: a link under a shared root that leaves the root is refused, and so is
   // a root that is itself a link (like macOS /Volumes/Macintosh HD -> /): the check uses its real path, so a folder outside it is refused through the link
   const rootLink = path.join(SCRATCH, `z1-rootlink-${crypto.randomBytes(3).toString("hex")}`);
   fs.symlinkSync(root, rootLink);
+  t.after(() => fs.rmSync(rootLink, { force: true }));
   const viaLinkRoot = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [rootLink] });
   const good = path.join(root, "disk"); fs.mkdirSync(good);
   assert.equal((await offerVia(w, viaLinkRoot, { path: path.join(rootLink, "disk") })).ok, true, "a folder really under a linked root is fine");

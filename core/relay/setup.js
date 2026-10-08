@@ -10,36 +10,12 @@
 // core/relay/index.js wires them to the database, the presence keys and the link.
 
 import crypto from "node:crypto";
-import { parseSetupCode, setupDerive, setupHelloOk, setupWords, setupFingerprint, setupClaimMessage, verifyP256, isP256Spki, CLAIM_TTL, SETUP_TTL } from "./wire.js";
+import { parseSetupCode, setupDerive, setupHelloOk, setupWords, SETUP_TTL } from "./wire.js";
 
 const sha = s => crypto.createHash("sha256").update(String(s)).digest();
 
-/**
- * Exactly what the setup channel may call (condition 3, tailnet plan 3.6b). Any addition is posted
- * in the team's CHAT.md and added to the plan first. `relay.pair.ticket` is REFUSED here since 4 Oct (one pairing path); it was allowed once, by the
- * gate below; `relay.setup.end` and `relay.setup.begin` are internal tools and never reachable
- * from a channel, whatever this list says.
- */
-export const SETUP_TOOLS = Object.freeze(new Set([
-  "relay.setup.status",
-  "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
-]));
-/** The network tool the channel may call, by exact name: a later tool is not exposed by being added. */
-export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);
-/** The events the setup page may follow, one type per stream. */
-export const SETUP_EVENTS = Object.freeze(new Set(["relay.paired", "name.claimed", "certificate.issued", "certificate.failed"]));
-
-// Tools added later (the sessions sign-in tool, for "Sign in to your AI") come from the registry,
-// not from a call: a shipped module lists them under "setupTools" in its module.json. Nothing under
-// relay., presence. or vault. is ever taken, so a module cannot widen the channel into pairing,
-// presence or secrets.
-/**
- * May the setup channel call this tool? The fixed list above, or a tool a shipped module declared
- * under "setupTools" in its module.json (`extra`, read from the registry by the caller; the loader
- * only honours the field for shipped modules). Never a relay, presence or vault tool.
- * @param {string} name @param {readonly string[]} [extra]
- */
-export const setupToolAllowed = (name, extra = []) => SETUP_TOOLS.has(name) || SETUP_TOOL_FAMILIES.some(r => r.test(name)) || (extra.includes(name) && !/^(relay|presence|vault)\./.test(name));
+import { SETUP_TOOLS, SETUP_TOOL_FAMILIES, SETUP_REASONS, SETUP_EVENTS, setupToolAllowed } from "../../lib/setup-gate.js";
+export { SETUP_TOOLS, SETUP_TOOL_FAMILIES, SETUP_REASONS, SETUP_EVENTS, setupToolAllowed };
 
 /**
  * One setup code, from install to claim or expiry. State only: the database rows, the presence
@@ -69,9 +45,6 @@ export class SetupSession {
     this.state = "waiting";
     /** Whether the relay confirmed the offer (200). */
     this.registered = false;
-    /** @type {{ challenge: Buffer, exp: number, host: string } | null} the one live claim challenge */
-    this.claim = null;
-    this.ended = false;
     this.onEnd = o.onEnd || (() => {});
     this.clearTimer = o.clearTimer || clearTimeout;
     // The hour runs from the code, claimed or not: at its end the device, its presence key and the channel go.
@@ -111,43 +84,6 @@ export class SetupSession {
     const ok = crypto.timingSafeEqual(sha(presented), this.secHash);
     if (ok) this.secUsed = true;
     return ok;
-  }
-
-  /**
-   * Make the claim challenge (B4): 32 random bytes, two minutes, for one address. A new one replaces
-   * the last, so at most one is live. Only the setup device's channel calls this.
-   * @param {string} host the address the claim will be made at
-   */
-  mintClaim(host) {
-    const h = String(host || "").toLowerCase();
-    if (!/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(h)) throw Object.assign(new Error("that is not an address"), { code: "bad_input" });
-    if (!this.live) throw Object.assign(new Error("this setup session has ended"), { code: "setup_over" });
-    const challenge = crypto.randomBytes(32);
-    this.claim = { challenge, exp: this.now() + CLAIM_TTL, host: h };
-    return { challenge: challenge.toString("base64url"), exp: this.claim.exp };
-  }
-
-  /**
-   * Check a claim token made at the address (B4). The challenge is burned by the first try, right or
-   * wrong. It must be live, made for this address (the request's own origin), signed by the page key
-   * the code names, over this box's route. One message for every refusal.
-   * @param {{ token: string, spki: string, route: string, origin: string }} o @returns {string} the address
-   */
-  takeClaim(o) {
-    const c = this.claim; this.claim = null;
-    const no = () => Object.assign(new Error("that claim is not valid"), { code: "denied" });
-    if (!c || !this.live || this.now() >= c.exp) throw no();
-    const raw = Buffer.from(String(o.token || ""), "base64url"), spki = Buffer.from(String(o.spki || ""), "base64url");
-    if (raw.length !== 96 || !isP256Spki(spki)) throw no();
-    const fp = setupFingerprint(spki);
-    if (fp.length !== this.fp.length || !crypto.timingSafeEqual(fp, this.fp)) throw no();
-    let originHost = "";
-    try { const u = new URL(String(o.origin || "")); if (u.protocol !== "https:") throw 0; originHost = u.hostname.toLowerCase(); } catch { throw no(); }
-    if (originHost !== c.host) throw no();
-    const challenge = raw.subarray(0, 32), sig = raw.subarray(32);
-    if (challenge.length !== c.challenge.length || !crypto.timingSafeEqual(challenge, c.challenge)) throw no();
-    if (!verifyP256(spki, setupClaimMessage(o.route, c.challenge, c.host), sig)) throw no();
-    return c.host;
   }
 
   /** Four check words for the box's static key and this code's secret (wire.js setupWords). @param {Buffer} boxPub */

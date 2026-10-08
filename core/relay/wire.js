@@ -166,9 +166,6 @@ export function parseSetupCode(code) {
 }
 
 /** What the page signs to be admitted: bound to this route and to this Noise session's device key. @param {string} route @param {Buffer} noiseStatic */
-/** The claim token's signed message: the box's route, the one-time challenge and the address it is for, so a token for another box or another name never verifies. @param {string} route @param {Buffer} challenge @param {string} host */
-export const setupClaimMessage = (route, challenge, host) => Buffer.concat([Buffer.from(`vyre-setup-claim\n${route}\n`), challenge, Buffer.from(`\n${String(host).toLowerCase()}`)]);
-export const CLAIM_TTL = 2 * 60_000;
 export const setupHelloMessage = (route, noiseStatic) => Buffer.concat([Buffer.from(`${SETUP_TAG.hello}\n${route}\n`), noiseStatic]);
 /** @param {Buffer} spki @param {Buffer} message @param {Buffer} sig 64 bytes, r || s (WebCrypto's ECDSA form) */
 export function verifyP256(spki, message, sig) {

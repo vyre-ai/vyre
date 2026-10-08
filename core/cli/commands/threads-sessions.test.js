@@ -261,7 +261,7 @@ async function world(t) {
   // Outside the home: the security floor treats everything in VYRE_HOME as Vyre's own state.
   const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
+  const tool = (name, input, caller = "cli", timeout = 20_000) => call(name, input, { root, caller, timeout });
   const listed = await request("GET", "/v1/tools", null, { root });
   const have = new Set((listed.data || []).map(x => x.name));
   return { root, work, tool, have, env: { VYRE_HOME: root }, box, boot };
@@ -471,7 +471,7 @@ test("threads open: vyred lets go of an idle session and claude --resume runs he
   assert.equal((await w.tool("threads.get", { thread: id })).data.thread.status, "stopped");
 });
 
-test("threads watch: a vyred restart mid-watch reconnects from the last event and repeats nothing", { timeout: 90_000 }, async t => {
+test("threads watch: a vyred restart mid-watch reconnects from the last event and repeats nothing", { timeout: 180_000 }, async t => {
   const w = await world(t);
   const started = await w.tool("threads.start", { cwd: w.work, prompt: "first words", surface: "deck" });
   const id = started.data.id;
@@ -487,8 +487,9 @@ test("threads watch: a vyred restart mid-watch reconnects from the last event an
   await until(() => /reconnecting to vyred/.test(out), "the reconnecting line");
   w.box.d = await w.boot();
   await until(() => /^ +back$/m.test(out), "the stream again");
-  // deck took the keyboard at start; the next words come from there too.
-  const sent = await w.tool("threads.send", { thread: id, text: "second words", surface: "deck" });
+  // deck took the keyboard at start; the next words come from there too. The send answers once the resumed thread's agent
+  // has started again, which on a slow macOS runner takes longer than the usual 20 s wait.
+  const sent = await w.tool("threads.send", { thread: id, text: "second words", surface: "deck" }, "cli", 75_000);
   assert.ok(sent.data, JSON.stringify(sent));
   // a resumed thread starts its agent again first: on a slow runner that takes longer than the default wait
   await until(() => /echo: second words/.test(out), "the reply after the restart", 45_000);

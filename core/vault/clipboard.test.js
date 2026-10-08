@@ -47,7 +47,8 @@ test("helper path: copy returns when it clears, never the value; clears after 90
   const out = await clip.copy(v);
   assert.deepEqual(out, { clearsAt: 5000 + 90_000, via: "helper" });
   assert.ok(!JSON.stringify(out).includes(v));
-  const st = () => JSON.parse(fs.readFileSync(f.state.clip, "utf8"));
+  // the fake helper rewrites its state file as it goes: a read that lands mid-write sees nothing yet
+  const st = () => { try { return JSON.parse(fs.readFileSync(f.state.clip, "utf8")); } catch { return {}; } };
   assert.equal(st().hash, sha(v), "the helper got the value on stdin");
   assert.equal(tm.due.size, 1, "one timer, for the clear");
   tm.fire();

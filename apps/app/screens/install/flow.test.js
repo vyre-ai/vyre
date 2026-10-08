@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ownedBy, serverSay, backOf, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep, SERVER_LONG_CODE, AFTER_HOME, nextSetup, isResumable, resumeStep, packProgress, unpackProgress, setupElsewhere, connectedLine } from "./flow.js";
+import { ownedBy, serverSay, backOf, homeLine, nameNote, nameStatus, slug, startStep, SERVER_LONG_CODE, AFTER_HOME, nextSetup, isResumable, packProgress, unpackProgress, setupElsewhere, connectedLine } from "./flow.js";
 
 test("a slug is what goes before .vyre.run", () => {
   assert.equal(slug("Juniper Studio"), "juniper-studio");
@@ -30,12 +30,11 @@ test("the note says what happened", () => {
   assert.equal(nameNote(nameStatus(""), true), "");
 });
 
-test("back from the code goes to the server's first screen, and from the words to the code", () => {
-  assert.equal(backOf("srv1", { vps: true }), "vps");
-  assert.equal(backOf("srv1", { vps: false }), "cmd");
-  assert.equal(backOf("srv2"), "srv1");
+test("back from the add-a-server step goes to the space's name; there is no server-less step", () => {
+  assert.equal(backOf("cmd"), "create");
   assert.equal(backOf("scanwords"), "scan");
-  assert.equal(backOf("where"), "create");
+  assert.equal(backOf("where"), null, "no where step");
+  assert.equal(backOf("here"), null, "no on-this-computer step");
   assert.equal(backOf("recovery"), null);
 });
 
@@ -45,30 +44,8 @@ test("each route starts at its step", () => {
   assert.equal(startStep(undefined), "name");
 });
 
-test("Pair to offers the person and the space", () => {
-  assert.deepEqual(pairToOptions("jordan", "northwind.vyre.run"), [["me", "jordan.vyre.run"], ["space", "northwind.vyre.run"]]);
-  assert.equal(pairToOptions("", "x.vyre.run")[0][1], "alex.vyre.run");
-});
-
-test("the server prints a long code, then who is asking and the three words", () => {
-  const code = serverLines(false, "Northwind Bakery", "code");
-  assert.equal(code.length, 6);
-  assert.equal(code[code.length - 1], SERVER_LONG_CODE);
-  assert.ok(code.some((l) => /paste this long code/.test(l)));
-  const w = serverLines(false, "Northwind Bakery", "words", { who: "Alex's iPhone", to: "alex.vyre.run", words: "amber river lantern" });
-  assert.ok(w.includes("Alex's iPhone is asking to pair this server to alex.vyre.run."));
-  assert.ok(w.includes("The words are: amber river lantern"));
-  assert.equal(w[w.length - 1], "Waiting for yes.");
-  assert.equal(serverLines(true, "X", "code")[0], "Created northwind on DigitalOcean");
-});
-
-test("nothing in the server's lines asks for a typed code or a number", () => {
-  const all = [...serverLines(false, "X", "code"), ...serverLines(false, "X", "words")].join("\n");
-  assert.doesNotMatch(all, /Enter the code|Match this number|WINK-/);
-});
-
-test("a space made on this computer says it sleeps", () => {
-  assert.match(homeLine("here"), /Unreachable while it sleeps/);
+test("a space made says it lives on a server", () => {
+  assert.equal(homeLine("server"), "Lives on your server.");
 });
 
 test("setup carries on after the home: look, members, connectors, kit, done", () => {
@@ -78,13 +55,12 @@ test("setup carries on after the home: look, members, connectors, kit, done", ()
   assert.equal(backOf("look"), null);
 });
 
-test("a closed app resumes on the same step, and a pairing in progress resumes at the code", () => {
+test("a closed app resumes on the same step; adding the server starts again, since its install line is good for one hour", () => {
   assert.equal(isResumable("members"), true);
   assert.equal(isResumable("name"), false);
-  assert.equal(resumeStep("srv2"), "srv1");
-  const raw = packProgress({ step: "srv2", name: "alex", spaceName: "Northwind", addr: null, look: "sky", where: "server", pairTo: "me", device: "iPhone" });
+  const raw = packProgress({ step: "cmd", name: "alex", spaceName: "Northwind", addr: null, look: "sky", where: "server", pairTo: "me", device: "iPhone" });
   const back = unpackProgress(raw);
-  assert.equal(back.step, "srv1");
+  assert.equal(back.step, "cmd");
   assert.equal(back.look, "sky");
   assert.equal(unpackProgress("nope"), null);
   assert.equal(unpackProgress(JSON.stringify({ v: 2, step: "look", spaceName: "x" })), null);
@@ -159,4 +135,10 @@ test("a refusal coded owned_by_other says the server is someone else's, with or 
   const { serverSay } = await import("./flow.js");
   assert.equal(serverSay({ code: "owned_by_other", message: "The pairing did not finish." }), "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.");
   assert.match(serverSay({ code: "owned_by_other", message: "This server belongs to walkeroo.vyre.run. Ask them to add you to a space." }), /^This server belongs to walkeroo\.vyre\.run\./);
+});
+
+test("on the first run, Join a team and Add a server go back to the three choices", () => {
+  assert.equal(backOf("join", { first: true }), "choose");
+  assert.equal(backOf("mycloud", { first: true }), "choose");
+  assert.equal(backOf("join", {}), "spaces");
 });

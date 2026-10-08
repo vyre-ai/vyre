@@ -73,6 +73,8 @@ export function defaultRun(cmd, args, { input } = {}) {
  * @property {string} ownerName
  * @property {string} [ownerHome]  default /Users/<ownerName>
  * @property {string} version
+ * @property {boolean} [server]  this Mac is a server (the full add-a-server install): core's plist says so, and core takes a first key (firstkey.js)
+ * @property {string} [firstKeyFp]  the setup code's key fingerprint, 32 hex (public; never the code): the one key core takes first, within the hour
  * @property {{ tarball: string, manifest: string, sums: string, sig: string }} release  file paths (vyre.tgz, manifest.json, SHA256SUMS, SHA256SUMS.sig)
  * @property {string} nodeBinary  the bundled node to copy in
  * @property {string} vyredWrapper  person-side wrapper vyred's LaunchDaemon runs, as the owner
@@ -97,6 +99,7 @@ function checkOpts(o) {
   if (!o.vyredWrapper || !path.isAbsolute(o.vyredWrapper)) throw new Error("vyredWrapper must be an absolute path");
   if (o.nodeSha256 !== undefined && !/^[0-9a-fA-F]{64}$/.test(String(o.nodeSha256))) throw new Error("nodeSha256 must be 64 hex characters");
   if (o.ghBin !== undefined && (!path.isAbsolute(o.ghBin) || /[\0\n]/.test(o.ghBin))) throw new Error("ghBin must be an absolute path");
+  if (o.firstKeyFp !== undefined && (o.server !== true || !/^[0-9a-f]{32}$/.test(String(o.firstKeyFp)))) throw new Error("firstKeyFp is 32 hex characters, and only for a server");
   if (o.ownerHome !== undefined && !path.isAbsolute(o.ownerHome)) throw new Error("ownerHome must be an absolute path");
   if (o.colimaAgent && (!Array.isArray(o.colimaProgram) || !o.colimaProgram.length || !o.colimaProgram.every((a) => typeof a === "string") || !path.isAbsolute(o.colimaProgram[0])))
     throw new Error("colimaAgent needs colimaProgram: program arguments starting with an absolute path");
@@ -324,7 +327,7 @@ export function buildPlists(o) {
       Label: LABELS.core,
       ProgramArguments: [RUNTIME.node, RUNTIME.mainJs, "serve"],
       UserName: ACCOUNT,
-      EnvironmentVariables: { VYRE_CORE_OWNER: String(o.ownerUid) },
+      EnvironmentVariables: { VYRE_CORE_OWNER: String(o.ownerUid), ...(o.server ? { VYRE_CORE_SERVER: "1" } : {}) },
       RunAtLoad: true,
       KeepAlive: { SuccessfulExit: false },
     },
@@ -450,7 +453,13 @@ export function install(opts, seams = {}) {
   done("launchd");
 
   // 7. The enrolment code, as _vyre, from the bundled node and the tree we just verified.
-  const out = run("/usr/bin/sudo", ["-n", "-u", ACCOUNT, "/usr/bin/env", "-i", `PATH=${SAFE_PATH}`, `VYRE_CORE_OWNER=${opts.ownerUid}`, RUNTIME.node, RUNTIME.mainJs, "code"]);
+  // core was only just started and is making its database for the first time; this command opens the same database, and the two migrations can collide ("UNIQUE constraint failed:
+  // _migrations", seen on the hosted Mac runner). The second try finds it migrated, so a failure is tried again a few times before it ends the install.
+  /** @type {any} */ let out;
+  for (let attempt = 1; ; attempt++) {
+    try { out = run("/usr/bin/sudo", ["-n", "-u", ACCOUNT, "/usr/bin/env", "-i", `PATH=${SAFE_PATH}`, `VYRE_CORE_OWNER=${opts.ownerUid}`, ...(opts.server ? ["VYRE_CORE_SERVER=1"] : []), RUNTIME.node, RUNTIME.mainJs, "code", ...(opts.firstKeyFp ? ["--first-key-fp", opts.firstKeyFp] : [])]); break; }
+    catch (e) { if (attempt >= 6) throw e; pause(1500); }
+  }
   const [code, expires] = String(out).trim().split(/\s+/);
   if (!code) throw new Error("vyre-core did not print an enrolment code");
   done("enrol-code");

@@ -104,6 +104,9 @@ async function addPhoneByCode(t, w, code, offer) {
   await until(() => ack);
   await until(() => w.events.find(e => e[0] === "wink.found"));
   const typed = await w.call("wink.code.ack", { offer, typed: ack });
+  // This box holds no name, so it cannot put the phone's key on a name's list; the owner's app does that and reports it (wink.phone.enrolled). Here the report is "could not", so the waiting phone is told at once.
+  const asked = await until(() => w.events.find(e => e[0] === "wink.enrol-asked"), 4000).catch(() => null);
+  if (asked) assert.equal((await w.call("wink.phone.enrolled", { device: asked[1].device, ok: false, reason: "this test box holds no name" })).data.ok, true);
   return { ack, typed, joining };
 }
 
@@ -1116,8 +1119,9 @@ async function standinIdentity(t) {
   const fetchDir = async (url, init) => { if (state.down) throw new Error("unreachable"); return workerDir.fetch(new Request(url, { ...init, headers: { ...(init.headers || {}), "cf-connecting-ip": `198.51.${(n >> 8) & 255}.${n++ & 255}` } }), rt.env); };
   const seen = memorySeen();
   const store = fileIdentityStore(path.join(tempHome(t), "spaces"));
-  const ops = createIdentityOps({ store, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
-  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
+  const idDir = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+  const ops = createIdentityOps({ store, dir: idDir, seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
+  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone", code: (await idDir.reserve("alex")).code });
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });

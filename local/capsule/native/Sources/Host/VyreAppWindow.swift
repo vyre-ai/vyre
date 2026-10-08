@@ -81,6 +81,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         if !boxless { cfg.userContentController.addUserScript(WKUserScript(source: Self.wsShimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
+        // `defaults write sh.vyre.capsule inspect -bool true`: Safari's Develop menu can inspect this window (for a person, or support, finding why a step failed).
+        if #available(macOS 13.3, *), UserDefaults.standard.bool(forKey: "inspect") { view.isInspectable = true }
         view.navigationDelegate = self
         view.uiDelegate = self
         view.allowsBackForwardNavigationGestures = false
@@ -148,6 +150,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
             }
+        case "presence.key":
+            // the Capsule's key for a Mac server: its public half (SPKI) and the id vyre-core will give it; the pairing carries it, and `presence` above signs with it behind Touch ID
+            guard let p = presence, let e = p.keyForServer() else { return reply(id, ["error": "This Mac could not make its key for the server."]) }
+            reply(id, ["public_key": e.publicKey, "id": e.id])
         case "identity.public", "identity.sign", "identity.has", "identity.forget":
             guard let id0 = identity else { return reply(id, ["error": "This Mac cannot keep your key."]) }
             switch op {
@@ -230,7 +236,18 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         run("window.__vyreWS && window.__vyreWS._event(\(sid), \(Self.js(kind)), \(Self.json(["v": data])).v)")
     }
 
-    private func reply(_ id: Int, _ value: [String: Any]) { run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))") }
+    private func reply(_ id: Int, _ value: [String: Any]) {
+        if let e = value["error"] as? String { Self.log("reply \(id): \(e)") }
+        run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))")
+    }
+    /// One line per failed call, in ~/Library/Logs/Vyre/app.log, so a step that fails says why somewhere a person (or support) can read.
+    nonisolated static func log(_ line: String) {
+        let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Logs/Vyre")
+        try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        let path = (dir as NSString).appendingPathComponent("app.log")
+        let text = "\(ISO8601DateFormatter().string(from: Date())) \(line)\n"
+        if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(text.utf8)); try? h.close() } else { try? text.write(toFile: path, atomically: true, encoding: .utf8) }
+    }
     private func run(_ script: String) { web?.evaluateJavaScript(script, completionHandler: nil) }
 
     static func json(_ v: Any) -> String {
@@ -324,6 +341,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
+        presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
         identity: {

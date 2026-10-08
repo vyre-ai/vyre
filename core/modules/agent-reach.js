@@ -7,6 +7,8 @@
 // person-only, so the person can always take it back).
 // Safe only because the claim is assigned by the daemon from the session's own socket (L-1), never self-declared on the person's own socket.
 
+import { SETUP_REASONS } from "../../lib/setup-gate.js";
+
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
   ["spaces.time-zone.set", "sets the time zone a space's clocks read: the person's own act (lead, 0.2.9)"],
@@ -117,6 +119,7 @@ export const PERSON_ONLY = new Map([
   ["wink.phone.pairing", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.phone.wait", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.phone.enrolled", "the owner's app reports a phone's enrolment onto the name's list: pairing and devices, never a model's"],
   ["wink.storage.bridge", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
@@ -171,7 +174,8 @@ export const PERSON_ONLY = new Map([
   ["link.pair.deny", "needs the person's Face ID or presence: pairing and devices"],
   ["link.signout", "needs the person's Face ID or presence: pairing and devices"],
   ["link.unpair", "needs the person's Face ID or presence: pairing and devices"],
-  ["names.release", "needs the person's Face ID or presence: the person's name and domain"],
+  ["names.serve", "needs the person's Face ID or presence: the person's name and domain"],
+  ["names.unserve", "needs the person's Face ID or presence: the person's name and domain"],
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["presence.session.close", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["publish.decide", "would let an assistant widen its own authority: publishing decisions"],
@@ -184,8 +188,6 @@ export const PERSON_ONLY = new Map([
   ["relay.enable", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.join", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.pair.ticket", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
-  ["relay.setup.claim", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
-  ["relay.setup.claim-token", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.web.pin", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["relay.web.release", "needs the person's Face ID or presence: relay pairing, devices and who may reach the home"],
   ["runner.lock", "controls the person's own machine: starts, stops, locks and moves sessions on it"],
@@ -274,6 +276,7 @@ export const PERSON_ONLY = new Map([
   ["wink.relay.apply", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.adopt", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
+  ["wink.server.setup-offer", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.code", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.confirm", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.retarget", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
@@ -458,20 +461,8 @@ export const WEB_REACH = new Map([
 ]);
 
 /**
- * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES) lets through, plus the tools a
+ * `setup:<id>`: the setup page before the box is claimed. Exactly what the relay's setup gate (core/relay/setup.js SETUP_TOOLS and SETUP_TOOL_FAMILIES; the reasons are SETUP_REASONS there) lets through, plus the tools a
  * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
  * @type {ReadonlyMap<string, string>}
  */
-export const SETUP_REACH = new Map([
-  ["relay.setup.status", "the page reads its own setup session"],
-  ["relay.setup.claim-token", "the page claims the box with its code"],
-  ["names.check", "checks that a name is free"],
-  ["names.claim", "claims the box's name"],
-  ["names.status", "reads the name's state"],
-  ["names.domain.check", "checks the person's own domain"],
-  ["link.health", "reads whether the box is reachable"],
-  ["system.info", "reads what machine this is"],
-  ["onboard.machine", "reads the machine's setup state"],
-  ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
-  ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
-]);
+export const SETUP_REACH = new Map([...SETUP_REASONS]);

@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
 import { joinWithCode, redeemInviteCode } from "@vyre/relay-client/join.js";
 import { about, presenceKey, relayCrypto, relayKeyStore } from "../../src/api/relay";
-import { afterPaired } from "../../src/real/pairing";
+import { afterPaired, serverPairInputs } from "../../src/real/pairing";
 import { tool } from "../../src/real/box";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -29,9 +29,12 @@ export async function redeemInvite(code: string, onAck: (ack: string, expires?: 
  * yes; the pairing is kept so this device reaches that server.
  */
 export async function redeemPairing(code: string, onAck: (ack: string, expires?: number) => void): Promise<Typed> {
+  // A server's typed code ends in the server's own adopt (who will own it, and the proof); a device that holds a name sends it, or the server stays unowned and lets the device go.
+  const inputs = await serverPairInputs();
   const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s: { state: string; code?: string; expires?: number }) => { if (s.state === "ack" && s.code) onAck(s.code, typeof s.expires === "number" ? s.expires : undefined); },
-    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), deviceKind: about.kind === "web" ? "web" : "phone", keyStorage: "software" } });
-  if (!r.ok) throw new Error(inviteReasonSay(r.reason === "closed" ? "refused" : r.reason));
+    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: inputs?.presenceKey ?? await presenceKey(), deviceKind: inputs?.deviceKind ?? (about.kind === "web" ? "web" : "phone"), keyStorage: inputs?.keyStorage ?? "software" },
+    ...(inputs ? { server: { owner: inputs.owner, signIdentity: inputs.signIdentity, deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage, crypto: relayCrypto(), keyStore: relayKeyStore() } } : {}) });
+  if (!r.ok) throw new Error(("message" in r && r.message) || inviteReasonSay(r.reason === "closed" ? "refused" : r.reason === "needs_identity" ? "refused" : r.reason));
   await afterPaired(r.paired);
   return {};
 }

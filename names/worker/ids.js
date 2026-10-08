@@ -18,18 +18,23 @@
 // stale or forked answer. There is no recovery wait here: recovery is a chain op (the code, or two contacts), and the 24 hour newcomer
 // rule inside the chain is what stops a takeover. Nothing here publishes a DNS record.
 
-import { verdict, base32, dnsFor } from "./index.js";
+import { verdict, base32, dnsFor, same, sha256, ROUTE_RE } from "./index.js";
 import * as C from "./chain.js";
 
 export const RECORD_TAG = "vyre-id-record-v1";
 export const ALIAS_TAG = "vyre-id-alias-v1";
 export const ACT_TAG = "vyre-id-act-v1";
+export const RESERVE_TAG = "vyre-id-reserve-v1";
 export const KINDS = Object.freeze(["person", "space"]);
 export const ID_LIMITS = Object.freeze({
   /** characters of the sealed record */
   sealed: 2048,
   /** own domains one identity may alias */
   aliases: 5,
+  /** servers one space may name */
+  servers: 8,
+  /** a reservation code lives this long */
+  reserveMs: 24 * 3_600_000,
   /** how far a record's own time may be from the directory's */
   recordSkewMs: 5 * 60_000,
   /** a name released within this time of its claim is freed; later it is a tombstone for good */
@@ -43,6 +48,11 @@ export const ID_LIMITS = Object.freeze({
 });
 
 const enc = new TextEncoder();
+export const ALPHA32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/** The only thing the directory keeps of a reservation code: a hash that names the name and the code (ignoring case, dashes and spaces). @param {string} name @param {string} code */
+export async function reserveHash(name, code) { return sha256(`${RESERVE_TAG}\n${name}\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
+/** The index key of a code on its own (so a pasted code finds its name): a hash, never the code. @param {string} code */
+export async function codeHash(code) { return sha256(`${RESERVE_TAG}-index\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
 const err = (status, code, message) => ({ status, code, message });
 const unb64 = C.unb64;
 
@@ -145,8 +155,78 @@ export const idOps = {
     return state;
   },
 
-  /** @this {any} */
+  /**
+   * Claim a name for a SPACE, signed by an owner identity that already exists (the chain's own owner lookup checks it). A person's first name is never claimed here: it comes
+   * from a reservation made on the web and finalized with the code (op_idFinalize), so no identity is created any other way.
+   * @this {any}
+   */
   async op_idClaim(b, _a, ip) {
+    return this.idClaimCore(b, ip, null);
+  },
+
+  /**
+   * A reservation: the name is held for this person for 24 hours and a code is returned, once. Only a hash of it is kept (so the Worker cannot read it back), it is good for one finalize, and
+   * reserving the same name again replaces the hash, so the older code stops working. Nothing here needs a key or a server: the web page only reserves.
+   * @this {any}
+   */
+  async op_idReserve(b, _a, ip) {
+    const v = verdict(b.name);
+    if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
+    if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
+    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    await this.count("rsvip", ip, Number(this.env.RESERVES_PER_IP_PER_DAY) || 20, "too many names reserved from this address today");
+    await this.count("rsv", "all", Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500, "the directory is busy today; try again tomorrow");
+    const raw = Array.from(crypto.getRandomValues(new Uint8Array(16)), x => ALPHA32[x & 31]).join("");   // 16 characters of 5 bits: 80 bits
+    const code = "VYRE-" + raw.match(/.{4}/g).join("-");
+    const expires = this.now() + ID_LIMITS.reserveMs;
+    // Re-reserving the same name cancels the older code: its lookup entry goes with it.
+    const was = await this.store.get(`rsv/${v.name}`);
+    if (was && was.by) await this.store.delete(`rsc/${was.by}`);
+    const by = await codeHash(code);
+    await this.store.put(`rsv/${v.name}`, { hash: await reserveHash(v.name, code), by, exp: expires });
+    await this.store.put(`rsc/${by}`, v.name);
+    return { name: v.name, code, expires };
+  },
+
+  /**
+   * Which name a live code is for, so the app that is pasted a code can make the identity for that name. Reads only; the code is not spent. One answer for a wrong, an expired and a used code.
+   * @this {any}
+   */
+  async op_idReservedFor(b, _a, ip) {
+    await this.count("rsvlook", ip, 60, "too many tries from this address; wait a little");
+    const name = typeof b.code === "string" ? await this.store.get(`rsc/${await codeHash(b.code)}`) : null;
+    const r = name ? await this.idReservation(name) : null;
+    if (!r || !same(await reserveHash(name, b.code), r.hash)) throw err(403, "bad_code", "that reservation code is not valid; it may have expired, been used, or been replaced");
+    return { name, expires: r.exp };
+  },
+
+  /** A live reservation of a name, or null; an expired one is dropped. @this {any} @param {string} name */
+  async idReservation(name) {
+    const r = await this.store.get(`rsv/${name}`);
+    if (!r) return null;
+    if (this.now() >= r.exp) { await this.store.delete(`rsv/${name}`); if (r.by) await this.store.delete(`rsc/${r.by}`); return null; }
+    return r;
+  },
+
+  /**
+   * A person's first name: the genesis chain the app made with its own key, plus the reservation code. The code is checked before anything else is learned, burns when the claim goes through,
+   * and one answer covers every way it can be wrong.
+   * @this {any}
+   */
+  async op_idFinalize(b, _a, ip) {
+    const v = verdict(b.name);
+    if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
+    const bad = () => err(403, "bad_code", "that reservation code is not valid; it may have expired, been used, or been replaced");
+    const r = v.status === "reserved" ? null : await this.idReservation(v.name);
+    if (!r || typeof b.code !== "string" || !same(await reserveHash(v.name, b.code), r.hash)) throw bad();
+    const out = await this.idClaimCore(b, ip, "person");
+    await this.store.delete(`rsv/${v.name}`);
+    if (r.by) await this.store.delete(`rsc/${r.by}`);
+    return out;
+  },
+
+  /** @this {any} @param {any} b @param {string} ip @param {"person"|null} viaCode a person's genesis is accepted only with the code */
+  async idClaimCore(b, ip, viaCode) {
     const v = verdict(b.name);
     if (v.status === "invalid") throw err(400, "invalid", v.why || "not a name");
     if (v.status === "reserved") throw err(403, "reserved", "that name is reserved");
@@ -154,6 +234,8 @@ export const idOps = {
     if (!ops.length || ops.length > ID_LIMITS.appendBatch) throw err(400, "bad_chain", "send the identity's chain from its genesis");
     let state;
     try { state = await C.verifyChain(ops, this.idLive()); } catch (e) { throw err(400, String(/** @type {any} */ (e).code || "bad_chain"), String(/** @type {any} */ (e).message)); }
+    // A person is created one way only; a space one way only.
+    if (viaCode ? state.kind !== "person" : state.kind !== "space") throw err(403, viaCode ? "not_a_person" : "reserve_first", viaCode ? "a reservation is for a person's first name" : "a first name is reserved at vyre.run/setup, then finished in the app");
     const held = await this.store.get(`ii/${state.id}`);
     if (held) {
       if (held === v.name) return { name: v.name, kind: state.kind, id: state.id, mine: true };
@@ -161,8 +243,8 @@ export const idOps = {
     }
     const rec0 = { name: v.name };
     const sig = await this.idCheckRecord(rec0, state, b.rec, b.sealed);
-    // One namespace: a name used by a box, or by any identity, is taken.
-    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    // One namespace: a name used by a box, or by any identity, is taken. Another person's live reservation holds it too.
+    if (await this.load(v.name) || await this.idLoad(v.name) || (!viaCode && await this.idReservation(v.name))) throw err(409, "taken", "someone else has that name");
     await this.count("ip", ip, Number(this.env.CLAIMS_PER_IP_PER_DAY) || 5, "too many names claimed from this address today");
     const max = Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500;
     await this.count("all", "all", max, "the directory is busy today; try again tomorrow");
@@ -286,12 +368,12 @@ export const idOps = {
   // wildcard) and, once, a CAA record that names the one ACME account the Space's Caddy uses, so no other account can be issued a certificate for the name. HTTP-01 and TLS-ALPN-01 are never offered.
 
   /** The Space whose name this is, with the signed act checked. @this {any} @param {any} b @param {string} action @param {string} subject */
-  async idAcmeSpace(b, action, subject) {
+  async idAcmeSpace(b, action, subject, { fresh = true } = {}) {
     const v = verdict(b.name);
     const rec = v.status === "invalid" ? null : await this.idLiveRecord(v.name);
     if (!rec) throw err(404, "not_found", "no such name");
     if (rec.kind !== "space") throw err(403, "not_a_space", "certificates are issued for a Space's names");
-    await this.idCheckAct(rec, b.act, action, subject, { fresh: true });
+    await this.idCheckAct(rec, b.act, action, subject, { fresh });
     return rec;
   },
 
@@ -312,6 +394,29 @@ export const idOps = {
     const fqdn = `_acme-challenge.${rec.name}.${dnsFor(this.env).zone}`;
     await dnsFor(this.env).clear(fqdn, "TXT");
     return { fqdn };
+  },
+
+  /**
+   * Which servers serve a Space's name. The Space signs (an entry of its own list, like releasing a name); only a route listed here may then ask the directory to point the Space's name at
+   * its address or write its certificate challenge (the route-signed ops in index.js). A server never holds a name of its own: it serves the Space's.
+   * @this {any}
+   */
+  async op_idServer(b) {
+    const route = String(b.route || "");
+    if (!ROUTE_RE.test(route)) throw err(400, "bad_route", "not a server's route");
+    const remove = b.remove === true;
+    // The FIRST server needs no older sign-in: a person upgrading from Home to Cloud on their first day signs with the only device they have. Every other change to the list does.
+    const cur = await this.idLiveRecord(verdict(b.name).name);
+    const first = !remove && cur && cur.kind === "space" && !(Array.isArray(cur.servers) && cur.servers.length);
+    const rec = await this.idAcmeSpace(b, remove ? "server-remove" : "server-add", route, { fresh: !first });
+    const list = Array.isArray(rec.servers) ? rec.servers : [];
+    if (!remove && !list.includes(route) && list.length >= ID_LIMITS.servers) throw err(409, "too_many_servers", `a space has at most ${ID_LIMITS.servers} servers`);
+    rec.servers = remove ? list.filter((/** @type {string} */ r) => r !== route) : [...new Set([...list, route])];
+    await this.idSave(rec);
+    const served = (await this.store.get(`sv/${route}`)) || [];
+    const next = remove ? served.filter((/** @type {string} */ n) => n !== rec.name) : [...new Set([...served, rec.name])];
+    if (next.length) await this.store.put(`sv/${route}`, next); else await this.store.delete(`sv/${route}`);
+    return { name: rec.name, servers: rec.servers.length };
   },
 
   /** Pin issuance for the Space's name to one ACME account (its accounturi). Replaces the pin. @this {any} */
@@ -346,9 +451,9 @@ export const idOps = {
 };
 
 export const ID_ROUTES = Object.freeze({
-  "POST /v1/ids/claim": "idClaim", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
+  "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/reserved-for": "idReservedFor", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
   "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
-  "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa",
+  "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa", "POST /v1/ids/server": "idServer",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa", "idServer"]));

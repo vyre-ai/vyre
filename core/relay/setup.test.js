@@ -17,7 +17,7 @@ import { deviceSide } from "./channel.js";
 import * as wire from "./wire.js";
 import { WEB_DENY } from "./index.js";
 import { SetupSession, setupGate, setupToolAllowed, SETUP_TOOLS } from "./setup.js";
-import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader, claimToken } from "../../relay/client/setup.js";
+import { createSetupKey, setupCode, setupHello, setupWords, resolveSetup, mailboxReader } from "../../relay/client/setup.js";
 import { pairTicket } from "../../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { fromBase64url } from "../../relay/client/bytes.js";
@@ -82,14 +82,15 @@ test("setup session: the pairing secret is burned once, and only by a hello that
 });
 
 test("setup session: the allowlist is exactly the plan's, and the extension point never takes pairing, presence or vault tools", () => {
-  for (const name of ["relay.setup.status", "network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine"]) {
+  for (const name of ["relay.setup.status", "wink.server.setup-offer", "link.health", "system.info"]) {
     assert.equal(setupToolAllowed(name), true, name);
   }
-  for (const name of ["network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
+  // what the old setup page called is gone from the channel: names, the network step, the passkey claim, the machine step
+  for (const name of ["network.wink.status", "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "onboard.machine", "network.wink.join", "network.wink.leave", "network.wink.whois", "network.wink", "network.tailscale.status", "network.tailscale.login"]) assert.equal(setupToolAllowed(name), false, name);
   for (const name of ["relay.pair.ticket", "relay.setup.end", "relay.setup.begin", "relay.pair.start", "relay.pair.first", "relay.devices.list", "relay.devices.trust", "presence.enroll", "presence.person.start", "vault.reveal", "names.recover", "names.release", "network.wink.statusx", "network.wink.", "network.other", "threads.send", "system.exec", ""]) {
     assert.equal(setupToolAllowed(name), false, name);
   }
-  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "names.check", "names.claim", "names.domain.check", "names.status", "onboard.machine", "relay.setup.claim-token", "relay.setup.status", "system.info"]);
+  assert.deepEqual([...SETUP_TOOLS].sort(), ["link.health", "relay.setup.status", "system.info", "wink.server.setup-offer"]);
   assert.equal(setupToolAllowed("sessions.accounts.signin"), false, "nothing extra unless the registry lists it");
   assert.equal(setupToolAllowed("sessions.accounts.signin", ["sessions.accounts.signin"]), true);
   for (const bad of ["relay.pair.start", "presence.enroll", "vault.reveal"]) assert.equal(setupToolAllowed(bad, [bad]), false, `${bad} is never taken, even if listed`);
@@ -123,11 +124,11 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(s.ticket, "none");
   let r;
   // the router's policy is a second layer: only the allowlist by name, and a fixed set of paths
-  await call("POST", "/v1/tools/names.check");
+  await call("POST", "/v1/tools/link.health");
   const p = seen.at(-1);
-  assert.equal(p.tool("names.check"), true);
+  assert.equal(p.tool("link.health"), true);
   assert.equal(p.tool("relay.devices.list"), false);
-  assert.equal(p.path("POST", "/v1/tools/names.check"), true);
+  assert.equal(p.path("POST", "/v1/tools/link.health"), true);
   assert.equal(p.path("GET", "/v1/tools"), true);
   for (const [m, u] of [["GET", "/v1/events"], ["GET", "/v1/modules"], ["POST", "/v1/person/token"], ["GET", "/v1/health/x"], ["GET", "/deck/index.html"]]) assert.equal(p.path(m, u), false, `${m} ${u}`);
 
@@ -149,7 +150,7 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(s2.ticket, "none");
   s2.end("claimed");
   const over = res();
-  await gate2(request("POST", "/v1/tools/names.check"), over, "device:x", {});
+  await gate2(request("POST", "/v1/tools/link.health"), over, "device:x", {});
   assert.equal(over.status, 401, "an ended session answers nothing");
   assert.equal(over.body.error.code, "setup_over");
 });
@@ -476,7 +477,7 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
 test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {
   assert.equal(WEB_DENY.test("relay.setup.claim"), true);
   assert.equal(WEB_DENY.test("relay.setup.claim-token"), false, "a different tool, the setup page's own");
-  for (const ok of ["network.wink.status", "link.health", "names.check"]) assert.equal(WEB_DENY.test(ok), false, ok);
+  for (const ok of ["network.wink.status", "link.health", "system.info"]) assert.equal(WEB_DENY.test(ok), false, ok);
 });
 
 // ---- the setup channel, one session, end to end ----
@@ -514,35 +515,23 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
-test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in and a second call", async t => {
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call and a second call", async t => {
   const dirFake = await fakeDirectory(t);
   const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
   ] });
-  // the registry's list: the tool the module owns and declared
+  // the registry's list: the tool the module owns and declared (no shipped module declares any now)
   const listed = await new Promise(r => { const c = w.d.registry.context({ name: "probe", does: { tools: [] } }); r(c.declaredSetupTools()); });
-  assert.deepEqual([...listed].sort(), ["sessions.accounts.key", "sessions.accounts.signin", "sessionsfx.accounts.signin"], "the shipped sessions module's own field (sign-in, and an API key instead), and the fixture's");
+  assert.deepEqual([...listed].sort(), ["sessionsfx.accounts.signin"], "only the fixture's own field");
 
   const p = await page(w);
   await p.begin();
   const a = await p.connect();
-  const claim = async () => (await a.call("names.claim", { name: "alex" }));
-  const c1 = await claim();
-  assert.equal(c1.status, 200, JSON.stringify(c1));
-  assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
-  await settle(200);
-  assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
   assert.notEqual((await a.call("sessionsfx.accounts.other")).status, 200, "a tool the module did not list is not");
-  // The real sessions tool: its askedOnly gate lets the setup device through as the person (device:<id>)
-  // and refuses on a bad flow, not on "nothing asked for this".
-  const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
-  assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
-  assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
-  const c2 = await claim();
-  assert.equal(c2.status, 200, JSON.stringify(c2));
-  assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
-  assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
+  assert.equal((await a.call("system.info")).status, 200, "and a tool of the fixed list is");
+  assert.notEqual((await a.call("names.claim", { name: "alex" })).status, 200, "the old page's name step is not on the channel any more");
+  assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true);
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");
   assert.notEqual((await a.call("relay.setup.end")).status, 200, "and the channel cannot end it, even though the module listed the tool");
 });
@@ -553,83 +542,10 @@ test("setup: an added module carrying setupTools is refused at load, so its fiel
   assert.equal(w.d.registry.status().find(m => m.name === "sneaky")?.state, "invalid", "setupTools is built in only (the platform's added-module rules)");
   const declared = w.d.registry.context({ name: "probe", does: { tools: [] } }).declaredSetupTools();
   assert.ok(!declared.some(x => x.startsWith("sneaky.")), "and its field counts for nothing");
-  assert.ok(declared.includes("sessions.accounts.signin"), "while a shipped module's does");
+  assert.ok(!declared.includes("sessions.accounts.signin"), "no shipped module declares one now");
   const { validate } = await import("../modules/index.js");
   for (const bad of [["relay.setup.end"], ["sessionsfx.accounts.missing"], "sessionsfx.accounts.signin", [5]]) {
     assert.ok(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: bad }, { firstParty: true }).some(p => /setupTools/.test(p)), JSON.stringify(bad));
   }
   assert.deepEqual(validate({ name: "sessionsfx", version: "0.1.0", does: { tools: ["sessionsfx.accounts.signin"] }, setupTools: ["sessionsfx.accounts.signin"] }, { firstParty: true }), []);
-});
-
-// ---- the claim token (B4) ----
-
-test("claim token: one challenge, burned by the first try, for one route, one address and the page's own key", async () => {
-  const c = clock();
-  const { code, key } = await newCode();
-  const s = new SetupSession({ code, now: c.now, setTimer: /** @type {any} */ (c.setTimer), clearTimer: /** @type {any} */ (c.clearTimer) });
-  const route = "r".repeat(26), origin = "https://alex.vyre.run";
-  const mint = async (host = "alex.vyre.run", k = key) => { const m = s.mintClaim(host); return { m, token: await claimToken({ privateKey: k.privateKey, route, challenge: m.challenge, host }), spki: Buffer.from(k.spki).toString("base64url") }; };
-  const take = (t, o = {}) => s.takeClaim({ token: t.token, spki: t.spki, route, origin, ...o });
-
-  let t = await mint();
-  assert.equal(take(t), "alex.vyre.run");
-  assert.throws(() => take(t), /not valid/, "a token works once");
-
-  t = await mint();
-  assert.throws(() => take(t, { origin: "https://evil.vyre.run" }), /not valid/, "another address");
-  assert.throws(() => take(t), /not valid/, "and the wrong try burned it");
-
-  t = await mint();
-  assert.throws(() => take(t, { origin: "http://alex.vyre.run" }), /not valid/, "not https");
-  t = await mint();
-  assert.throws(() => take(t, { route: "q".repeat(26) }), /not valid/, "another box");
-  t = await mint();
-  const other = await createSetupKey();
-  assert.throws(() => take({ token: t.token, spki: Buffer.from(other.spki).toString("base64url") }), /not valid/, "not the page key the code names");
-  const forged = await mint("alex.vyre.run", other);
-  assert.throws(() => take(forged), /not valid/, "signed by another key");
-  t = await mint();
-  assert.throws(() => take({ token: t.token.slice(0, -4) + "AAAA", spki: t.spki }), /not valid/, "a bad signature");
-  t = await mint();
-  c.advance(120_001);
-  assert.throws(() => take(t), /not valid/, "after two minutes");
-  const a = s.mintClaim("alex.vyre.run"), b = s.mintClaim("alex.vyre.run");
-  assert.notEqual(a.challenge, b.challenge, "a new challenge replaces the last");
-  assert.throws(() => s.mintClaim("bad host!"), { code: "bad_input" });
-  s.end("claimed");
-  assert.throws(() => s.mintClaim("alex.vyre.run"), { code: "setup_over" });
-});
-
-test("claim token: the page mints over its channel, the browser at the address claims once and gets one grant; a phone claims with a second token", async t => {
-  const w = await world(t);
-  const p = await page(w);
-  await p.begin();
-  const a = await p.connect();
-  const route = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
-  assert.ok(route && route.challenge && route.route, "the setup channel can mint");
-  const spki = Buffer.from(p.key.spki).toString("base64url");
-  const token = await claimToken({ privateKey: p.key.privateKey, route: route.route, challenge: route.challenge, host: "alex.vyre.run" });
-  const at = { stableId: "n-laptop", node: "laptop", origin: "https://alex.vyre.run" };
-  const claim = (tok, caller = "tailnet:me@example.com", peer = at, sp = spki) => w.d.registry.call("relay.setup.claim", { token: tok, spki: sp }, caller, { peer });
-
-  for (const caller of ["cli", "tailnet-guest:sam@harlow.example", "mcp:agent:kit", "tailnet:agent:kit"]) assert.ok((await claim(token, caller)).error, `refused for ${caller}`);
-  // those refusals happened before the challenge was looked at, so it is still live
-  const r = await claim(token);
-  assert.equal(r.error, undefined, JSON.stringify(r.error));
-  assert.match(r.data.grant, /^[A-Za-z0-9_-]{43}$/);
-  assert.equal(r.data.rpId, "alex.vyre.run");
-  assert.ok((await claim(token)).error, "the token was burned");
-  assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session goes on until onboard ends it");
-
-  // the phone: another token for the same address, claimed from its own node
-  const again = (await a.call("relay.setup.claim-token", { host: "alex.vyre.run" })).data;
-  const token2 = await claimToken({ privateKey: p.key.privateKey, route: again.route, challenge: again.challenge, host: "alex.vyre.run" });
-  const phone = { stableId: "n-phone", node: "phone", origin: "https://alex.vyre.run" };
-  const r2 = await claim(token2, "tailnet:me@example.com", phone);
-  assert.match(r2.data.grant, /^[A-Za-z0-9_-]{43}$/);
-  assert.notEqual(r2.data.grant, r.data.grant);
-
-  // a code holder with no page key cannot mint; the claim tools are not in reach of a module that is not the presence one
-  assert.ok((await w.d.registry.call("relay.setup.claim-token", { host: "alex.vyre.run" }, "module:sneaky")).error);
-  assert.ok((await w.d.registry.call("presence.grant.mint", { peer: null, host: "alex.vyre.run" }, "module:sneaky")).error, "only the relay module makes a grant");
 });

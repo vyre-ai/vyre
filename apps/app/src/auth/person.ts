@@ -613,6 +613,11 @@ export function devicePresence(o: {
   /** The box says the key is not enrolled (removed in Settings). */
   lost?: () => void;
   /**
+   * The method the proof is sent under: "device" (a file or phone key, the default) or "capsule" (this Mac's Secure Enclave key, which a Mac server's vyre-core holds as its Capsule key and counts as
+   * a Touch ID gesture). The message and the signature are the same.
+   */
+  method?: "device" | "capsule";
+  /**
    * Which way the box is reached now ("direct", "relay"). The box pins a presence session to the
    * path's identity (the tailnet node, or the relay device), so the phone keeps one per path.
    */
@@ -705,7 +710,7 @@ export function devicePresence(o: {
       try {
         const sig = await o.sign(presenceMessage(tool, await inputHash(input), ts, nonce), tool);
         sent.set(id, "device");
-        return { "x-vyre-presence": `device key=${key} ts=${ts} nonce=${nonce} sig=${sig}`, "x-vyre-presence-keep": "1" };
+        return { "x-vyre-presence": `${o.method ?? "device"} key=${key} ts=${ts} nonce=${nonce} sig=${sig}`, "x-vyre-presence-keep": "1" };
       } catch (e) {
         // Closed, no biometrics, or a retired key: the call goes without it and the box says
         // what it needs. Never thrown: a throw here would stall the outbox.

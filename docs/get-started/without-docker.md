@@ -50,12 +50,12 @@ A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, asks wher
 (or saves the address you gave with `--connect`; it pairs nothing and asks nothing, and pairing is
 `vyre link pair <code>` with the code the box shows), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
-[Install, step 7](install.md#7-put-the-lumen-on-your-mac).
+[Install](install.md#2-install-the-vyre-app).
 
 `vyre up --box` sets the role to `box` and prints the pairing line (`wink.server.code`), which you
 pair from your Vyre app. The Mac then serves your phone, so it has to stay awake for the
 phone to reach it. For a Mac that is the always-on server, use the Vyre app's
-install line ([Install](install.md#3-run-the-line-on-your-server)): it installs Vyre as a
+install line ([Install](install.md#5-add-a-server)): it installs Vyre as a
 service that starts when the Mac does, which `vyre up --box` does not.
 
 There is no login item. `vyre up` starts Vyre, and restarts it when the installed version or
@@ -121,7 +121,6 @@ upgrade changed the units, `vyre up` prints the line to rewrite them:
 ### Remove
 
 ```
-vyre name release        # only if you claimed a vyre.run name; it cannot be claimed again
 sudo vyre uninstall --system
 sudo npm rm -g vyre
 ```

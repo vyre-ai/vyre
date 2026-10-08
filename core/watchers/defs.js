@@ -20,7 +20,7 @@ export const DEF = "def-watcher";
 /** The hidden record type (declared in the module's manifest, `needs.kernel.types`; the kernel defines it). Two long text fields: the spec (watcher.json as written) and the code (watch.js). */
 export const DEF_TYPE = Object.freeze({
   name: DEF, label: "Watcher", icon: "IconEye", fields: [
-    { name: "name", kind: "text", label: "Name", required: true, unique: true },
+    { name: "name", kind: "text", label: "Name", required: true },
     { name: "project", kind: "text", label: "Project" },
     { name: "schedule", kind: "text", label: "Runs" },
     { name: "hash", kind: "text", label: "Hash" },

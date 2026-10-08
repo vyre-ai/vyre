@@ -20,6 +20,8 @@ import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
 import { tempHome } from "./helpers.js";
+import { authenticator } from "../apps/app/src/identity/soft-authenticator.js";
+import { claimIdentityWithPasskey } from "../apps/app/src/identity/claim.js";
 import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
@@ -287,6 +289,16 @@ test("PS-4 and sessions scope, on the real kernel: a paired session lists only i
   assert.deepEqual(await list("deck", { person: { id: b.sessionId } }), [b.sessionId]);
 });
 
+test("a browser whose identity is a passkey pairs a fresh server: the owner proof is a WebAuthn assertion, the server checks it against the directory's entry, and it is the owner", { timeout: 120_000 }, async t => {
+  const ident = await standinIdentity(t, { passkey: true });
+  const f = await pairFreshServer(t, { kind: "web", presenceStorage: "software", ident });
+  assert.ok(f.done.paired, JSON.stringify(f.done).slice(0, 200));
+  assert.equal(ident.auth.seen.gets >= 3, true, "the proof was a passkey assertion (the genesis, the claim, the pairing)");
+  const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true, JSON.stringify(st).slice(0, 300));
+  assert.equal(st.owner_proof, "passkey");
+});
+
 test("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
@@ -320,7 +332,7 @@ test("a device with no box pairs a fresh server through pairServer: the claimed 
 
 
 /** The names directory stand-in (the real Worker on the fake runtime) and a device that really claimed `alex` there: the identity a server's owner proof is checked against. */
-async function standinIdentity(t) {
+async function standinIdentity(t, { passkey = false } = {}) {
   const dns = fakeDns();
   const clock = { t: Date.UTC(2026, 9, 4, 12, 0, 0) };
   const rt = createRuntime({ worker: workerDir, Class: WD.Directory, classes: { DIRECTORY: WD.Directory },
@@ -331,11 +343,18 @@ async function standinIdentity(t) {
   const seen = memorySeen();
   const home = tempHome(t);
   const store = fileIdentityStore(path.join(home, "spaces"));
-  const ops = createIdentityOps({ store, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
-  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
+  const idDir = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+  const ops = createIdentityOps({ store, dir: idDir, seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
+  if (passkey) {
+    // a browser's identity: a passkey is the first device (0.2.9), and every proof it makes is a WebAuthn assertion, never a bare signature
+    const auth = authenticator();
+    const made = await claimIdentityWithPasskey({ name: "alex", code: (await idDir.reserve("alex")).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (fetchDir), now: () => clock.t, params: { memoryKiB: 64, passes: 1 }, webauthn: auth });
+    return { id: made.id, home, state, clock, auth, sign: async m => ({ eid: made.eid, sig: Buffer.from(await made.key.sign(m)).toString("base64url") }) };
+  }
+  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone", code: (await idDir.reserve("alex")).code });
   return { id: store.status().id, home, state, store, ops: () => store.ops(), clock,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
@@ -1077,6 +1096,9 @@ async function typedPairedOnKernel(t) {
   await until(async () => ack);
   await until(() => w.events.find(e => e[0] === "wink.found"));
   assert.equal((await w.call("wink.code.ack", { offer: open.code_offer, typed: ack }, "cli", PROOF)).data.ok, true);
+  // This box holds no name, so the owner's app would put the phone's key on the name's list and report it (wink.phone.enrolled); here the report is "could not", so the waiting phone is told at once.
+  const asked = await until(() => w.events.find(e => e[0] === "wink.enrol-asked"), 4000).catch(() => null);
+  if (asked) assert.equal((await w.call("wink.phone.enrolled", { device: asked[1].device, ok: false, reason: "this test box holds no name" }, "cli", PROOF)).data.ok, true);
   const done = await joining;
   const sign = m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
   return { w, done, dk, ks, sign, pkey };

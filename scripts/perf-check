@@ -233,11 +233,12 @@ async function waitForHealth(home, child, timeoutMs) {
   throw new Error(`vyred did not answer /v1/health within ${timeoutMs}ms`);
 }
 
-/** Wait for Memory's startup curation pass to finish. Without the memory module there is none. */
+/** Wait for Memory's startup curation pass to finish. Without the memory module there is none. Personal memory answers only a proven person (core/memory/kernel-gate.js),
+ * and this script is a bare socket client, so it may be refused: then the quiet wait below is what keeps curation out of the idle window. */
 async function waitForMemory(home) {
   const { call } = await daemonClient(home);
   const r = await call("memory.curate", {});
-  if (r.error && r.error.code !== "no_such_tool") throw new Error(`memory.curate failed: ${r.error.message}`);
+  if (r.error && r.error.code !== "no_such_tool" && r.error.code !== "denied") throw new Error(`memory.curate failed: ${r.error.message}`);
 }
 
 /** Poll recall.status until the startup pass has indexed everything and is not running. */

@@ -55,8 +55,6 @@ export const ALLOW = {
     why: "the router resolves which Claude Code session a call comes from" },
   "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js", "core/wink/homemove.js"], next: "lib",
     why: "the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js): the peer wire's session framing is the one remote path" },
-  "core/onboard -> core/names": { files: ["core/names/service.js"], next: "ctx.call",
-    why: "onboarding checks a name with the same rule the claim uses" },
   "core/recall -> core/transcripts": { files: ["core/transcripts/index.js"], next: "lib",
     why: "transcripts is the one reader of Claude Code's files, a library with no feature state" },
   "core/watchers -> core/spawner": { files: ["core/spawner/client.js"], next: "lib",

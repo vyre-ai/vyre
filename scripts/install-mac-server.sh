@@ -540,11 +540,30 @@ write_env() {
   mkdir -p "$VHOME"; chmod 700 "$VHOME" 2>/dev/null || true
   : >"$TMP/vyre.env"
   [ ! -f "$f" ] || grep -v -e '^VYRE_SETUP_CODE=' -e '^VYRE_SETUP_CODE_AT=' "$f" >"$TMP/vyre.env" || true
+  # The Records choice from the install line (VYRE_STORE=auto is Records, sqlite is the small built-in store). A choice named now replaces an older one; none named keeps it, or takes auto.
+  case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
+  if [ -n "${VYRE_STORE:-}" ]; then grep -v '^VYRE_STORE=' "$TMP/vyre.env" >"$TMP/vyre.env.x" || true; cat "$TMP/vyre.env.x" >"$TMP/vyre.env"; fi
+  grep -q '^VYRE_STORE=' "$TMP/vyre.env" || printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.env"
   grep -q '^DOCKER_HOST=' "$TMP/vyre.env" || printf 'DOCKER_HOST=unix://%s/.colima/default/docker.sock\n' "$HOME" >>"$TMP/vyre.env"
   if [ -n "$CODE" ]; then printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"; fi
   chmod 600 "$TMP/vyre.env"
   cat "$TMP/vyre.env" >"$f.new"; chmod 600 "$f.new"; mv "$f.new" "$f"
   step "settings are in $f"
+}
+
+# write_machine: this install is a server, so vyred must come up as one (config.json "machine": "server", the same job the Linux box has by default). Without it a Mac comes up as a
+# solo Home: no wink.server.code, and only the fixed personal record types. A machine the person already chose is kept as it is; the rest of the file is kept too.
+write_machine() {
+  f=$VHOME/config.json
+  if [ "$DRY" = 1 ]; then say "would set machine to server in $f"; return 0; fi
+  mkdir -p "$VHOME"; chmod 700 "$VHOME" 2>/dev/null || true
+  if [ ! -f "$f" ]; then
+    printf '{\n  "machine": "server"\n}\n' >"$f.new"
+  else
+    "$(wrapper_node)" -e 'const fs=require("fs");const f=process.argv[1];let c;try{c=JSON.parse(fs.readFileSync(f,"utf8"))}catch{process.stderr.write("vyre: "+f+" is not valid JSON; fix or remove it, then run this line again\n");process.exit(1)}if(c===null||typeof c!=="object"||Array.isArray(c)){process.stderr.write("vyre: "+f+" is not a JSON object\n");process.exit(1)}if(c.machine===undefined&&c.role===undefined)c.machine="server";fs.writeFileSync(f+".new",JSON.stringify(c,null,2)+"\n")' "$f" || die "could not set this Mac up as a server in $f"
+  fi
+  chmod 600 "$f.new"; mv "$f.new" "$f"
+  step "this Mac is set up as a server ($f)"
 }
 
 # The wrapper launchd runs. It reads vyre.env line by line (never executes it), drops a setup code
@@ -575,6 +594,8 @@ if [ -f "\$ENVF" ]; then
 fi
 export VYRE_HOME="$VHOME"
 $GH_LINE
+# the system LaunchDaemon sets no output paths: vyred's output goes where "vyred did not start" points
+mkdir -p "$VHOME/logs" && exec >>"$VHOME/logs/vyred.out" 2>&1
 exec "$CAFF" -ims "$WNODE" "$APP/core/daemon/main.js"
 EOF
   cat >"$BIN/vyre" <<EOF
@@ -620,6 +641,33 @@ start_service() {
   die "vyred did not start; its output is in $VHOME/logs/vyred.out"
 }
 
+# show_words: the four check words vyred computed for this code, on the terminal only. The app shows the same four from its own side; they match only if this Mac is the server the app is
+# talking to. Words that still cannot be read are said so, with the one command that shows them.
+show_words() {
+  [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
+  n=0
+  while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
+    out=$("$BIN/vyre" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
+    words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
+    if [ -n "$words" ]; then say "  Your four words: $words"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
+    n=$((n + 1)); sleep 1
+  done
+  say "  The four words did not show yet. To see them, run: $BIN/vyre words"
+}
+
+# finish: what the person does next. With the app's install line (a setup code) the app is where it finishes; without one the long pairing code is the way.
+finish() {
+  if [ "$DRY" = 1 ]; then return 0; fi
+  if [ -n "$CODE" ]; then
+    show_words
+    say "  Vyre is running on this Mac."
+    say "  Go back to the Vyre app to finish."
+  else
+    say "Vyre is running on this Mac."
+    say "Open the Vyre app, choose \"Add a server\", and run the line it shows on this Mac."
+  fi
+}
+
 # system_install: the one sudo (ROOT_SH above). The root installer's stdout ends with VYRE_CORE_ENROL=<code>. It is
 # read into a shell variable that is never printed, written or passed on: the output is captured by
 # command substitution, every other line is shown, and the variable is dropped. The Capsule
@@ -651,7 +699,14 @@ ns=$(shasum -a 256 "$nb" | cut -d" " -f1)
 
 system_install() {
   if [ "$DRY" = 1 ]; then say "would run, under one sudo: a fixed root step that copies the verified release into a root-owned folder and runs the installer from there (it asks for your password)"; return 0; fi
-  set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$BIN/vyre-serve"
+  # The full install is a server: core is told so by its own plist. With the app's install line, core is also told the fingerprint of the app's key that line carries (the last 16 bytes of the setup code:
+  # public, never the secret) and takes that one key first, within the hour. The code goes to this node on its stdin, never on a command line.
+  set -- install --owner-uid "$(id -u)" --owner-name "$(id -un)" --owner-home "$HOME" --vyred-wrapper "$BIN/vyre-serve" --server
+  if [ -n "$CODE" ]; then
+    fp=$(printf '%s' "$CODE" | "$(wrapper_node)" -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{const b=Buffer.from(s.trim(),"base64url");if(b.length!==32)process.exit(1);process.stdout.write(b.subarray(16).toString("hex"))})') || fp=""
+    printf '%s' "$fp" | grep -Eq '^[0-9a-f]{32}$' || die "that setup code does not look right. Copy the install line from your browser again."
+    set -- "$@" --first-key-fp "$fp"
+  fi
   [ -z "$GH_BIN" ] || set -- "$@" --gh-bin "$GH_BIN"
   if [ -n "$COLIMA_ARGS" ]; then
     oldifs=$IFS; IFS='
@@ -746,23 +801,27 @@ main() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   if [ "$UNINSTALL" = 1 ]; then uninstall; return 0; fi
-  say "Installing Vyre on this Mac as your server."
+  say "Installing Vyre on this Mac as your server. This takes a few minutes."
+  say "It asks for your Mac password once, so Vyre can start when the Mac starts."
+  say "When it finishes, go back to the Vyre app."
   preflight
   install_app
   setup_colima
   setup_gh
   setup_wink_net
   write_env
+  # only the full install is a server; the light --login-only install is My Home and stays local
+  [ "$SYSTEM" = 0 ] || write_machine
   write_wrapper
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
-    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
+    finish
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
   else
     write_plist
     start_service
-    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
+    finish
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
   fi
 }

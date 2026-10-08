@@ -1130,9 +1130,30 @@ test("a root-run update passes on every VYRE_ setting the installer writes into 
   // The settings write_kernel_env puts there: `printf 'VYRE_NAME=value\n'`.
   const written = [...installer.matchAll(/printf '(VYRE_[A-Z0-9_]+)=([^'\\]*)\\n'/g)].map(m => [m[1], m[2]]).filter(([n]) => !/^VYRE_SETUP_CODE/.test(n));
   assert.ok(written.some(([n]) => n === "VYRE_KERNEL") && written.some(([n]) => n === "VYRE_STORE"), "the installer writes the kernel and store settings: " + JSON.stringify(written));
-  const m = /grep -E '(\^\([^']*\)=\[\^\$`\]\*\$)' "\$DIR\/vyre\.env" >"\$RUN\/vyre\.env\.new"/.exec(WRAPPER_SRC);
+  const m = /grep -E '(\^\([^']*\)=\[\^\$`\]\*\$)' "\$DIR\/vyre\.env" >"\$ve"/.exec(WRAPPER_SRC);
   assert.ok(m, "the root run's allow-list is where the test expects it");
   const keep = new RegExp(m[1]);
   for (const [n, v] of written) assert.ok(keep.test(`${n}=${v}`), `a root-run update drops ${n}=${v}, which the installer wrote: the daemon would fall back silently`);
   assert.match(COMPOSE, /^\s+- VYRE_KERNEL=1$/m, "the packaged compose sets the kernel on itself");
+});
+
+test("IR-8 two root runs preparing at once never fail on a shared temp name (no \"mv: cannot stat ... compose.env.new\")", async () => {
+  const fn = name => WRAPPER_SRC.match(new RegExp(`^${name}\\(\\) \\{[\\s\\S]*?^\\}`, "m"))?.[0] ?? WRAPPER_SRC.match(new RegExp(`^${name}\\(\\) \\{.*\\}$`, "m"))[0];
+  const base = fs.mkdtempSync(path.join(SCRATCH, "vyre-prep-"));
+  const DIR = path.join(base, "srv"), U = path.join(base, "uroot"), RUNF = path.join(U, "private", "run");
+  fs.mkdirSync(DIR, { recursive: true }); fs.mkdirSync(RUNF, { recursive: true });
+  fs.writeFileSync(path.join(RUNF, "compose.yml"), "services: {}\n");
+  fs.writeFileSync(path.join(U, "mode"), "pull\n");
+  fs.writeFileSync(path.join(DIR, ".env"), "DOCKER_GID=998\n");
+  fs.writeFileSync(path.join(DIR, "vyre.env"), "VYRE_KERNEL=1\n");
+  const script = `DIR='${DIR}'; UPD_ROOT='${U}'; RUN='${RUNF}'; BUILDF=0; BUILD=0; SRCDIR=/x\n${["rename_over", "die", "readf", "prepare_run"].map(fn).join("\n")}\nprepare_run`;
+  const runs = await Promise.all(Array.from({ length: 12 }, () => new Promise(resolve => {
+    const c = spawn("sh", ["-c", script], { env: { PATH: process.env.PATH }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = ""; c.stdout.on("data", d => (out += d)); c.stderr.on("data", d => (out += d));
+    c.on("close", code => resolve({ code, out }));
+  })));
+  for (const r of /** @type {any[]} */ (runs)) { assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /cannot stat|\.new/); }
+  assert.match(fs.readFileSync(path.join(RUNF, "compose.env"), "utf8"), /^DOCKER_GID=998$/m);
+  assert.deepEqual(fs.readdirSync(RUNF).filter(n => /\.new$|\.[A-Za-z0-9]{6}$/.test(n)), [], "no temp file is left behind");
+  fs.rmSync(base, { recursive: true, force: true });
 });

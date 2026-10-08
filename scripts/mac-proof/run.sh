@@ -24,6 +24,7 @@ dump() {
   ls -la "/Library/Application Support/Vyre" 2>&1 || true
   for f in "${VYRE_HOME:-/nonexistent}"/logs/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 30 "$f"; }; done 2>/dev/null || true
   # the service writes its output here (vyre: "its output is in ~/.vyre-proof/logs"), not under VYRE_HOME
+  ls -la "$HOME/.vyre-proof/logs" 2>&1 || true
   for f in "$HOME/.vyre-proof/logs"/*; do [ -f "$f" ] && { echo "--- $f"; tail -n 40 "$f"; }; done 2>/dev/null || true
   echo "::endgroup::"
 }

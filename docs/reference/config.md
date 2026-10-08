@@ -19,7 +19,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 
 | Key | Type | Default | What it is for |
 | --- | --- | --- | --- |
-| `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
+| `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set when the Vyre app adds this server to a space. |
 | `role` | `'box'\|'local'` | none | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
 | `machine` | `'solo'\|'server'\|'device'` | none | Not described yet. |
 | `projectsDir` | `string` | none | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |
@@ -96,7 +96,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CORE_SOCKET` | vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns. | `core/vyre-core/main.js` |
 | `VYRE_CORE_STRICT` | `0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac. | `core/vyre-core/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js`, `core/daemon/main.js` |
-| `VYRE_DECK_FIXTURES` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` or `rw`: read only by the legacy folder-sharing path in core/files/drive.js, which goes with the mounted Drive (0.3.0). It has no effect on a box: no container mounts `/work` for it any more. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
@@ -194,6 +193,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_CHROME_TEST` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js`, `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/runner/index.js`, `core/switchboard/index.js`, `core/team/team-fixture.js` |
 | `VYRE_CORE_OWNER` | The owner's uid: the only uid vyre-core answers. Required. | `core/vyre-core/main.js` |
+| `VYRE_CORE_SERVER` | Not described yet. | `core/vyre-core/main.js` |
 | `VYRE_GH_BIN` | Not described yet. | `core/github/index.js` |
 | `VYRE_HUB_CHILD` | Not described yet. | `harness/mcp/run.js`, `harness/mcp/server.js` |
 | `VYRE_NO_DIALOGS` | `1`: never raise anything on screen (Touch ID, a keychain prompt, a browser tab). | `core/config/dialogs.js`, `core/files/drive.js`, `local/screen-mac/screen.js` |
@@ -218,5 +218,6 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_PAIR_NO_PROOF` | Not described yet. | `core/wink/pairing.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js` |
+| `VYRE_TEST_SELF_RESERVE` | Not described yet. | `core/spaces/index.js`, `core/stream/e2e-step7-vyred.js` |
 | `VYRE_TEST_START_PAUSE_MS` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_TEST_UNGATED_RING` | Not described yet. | `core/relay/index.js` |

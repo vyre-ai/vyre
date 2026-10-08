@@ -155,4 +155,31 @@ let presenceSuite = Suite("presence") { t in
         t.eq(out?.1, true)
         t.eq(out?.2, false)
     }
+
+    t.test("a Mac server's Capsule key: made once and kept, sent nowhere, its id is the SPKI fingerprint vyre-core gives, and it then signs the Touch ID proof") {
+        let fake = FakeVyred(name: "presence-server-key")
+        fake.tool("presence.enroll") { _ in ["id": "must-not-be-called", "kind": "capsule"] }
+        t.ok(fake.start())
+        let out: (String?, String?, Bool, Bool, Bool)? = t.wait {
+            let (p, store) = await MainActor.run { () -> (CapsulePresence, MemoryKeyStore) in
+                let store = MemoryKeyStore()
+                let p = CapsulePresence(home: vyScratch("presence-server-key"), vyred: VyredClient(socket: fake.socket), store: store)
+                p.hasSecureEnclave = { false }
+                return (p, store)
+            }
+            let first = await MainActor.run { p.keyForServer() }
+            let again = await MainActor.run { p.keyForServer() }
+            let der = first.flatMap { Data(base64Encoded: $0.publicKey.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/") + String(repeating: "=", count: (4 - $0.publicKey.count % 4) % 4)) }
+            let idOk = der.map { CapsulePresence.keyId(spki: $0) == first?.id } ?? false
+            let kept = await MainActor.run { store.handle != nil }
+            return (first?.id, again?.id, idOk, kept, first?.id == again?.id)
+        }
+        t.ok(out?.0 != nil && out?.0?.count == 22)
+        t.eq(out?.0, out?.1)
+        t.ok(out?.2 == true, "the id is the fingerprint of the SPKI")
+        t.ok(out?.3 == true, "the handle is kept")
+        t.ok(out?.4 == true, "a second call reuses the key")
+        t.eq(fake.callsOf("presence.enroll").count, 0, "nothing is sent to any vyred")
+        fake.stop()
+    }
 }

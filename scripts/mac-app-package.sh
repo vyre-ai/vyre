@@ -42,7 +42,9 @@ cp "$VYRE_NODE_TGZ" "$setup/node-$nodev-darwin-$na.tar.gz"
 cp "$installer" "$setup/install-mac-server.sh"; cp "$here/mac-app/askpass" "$here/mac-app/vyre-sudo" "$setup/"
 sh "$here/mac-app/make-pins.sh" "$arch" "$setup/vyre-sudo-check"
 chmod 755 "$setup/install-mac-server.sh" "$setup/askpass" "$setup/vyre-sudo" "$setup/vyre-sudo-check"
-printf '{"node":"%s","arch":"%s","nodeSha256":"%s"}\n' "$nodev" "$na" "$want" > "$setup/setup.json"
+# args: the app's own setup is My Home, the light install (a LaunchAgent as the person: no admin password, starts when they sign in). A Mac that stays on as a SERVER is added from the app's
+# add-a-server step with the install line, which runs the full installer.
+printf '{"node":"%s","arch":"%s","nodeSha256":"%s","args":["--yes","--login-only"]}\n' "$nodev" "$na" "$want" > "$setup/setup.json"
 
 # The app's own version is the release's (build.sh stamps whatever package.json said when the app was compiled).
 plist="$stage/Contents/Info.plist"
@@ -99,6 +101,10 @@ if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ] && [ -n "${APPLE_DEVELOPER_ID_IDENTITY:-
   fi
 else
   echo "skip: Developer ID signing and notarization (no APPLE_DEVELOPER_ID_P12 and APPLE_DEVELOPER_ID_IDENTITY); the app stays ad hoc signed" >&2
+  # The version stamp and the web build above changed the bundle after the build signed it, which leaves an invalid signature: the Keychain then refuses
+  # the app ("This Mac would not keep your key", OSStatus -67030, IR-31). Sign again, ad hoc, after the last change, and refuse a bundle that does not verify.
+  codesign --force --deep --sign - --identifier sh.vyre.capsule "$stage"
+  codesign --verify --strict --verbose=2 "$stage"
 fi
 
 zip="$out/Vyre-Lumen_${version}_${arch}.zip"; dmg="$out/Vyre-Lumen_${version}_${arch}.dmg"

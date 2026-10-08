@@ -76,7 +76,7 @@ test("system: uninstall keeps ~/.vyre unless purged", () => {
     "remove /etc/systemd/system/vyre.service",
     "run systemctl daemon-reload",
   ]);
-  assert.match(lines(plain).join("\n"), /vyre name release/);
+  assert.match(lines(plain).join("\n"), /stay yours in the name directory/);
   assert.match(lines(plain).join("\n"), /npm rm -g vyre/);
   assert.ok(!plain.some(s => s.do === "remove" && s.path === "/home/alex/.vyre"));
 
@@ -265,7 +265,7 @@ test("install-box.sh: dry run lists every change and makes none", t => {
   assert.match(r.stdout, /^ {2}COMPOSE_PROJECT_NAME=vyre$/m);
   assert.match(r.stdout, /^ {2}COMPOSE_FILE=compose\.yml$/m);
   assert.match(r.stdout, new RegExp(`^would run: sudo install -m 0755 .*/vyre ${r.wrapper}$`, "m"));
-  assert.match(r.stdout, new RegExp(`^would run: env VYRE_DIR=${r.dir} SSH_CONNECTION= ${r.wrapper} up$`, "m"));
+  assert.match(r.stdout, new RegExp(`^would run: env VYRE_DIR=${r.dir} SSH_CONNECTION= ${r.wrapper} up --quiet$`, "m"));
   assert.ok(!fs.existsSync(r.dir), "the stack folder was created");
   assert.ok(!fs.existsSync(r.wrapper), "the wrapper was installed");
   for (const c of r.calls) assert.match(c, READ_ONLY, `mutating call in a dry run: ${c}`);
@@ -324,7 +324,7 @@ test("install-box.sh: a real run writes the stack, never overwrites .env, and st
   assert.equal(fs.readFileSync(r.wrapper, "utf8"), fs.readFileSync(path.join(REPO, "box", "vyre"), "utf8"));
   // The wrapper ran: the stack came up and the CLI's `vyre up` ran in the container.
   assert.ok(r.calls.includes("docker compose up -d"), r.calls.join("\n"));
-  assert.ok(r.calls.some(c => /^docker compose exec .*-e VYRE_HOST_USER=alex vyre vyre up$/.test(c)), r.calls.join("\n"));
+  assert.ok(r.calls.some(c => /^docker compose exec .*-e VYRE_HOST_USER=alex vyre vyre up --quiet$/.test(c)), r.calls.join("\n"));
 });
 
 test("install-box.sh: DOCKER_GID is the socket's group, written fresh or added to an .env that lacks it", t => {

@@ -69,3 +69,29 @@ test("deferred store: after the kernel's start a define while away is refused, n
   d.bootDone();
   await assert.rejects(() => d.define({ n: 1 }), e => /** @type {any} */ (e).code === "unavailable");
 });
+
+test("deferred store: its attribute map is a real Map from the start, so the gateway built over it can read and write attributes (it refused, and every gated call failed as no such record)", async () => {
+  const d = createDeferredStore({ reason });
+  const held = d.meta;   // the gateway takes this object when it is built, before the store is attached
+  assert.equal(typeof held.get, "function");
+  assert.equal(held.get("vyre://s/contact/1"), undefined);
+  held.set("vyre://s/contact/1", { owner: "per_a" });
+  assert.deepEqual(held.get("vyre://s/contact/1"), { owner: "per_a" });
+  assert.equal(held.size, 1);
+  assert.deepEqual([...held.keys()], ["vyre://s/contact/1"]);
+});
+
+test("deferred store: attributes kept while the store was away are written onto the real store's map when it attaches, and the held map then reads and writes that one", async () => {
+  const d = createDeferredStore({ reason });
+  const held = d.meta;
+  held.set("vyre://s/contact/1", { owner: "per_a" });
+  const writes = /** @type {string[]} */ ([]);
+  const realMeta = new (class extends Map { set(/** @type {string} */ u, /** @type {any} */ a) { writes.push(u); return super.set(u, a); } })();
+  await d.attach(Object.assign(createMemoryStore(), { meta: realMeta }));
+  assert.deepEqual(writes, ["vyre://s/contact/1"], "the real map (which mirrors to the records) was written");
+  assert.deepEqual(realMeta.get("vyre://s/contact/1"), { owner: "per_a" });
+  held.set("vyre://s/contact/2", { owner: "per_b" });
+  assert.deepEqual(realMeta.get("vyre://s/contact/2"), { owner: "per_b" }, "a write through the held map after attach reaches the real one");
+  assert.deepEqual(held.get("vyre://s/contact/1"), { owner: "per_a" });
+  assert.equal(held.size, 2);
+});

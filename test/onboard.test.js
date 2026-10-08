@@ -244,3 +244,21 @@ test("onboard: join status and verify never need presence; relay always does", a
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
 });
 
+
+test("IR-17 onboard.status says Claude is signed in once the sign-in tool made a signed-in Claude account, not only for the Claude step's own token", { timeout: 30_000 }, async t => {
+  const { root, d } = await box(t);
+  const before = (await d.registry.call("onboard.status", {}, "cli")).data;
+  const claudeOf = r => (r.detail && r.detail.claude) || r.claude;
+  assert.equal(claudeOf(before).signedIn, false, "nothing signed in yet");
+  // What sessions.accounts.signin leaves when the setup page finishes Claude's sign-in: a login account with its time.
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  db.exec("PRAGMA busy_timeout=5000");
+  const now = Date.now();
+  db.prepare("INSERT INTO sessions_accounts (id, provider, label, kind, scope_projects, scope_agents, is_default, signed_in_at, added, updated, pending) VALUES ('acct1', 'claude', 'Claude', 'login', '\"*\"', '\"*\"', 1, ?, ?, ?, 0)").run(now, now, now);
+  db.close();
+  const after = claudeOf((await d.registry.call("onboard.status", {}, "cli")).data);
+  assert.equal(after.signedIn, true);
+  assert.equal(after.state, "done");
+  assert.equal(after.via, "account");
+});

@@ -8,7 +8,6 @@
   "core/memory/site.js": 1,
   "core/memory/who.js": 1,
   "core/memory/write.js": 2,
-  "core/names/index.js": 1,
   "core/network/wink.js": 1,
   "core/onboard/index.js": 3,
   "core/projects/index.js": 1,

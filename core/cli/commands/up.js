@@ -237,6 +237,8 @@ async function run(args, deps) {
 
   const b = await (deps.bring || bring)(role, deps.build);
   if (!b.ok) return fail("vyred_down", b.note || "vyred did not start");
+  // --quiet (the installer's start): vyred is up and that is all. The installer owns what is said next, so a fresh install never reads "already running" or an engineer's command.
+  if (flags.quiet) return done({ ready: true });
   if (first) {
     say("");
     say(hello(build()));
@@ -472,7 +474,7 @@ async function upSystem(flags) {
 
 export default [
   {
-    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
+    name: "up", order: 10, usage: "vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--quiet] [--dry-run] [--json]", summary: "start vyred and print the onboarding link, or this box's address",
     run: args => up(args),
   },
   {
@@ -575,19 +577,17 @@ export default [
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [status|check <n>|claim <n>|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    name: "name", order: 30, usage: "vyre name [status|check <n>] [--json]", summary: "the name this server serves: <space>.vyre.run",
     verbs: [
       { verb: "status", summary: "this box's address and where it stands", usage: "", read: true },
       { verb: "check", summary: "whether a name is free", usage: "<n>", read: true },
-      { verb: "claim", summary: "take <n>.vyre.run for this box", usage: "<n>" },
-      { verb: "release", summary: "give the name back", usage: "", person: true },
     ],
     async run(args) {
       const [action0, name] = args.filter(a => a !== "--json");
       const action = action0 === "status" ? undefined : action0;
-      const TOOLS = { check: "names.check", claim: "names.claim", release: "names.release" };
-      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [status|check <n>|claim <n>|release]");
-      if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
+      const TOOLS = { check: "names.check" };
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand (a server holds no name; the app names a space)`, "vyre name [status|check <n>]");
+      if (action === "check" && !name) return usage("vyre name check needs a name", "vyre name check alex");
       const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
       if (r.error) return failTool(r.error);

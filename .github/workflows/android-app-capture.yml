@@ -44,16 +44,22 @@ jobs:
           if [ -z "$RUN" ]; then
             RUN=$(gh run list --workflow android-app.yml --branch "$REF" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           fi
-          [ -n "$RUN" ] || { echo "no green android-app run on $REF"; exit 1; }
+          if [ -z "$RUN" ]; then
+            # a push starts this beside the android-app build it would capture; that build's own workflow_run brings it back once it is green
+            if [ "$GITHUB_EVENT_NAME" = push ]; then echo "::notice::no green android-app run on $REF yet; the capture runs after android-app finishes"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+            echo "no green android-app run on $REF"; exit 1
+          fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
           gh run download "$RUN" --pattern 'android-app-debug-*' --dir apk
           ls -R apk
           echo "the APK of android-app run $RUN" >> "$GITHUB_STEP_SUMMARY"
       - name: KVM for the emulator
+        if: steps.apk.outputs.skip != '1'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
+        if: steps.apk.outputs.skip != '1'
         with:
           api-level: 34
           arch: x86_64
@@ -63,7 +69,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -memory 4096 -cores 3 -noaudio -no-boot-anim -camera-back none
           script: bash apps/app/scripts/capture-android.sh apk/android-app-debug-*/vyre-debug.apk capture-android
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && steps.apk.outputs.skip != '1'
         with:
           name: android-capture-${{ github.sha }}
           path: capture-android/

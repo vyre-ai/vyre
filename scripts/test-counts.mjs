@@ -84,7 +84,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       for (let i = next++; i < files.length; i = next++) {
         const f = files[i], out = path.join(dir, `${i}.json`);
         await new Promise(done => {
-          const child = spawn(process.execPath, ["--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
+          const child = spawn(process.execPath, ["--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
             { cwd: REPO, env: { ...process.env, VYRE_TEST_COUNTS_OUT: out } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           let timedOut = false; const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, limit);

@@ -7,6 +7,11 @@
 
 import type { PairingSession } from "../api/pairing-session";
 import { macKeyAvailable } from "../identity/mac-key.ts";
+import { shell } from "../shell/shell";
+// A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
+import { withCoreProof } from "./core-proof.js";
+/** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */
+const macCapsuleSpki = async (): Promise<string | null> => { const k = await shell()?.presenceKey?.().catch(() => null); return k ? k.public_key : null; };
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
@@ -17,7 +22,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type Target = { id: string; kind: "identity" | "space"; label?: string };
 
-export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target): PairingSession {
+export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Target, extra?: { pageKey?: unknown }): PairingSession {
   // A device that has claimed an identity but has no box of its own (the install order: identity first, then the server) pairs the server itself, over the relay.
   let direct: PairingSession | null = null;
   let stopped = false;
@@ -41,7 +46,7 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
     async ready() {
       const { tool, BoxError } = await box();
       if (!direct && code.kind === "ticket" && !(await boxReachable(tool, BoxError))) {
-        const mine = await directSessionFor(code);
+        const mine = await directSessionFor(code, extra);
         if (mine) { direct = mine; await mine.ready!(); return; }
       }
       if (direct) return direct.ready!();
@@ -67,11 +72,11 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
 }
 
 /** The computer's side of adding a phone: the three words typed from the phone are the answer. */
-export function phoneAnswerSession(words: [string, string, string]): PairingSession {
+export function phoneAnswerSession(words: [string, string, string] | null): PairingSession {
   let over = false;
   return {
     kind: "answer",
-    words: () => words,
+    words: () => words ?? ["", "", ""],
     choices: () => [],
     async answer(given) {
       const { tool } = await box();
@@ -94,24 +99,75 @@ async function boxReachable(tool: (name: string, input?: Record<string, unknown>
 }
 
 /**
- * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
- * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
+ * Does the saved pairing point at a server that no longer knows this device? An older build kept the pairing of a typed code before the server's owner was set, and the server let the device go;
+ * the box then closes every hello, which is not what an unreachable box does (the relay says "box offline"). Three such closes in a row, or a removal, and the pairing is stale. Anything else
+ * (the connection opens, the box is offline, one odd close) is a server this person still has.
  */
-async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>): Promise<PairingSession | null> {
-  // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
-  const { pairServer } = await import("@vyre/relay-client/serverpair.js");
+async function staleSavedPairing(): Promise<boolean> {
+  try {
+    const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+    const p = await loadPairing();
+    if (!p) return false;
+    const mod = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => { state: string; lastError: Error | null; close: () => void } };
+    const c = mod.connect({ relay: p.relay, route: p.route, box: p.box, name: deviceName(), crypto: relayCrypto(), keyStore: relayKeyStore(), about, backoff: { min: 300, max: 600 } });
+    try {
+      const seen = new Set<Error>();
+      for (const until = Date.now() + 8000; Date.now() < until; await sleep(150)) {
+        if (c.state === "open") return false;
+        if (c.state === "relay_removed") return true;
+        if (c.lastError && c.lastError.message === "box closed the connection") seen.add(c.lastError);
+        if (seen.size >= 3) return true;
+      }
+      return false;
+    } finally { try { c.close(); } catch { /* closed */ } }
+  } catch { return false; }
+}
+
+/**
+ * What pairing a server needs from this device's own name: who will own it (with the head and length of the chain the server checks the proof against), the signature that proves this device speaks for
+ * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (relay/client/join.js `server`) both take it.
+ */
+export async function serverPairInputs() {
   const { loadIdentity } = await import("../identity/store");
   const mine = await loadIdentity();
   if (!mine) return null;
-  const { relayCrypto, relayKeyStore, about, deviceName, savePairing, loadPairing, presenceKey } = await import("../api/relay");
-  // A person who already has a box (a saved pairing) never takes this path, so a slow box cannot make a scan offer their identity to another server (reviewer-3 PD-D). The press on
-  // Continue under "Pair this server to <name>?" (the install page) is the person's yes before anything is redeemed.
-  if (await loadPairing()) return null;
-  const { connect, disconnect } = await import("../api/box");
+  const { presenceKey } = await import("../api/relay");
   // A phone whose Secure Enclave key (iPhone) or Android Keystore key (StrongBox or the TEE) stands behind Face ID or the fingerprint (a software key does not count) answers as hardware; the chain entry's `enclave` is what the server checks it against.
   const { hasKeys, keyStorage, signListChange } = await import("../keys");
   const kind = (await keyStorage()).presence;
   const phoneKeys = (await hasKeys()).presence && (kind === "secure-enclave" || kind === "keystore");
+  return {
+    // The pin (head and length of this identity's chain) is what a release server checks the proof against; without it a release server refuses (no_pin).
+    owner: { id: mine.id, name: plainName(mine.name), vyre: mine.name, pin: mine.pin },
+    // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B). A phone with its Secure Enclave key adds `esig` over the same
+    // message (the ticket tag is in it) behind Face ID: sig and esig come from one signListChange, so Face ID is asked once, and a release server accepts only that pair (PI-1).
+    signIdentity: async (m: Uint8Array) => {
+      if (!phoneKeys) return { eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) };
+      const { sig, esig } = await signListChange(m, "Pair this server to your Vyre name");
+      return { eid: mine.key.eid, sig: toB64u(sig), esig: toB64u(esig) };
+    },
+    // what this device is, honestly: the server records it as the owner's device of this kind and makes its paired session grant at the person's pick (tailnet, wink-rc1)
+    deviceKind: (macKeyAvailable() ? "computer" : phoneKeys ? "phone" : "web") as "computer" | "phone" | "web",
+    keyStorage: (phoneKeys ? "hardware" : "software") as "hardware" | "software",
+    presenceKey: await presenceKey(),
+  };
+}
+
+/**
+ * The server pairing for a device with no box: this identity's key signs for it, the relay client pairs, and the three words show here while the person at the server says yes.
+ * Null when this device has no identity of its own yet (the caller then falls back to the box's tools and says what is missing).
+ */
+async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticket" }>, extra?: { pageKey?: unknown }): Promise<PairingSession | null> {
+  // Loaded when needed: only Metro resolves the relay-client alias, so a Node test that reads the pairing session does not import it.
+  const { pairServer } = await import("@vyre/relay-client/serverpair.js");
+  const inputs = await serverPairInputs();
+  if (!inputs) return null;
+  const { relayCrypto, relayKeyStore, about, deviceName, savePairing, loadPairing } = await import("../api/relay");
+  // A person who already has a box (a saved pairing) never takes this path, so a slow box cannot make a scan offer their identity to another server (reviewer-3 PD-D). The press on
+  // Continue under "Pair this server to <name>?" (the install page) is the person's yes before anything is redeemed. A saved pairing the server no longer knows (an unfinished pairing an older
+  // build kept) is not a box: it is let go first, or this path would wait on a server that is gone.
+  if (await loadPairing()) { if (!(await staleSavedPairing())) return null; await savePairing(null); }
+  const { connect, disconnect } = await import("../api/box");
   let words: [string, string, string] = ["", "", ""];
   let wake: () => void = () => {};
   const seen = new Promise<void>((r) => { wake = r; });
@@ -119,18 +175,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   const abort = new AbortController();
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
-    // The pin (head and length of this identity's chain) is what a release server checks the proof against; without it a release server refuses (no_pin).
-    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name), vyre: mine.name, pin: mine.pin },
-    // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B). A phone with its Secure Enclave key adds `esig` over the same
-    // message (the ticket tag is in it) behind Face ID: sig and esig come from one signListChange, so Face ID is asked once, and a release server accepts only that pair (PI-1).
-    signIdentity: async (m: Uint8Array) => {
-      if (!phoneKeys) return { eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) };
-      const { sig, esig } = await signListChange(m, "Pair this server to your Vyre name");
-      return { eid: mine.key.eid, sig: toB64u(sig), esig: toB64u(esig) };
-    }, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,
-    // what this device is, honestly: the server records it as the owner's device of this kind and makes its paired session grant at the person's pick (tailnet, wink-rc1)
-    deviceKind: macKeyAvailable() ? "computer" : phoneKeys ? "phone" : "web", keyStorage: phoneKeys ? "hardware" : "software",
+    payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macCapsuleSpki() }), signal: abort.signal,
+    deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });

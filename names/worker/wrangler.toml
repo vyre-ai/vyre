@@ -18,7 +18,9 @@ routes = [{ pattern = "names.vyre.run", custom_domain = true }]
 ZONE = "vyre.run"
 ORIGIN = "https://names.vyre.run"
 # The Vyre app's browser origin: exactly one https origin (a test pins it; a dev origin never ships by editing this file).
-APP_ORIGINS = "https://app.vyre.run"
+# vyreapp://box is the Mac app's window (local/capsule/native VyreAppWindow.scheme): a scheme no website can take; the claim carries its own signatures either way.
+# https://vyreapp.localhost is the Windows app's window (the shell's own scheme served as https, local/capsule/native-win): a name under .localhost resolves only on the machine itself, so no website can hold it.
+APP_ORIGINS = "https://app.vyre.run,vyreapp://box,https://vyreapp.localhost"
 GLOBAL_CLAIMS_PER_DAY = "500"
 
 # One object holds every name (claims, limits and recoveries must not race). The free plan needs

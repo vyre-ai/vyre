@@ -1,92 +1,55 @@
-// The setup page's entry: the real relay client from ./relay (build-site.sh copies relay/client here), the
-// flow, and the screen. No storage, no cookies, nothing in the URL: the code lives in this tab's memory.
-import * as client from "./relay/setup.js";
-import { openChannel, request } from "./relay/client.js";
-import { webCrypto } from "./relay/webcrypto.js";
-import { utf8 } from "./relay/bytes.js";
-import { connectSetup } from "./box.js";
-import { createFlow } from "./flow.js";
-import { render } from "./ui.js";
-import { ticketRingSvg } from "./deck/js/phone-code.js";
-import qrcode from "./deck/vendor/qrcode.js";
-import { signClaim } from "./claim.js";
-import { setupOverrides } from "./config.js";
+// The reserve page: pick a name, get a code, paste it into the Vyre app. No key is made here, nothing is stored, and the code is shown once in this tab.
+import { DIRECTORY, MESSAGES, checkAnswer, lasts, looksLikeName, nameOf, reserveAnswer } from "./reserve.js";
 
-const RELAY = "wss://relay.vyre.run";
-const root = document.getElementById("setup");
+const $ = id => /** @type {HTMLElement} */ (document.getElementById(id));
+const input = /** @type {HTMLInputElement} */ ($("name"));
+const hint = $("hint"), go = /** @type {HTMLButtonElement} */ ($("reserve"));
+let timer = 0, asked = "", free = false;
 
-const actions = {
-  begin: machine => flow.begin(machine),
-  setName: text => flow.setName(text),
-  claim: () => flow.claim(),
-  confirmWords: () => flow.confirmWords(),
-  denyWords: () => flow.denyWords(),
-  markSaved: () => flow.markSaved(),
-  openDomain: open => flow.openDomain(open),
-  setDomain: text => flow.setDomain(text),
-  checkDomain: () => flow.checkDomain(),
-  continueToAi: () => flow.continueToAi(),
-  skipAi: () => flow.skipAi(),
-  continueToNetwork: () => flow.continueToNetwork(),
-  readNetwork: () => flow.readNetwork(),
-  startAi: p => flow.startAi(p),
-  submitAiCode: (id, code) => flow.submitAiCode(id, code),
-  openAiKey: kind => flow.openAiKey(kind),
-  submitAiKey: f => flow.submitAiKey(f),
-  continueToDevices: () => flow.continueToDevices(),
-  addPhone: () => flow.addPhone(),
-  continueToClaim: () => flow.continueToClaim(),
-  mintClaim: () => flow.mintClaim(),
-  // The claim link as a QR of plain SVG squares (the vendored encoder, drawn by hand: no innerHTML).
-  drawQr(slot, text) {
-    const q = qrcode(0, "M");
-    q.addData(String(text), "Byte");
-    q.make();
-    const n = q.getModuleCount(), NS = "http://www.w3.org/2000/svg", quiet = 3;
-    const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("viewBox", `0 0 ${n + quiet * 2} ${n + quiet * 2}`);
-    svg.setAttribute("shape-rendering", "crispEdges");
-    const bg = document.createElementNS(NS, "rect");
-    for (const [k, v] of Object.entries({ width: n + quiet * 2, height: n + quiet * 2, fill: "#fff" })) bg.setAttribute(k, String(v));
-    svg.appendChild(bg);
-    const path = document.createElementNS(NS, "path");
-    let d = "";
-    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (q.isDark(y, x)) d += `M${x + quiet} ${y + quiet}h1v1h-1z`;
-    path.setAttribute("d", d); path.setAttribute("fill", "#000");
-    svg.appendChild(path);
-    slot.replaceChildren(svg);
-  },
-  // The ring is drawn from the ticket as SVG shapes only; the ticket is never put in the page as text.
-  drawRing(slot) {
-    const t = flow.currentTicket();
-    if (!t) return;
-    const svg = new DOMParser().parseFromString(ticketRingSvg(t, { size: 280 }), "image/svg+xml").documentElement;
-    slot.replaceChildren(document.importNode(svg, true));
-  },
-  async copy(text, button) {
-    try { await navigator.clipboard.writeText(text); button.textContent = "Copied"; }
-    catch { button.textContent = "Select the text and copy it"; }
-    setTimeout(() => { button.textContent = "Copy"; }, 2500);
-  },
-};
-const connect = ({ offer, key, secret }) => connectSetup({ openChannel, request, setupHello: client.setupHello, webCrypto, utf8 }, { offer, key, secret });
-// The recovery code is shown once and only here: closing or reloading before "I saved it" asks first.
-let unsaved = false;
-addEventListener("beforeunload", e => { if (unsaved) { e.preventDefault(); e.returnValue = ""; } });
-// The hosts a provider's sign-in page may be on (lib/providers/signin-hosts.json, copied in by build-site.sh). No list yet: any plain https address.
-let signinHosts = null;
-try { const r = await fetch("/setup/signin-hosts.json", { cache: "no-store" }); if (r.ok) { const j = await r.json(); if (Array.isArray(j)) signinHosts = j.map(String); else if (j && Array.isArray(j.hosts)) signinHosts = j.hosts.map(String); } } catch { /* none */ }
-// A staging build points the relay and the install line elsewhere through /setup/config.json (scripts/stage-site.sh); the file is ignored on
-// vyre.run and www.vyre.run, and its hosts must be Vyre's own or a test runner's loopback (site/setup/config.js).
-let over = {};
-try { const r = await fetch("/setup/config.json", { cache: "no-store" }); if (r.ok) over = setupOverrides(await r.json(), location.hostname); } catch { /* none */ }
-/** Does this browser do X25519 and P-256 in WebCrypto? Chrome before 133 does not. */
-const supported = async () => {
-  const subtle = globalThis.crypto?.subtle;
-  if (!subtle) return false;
-  await subtle.generateKey({ name: "X25519" }, false, ["deriveBits"]);
-  return true;
-};
-const flow = createFlow({ supported, pinRelay: true, client, relay: over.relay || RELAY, installUrl: over.installUrl, connect, signinHosts, signClaim, onChange: s => { unsaved = Boolean(s.named && s.named.recoveryCode && !s.named.saved); render(s, { doc: document, root, actions }); } });
-render(flow.state, { doc: document, root, actions });
-addEventListener("pagehide", () => flow.stop());
+async function json(url, init) {
+  const r = await fetch(url, { ...init, headers: { accept: "application/json", ...(init && init.headers) }, cache: "no-store" });
+  let body = null;
+  try { body = await r.json(); } catch { /* not JSON */ }
+  return { status: r.status, body };
+}
+
+function check() {
+  const name = nameOf(input.value);
+  free = false; go.disabled = true;
+  clearTimeout(timer);
+  if (!name) { hint.textContent = ""; return; }
+  if (!looksLikeName(name)) { hint.textContent = MESSAGES.invalid; return; }
+  hint.textContent = "Checking";
+  timer = setTimeout(async () => {
+    asked = name;
+    let answer = "unknown";
+    try { const r = await json(`${DIRECTORY}/v1/names/check?name=${encodeURIComponent(name)}`); answer = checkAnswer(r.status, r.body); } catch { /* offline */ }
+    if (asked !== name) return;
+    hint.textContent = answer === "free" ? `${name}.vyre.run is free.` : MESSAGES[answer];
+    free = answer === "free"; go.disabled = !free;
+  }, 350);
+}
+
+input.addEventListener("input", check);
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const name = nameOf(input.value);
+  if (!free || !name) return;
+  go.disabled = true; hint.textContent = "Reserving";
+  let out;
+  try {
+    const r = await json(`${DIRECTORY}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    out = reserveAnswer(r.status, r.body);
+  } catch { out = { ok: false, say: "Vyre cannot be reached. Check your connection and try again." }; }
+  if (!out.ok) { hint.textContent = out.say; go.disabled = false; return; }
+  $("pick").hidden = true; $("done").hidden = false;
+  $("address").textContent = `${name}.vyre.run`;
+  $("code").textContent = out.code;
+  $("lasts").textContent = lasts(out.expires, Date.now());
+  $("done-title").focus();
+});
+$("copy").addEventListener("click", async e => {
+  const b = /** @type {HTMLButtonElement} */ (e.currentTarget);
+  try { await navigator.clipboard.writeText($("code").textContent || ""); b.textContent = "Copied"; } catch { b.textContent = "Select the code and copy it"; }
+  setTimeout(() => { b.textContent = "Copy"; }, 2500);
+});

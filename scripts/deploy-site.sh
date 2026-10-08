@@ -3,8 +3,7 @@
 #
 #   scripts/deploy-site.sh DIR --branch main|staging [--project NAME]
 #
-# --branch main is production (vyre.run): it refuses a folder that contains setup/config.json, since a staging copy
-# (scripts/stage-site.sh) must never reach that origin, and the page would ignore it there anyway. Any other branch is a preview
+# --branch main is production (vyre.run): it refuses a folder that contains setup/config.json (a staging override of an earlier setup page; none is made now). Any other branch is a preview
 # alias (https://<branch>.vyre-site.pages.dev). Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment.
 # VYRE_WRANGLER replaces `npx --yes wrangler@latest` (tests).
 set -eu

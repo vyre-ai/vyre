@@ -1,19 +1,7 @@
 {
- "core/cli/commands/agents.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "core/cli/commands/needs.test.js": {
   "owner": "launch",
   "seen": "lead integration 6 Oct 2026: a CLI over the socket is a person only with a measured outside ancestry (LB-1); under ssh on a test box it is not"
- },
- "core/cli/screen/screen-live.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "core/daemon/app.test.js": {
-  "owner": "app-wire",
-  "seen": "lead integration 6 Oct 2026: needs the app's web export built in the checkout (npm run export:web); the gate builds it, a bare test run does not"
  },
  "core/runner/lent-wire.test.js": {
   "owner": "runner",
@@ -21,7 +9,7 @@
  },
  "core/sessions/sessions.test.js": {
   "owner": "sessions",
-  "seen": "integrator run 37181895537 (FAIL)"
+  "seen": "lead integration 8 Oct 2026 on testbox2, cause found: the file runs 9 min 22 s (149 cases, the cli half and the sdk half), past the 300 s per-file limit; and 2 cases (a model session cannot read or stop another project's thread; a label never grants the assistant's powers) expect the pre-gate answer denied where the chat gate answers not_found. Split into cli and sdk files and move the 2 onto the gate's answers (team/BACKLOG.md 0.3.0)."
  },
  "core/switchboard/switchboard.test.js": {
   "owner": "chat",
@@ -33,7 +21,7 @@
  },
  "kernel/golden/golden.test.js": {
   "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
+  "seen": "lead integration 8 Oct 2026 on testbox2, cause found: it passes (9 of 9) but takes 14 min 58 s, because the recorder asks every tool of every caller in every world, past the 300 s per-file limit. Split by role (box, local) or make the recorder skip cells that cannot differ; no result is wrong."
  },
  "modules/hands-chrome/chrome.test.js": {
   "owner": "hands",
@@ -48,8 +36,8 @@
   "seen": "lead integration 7 Oct 2026, fails on trunk too: a Mac federated over the tailnet; the chat gate refuses its labelled calls. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0."
  },
  "test/federation-send.test.js": {
-  "owner": "tailnet",
-  "seen": "integrator run 37181895537 (FAIL)"
+  "owner": "cleanup",
+  "seen": "lead integration 8 Oct 2026 on testbox2, cause found: 3 of 8 cases fail, the same cause as federation-answer: a Mac federated over the tailnet, whose labelled calls (module:test notices, the box's send) the chat gate refuses or answers not_found. Federation and tailnet callers leave with cleanup-tailnet in 0.3.0; the file goes with them."
  },
  "test/journey.test.js": {
   "owner": "network",
@@ -62,10 +50,6 @@
  "test/login-server-uid0.test.js": {
   "owner": "launch",
   "seen": "lead integration 7 Oct 2026: walks a real ssh process chain through /proc; the hosted runner cannot read the other users' entries (unreadable)"
- },
- "test/peer.test.js": {
-  "owner": "platform",
-  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/person.test.js": {
   "owner": "network",
@@ -82,13 +66,5 @@
  "test/setup-cli-names.test.js": {
   "owner": "network",
   "seen": "lead integration 7 Oct 2026, fails on trunk too: names a real box through the live names directory and waits for the recovery code line; the directory answer differs on the test boxes. Checked again with the relay redeploy."
- },
- "test/stdin-hygiene.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
- "test/within-hygiene.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
  }
 }

@@ -24,11 +24,24 @@ export function createDeferredStore(o) {
   const refuse = () => unavailable(o.reason());
   /** @type {Array<() => any>} work the kernel could not do while the store was away (its task records), run once the real store is attached */
   const ready = [];
+  // The kernel's per-record attributes (`store.meta`, a Map the gateway reads and writes as it goes). The gateway takes hold of this object when it is built, which is
+  // before the real store is attached, so it must be a real Map from the start (it was a function that refused, and every gated call then failed closed as "no such
+  // record"). While the store is away it keeps the attributes here; when the real store attaches they are written onto its own map (which mirrors them to the
+  // records), and from then on every call goes straight to that map.
+  /** @type {Map<string, any>} */ const away = new Map();
+  const meta = new Proxy(away, {
+    get(target, prop) {
+      const m = real && real.meta ? real.meta : target;
+      const v = /** @type {any} */ (m)[prop];
+      return typeof v === "function" ? v.bind(m) : v;
+    },
+  });
   const own = {
     kind: "twenty",
     /** Run `f` when the real store is attached (now, if it already is). @param {() => any} f */
     whenReady: (f) => { if (real) return f(); ready.push(f); },
     attached: () => real !== null,
+    meta,
     bootDone: () => { booting = false; },
     /** The real store is ready: play the definitions the kernel made at start onto it, then forward everything. @param {any} store */
     async attach(store) {
@@ -38,6 +51,7 @@ export function createDeferredStore(o) {
         // A define that arrives while this replay runs is pushed to the same queue, so take from the front until it is empty; `real` is set in the
         // same turn as the last empty check (no await between), so nothing can be queued after the loop and lost.
         while (defs.length) await store.define(/** @type {any} */ (defs.shift()));
+        if (store.meta) { for (const [u, a] of away) store.meta.set(u, a); away.clear(); }
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");
         for (const f of ready.splice(0)) { try { await f(); } catch (e) { log(`something waiting for the record store failed: ${/** @type {Error} */ (e).message}`); } }

@@ -196,6 +196,16 @@ test("up on a server: no link and no browser; unpaired it says how to pair, pair
   assert.deepEqual([o.role, o.paired, o.space, o.ready], ["box", true, "alex", true]);
 });
 
+test("up --quiet on a server (the installer's start): starts vyred and says nothing about it, pairing or a command", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const f = fakes(t, { tty: false, tools: { "wink.server.status": () => ({ data: { owned: false } }) } });
+  f.deps.platform = "linux";
+  assert.equal(await up(["--quiet"], f.deps), 0);
+  assert.equal(f.text().trim(), "", "no vyred line, no pairing line, no command");
+  assert.ok(!f.calls.some(c => c[0] === "wink.server.status"), "pairing is not asked about");
+});
+
 test("up --keep-link on a server (vyre update): accepted, and it only reports whether the server is paired", async t => {
   world(t, running([]));
   config.save({ role: "box" });

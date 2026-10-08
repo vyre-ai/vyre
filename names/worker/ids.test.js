@@ -11,81 +11,16 @@ import * as C from "./chain.js";
 import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "./fake-dns.js";
 import * as wire from "../../core/relay/wire.js";
+import { world, who, key, identity, person, act } from "./testing.js";
+
+/** A name an older setup gave a server, as the directory still holds it until support moves it. */
+const legacy = (w, box, name) => { const map = w.rt.object("v1", "DIRECTORY").ctx.storage.map; map.set(`n/${name}`, { name, route: box.route, state: "claimed", claimedAt: w.clock.t, everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] }); map.set(`r/${box.route}`, name); };
 
 const BASE = "https://names.test";
 const HOUR = 3_600_000;
 const data = r => { assert.ok(r.json && r.json.data, JSON.stringify(r.json)); return r.json.data; };
 const code = r => r.json && r.json.error && r.json.error.code;
 
-function world(t, extra = {}) {
-  const dns = fakeDns();
-  const clock = { t: Date.UTC(2026, 9, 3, 12, 0, 0) };
-  const txt = new Map();
-  const rt = createRuntime({ worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
-    env: { CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, NOW: () => clock.t, ZONE: "vyre.run", RESOLVE_TXT: async n => txt.get(n) || [], ...extra } });
-  t.after(async () => { await rt.settle(); assert.deepEqual(rt.errors.map(String), [], "no errors inside the Worker"); });
-  return { rt, dns, clock, env: rt.env, txt };
-}
-
-
-/** A route key, for the box claim path only (box routes still sign their requests). */
-function who(w, key = wire.newRouteKey()) {
-  const route = wire.routeId(key.pub);
-  const pub = key.pub.toString("base64url");
-  const send = async (method, path, body, o = {}) => {
-    const text = body === undefined ? "" : JSON.stringify(body);
-    const nonce = crypto.randomBytes(16).toString("base64url");
-    const ts = o.ts ?? w.clock.t;
-    const bodyHash = crypto.createHash("sha256").update(text).digest("hex");
-    const sig = wire.signRoute(key.priv, Buffer.from(W.authMessage({ route, ts, nonce, method, target: path, bodyHash }))).toString("base64url");
-    const headers = { ...(o.unsigned ? {} : { "x-vyre-route": route, "x-vyre-pub": pub, "x-vyre-ts": String(ts), "x-vyre-nonce": nonce, "x-vyre-sig": sig }),
-      ...(body === undefined ? {} : { "content-type": "application/json" }), "cf-connecting-ip": o.ip || "203.0.113.7" };
-    const res = await worker.fetch(new Request(BASE + path, { method, headers, body: text || undefined }), w.env);
-    return { status: res.status, json: await res.json().catch(() => null) };
-  };
-  return { route, post: (p, b, o) => send("POST", p, b, o), get: (p, o) => send("GET", p, undefined, o) };
-}
-
-async function key(label) {
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
-  const pub = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
-  const pubText = Buffer.from(pub).toString("base64url");
-  const eid = await C.eidOf(pub);
-  const sign = m => crypto.sign(null, Buffer.from(m), privateKey);
-  return { label, pub: pubText, eid, sign, sig64: m => sign(m).toString("base64url"), entry: kind => ({ eid, kind, pub: pubText }) };
-}
-
-/** A person (or space) client over the directory: it holds the chain it has built and talks plain HTTP with nothing signed at the request level. */
-async function identity(w, first, { kind = "person", ctxFor } = {}) {
-  const ts = w.clock.t;
-  const send = async (method, path, body, ip = "203.0.113.7") => {
-    const text = body === undefined ? "" : JSON.stringify(body);
-    const res = await worker.fetch(new Request(BASE + path, { method, headers: { ...(body === undefined ? {} : { "content-type": "application/json" }), "cf-connecting-ip": ip }, body: text || undefined }), w.env);
-    return { status: res.status, json: await res.json().catch(() => null) };
-  };
-  const me = { first, ops: [], state: null, send, get: (p, ip) => send("GET", p, undefined, ip), post: (p, b, ip) => send("POST", p, b, ip), del: (p, b) => send("DELETE", p, b) };
-  me.sealRecord = (name, sealed, by = first, via) => {
-    const sealedHash = crypto.createHash("sha256").update(sealed).digest("hex");
-    const ts2 = w.clock.t;
-    const pos = kind === "space" && me.pos ? { vseq: me.pos.via_seq, vhead: me.pos.via_head } : {};
-    return { sealed, rec: { by: kind === "space" ? me.state.entries[0].eid : by.eid, ...(via ? { via } : {}), ...pos, ts: ts2, sig: by.sig64(I.recordMessage({ name, id: me.state.id, by: kind === "space" ? me.state.entries[0].eid : by.eid, via, ts: ts2, sealedHash, ...pos })) } };
-  };
-  me.genesis = async (entry, via) => {
-    if (kind === "space" && ctxFor) me.pos = await C.viaOf(await ctxFor(entry.subject));
-    const g = await C.makeGenesis({ kind, entry: entry || first.entry("device"), nonce: "nonce-" + first.eid.slice(0, 10), ts, via, viaPos: me.pos, sign: first.sign });
-    me.ops = [g];
-    me.state = await C.verifyChain(me.ops, { now: ts, ownerOps: ctxFor });
-    return me;
-  };
-  me.claim = (name, sealed = "c2VhbGVk", by, via) => me.post("/v1/ids/claim", { name, ops: me.ops, ...me.sealRecord(name, sealed, by, via) });
-  me.append = async (body, signer, { via } = {}) => {
-    const op = await C.makeOp(me.state, body, { by: kind === "space" ? me.state.entries[0].eid : signer.eid, via, viaPos: me.pos, ts: w.clock.t, sign: signer.sign });
-    return op;
-  };
-  me.accept = async op => { me.state = await C.applyOp(me.state, op, { now: w.clock.t, ownerOps: ctxFor }); me.ops = [...me.ops, op]; return op; };
-  return me;
-}
-const person = async (w, k = null) => identity(w, k || await key("phone")).then(i => i.genesis());
 
 test("ids: a person and a space claim names; anyone resolves the whole chain by the exact name", async t => {
   const w = world(t);
@@ -112,16 +47,15 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   void chainsById;
 });
 
-test("ids: one namespace with the boxes, one name per identity, reserved and invalid names refused", async t => {
+test("ids: one namespace with the names an older setup gave a server, one name per identity, reserved and invalid names refused", async t => {
   const w = world(t), box = who(w);
   const alex = await person(w), other = await person(w);
   data(await alex.claim("alex"));
-  assert.equal(code(await box.post("/v1/names/claim", { name: "alex" })), "taken", "a box cannot take an identity's name");
   assert.equal(data(await box.get("/v1/names/check?name=alex", { unsigned: true })).status, "taken");
-  data(await box.post("/v1/names/claim", { name: "juno" }));
-  assert.equal(code(await other.claim("juno")), "taken", "an identity cannot take a box's name");
+  legacy(w, box, "juno");
+  assert.equal(code(await other.claim("juno")), "taken", "an identity cannot take a name a server still holds from an older setup");
   assert.equal(code(await alex.claim("alex2")), "one_per_identity");
-  assert.equal(data(await alex.claim("alex")).mine, true, "claiming your own name again is a no-op");
+  assert.equal(code(await alex.claim("alex")), "taken", "a name that is held cannot be reserved again");
   assert.equal(code(await other.claim("vyre")), "reserved");
   assert.equal(code(await other.claim("x")), "invalid");
 });
@@ -130,14 +64,18 @@ test("ids: a claim must carry a valid chain and a record an entry signed; a forg
   const w = world(t);
   const alex = await person(w), mallory = await person(w);
   const good = alex.sealRecord("alex", "c2VhbGVk");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: [{ ...alex.ops[0], id: "per_" + "a".repeat(26) }], ...good })), "bad_id");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: [], ...good })), "bad_chain");
-  assert.equal(code(await mallory.post("/v1/ids/claim", { name: "alex", ops: mallory.ops, ...good })), "bad_signature", "alex's record under mallory's chain");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "dGFtcGVyZWQ", rec: good.rec })), "bad_signature", "a changed record");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
+  const fin = async (me, extra) => me.post("/v1/ids/finalize", { name: "alex", code: await codeFor(w, "alex"), ...extra });
+  assert.equal(code(await fin(alex, { ops: [{ ...alex.ops[0], id: "per_" + "a".repeat(26) }], ...good })), "bad_id");
+  assert.equal(code(await fin(alex, { ops: [], ...good })), "bad_chain");
+  assert.equal(code(await fin(mallory, { ops: mallory.ops, ...good })), "bad_signature", "alex's record under mallory's chain");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "dGFtcGVyZWQ", rec: good.rec })), "bad_signature", "a changed record");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
+  // a person's genesis without a reservation code is refused, and so is a wrong code
+  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "reserve_first");
+  assert.equal(code(await alex.post("/v1/ids/finalize", { name: "alex", ops: alex.ops, ...good, code: "VYRE-AAAA-AAAA-AAAA-AAAA" })), "bad_code");
   w.clock.t += 10 * 60_000;
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
+  assert.equal(code(await fin(alex, { ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found", "nothing was claimed by any of those");
 });
 
@@ -149,7 +87,6 @@ test("ids: an unknown, an invalid and a released-then-freed name all resolve as 
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found");
 });
 
-const act = async (w, who_, action, name, domain, by = who_.first) => ({ by: by.eid, ts: w.clock.t, sig: by.sig64(I.actMessage({ action, name, domain, ts: w.clock.t })) });
 
 test("ids: the list grows by ops the directory verifies against the list before; an operator or stranger cannot forge one", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
@@ -365,12 +302,6 @@ test("ids: a young device may keep updating the space's record it signed itself 
   data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "cm91dGU", laptop, laptop.eid) }));
 });
 
-test("ids: the unchanged box claim path still works beside identities", async t => {
-  const w = world(t), box = who(w), alex = await person(w);
-  const c = data(await box.post("/v1/names/claim", { name: "harlow" }));
-  assert.equal(c.name, "harlow");
-  assert.equal(code(await alex.claim("harlow")), "taken");
-});
 
 test("ids: the directory refuses an op made at an old time, so an adder cannot hand a new entry a past age", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
@@ -389,6 +320,14 @@ const raw = async (w, method, path, { origin, headers = {}, body } = {}) => {
   const text = body === undefined ? undefined : JSON.stringify(body);
   const res = await worker.fetch(new Request(BASE + path, { method, headers: { ...(origin ? { origin } : {}), ...(body === undefined ? {} : { "content-type": "application/json" }), "cf-connecting-ip": "203.0.113.9", ...headers }, body: text }), w.env);
   return { status: res.status, h: n => res.headers.get(n), json: await res.json().catch(() => null) };
+};
+
+/** A reservation code for a name, asked for as the web page does (no key, any origin), from its own address so the per-address count of claims is not spent. */
+const codeFor = async (w, name, ip = "203.0.113.200") => {
+  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip, origin: "https://vyre.run" }, body: JSON.stringify({ name }) }), w.env);
+  const j = await r.json();
+  assert.ok(j.data, JSON.stringify(j));
+  return j.data.code;
 };
 
 test("cors: resolve answers any origin, read-only, no credentials, and a preflight for it", async t => {
@@ -412,28 +351,28 @@ test("cors: resolve answers any origin, read-only, no credentials, and a preflig
 test("cors: claim, append and update accept the app's origin (and only its exact origin), answer it, and keep their limits; everything else still refuses a foreign Origin", async t => {
   const w = world(t, { APP_ORIGINS: "https://app.vyre.run, http://localhost:5173" });
   const alex = await person(w);
-  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") };
-  const ok = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
+  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk"), code: await codeFor(w, "alex") };
+  const ok = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
   assert.equal(ok.h("access-control-allow-origin"), "https://app.vyre.run");
   assert.equal(ok.h("vary"), "origin");
   assert.equal(ok.h("access-control-allow-credentials"), null);
   const bob = await person(w);
-  const dev = await raw(w, "POST", "/v1/ids/claim", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk") } });
+  const dev = await raw(w, "POST", "/v1/ids/finalize", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk"), code: await codeFor(w, "bob") } });
   assert.equal(dev.status, 200, "the stand-in's origin from APP_ORIGINS");
   for (const origin of ["https://evil.example", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://vyre.run", "null"]) {
-    const r = await raw(w, "POST", "/v1/ids/claim", { origin, body });
+    const r = await raw(w, "POST", "/v1/ids/finalize", { origin, body });
     assert.equal(r.status, 403, origin);
     assert.equal(r.h("access-control-allow-origin"), null, "a foreign origin gets no CORS answer");
   }
   // preflights: the app origin for the three routes, nothing for others
-  for (const p of ["/v1/ids/claim", "/v1/ids/append", "/v1/ids/update"]) {
+  for (const p of ["/v1/ids/claim", "/v1/ids/finalize", "/v1/ids/append", "/v1/ids/update"]) {
     const pre = await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
     assert.equal(pre.status, 204, p);
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
   }
-  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"]]) {
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/point"], ["POST", "/v1/names/acme"]]) {
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
     const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
     assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
@@ -445,7 +384,7 @@ test("cors: the per-IP claim limit applies to claims from the app origin too", a
   const results = [];
   for (let i = 0; i < 7; i++) {
     const p = await person(w);
-    const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk") } });
+    const r = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk"), code: await codeFor(w, `name${i}x`, `203.0.113.${100 + i}`) } });
     results.push(r.status === 200 ? "ok" : code(r));
   }
   assert.equal(results.filter(x => x === "ok").length, 5, JSON.stringify(results));
@@ -464,7 +403,7 @@ test("cors: the name availability check answers any origin like resolve (no cred
   const pre = await raw(w, "OPTIONS", "/v1/names/check?name=x", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
   assert.equal(pre.status, 204);
   const results = [];
-  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk") } }); results.push(r.status === 200 ? "ok" : code(r)); }
+  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk"), code: await codeFor(w, `limit${i}x`, `203.0.113.${120 + i}`) } }); results.push(r.status === 200 ? "ok" : code(r)); }
   assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
 });
 
@@ -473,9 +412,8 @@ test("CO-1: the live config pins APP_ORIGINS to exactly one https origin, and no
   const toml = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "wrangler.toml"), "utf8");
   const m = /^APP_ORIGINS\s*=\s*"([^"]*)"/m.exec(toml);
   assert.ok(m, "APP_ORIGINS is set in [vars]");
-  assert.match(m[1], /^https:\/\/[a-z0-9.-]+$/);
-  assert.ok(!/localhost|127\.0\.0\.1|\*|,/.test(m[1]), m[1]);
-  assert.equal(m[1], "https://app.vyre.run");
+  assert.ok(!/127\.0\.0\.1|\*|http:/.test(m[1].replace("https://vyreapp.localhost", "")) && !/localhost/.test(m[1].replace("https://vyreapp.localhost", "")), m[1]);
+  assert.equal(m[1], "https://app.vyre.run,vyreapp://box,https://vyreapp.localhost", "the hosted app, the Mac app's window and the Windows app's window, nothing else");
 });
 
 test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, the directory writes the TXT and one CAA that pins the ACME account; nobody else can", async t => {
@@ -556,4 +494,93 @@ test("ids: the directory accepts a device's self-signed agree op, resolves the e
   assert.equal(st.entries.find(e => e.eid === phone.eid).agree, point);
   const second = await alex.append({ type: "agree", target: phone.eid, agree: point }, phone);
   assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [second] })), "exists");
+});
+
+// ---- reserve and finalize (spec part 10): a person's first name comes from the web, finished with the key in the app ----
+
+test("reserve: a code is made once for a free name, is long, and finalize with it claims the name for the identity the app made", async t => {
+  const w = world(t), alex = await person(w);
+  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" }, body: JSON.stringify({ name: "Alex" }) }), w.env);
+  const res = (await r.json()).data;
+  assert.equal(res.name, "alex", "names fold to lower case");
+  assert.match(res.code, /^VYRE-[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/, "16 characters of 5 bits: 80 bits");
+  assert.equal(res.expires, w.clock.t + 24 * HOUR);
+  // the name is held: another person's claim and reservation-less claim are refused while it lives, and resolve finds nothing yet
+  assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found");
+  const done = await alex.post("/v1/ids/finalize", { name: "alex", code: res.code, ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") });
+  assert.equal(data(done).name, "alex");
+  assert.equal(data(await alex.get("/v1/ids/resolve?name=alex")).kind, "person");
+});
+
+test("reserve: single use, 24 hours, and reserving the same name again cancels the old code", async t => {
+  const w = world(t), alex = await person(w);
+  const body = () => ({ name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") });
+  const c1 = await codeFor(w, "alex"), c2 = await codeFor(w, "alex");
+  assert.notEqual(c1, c2);
+  assert.equal(code(await alex.post("/v1/ids/finalize", { ...body(), code: c1 })), "bad_code", "the older code was replaced");
+  // the code names the name: a code for one name opens no other
+  const other = await person(w);
+  const cb = await codeFor(w, "bobby");
+  assert.equal(code(await other.post("/v1/ids/finalize", { name: "alex", ops: other.ops, ...other.sealRecord("alex", "c2VhbGVk"), code: cb })), "bad_code");
+  // a case and a dash do not matter when the code is pasted
+  assert.equal(data(await alex.post("/v1/ids/finalize", { ...body(), code: c2.toLowerCase().replace(/-/g, " ") })).name, "alex");
+  const again = await person(w);
+  assert.equal(code(await again.post("/v1/ids/finalize", { name: "alex", ops: again.ops, ...again.sealRecord("alex", "c2VhbGVk"), code: c2 })), "bad_code", "burned by the claim");
+  // 24 hours
+  const late = await person(w), cl = await codeFor(w, "lena");
+  w.clock.t += 24 * HOUR + 1000;
+  assert.equal(code(await late.post("/v1/ids/finalize", { name: "lena", ops: late.ops, ...late.sealRecord("lena", "c2VhbGVk"), code: cl })), "bad_code", "expired");
+});
+
+test("reserve: the namespace is one, reserved words and held names are refused, and a person's first name is never claimed without a code", async t => {
+  const w = world(t), box = who(w), alex = await person(w), space = await person(w);
+  const send = async (name, ip = "203.0.113.60") => { const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ name }) }), w.env); return { json: await r.json() }; };
+  assert.equal(code(await send("vyre")), "reserved");
+  assert.equal(code(await send("x")), "invalid");
+  legacy(w, box, "juno");
+  assert.equal(code(await send("juno")), "taken", "a name a server still holds from an older setup is taken");
+  data(await alex.claim("alex"));
+  assert.equal(code(await send("alex")), "taken", "an identity's name");
+  // a person's genesis cannot be claimed outright
+  assert.equal(code(await space.post("/v1/ids/claim", { name: "sam", ops: space.ops, ...space.sealRecord("sam", "c2VhbGVk") })), "reserve_first");
+});
+
+test("reserve: a space's name is claimed outright by a chain whose owner exists, and a space is never made by a reservation code", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
+  const space = await identity(w, phone, { kind: "space", ctxFor });
+  await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id }, phone.eid);
+  const c = await codeFor(w, "harlow");
+  assert.equal(code(await space.post("/v1/ids/finalize", { name: "harlow", ops: space.ops, ...space.sealRecord("harlow", "aG9tZQ", phone, phone.eid), code: c })), "not_a_person");
+  assert.equal(code(await space.claim("harlow", "aG9tZQ", phone, phone.eid)), "taken", "another person's live reservation holds the name against a space too");
+  assert.equal(data(await space.claim("northwind", "aG9tZQ", phone, phone.eid)).kind, "space");
+});
+
+test("reserve: reserving is limited per address, not per person, and answers any origin without credentials", async t => {
+  const w = world(t, { RESERVES_PER_IP_PER_DAY: "3" });
+  const ask = async (name, ip) => raw(w, "POST", "/v1/ids/reserve", { origin: "https://vyre.run", headers: { "cf-connecting-ip": ip }, body: { name } });
+  const first = await ask("aaaa", "203.0.113.70");
+  assert.equal(first.status, 200);
+  assert.equal(first.h("access-control-allow-origin"), "*");
+  assert.equal(first.h("access-control-allow-credentials"), null);
+  await ask("bbbb", "203.0.113.70"); await ask("cccc", "203.0.113.70");
+  assert.equal(code(await ask("dddd", "203.0.113.70")), "rate_limited");
+  assert.equal((await ask("dddd", "203.0.113.71")).status, 200, "another address is not held back by the first");
+});
+
+test("reserve: the app that is pasted a code asks which name it is for (reserved-for), and that spends nothing; a wrong, replaced or expired code answers alike", async t => {
+  const w = world(t);
+  const ask = (code, ip = "203.0.113.80") => raw(w, "POST", "/v1/ids/reserved-for", { origin: "https://app.vyre.run", headers: { "cf-connecting-ip": ip }, body: { code } });
+  const c1 = await codeFor(w, "alex");
+  const got = await ask(c1.toLowerCase().replace(/-/g, " "));
+  assert.deepEqual([got.status, got.json.data.name, got.json.data.expires], [200, "alex", w.clock.t + 24 * HOUR]);
+  assert.equal((await ask(c1)).status, 200, "asking twice spends nothing");
+  assert.equal(code(await ask("VYRE-AAAA-AAAA-AAAA-AAAA")), "bad_code");
+  assert.equal(code(await ask(undefined)), "bad_code");
+  const c2 = await codeFor(w, "alex");
+  assert.equal(code(await ask(c1)), "bad_code", "reserving again cancelled the first code, index and all");
+  assert.equal((await ask(c2)).status, 200);
+  w.clock.t += 24 * HOUR + 1000;
+  assert.equal(code(await ask(c2)), "bad_code", "expired");
 });

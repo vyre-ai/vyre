@@ -1,6 +1,6 @@
 // @ts-check
-// Claim a Vyre name from a device with no box: make the device key, the recovery code and the identity's genesis chain, and send the claim to the names
-// directory (names/worker/ids.js POST /v1/ids/claim) with a sealed record signed by this device's key. The same steps as core/spaces/identity-ops.js create,
+// Become yourself on a device with no box: make the device key, the recovery code and the identity's genesis chain, and finish the person's FIRST name with the
+// reservation code from vyre.run/setup (names/worker/ids.js POST /v1/ids/finalize), with a sealed record signed by this device's key. The same steps as core/spaces/identity-ops.js create,
 // in WebCrypto, using kernel/identity/chain.js and names/worker/id-messages.js themselves (not copies). The identity comes first: nothing here needs a box.
 
 import * as C from "../../../../kernel/identity/chain.js";
@@ -17,12 +17,14 @@ function plain(e) {
   const map = /** @type {Record<string, string>} */ ({
     name_taken: "That name is taken.", taken: "That name is taken.", bad_name: "That is not a name Vyre can use.", reserved: "That name is reserved.",
     rate_limited: "Too many names were claimed from here today. Try again tomorrow.", unreachable: "Cannot reach the names directory right now.",
+    bad_code: "That code does not work. It may have run out, been used, or been replaced by a newer one. Reserve the name again at vyre.run/setup.",
+    reserve_first: "A first name is reserved at vyre.run/setup, then finished here with its code.",
   });
   return map[e && e.code] || (e && e.message) || "That did not work.";
 }
 
 /**
- * @param {{ name: string, password?: string, deviceLabel?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
+ * @param {{ name: string, code: string, password?: string, deviceLabel?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
  *   params?: { memoryKiB: number, passes: number }, key?: import("./keys.js").DeviceKey, enclave?: string, agree?: string, held?: "web" | boolean, forceSoftware?: boolean, headers?: Record<string, string>,
  *   beforeClaim?: (made: { name: string, id: string, eid: string, ops: any[], pin: any, key: import("./keys.js").DeviceKey }) => Promise<void> }} o
  */
@@ -42,12 +44,12 @@ export async function claimIdentity(o) {
   const sealed = await sealRecord(name, { v: 1 }, random);
   const sealedHash = await C.sha256hex(sealed);
   const sig = C.b64u(await key.sign(recordMessage({ name, id: state.id, by: key.eid, via: undefined, ts, sealedHash, vseq: undefined, vhead: undefined })));
-  const body = { name, ops: [genesis], sealed, rec: { by: key.eid, ts, sig } };
+  const body = { name, code: String(o.code ?? ""), ops: [genesis], sealed, rec: { by: key.eid, ts, sig } };
   // Keep the key BEFORE the name is claimed: a name held by an identity nobody can sign for cannot be taken back, so if keeping fails (quota, a private window) nothing is claimed.
   if (o.beforeClaim) await o.beforeClaim({ name, id: state.id, eid: key.eid, ops: [genesis], pin: C.pinOf(state), key });
   let res;
   try {
-    res = await f(`${o.base.replace(/\/+$/, "")}/v1/ids/claim`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json", ...(o.headers ?? {}) }, body: JSON.stringify(body) });
+    res = await f(`${o.base.replace(/\/+$/, "")}/v1/ids/finalize`, { method: "POST", headers: { accept: "application/json", "content-type": "application/json", ...(o.headers ?? {}) }, body: JSON.stringify(body) });
   } catch (e) { throw refuse(plain({ code: "unreachable" }), "unreachable"); }
   /** @type {any} */ let json = null;
   try { json = await res.json(); } catch { /* not JSON */ }

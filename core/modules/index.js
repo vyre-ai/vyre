@@ -11,6 +11,7 @@
 // broken watcher runtime should not cost someone their search.
 
 import { sandboxDoor } from "./sandbox-ctx.js";
+import { setupToolAllowed } from "../../lib/setup-gate.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
@@ -38,8 +39,7 @@ const LOADER_FEATURES = ["modules.status"];
 // wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
-// relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
-export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -549,7 +549,7 @@ export const classReach = (caller, tool, setupExtra) => {
   if (c.split(/[\s:]/)[0] === "invitee") return false;
   const k = callerKind(c);
   if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
-  if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || (setupExtra !== undefined && setupExtra().includes(tool)));
+  if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || setupToolAllowed(tool, setupExtra === undefined ? [] : setupExtra()));
   return null;
 };
 
@@ -824,7 +824,7 @@ export class Registry {
       for (const [t, def] of this.tools) if (def.module === m.name) this.tools.delete(t);
       for (const [k, u] of this.upgrades) if (u.module === m.name) this.upgrades.delete(k);
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
-      this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
+      this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`, { at: String(/** @type {Error} */ (e).stack || "").split("\n").slice(1, 4).map(l => l.trim().replace(/^at /, "")).join(" < ") });
     }
   }
 
@@ -1339,7 +1339,7 @@ export class Registry {
         // "hook"), and left out of every listing. The tool checks its own secret.
         // core: vyre-core answers it on this Mac and checks its proof itself (ADR 0040 phase 2);
         // only a first-party module may say so, since it turns vyred's own presence check off.
-        if (def.core && !firstParty(m.dir)) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
+        if (def.core && !(this.modules.get(m.name)?.dir && this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)))) throw new Error(`${m.name} is not one of Vyre's own modules, so ${name} can't be a vyre-core tool`);
         // A declared reach (ADR 0047) sets the same checks: modules is internal, hook is the webhook
         // route, and person is the person's own surfaces and devices only. anyone and asked stay
         // open here; the asked check and outward routing are later build steps (plans/platform.md).

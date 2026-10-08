@@ -12,6 +12,8 @@ export type MacShell = {
     sign(message: string): Promise<string>;
     has(): Promise<boolean>;
     forget(): Promise<void>;
+    /** Windows only: the page says setup has finished (a server paired or a team joined), so the app starts hidden in the tray from now on. */
+    setupDone?(): Promise<void>;
     /** Settings' "Make this Mac a server": the Mac app runs its own setup (an explicit choice, never automatic). */
     makeServer?(): Promise<void>;
     /** The Secure Enclave key of this Mac's entry (Touch ID per signature): its raw uncompressed point, and a raw r||s signature. Absent or rejecting on a Mac with no Secure Enclave. */
@@ -26,6 +28,8 @@ export type MacShell = {
   version?: string;
   /** The x-vyre-presence header for one call, from Touch ID (the person's own prompt). Rejects with plain words when it is refused. */
   presence(tool: string, input: Record<string, unknown>, summary?: string): Promise<string>;
+  /** The Capsule's key for a Mac server: its public half (SPKI, base64url) and the id vyre-core will give it. The pairing hands it to the server as the server's Capsule key; `presence` then signs with it behind Touch ID. Made on first use, sent nowhere. */
+  presenceKey?(): Promise<{ public_key: string; id: string }>;
   notify(title: string, body: string): Promise<unknown>;
   open(url: string): Promise<unknown>;
   /** Menu commands: a route, or "back" and "forward". Returns the stop. */
@@ -70,4 +74,16 @@ export function listenCommands(go: (route: string) => void, back: () => void, fo
     else if (c.kind === "back") back();
     else if (c.kind === "forward") forward();
   });
+}
+
+/** Tell the Windows app that setup has finished. Nothing happens in a browser, on a phone or on a Mac (their windows have no such call). Failures are the shell's to log; the page carries on. */
+export async function shellSetupDone(): Promise<void> {
+  try { await shellIdentity()?.setupDone?.(); } catch { /* the app keeps opening its window until this lands */ }
+}
+
+/** Does this window run the page with no server of its own (the Mac app on a server Mac, or the Windows app, whose window is the bundled app at every run)? Such a page gates on setup and talks to its server over the relay. */
+export function isBoxless(): boolean {
+  const w = typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: { kind?: string; boxless?: boolean } });
+  const s = w?.__vyreShell;
+  return !!s && (s.kind === "mac" || s.kind === "windows") && s.boxless === true;
 }
