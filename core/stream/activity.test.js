@@ -65,3 +65,29 @@ test("a person's own ask, from a terminal (no session), makes no row anywhere", 
   db.close();
   assert.equal(n, 0);
 });
+
+test("the teammate's tool steps are appended to the asker's log with via and the teammate as author; its words are not, and once the row ends nothing more is added", async () => {
+  const { Logs } = await import("./log.js");
+  const { createActivity } = await import("./activity.js");
+  const logs = new Logs({});
+  const activity = createActivity({ ctx: { log() {} }, logs, groups: null });
+  const ev = (/** @type {string} */ type, /** @type {any} */ payload, /** @type {any} */ more = {}) => ({ type, payload, ...more });
+  activity.onSummon(ev("summon.queued", { request: "r_9", teammate: "kit-billing", project: "billing", reply_to: "thr_juno", role: "kit", text: "chase invoices" }));
+  activity.onSummon(ev("summon.started", { request: "r_9", teammate: "kit-billing", project: "billing", reply_to: "thr_juno" }));
+  activity.onSummon(ev("summon.thread", { request: "r_9", teammate: "kit-billing", project: "billing", thread: "thr_kit", reply_to: "thr_juno" }));
+  const te = (/** @type {string} */ type, /** @type {any} */ payload) => ({ type, id: 1, thread: "thr_kit", payload, time: 1 });
+  activity.onThread(te("thread.text", { message: "m1", text: "I will look.", done: true }));
+  activity.onThread(te("thread.tool", { id: "tu_1", call: "tu_1", tool: "Read", phase: "started", summary: "Read invoices/overdue.csv" }));
+  activity.onThread(te("thread.tool", { id: "tu_1", call: "tu_1", phase: "done", error: false }));
+  activity.onSummon(ev("summon.finished", { request: "r_9", teammate: "kit-billing", project: "billing", status: "done", reply_to: "thr_juno", result: "Three are overdue." }));
+  activity.onThread(te("thread.tool", { id: "tu_2", call: "tu_2", tool: "Read", phase: "started", summary: "late" }));
+  const log = logs.get("thr_juno");
+  const frames = log.read(0).map((/** @type {any} */ f) => [f.type, f.data.state ?? f.data.via ?? "", f.author ?? ""]);
+  assert.deepEqual(frames, [
+    ["chat.handoff", "queued", ""], ["chat.handoff", "running", ""], ["chat.handoff", "running", ""],
+    ["chat.tool-started", "r_9", "assistant:kit-billing"], ["chat.tool-finished", "r_9", "assistant:kit-billing"],
+    ["chat.handoff", "done", ""],
+  ]);
+  const last = log.read(0).filter((/** @type {any} */ f) => f.type === "chat.handoff").pop();
+  assert.deepEqual([last.data.result, last.data.thread, last.data.to.name], ["Three are overdue.", "thr_kit", "kit"]);
+});
