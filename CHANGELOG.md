@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(gate): `approvals.item-view { id, offset }` reads the whole of one held call, nothing cut, about 50 values or 8000 characters a page, a long value in parts, with `total` and `next`. A call whose card says part of it is not shown is approved on its own (`approvals.answer`) only after it has been read to the end; editing it starts the reading again.
 - fix(install): the installer waits up to three minutes for the four words on a first start (it gave up after about thirty seconds), and says it is waiting.
 - fix(approvals): a held outward call that the person approved on the phone runs when the asker retries; the card held for the registry named no asking device, so every such retry was refused.
 - fix(box): a vyre command that needs Docker, run without sudo by someone who cannot reach Docker, says "run it with sudo: sudo vyre <command>" instead of Docker's permission error.
