@@ -140,6 +140,12 @@ $h = [W]::FindWindow("#32770", "Vyre")
 if ($h -eq [IntPtr]::Zero) { Write-Output "NODIALOG"; exit 0 }
 $text = ""; $c = [IntPtr]::Zero
 while ($true) { $c = [W]::FindWindowEx($h, $c, "Static", $null); if ($c -eq [IntPtr]::Zero) { break }; $sb = New-Object System.Text.StringBuilder 1024; [void][W]::SendMessage($c, 0x000D, 1024, $sb); if ($sb.Length -gt 0) { $text += $sb.ToString() } }
+if ($text -eq "") {
+  Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+  $el = [System.Windows.Automation.AutomationElement]::FromHandle($h)
+  $all = $el.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+  foreach ($e in $all) { $n = $e.Current.Name; if ($n) { $text += $n + " " } }
+}
 Write-Output ("TEXT:" + ($text -replace "[\r\n]+", " | "))
 [void][W]::SendMessage($h, 0x111, [IntPtr]::new($env:ANSWER), [IntPtr]::Zero)
 Write-Output "ANSWERED"
@@ -181,10 +187,10 @@ try {
   const reserved = await (await fetch(`${NAMES}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json();
   note(`  reserved ${name}: ${reserved.code ? "a code" : JSON.stringify(reserved)}`);
   let recovery = "";
-  await check("first run: Get started, paste the reservation code, Create my name, the recovery code shows", async () => {
-    await page.getByText("Get started", { exact: true }).first().click({ timeout: 30000 });
+  await check("first run: Start, paste the code, Continue, the recovery code shows", async () => {
+    await page.getByText("Start", { exact: true }).first().click({ timeout: 30000 });
     await page.getByPlaceholder("VYRE-XXXX-XXXX-XXXX-XXXX").fill(reserved.code, { timeout: 30000 });
-    await page.getByText("Create my name", { exact: true }).first().click({ timeout: 15000 });
+    await page.getByText("Continue", { exact: true }).first().click({ timeout: 15000 });
     await page.getByText("Save your recovery code").first().waitFor({ timeout: 60000 });
     recovery = "shown";
   });
