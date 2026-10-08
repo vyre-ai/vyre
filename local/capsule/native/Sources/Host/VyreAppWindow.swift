@@ -237,7 +237,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))")
     }
     /// One line per failed call, in ~/Library/Logs/Vyre/app.log, so a step that fails says why somewhere a person (or support) can read.
-    static func log(_ line: String) {
+    nonisolated static func log(_ line: String) {
         let dir = (NSHomeDirectory() as NSString).appendingPathComponent("Library/Logs/Vyre")
         try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
         let path = (dir as NSString).appendingPathComponent("app.log")
