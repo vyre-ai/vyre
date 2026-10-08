@@ -375,7 +375,7 @@ test("Add a device: the phone redeems the computer's typed code, the server hold
   assert.ok(state.entries.some(e => e.pub === publicKey), "the phone's key is on the list");
 });
 
-test("Add a device: when the owner's app never answers, the phone is told its key was not added and stays paired", async t => {
+test("Add a device: when the owner's app cannot sign (a Windows computer), the phone is told why its key was not added", async t => {
   typedOn(t);
   const w = await world(t);
   const opened = await w.call("wink.phone.open", { typed: true });
