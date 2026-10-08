@@ -30,7 +30,8 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   fs.writeFileSync(path.join(root, "approvals", "index.js"), `export { default } from ${JSON.stringify(path.join(REPO, "core", "approvals", "index.js"))};`);
   const db = open(path.join(home, "vyre.db"));
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, kernel: { proofFrom: (/** @type {any} */ m) => (m.proof ? { presence: m.proof } : undefined) } });
-  await reg.start(discover([root]).map(f => ({ ...f, warnings: [] })), { role: "local" });
+  reg.firstPartyRoots = [root];
+  await reg.start(discover([root], { firstPartyRoots: [root] }), { role: "local" });
   t.after(() => db.close());
   assert.equal(reg.modules.get("approvals").state, "running", reg.modules.get("approvals").error);
   return reg;
