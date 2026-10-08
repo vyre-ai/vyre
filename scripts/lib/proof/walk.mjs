@@ -204,7 +204,8 @@ export async function walk(w) {
  */
 export async function walkTerminal(w) {
   const { run, ins, server } = w;
-  for (const way of /** @type {("long code" | "typed code")[]} */ (["long code", "typed code"])) {
+  for (const way of /** @type {("long code" | "typed code" | "typed code in a browser")[]} */ (["long code", "typed code", "typed code in a browser"])) {
+    const browser = way === "typed code in a browser";   // a plain web page, not the Mac or Windows app: it must stay a limited device
     const tag = `terminal ${way}`;
     const S = (/** @type {string} */ n) => `${tag}: ${n}`;
     const dir = path.join(w.out, tag.replace(/ /g, "-"));
@@ -239,6 +240,12 @@ export async function walkTerminal(w) {
           assert.ok(r.owner, "the server named an owner");
         }
       }, { needs: [S("a fresh server with no setup code shows its code")] });
+      if (browser) {
+        await run.step(S("a plain browser stays a limited device: no signed-in session"), async () => {
+          await assert.rejects(async () => { await mac.openSession(); }, /no tool presence\.person\.pair-challenge/, "a web page that pairs a server must not get the person-session path");
+        }, { needs: [S("the app pairs the server and the server names this identity its owner")] });
+        continue;
+      }
       await run.step(S("the server made this app a signed-in session"), async () => {
         const p = mac.pairing;
         assert.notEqual(p.session, false, "the server paired the app but made it no session (adopt answered session:false), so the app cannot sign in and calls to the server are refused; the long code path gives the same app a session");
