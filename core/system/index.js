@@ -5,6 +5,8 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileVault } from "../vyre-core/online.js";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, save as saveConfig } from "../config/index.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
@@ -21,6 +23,17 @@ function ownerFingerprints(id) {
   catch { return { person: null, assistant: null }; }
 }
 
+/**
+ * FileVault on a Mac ("on", "off", "unknown"); null anywhere else. A Mac with FileVault on waits at the login window after an unplanned restart and runs nothing, so the app warns on a server card (always-online).
+ * `fdesetup status` needs no privilege; the answer is kept for a minute.
+ */
+let vaultAt = 0, vaultNow = /** @type {"on" | "off" | "unknown" | null} */ (null);
+function vault() {
+  if (process.platform !== "darwin") return null;
+  if (Date.now() - vaultAt > 60_000) { vaultNow = fileVault((cmd, args) => execFileSync(cmd, args, { encoding: "utf8", timeout: 1500, stdio: ["ignore", "pipe", "ignore"] })); vaultAt = Date.now(); }
+  return vaultNow;
+}
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -35,7 +48,7 @@ export default {
         // matching the relay's pairing ticket) from lib/identity.js, so this and tailnet's relay
         // can never drift apart.
         const fp = ownerFingerprints(ctx.config.owner && ctx.config.owner.id);
-        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], memoryMb: Math.round(os.totalmem() / 1048576), serverName: ctx.config.serverName || null, platform: process.platform, node: process.version,
+        return { ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], memoryMb: Math.round(os.totalmem() / 1048576), serverName: ctx.config.serverName || null, platform: process.platform, filevault: vault(), node: process.version,
           owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null, fingerprint8: fp.person },
           // The name the user gave their assistant in onboarding, else the agent it was created as.
           assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null,
