@@ -31,7 +31,7 @@ async function world(t) {
 }
 
 test("sidebar: the manifest is valid and declares the Space default and the person's list as account settings, with no per-device level", () => {
-  assert.deepEqual(validate(manifest), []);
+  assert.deepEqual(validate(manifest, { firstParty: true }), []);
   assert.deepEqual(manifest.settings.map((/** @type {any} */ s) => [s.key, s.type, s.levels]), [["sidebar.default", "object", ["account"]], ["sidebar.mine", "list", ["account"]]]);
 });
 
@@ -79,7 +79,7 @@ test("sidebar: hide, show, move, group and remove", async t => {
 
 test("sidebar: the team's default is set by the person at their own surface, never by an assistant, and a person's list sits on top of it", async t => {
   const { c } = await world(t);
-  const asAgent = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team" }, "cli:agent:kit");
+  const asAgent = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team" }, "mcp:agent:kit");
   assert.match(String(asAgent.error?.message), /Only the person/);
   assert.equal(asAgent.error?.code, "denied");
   const asMe = await c("sidebar.edit", { op: "add", what: "Documents", scope: "team", group: "more" });
@@ -89,7 +89,7 @@ test("sidebar: the team's default is set by the person at their own surface, nev
   g = (await c("sidebar.get", {})).data;
   assert.ok(g.default && g.default.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"));
   // an assistant may arrange the person's own list
-  assert.equal((await c("sidebar.edit", { op: "hide", what: "Memory" }, "cli:agent:kit")).error, undefined);
+  assert.equal((await c("sidebar.edit", { op: "hide", what: "Memory" }, "mcp:agent:kit")).error, undefined);
   g = (await c("sidebar.get", {})).data;
   assert.equal(g.entries.find((/** @type {any} */ e) => e.id === "memory").hidden, true);
   assert.ok(g.entries.some((/** @type {any} */ e) => keyOf(e) === "module:docuseal/documents"), "the default's entry still reaches the merged list");

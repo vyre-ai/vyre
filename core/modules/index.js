@@ -1837,6 +1837,7 @@ export class Registry {
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
         ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
+        ...(Array.isArray(m.screens) ? { screens: m.screens } : {}),
         firstParty: this.isFirstParty(r.dir),
         ...(m.needs && Array.isArray(m.needs.tools) ? { needsTools: m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
         ...(m.needs && Array.isArray(m.needs.slots) ? { needsSlots: m.needs.slots.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
