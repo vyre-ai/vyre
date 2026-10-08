@@ -662,7 +662,7 @@ export default {
       obj({ key_id: str, spki: str, signer: str, token: str, attestation: obj() }, ["key_id", "spki", "signer", "token"]), async (i, meta) => {
         const P = needPresence(), st = me();
         const bind = { eid: /** @type {string} */ (st.eid), sig: b64u(await identity.sign(bindBytes(String(st.id), String(i.key_id), String(i.spki)))) };
-        return P.recover({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), bind, key_id: String(i.key_id), spki: String(i.spki), signer: String(i.signer), token: String(i.token), ...(i.attestation ? { attestation: i.attestation } : {}) });
+        return P.recover({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), bind, key_id: String(i.key_id), spki: String(i.spki), signer: String(i.signer), ...(typeof i.rp === "string" ? { rp: i.rp } : {}), token: String(i.token), ...(i.attestation ? { attestation: i.attestation } : {}) });
       });
     tool("spaces.presence.sync", "Send the sealing process your current identity list, so a device you removed loses its presence key at once.", obj(), async (_i, meta) => { me(); needPresence(); await syncPresence(meta); return { ok: true }; });
 
@@ -1130,7 +1130,7 @@ export default {
       /** @type {{ enrolled: boolean, reason?: string }} */ let presence = { enrolled: false, reason: "no presence key offered" };
       const pk = i.presence_key;
       if (pk && typeof pk === "object" && typeof K.enrolOwnerKey === "function") {
-        try { await K.enrolOwnerKey({ person: id, device: String(pk.device), key_id: String(pk.key_id), spki: String(pk.spki), signer: String(pk.signer) }); presence = { enrolled: true }; }
+        try { await K.enrolOwnerKey({ person: id, device: String(pk.device), key_id: String(pk.key_id), spki: String(pk.spki), signer: String(pk.signer), ...(typeof pk.rp === "string" ? { rp: pk.rp } : {}) }); presence = { enrolled: true }; }
         catch (e) { presence = { enrolled: false, reason: String(/** @type {any} */ (e).code || "failed").slice(0, 40) }; ctx.log.warn(`the owner's presence key was not enrolled (${presence.reason})`); }
       }
       return { owner: r.owner, previous: r.previous, changed: r.changed, presence };
@@ -2290,7 +2290,7 @@ export default {
       const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
       try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     }, { internal: true });
     // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
     tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
