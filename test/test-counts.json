@@ -908,5 +908,6 @@
  "core/cli/commands/words.test.js": 2,
  "test/workflows-yaml.test.js": 2,
  "stores/twenty/deferred-store.test.js": 2,
- "lib/sidebar/model.test.js": 8
+ "lib/sidebar/model.test.js": 8,
+ "core/sidebar/sidebar.test.js": 6
 }
