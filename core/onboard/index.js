@@ -16,7 +16,6 @@ import { isPerson, onTailnet } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
-import { checkName } from "../names/service.js";
 
 export const STEPS = ["you", "claude", "pair", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -367,30 +366,15 @@ export default {
 
     ctx.tool("onboard.name", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "Checks <name>.vyre.run and saves it; reserve holds the name for this server; its address is published once the built-in network has one for this home. `via` says which; again retries.",
-      presence: { when: i => !["check", "status", undefined].includes(i && i.action) , summary: async () => "Claim a name for this server" },
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status"] }, confirm: { type: "boolean" } }),
-      run: async ({ name, action = "check", confirm }, { caller, ...meta }) => {
+      description: "Checks <name>.vyre.run, or reads which space's name this server serves. A server holds no name: a space is named in the app, and the app tells the server to serve it (names.serve).",
+      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "status"] } }),
+      run: async ({ name, action = "check" }, { caller, ...meta }) => {
         boxOnly();
-        ownerWrite(caller, meta, "claiming a name", await isOwned(), !["check", "status"].includes(action));
-        if (action !== "check" && action !== "status") personOnly(caller);
+        ownerWrite(caller, meta, "reading the name", await isOwned(), false);
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           return call("names.check", { name });
         }
-        // An address this box already holds (the setup page claimed it): there is nothing to reserve, only its progress to read.
-        if ((action === "reserve" || action === "claim") && net().via === "vyre.run" && ctx.config.name) action = "status";
-        if (action === "reserve" || action === "claim") {
-          // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
-          // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
-          const want = checkName(name || ctx.config.name || "");
-          if (!want.valid) throw Object.assign(new Error("pick a name first"), { code: "confirm_name" });
-          if (confirm === true) save({ name: want.name });
-          else if (!(ob().person && ctx.config.name === want.name)) {
-            throw Object.assign(new Error(`${want.name}.vyre.run is a public name: confirm it first`), { code: "confirm_name" });
-          }
-        }
-        if (action !== "status") await call("names.claim", name ? { name } : {});
         return progress(await stepOf("name", caller));
       },
     });

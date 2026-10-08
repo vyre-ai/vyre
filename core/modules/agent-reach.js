@@ -173,7 +173,8 @@ export const PERSON_ONLY = new Map([
   ["link.pair.deny", "needs the person's Face ID or presence: pairing and devices"],
   ["link.signout", "needs the person's Face ID or presence: pairing and devices"],
   ["link.unpair", "needs the person's Face ID or presence: pairing and devices"],
-  ["names.release", "needs the person's Face ID or presence: the person's name and domain"],
+  ["names.serve", "needs the person's Face ID or presence: the person's name and domain"],
+  ["names.unserve", "needs the person's Face ID or presence: the person's name and domain"],
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["presence.session.close", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["publish.decide", "would let an assistant widen its own authority: publishing decisions"],
@@ -276,6 +277,7 @@ export const PERSON_ONLY = new Map([
   ["wink.relay.apply", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.adopt", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
+  ["wink.server.setup-offer", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.code", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.confirm", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.server.retarget", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
@@ -464,8 +466,4 @@ export const WEB_REACH = new Map([
  * shipped module declares under `setupTools` (sessions: sign in to the AI). The relay's gate still holds the channel to its own list first; this is the registry's second check.
  * @type {ReadonlyMap<string, string>}
  */
-export const SETUP_REACH = new Map([
-  ...SETUP_REASONS,
-  ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
-  ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
-]);
+export const SETUP_REACH = new Map([...SETUP_REASONS]);

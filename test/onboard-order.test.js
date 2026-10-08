@@ -28,11 +28,11 @@ async function box(t, network = {}) {
   return d;
 }
 
-test("a server with no owner takes no sign-in, no name and no finish, from any caller", { timeout: 60_000 }, async t => {
+test("a server with no owner takes no sign-in and no finish, from any caller", { timeout: 60_000 }, async t => {
   const d = await box(t);
   assert.equal((await d.registry.call("onboard.status", {}, "deck")).data.owned, false, "a fresh server says it has no owner");
   for (const caller of ["deck", "cli", "local", "module:onboard", "mcp", "module:other"]) {
-    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.name", { action: "claim", name: "alexbox", confirm: true }], ["onboard.finish", {}]]) {
+    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.finish", {}]]) {
       const r = await d.registry.call(/** @type {string} */ (tool), input, caller);
       assert.ok(r.error, `${caller} ${tool} must be refused, got ${code(r)}`);
       assert.ok(/^(pair_first|denied|presence_required|no_such_tool)$/.test(r.error.code || ""), `${caller} ${tool}: ${r.error.code} ${r.error.message}`);
@@ -67,10 +67,10 @@ test("once the server has an owner, the person's own session signs the AI accoun
   assert.equal(code(await d.registry.call("onboard.claude", { mode: "disconnect" }, "mcp")), "denied", "a model cannot disconnect");
 });
 
-test("with an owner, a model, another module, an agent and a second person's label still cannot sign in or claim a name", { timeout: 60_000 }, async t => {
+test("with an owner, a model, another module, an agent and a second person's label still cannot sign in", { timeout: 60_000 }, async t => {
   const d = await box(t, { ownerSeen: true });
   for (const caller of ["mcp", "mcp:thread:t", "mcp:agent:a", "module:other", "agent:juno", "tailnet-guest:bob", "anonymous", "hook"]) {
-    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.name", { action: "claim", name: "alexbox", confirm: true }], ["onboard.history", { action: "start" }], ["onboard.finish", {}]]) {
+    for (const [tool, input] of [["onboard.claude", { mode: "api-key", key: KEY }], ["onboard.history", { action: "start" }], ["onboard.finish", {}]]) {
       const r = await d.registry.call(/** @type {string} */ (tool), input, caller);
       assert.ok(r.error && /^(denied|no_such_tool|not_allowed|forbidden)$/.test(r.error.code || ""), `${caller} ${tool} -> ${code(r)} ${r.error ? r.error.message : ""}`);
     }

@@ -5,6 +5,8 @@
 // door is a small HTTP and WebSocket harness on 127.0.0.1 (the daemon itself listens on a unix socket only): POST /call runs a tool as a person (their kernel surface token), a WebSocket
 // upgrade goes to the stream's own upgrade handler (the ticket stream.open handed out is the whole authority, as in production), GET /info, POST /add-carol.
 // Run only with a temp VYRE_HOME, on the test box.
+// A development build lets the home reserve each walk name itself (a release build takes a code from vyre.run/setup).
+process.env.VYRE_TEST_SELF_RESERVE ??= "1";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";

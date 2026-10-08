@@ -501,7 +501,7 @@ function eventsPage(root, mods) {
 const MEANING = {
   theme: "Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`.",
   "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
-  name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
+  name: "This box's name: its address is `<name>.vyre.run`. Set when the Vyre app adds this server to a space.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
   projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`.",
   roots: "More folders to look in for projects.",
