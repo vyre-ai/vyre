@@ -279,7 +279,7 @@ export function activityScript(o: { tps?: number } = {}): Segment[] {
   const to = { agent: "kit-billing", role: "billing", name: "kit", project: "Northwind Bakery" };
   c.push("status", { state: "working", turn: "turn-1" });
   c.push("user-message", { message: "m1", text: "Chase the overdue invoices, and tell me what Northwind owes.", state: "sent" }, 40);
-  c.say("a1", "Three invoices are over thirty days. Billing should chase them; I will look at Northwind first.", tps, 200, undefined, { reasoning: true });
+  c.say("a1", "Three invoices are over thirty days. Billing should chase them; I will look at Northwind first.", tps, 200, undefined, { reasoning: true, index: 0 });
   c.push("tool-started", { tool_id: "t1", tool: "records.search", summary: "Looking up overdue invoices" }, 150);
   c.push("tool-finished", { tool_id: "t1", ok: true }, 400);
   c.push("handoff", { request: "r_1", to, text: "Chase the overdue invoices this week", state: "queued", at: 1 }, 150, juno);

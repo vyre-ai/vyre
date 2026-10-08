@@ -288,6 +288,9 @@ export function createFolder() {
         if (put(key, "handoff", it)) out.layout = true;
         else items.set(key, it);
         touch(key);
+        // The report-back is its own row, after the teammate's steps that came before it, so the conversation reads in the order it happened.
+        const rk = "hr:" + d.request;
+        if (it.result && !items.has(rk)) { put(rk, "handoffResult", { key: rk, kind: "handoffResult", request: it.request, name: it.name, state: it.state, result: it.result }); out.layout = true; touch(rk); }
         break;
       }
       case "tool-started": {

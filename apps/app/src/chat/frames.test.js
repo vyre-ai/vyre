@@ -384,7 +384,7 @@ test("a hand-off is one row whose state is replaced, an ended one never goes bac
   f.apply(fr("tool-started", { tool_id: "k1", tool: "mail.draft", summary: "Drafting", via: "r_1" }));
   f.apply(fr("handoff", { request: "r_1", state: "done", result: "Three drafted" }));
   f.apply(fr("handoff", { request: "r_1", state: "running" }));
-  assert.deepEqual(f.rows.map((r) => r.key), ["h:r_1", "t:k1"]);
+  assert.deepEqual(f.rows.map((r) => r.key), ["h:r_1", "t:k1", "hr:r_1"], "the report-back is its own row, after the steps");
   const h = f.item("h:r_1");
   assert.deepEqual([h?.name, h?.role, h?.project, h?.thread, h?.state, h?.result, h?.text], ["kit", "billing", "Northwind", "ses_kit", "done", "Three drafted", "chase"]);
   assert.equal(f.item("t:k1")?.via, "r_1");

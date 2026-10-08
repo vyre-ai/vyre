@@ -209,7 +209,17 @@ function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
         <Text size="caption" tone={it.state === "failed" ? "err" : "label"}>{state}</Text>
       </View>
       {it.text ? <Text size="caption" tone="muted" numberOfLines={2}>{it.text}</Text> : null}
-      {it.result ? <View style={{ borderLeftWidth: 3, borderLeftColor: color.edge, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{it.result}</Text></View> : null}
+    </View>
+  );
+}
+
+/** What the teammate reported back, quoted: data from another session, never the person's words. */
+function HandoffResult({ it }: { it: any }) {
+  const { color } = useUiTheme();
+  return (
+    <View style={{ gap: 2 }} accessibilityLabel={`${it.name} reported back`}>
+      <Text size="caption" tone="label">{`${it.name} reported`}</Text>
+      <View style={{ borderLeftWidth: 3, borderLeftColor: color.edge, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{it.result}</Text></View>
     </View>
   );
 }
@@ -333,6 +343,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         </Replyable>
       );
     }
+    case "handoffResult":
+      return <Frame wide={wide} indent><HandoffResult it={it} /></Frame>;
     case "handoff":
       return <Frame wide={wide} indent><HandoffLine it={it} store={store} /></Frame>;
     case "tool":
