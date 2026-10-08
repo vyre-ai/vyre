@@ -90,6 +90,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 135 | 44 | capsule, cli, deck |
+| [`views`](#views) | `core/views` | `box`, `local` | 3 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
@@ -927,6 +928,17 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## views
+
+A module's screens, described and drawn by Vyre: the lists, boards, summaries, details and forms an installed module declares under `views`, read from its manifest and answered as small frames for the app to draw in its own components. No module code runs in the app's window.
+
+- Folder: `core/views`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#views)
+- Emits: no events
+- Shows on: cli
 
 ## vitals
 
