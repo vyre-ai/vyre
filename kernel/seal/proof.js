@@ -13,6 +13,8 @@ const RP = /^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/;
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
 /** A software key, for the automated walk on a development-kind build only (ruling 4, 5 Oct): the process takes it only when started with `allowSoftware`, which main sets only for a development build, and every use is named method "software". */
 export const SOFTWARE = "software";
+/** Why a presence key's signer class (and a passkey's site) is not one to take, or null. */
+const signerProblem = (/** @type {string} */ signer, /** @type {any} */ rp) => (!SIGNERS.has(signer) && signer !== SOFTWARE ? "bad_signer" : signer === "webauthn_platform" && !RP.test(String(rp || "")) ? "bad_rp" : null);
 export const MAX_PROOF_LIFE_MS = 120_000;
 const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 export const UNBOUND_GRACE_MS = 24 * 3_600_000;
@@ -68,8 +70,7 @@ export class Presence {
    * @returns {{ attested: boolean } | { refused: string }}
    */
   enrol({ person, key_id, spki, signer, rp, token, attestation, proof, bind, ctx }) {
-    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
-    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
+    const unfit = signerProblem(signer, rp); if (unfit) return { refused: unfit };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
@@ -85,18 +86,22 @@ export class Presence {
     // Once a chain is pinned for the person, every key is vouched for by a listed device (item R8-3): no bind, no key.
     const pin = this.pins.get(person);
     if (pin && !this.bindPinned(pin, person, bind, key_id, spki)) return { refused: "needs_bind" };
-    let attested = false, aa;
-    if (attestation && attestation.format === "apple-appattest") {
-      const a = this.attestApple(attestation, spki, signer, token, key_id);
-      if ("refused" in a) return { refused: a.refused };
-      attested = true; aa = a.aa;
-    } else if (attestation && this.verifiers[attestation.format]) {
-      if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
-      attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
+    const v = this.vouch(attestation, spki, signer, token, key_id);
+    if ("refused" in v) return { refused: v.refused };
+    const { attested, aa } = v;
     this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
+  }
+  /**
+   * How a new key is vouched for, the one rule for enrol, recover and join: an App Attest attestation over `token` (kernel/seal/appattest.js), a platform verifier's, or none, which a software key (a development build only, checked by the caller), an
+   * unattested-allowed process and a phone's or a passkey's secure key (UNATTESTED_SIGNERS) accept.
+   * @returns {{ attested: boolean, aa?: any } | { refused: string }}
+   */
+  vouch(attestation, spki, signer, token, key_id) {
+    if (attestation && attestation.format === "apple-appattest") { const a = this.attestApple(attestation, spki, signer, token, key_id); return "refused" in a ? a : { attested: true, aa: a.aa }; }
+    if (attestation && this.verifiers[attestation.format]) return this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) === signer ? { attested: true } : { refused: "bad_attestation" };
+    return signer === SOFTWARE || this.allowUnattested || UNATTESTED_SIGNERS.has(signer) ? { attested: false } : { refused: "unattested" };
   }
   /** Apple App Attest at enrol or recover: kernel/seal/appattest.js bindAttestation (attested only from the verifier, secure_enclave only, one App Attest key per Secure Enclave key). */
   attestApple(attestation, spki, signer, token, key_id) { return bindAttestation(this.appattest, this.keys, attestation, spki, signer, token, key_id); }
@@ -157,8 +162,7 @@ export class Presence {
    * chain key vouches for this presence key. The new key is a newcomer for 24 hours. Whoever holds the code (and PIN) can do this: the design's stated limit.
    */
   async recover({ person, ops, bind, key_id, spki, signer, rp, token, attestation, ctx }) {
-    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
-    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
+    const unfit = signerProblem(signer, rp); if (unfit) return { refused: unfit };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
@@ -168,15 +172,9 @@ export class Presence {
     if (this.have(person) && (!this.pins.has(person) || this.pins.get(person).devices?.[bind?.eid])) return { refused: "has_keys" };
     if (!this.pins.has(person)) return { refused: "no_pin" };
     if (!this.have(person) && !this.ever.has(person) && !this.recovery) return { refused: "not_in_recovery" };
-    let attested = false, aa;
-    if (attestation && attestation.format === "apple-appattest") {
-      const a = this.attestApple(attestation, spki, signer, token, key_id);
-      if ("refused" in a) return { refused: a.refused };
-      attested = true; aa = a.aa;
-    } else if (attestation && this.verifiers[attestation.format]) {
-      if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
-      attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
+    const v = this.vouch(attestation, spki, signer, token, key_id);
+    if ("refused" in v) return { refused: v.refused };
+    const { attested, aa } = v;
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
     this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
@@ -192,8 +190,7 @@ export class Presence {
    * @returns {Promise<{ attested: boolean, device: string } | { refused: string }>}
    */
   async join({ person, ops, bind, invite, key_id, spki, signer, rp, attestation, ctx }) {
-    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
-    if (signer === "webauthn_platform" && !RP.test(String(rp || ""))) return { refused: "bad_rp" };
+    const unfit = signerProblem(signer, rp); if (unfit) return { refused: unfit };
     if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     if (typeof invite !== "string" || !invite || typeof key_id !== "string" || typeof spki !== "string" || !bind || typeof bind.eid !== "string" || typeof bind.sig !== "string") return { refused: "bad_binding" };
@@ -211,15 +208,9 @@ export class Presence {
     if (this.keys.has(key_id)) return { refused: "exists" };
     if (this.have(person) || this.ever.has(person) || this.pins.has(person)) return { refused: "known_person" };
     if (this.barred.has(e.eid)) return { refused: "not_listed" };
-    let attested = false, aa;
-    if (attestation && attestation.format === "apple-appattest") {
-      const a = this.attestApple(attestation, spki, signer, "join:" + invite, key_id);
-      if ("refused" in a) return { refused: a.refused };
-      attested = true; aa = a.aa;
-    } else if (attestation && this.verifiers[attestation.format]) {
-      if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
-      attested = true;
-    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested && !UNATTESTED_SIGNERS.has(signer)) return { refused: "unattested" };
+    const v = this.vouch(attestation, spki, signer, "join:" + invite, key_id);
+    if ("refused" in v) return { refused: v.refused };
+    const { attested, aa } = v;
     this.keys.set(key_id, { person, signer, ...(signer === "webauthn_platform" ? { rp: String(rp) } : {}), attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.pins.set(person, ev.pin); this.ever.add(person); this.joined.set(key_id, { person, invite }); this.save();
     return { attested, device: bind.eid };
@@ -249,8 +240,7 @@ export class Presence {
     if (typeof req.signature === "string" && req.signer === "webauthn_platform" && typeof req.key_id === "string") {
       const k = this.keys.get(req.key_id);
       if (k && k.signer === "webauthn_platform" && k.rp) {
-        const raw = Buffer.from(k.spki, "base64").subarray(-65);
-        let ok = false; try { ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; }
+        let ok = false; try { const raw = Buffer.from(k.spki, "base64").subarray(-65); ok = raw.length === 65 && await verifyWebAuthn(raw.toString("base64url"), k.rp, proofBytes(req), req.signature); } catch { ok = false; }
         if (ok) this.waOk.add(req);
       }
       return;
@@ -276,11 +266,9 @@ export class Presence {
     if (proof.issued_at < this.since || !(proof.issued_at <= t + 5000) || !(proof.expires_at > t) || proof.expires_at - proof.issued_at > MAX_PROOF_LIFE_MS) return "expired";
     let ok = false;
     try {
-      if (k.signer === "webauthn_platform") ok = this.waOk.has(proof); // the assertion was checked in preverify, by the chain's verifier
-      else {
-        const sig = Buffer.from(proof.signature, "base64url");
-        ok = crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
-      }
+      // a passkey's assertion was checked in preverify, by the chain's verifier; every other key's signature is ECDSA over the proof's bytes
+      const sig = Buffer.from(proof.signature, "base64url");
+      ok = k.signer === "webauthn_platform" ? this.waOk.has(proof) : crypto.verify("sha256", proofBytes(proof), { key: k.key, dsaEncoding: sig.length === 64 ? "ieee-p1363" : "der" }, sig);
     } catch { ok = false; }
     if (!ok) return "bad_signature";
     // B2 (App Attest, appattest.js assertProof): the proof also carries the app key's assertion over the same bytes; the new counter is written BEFORE the proof is accepted.
