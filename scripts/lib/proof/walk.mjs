@@ -353,7 +353,8 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
     return `${notice.current} -> ${notice.available}`;
   }, { needs: [CALL] });
   await run.step(U("write a vault item and records, and read them back"), async () => {
-    await mac.callTool("vault.put", { name: "proof-update-secret", kind: "secret", value: "update-proof-value-1" });
+    // a vault write needs the owner's phone (presence); on the box itself the operator is the person at the terminal
+    await srv().operator("vault.put", { name: "proof-update-secret", kind: "secret", value: "update-proof-value-1" });
     // a 0.2.11 server keeps its records in the Twenty store its installer chose, which can take minutes to come up after the install
     for (let i = 0; ; i++) { try { await mac.callTool("planner.add", { kind: "note", text: "written before the update" }); break; } catch (e) { if (i >= 40) throw e; await new Promise(r => setTimeout(r, 10_000)); } }
     const vault = await mac.callTool("vault.list", {}), plan = await mac.callTool("planner.list", {});
