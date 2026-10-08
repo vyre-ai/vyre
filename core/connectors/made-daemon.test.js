@@ -32,7 +32,7 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   const item = (await cli("vault.list", {})).data.items.find(x => x.name === "conn-acme-crm");
   assert.equal(item.kind, "api-credential");
   assert.deepEqual(item.hosts, []);
-  const listed = (await model("connectors.connection.list")).data.connections;
+  const lr = await model("connectors.connection.list"); assert.ok(lr.data, JSON.stringify(lr)); const listed = lr.data.connections;
   assert.equal(listed.length, 1); assert.equal(listed[0].host, "api.acme-crm.invalid"); assert.equal(listed[0].light, "unknown");
   assert.ok(!JSON.stringify([made, listed, (await model("connectors.connection.get", { id: "acme-crm" }))]).includes(KEY));
 
