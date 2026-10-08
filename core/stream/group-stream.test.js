@@ -486,3 +486,27 @@ test("ask another model on an answer: one short line from the person, and the ot
   await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "nope", to: "assistant:juno" }, meta), /not in this chat/);
   await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "q1", to: "assistant:juno" }, meta), /not in this chat/);
 });
+
+test("ask another model in one tap: a model the chat does not have joins as part of the same act, a name that is no provider does not", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("c10", ["bob"], ["kit"]);
+  await r.send("c10", "bob", "q1", "what is the fee for the estate plan?", ["assistant:kit"]);
+  const kit = r.threadOf("c10", "assistant:kit");
+  r.say(kit, "m1", { delta: "The fee is $4,200 flat." }); r.say(kit, "m1", { done: true });
+  await r.groups.idle();
+  const answerId = Object.keys(textsOf(r.logs.get("c10").read(0)))[0];
+  const meta = await r.call("c10", "bob");
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c10", message: answerId, to: "nope" }, meta), /not an assistant in this chat/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c10", message: answerId, to: "person:carol" }, meta), /not an assistant in this chat/);
+  const before = r.started.length;
+  const res = await r.groups.secondOpinion({ chat: "c10", message: answerId, to: "grok/grok-4" }, meta);
+  await r.groups.idle();
+  assert.equal(res.routed.length, 1);
+  assert.match(res.routed[0], /^model:grok\/grok-4#[0-9]{6}$/);
+  const joined = r.logs.get("c10").read(0).find(f => f.type === "chat.participant-joined" && f.data.who === res.routed[0]);
+  assert.ok(joined, "it joined the chat as part of the act");
+  assert.match(String(r.started.slice(before).map(s => s.prompt || s.text || "").join("\n")), /kit's answer:\s*The fee is \$4,200 flat\./);
+  // asking the same model again uses the slot it has; it does not join twice
+  const again = await r.groups.secondOpinion({ chat: "c10", message: answerId, to: res.routed[0] }, meta);
+  assert.deepEqual(again.routed, res.routed);
+});
