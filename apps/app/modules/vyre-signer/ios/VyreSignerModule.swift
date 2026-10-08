@@ -200,7 +200,8 @@ public class VyreSignerModule: Module {
       for message in messages {
         var error: Unmanaged<CFError>?
         guard let sig = SecKeyCreateSignature(key, .ecdsaSignatureMessageX962SHA256, Data(message.utf8) as CFData, &error) as Data? else {
-          let ns = error?.takeRetainedValue().map { $0 as Error as NSError }
+          let e = error?.takeRetainedValue()
+          let ns = e.map { $0 as Error as NSError }
           if let ns, ns.code == Int(errSecUserCanceled) { throw fail("ERR_CANCELED", ns.localizedDescription) }
           throw fail("ERR_SIGN", ns?.localizedDescription ?? "the signature failed")
         }
