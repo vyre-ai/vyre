@@ -692,6 +692,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the @ picker's signed-in AI accounts by provider, names only"
  },
  {
+  "tool": "sidebar.edit",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): arranges the person's own sidebar (add, remove, hide, show, move, group); the team's default is refused to anyone but the person at their own surface"
+ },
+ {
+  "tool": "sidebar.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the sidebar: the Space's default, the person's own list and the installed module screens that can be added"
+ },
+ {
   "tool": "spaces.assess-computer",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): explains what keeping a Space on this computer means, a read"
  },
