@@ -486,12 +486,6 @@ test("install-box.sh v2: without a setup code the terminal asks nothing and pair
   assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
   assert.doesNotMatch(r.stdout, /already running|not paired yet/);
 });
-  const r = run({ ...b.env, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
-  assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Long code: .*WINKLONGCODE/);
-  assert.match(b.calls(), /vyre up --quiet/, "the installer starts vyre without its own pairing or status lines");
-  assert.doesNotMatch(r.stdout, /already running|not paired yet/);
-});
 
 /** A server with no Docker: the get.docker.com script (a curl stub) prints a flood, and either installs a Docker stub or fails. */
 function noDocker(t, { fail = false } = {}) {
