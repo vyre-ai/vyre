@@ -42,8 +42,7 @@ const CLIENTS = [
 /** The firm's Space on a real daemon: clients, the mail credential, a project with a billing teammate, juno's bound session, a mail server that records what reaches it. */
 async function world(/** @type {import("node:test").TestContext} */ t) {
   const root = tempHome(t);
-  const mods = path.join(root, "firstparty");
-  fs.mkdirSync(mods, { recursive: true });
+  const mods = path.join(root, "shipped");
   const sent = /** @type {string[]} */ ([]);
   const outbox = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { sent.push(b); res.writeHead(200, { "content-type": "application/json" }); res.end('{"id":"m1","threadId":"t1"}'); }); });
   await new Promise(r => outbox.listen(0, "127.0.0.1", () => r(undefined)));
