@@ -143,7 +143,7 @@ export default {
         if (!request) throw refuse("that call does not fit an outward card", "bad_input");
         const from = String(input.from || "");
         const same = [...open.values()].find(a => a.moment && a.from === from && a.state === "waiting" && a.request.op === request.op && canon(a.request.fields) === canon(request.fields));
-        if (same) return { id: same.id, line: same.line };
+        if (same) return { id: same.id, line: same.line, ...(same.group ? { group: same.group } : {}) };
         if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
         const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
         const payload_hash = payloadHash(sg.op, space, sg.fields);
