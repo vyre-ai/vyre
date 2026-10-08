@@ -27,15 +27,15 @@ export function checkAnswer(status, body) {
 export function reserveAnswer(status, body) {
   const d = body && body.data;
   if (status === 200 && d && typeof d.code === "string" && CODE_RE.test(d.code)) return { ok: true, code: d.code, expires: Number(d.expires) || 0 };
-  if (status === 429) return { ok: false, say: "Too many names were reserved from this connection today. Try again tomorrow." };
-  if (status === 409) return { ok: false, say: "Someone else holds that name. Pick another." };
+  if (status === 429) return { ok: false, say: "Too many names reserved from this connection today. Try again tomorrow." };
+  if (status === 409) return { ok: false, say: "Someone has that name. Try another." };
   return { ok: false, say: "Vyre could not reserve that name just now. Try again in a minute." };
 }
 
 export const MESSAGES = {
   free: "That name is free.",
-  taken: "That name is taken. Pick another.",
-  invalid: "Names are 3 to 32 letters, numbers or hyphens, and start and end with a letter or number.",
+  taken: "Someone has that name. Try another.",
+  invalid: "Use 3 to 32 letters, numbers or hyphens. Start and end with a letter or number.",
   unknown: "Vyre could not check that name just now.",
 };
 

@@ -16,13 +16,13 @@ export const SETUP_TTL_MS = 3_600_000;
 /** The two choices, the same for every space: Records recommended and first, preselected. `store` is VYRE_STORE on the install line. */
 /** Which kind of machine the server is: the line differs (a Linux server or cloud machine, or a Mac that stays on). */
 export const SERVER_KINDS = Object.freeze([
-  { id: "linux", label: "A Linux server or cloud machine", where: "On the server, as yourself (not root), paste this line." },
-  { id: "mac", label: "A Mac that stays on", where: "On the Mac, in Terminal, as yourself (not root), paste this line. It asks for the Mac password once." },
+  { id: "linux", label: "A Linux server, or a cloud server", where: "On the server, paste this line. Use your own account, not root." },
+  { id: "mac", label: "A Mac that stays on", where: "On the Mac, open Terminal and paste this line. It asks for the Mac password once." },
 ]);
 
 export const CHOICES = Object.freeze([
-  Object.freeze({ id: "records", store: "auto", label: "With Records", note: "Recommended. A server with 8 GB of memory is right; 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
-  Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "A small server. 2 GB is enough.", minMb: 1800, recommendedMb: 1800 }),
+  Object.freeze({ id: "records", store: "auto", label: "With Records (recommended)", note: "Keeps your contacts, projects and tasks. Needs 8 GB of memory. 4 GB is the least.", minMb: 3500, recommendedMb: 7500 }),
+  Object.freeze({ id: "plain", store: "sqlite", label: "Without Records", note: "For a small server. 2 GB is enough. You can add Records later.", minMb: 1800, recommendedMb: 1800 }),
 ]);
 export const DEFAULT_CHOICE = "records";
 
@@ -31,7 +31,7 @@ export const GAINS = Object.freeze([
   "Your assistants keep working when this computer sleeps.",
   "Your phone reaches everything from anywhere.",
   "Watchers and schedules run all the time.",
-  "Teammates can join.",
+  "Your team can join.",
 ]);
 
 /** @param {string} id */
@@ -46,20 +46,20 @@ export function memoryNote(id, memoryMb) {
   const c = choiceOf(id);
   if (!Number.isFinite(memoryMb) || memoryMb <= 0) return null;
   const gb = Math.round(memoryMb / 102.4) / 10;
-  if (c.id === "records" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than Records needs (4 GB). It will start without Records; you can turn them on in Settings when it has the memory.`;
+  if (c.id === "records" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than Records needs. Vyre will start without Records. You can change this in Settings.`;
   if (c.id === "plain" && memoryMb < c.minMb) return `This server has ${gb} GB of memory, which is less than the 2 GB a small server needs.`;
   return null;
 }
 
 /** Plain words by code; nothing a server or the network says reaches the screen. */
 export const MESSAGES = Object.freeze({
-  expired: "The hour for this install line ran out. Start again to get a new one.",
-  mismatch: "Those words are not the ones on your server, so this is not your server. Nothing was opened. Start again.",
-  contested: "Two servers used this install line. Start again to get a new one.",
-  relay: "Vyre could not reach its relay. Check this device's connection, then start again.",
-  connect: "Vyre found your server but could not open a connection to it. Start again.",
-  pair: "Your server did not finish pairing. Start again.",
-  key: "This device could not make the key for the install line.",
+  expired: "The hour for this line ran out. Start again for a new one.",
+  mismatch: "Those words are different, so this may not be your server. Nothing was connected. Start again.",
+  contested: "Two servers used this line. Start again for a new one.",
+  relay: "Vyre could not connect. Check your internet, then start again.",
+  connect: "Vyre found your server but could not connect to it. Start again.",
+  pair: "Your server did not finish connecting. Start again.",
+  key: "This computer could not make a key for the line. Try again.",
 });
 
 /**

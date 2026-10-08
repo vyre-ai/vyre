@@ -19,9 +19,9 @@ export function firstStep(kind, canClaim) {
 
 export const WELCOME = {
   title: "Vyre",
-  line: "Your assistants, your people and your work, in one place you control.",
-  start: "Get started",
-  have: "I already have Vyre",
+  line: "Your assistants, your team and your work, in one place you control.",
+  start: "Start",
+  have: "I already have a name",
 };
 
 /** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to. */
@@ -45,10 +45,10 @@ export function installLine(version, vars = {}) {
 /** The first run after a name: how this device will be used. Join a team is first (employees own no server and run on their team's); a Mac may also use My Home. */
 export const FIRST = {
   title: "How will you use Vyre?",
-  join: { title: "Join a team", line: "Paste the invite you were sent. You run on your team's server." },
-  server: { title: "Add a server", line: "A machine that stays on. This becomes your own Cloud." },
-  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. A server can be added later." },
-  windows: "Home on Windows is coming.",
+  join: { title: "Join a team", line: "Paste the invite your team sent you. You use their server, so you need none of your own." },
+  server: { title: "Add a server", line: "A computer that stays on, like a Linux server or a Mac. Vyre runs there, and your phone and teammates can reach it.", upgrades: { mac: "This upgrades My Home to My Cloud.", windows: "This sets up My Cloud." } },
+  home: { title: "Use My Home", line: "Vyre runs on this Mac while it is awake. You can add a server later and move everything across." },
+  windows: "Using Vyre on this PC alone is coming. For now, join a team or add a server.",
 };
 /** The choices in order for a device kind: Join, Add a server, and My Home on a Mac only. @param {string} kind */
 export const firstChoices = kind => (kind === "mac" ? ["join", "server", "home"] : ["join", "server"]);
@@ -59,10 +59,12 @@ export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9
 /** The Mac's "Add your phone": the phone becomes the one that approves. */
 export const ADD_PHONE = {
   title: "Add your phone",
-  line: "Scan this with Vyre on your phone. Your phone becomes the one that approves.",
-  orPaste: "Or paste the long code on your phone",
-  words: "Check that the phone shows the same three words.",
-  skip: "Skip",
+  line: "Open Vyre on your phone and scan this. Your phone will approve things for you.",
+  orPaste: "Or type the code on your phone",
+  words: "Check that the phone shows the same words as this screen.",
+  skip: "Not now",
+  android: "Android: download Vyre-android.apk from the latest release on your phone and open it. Allow installs when Android asks.",
+  iphone: "iPhone: there is no App Store app yet. The install steps are on vyre.run/phone.",
   waiting: "Waiting for your phone.",
 };
 

@@ -46,7 +46,7 @@ export async function reservedName(code: string): Promise<string> {
   catch { throw Object.assign(new Error("Cannot reach the names directory right now."), { code: "unreachable" }); }
   const body = await r.json().catch(() => null);
   if (r.ok && body?.data?.name) return String(body.data.name);
-  if (body?.error?.code === "bad_code") throw Object.assign(new Error("That reservation code is not valid. It lasts 24 hours and works once, and reserving the name again replaces it. Reserve the name again at vyre.run/setup."), { code: "bad_code" });
+  if (body?.error?.code === "bad_code") throw Object.assign(new Error("That code does not work. It may have run out, been used, or been replaced by a newer one. Reserve the name again at vyre.run/setup."), { code: "bad_code" });
   throw Object.assign(new Error(r.status === 429 ? "Too many tries from here. Wait a little." : "Cannot check this code right now. Try again."), { code: body?.error?.code ?? "directory" });
 }
 

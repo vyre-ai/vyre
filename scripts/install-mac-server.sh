@@ -649,10 +649,10 @@ show_words() {
   while [ "$n" -lt "${VYRE_WORDS_TRIES:-30}" ]; do
     out=$("$BIN/vyre" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
     words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
-    if [ -n "$words" ]; then say "  Check words: $words"; say "  They should match the four on your screen."; return 0; fi
+    if [ -n "$words" ]; then say "  Your four words: $words"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
     n=$((n + 1)); sleep 1
   done
-  say "  The check words did not show here. Read them on this Mac with: $BIN/vyre call relay.setup.status"
+  say "  The four words did not show yet. To see them, run: $BIN/vyre words"
 }
 
 # finish: what the person does next. With the app's install line (a setup code) the app is where it finishes; without one the long pairing code is the way.
@@ -660,7 +660,8 @@ finish() {
   if [ "$DRY" = 1 ]; then return 0; fi
   if [ -n "$CODE" ]; then
     show_words
-    say "  Done. Back in the Vyre app."
+    say "  Vyre is running on this Mac."
+    say "  Go back to the Vyre app to finish."
   else
     say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
   fi
@@ -799,7 +800,9 @@ main() {
   TMP=$(mktemp -d)
   trap cleanup EXIT
   if [ "$UNINSTALL" = 1 ]; then uninstall; return 0; fi
-  say "Installing Vyre on this Mac as your server."
+  say "Installing Vyre on this Mac as your server. This takes a few minutes."
+  say "It asks for your Mac password once, so Vyre can start when the Mac starts."
+  say "When it finishes, go back to the Vyre app."
   preflight
   install_app
   setup_colima

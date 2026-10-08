@@ -300,7 +300,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <Card flush>
           {rows.map((id, i) => {
             const c = FIRST[id as "join" | "server" | "home"];
-            return <View key={id}>{i ? <Divider /> : null}<Choice icon={id === "join" ? "share" : id === "server" ? "server" : "laptop"} title={c.title} sub={c.line} onPress={pick(id)} /></View>;
+            const extra = id === "server" ? (isWindowsShell() ? FIRST.server.upgrades.windows : dk === "mac" ? FIRST.server.upgrades.mac : "") : "";
+            return <View key={id}>{i ? <Divider /> : null}<Choice icon={id === "join" ? "share" : id === "server" ? "server" : "laptop"} title={c.title} sub={extra ? `${c.line} ${extra}` : c.line} onPress={pick(id)} /></View>;
           })}
         </Card>
         {isWindowsShell() ? <Text tone="muted">{FIRST.windows}</Text> : null}
@@ -334,13 +335,13 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     // A person's first name is reserved on the web (vyre.run/setup) and finished here with the key this device makes: paste the code the page gave.
     const held = MOCK ? "alex.vyre.run" : reservedAddress;
     body = (
-      <Page title="Paste your reservation code" sub={MOCK ? "You reserved your name at vyre.run/setup. Vyre makes a key for it on this device, and the key stays here." : `You reserved your name at vyre.run/setup. Vyre makes a key for it on this ${device}, and the key stays here.`}>
+      <Page title="Paste your code" sub={isWindowsShell() ? "You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN." : MOCK ? "You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this Mac, and the key never leaves it." : `You reserved your name at vyre.run/setup. Paste the code it gave you. Vyre makes your key on this ${device}, and the key never leaves it.`}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <Field label="Reservation code" value={reserveCode} onChangeText={(v: string) => { setReserveCode(v); setWrong(""); }} placeholder="VYRE-XXXX-XXXX-XXXX-XXXX" help="It lasts 24 hours and works once." />
-        {held ? <Text tone="muted">{held} is waiting for you.</Text> : null}
-        <Button kind="primary" label={busy ? "Creating your name" : "Create my name"} disabled={!codeLooksRight(reserveCode) || busy}
+        <Field label="Code" value={reserveCode} onChangeText={(v: string) => { setReserveCode(v); setWrong(""); }} placeholder="VYRE-XXXX-XXXX-XXXX-XXXX" help="It works once, for 24 hours." />
+        {held ? <Text tone="muted">{held} is yours.</Text> : null}
+        <Button kind="primary" label={busy ? "Creating your name" : "Continue"} disabled={!codeLooksRight(reserveCode) || busy}
           onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(reserveCode, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
-        <Button kind="ghost" label="Reserve a name" onPress={() => { Linking.openURL("https://vyre.run/setup").catch(() => {}); }} />
+        <Button kind="ghost" label="I need a code" onPress={() => { Linking.openURL("https://vyre.run/setup").catch(() => {}); }} />
         <Button kind="ghost" label={WELCOME.have} onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
       </Page>
     );
@@ -407,9 +408,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     ) : null;
   } else if (step === "recovery") {
     body = (
-      <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
+      <Page title="Save your recovery code" sub="If you lose every device, this is the only way back in.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
-        {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
+        {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>You will not see it again. Anyone who has it can use your name, so keep it somewhere only you can reach.</Banner>}
         <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterIdentity(); setStep(next); }} />
       </Page>
     );
@@ -429,9 +430,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           </Card>
         ))}
         <Card flush>
-          <Choice icon="plus" title="Create a space" sub="Name it, pick a look, choose where it lives." onPress={() => setStep("create")} />
+          <Choice icon="plus" title="Create a team space" sub="Name it and pick a look. It runs on a server." onPress={() => setStep("create")} />
           <Divider />
-          <Choice icon="share" title="Join a space" sub="Scan an invite or open its link." onPress={() => setStep("join")} />
+          <Choice icon="share" title="Join a team" sub="Paste the invite link you were sent." onPress={() => setStep("join")} />
         </Card>
         {made.length ? (
           <View className="gap-s2">
@@ -444,9 +445,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "create") {
     body = (
-      <Page title="Create a space">
+      <Page title="Create a team space">
         <Field label="Name" value={spaceName} onChangeText={(v) => { setSpaceName(v); }} />
-        <NameField label="Claim its name" value={spaceSlug} onChange={(v) => setAddr(v)} onRetry={retryName(spaceSlug)} also={[name]} space real={MOCK ? undefined : (spaceSt as ReturnType<typeof nameStatusReal>)} />
+        <NameField label="Its address" value={spaceSlug} onChange={(v) => setAddr(v)} onRetry={retryName(spaceSlug)} also={[name]} space real={MOCK ? undefined : (spaceSt as ReturnType<typeof nameStatusReal>)} />
         <View className="gap-s2">
           <Text size="caption" strong tone="label">{WHO.label}</Text>
           <Segmented label={WHO.label} value={who} onChange={setWho} options={WHO.options} />
@@ -466,6 +467,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = MOCK ? (
       <Page title={ADD_PHONE.title} sub={ADD_PHONE.line}>
         <View className="w-ring self-center"><Ring seed={4} /></View>
+        <Text size="caption" tone="muted">{ADD_PHONE.android}</Text>
+        <Text size="caption" tone="muted">{ADD_PHONE.iphone}</Text>
         <Text size="caption" tone="muted" className="text-center">{ADD_PHONE.orPaste}</Text>
         <Button kind="primary" label="Simulate the scan" onPress={done} />
         <Button kind="ghost" label={ADD_PHONE.skip} onPress={done} />
@@ -474,7 +477,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "cmd") {
     // The one add-a-server piece (screens/settings/AddServerCard.tsx), then the space is made on the server it paired.
     body = (
-      <Page title="Add your server" sub="Then your space is made on it.">
+      <Page title="Add a server" sub="Your team space is made on it.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <AddServerCard onDone={() => doMake("server")} />
       </Page>
@@ -490,14 +493,14 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "members") {
     body = (
-      <Page title="Who is in it?" sub="Invite people now, or later from Spaces and members. You are the owner.">
+      <Page title="Invite your team" sub="Add people now, or later from Members. You are the owner.">
         <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "You" }} size={40} />} title={name || "You"} sub="Owner, this device" />
         {MOCK ? <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" /> : <RealInvite />}
         <View className="flex-row gap-s2">
           {MOCK ? <>
             <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
             <Button kind="ghost" label="Later" onPress={() => advance("members")} />
-          </> : <Button kind="ghost" label="Skip, start using it" onPress={() => advance("members")} />}
+          </> : <Button kind="ghost" label="Skip for now" onPress={() => advance("members")} />}
         </View>
       </Page>
     );
@@ -556,13 +559,13 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "join") {
     body = (
-      <Page title="Join a space" sub="Scan the invite, or open its link.">
+      <Page title="Join a team" sub="Paste the invite link you were sent.">
         <View className="w-ring self-center"><Ring seed={6} /></View>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="Paste the invite link" />
+        <Field label="Invite link" value={link} onChangeText={setLink} placeholder="Paste it here" />
         {MOCK ? null : <TypeCode redeem={redeemInvite} onDone={(t) => { if (!t.invite) { setWrong("The code worked but gave no invitation."); return; } const l = t.invite.link; setLink(l); setBusy(true); setWrong(""); previewInvite(l).then((p) => { setInvite(inviteFrom(p, l)); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false)); }} />}
         <View className="flex-row gap-s2">
-          <Button kind="primary" label="Open invite" disabled={!MOCK && (busy || !link.trim())} onPress={() => {
+          <Button kind="primary" label="Continue" disabled={!MOCK && (busy || !link.trim())} onPress={() => {
             if (MOCK) return setStep("invite");
             setBusy(true); setWrong("");
             previewInvite(link.trim()).then((p) => { setInvite(inviteFrom(p, link.trim())); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false));
@@ -579,9 +582,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {inv.from ? <Text tone="muted">{`${inv.from} invited you.`}</Text> : null}
         {external ? <Banner tone="warn">This invitation came from a link outside Vyre. Check that the space name is the one you expect before you join.</Banner> : null}
         <Text mono size="caption" tone="label">{inv.link.replace(/\/join\/.*$/, "/join/…")}</Text>
-        {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Check these words with whoever invited you</Text><Text mono strong>{inv.words}</Text></View> : null}
+        {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Read these four words to the person who invited you. They should see the same ones.</Text><Text mono strong>{inv.words}</Text></View> : null}
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
-        <View className="gap-s1"><Text size="caption" strong tone="label">You will see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>
+        <View className="gap-s1"><Text size="caption" strong tone="label">What you can see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>
         <Button kind="primary" icon="faceid" label={`Join ${inv.space}`}
           onPress={() => setFace({ title: `Join ${inv.space}`, body: `Face ID adds this device to ${inv.space}.`, label: "Join with Face ID", onApprove: () => {
             const joined = () => { setMade((m) => [...m, { name: inv.space, look: "amber", addr: inv.address, line: `Joined as ${inv.role}` }]); setStep("joined"); };
@@ -594,8 +597,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <View className="items-center gap-s3">
         <Chip tone="ok" icon="check">Joined</Chip>
-        <Text size="page" strong className="text-center">{`You joined ${inv.space}`}</Text>
-        <Text tone="muted" className="text-center">{`This device is added to ${inv.space}. Your other spaces are untouched.`}</Text>
+        <Text size="page" strong className="text-center">{`You joined ${inv.space}.`}</Text>
+        <Text tone="muted" className="text-center">{`This computer is now part of ${inv.space}.`}</Text>
         <Button kind="primary" label="Continue" onPress={() => setStep("spaces")} />
       </View>
     );
