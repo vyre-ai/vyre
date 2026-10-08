@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 
+const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
@@ -47,7 +48,8 @@ const freePort = host => new Promise((resolve, reject) => { const s = net.create
 /**
  * What the module does with a webhook the app sent: check the token, find the mapping in the manifest, pick the data out of the body, say it as a Vyre event and, if the mapping names a Flow, start it.
  * Pure over its ports so a test drives it without a daemon.
- * @param {{ manifest: any, token: string, given: string, body: any, emit: (type: string, payload: any) => any, startFlow?: (path: string, o: { body: any, key: string, trust: "external" }) => Promise<any> }} p
+ * @param {{ manifest: any, token: string, given: string, body: any, emit: (type: string, payload: any) => any, startFlow?: (path: string, o: { body: any, key: string, trust: "external" }) => Promise<any>,
+ *   files?: { fetch: (url: string) => Promise<Uint8Array>, save: (path: string, bytes: Uint8Array) => Promise<{ path: string, size: number }> } }} p
  */
 export async function handleWebhook(p) {
   if (!p.given || !sameToken(String(p.given), p.token)) throw refuse("that is not the app's token", "denied");
@@ -56,6 +58,18 @@ export async function handleWebhook(p) {
   if (!map) return { ignored: kind || "unknown" };
   const data = {};
   for (const [name, at] of Object.entries(map.data || {})) data[name] = pick(p.body, String(at));
+  // The files the app made (the signed documents) are fetched from the app and put in the Drive folder the owner agreed to at install; their Drive paths ride on the event and into the Flow.
+  if (map.files && p.files) {
+    const list = pick(p.body, String(map.files.list));
+    const saved = [];
+    for (const doc of Array.isArray(list) ? list.slice(0, 20) : []) {
+      const url = pick(doc, String(map.files.url)), name = clean(pick(doc, String(map.files.name)) ?? "file");
+      if (typeof url !== "string") continue;
+      const to = String(map.files.saveTo).replace(/\{([a-z_]+)\}/g, (/** @type {string} */ _m, /** @type {string} */ k) => (k === "name" ? name : clean(data[k] ?? "")));
+      saved.push(await p.files.save(to, await p.files.fetch(url)));
+    }
+    data.files = saved;
+  }
   const key = `${map.event}:${data.submission ?? crypto.createHash("sha256").update(JSON.stringify(p.body)).digest("hex").slice(0, 16)}`;
   p.emit(map.event, { ...data, app: p.manifest.name });
   /** @type {any} */ let flow = null;
@@ -63,6 +77,8 @@ export async function handleWebhook(p) {
   if (map.flow && p.startFlow) { try { flow = await p.startFlow(map.flow, { body: { ...data, app: p.manifest.name, event: map.event }, key, trust: "external" }); } catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; } }
   return { event: map.event, ...(flow ? { flow: flow.run || true } : {}) };
 }
+/** A value as one safe part of a Drive path: letters, digits, space, dot, dash and underscore; nothing that climbs. @param {any} v */
+const clean = v => String(v ?? "").replace(/[^A-Za-z0-9 _.-]+/g, "-").replace(/^[. -]+/, "").slice(0, 80) || "file";
 /** A dotted path with [n] indexes, into JSON. @param {any} o @param {string} at */
 export function pick(o, at) {
   let v = o;
@@ -121,7 +137,22 @@ export default {
       const m = known(name);
       if (!row(name)) throw refuse("that app is not installed", "not_found");
       const token = await secret(name, "hook");
-      return handleWebhook({ manifest: m, token, given, body, emit: (t, p) => ctx.events.emit(t, p),
+      const origin = row(name).origin;
+      const files = ctx.kernel && ctx.kernel.drive ? {
+        // Only the path and query of the address the app printed are used, against the app's own origin: the app cannot send this module to another host.
+        fetch: async (/** @type {string} */ url) => {
+          let u; try { u = new URL(url); } catch { throw refuse("the app gave a document address that is not one", "bad_input"); }
+          const r = await fetch(origin + u.pathname + u.search, { signal: AbortSignal.timeout(60_000) });
+          if (!r.ok) throw refuse(`the app would not give the document (${r.status})`, "app_refused");
+          const len = Number(r.headers.get("content-length") || 0);
+          if (len > MAX_FILE) throw refuse("the document is bigger than 25 MB", "too_large");
+          const bytes = new Uint8Array(await r.arrayBuffer());
+          if (bytes.length > MAX_FILE) throw refuse("the document is bigger than 25 MB", "too_large");
+          return bytes;
+        },
+        save: async (/** @type {string} */ to, /** @type {Uint8Array} */ bytes) => { await ctx.kernel.drive.put(ctx.kernel.serviceChain("appmods"), to, bytes); return { path: to, size: bytes.length }; },
+      } : undefined;
+      return handleWebhook({ manifest: m, token, given, body, files, emit: (t, p) => ctx.events.emit(t, p),
         startFlow: (p, o) => { const h = ctx.flowsHost && ctx.kernel && ctx.flowsHost.get(ctx.kernel.space); if (!h) throw refuse("Flows are not running here", "unavailable"); return h.flows.handleWeb(p, o); } });
     }
 

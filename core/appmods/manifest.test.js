@@ -50,12 +50,22 @@ test("screens are [{id,label,path,icon?}] with a path inside the module; extra k
   assert.throws(() => parseAppModule({ name: "no" }), e => e.code === "bad_manifest" && e.problems.length >= 3);
 });
 
+test("files an app makes go only into a Drive folder the manifest lists, with a name that cannot climb", () => {
+  let m = docuseal(); m.events[0].files.saveTo = "Elsewhere/{submission}-{name}.pdf"; assert.ok(bad(m, "events[0].files.saveTo"));
+  m = docuseal(); m.events[0].files.saveTo = "Signed/../x-{name}"; assert.ok(bad(m, "events[0].files.saveTo"));
+  m = docuseal(); m.events[0].files.saveTo = "/Signed/{name}"; assert.ok(bad(m, "events[0].files.saveTo"));
+  m = docuseal(); m.events[0].files.saveTo = "Signed/{who}-{name}"; assert.ok(bad(m, "events[0].files.saveTo"));
+  m = docuseal(); delete m.drive; assert.ok(bad(m, "events[0].files.saveTo"));
+  m = docuseal(); m.drive = ["lower"]; assert.ok(bad(m, "drive"));
+});
+
 test("the card is built from the manifest only and says what the app may reach", () => {
   const c = cardOf(docuseal());
   assert.match(c.runs, /docuseal\/docuseal:3\.3\.1/);
   assert.match(c.pinned, /^sha256:e171808c/);
   assert.deepEqual(c.reaches, ["your Vyre, to tell it a document was signed"]);
   assert.deepEqual(c.shows, ["Signatures"]);
+  assert.equal(c.saves, "the files it gets back, in Signed/ in your Drive");
   const m = docuseal(); m.app.egress = []; assert.deepEqual(cardOf(m).reaches, ["nothing outside this server"]);
 });
 
