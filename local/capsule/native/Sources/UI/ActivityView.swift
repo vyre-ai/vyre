@@ -96,7 +96,7 @@ struct ActivityView: View {
             }
         case .reply(_, let text, let done, let author):
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) { AvatarView(mark(of: author), size: 14); Text(name(of: author)).font(Theme.label).foregroundColor(Theme.signal) }
+                HStack(spacing: 6) { AvatarView(markOf(author), size: 14); Text(name(of: author)).font(Theme.label).foregroundColor(Theme.signal) }
                 Text(Self.markdown(text + (done ? "" : " …"))).font(Theme.reply).foregroundColor(Theme.bone).textSelection(.enabled)
             }
         case .thinking:
@@ -113,11 +113,11 @@ struct ActivityView: View {
         }
     }
 
-    private func mark(of author: String?) -> AvatarKind { author.map { ActivityView.mark($0, who: who) } ?? .agent(title) }
+    private func markOf(_ author: String?) -> AvatarKind { author.map { ActivityView.markFor($0, who: who) } ?? .agent(title) }
     private func name(of author: String?) -> String { author.map(ActivityFeed.plain) ?? title }
 
     /// An author id ("assistant:juno", "person:alex") as a mark.
-    static func mark(_ author: String, who: Identities) -> AvatarKind {
+    static func markFor(_ author: String, who: Identities) -> AvatarKind {
         if author.hasPrefix("person:") { return who.person }
         let name = ActivityFeed.plain(author)
         if author.hasPrefix("assistant:") && (who.assistantName == nil || who.assistantName?.lowercased() == name.lowercased()) { return who.assistant(name) }

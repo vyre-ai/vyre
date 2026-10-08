@@ -30,7 +30,7 @@ public final class Direct: ObservableObject {
     init(vyred: VyredClient) {
         self.vyred = vyred
         sink = objectWillChange.sink { [weak self] in self?.changed?() }
-        activitySink = activity.objectWillChange.sink { [weak self] in self?.changed?() }
+        activitySink = activity.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
     }
 
     public var agent: String? { dm?.agent }
