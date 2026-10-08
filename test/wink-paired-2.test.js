@@ -1333,3 +1333,30 @@ test("join a team with no server, end to end: a second identity that has only a 
   await assert.rejects(() => openInvite(deps, "https://harlow.example.com/join/" + id0 + "." + blob), e => e.code === "bad_input");
   assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted by the door");
 });
+
+test("EXPLORE invite create by the owner's paired device", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const ident = await standinIdentity(t);
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  const sealDir = tmp("explore-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  const kit = await ident.another("kit");
+  const r = await session.call("spaces.invites.create", { space: made.space, role: "member", to: kit.id }).then(x => ({ ok: x }), e => ({ err: e.code + ": " + e.message }));
+  console.error("EXPLORE1", JSON.stringify(r).slice(0, 600));
+  const l = await session.call("spaces.invites.list", { space: made.space }).then(x => ({ ok: x }), e => ({ err: e.code + ": " + e.message }));
+  console.error("EXPLORE2", JSON.stringify(l).slice(0, 600));
+});
