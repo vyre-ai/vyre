@@ -62,7 +62,7 @@ export function toConfig(c) {
   // name is classified by its method (GET and HEAD read, POST PUT PATCH send, DELETE delete), which the vault holds for a yes. Flows reach the same by the allow rule at the end.
   const generic = [{ method: "GET", path: "/*", kind: "read" }, { method: "HEAD", path: "/*", kind: "read" }, { method: "POST", path: "/*", kind: "send" }, { method: "PUT", path: "/*", kind: "send" },
     { method: "PATCH", path: "/*", kind: "send" }, { method: "DELETE", path: "/*", kind: "delete" }];
-  return { ...base, endpoints: [...base.endpoints, ...generic], service: { ...base.service, allow: [...base.service.allow, { path: "/*" }] },
+  return { ...base, operations: JSON.parse(JSON.stringify(c.declaration.ops)), endpoints: [...base.endpoints, ...generic], service: { ...base.service, allow: [...base.service.allow, { path: "/*" }] },
     readers: [{ module: "connectors", paths: [c.check.path] }] };
 }
 

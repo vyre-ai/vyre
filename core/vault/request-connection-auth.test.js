@@ -13,6 +13,8 @@ import { Vault, MIGRATIONS } from "./vault.js";
 import * as saidTools from "./said.js";
 import { register } from "./request.js";
 import { normalize } from "./api-request.js";
+import { fromForm, toConfig } from "../../records/connectors/connection.js";
+import { defineConnector } from "../../records/connectors/format.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
@@ -30,11 +32,11 @@ async function mk(t) {
   const tool = (name, callers, description, input, run) => tools.set(name, { run });
   const internal = (name, description, input, run) => tools.set(name, { run });
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport } });
+  const api = register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport } });
   const ask = (input, caller = "cli") => tools.get("vault.request").run(input, { caller });
   const key = (name, fields) => v.put({ name, kind: fields.username ? "login" : "secret", fields }, "cli");
   const cred = (name, config) => v.put({ name, kind: "api-credential", fields: { config: JSON.stringify(config) } }, "cli");
-  return { v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
+  return { api, v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
 }
 const BASE = { hosts: ["api.example.com"], endpoints: [{ method: "GET", path: "/*", kind: "read" }] };
 
@@ -86,4 +88,39 @@ test("a fixed header cannot be one that authenticates or frames the request, and
   assert.throws(() => normalize({ ...ok, auth: { type: "bearer", item: "k", in: "query", param: "p" } }), /for an api-key/);
   assert.throws(() => normalize({ ...ok, auth: { type: "basic", item: "k", header: "x" } }), /no header or format/);
   assert.deepEqual(normalize({ ...ok, headers: { Version: "1" } }).headers, { version: "1" });
+});
+
+test("a Connection's operation is built into the request a caller could have written, and judged as that request", async t => {
+  const { api, net, ask, key, cred } = await mk(t);
+  await key("ghl-pat", { value: fake("key") });
+  const m = fromForm({ label: "CRM", base_url: "https://api.example.com", send: { how: "bearer" }, credential: { item: "ghl-pat" }, headers: { Version: "2021-07-28" }, check: { path: "/me" } });
+  const decl = defineConnector({ ...m.declaration, ops: { ...m.declaration.ops,
+    "contacts.get": { method: "GET", path: "/contacts/{id}", kind: "read", input: { params: { id: { type: "string", required: true } }, query: { fields: { type: "string" } } } },
+    "contacts.search": { method: "POST", path: "/contacts/search", kind: "read", relabeled: true, input: { body: { query: { type: "string", required: true } } } },
+    "contacts.create": { method: "POST", path: "/contacts", kind: "change", input: { body: { name: { type: "string", required: true } } } } } });
+  await cred("conn-crm", toConfig({ ...m, declaration: decl }));
+  // a read operation runs at once, the path is filled and encoded, the fixed header and the key are the vault's
+  const r = await ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "a/b c" }, query: { fields: "name" } } });
+  assert.equal(r.kind, "read");
+  assert.equal(net.calls[0].path, "/contacts/a%2Fb%20c?fields=name");
+  assert.equal(net.calls[0].headers.version, "2021-07-28");
+  // the relabeled search is a read (it runs at once); the create is held; the generic request is judged by its method
+  assert.equal((await ask({ credential: "conn-crm", operation: "contacts.search", input: { body: { query: "dana" } } })).kind, "read");
+  assert.equal(net.calls[1].method, "POST");
+  const kindOf = async (/** @type {any} */ input) => (await api.plan(await api.fromOperation({ credential: "conn-crm", ...input }, "conn-crm"), "conn-crm")).kind;
+  assert.equal(await kindOf({ operation: "contacts.create", input: { body: { name: "Dana" } } }), "send");
+  assert.equal(await kindOf({ operation: "request", input: { method: "GET", path: "/anything" } }), "read");
+  assert.equal(await kindOf({ operation: "request", input: { method: "POST", path: "/anything", body: { a: 1 } } }), "send");
+  assert.equal(await kindOf({ operation: "request", input: { method: "DELETE", path: "/anything/1" } }), "delete");
+  // refusals: an undeclared input, a missing one, an unknown operation, a path that is not one, a credential that is not a Connection
+  await assert.rejects(ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "1" }, query: { sneak: "x" } } }), /not part of this/);
+  await assert.rejects(ask({ credential: "conn-crm", operation: "contacts.get", input: {} }), /needed/);
+  await assert.rejects(ask({ credential: "conn-crm", operation: "nope.go" }), /no operation nope\.go/);
+  await assert.rejects(ask({ credential: "conn-crm", operation: "request", input: { method: "GET", path: "https://evil.example/x" } }), /path from the root/);
+  await assert.rejects(ask({ credential: "conn-crm", operation: "request", input: { method: "GET", path: "/a?x=1" } }), /path from the root/);
+  await key("plain", { value: fake("k2") });
+  await cred("plain-cred", { hosts: ["api.example.com"], auth: { type: "bearer", item: "plain" } });
+  await assert.rejects(ask({ credential: "plain-cred", operation: "request", input: { method: "GET", path: "/x" } }), /not a Connection/);
+  // a request with neither a url nor an operation says so
+  await assert.rejects(ask({ credential: "conn-crm" }), /names its method and url, or an operation/);
 });
