@@ -137,14 +137,31 @@ Your tool's `run` only ever sees an approved call, and `meta.gate` says how it w
 you add has no other way to act as you, because it never holds your credentials: `ctx.vault.request`
 attaches them outside the sandbox, and a write through it is held at the Gate the same way.
 
-## A tool a Flow may run: `flowAction`
+## What a module adds to Flows: `flow`
 
-A Flow's call step can run a tool only if its module says so: `{ "name": "mail.send", "outward": true, "flowAction": { "risk": "outward" } }`, or `"flowAction": { "risk": "read" }` for a read.
-Only Vyre's own modules offer one for now. The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+A module extends Flows with one declaration, `flow`, beside `does` and `watches`. Nothing else makes a tool a Flow step.
 
-The runner does not ask the kernel's action table about a Flow tool, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
+```json
+"flow": {
+  "steps": [
+    { "name": "mail.send", "label": "Send an email", "inputs": { "to": "string", "subject": "string", "body": "string" }, "outputs": { "id": "string" }, "outward": true },
+    { "name": "mail.find", "label": "Find an email", "inputs": { "query": "string" }, "outputs": { "count": "number" } }
+  ],
+  "triggers": [
+    { "name": "mail.arrived", "label": "An email arrives", "event": "mail.received", "inputs": { "from": "string", "subject": "string" } }
+  ]
+}
+```
+
+A **step** is one of the module's own tools (object form, reach anyone). A Flow's `call` step runs it. An outward step must name an outward tool (`"outward": true` on both), so the Flow holds it for the person's yes exactly as it holds any act that leaves Vyre. `inputs` and `outputs` are field names with a type (`string`, `number`, `boolean`, `object`, `array`) for the Flow editor.
+A **trigger** is a named way to start a Flow: an event the module lists in `watches.emits`, or a watcher it hosts. A Flow stores an `event` or `watcher` trigger, the kinds that already exist; the module's name for it only helps the person find it.
+Added modules may declare both. The install card shows them.
+
+The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+The runner does not ask the kernel's action table about a Flow step, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
 otherwise. For an outward tool the Flow's one approval is spent at the call (once, for exactly that input), and that is the only gate beside the tool's own. For a read tool nothing else gates it.
-Every `flowAction` tool is listed with the guard it relies on in `test/flow-action-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a read tool with no gate of its own does not pass review.
+Every flow step is listed with the guard it relies on in `test/flow-step-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a tool with no gate of its own does not pass review.
+A connection to an outside service is not declared here: a Flow runs it with the one "Call a service" step.
 
 ## What a module gets: `ctx`
 
