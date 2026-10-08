@@ -76,6 +76,16 @@ export function startInstall(host, line, out) {
       for (;;) {
         const m = run.out().match(/Your four words:\s*([a-z]+(?: [a-z]+){3})/);
         if (m) return m[1];
+        // The installer can end before the server has the words ("The four words did not show yet. To see them, run: sudo vyre words"). A person runs that, in a second terminal, so the walk does.
+        if (/did not show yet/.test(run.out())) {
+          for (let i = 0; i < 24; i++) {
+            const w = await asWalker(host, "sudo vyre words 2>&1", { pty: true, timeoutMs: 60_000 });
+            const line = w.out.split("\n").map(l => l.trim()).find(l => /^[a-z]+( [a-z]+){3}$/.test(l));
+            if (line) return line;
+            await new Promise(r => setTimeout(r, 5000));
+          }
+          throw new Error("`sudo vyre words` showed no four words in two minutes");
+        }
         const r = await Promise.race([finished, new Promise(res => setTimeout(() => res(null), 1000))]);
         if (r) throw new Error(`the installer ended before it showed four words (exit ${/** @type {any} */ (r).code}): ${tailOf(/** @type {any} */ (r).out)}`);
         if (Date.now() > end) throw new Error(`the installer showed no four words in ${Math.round(ms / 60000)} minutes: ${tailOf(run.out())}`);
