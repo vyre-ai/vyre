@@ -867,7 +867,6 @@
  "test/said-injection.test.js": 28,
  "test/said-watchers.test.js": 7,
  "test/settings-have-readers.test.js": 1,
- "test/setup-cli-names.test.js": 1,
  "test/setup-gates.test.js": 2,
  "test/sign-manifest.test.js": 2,
  "test/site-deploy-workflow.test.js": 4,
