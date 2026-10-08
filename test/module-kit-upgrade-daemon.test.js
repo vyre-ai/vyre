@@ -92,7 +92,7 @@ test("an added module ships a Kit, and an upgrade keeps its records, its tables,
   assert.equal(d.registry.status().find((/** @type {any} */ m) => m.name === "tasker")?.state, "running", "the new version starts");
   assert.deepEqual((await d.registry.call("tasker.count", {}, "local")).data, { n: 2, list: 2 }, "the module's table and the Space's records are as they were");
   const diff = (await d.registry.call("flows.kit.diff", { kit: kit2, module: "tasker" }, "cli", await meta(d))).data;
-  assert.ok(JSON.stringify(diff).includes("priority"), `the update shows the new field: ${JSON.stringify(diff).slice(0, 300)}`);
+  assert.deepEqual([diff.from, diff.to, diff.diff.removed, diff.diff.changed], [1, 2, [], [{ kind: "type", name: "tasker_item" }]], `the update shows its type changed and nothing removed: ${JSON.stringify(diff).slice(0, 300)}`);
   await install(d, kit2, 2);
   const c = (await d.registry.call("tasker.add", { title: "Send the invoice", project: { urn: project.urn }, priority: "High" }, "local")).data;
   assert.ok(c && c.urn);
