@@ -29,8 +29,16 @@ async function world(t) {
   return { d, svc, as, chain, hidden };
 }
 
-test("the sidebar is a group of the Space kernel's remote calls", () => {
+test("the sidebar is a group of the Space kernel's remote calls, and the call that takes a person and a role on trust is the daemon's alone", async t => {
   assert.deepEqual(CALLS.sidebar, ["get", "edit", "team"]);
+  const { d } = await world(t);
+  const claim = { call: "team", person: "per_ana", role: "owner", space: SP, input: { op: "hide", what: "Vault" } };
+  for (const caller of ["module:sneaky", "cli", "mcp"]) {
+    const r = await d.registry.call("sidebar.serve", claim, caller, {});
+    assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
+  }
+  const ok = await d.registry.call("sidebar.serve", claim, "module:vyred", { door: true });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
 });
 
 test("each member has their own list on the server, the same wherever they open it, and the box's own person has theirs", async t => {

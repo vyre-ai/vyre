@@ -188,7 +188,9 @@ export default {
       internal: true, effect: "write",
       description: "A team member's sidebar call, run on behalf of the person and the role the Space's kernel stated. Called only by the home's own sidebar service.",
       input: { type: "object", required: ["call", "person", "role", "space", "input"], properties: { call: { type: "string", enum: ["get", "edit", "team"] }, person: str, role: str, space: str, input: { type: "object" } } },
-      run: async (/** @type {any} */ i) => {
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        // Not for any module: the person and the role are taken on trust here, so only the daemon's own door, running the Space kernel's sidebar service, may say them.
+        if (String(meta.caller || "") !== "module:vyred") throw refuse("Only the home's own sidebar service calls this.", "denied");
         const person = String(i.person);
         if (!PERSON.test(person)) throw refuse("That is not a person.", "bad_input");
         const input = { ...(i.input || {}), space: i.space };
