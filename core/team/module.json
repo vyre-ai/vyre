@@ -230,6 +230,7 @@
       "teammate.duty-changed",
       "summon.queued",
       "summon.started",
+      "summon.thread",
       "summon.finished",
       "summon.cancelled",
       "teammate.default-changed"

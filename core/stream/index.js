@@ -15,6 +15,7 @@ import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serve, serveWS } from "./server.js";
 import { createGroups } from "./group.js";
+import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
 
 export { SessionLog, Logs } from "./log.js";
@@ -113,10 +114,14 @@ export default {
 
     const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
     const access = createAccess({ ctx, groups, logs });
+    // A hand-off to a teammate, and the teammate's steps, in the asker's conversation (team/0.3/IFACE-activity.md).
+    const activity = createActivity({ ctx, logs, groups });
+    const offSummon = ctx.events.on("*", (/** @type {any} */ e) => { if (e && typeof e.type === "string" && e.type.startsWith("summon.")) activity.onSummon(e); });
 
     const off = ctx.events.on("*", (/** @type {any} */ e) => {
       if (!e || !e.thread || !EVENTS.test(e.type)) return;
       if (groups) groups.onEvent(e);
+      activity.onThread(e);
       const waiting = held.get(e.thread);
       if (waiting) { waiting.push(e); return; }
       if (!seen.has(e.thread)) {
@@ -312,6 +317,7 @@ export default {
       setFieldSource(fn) { fieldSource = typeof fn === "function" ? fn : null; },
       async stop() {
         off();
+        offSummon();
         if (groups) groups.stop();
         for (const s of sockets) { try { s.destroy(); } catch {} }
         sockets.clear(); tickets.clear();
