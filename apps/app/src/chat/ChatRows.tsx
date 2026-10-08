@@ -189,7 +189,7 @@ export function SkeletonThread({ wide }: { wide: boolean }) {
 
 
 /** A teammate's own step or words sit under the hand-off they answer, behind a rule (data.via). */
-function Nested({ it, children }: { it: { via?: string }; children: React.ReactNode }) {
+function Nested({ it, children }: { it: any; children: React.ReactNode }) {
   const { color } = useUiTheme();
   if (!it.via) return <>{children}</>;
   return <View style={{ marginLeft: 12, paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: color.edge }}>{children}</View>;

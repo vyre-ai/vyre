@@ -374,3 +374,18 @@ test("optimistic send: the words show at once, dimmed, and the box's own row rep
   assert.equal(f.queue().length, 1);
   void b;
 });
+
+test("a hand-off is one row whose state is replaced, an ended one never goes back, and the teammate's steps carry the request they answer", () => {
+  cur = 0;
+  const f = createFolder();
+  const to = { agent: "kit-billing", role: "billing", name: "kit", project: "Northwind" };
+  f.apply(fr("handoff", { request: "r_1", to, text: "chase", state: "queued" }));
+  f.apply(fr("handoff", { request: "r_1", state: "running", thread: "ses_kit" }));
+  f.apply(fr("tool-started", { tool_id: "k1", tool: "mail.draft", summary: "Drafting", via: "r_1" }));
+  f.apply(fr("handoff", { request: "r_1", state: "done", result: "Three drafted" }));
+  f.apply(fr("handoff", { request: "r_1", state: "running" }));
+  assert.deepEqual(f.rows.map((r) => r.key), ["h:r_1", "t:k1"]);
+  const h = f.item("h:r_1");
+  assert.deepEqual([h?.name, h?.role, h?.project, h?.thread, h?.state, h?.result, h?.text], ["kit", "billing", "Northwind", "ses_kit", "done", "Three drafted", "chase"]);
+  assert.equal(f.item("t:k1")?.via, "r_1");
+});
