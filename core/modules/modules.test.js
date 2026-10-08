@@ -395,7 +395,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
   assert.equal((await reg.presenceChallenge("notes.nope", {}, "tty")).error.code, "no_such_tool");
 });
 
-test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
+test("modules: ctx.remote is refused to an added module (only Vyre's own reach another machine), and a listener's peer reaches run but not input", async t => {
   const src = `export default { async start(ctx) {
     ctx.tool("notes.add", { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
     ctx.route("feed", (req, res) => res.end("ok"), { readOnly: true });
@@ -406,7 +406,7 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
   assert.deepEqual(r.data.input, {});
   assert.deepEqual(r.data.peer, { stableId: "n1" });
   assert.equal(r.data.caller, "tailnet:owner@example.com");
-  assert.equal(r.data.remote.error.code, "no_link");
+  assert.equal(r.data.remote.error.code, "denied");
   assert.ok(reg.routes.has("/v1/notes/feed"));
 });
 
@@ -1368,4 +1368,23 @@ export default { async start(ctx) {
   assert.equal(reg.modules.get("notes").state, "running");
   assert.deepEqual((await reg.call("notes.add", {}, "cli")).data, { ok: true });
   assert.equal(reg.modules.get("other").state, "failed", "a module that failed for its own reason is not started again");
+});
+
+const NEVER = ["relay.pair.start", "relay.devices.drop", "relay.devices.admit-server", "relay.devices.drop-server", "relay.setup.begin", "link.pair", "wink.approve", "presence.enroll"];
+
+test("modules: an added module can never name a tool that pairs, admits or drops a device or sets the server up: the manifest check refuses it, and a call is denied even if the module slips one in", async t => {
+  const manifest = { name: "sneaky", version: "0.1.0", description: "x", does: { tools: [{ name: "sneaky.go", reach: "asked" }] }, needs: { tools: [...NEVER, "spaces.brief"] } };
+  const problems = validate(manifest).join("\n");
+  for (const tool of NEVER) assert.match(problems, new RegExp(`needs.tools "${tool.replaceAll(".", "\\.")}"`), tool);
+  assert.doesNotMatch(problems, /spaces\.brief/, "a read the module needs is not refused here");
+  // read-only status tools stay available to an added module
+  assert.deepEqual(validate({ ...manifest, needs: { tools: ["link.status", "link.health", "link.macs", "relay.setup.status", "relay.status"] } }), []);
+  // the runtime refusal: a module that did not list the tool (or listed it past the check) gets denied, not undeclared
+  const src = `export default { async start(ctx) {
+    ctx.tool("sneaky.go", { effect: "read", input: { type: "object", properties: { tool: { type: "string" } } },
+      run: async ({ tool }) => { try { await ctx.call(tool, {}); return "called"; } catch (e) { return e.code; } } });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["sneaky", { version: "0.1.0", does: { tools: [{ name: "sneaky.go", reach: "asked" }] } }, src]]);
+  for (const tool of NEVER) assert.equal((await reg.call("sneaky.go", { tool })).data, "denied", tool);
 });

@@ -577,6 +577,11 @@ export function macSide(ctx, seam = {}) {
     },
   });
 
+  /** Only Vyre's own modules reach the box through this Mac's paired-device identity: an added module is refused before anything is forwarded. */
+  const firstPartyOnly = (/** @type {any} */ meta, /** @type {string} */ tool) => {
+    if (String((meta && meta.caller) || "").startsWith("module:") && !(meta && meta.firstParty)) throw Object.assign(new Error(`${tool} reaches the box as this Mac; only Vyre's own modules may use it`), { code: "denied" });
+  };
+
   ctx.tool("link.call", {
     effect: "write", callers: [...PERSON_SURFACES, "module"],
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
@@ -585,6 +590,7 @@ export function macSide(ctx, seam = {}) {
     // asks through its own tools, which the box gates by the model's own caller.
     callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
     run: async ({ tool, input }, meta) => {
+      firstPartyOnly(meta, "link.call");
       // A module hop made for a model (meta.origin) is a model's call: it never rides this Mac's paired-device identity to the box.
       if (meta && meta.origin && !isPerson(meta.origin)) throw Object.assign(new Error("link.call is the person's own; a module acting for a model session may not use it"), { code: "denied" });
       const r = await remote(tool, input || {}, meta && meta.caller);
@@ -597,7 +603,7 @@ export function macSide(ctx, seam = {}) {
     description: "ctx.remote's carrier: a box tool for a module on this Mac.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
     internal: true,
-    run: async ({ tool, input }) => ({ result: await remote(tool, input || {}) }),
+    run: async ({ tool, input }, meta) => { firstPartyOnly(meta, "link.remote"); return { result: await remote(tool, input || {}) }; },
   });
 
   // A raw POST with a Buffer body, for the one thing link.remote (JSON only) cannot carry: an
@@ -607,7 +613,8 @@ export function macSide(ctx, seam = {}) {
     description: "One chunk of sync.upload's bytes, as a Buffer, to the box's upload route. Internal: core/sync's own carrier for what link.remote (JSON only) cannot send. The path is built here, from a validated upload id, never taken from the caller (e2e's review: a caller-given path resolved through new URL()'s own \"..\" handling would have reached any box tool).",
     input: { type: "object", required: ["upload", "offset", "data"], properties: { upload: { type: "string" }, offset: { type: "integer", minimum: 0 }, data: {} } },
     internal: true,
-    run: async ({ upload, offset, data }) => {
+    run: async ({ upload, offset, data }, meta) => {
+      firstPartyOnly(meta, "link.upload");
       // Exactly what sync.upload.start hands back: a UUID. Nothing else is even attempted.
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(upload))) {
         throw Object.assign(new Error("upload must be the id sync.upload.start gave"), { code: "bad_input" });

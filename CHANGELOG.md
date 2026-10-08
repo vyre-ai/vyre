@@ -3,6 +3,8 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(security): an added module can never name a tool that pairs, admits or drops a device or sets the server up (the relay, link, wink and presence families, except their read-only status tools). `vyre module check` and the loader refuse a manifest that lists one, and a call to one from an added module is denied whatever its needs.tools say. test/added-module-never.test.js runs real added modules in a real daemon with the real presence check.
+- fix(security): only first-party modules may reach another machine. An added module is refused by ctx.remote and by link.call, link.remote and link.upload on a Mac, before anything is forwarded; Vyre's own modules (Files, Planner, Sync) are unchanged. test/remote-first-party.test.js refuses every model and added-module caller for each carrier.
 - docs(readme): the Lumen film is captioned as where 0.3.0 is heading, until a walk on real devices shows it working.
 - fix(install): the app's Add a server line (vyre.run/i with VYRE_CODE) ends after the four words; it no longer shows the old terminal pairing (a QR, a long code, a 5 minute wait ending "Nothing was paired") that 0.2.12 printed after them.
 - feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
