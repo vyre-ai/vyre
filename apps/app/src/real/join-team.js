@@ -46,9 +46,10 @@ export function parseInviteLink(link) {
 
 /**
  * The space's record from the names directory, verified from its genesis against the pin the link carries (the link's own version of the list), with the sealed record opened.
- * @param {{ fetch: typeof fetch, base: string, now?: () => number }} d @param {string} label @param {{ id: string, seq: number, head: string }} pin
+ * @param {{ fetch: typeof fetch, base: string, now?: () => number }} d @param {string} label @param {{ id: string, seq: number, head: string } | null} pin
  */
 export async function resolveSpace(d, label, pin) {
+  // `pin` null: the owner reading their own space to make a link; the list is verified from its genesis and the pin the link will carry is its head now.
   const now = d.now ?? Date.now;
   const root = d.base.replace(/\/+$/, "");
   const get = async (/** @type {string} */ name) => {
@@ -69,10 +70,11 @@ export async function resolveSpace(d, label, pin) {
   };
   if (!r || r.name !== label || r.kind !== "space" || !Array.isArray(r.ops)) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   /** @type {any} */ let state;
-  try { state = await C.verifyChain(r.ops, { now: now() + C.SKEW_MS, ownerOps, liveFrom: pin.seq + 1 }); } catch { throw refuse("wrong_space", "That space could not be verified. Ask for a new invite."); }
+  try { state = await C.verifyChain(r.ops, { now: now() + C.SKEW_MS, ownerOps, ...(pin ? { liveFrom: pin.seq + 1 } : {}) }); } catch { throw refuse("wrong_space", "That space could not be verified. Ask for a new invite."); }
   if (state.id !== r.id) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   const seen = await C.checkAnswer(pin, r.ops);
   if (!seen.ok) throw refuse("forged", "This invite could not be verified. Ask for a new one.");
+  const head = C.pinOf(state);
   const rec = r.rec;
   if (!r.sealed || !rec) throw refuse("wrong_space", "That space could not be verified. Ask for a new invite.");
   try {
@@ -83,7 +85,7 @@ export async function resolveSpace(d, label, pin) {
   } catch { throw refuse("wrong_space", "That space's record does not check out. Ask for a new invite."); }
   const payload = await openRecord(label, r.sealed);
   if (!payload) throw refuse("wrong_space", "That space's record could not be opened.");
-  return { id: state.id, payload };
+  return { id: state.id, payload, pin: head };
 }
 
 /** Wait for a promise at most `ms`. @template T @param {Promise<T>} p @param {number} ms @param {() => Error} onTimeout @returns {Promise<T>} */
