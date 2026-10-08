@@ -144,6 +144,8 @@ if (cmd[0] === "setpriv") {
   const target = (cmd.join(" ").match(/dev\\/tcp\\/([0-9.]+)\\//) || [])[1];
   if (target && target.startsWith("172.31.")) {
     fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n");
+    // a namespace that is still settling: the first N probes fail with a timeout, then they behave
+    if (has("probe-flaky")) { const n = Number(fs.readFileSync(F + "/probe-flaky", "utf8")); if (n > 0) { fs.writeFileSync(F + "/probe-flaky", String(n - 1)); process.exit(124); } }
     if (has("store-dead")) process.exit(uid === daemon ? 1 : 124);
     if (uid === daemon) process.exit(0);
     const mine = (fs.existsSync(file) ? load() : []).filter(x => x.ch === "OUTPUT").map(x => x.r);

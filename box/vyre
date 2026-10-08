@@ -821,6 +821,8 @@ update() {
   modules_ok || roll_back
   # The Space helper (when installed): the new container has none of the old one's network joins or firewall rules, and the image the helper regenerates from changed.
   if [ -s "$SP_PRIV/images" ]; then space_helper_record && space_helper_reattach || echo "vyre: the Space helper could not be brought up to date after the update" >&2; fi
+  # The watcher is a long-running process of the OLD wrapper's text: left alone it would keep re-walling with the old code after the next restart of the vyre container (found on a real box: it knew no apps).
+  if [ -f "$SYSTEMD_DIR/$SPACES_UNIT-watch.service" ] && command -v systemctl >/dev/null 2>&1; then systemctl try-restart "$SPACES_UNIT-watch.service" >/dev/null 2>&1 || true; fi
   put_text "$VERSION" "$DIR/VERSION"
   UPD_DONE=1
   # Raise the floor (never lower it): the host's own record of the newest version this server has had.
@@ -1885,6 +1887,18 @@ sp_app_bootstrap() {
   sp_app_handoff "$m" "$body" || { MSG="the setup result could not be handed over"; return 1; }
   : >"$d/bootstrapped"
 }
+# sp_app_rewall MODULE: the walls of a running app put in again in a new vyre container and proved. The container has only just started, so a failed proof is looked at again twice, a few seconds
+# apart, before the app is given up (a probe that runs while the namespace is still settling is not a hole). Each pass applies and proves the whole set again.
+sp_app_rewall() {
+  _m=$1; _i=0
+  while :; do
+    MSG=""
+    if sp_app_load "$_m" && sp_attach_net "$_m" "vyre-app-${_m}_net" "$APP_ALIAS" && sp_fw_apply_net "$_m" "vyre-app-${_m}_net" "vyre-app:$_m" "app:$_m" && sp_in_apply "$_m" "$A_HOOK" \
+        && sp_probe_to "$_m" "vyre-app-$_m" app "vyre-app-${_m}_net" "$A_PORT" "the app" && sp_in_probe "$_m" "$A_HOOK"; then return 0; fi
+    _i=$((_i + 1)); [ "$_i" -lt "${SP_REWALL_TRIES:-3}" ] || return 1
+    sleep "${SP_REWALL_WAIT:-4}"
+  done
+}
 sp_app_up() {
   m=$1
   sp_app_load "$m" || { MSG="that app is not recorded on this server"; return 1; }
@@ -2194,8 +2208,7 @@ space_helper_reattach() {
     sp_app_running "$m" || continue
     sp_locked "app.$m" && continue
     MSG=""
-    if ! { sp_app_load "$m" && sp_attach_net "$m" "vyre-app-${m}_net" "$APP_ALIAS" && sp_fw_apply_net "$m" "vyre-app-${m}_net" "vyre-app:$m" "app:$m" && sp_in_apply "$m" "$A_HOOK" \
-        && sp_probe_to "$m" "vyre-app-$m" app "vyre-app-${m}_net" "$A_PORT" "the app" && sp_in_probe "$m" "$A_HOOK"; }; then
+    if ! sp_app_rewall "$m"; then
       sp_app_dc "$m" stop >/dev/null 2>&1 || true
       echo "vyre: the app $m was stopped: ${MSG:-its firewall could not be proved} (ask for app-up again once the server is healthy)" >&2
       sp_log "stopped app after update: ${MSG:-}"
@@ -2240,6 +2253,8 @@ space_helper() {
       systemctl daemon-reload
       systemctl enable --now "$un.path" >/dev/null 2>&1 || systemctl enable "$un.path"
       systemctl enable --now "$un-watch.service" >/dev/null 2>&1 || systemctl enable "$un-watch.service"
+      # already running from an older install: it restarts so that it runs this wrapper's code
+      systemctl try-restart "$un-watch.service" >/dev/null 2>&1 || true
       # The list of firewalled subnets exists from the start (empty), so a container entry that finds the helper installed and no list fails closed (SH-5).
       [ -f "$SP_STATE/subnets" ] || { : >"$SP_STATE/subnets" && chmod 644 "$SP_STATE/subnets"; }
       printf '1\n' >"$SP_STATE/ready"

@@ -363,12 +363,18 @@ test("app helper: the handoff file is swept after ten minutes, and `reattach` wa
   await r.helper();
   assert.ok(!fs.existsSync(hand), "an unread handoff does not wait for ever");
   // a new vyre container: new pid, no joins, no rules
-  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); fs.writeFileSync(path.join(r.F, "app-running-docuseal"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"])); };
+  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); fs.writeFileSync(path.join(r.F, "app-running-docuseal"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"], { SP_REWALL_WAIT: "0" })); };
   const ok = await again();
   assert.equal(ok.code, 0, ok.out);
   const pid = read(path.join(r.F, "ctr-pid"));
   assert.equal(r.appFw(pid).length, 5, "joined and walled again in the new container");
   assert.match(read(path.join(r.F, "joined")), /vyre-app-docuseal_net/);
+  // a namespace still settling: a proof that fails twice and then holds does not stop the app
+  r.flag("probe-flaky", "2");
+  const settling = await again();
+  assert.equal(settling.code, 0, settling.out);
+  assert.ok(fs.existsSync(path.join(r.F, "app-running-docuseal")), "two failed proofs and a third that holds: the app stays");
+  fs.rmSync(path.join(r.F, "probe-flaky"));
   r.flag("fw-ineffective");
   const bad = await again();
   assert.match(bad.out, /the app docuseal was stopped/);
@@ -433,4 +439,12 @@ test("app helper: `vyre admin purge-app` is an admin act (a terminal, a typed wo
   assert.match(r.calls(), /compose .* down -v --remove-orphans/);
   assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:docuseal"));
   assert.match(read(path.join(r.priv, "log")), /admin purge-app docuseal/);
+});
+
+test("app helper: an install over a running watcher restarts it, so the watcher that re-walls after a restart of the vyre container runs the wrapper that was installed", opts, async t => {
+  const r = await ready(t);
+  fs.writeFileSync(path.join(r.F, "calls"), "");
+  const p = /** @type {any} */ (await r.run(["space-helper", "install"]));
+  assert.equal(p.code, 0, p.out);
+  assert.match(r.calls(), /systemctl try-restart vyre-spaces-watch\.service/);
 });
