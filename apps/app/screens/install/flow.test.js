@@ -139,5 +139,5 @@ test("a refusal coded owned_by_other says the server is someone else's, with or 
 test("on the first run, Join a team and Add a server go back to the three choices", () => {
   assert.equal(backOf("join", { first: true }), "choose");
   assert.equal(backOf("mycloud", { first: true }), "choose");
-  assert.equal(backOf("join", {}), null);
+  assert.equal(backOf("join", {}), "spaces");
 });
