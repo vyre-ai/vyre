@@ -4,7 +4,7 @@
   "description": "Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal first) that run on this server, with their screens, their API as a Connection and their events.",
   "roles": ["box", "local"],
   "requires": ["vault"],
-  "needs": { "daemon": ["flowsHost"], "vault": ["per-app"] },
+  "needs": { "daemon": ["flowsHost"], "vault": ["per-app"], "kernel": { "actions": ["drive.write", "drive.read"], "prefixes": ["file/Signed"] } },
   "does": {
     "tools": [
       { "name": "appmods.catalog", "effect": "read", "reach": "anyone" },

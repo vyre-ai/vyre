@@ -4,6 +4,7 @@
   "vyre": "1",
   "description": "Send a document to be signed and get the signed copy back in your Drive. Runs DocuSeal on this server.",
   "license": "AGPL-3.0",
+  "drive": ["Signed"],
   "source": "https://github.com/docusealco/docuseal",
   "app": {
     "image": "docuseal/docuseal:3.3.1@sha256:e171808ce8dabb08491a49a6d8c477670a65ddce5e3de4764904b63a4487940f",
@@ -29,7 +30,7 @@
     ]
   },
   "events": [
-    { "webhook": "submission.completed", "event": "docuseal.signed", "flow": "docuseal-signed", "data": { "submission": "data.id", "documents": "data.documents", "email": "data.submitters[0].email", "template": "data.template.name" } },
+    { "webhook": "submission.completed", "event": "docuseal.signed", "flow": "docuseal-signed", "data": { "submission": "data.id", "email": "data.submitters[0].email", "template": "data.template.name" }, "files": { "list": "data.documents", "url": "url", "name": "name", "saveTo": "Signed/{submission}-{name}.pdf" } },
     { "webhook": "form.completed", "event": "docuseal.form-completed", "data": { "submission": "data.submission.id", "email": "data.email" } }
   ],
   "screens": [
