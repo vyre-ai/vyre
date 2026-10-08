@@ -18,7 +18,7 @@
 // stale or forked answer. There is no recovery wait here: recovery is a chain op (the code, or two contacts), and the 24 hour newcomer
 // rule inside the chain is what stops a takeover. Nothing here publishes a DNS record.
 
-import { verdict, base32, dnsFor, same, sha256 } from "./index.js";
+import { verdict, base32, dnsFor, same, sha256, ROUTE_RE } from "./index.js";
 import * as C from "./chain.js";
 
 export const RECORD_TAG = "vyre-id-record-v1";
@@ -31,6 +31,8 @@ export const ID_LIMITS = Object.freeze({
   sealed: 2048,
   /** own domains one identity may alias */
   aliases: 5,
+  /** servers one space may name */
+  servers: 8,
   /** a reservation code lives this long */
   reserveMs: 24 * 3_600_000,
   /** how far a record's own time may be from the directory's */
@@ -366,12 +368,12 @@ export const idOps = {
   // wildcard) and, once, a CAA record that names the one ACME account the Space's Caddy uses, so no other account can be issued a certificate for the name. HTTP-01 and TLS-ALPN-01 are never offered.
 
   /** The Space whose name this is, with the signed act checked. @this {any} @param {any} b @param {string} action @param {string} subject */
-  async idAcmeSpace(b, action, subject) {
+  async idAcmeSpace(b, action, subject, { fresh = true } = {}) {
     const v = verdict(b.name);
     const rec = v.status === "invalid" ? null : await this.idLiveRecord(v.name);
     if (!rec) throw err(404, "not_found", "no such name");
     if (rec.kind !== "space") throw err(403, "not_a_space", "certificates are issued for a Space's names");
-    await this.idCheckAct(rec, b.act, action, subject, { fresh: true });
+    await this.idCheckAct(rec, b.act, action, subject, { fresh });
     return rec;
   },
 
@@ -392,6 +394,29 @@ export const idOps = {
     const fqdn = `_acme-challenge.${rec.name}.${dnsFor(this.env).zone}`;
     await dnsFor(this.env).clear(fqdn, "TXT");
     return { fqdn };
+  },
+
+  /**
+   * Which servers serve a Space's name. The Space signs (an entry of its own list, like releasing a name); only a route listed here may then ask the directory to point the Space's name at
+   * its address or write its certificate challenge (the route-signed ops in index.js). A server never holds a name of its own: it serves the Space's.
+   * @this {any}
+   */
+  async op_idServer(b) {
+    const route = String(b.route || "");
+    if (!ROUTE_RE.test(route)) throw err(400, "bad_route", "not a server's route");
+    const remove = b.remove === true;
+    // The FIRST server needs no older sign-in: a person upgrading from Home to Cloud on their first day signs with the only device they have. Every other change to the list does.
+    const cur = await this.idLiveRecord(verdict(b.name).name);
+    const first = !remove && cur && cur.kind === "space" && !(Array.isArray(cur.servers) && cur.servers.length);
+    const rec = await this.idAcmeSpace(b, remove ? "server-remove" : "server-add", route, { fresh: !first });
+    const list = Array.isArray(rec.servers) ? rec.servers : [];
+    if (!remove && !list.includes(route) && list.length >= ID_LIMITS.servers) throw err(409, "too_many_servers", `a space has at most ${ID_LIMITS.servers} servers`);
+    rec.servers = remove ? list.filter((/** @type {string} */ r) => r !== route) : [...new Set([...list, route])];
+    await this.idSave(rec);
+    const served = (await this.store.get(`sv/${route}`)) || [];
+    const next = remove ? served.filter((/** @type {string} */ n) => n !== rec.name) : [...new Set([...served, rec.name])];
+    if (next.length) await this.store.put(`sv/${route}`, next); else await this.store.delete(`sv/${route}`);
+    return { name: rec.name, servers: rec.servers.length };
   },
 
   /** Pin issuance for the Space's name to one ACME account (its accounturi). Replaces the pin. @this {any} */
@@ -428,7 +453,7 @@ export const idOps = {
 export const ID_ROUTES = Object.freeze({
   "POST /v1/ids/claim": "idClaim", "POST /v1/ids/reserve": "idReserve", "POST /v1/ids/reserved-for": "idReservedFor", "POST /v1/ids/finalize": "idFinalize", "GET /v1/ids/resolve": "idResolve", "POST /v1/ids/append": "idAppend", "POST /v1/ids/update": "idUpdate",
   "POST /v1/ids/alias": "idAlias", "DELETE /v1/ids/alias": "idAliasClear", "POST /v1/ids/release": "idRelease",
-  "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa",
+  "POST /v1/ids/acme": "idAcme", "DELETE /v1/ids/acme": "idAcmeClear", "POST /v1/ids/caa": "idCaa", "POST /v1/ids/server": "idServer",
 });
 /** The routes that carry their own proof and so take no request signature. */
-export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa"]));
+export const SELF_PROVEN = Object.freeze(new Set(["idClaim", "idReserve", "idReservedFor", "idFinalize", "idResolve", "idAppend", "idUpdate", "idAlias", "idAliasClear", "idRelease", "idAcme", "idAcmeClear", "idCaa", "idServer"]));
