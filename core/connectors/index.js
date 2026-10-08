@@ -283,9 +283,20 @@ export default {
     ctx.tool("connectors.connection.import", {
       effect: "read",
       callers: READERS,
-      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file as JSON. Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
-      input: obj({ text: str }, ["text"]),
-      run: ({ text }) => { try { return importSpec(String(text)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); } },
+      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file as JSON, or { url } is its public https address, which only the person may ask for (vyred fetches it, at most 5 MB, nothing of theirs sent). Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
+      input: obj({ text: str, url: str }),
+      run: async ({ text, url }, meta) => {
+        let body = text;
+        if (url !== undefined) {
+          // by address: the person's act, never an agent's say alone (an address in a model's hands is a request for vyred to go and read something)
+          person(meta, "import a description from an address");
+          const r = /** @type {any} */ (await ctx.call("vault.fetch.public", { url: String(url) }));
+          if (r.error) throw fail(`could not read that address: ${r.error.message}`, r.error.code === "denied" ? "failed" : r.error.code || "failed");
+          body = r.data.body;
+        }
+        if (body === undefined) throw fail("give the description as text, or its address as url", "bad_input");
+        try { return importSpec(String(body)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
+      },
     });
     ctx.tool("connectors.connection.export", {
       effect: "read",
