@@ -105,7 +105,7 @@ jobs:
         working-directory: local/capsule/native-win/app
         run: |
           test -f app-web/index.html
-          find app-web -type l | grep -q . && { echo "the web build holds a symlink"; exit 1; }
+          if [ -n "$(find app-web -type l)" ]; then echo "the web build holds a symlink"; exit 1; fi
       - name: build the installer (NSIS, unsigned for 0.2)
         shell: bash
         working-directory: local/capsule/native-win/app

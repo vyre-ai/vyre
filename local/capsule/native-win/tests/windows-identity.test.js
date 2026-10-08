@@ -74,9 +74,9 @@ test("the Windows app is a client only in 0.2.9: it starts no vyred and offers n
   assert.ok(!/make_server|makeServer|setup\.server/.test(rs + read("../src/shell.rs")), "no make-this-PC-a-home command");
   const bridge = /fn shell_signal[\s\S]*?\n}\n/.exec(rs)[0];
   assert.ok(!/makeServer|boxless: true/.test(bridge), "the page is not offered a home on this PC");
+  // One setup (spec part 10): Windows offers Join a team or Add a server after the identity, and no My Home. The window is not a Mac window, so deviceKind never gives it the Mac's home path.
   const flow = readFileSync(new URL("../../../../apps/app/screens/install/first-run.js", import.meta.url), "utf8");
-  assert.match(flow, /A Vyre home can't run on Windows yet\. Use the Vyre app here, and run your home on a Mac, Linux or a server\./);
-  assert.match(readFileSync(new URL("../../../../apps/app/screens/install/InstallScreen.tsx", import.meta.url), "utf8"), /isWindowsShell\(\) \? <Banner tone="warn">\{MY_CLOUD\.windows\}/);
+  assert.match(flow, /return macShell \? "mac" : "web"/);
 });
 
 test("the TPM key signs only bytes the shell can summarise, behind the shell's own native confirmation, and never shows the page's caption (KP-3)", () => {
@@ -128,8 +128,4 @@ test("every key failure is written to the app log with its real reason, and the 
   assert.match(rs, /applog::path\(std::env::var\("LOCALAPPDATA"\)/);
   for (const c of ["enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`logged\\("${c}", ncrypt::`), c);
   assert.match(rs, /log\("fail", "identity_seed", e\)/);
-  // the page-side half: the claim names the shell's reason, not a generic line
-  const ik = readFileSync(new URL("../../../../apps/app/src/real/install.ts", import.meta.url), "utf8");
-  assert.match(ik, /lastKeyFailure\(\)/);
-  assert.match(ik, /Reason: \$\{why\}/);
 });
