@@ -28,8 +28,6 @@
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
 export const ZONE_TAG = "vyre-acme-zone";
-/** The tag the reclaim code of a released name is hashed under. */
-export const RECLAIM_TAG = "vyre-name-reclaim";
 export const ROUTE_RE = /^[a-z2-7]{26}$/;
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
@@ -496,29 +494,6 @@ export class Directory {
 
   // -- operations --
 
-  /** The identities (names) whose list holds this route as an entry. A bounded read of the identity records. @param {string} route */
-  async identitiesListing(route) {
-    const out = [];
-    for (const [, rec] of await this.store.list({ prefix: "id/" })) {
-      if (rec && rec.state !== "tombstone" && Array.isArray(rec.eids) && rec.eids.includes(route)) out.push(rec.name);
-      if (out.length >= 5) break;
-    }
-    return out;
-  }
-  /**
-   * Is this caller the name's own owner, so a released name is theirs to claim back? The route that released it, an identity that listed that route (its list as it stands now), or the reclaim code the
-   * release gave back. Nobody else: a tombstone is never another person's.
-   * @param {any} rec a tombstone @param {string|undefined} route @param {unknown} reclaim
-   */
-  async reclaimable(rec, route, reclaim) {
-    const r = rec && rec.state === "tombstone" ? rec.reservedFor : null;
-    if (!r) return false;
-    if (route && Array.isArray(r.routes) && r.routes.includes(route)) return true;
-    if (typeof reclaim === "string" && reclaim && r.code && await sha256(`${RECLAIM_TAG}\n${reclaim}`) === r.code) return true;
-    if (route) for (const name of r.ids || []) { const id = await this.idLiveRecord(name); if (id && Array.isArray(id.eids) && id.eids.includes(route)) return true; }
-    return false;
-  }
-
   async op_check(_b, auth, _ip, q) {
     const v = verdict(q.name);
     if (v.status !== "ok") return { name: v.name, status: v.status, why: v.why };
@@ -531,8 +506,6 @@ export class Directory {
       return { name: v.name, status: "taken", why: "someone else has that name" };
     }
     if (auth && rec.route === auth.route) return { name: v.name, status: "mine", why: null };
-    // A name its owner gave up is theirs to claim again: never "someone else has that name" to them.
-    if (await this.reclaimable(rec, auth && auth.route, q.reclaim)) return { name: v.name, status: "ok", why: null, reclaim: true };
     return { name: v.name, status: "taken", why: "someone else has that name" };
   }
 
@@ -552,12 +525,8 @@ export class Directory {
       throw e;
     });
     if (total === max) console.warn(`names: ALERT the daily claim ceiling (${max}) is now reached`);
-    const was = await this.load(v.name);
-    const back = was && await this.reclaimable(was, a.route, b.reclaim);
-    if ((was && !back) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
-    // Its owner claiming it again keeps its history; it starts unpointed like any claim, and the new server points it.
-    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, notices: back ? was.notices || [] : [], log: back ? was.log || [] : [] };
-    if (back) this.note(rec, "reclaimed", {});
+    if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
+    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] };
     await this.save(rec);
     await this.store.put(`r/${a.route}`, v.name);
     await this.store.delete(`m/${a.route}`); // the route holds a name again: the old "moved" note no longer applies
@@ -625,15 +594,13 @@ export class Directory {
     const rec = await this.owned(b, a);
     await this.store.delete(`r/${a.route}`);
     if (!rec.everPointed) { await this.drop(rec); return { name: rec.name, tombstone: false }; }
-    // Ever live: it can never be anyone else's (support's admin rebind moves it), but it stays its releaser's: the route that held it, the identities that list that route, and whoever holds the
-    // reclaim code given back here (a reinstalled server has a new route key, so a code the person keeps is the one thing that links the two).
+    // Ever live: it can never be anyone else's (support's admin rebind moves it).
     await this.unpend(rec);
-    const reclaim = base32(crypto.getRandomValues(new Uint8Array(15)));
-    Object.assign(rec, { state: "tombstone", route: null, ips: {}, reservedFor: { routes: [a.route], ids: await this.identitiesListing(a.route), code: await sha256(`${RECLAIM_TAG}\n${reclaim}`) } });
+    Object.assign(rec, { state: "tombstone", route: null, ips: {} });
     this.note(rec, "released", {});
     await this.save(rec);
     await this.wipeDns(rec);
-    return { name: rec.name, tombstone: true, reclaim };
+    return { name: rec.name, tombstone: true };
   }
 
   async op_mine(_b, a) {
