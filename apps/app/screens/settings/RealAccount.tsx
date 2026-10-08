@@ -8,7 +8,9 @@ import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, mar
 import { Group, Page } from "../places/Frame";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
-import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes, updateStatus } from "./real";
+import { agentsList, entries as loadEntries, identity as loadIdentity, removeEntry, replaceCode, types as loadTypes } from "./real";
+import { useUpdate } from "../../src/state/update";
+import { aboutButton, aboutLine, appliedLine } from "./update-model.js";
 import { CREDITS } from "./data";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
@@ -101,10 +103,22 @@ export function RealPrivacy() {
 
 /** About: the version the box is running, and the open-source credits. */
 export function RealAbout() {
-  const [v, setV] = useState<string | null>(null);
-  useEffect(() => { updateStatus().then((s) => setV(s.current)).catch(() => setV(null)); }, []);
+  const { status, busy, check, apply } = useUpdate();
+  const v = status ? status.current : null;
+  const button = aboutButton(status);
+  const run = () => {
+    if (!button) return;
+    const job = button.action === "apply" ? apply().then((r) => showToast(appliedLine(r))) : check().then(() => undefined);
+    job.catch((e) => showToast(say(e)));
+  };
   return (
     <Page title="About Vyre" sub={v ? `Version ${v}.` : undefined} back="/u/settings">
+      {status ? (
+        <Card className="gap-s2">
+          <Text tone="muted">{aboutLine(status)}</Text>
+          {button ? <View className="flex-row"><Button label={busy ? "Working" : button.label} disabled={busy} onPress={run} /></View> : null}
+        </Card>
+      ) : null}
       <Group title="Open-source credits">
         <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} /></View>)}</Card>
       </Group>
