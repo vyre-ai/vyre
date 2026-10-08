@@ -78,7 +78,7 @@ export function installLine(version, vars = {}) {
 }
 
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
-export const codeLooksRight = (/** @type {string} */ c) => /^VYRE-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/.test(String(c || "").trim().toUpperCase());
+export const codeLooksRight = (/** @type {string} */ c) => /^VYRE(-[A-HJ-NP-Z2-9]{4}){4}$/.test(String(c || "").trim().toUpperCase());
 
 /** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
 export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
