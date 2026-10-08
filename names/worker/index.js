@@ -13,7 +13,7 @@
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
-//   POST   /v1/names/admin/drop      {name}               support only: take a name back from a server, so an identity or a space can claim it; needs the ADMIN_SECRET header
+//   POST   /v1/names/admin/drop      {name}               support only: take a name back from a server, or from an identity that lost its keys, so it can be claimed again; needs the ADMIN_SECRET header
 //   GET    /health
 //
 // Identity: the box's relay route key (ADR 0026), Ed25519. Every call but check carries
@@ -598,7 +598,15 @@ export class Directory {
     const v = verdict(String(b.name || ""));
     if (v.status === "invalid") throw err(400, "bad_request", "not a name");
     const rec = await this.load(v.name);
-    if (!rec) throw err(404, "no_such_name", "no server holds that name");
+    if (!rec) {
+      // Support only: an IDENTITY that holds the name (its keys lost, the person starting again) gives it up with no tombstone, so it can be reserved afresh.
+      const id = await this.store.get(`id/${v.name}`);
+      if (!id) throw err(404, "no_such_name", "nothing holds that name");
+      for (const d of id.aliases || []) await this.store.delete(`ia/${d}`);
+      if (id.id) await this.store.delete(`ii/${id.id}`);
+      await this.store.delete(`id/${v.name}`);
+      return { name: v.name, dropped: true, identity: true };
+    }
     if (rec.route) await this.store.put(`m/${rec.route}`, { name: null, dropped: rec.name, at: this.now() });
     await this.drop(rec);
     return { name: rec.name, dropped: true };

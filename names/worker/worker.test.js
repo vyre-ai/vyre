@@ -283,6 +283,19 @@ test("admin drop: a server's name is taken back, its address unpublished, and th
   assert.equal(code(await adminDrop(w, { name: "alex" })), "no_such_name");
 });
 
+test("admin drop: an identity's name (its keys lost) is given up with no tombstone and can be claimed again; without the secret it stays", async t => {
+  const w = world(t, { ADMIN_SECRET: ADMIN }), a = boxOf(w);
+  await serve(w, a, "robin");
+  assert.equal(data(await a.get("/v1/names/check?name=robin")).status, "taken");
+  assert.equal((await adminDrop(w, { name: "robin" }, "w".repeat(48))).status, 401, "a wrong secret");
+  assert.equal(data(await a.get("/v1/names/check?name=robin")).status, "taken", "still held");
+  const r = await adminDrop(w, { name: "robin" });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.data.identity, true);
+  assert.equal(data(await boxOf(w).get("/v1/names/check?name=robin")).status, "ok", "free to reserve again");
+  assert.equal(code(await adminDrop(w, { name: "robin" })), "no_such_name");
+});
+
 test("a space's servers: only a route the space listed may point, publish or write a challenge for its name; the space adds and removes them with a signed act", async t => {
   const w = world(t), a = boxOf(w), b = boxOf(w);
   const x = await serve(w, a, "harlow");
