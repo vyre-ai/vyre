@@ -61,7 +61,7 @@
  "apps/app/ui/fields/logic.test.js": 11,
  "apps/app/ui/marks/source.test.js": 7,
  "apps/app/ui/motion/motion.test.js": 9,
- "apps/app/ui/shell/nav.test.js": 5,
+ "apps/app/ui/shell/nav.test.js": 6,
  "apps/app/ui/tasks/model.test.js": 7,
  "apps/app/ui/views/logic.test.js": 14,
  "apps/app/vendor/glass/input.test.js": 2,
@@ -907,5 +907,9 @@
  "web/vendor/jsqr/jsqr.test.js": 2,
  "core/cli/commands/words.test.js": 2,
  "test/workflows-yaml.test.js": 3,
- "stores/twenty/deferred-store.test.js": 2
+ "stores/twenty/deferred-store.test.js": 2,
+ "lib/sidebar/model.test.js": 8,
+ "core/sidebar/sidebar.test.js": 9,
+ "core/sidebar/service.test.js": 5,
+ "apps/app/screens/shell/module-screen.test.js": 4
 }

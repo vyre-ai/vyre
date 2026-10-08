@@ -126,6 +126,8 @@ export interface Manifest {
   setupTools?: string[];
   /** Built in only: what this module offers the # tag picker. `search` and `resolve` are this module's own tools; an added module that declares it fails to load. */
   mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
+  /** The screens this module serves, which the app can put in the sidebar. `path` is relative to /m/<module>/. */
+  screens?: { id: string; label: string; path?: string; icon?: string }[];
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];
