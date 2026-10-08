@@ -13,6 +13,11 @@ on:
   pull_request:
     paths: ["local/capsule/native-win/**", ".github/workflows/capsule-win.yml"]
   workflow_dispatch:
+    inputs:
+      home_walk:
+        description: "Run the Windows home walk (the sealing service, on this hosted machine) instead of the app proof"
+        type: boolean
+        default: false
   # release.yml calls this for every release and waits for it, so an installer is never missing.
   workflow_call:
     inputs:
@@ -129,7 +134,7 @@ jobs:
   # on loopback, in memory. Runs only when a person dispatches this workflow (a workflow file must be on the default branch to be dispatched by name, so this lives here).
   # Output: an artifact with results.json, screenshots, app.log and the stand-in's log.
   proof:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.home_walk != true
     needs: [web]
     runs-on: windows-latest
     timeout-minutes: 60
@@ -216,4 +221,52 @@ jobs:
         with:
           name: windows-setup-proof-${{ github.sha }}
           path: ${{ runner.temp }}/win-proof-out
+          if-no-files-found: warn
+  # The Windows home's sealing service, proved on the hosted Windows machine (a temporary machine, made fresh and deleted after): vyre-seal.exe installs a service under its own virtual account,
+  # the installing user's Node talks to it over a named pipe, a second local user is refused, a same-user program that is not the installed Node is refused, and what Windows cannot tell apart is written down.
+  # Dispatch only, with home_walk checked (a release that calls this workflow never runs it). Output: results.json, the seal folder's access list and the service's log.
+  home-walk:
+    if: github.event_name == 'workflow_dispatch' && inputs.home_walk == true
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+      - uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e
+        with:
+          toolchain: 1.98.1
+      - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            local/capsule/native-win/app/target
+          key: win-proof-${{ runner.os }}-${{ hashFiles('local/capsule/native-win/app/Cargo.lock', 'local/capsule/native-win/Cargo.lock') }}
+      - name: the shell's own tests (the sealing service's rules too)
+        working-directory: local/capsule/native-win
+        run: cargo test --locked
+      - name: build vyre-seal.exe
+        shell: bash
+        working-directory: local/capsule/native-win/app
+        env:
+          # This binary does not carry the app's web build; build.rs of the app insists on it unless told this is a hand-run check.
+          VYRE_ALLOW_NO_WEB: "1"
+        run: |
+          cargo build --release --locked --bin vyre-seal
+          ls -la target/release/vyre-seal.exe
+      - run: npm ci --no-audit --no-fund --ignore-scripts
+      - name: the walk
+        shell: bash
+        run: |
+          out="$RUNNER_TEMP/win-home-out"; mkdir -p "$out"
+          set +e
+          node scripts/win-home-walk.mjs --seal "$(pwd)/local/capsule/native-win/app/target/release/vyre-seal.exe" --out "$out" | tee "$out/walk.log"
+          rc=${PIPESTATUS[0]}
+          exit $rc
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: windows-home-walk-${{ github.sha }}
+          path: ${{ runner.temp }}/win-home-out
           if-no-files-found: warn

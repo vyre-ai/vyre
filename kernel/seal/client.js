@@ -32,7 +32,12 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
  * @param {{ pipe: string, timeoutMs?: number }} o
  */
 export async function connectSealer({ pipe, timeoutMs = 20_000 }) {
-  const sock = await new Promise((res, rej) => { const c = net.connect(pipe); c.once("connect", () => res(c)); c.once("error", rej); });
+  // The service makes its next pipe instance a moment after one connection ends (and the first one a moment after it starts): not there yet, or busy, is retried for a couple of seconds.
+  let sock;
+  for (let i = 0; ; i++) {
+    try { sock = await new Promise((res, rej) => { const c = net.connect(pipe); c.once("connect", () => res(c)); c.once("error", rej); }); break; }
+    catch (e) { if (i >= 60 || !["ENOENT", "EBUSY", "EPIPE", "ECONNREFUSED"].includes(/** @type {any} */ (e)?.code)) throw e; await new Promise(r => setTimeout(r, 50)); }
+  }
   return sealerOver({ input: sock, write: line => sock.write(line), pid: 0, onClose: fn => { sock.once("close", fn); }, timeoutMs, end: () => new Promise(res => { if (sock.destroyed) return res(); sock.once("close", () => res()); sock.end(); setTimeout(() => sock.destroy(), 2000).unref(); }), stdinError: fn => sock.on("error", fn) });
 }
 
