@@ -26,7 +26,7 @@ import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
 import { isPerson, deviceIdOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
-import { createHash } from "node:crypto";
+import { holdFields } from "../../lib/hold-fields.js";
 import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
@@ -106,23 +106,7 @@ export function roleBuckets(role, platform = process.platform) {
   if (config.isDevice(role) || (role === "server" && platform === "darwin")) out.push("local");
   return out;
 }
-/** @param {any} v @returns {any} */
-const canonOf = v => (Array.isArray(v) ? v.map(canonOf) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonOf(v[k])])) : v);
-/**
- * What a held outward call's card is bound to: its plain short fields (so the phone can show them) and a digest of the whole input (so the yes covers exactly this call, whatever is long or nested in it).
- * @param {any} input @returns {Record<string, string | number | boolean>}
- */
-export function holdFields(input) {
-  /** @type {Record<string, string | number | boolean>} */ const f = {};
-  if (input && typeof input === "object" && !Array.isArray(input)) {
-    for (const k of Object.keys(input)) {
-      const v = input[k];
-      if (Object.keys(f).length < 10 && /^[a-z][a-z0-9_]{0,31}$/.test(k) && k !== "input_sha256" && (typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) f[k] = v;
-    }
-  }
-  f.input_sha256 = createHash("sha256").update(JSON.stringify(canonOf(input === undefined ? null : input))).digest("hex").slice(0, 32);
-  return f;
-}
+export { holdFields };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 /** Who may call a tool (ADR 0047), and what an outward tool does as the person. */
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
@@ -1707,17 +1691,29 @@ export class Registry {
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
     if (def.outward === true && !def.asks && !door && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
-      const fields = holdFields(input);
+      let fields = holdFields(input);
       if (approval) {
+        // A card the person EDITED covers the edited call, and that is the call that runs: the approvals queue hands it back only for a card this asker holds for this tool that the phone has already approved.
+        const edited = this.tools.get("approvals.card-input");
+        if (edited) {
+          try {
+            const c = await edited.run({ id: approval, tool, from: asker }, { caller: "module:registry" });
+            if (c && c.input && typeof c.input === "object") {
+              const bad = checkInput(def.input, c.input);
+              if (bad.length) return { error: { code: "bad_input", message: `the edited call is not valid: ${bad.join("; ")}` } };
+              input = c.input; fields = holdFields(input);
+            }
+          } catch { /* the card is the card as it was held */ }
+        }
         const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
         if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
       } else {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
         let card;
-        try { card = await hold.run({ tool, fields, from: asker }, { caller: "module:registry" }); }
+        try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
-        return { error: { code: "held_for_approval", approval: card.id, line: card.line, message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
+        return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
       }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.

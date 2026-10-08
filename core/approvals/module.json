@@ -35,6 +35,18 @@
         "reach": "person"
       },
       {
+        "name": "approvals.answer-group", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.edit-item", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.card-input", "effect": "read",
+        "reach": "modules"
+      },
+      {
         "name": "approvals.status", "effect": "read",
         "reach": "person"
       }
