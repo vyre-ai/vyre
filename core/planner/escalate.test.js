@@ -30,7 +30,7 @@ test("escalation: an unfinished task past escalate_after puts a to-do in front o
   await w.advance(9 * MIN);
   assert.equal(escalated.length, 0, "not late yet");
   await w.advance(2 * MIN);
-  const e = await until(() => escalated[0]);
+  const e = await until(() => escalated[0]); if (!e) console.log("DBG", JSON.stringify(w.logs.slice(-5)), JSON.stringify((await k.tasks.list(owner, {})).map((x) => [x.title, x.state, x.created_at, x.escalate_after, x.escalate_to])), w.clock.t, JSON.stringify([...w.timers.values()].map((x) => x.at)));
   assert.deepEqual([e.task, e.doer, e.to, e.after_ms], [task.id, OWNER, "per_member", 10 * MIN]);
   const late = (await k.tasks.list(owner, {})).filter((/** @type {any} */ x) => x.title.startsWith("Late:"));
   assert.deepEqual(late.map((/** @type {any} */ x) => [x.title, x.doer.id, x.parent]), [["Late: File the Harlow motion", "per_member", task.id]]);
