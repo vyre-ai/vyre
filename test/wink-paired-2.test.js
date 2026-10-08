@@ -943,7 +943,7 @@ test("join end to end: a second identity's device previews and accepts an invite
   Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
   // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
   const sealDir = tmp("join-e2e-seal");
-  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: !release });
   t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
   const ownerSigner = sealSigner(ident.id);
   await enrolDevice(sealer, ownerSigner);
@@ -1256,7 +1256,7 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
 
 
 /** A real paired server with a team space "harlow" hosted on it by alex, whose name and key live in the (stand-in) app: the rig of the team tests below. */
-async function teamRig(t) {
+async function teamRig(t, { release = false } = {}) {
   const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
   const { startSealer } = await import("../kernel/seal/client.js");
   const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
@@ -1390,4 +1390,42 @@ test("a team invite made by the owner's app and joined by the invitee's app, on 
   const lying = kernelWire({ call: async (tool, req) => ({ v: 1, id: req.id, ok: false, error: { code: "presence_required", message: "x", challenge: { call: req.call, space: req.space, home: "h", nonce: "n".repeat(16), args_hash: "wrong", op: "grant.invite", fields: {}, payload_hash: "z" } } }) }, made.space, { person: ident.id, signPresence: async () => { throw new Error("must not sign"); } });
   await assert.rejects(() => lying.call("grants.invites.create", [{ role: "member" }]), e => e.code === "presence_required");
   assert.equal(f.w.logs.filter(l => /kernel remote: grants.invites.create .* refused as (bad_binding|bad_challenge)/.test(l)).length, 0);
+});
+
+
+test("join on a release server (the sealing process takes no unattested-by-switch keys): a secure-chip key joins, a software key is refused and nothing is left behind", { timeout: 180_000 }, async t => {
+  const { openInvite } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealer, sealSigner } = await teamRig(t, { release: true });
+  assert.equal((await sealer.health()).unattested_allowed, false, "this is the release rule");
+  const mk = async (name, signerKind) => {
+    const who = await ident.another(name);
+    const sg = sealSigner(who.id, undefined, signerKind);
+    const chain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: who.id, vouched: true });
+    const tokens = [];
+    const deps = {
+      who: { id: who.id, name, eid: who.eid, sign: async m => new Uint8Array(await who.store.sign(Buffer.from(m))) },
+      fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+      signPresence: async req => sg.proof(chain, req.op, req.fields),
+      presenceKey: async invite => { tokens.push(invite); return sg.enrolment; },
+      store: { get: async () => undefined, put: async () => {} },
+    };
+    return { who, deps, tokens };
+  };
+  // a phone's secure-chip key: taken unattested on a release server (marked so), joined
+  const kit = await mk("kit", "secure_enclave");
+  const inv = await linkFor(kit.who.id);
+  const open = await openInvite(kit.deps, inv.link);
+  t.after(() => open.close());
+  assert.equal((await open.accept()).joined, true);
+  assert.deepEqual(kit.tokens, [inv.id], "the app asks for its key's enrolment with the invite id, which is what an attestation is made over");
+  assert.equal((await hosted.gateway.grants.members.get(ownerChain, kit.who.id)).role, "member");
+  // a software key (a browser or a page's own key) is not a key a release server takes: the accept fails whole
+  const sw = await mk("sam", "software");
+  const inv2 = await linkFor(sw.who.id);
+  const open2 = await openInvite(sw.deps, inv2.link);
+  t.after(() => open2.close());
+  await assert.rejects(() => open2.accept(), e => /software_refused|bad_signer|unattested/.test(String(e.code)), "a software key is refused");
+  await assert.rejects(() => hosted.gateway.grants.members.get(ownerChain, sw.who.id), e => e.code === "not_found", "no membership was made");
+  assert.equal((await hosted.gateway.grants.invites.get(ownerChain, inv2.id)).status, "pending", "the invite is not spent");
 });
