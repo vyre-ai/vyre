@@ -17,7 +17,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var menuBar: MenuBarItem?
     let menuActions = MenuActions()
     lazy var health = Health(vyred: vyred)
-    lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// Every key this Mac holds for the home (identity, Secure Enclave, key agreement, presence): one Keychain item, read once per launch (KeyBundle.swift).
+    lazy var keys = KeyBundle.keychain(home: home)
+    lazy var presence = CapsulePresence(home: home, vyred: vyred, store: BundleHandleStore(bundle: keys, slot: .presence))
     /// The first run: with no vyred and no server, "Where should Vyre run?" (FirstRunWindow.swift); later launches open straight into the app.
     lazy var firstRun = FirstRunController(model: model, home: home)
     /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
@@ -77,9 +79,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket and answers presence with Touch ID.
         VyreAppWindow.shared.socket = vyredSocketPath(ProcessInfo.processInfo.environment)
         VyreAppWindow.shared.presence = presence
-        VyreAppWindow.shared.identity = MacIdentity(store: KeychainSeedStore(home: home))
-        VyreAppWindow.shared.enclave = MacEnclave(store: KeychainEnclaveStore(home: home))
-        VyreAppWindow.shared.agreement = MacAgree(store: KeychainAgreeStore(home: home))
+        VyreAppWindow.shared.identity = MacIdentity(store: BundleSeedStore(bundle: keys))
+        VyreAppWindow.shared.enclave = MacEnclave(store: BundleHandleStore(bundle: keys, slot: .enclave))
+        VyreAppWindow.shared.agreement = MacAgree(store: BundleHandleStore(bundle: keys, slot: .agree))
         VyreAppWindow.shared.makeServer = { [weak self] in self?.firstRun.makeThisMacServer() }
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
