@@ -1502,6 +1502,7 @@ test("a person whose device entry is a passkey joins a team through the invitee 
   // a passkey is: the identity's own device is the Hello passkey, and the hello is its assertion
   const auth = authenticator({ rp: "app.vyre.run" });
   const pk = await ident.anotherPasskey("passpc", auth);
+  { const r = await (await ident.fetch("http://127.0.0.1:1/v1/ids/resolve?name=passpc", { headers: {} })).json(); console.error("EXPLORE-PK", JSON.stringify(r.data.ops.map(o => o.entry || o.target || o.type)).slice(0, 700)); }
   const pw = await windowsPasskey({ origin: "https://app.vyre.run", store: { get: async () => undefined, put: async () => {} }, webauthn: authenticator({ rp: "app.vyre.run" }) });
   const rows = new Map();
   const deps = mk(pk, async m => pk.key.sign(m), pw, null, { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } });
