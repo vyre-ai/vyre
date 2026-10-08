@@ -197,7 +197,7 @@ export async function signPresenceMany(cards: PresenceCard[]): Promise<PresenceP
     const person = card.person ?? (personProvider ? await personProvider() : null) ?? "";
     return proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
   }));
-  const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), { prompt: cards.length === 1 ? cards[0].prompt : `Approve ${cards.length} items` });
+  const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), cards.length === 1 && cards[0].prompt ? { prompt: cards[0].prompt } : {});
   const out: PresenceProof[] = [];
   for (let i = 0; i < cards.length; i++) {
     const proof: PresenceProof = { ...(bodies[i] as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(ders[i]))) };
