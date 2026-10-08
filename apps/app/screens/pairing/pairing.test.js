@@ -31,13 +31,13 @@ test("words may arrive as one string, and a nameless request is called a new dev
   assert.deepEqual(m.winkAsking({ asking: true, words: "Maple River Stone" }), { name: "A new device", words: ["maple", "river", "stone"] });
 });
 
-test("nothing is asking, or the words are not three: no card", { skip: !strip }, async () => {
+test("nothing is asking: no card; words that are not three are not shown", { skip: !strip }, async () => {
   const m = await import("./model.ts");
   assert.equal(m.winkAsking({ asking: false }), null);
   // the server's own answer has no words (the person types the ones the new device shows): still asking
   assert.deepEqual(m.winkAsking({ asking: true, name: "Sam's phone", choices: ["a b c"], line: "?" }), { name: "Sam's phone", words: null });
   assert.deepEqual(m.winkAsking({ asking: true, words: ["one", "two"] }), { name: "A new device", words: null });
-  assert.equal(m.winkAsking({ asking: true, words: ["one", "", "three"] }), null);
+  assert.deepEqual(m.winkAsking({ asking: true, words: ["one", "", "three"] }), { name: "A new device", words: null });
   assert.equal(m.winkAsking(null), null);
 });
 
