@@ -55,6 +55,7 @@ if (a[0] === "pull" && a[a.length - 1].includes("docuseal")) {
 }
 // the app's image is on this machine only after a pull (or when a test says it already is)
 if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("docuseal")) process.exit(has("app-image-have") ? 0 : 1);
+if (a[0] === "exec" && a.includes("node") && a.some(x => x.includes("config.json"))) { if (has("public")) out(rd("public")); process.exit(0); }
 if (a[0] === "exec") {
   const ei = a.indexOf("--env-file");
   if (ei >= 0) {
