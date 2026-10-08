@@ -447,7 +447,7 @@
  "core/vault/refs.test.js": 4,
  "core/vault/relay.test.js": 12,
  "core/vault/remind.test.js": 6,
- "core/vault/request-connection-auth.test.js": 5,
+ "core/vault/request-connection-auth.test.js": 6,
  "core/vault/request.test.js": 17,
  "core/vault/rotate-tool.test.js": 1,
  "core/vault/rotate.test.js": 14,

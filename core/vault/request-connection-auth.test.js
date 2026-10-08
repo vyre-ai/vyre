@@ -126,3 +126,24 @@ test("a Connection's operation is built into the request a caller could have wri
   // a request with neither a url nor an operation says so
   await assert.rejects(ask({ credential: "conn-crm" }), /names its method and url, or an operation/);
 });
+
+test("the check: the connectors module may read the check path of a Connection and nothing else, and the answer says green or the plain reason", async t => {
+  const { net, ask, key, cred } = await mk(t);
+  const { outcomeOf } = await import("../../records/connectors/connection.js");
+  await key("ghl-pat", { value: fake("key") });
+  const m = fromForm({ label: "GoHighLevel Sales", base_url: "https://services.leadconnectorhq.com", send: { how: "bearer" }, credential: { item: "ghl-pat" }, headers: { Version: "2021-07-28" }, vars: { locationId: "loc_1" }, check: { path: "/locations/{locationId}" } });
+  await cred("conn-gohighlevel-sales", toConfig(m));
+  const url = `https://services.leadconnectorhq.com${m.check.path}`;
+  const check = async () => outcomeOf({ reply: await ask({ credential: "conn-gohighlevel-sales", method: "GET", url }, "module:connectors") });
+  assert.deepEqual(await check(), { light: "green", words: "connected" });
+  assert.equal(net.calls[0].path, "/locations/loc_1");
+  assert.equal(net.calls[0].headers.version, "2021-07-28");
+  assert.match(net.calls[0].headers.authorization, /^Bearer fixture-key-/);
+  net.script = () => json(401, { message: "Invalid token" });
+  assert.equal((await check()).words, "the key was refused (401)");
+  net.script = () => json(404, {});
+  assert.equal((await check()).words, "that id was not found (404)");
+  // nothing but that one path, and nothing but a read, for the connectors module
+  await assert.rejects(ask({ credential: "conn-gohighlevel-sales", method: "GET", url: "https://services.leadconnectorhq.com/contacts" }, "module:connectors"), /may only read/);
+  await assert.rejects(ask({ credential: "conn-gohighlevel-sales", method: "POST", url }, "module:connectors"), /may only read/);
+});
