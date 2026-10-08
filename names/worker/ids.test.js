@@ -128,7 +128,7 @@ test("ids: one namespace with the boxes, one name per identity, reserved and inv
   data(await box.post("/v1/names/claim", { name: "juno" }));
   assert.equal(code(await other.claim("juno")), "taken", "an identity cannot take a box's name");
   assert.equal(code(await alex.claim("alex2")), "one_per_identity");
-  assert.equal(data(await alex.claim("alex")).mine, true, "claiming your own name again is a no-op");
+  assert.equal(code(await alex.claim("alex")), "taken", "a name that is held cannot be reserved again");
   assert.equal(code(await other.claim("vyre")), "reserved");
   assert.equal(code(await other.claim("x")), "invalid");
 });
@@ -137,15 +137,19 @@ test("ids: a claim must carry a valid chain and a record an entry signed; a forg
   const w = world(t);
   const alex = await person(w), mallory = await person(w);
   const good = alex.sealRecord("alex", "c2VhbGVk");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: [{ ...alex.ops[0], id: "per_" + "a".repeat(26) }], ...good })), "bad_id");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: [], ...good })), "bad_chain");
-  assert.equal(code(await mallory.post("/v1/ids/claim", { name: "alex", ops: mallory.ops, ...good })), "bad_signature", "alex's record under mallory's chain");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "dGFtcGVyZWQ", rec: good.rec })), "bad_signature", "a changed record");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
+  const fin = async (me, extra) => me.post("/v1/ids/finalize", { name: "alex", code: await codeFor(w, "alex"), ...extra });
+  assert.equal(code(await fin(alex, { ops: [{ ...alex.ops[0], id: "per_" + "a".repeat(26) }], ...good })), "bad_id");
+  assert.equal(code(await fin(alex, { ops: [], ...good })), "bad_chain");
+  assert.equal(code(await fin(mallory, { ops: mallory.ops, ...good })), "bad_signature", "alex's record under mallory's chain");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "dGFtcGVyZWQ", rec: good.rec })), "bad_signature", "a changed record");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: "x".repeat(3000), rec: good.rec })), "bad_record");
+  assert.equal(code(await fin(alex, { ops: alex.ops, sealed: good.sealed })), "bad_record", "unsigned");
   w.clock.t += 10 * 60_000;
-  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
+  assert.equal(code(await fin(alex, { ops: alex.ops, ...good })), "bad_time", "a genesis made ten minutes ago is not made now");
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found", "nothing was claimed by any of those");
+  // a person's genesis without a reservation code is refused, and so is a wrong, a replaced and a used code
+  assert.equal(code(await alex.post("/v1/ids/claim", { name: "alex", ops: alex.ops, ...good })), "reserve_first");
+  assert.equal(code(await alex.post("/v1/ids/finalize", { name: "alex", ops: alex.ops, ...good, code: "VYRE-AAAA-AAAA-AAAA-AAAA" })), "bad_code");
 });
 
 test("ids: an unknown, an invalid and a released-then-freed name all resolve as not found", async t => {
@@ -398,6 +402,14 @@ const raw = async (w, method, path, { origin, headers = {}, body } = {}) => {
   return { status: res.status, h: n => res.headers.get(n), json: await res.json().catch(() => null) };
 };
 
+/** A reservation code for a name, asked for as the web page does (no key, any origin), from its own address so the per-address count of claims is not spent. */
+const codeFor = async (w, name, ip = "203.0.113.200") => {
+  const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip, origin: "https://vyre.run" }, body: JSON.stringify({ name }) }));
+  const j = await r.json();
+  assert.ok(j.data, JSON.stringify(j));
+  return j.data.code;
+};
+
 test("cors: resolve answers any origin, read-only, no credentials, and a preflight for it", async t => {
   const w = world(t);
   const alex = await person(w);
@@ -419,22 +431,22 @@ test("cors: resolve answers any origin, read-only, no credentials, and a preflig
 test("cors: claim, append and update accept the app's origin (and only its exact origin), answer it, and keep their limits; everything else still refuses a foreign Origin", async t => {
   const w = world(t, { APP_ORIGINS: "https://app.vyre.run, http://localhost:5173" });
   const alex = await person(w);
-  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk") };
-  const ok = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
+  const body = { name: "alex", ops: alex.ops, ...alex.sealRecord("alex", "c2VhbGVk"), code: await codeFor(w, "alex") };
+  const ok = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", headers: { "sec-fetch-site": "cross-site" }, body });
   assert.equal(ok.status, 200, JSON.stringify(ok.json));
   assert.equal(ok.h("access-control-allow-origin"), "https://app.vyre.run");
   assert.equal(ok.h("vary"), "origin");
   assert.equal(ok.h("access-control-allow-credentials"), null);
   const bob = await person(w);
-  const dev = await raw(w, "POST", "/v1/ids/claim", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk") } });
+  const dev = await raw(w, "POST", "/v1/ids/finalize", { origin: "http://localhost:5173", body: { name: "bob", ops: bob.ops, ...bob.sealRecord("bob", "c2VhbGVk"), code: await codeFor(w, "bob") } });
   assert.equal(dev.status, 200, "the stand-in's origin from APP_ORIGINS");
   for (const origin of ["https://evil.example", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://vyre.run", "null"]) {
-    const r = await raw(w, "POST", "/v1/ids/claim", { origin, body });
+    const r = await raw(w, "POST", "/v1/ids/finalize", { origin, body });
     assert.equal(r.status, 403, origin);
     assert.equal(r.h("access-control-allow-origin"), null, "a foreign origin gets no CORS answer");
   }
   // preflights: the app origin for the three routes, nothing for others
-  for (const p of ["/v1/ids/claim", "/v1/ids/append", "/v1/ids/update"]) {
+  for (const p of ["/v1/ids/claim", "/v1/ids/finalize", "/v1/ids/append", "/v1/ids/update"]) {
     const pre = await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": "POST", "access-control-request-headers": "content-type" } });
     assert.equal(pre.status, 204, p);
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
@@ -452,7 +464,7 @@ test("cors: the per-IP claim limit applies to claims from the app origin too", a
   const results = [];
   for (let i = 0; i < 7; i++) {
     const p = await person(w);
-    const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk") } });
+    const r = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", body: { name: `name${i}x`, ops: p.ops, ...p.sealRecord(`name${i}x`, "c2VhbGVk"), code: await codeFor(w, `name${i}x`, `203.0.113.${100 + i}`) } });
     results.push(r.status === 200 ? "ok" : code(r));
   }
   assert.equal(results.filter(x => x === "ok").length, 5, JSON.stringify(results));
@@ -471,7 +483,7 @@ test("cors: the name availability check answers any origin like resolve (no cred
   const pre = await raw(w, "OPTIONS", "/v1/names/check?name=x", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
   assert.equal(pre.status, 204);
   const results = [];
-  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk") } }); results.push(r.status === 200 ? "ok" : code(r)); }
+  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/finalize", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk"), code: await codeFor(w, `limit${i}x`, `203.0.113.${120 + i}`) } }); results.push(r.status === 200 ? "ok" : code(r)); }
   assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
 });
 
