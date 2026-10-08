@@ -170,8 +170,8 @@ test("the README gif's story: handed to kit, its steps nested, three emails held
 });
 
 test("one card covers one send: a call that files two sends gets the first sent and the second held, and a call with no card gets nothing sent", { timeout: 300_000 }, async t => {
-  const { d, asPerson, sent, root } = await world(t);
-  const call2 = (/** @type {any} */ input, /** @type {any} */ extra = {}) => call("billing.twice", input, { root, caller: "mcp", timeout: 30_000, ...extra });
+  const { d, asPerson, sent } = await world(t);
+  const call2 = (/** @type {any} */ input, /** @type {any} */ extra = {}) => d.registry.call("billing.twice", input, "mcp", extra);
   const input = { to: "ap@northwind.example", to2: "billing@oakline.example" };
   // no card: held as a card, nothing reaches the Gate or the mail server
   const first = await call2(input);
