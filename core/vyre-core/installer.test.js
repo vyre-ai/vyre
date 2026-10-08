@@ -73,7 +73,7 @@ function fixture(t, version = "1.0.0") {
   const dir = tmp(t);
   const kp = keypair();
   const root = path.join(dir, "root");
-  fs.mkdirSync(root);
+  fs.mkdirSync(root); fs.chmodSync(root, 0o755); // it stands for "/", which is root's and closed to others whatever this machine's umask is
   const node = path.join(dir, "node-bin");
   fs.writeFileSync(node, "#!/bin/sh\n");
   const opts = (rel, extra = {}) => ({ ownerUid: 501, ownerName: "alice", version, release: rel, nodeBinary: node, vyredWrapper: "/Users/alice/.vyre-server/bin/vyred-run", ...extra });
