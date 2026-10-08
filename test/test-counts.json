@@ -884,5 +884,5 @@
  "web/js/phone-code.test.js": 12,
  "web/js/trace.test.js": 2,
  "web/onboard/device/link.test.js": 5,
- "test/pair-fix.test.js": 8
+ "test/pair-fix.test.js": 10
 }

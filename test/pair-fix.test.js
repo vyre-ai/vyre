@@ -30,6 +30,9 @@ import { peerDoor, composeWinkHome } from "../core/wink/index.js";
 import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
+import { addThisDevice } from "../relay/client/phonepair.js";
+import { enrolDevice } from "../apps/app/src/identity/enrol-device.js";
+import * as C from "../kernel/identity/chain.js";
 import { joinWithCode } from "../relay/client/join.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
 import { openServerPeer } from "../relay/client/peerclient.js";
@@ -128,7 +131,7 @@ async function standinIdentity(t) {
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -337,3 +340,53 @@ test("a device whose presence key is not P-256 (alg -257) still enrols its key; 
   assert.equal((await deviceRowOf(w, r.paired.device)).presence, true, "the key enrolled; it is not marked as refused");
 });
 const deviceRowOf = async (w, id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === id);
+
+// ---- a phone added to a server that holds no identity: the owner's app signs the list change ----
+
+test("Add a device: the phone redeems the computer's typed code, the server holds no identity, the owner's app signs the phone's key onto the name's list, and the phone hears enrolled", async t => {
+  typedOn(t);
+  const { ident, w } = await setup(t);
+  // the name's chain is in the stand-in directory and in the OWNER'S APP (here: ident); the server below never made an identity
+  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  let ack = "";
+  const joining = addThisDevice({ code: open.code, relay: w.status.url, key: { publicKey, label: "Sam's phone" }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; }, presenceKey: devKey("hardware") });
+  joining.catch(() => {});
+  await until(() => ack);
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.offer, typed: ack })).data.ok, true);
+  // the owner's app: sees the request in wink.phone.pairing, signs, sends, reports
+  const ask = await until(async () => { const x = (await w.call("wink.phone.pairing", {})).data; return x && x.enrol ? x.enrol : null; });
+  assert.equal(ask.entry.publicKey, publicKey);
+  const sk = ident.store.sign.bind(ident.store);
+  const done = await enrolDevice({ name: "alex", eid: ident.store.status().eid, pin: ident.store.pin(), base: "http://127.0.0.1:1", fetch: ident.fetch, now: () => ident.clock.t, sign: async m => sk(Buffer.from(m)), entry: ask.entry });
+  assert.equal(done.already, false);
+  assert.equal((await w.call("wink.phone.enrolled", { device: ask.device, ok: true, identity: { id: ident.id, vyre: "alex" } })).data.ok, true);
+  const r = await joining;
+  assert.equal(r.enrolled, true, JSON.stringify(r));
+  assert.deepEqual(r.identity, { id: ident.id, vyre: "alex" });
+  // the directory's list now holds the phone's key, signed by the owner's key
+  const res = await (await ident.fetch("http://127.0.0.1:1/v1/ids/resolve?name=alex", { headers: {} })).json();
+  const state = await C.verifyChain(res.data.ops, { now: ident.clock.t + C.SKEW_MS });
+  assert.ok(state.entries.some(e => e.pub === publicKey), "the phone's key is on the list");
+});
+
+test("Add a device: when the owner's app never answers, the phone is told its key was not added and stays paired", async t => {
+  typedOn(t);
+  const { w } = await setup(t);
+  const open = (await w.call("wink.phone.open", { typed: true })).data;
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  let ack = "";
+  const joining = addThisDevice({ code: open.code, relay: w.status.url, key: { publicKey, label: "Sam's phone" }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; }, presenceKey: devKey("hardware"), timeoutMs: 8000 });
+  joining.catch(() => {});
+  await until(() => ack);
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.offer, typed: ack })).data.ok, true);
+  const ask = await until(async () => { const x = (await w.call("wink.phone.pairing", {})).data; return x && x.enrol ? x.enrol : null; });
+  assert.equal((await w.call("wink.phone.enrolled", { device: ask.device, ok: false, reason: "This computer cannot add a device to your name. Add it from your phone." })).data.ok, true);
+  const r = await joining;
+  assert.equal(r.enrolled, false);
+  assert.match(r.reason, /cannot add a device/);
+});
