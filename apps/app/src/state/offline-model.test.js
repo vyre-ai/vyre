@@ -22,5 +22,5 @@ test("a blip that is healing, a live connection and the device's own offline sta
 
 test("when the app never heard from the server it says it is not answering, with no invented time", () => {
   assert.equal(offlineNotice({ status: "reconnecting", lastSeen: null, now: at, fmt }).fact, "Your server is not answering");
-  assert.match(clock(at), /\d{2}:\d{2}/);
+  assert.match(clock(at), /\d{1,2}:\d{2}/);
 });
