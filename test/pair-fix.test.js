@@ -345,7 +345,8 @@ const deviceRowOf = async (w, id) => (await w.d.registry.call("relay.devices.lis
 
 test("Add a device: the phone redeems the computer's typed code, the server holds no identity, the owner's app signs the phone's key onto the name's list, and the phone hears enrolled", async t => {
   typedOn(t);
-  const { ident, w } = await setup(t);
+  const ident = await standinIdentity(t);
+  const w = await world(t);
   // the name's chain is in the stand-in directory and in the OWNER'S APP (here: ident); the server below never made an identity
   const opened = await w.call("wink.phone.open", { typed: true });
   assert.equal(opened.error, undefined, JSON.stringify(opened.error));
@@ -376,7 +377,7 @@ test("Add a device: the phone redeems the computer's typed code, the server hold
 
 test("Add a device: when the owner's app never answers, the phone is told its key was not added and stays paired", async t => {
   typedOn(t);
-  const { w } = await setup(t);
+  const w = await world(t);
   const opened = await w.call("wink.phone.open", { typed: true });
   assert.equal(opened.error, undefined, JSON.stringify(opened.error));
   const open = opened.data;
