@@ -100,9 +100,9 @@ test("a Connection's operation is built into the request a caller could have wri
     "contacts.create": { method: "POST", path: "/contacts", kind: "change", input: { body: { name: { type: "string", required: true } } } } } });
   await cred("conn-crm", toConfig({ ...m, declaration: decl }));
   // a read operation runs at once, the path is filled and encoded, the fixed header and the key are the vault's
-  const r = await ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "a/b c" }, query: { fields: "name" } } });
+  const r = await ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "a b" }, query: { fields: "name" } } });
   assert.equal(r.kind, "read");
-  assert.equal(net.calls[0].path, "/contacts/a%2Fb%20c?fields=name");
+  assert.equal(net.calls[0].path, "/contacts/a%20b?fields=name");
   assert.equal(net.calls[0].headers.version, "2021-07-28");
   // the relabeled search is a read (it runs at once); the create is held; the generic request is judged by its method
   assert.equal((await ask({ credential: "conn-crm", operation: "contacts.search", input: { body: { query: "dana" } } })).kind, "read");
@@ -112,6 +112,8 @@ test("a Connection's operation is built into the request a caller could have wri
   assert.equal(await kindOf({ operation: "request", input: { method: "GET", path: "/anything" } }), "read");
   assert.equal(await kindOf({ operation: "request", input: { method: "POST", path: "/anything", body: { a: 1 } } }), "send");
   assert.equal(await kindOf({ operation: "request", input: { method: "DELETE", path: "/anything/1" } }), "delete");
+  // an id that would climb out of its segment is encoded, and the vault refuses an encoded slash
+  await assert.rejects(ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "a/../b" } } }), /encoded slash/);
   // refusals: an undeclared input, a missing one, an unknown operation, a path that is not one, a credential that is not a Connection
   await assert.rejects(ask({ credential: "conn-crm", operation: "contacts.get", input: { params: { id: "1" }, query: { sneak: "x" } } }), /not part of this/);
   await assert.rejects(ask({ credential: "conn-crm", operation: "contacts.get", input: {} }), /needed/);
