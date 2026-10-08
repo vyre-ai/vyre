@@ -167,12 +167,10 @@ finish() {
     if [ "$LINK_ONLY" = 1 ]; then
       say "  Whether it is paired went to stdout for the program that asked."
     else
-      if [ "$PAIRED" = 1 ]; then
-        say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
-      elif [ -n "$CODE" ]; then
+      if [ -n "$CODE" ]; then
         say "  Go back to the Vyre app to finish."
       else
-        say "  Next: open the Vyre app, choose Add a server, and run the line it shows on this server."
+        say "  Open the Vyre app, choose \"Add a server\", and run the line it shows on this server."
       fi
     fi
   fi
@@ -714,7 +712,7 @@ show_words() {
 }
 
 # intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
-# thing this installer asks a person is the pairing (pair_server), by the user's ruling of 4 Oct. Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
+# thing this installer asks a person is nothing: the Vyre app does the pairing (the four words), by the ruling that setup is one place. Never an argument, never echoed. The shape is base64url of 32 bytes: 43 characters.
 intake_code() {
   CODE=${VYRE_CODE:-}
   unset VYRE_CODE
@@ -759,122 +757,6 @@ write_code() {
   chmod 600 "$TMP/vyre.env"
   printf 'VYRE_SETUP_CODE_AT=%s\nVYRE_SETUP_CODE=%s\n' "$(date +%s)" "$CODE" >>"$TMP/vyre.env"
   put "$TMP/vyre.env" "$DIR/vyre.env" 0600
-}
-
-# pair_server: the last step, and the only question this terminal ever asks (the user's ruling, 4 Oct: the server's part is one command and the pairing, nothing else; members,
-# connectors and everything inside a space are set up on the person's own device). It shows the pairing QR and the long code, waits for a device to ask, shows who is asking and
-# three sets of three words, takes the pick of the set the device shows, and ends with the line the person acts on. A step that fails says why and offers to try again on a
-# terminal; nothing is created before the pick, so nothing is left half-made. Under --yes or with no terminal it prints the code and the way back and ends.
-# The tools are the daemon's (wink.server.code, wink.server.pairing, wink.server.pair.answer); VYRE_PAIR_TO names the one identity an unattended install is for.
-PAIRED=0; PAIRED_NAME=""; PAIRED_DEVICE=""
-tool() { dk env "VYRE_DIR=$DIR" "$WRAPPER" call "$@" 2>/dev/null | tr -d '\n'; }
-json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\(\\([^\"\\\\]\\|\\\\.\\)*\\)\".*/\\1/p"; }
-json_num() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\\([0-9][0-9]*\\).*/\\1/p"; }
-# minutes left until a time given in milliseconds, at least one
-mins() { m=$(( ($1 / 1000 - $(date +%s) + 30) / 60 )); [ "$m" -ge 1 ] || m=1; printf '%s' "$m"; }
-pair_server() {
-  [ "$DRY" = 0 ] && [ "$LINK_ONLY" = 0 ] || return 0
-  tries=0
-  while :; do
-    tries=$((tries + 1))
-    if [ -n "${VYRE_PAIR_TO:-}" ]; then pt=$(printf '%s' "$VYRE_PAIR_TO" | tr -d "\"\\\\"); input="{\"qr\":true,\"pairTo\":\"$pt\"}"; else input='{"qr":true}'; fi
-    out=$(tool wink.server.code "$input" || true)
-    qr=$(json_str "$out" qr)
-    if [ -z "$qr" ]; then
-      why=$(json_str "$out" message)
-      say "  Pairing could not start: ${why:-the pairing is not ready on this server}."
-      if [ "$YES" = 0 ] && (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue; fi
-      say "  Pair it from your device later: open Vyre, add a server, and run on this server: ${BOLD}vyre call wink.server.code '{\"qr\":true}'${RESET}"
-      return 0
-    fi
-    art=$(json_str "$out" art | sed 's/\\n/\n/g; s/\\\\/\\/g')
-    say ""
-    say "  Pair this server from your Vyre app: scan this with your phone,"
-    say "  or paste the long code into the app on a computer."
-    [ -z "$art" ] || printf '%s\n' "$art"
-    say "  Long code: $BOLD$qr$RESET"
-    say "  It is good for five minutes."
-    # The short typed code beside them (on unless the kill switch is set): the app types it, shows a code of its own, and the person types that back here.
-    TYPED=$(json_str "$out" code); ctries=$(json_num "$out" code_tries); cexp=$(json_num "$out" code_expires)
-    if [ -n "$TYPED" ]; then
-      say "  Or type this code in your app: ${BOLD}$TYPED${RESET}"
-      say "  The typed code is good for $(mins "${cexp:-0}") minutes and closes after ${ctries:-3} wrong tries."
-    fi
-    if [ -n "${VYRE_PAIR_TO:-}" ]; then say "  This install is for ${BOLD}${VYRE_PAIR_TO}${RESET} only. Finish setting up on that identity's device."; return 0; fi
-    if [ "$YES" = 1 ] || ! (: </dev/tty) 2>/dev/null; then say "  Finish setting up on your device once it has paired."; return 0; fi
-    if [ -n "$TYPED" ]; then end=$(( $(date +%s) + 600 )); else end=$(( $(date +%s) + 300 )); fi
-    while [ "$(date +%s)" -lt "$end" ]; do
-      if [ -n "$TYPED" ]; then
-        cs=$(tool wink.code.status '{}' || true)
-        cc=$(json_str "$cs" code); cst=$(json_str "$cs" state); cof=$(json_str "$cs" offer)
-        if [ -n "$cc" ] && [ "$cc" != "$TYPED" ]; then
-          say "  The typed code closed: its time ran out, or it had ${ctries:-3} wrong tries."
-          say "  A new typed code is showing: ${BOLD}$cc${RESET}  (good for $(mins "$(json_num "$cs" expires)") minutes)"; TYPED=$cc
-        fi
-        if [ "$cst" = found ] && [ -n "$cof" ]; then
-          say "  Your app typed the code and now shows a code of its own."
-          printf '%sType the code your app shows: %s' "$BEACON" "$RESET" >/dev/tty
-          read -r typed </dev/tty || typed=""
-          typed=$(printf '%s' "$typed" | tr -cd 'A-Za-z0-9 -')
-          r=$(tool wink.server.confirm "{\"offer\":\"$cof\",\"typed\":\"$typed\"}" || true)
-          case "$r" in
-            *'"ok": true'*|*'"ok":true'*)
-               say "  The codes match. Your app finishes the pairing."
-               # The typed ack is the owner's yes: no three words follow. Wait for the app to finish, then the closing line says whose server this is.
-               w=0; while [ "$w" -lt 60 ]; do
-                 st=$(tool wink.server.status '{}' || true)
-                 case "$st" in *'"owned": true'*|*'"owned":true'*) PAIRED=1; PAIRED_NAME=$(json_str "$st" space); PAIRED_DEVICE=$(json_str "$st" device); return 0 ;; esac
-                 w=$((w + 1)); sleep 1
-               done
-               say "  The app did not finish the pairing, so nothing was paired."; return 0 ;;
-            *) say "  That is not the code your app shows, so this typed code is closed."
-               # a wrong ack closes the code and a fresh one replaces it with no tap
-               w=0; while [ "$w" -lt 6 ]; do
-                 sleep 1; ns=$(tool wink.code.status '{}' || true); nc=$(json_str "$ns" code)
-                 if [ -n "$nc" ] && [ "$nc" != "$TYPED" ]; then say "  A new typed code is showing: ${BOLD}$nc${RESET}  (good for $(mins "$(json_num "$ns" expires)") minutes)"; TYPED=$nc; break; fi
-                 w=$((w + 1))
-               done ;;
-          esac
-          continue
-        fi
-      fi
-      q=$(tool wink.server.pairing '{}' || true)
-      case "$q" in
-        *'"asking": true'*|*'"asking":true'*)
-          nm=$(json_str "$q" name)
-          # The three sets, one per line (a JSON array of three strings).
-          sets=$(printf '%s' "$q" | sed -n 's/.*"choices": *\[\([^]]*\)\].*/\1/p' | sed 's/", *"/\n/g; s/"//g')
-          say ""
-          say "  ${BOLD}${nm:-Someone}${RESET} is asking to pair this server. Pick the three words your app shows:"
-          i=0; printf '%s\n' "$sets" | while IFS= read -r l; do i=$((i + 1)); printf '    %s) %s\n' "$i" "$l"; done
-          printf '%sWhich one? (1, 2 or 3, Enter to refuse) %s' "$BEACON" "$RESET" >/dev/tty
-          read -r pick </dev/tty || pick=""
-          case "$pick" in
-            1|2|3) ans=$(tool wink.server.pair.answer "{\"yes\":true,\"pick\":$pick}" || true) ;;
-            *) ans=$(tool wink.server.pair.answer '{"yes":false}' || true); say "  Refused. Nothing was paired."; return 0 ;;
-          esac
-          case "$ans" in
-            *'"yes": true'*|*'"yes":true'*)
-               PAIRED=1; PAIRED_NAME=${nm:-your space}
-               # The device finishes the pairing a moment after the yes; the server then names whose it is (the space), and the closing line says it.
-               w=0; while [ "$w" -lt 10 ]; do
-                 pd=$(tool wink.server.pairing '{}' || true)
-                 case "$pd" in *'"paired": true'*|*'"paired":true'*) o=$(json_str "$pd" owner); [ -z "$o" ] || PAIRED_NAME=$o; PAIRED_DEVICE=$(json_str "$pd" device); break ;; esac
-                 w=$((w + 1)); sleep 1
-               done
-               return 0 ;;
-            *) say "  Those were not the words the app shows, so nothing was paired."
-               if (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue 2; fi
-               return 0 ;;
-          esac
-          ;;
-      esac
-      sleep 2
-    done
-    say "  The code ran out before a device asked. Nothing was paired."
-    if (: </dev/tty) 2>/dev/null && ask "Make a new code?"; then continue; fi
-    return 0
-  done
 }
 
 # one_install: an install that is already running here is updated, never replaced.
@@ -1159,7 +1041,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is running"; [ -n "$CODE" ] || pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is running";  fi
     show_words
   fi
   finish

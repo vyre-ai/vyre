@@ -663,7 +663,8 @@ finish() {
     say "  Vyre is running on this Mac."
     say "  Go back to the Vyre app to finish."
   else
-    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
+    say "Vyre is running on this Mac."
+    say "Open the Vyre app, choose \"Add a server\", and run the line it shows on this Mac."
   fi
 }
 
