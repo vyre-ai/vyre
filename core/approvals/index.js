@@ -7,7 +7,7 @@ import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
-import { holdFields, wordsOf, editedInput } from "../../lib/hold-fields.js";
+import { holdFields, viewOf, editedInput } from "../../lib/hold-fields.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
@@ -164,7 +164,7 @@ export default {
         sweep();
         const waiting = [...open.values()].filter(a => a.state === "waiting");
         const groups = [...new Set(waiting.filter(a => a.group).map(a => /** @type {string} */ (a.group)))].map(g => ({ id: g, size: waiting.filter(a => a.group === g).length, line: groupLine(g) }));
-        return { approvals: waiting.map(a => (a.moment ? { ...card(a), moment: a.moment, request: a.request, line: a.line, sign: { op: a.op, space: a.space, fields: a.fields }, ...(a.group ? { group: a.group } : {}), ...(a.input ? { words: wordsOf(a.input), edited: Boolean(a.edited) } : {}) } : card(a))), ...(groups.length ? { groups } : {}) };
+        return { approvals: waiting.map(a => (a.moment ? { ...card(a), moment: a.moment, request: a.request, line: a.line, sign: { op: a.op, space: a.space, fields: a.fields }, ...(a.group ? { group: a.group } : {}), ...(a.input ? (() => { const v = viewOf(a.input); return { words: v.words, edited: Boolean(a.edited), ...(v.partial ? { partial: true, note: "Part of this is not shown. Open it on its own to see all of it." } : {}) }; })() : {}) } : card(a))), ...(groups.length ? { groups } : {}) };
       },
     });
     ctx.tool("approvals.answer", {
@@ -243,6 +243,8 @@ export default {
             if (!(await mayDecline(meta))) { results.push({ id: a.id, answered: "ignored", why: "a drop counts from your phone's own session or this server's own screen" }); continue; }
             a.state = "refused"; results.push({ id: a.id, answered: "dropped" }); continue;
           }
+          // Part of this call is not shown to the person (see viewOf), so one yes over a list cannot cover it: it is approved on its own, with its whole content in view.
+          if (!a.input || viewOf(a.input).partial) { results.push({ id: a.id, answered: "waiting", why: "part of this call is not shown here, so it cannot be approved with the others: open it on its own" }); continue; }
           const proof = proofs[a.id];
           if (!proof || typeof proof !== "object" || Array.isArray(proof) || JSON.stringify(proof).length > MAX_PROOF) { results.push({ id: a.id, answered: "waiting", why: "this item needs its own proof" }); continue; }
           if (proof.payload_hash !== a.payload_hash) { results.push({ id: a.id, answered: "waiting", why: "that proof was not for this item" }); continue; }
@@ -271,7 +273,7 @@ export default {
         const sg = signOf("outward", request);
         a.input = next; a.request = request; a.op = sg.op; a.fields = sg.fields; a.payload_hash = payloadHash(sg.op, a.space, sg.fields); a.edited = true; a.at = now();
         a.line = lineOfOp(request.op, request.fields, a.line.split(" wants to ")[0]);
-        return { id: a.id, payload_hash: a.payload_hash, words: wordsOf(next), line: a.line };
+        { const v = viewOf(next); return { id: a.id, payload_hash: a.payload_hash, words: v.words, ...(v.partial ? { partial: true } : {}), line: a.line }; }
       },
     });
     ctx.tool("approvals.card-input", {

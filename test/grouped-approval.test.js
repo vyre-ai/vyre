@@ -140,3 +140,51 @@ test("editing one item: the card is made again over the new words, the old proof
   void ra;
   for (const who of ["cli", ASKER, "module:mail"]) assert.ok((await reg.call("approvals.card-input", { id: b.id, tool: "mail.send", from: ASKER }, who)).error, `${who} cannot read a card's call`);
 });
+
+test("the person sees every value the yes covers: a bcc in an array, a nested header, an attachment and an amount are all in the words", async t => {
+  const reg = await world(t);
+  const mail = { to: "Northwind", subject: "Invoice 1042", body: "Pay this week.", bcc: ["x@evil.example", "y@evil.example"], headers: { bcc: "z@evil.example", "x-note": "hidden" }, attachments: [{ name: "a.pdf", size: 10 }, { name: "ledger.xlsx", size: 99 }], amount: 48000, urgent: true, cc: null, tags: [] };
+  const r = await send(reg, mail);
+  assert.equal(r.error.code, "held_for_approval", JSON.stringify(r.error));
+  const card = (await pending(reg)).approvals[0];
+  const byField = Object.fromEntries(card.words.map((/** @type {any} */ w) => [w.field, w.text]));
+  assert.equal(byField["bcc[0]"], "x@evil.example");
+  assert.equal(byField["bcc[1]"], "y@evil.example");
+  assert.equal(byField["headers.bcc"], "z@evil.example");
+  assert.equal(byField["headers.x-note"], "hidden");
+  assert.equal(byField["attachments[1].name"], "ledger.xlsx");
+  assert.equal(byField["attachments[1].size"], "99");
+  assert.equal(byField["amount"], "48000");
+  assert.equal(byField["urgent"], "true");
+  assert.equal(byField["cc"], "(empty)");
+  assert.equal(byField["tags"], "[]");
+  assert.equal(card.partial, undefined, "all of it is shown");
+  // the digest the yes covers is of exactly this input, so every value in it is a word on the card
+  const { holdFields } = await import("../lib/hold-fields.js");
+  assert.equal(card.request.fields.input_sha256, holdFields(mail).input_sha256);
+});
+
+test("a call too large to show whole is partial: the card says so, and it cannot ride a group yes", async t => {
+  const reg = await world(t);
+  const small = { to: "Oakline", subject: "s", body: "short" };
+  const many = { to: "Northwind", subject: "s", body: "b", rows: Array.from({ length: 300 }, (_, i) => ({ id: i, memo: `row ${i}` })) };
+  const longBody = { to: "Brightwell", subject: "s", body: "word ".repeat(2000) };
+  for (const m of [small, many, longBody]) await send(reg, m);
+  const cards = (await pending(reg)).approvals;
+  const [a, b, c] = ["Oakline", "Northwind", "Brightwell"].map(n => cards.find((/** @type {any} */ x) => x.request.fields.to === n));
+  assert.equal(a.partial, undefined);
+  assert.equal(b.partial, true, "more values than the card shows");
+  assert.match(b.note, /Part of this is not shown/);
+  assert.equal(c.partial, true, "a value cut at the display limit");
+  assert.equal(c.words.find((/** @type {any} */ w) => w.field === "body").cut, true);
+  const res = await reg.call("approvals.answer-group", { group: a.group, decisions: [a, b, c].map(x => ({ id: x.id, approve: true })), proofs: Object.fromEntries([a, b, c].map(x => [x.id, proofFor(x)])) }, "cli");
+  assert.deepEqual(res.data.results.map((/** @type {any} */ r) => r.answered), ["approved", "waiting", "waiting"]);
+  assert.match(res.data.results[1].why, /open it on its own/);
+  assert.equal((await send(reg, small, { approval: a.id })).data.sent, "Oakline");
+  assert.equal((await send(reg, many, { approval: b.id })).error.code, "approval_refused", "the partial one was not approved by the group's yes");
+  // a call nested too deeply is partial too
+  const deep = { to: "Eastgate", subject: "s", body: "b", x: { a: { b: { c: { d: { e: { f: "hidden" } } } } } } };
+  await send(reg, deep);
+  const d = (await pending(reg)).approvals.find((/** @type {any} */ x) => x.request.fields.to === "Eastgate");
+  assert.equal(d.partial, true);
+});
