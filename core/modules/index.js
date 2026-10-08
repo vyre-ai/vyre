@@ -1804,8 +1804,9 @@ export class Registry {
   mentionTools(which = "search") {
     const out = new Set();
     for (const r of this.modules.values()) {
-      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions) || !this.isFirstParty(r.dir)) continue;
-      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string") out.add(e[which]);
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions)) continue;
+      // An added module offers its own tools too (its manifest check holds them to its own name and to reads); the picker cuts what resolve gives back.
+      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string" && (this.isFirstParty(r.dir) || (e[which].startsWith(`${r.manifest.name}.`) && String(e.kind).startsWith(String(r.manifest.name))))) out.add(e[which]);
     }
     return out;
   }
