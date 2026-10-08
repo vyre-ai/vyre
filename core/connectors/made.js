@@ -4,7 +4,7 @@
 // person's own surface, so a row is made, changed and rebuilt in a person's act; a credential found changed behind the row's back shows as out of step until that act rebuilds it.
 
 import crypto from "node:crypto";
-import { defineConnector } from "../../records/connectors/format.js";
+import { defineConnector, appHost } from "../../records/connectors/format.js";
 import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
@@ -21,7 +21,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     const a = d.auth;
     const auth = a.type === "api-key" ? (a.in === "query" ? { kind: "query", name: a.param } : { kind: "header", name: a.header || "x-api-key" }) : { kind: a.type };
     const f = r.form ? JSON.parse(r.form) : {};
-    return { id: r.id, label: r.label, host: new URL(d.base_url).hostname, auth, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, headers: f.headers || {}, vars: f.vars || {},
+    return { id: r.id, label: r.label, host: d.app ? appHost(d.app) : new URL(d.base_url).hostname, ...(d.app ? { app: d.app } : {}), auth, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, headers: f.headers || {}, vars: f.vars || {},
       check: { method: "GET", path: r.check_path }, origin: r.origin,
       light: stale ? "out_of_step" : r.light, reason: stale ? "the Vault credential was changed outside this connection; save the connection again to rebuild it" : r.reason, checked_at: r.checked_at, created: r.created,
       operations: operationsOf(d) };
@@ -47,7 +47,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     if (put.error) throw fail(`could not save the credential in the vault: ${put.error.message}`, put.error.code || "vault");
     const after = (await items()).get(name);
     db.prepare("UPDATE connectors_made SET item_updated = ? WHERE id = ?").run(after ? Number(after.updated) || now() : now(), r.id);
-    const reg = await call("vault.connections.register", { ref: `made:${r.id}`, provider: "custom", account: new URL(decl.base_url).hostname, auth: AUTH_OF[/** @type {keyof typeof AUTH_OF} */ (decl.auth.type)] || "api-key", label: decl.label });
+    const reg = await call("vault.connections.register", { ref: `made:${r.id}`, provider: "custom", account: decl.app ? `${decl.app} (on this machine)` : new URL(decl.base_url).hostname, auth: AUTH_OF[/** @type {keyof typeof AUTH_OF} */ (decl.auth.type)] || "api-key", label: decl.label });
     if (reg.error) log("connections: could not register the row", { id: r.id, error: reg.error.message });
     return name;
   }
@@ -78,7 +78,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     /** @type {{ light: "green" | "red", words: string }} */ let out;
     if (stale) out = { light: "red", words: "the Vault credential was changed outside this connection; save the connection again to rebuild it" };
     else {
-      const res = await call("vault.request", { credential: credentialName(id), method: "GET", url: d.base_url + r.check_path });
+      const res = await call("vault.request", { credential: credentialName(id), method: "GET", url: (d.app ? `https://${appHost(d.app)}` : d.base_url) + r.check_path });
       out = res.error ? outcomeOf({ error: res.error }) : outcomeOf({ reply: res.data });
     }
     db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(out.light, out.words, now(), id);
@@ -137,7 +137,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       const holes = (/** @type {Record<string, string>} */ vars) => Object.fromEntries(Object.keys(vars).map(k => [k, `{{${k}}}`]));
       const vars = f.vars || {};
       const sub = (/** @type {string} */ text) => Object.entries(vars).reduce((t, [k, v]) => (v ? t.split(encodeURIComponent(String(v))).join(`{${k}}`).split(String(v)).join(`{${k}}`) : t), text);
-      return { template: 1, label: rec.label, base_url: `https://${rec.host}`, send: f.send || rec.auth, headers: Object.fromEntries(Object.entries(f.headers || {}).map(([k, v]) => [k, sub(String(v))])), vars: holes(vars),
+      return { template: 1, label: rec.label, ...(rec.app ? { app: rec.app } : { base_url: `https://${rec.host}` }), send: f.send || rec.auth, headers: Object.fromEntries(Object.entries(f.headers || {}).map(([k, v]) => [k, sub(String(v))])), vars: holes(vars),
         check: { path: sub(r.check_path) }, operations: rec.operations, credential: { item: "" } };
     },
     rebuild: async (/** @type {string} */ id, /** @type {string} */ as) => { const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found"); return { id, credential: await materialize(r, as) }; },

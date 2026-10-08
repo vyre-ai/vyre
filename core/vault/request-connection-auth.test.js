@@ -26,6 +26,7 @@ async function mk(t) {
   migrate(db, "vault", MIGRATIONS);
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
+  let appOrigin = () => ({ error: { code: "not_found", message: "no app" } });
   let resolve = async (/** @type {string} */ _h) => [{ address: "203.0.113.10", family: 4 }];
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
   const transport = async r => { net.calls.push({ path: r.url.pathname + r.url.search, headers: r.headers, method: r.method }); return net.script(r); };
@@ -33,11 +34,11 @@ async function mk(t) {
   const tool = (name, callers, description, input, run) => tools.set(name, { run });
   const internal = (name, description, input, run) => tools.set(name, { run });
   const said = saidTools.register({ vault: v, internal });
-  const api = register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async host => resolve(host), transport } });
+  const api = register({ vault: v, tool, internal, call: async (/** @type {string} */ t) => (t === "appmods.origin" ? appOrigin() : { error: { code: "no_such_tool", message: "x" } }), said, deps: { lookup: async host => resolve(host), transport } });
   const ask = (input, caller = "cli") => tools.get("vault.request").run(input, { caller });
   const key = (name, fields) => v.put({ name, kind: fields.username ? "login" : "secret", fields }, "cli");
   const cred = (name, config) => v.put({ name, kind: "api-credential", fields: { config: JSON.stringify(config) } }, "cli");
-  return { setResolve: (/** @type {any} */ f) => { resolve = f; }, tools, api, v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
+  return { setApp: (/** @type {any} */ f) => { appOrigin = f; }, setResolve: (/** @type {any} */ f) => { resolve = f; }, tools, api, v, net, ask, key, cred, audit: () => v.auditTrail({ limit: 500 }).entries };
 }
 const BASE = { hosts: ["api.example.com"], endpoints: [{ method: "GET", path: "/*", kind: "read" }] };
 
@@ -188,4 +189,71 @@ test("fetching an API description by address: a public https GET with nothing of
   net.script = () => ({ status: 404, headers: {}, body: Buffer.from("no") });
   await assert.rejects(get("https://docs.example.com/missing"), /answered 404/);
   void api;
+});
+
+test("a Connection to an app on this machine: the vault asks the app for its origin, sends the key to exactly http://127.0.0.1:<port>, and nowhere else", async t => {
+  const { net, ask, key, cred, setApp, api } = await mk(t);
+  const { fromForm, toConfig } = await import("../../records/connectors/connection.js");
+  await key("app-docuseal-api-token", { value: fake("tok") });
+  const m = fromForm({ label: "DocuSeal", app: "docuseal", send: { how: "header", name: "X-Auth-Token" }, credential: { item: "app-docuseal-api-token" }, check: { path: "/api/templates" },
+    operations: [{ name: "templates.get", method: "GET", path: "/api/templates/{id}", input: { params: { id: { type: "string", required: true } } } }, { name: "submissions.create", method: "POST", path: "/api/submissions" }] });
+  await cred("conn-docuseal", toConfig(m));
+  const sentinel = "https://docuseal.app.invalid";
+  setApp(() => ({ data: { origin: "http://127.0.0.1:41234" } }));
+  const r = await ask({ credential: "conn-docuseal", operation: "templates.get", input: { params: { id: "7" } } });
+  assert.equal(r.kind, "read");
+  const c = net.calls.at(-1);
+  assert.equal(c.address, "127.0.0.1"); assert.equal(c.path, "/api/templates/7"); assert.match(c.headers["x-auth-token"], /^fixture-tok-/);
+  assert.equal(c.host, "127.0.0.1", "the request goes to the local address, not to a name");
+  // a write is held like any write, and what is approved carries the stable name, not the port of the day
+  const k = async (/** @type {any} */ i) => { const p = await api.plan(await api.fromOperation({ credential: "conn-docuseal", ...i }, "conn-docuseal"), "conn-docuseal"); return p; };
+  const p1 = await k({ operation: "submissions.create", input: { body: undefined } }).catch(() => null);
+  const w1 = await api.plan({ credential: "conn-docuseal", method: "POST", url: `${sentinel}/api/submissions` }, "conn-docuseal");
+  assert.equal(w1.kind, "send"); assert.equal(w1.href, `${sentinel}/api/submissions`);
+  setApp(() => ({ data: { origin: "http://127.0.0.1:50999" } }));
+  const w2 = await api.plan({ credential: "conn-docuseal", method: "POST", url: `${sentinel}/api/submissions` }, "conn-docuseal");
+  assert.equal(w2.hash, w1.hash, "the app restarted on another port: the same request is the same approval");
+  assert.equal(w2.url.port, "50999");
+  void p1;
+  // the origin is the app's to say, but only this exact shape
+  for (const bad of ["http://127.0.0.1:80", "http://127.0.0.1:41234/x", "https://127.0.0.1:41234", "http://localhost:41234", "http://10.0.0.5:41234", "http://127.0.0.2:41234", "http://127.0.0.1:41234@evil.example", "http://127.0.0.1:70000"]) {
+    setApp(() => ({ data: { origin: bad } }));
+    await assert.rejects(ask({ credential: "conn-docuseal", method: "GET", url: `${sentinel}/api/templates` }), /will not send a key to/, bad);
+  }
+  // not running, or no such tool: nothing is sent
+  const before = net.calls.length;
+  setApp(() => ({ error: { code: "unavailable", message: "docuseal is stopped" } }));
+  await assert.rejects(ask({ credential: "conn-docuseal", method: "GET", url: `${sentinel}/api/templates` }), /app is not running/);
+  assert.equal(net.calls.length, before);
+  // an address that is not the app's own sentinel is refused, even a local one, and a redirect is never followed
+  setApp(() => ({ data: { origin: "http://127.0.0.1:41234" } }));
+  await assert.rejects(ask({ credential: "conn-docuseal", method: "GET", url: "https://api.example.com/x" }), /not on this credential's allowed hosts/);
+  await assert.rejects(ask({ credential: "conn-docuseal", method: "GET", url: "http://127.0.0.1:41234/api/templates" }), /must be https/);
+  net.script = () => ({ status: 302, headers: { location: "http://127.0.0.1:41234/elsewhere" }, body: Buffer.from("") });
+  await assert.rejects(ask({ credential: "conn-docuseal", method: "GET", url: `${sentinel}/api/templates` }), /redirect, which is not followed/);
+});
+
+test("the transport: plain http only to 127.0.0.1, with the key and Host as given, a size cap, and never to a name or another address", async () => {
+  const http = await import("node:http");
+  const { httpsTransport } = await import("./request.js");
+  /** @type {any} */ let seen = null;
+  const srv = http.createServer((req, res) => { seen = { url: req.url, headers: req.headers }; res.writeHead(200, { "content-type": "application/json" }); res.end('{"ok":true}'); });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  try {
+    const port = /** @type {any} */ (srv.address()).port;
+    const r = await httpsTransport({ url: new URL(`http://127.0.0.1:${port}/api/templates?x=1`), address: "127.0.0.1", method: "GET", headers: { "x-auth-token": "k" } });
+    assert.equal(r.status, 200); assert.equal(r.body.toString(), '{"ok":true}');
+    assert.equal(seen.url, "/api/templates?x=1"); assert.equal(seen.headers["x-auth-token"], "k"); assert.equal(seen.headers.host, `127.0.0.1:${port}`);
+    await assert.rejects(httpsTransport({ url: new URL(`http://127.0.0.1:${port}/`), address: "10.0.0.5", method: "GET", headers: {} }), /only for an app on this machine/);
+    await assert.rejects(httpsTransport({ url: new URL(`http://evil.example/`), address: "93.184.216.34", method: "GET", headers: {} }), /only for an app on this machine/);
+  } finally { srv.close(); }
+});
+
+test("a credential with `app` is written only in the one shape: the sentinel host, a key sign-in, a module name", () => {
+  const ok = { app: "docuseal", auth: { type: "bearer", item: "k" } };
+  const n = normalize({ ...ok, hosts: ["evil.example.com"] });
+  assert.deepEqual(n.hosts, ["docuseal.app.invalid"], "whatever hosts are given, an app's credential has the sentinel one");
+  assert.equal(n.app, "docuseal");
+  assert.throws(() => normalize({ app: "Bad Name", auth: { type: "bearer", item: "k" } }), /module name/);
+  assert.throws(() => normalize({ app: "docuseal", auth: { type: "oauth", client: { item: "c" }, authorize_uri: "https://a.example/a", token_uri: "https://a.example/t", scopes: [] } }), /signs in with a key/);
 });

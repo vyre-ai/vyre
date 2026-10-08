@@ -75,9 +75,22 @@ export function checkAgentsRelay(tool, as) {
   if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send and threads.release only`);
 }
 /** @type {Record<string, any>} */
+/**
+ * What a first-party module that relays a person (`as`) may relay: connectors writes a person's api-credential (vault.put) and deletes a connection's own (vault.delete of conn-<id>); appmods
+ * makes and removes the Connection of an app the person installed or removed (connectors.connection.create and .delete). Anything else is refused. Called before the relayed call is made.
+ * @param {string} module @param {string} tool @param {any} input @param {string} as
+ */
+export function checkRelayTool(module, tool, input, as) {
+  const obj = input && typeof input === "object";
+  if (module === "connectors" && !(tool === "vault.put" && obj && input.kind === "api-credential") && !(tool === "vault.delete" && obj && /^conn-[a-z0-9-]+$/.test(String(input.name)))) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, and to vault.delete for a connection's own conn-<id> credential, only`);
+  if (module === "appmods" && !["connectors.connection.create", "connectors.connection.delete"].includes(tool)) throw new Error(`appmods may not call ${tool} as ${as}: it relays an installing person to the app's own Connection (create and delete) only`);
+}
+
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
+  // appmods relays the person who installed or removed an app to the Connection of that app and to nothing else (connectors.connection.create and .delete: a vault api-credential is a person's to write); checked per call below.
+  appmods: (/** @type {string} */ as) => isPerson(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
@@ -1215,7 +1228,7 @@ export class Registry {
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
-        if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential") && !(tool === "vault.delete" && input && typeof input === "object" && /^conn-[a-z0-9-]+$/.test(String(input.name)))) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, and to vault.delete for a connection's own conn-<id> credential, only`);
+        checkRelayTool(m.name, tool, input, String(as));
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));

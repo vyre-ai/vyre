@@ -113,3 +113,16 @@ test("operations in the form: the method sets the kind, the person may relabel, 
   assert.throws(() => fromForm(ghl({ operations: [{ name: "a.b", method: "POST", path: "/x", kind: "read" }] })), /a read is a GET or HEAD/);
   assert.throws(() => fromForm(ghl({ operations: [{ name: "a.b", method: "GET", path: "/x", poll: {} }] })), /poll is/);
 });
+
+test("an app's Connection: an app instead of an address, the sentinel host, no poll, and the check says when the app is not running", () => {
+  const m = fromForm({ label: "DocuSeal", app: "docuseal", send: { how: "bearer" }, credential: { item: "app-docuseal-api-token" }, check: { path: "/api/templates" } });
+  assert.equal(m.declaration.app, "docuseal"); assert.equal(m.declaration.base_url, undefined);
+  assert.deepEqual(checkDeclaration(m.declaration), []);
+  const cfg = toConfig(m);
+  assert.equal(cfg.app, "docuseal"); assert.deepEqual(cfg.hosts, ["docuseal.app.invalid"]);
+  assert.deepEqual(normalize(cfg).hosts, ["docuseal.app.invalid"]);
+  assert.throws(() => fromForm({ label: "DocuSeal", app: "docuseal", base_url: "https://x.example.com", send: { how: "bearer" }, credential: { item: "k" }, check: { path: "/x" } }), /an app, not an address/);
+  assert.throws(() => fromForm({ label: "DocuSeal", app: "docuseal", send: { how: "bearer" }, credential: { item: "k" }, check: { path: "/x" }, operations: [{ name: "a.b", method: "GET", path: "/l", poll: { id: "id" } }] }), /poll is not available/);
+  assert.throws(() => fromForm({ label: "x", app: "Bad Name", send: { how: "bearer" }, credential: { item: "k" }, check: { path: "/x" } }), /module's name/);
+  assert.deepEqual(outcomeOf({ error: { code: "unavailable", message: "the app is not running" } }), { light: "red", words: "the app is not running" });
+});

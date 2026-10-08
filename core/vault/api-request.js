@@ -119,8 +119,15 @@ function normalizeEndpoint(e) {
 export function normalize(i) {
   if (!isObj(i)) throw bad("an api-credential needs auth, hosts and, optionally, endpoints");
   const auth = normalizeAuth(i.auth);
-  if (!Array.isArray(i.hosts) || !i.hosts.length) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
-  const hosts = i.hosts.map(normalizeHost);
+  // A Connection to an app on this machine (`app`: the module's name) has the one sentinel host nothing on the internet answers; the vault swaps in the app's local origin (request.js appTarget).
+  /** @type {string | undefined} */ let app;
+  if (i.app !== undefined) {
+    if (typeof i.app !== "string" || !/^[a-z][a-z0-9-]{1,40}$/.test(i.app)) throw bad("app is a module name: lowercase letters, digits and -");
+    if (!["bearer", "api-key", "basic"].includes(auth.type)) throw bad("an app's connection signs in with a key: bearer, api-key or basic");
+    app = i.app;
+  }
+  if (!app && (!Array.isArray(i.hosts) || !i.hosts.length)) throw bad("hosts must be a non-empty list (an exact hostname, or one leading \"*.\")");
+  const hosts = app ? [`${app}.app.invalid`] : i.hosts.map(normalizeHost);
   const endpoints = Array.isArray(i.endpoints) ? i.endpoints.map(normalizeEndpoint) : [];
   const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
@@ -129,7 +136,7 @@ export function normalize(i) {
   const headers = i.headers === undefined ? undefined : normalizeFixedHeaders(i.headers);
   const operations = i.operations === undefined ? undefined : normalizeOperations(i.operations);
   if (service) for (const r of service.allow) if (r.host && !hosts.includes(r.host)) throw bad(`a service rule names ${r.host}, which is not one of the credential's hosts`);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}), ...(operations ? { operations } : {}) };
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}), ...(headers ? { headers } : {}), ...(operations ? { operations } : {}), ...(app ? { app } : {}) };
 }
 
 /**
