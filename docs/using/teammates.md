@@ -46,6 +46,7 @@ vyre team                               # this project's teammates, their state 
 vyre team ask design "Make the intake form calmer"
 vyre team ask design "Fix the footer" --urgent     # jumps this teammate's own queue only
 vyre team ask design "Summarise what you changed" --wait   # waits up to 30 seconds for the result
+vyre team ask backend "Review the migration" --model codex   # runs this request on Codex (or grok, or provider/model)
 vyre team status <request>              # one request's state and result
 vyre team cancel <request>              # cancel a queued request
 vyre team notes design-juniper-legal     # read its notes
