@@ -81,7 +81,7 @@ function AddApp({ open, onClose, onDone }: { open: boolean; onClose: () => void;
     <Sheet open={open} onClose={onClose} title="Connect an app">
       {result ? (
         <View className="gap-s3">
-          <Banner tone={result.light === "green" ? "ok" : "warn"}><Text>{result.light === "green" ? "Connected. The check worked." : `Saved, but the check says: ${result.words}.`}</Text></Banner>
+          <Banner tone={result.light === "green" ? "plain" : "warn"}><Text>{result.light === "green" ? "Connected. The check worked." : `Saved, but the check says: ${result.words}.`}</Text></Banner>
           <Text size="secondary" tone="muted">{result.light === "green" ? "Agents, Flows and watchers can use it now." : "Fix the key or the details and connect again, or check later from the list."}</Text>
           <View className="self-start"><Button kind="primary" label="Done" onPress={onClose} /></View>
         </View>
