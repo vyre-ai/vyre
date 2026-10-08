@@ -37,6 +37,12 @@ struct KeychainSeedStore: IdentitySeedStore {
         q[kSecValueData as String] = seed
         q[kSecAttrLabel as String] = "Vyre identity key"
         q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        if status == errSecSuccess { return true }
+        // An app signed ad hoc (no Developer ID yet) carries no keychain entitlement, so macOS refuses the "this device only" class (errSecMissingEntitlement).
+        // The login Keychain still keeps the seed on this Mac, readable only while it is unlocked; a signed build takes the first path.
+        guard status == errSecMissingEntitlement else { return false }
+        q.removeValue(forKey: kSecAttrAccessible as String)
         return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
     }
 
