@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(modules): an added module may ship a Kit (`does.kits`), in the records language's stored form or the kernel's. `vyre module add` proposes it under the rules a module's Kit has (its id is the module's name, its types are named for the module, no roles, no teammates, no project type), and a record type relates to projects with a link to `project`. A real-daemon test installs a module with a Kit, links records to a project, upgrades the module and its Kit, and checks nothing is lost.
 - feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
 - fix(release): the Android release-notes line no longer ends the release job with an apostrophe inside a single-quoted printf; every bash run step in the workflows is now checked with bash -n (test/workflows-yaml.test.js).

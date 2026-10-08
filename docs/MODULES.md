@@ -146,6 +146,22 @@ The runner does not ask the kernel's action table about a Flow tool, so **the to
 otherwise. For an outward tool the Flow's one approval is spent at the call (once, for exactly that input), and that is the only gate beside the tool's own. For a read tool nothing else gates it.
 Every `flowAction` tool is listed with the guard it relies on in `test/flow-action-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a read tool with no gate of its own does not pass review.
 
+## A module ships a Kit: records, fields and a link to projects
+
+A module that keeps records of its own lists the Kit files it ships in its manifest: `"does": { "kits": ["kit.json"] }`. The file is a Kit in the records language's stored form (write `kit.ts` and compile it with `node records/language/cli.js compile kit.ts > kit.json`) or in the kernel's form. When someone adds the module (`vyre module add`), Vyre proposes each Kit file as a card in Now. Nothing is defined until the owner says yes, and the card lists every type and field.
+
+A module's Kit is held to what a module may add. Its id is the module's name. Every record type is named for the module (`tasker_item` for the module `tasker`), so it cannot redefine a core type or another Kit's. It adds no roles and no teammates, because those are abilities and the person gives abilities, and it makes no project type. List the types in `needs.kernel.records` so the module's code may create and list them, as the person who installed it.
+
+To relate an item to a project, give the type a link to `project`:
+
+```ts
+project: defineField.link({ to: "project", label: "Project", inverse: { name: "tasker_items", label: "Items" } }),
+```
+
+The item then shows on the project (`records.linked` on the project lists it), and a Flow can start from it like any record.
+
+**An upgrade keeps everything.** A new version of the module and a new version of its Kit replace the old ones. The module's own tables migrate forward with `ctx.store.migrate`, the Space's records stay as they were and keep their links, and the update card says which types changed and what was removed. Keep the tool names, view names and field names a person has pinned or used in a Flow: removing one hides what depends on it. `test/module-kit-upgrade-daemon.test.js` installs a module, makes records linked to a project, upgrades the module and its Kit, and checks all of it is still there.
+
 ## What a module gets: `ctx`
 
 Every member that reaches outside the module returns a promise. Types are in
