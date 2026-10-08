@@ -9336,7 +9336,7 @@ React to a message in a group chat with an emoji (on: false takes it back).
 
 ### `stream.second-opinion`
 
-Ask another assistant or model of this chat for its own answer to the same question, on an answer you are reading: { chat, message, to }. The chat shows one short line from you; the other assistant is also given the question, the answer and the last turns from the chat itself. It must already be in the chat.
+Ask another assistant or model of this chat for its own answer to the same question, on an answer you are reading: { chat, message, to }. The chat shows one short line from you; the other assistant is also given the question, the answer and the last turns from the chat itself. A model the chat does not have yet (codex, grok, provider/model) joins in the same step.
 
 - Input:
   - `chat` string, required
