@@ -100,6 +100,7 @@ const within = (p, ms, onTimeout) => new Promise((resolve, reject) => { const t 
  *   words?: string[],
  *   store?: { get(key: string): Promise<any> | any, put(key: string, value: any): Promise<void> | void, delete?(key: string): Promise<void> | void },
  * }} Deps
+ * @typedef {Deps} JoinDeps
  */
 
 /**
