@@ -16,6 +16,7 @@ import { writeKey } from "../core/switchboard/sessions.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
 import { tempHome, writeModule } from "./helpers.js";
+import { SCRATCH } from "./scratch.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "harness");
@@ -50,10 +51,18 @@ const hook = (cache, piece, payload, env) => run([path.join(cache, "hooks", "run
  * Speak MCP to a server over stdio until `want` replies arrive. Each request waits for the one
  * before it: the server answers calls concurrently, so a list sent with an add can beat it.
  */
-async function mcp(file, env, msgs, want) {
+async function mcp(file, env, msgs, want, claude) {
   const base = { ...process.env };
   delete base.VYRE_PACKAGE;
-  const p = spawn(process.execPath, [file], { env: { ...base, ...env } });
+  // `claude`: run the server the way Claude Code does, as the child of a process that is a running claude (a program called claude: `node <dir>/claude`), and let the caller bind a session to
+  // that process before the first call, as the SessionStart hook does. Without it the server is a bare child of this test, which no session is bound to.
+  let p;
+  if (claude) {
+    const dir = fs.mkdtempSync(path.join(SCRATCH, "cc-claude-"));
+    fs.writeFileSync(path.join(dir, "claude"), `const { spawn } = require("node:child_process"); const c = spawn(process.execPath, [process.argv[2]], { stdio: "inherit" }); c.on("exit", () => process.exit(0)); setInterval(() => {}, 1000);\n`);
+    p = spawn(process.execPath, [path.join(dir, "claude"), file], { env: { ...base, ...env } });
+    await claude(p.pid);
+  } else p = spawn(process.execPath, [file], { env: { ...base, ...env } });
   const replies = new Map();
   /** @type {Map<any, (m: any) => void>} */
   const waiting = new Map();
@@ -265,12 +274,14 @@ test("memory: the user's own session's remember is kept pending, not as the pers
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
-  // The user's own Claude Code session, bound the way its SessionStart hook binds it (harness/hooks/hook.js): to the process the MCP server's parent is, which here is this test.
-  const bound = await daemonCall("threads.bind", { session: "cc-own-session", pid: process.pid }, { root, caller: "harness" });
-  assert.ok(bound.data && bound.data.key, "the session is bound: " + JSON.stringify(bound));
-  writeKey(path.join(root, "sessions"), process.pid, bound.data);
+  // The user's own Claude Code session, bound the way its SessionStart hook binds it (harness/hooks/hook.js): to the claude process the MCP server's parent is.
+  const bind = async (/** @type {number} */ pid) => {
+    const b = await daemonCall("threads.bind", { session: "cc-own-session", pid }, { root, caller: "harness" });
+    assert.ok(b.data && b.data.key, "the session is bound: " + JSON.stringify(b));
+    writeKey(path.join(root, "sessions"), pid, b.data);
+  };
   const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
-    call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
+    call(3, "memory_remember", { text: "My wife is Jordan." })], 3, bind);
   const names = own.get(2).result.tools.map(x => x.name);
   for (const n of ["memory_remember", "memory_answer"]) assert.ok(names.includes(n), n);
   // HD-8: a session is a model, and a model's words are not the person's. It is kept as an untrusted, attributed note, pending until the person tells memory themselves.
@@ -279,7 +290,7 @@ test("memory: the user's own session's remember is kept pending, not as the pers
   assert.deepEqual(kept.facts, []);
   // A fresh server, as the next question would be: the answer comes from vyred, not the process.
   const ask = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT,
-    call(2, "memory_answer", { q: "who is my wife" }), call(3, "memory_answer", { q: "who is my wife", project_cwds: ["/home/alex/Work/harlow-site"] })], 3);
+    call(2, "memory_answer", { q: "who is my wife" }), call(3, "memory_answer", { q: "who is my wife", project_cwds: ["/home/alex/Work/harlow-site"] })], 3, bind);
   // The session's note is not the person's fact: the answer does not state it as theirs.
   assert.notEqual(out(ask, 2).answer, "Your wife is Jordan.");
   assert.notEqual(out(ask, 3).answer, "Your wife is Jordan.", "nor from inside a project folder");
