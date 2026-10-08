@@ -16,7 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { createRun } from "./lib/proof/run.mjs";
 import { startStandins } from "./lib/proof/standins.mjs";
-import { walk, walkTerminal } from "./lib/proof/walk.mjs";
+import { walk, walkTerminal, walkUpdate } from "./lib/proof/walk.mjs";
 import { buildUpdateReleases } from "./lib/proof/update-releases.mjs";
 
 const argv = process.argv.slice(2);
@@ -45,8 +45,8 @@ try {
       return `${update.oldVersion} -> ${update.newVersion}`;
     });
   }
-  if (!updateProof || update) for (const store of stores) await walk({ run, ins, server, store, out, inCI, ...(update ? { update } : {}) });
-  if (!updateProof) await walkTerminal({ run, ins, server, out });
+  if (update) await walkUpdate({ run, ins, out, update });
+  if (!updateProof) { for (const store of stores) await walk({ run, ins, server, store, out, inCI }); await walkTerminal({ run, ins, server, out }); }
   if (update) await update.stop();
 } finally {
   code = run.finish();

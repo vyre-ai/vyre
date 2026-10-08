@@ -52,8 +52,8 @@ jobs:
           docker logs --tail 80 vyre-vyre-1 2>&1 || true
           sudo journalctl -u vyre-update.service --no-pager -n 80 2>&1 || true
           sudo cat /var/lib/vyre-update/status/status.json 2>&1 || true
-          tail -60 proof-out/plain/server/install.log 2>&1 || true
-          tail -80 proof-out/plain/server/vyred.log 2>&1 || true
+          tail -60 proof-out/update/server/install.log 2>&1 || true
+          tail -80 proof-out/update/server/vyred.log 2>&1 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: install-proof-linux-update, path: proof-out, retention-days: 14 }

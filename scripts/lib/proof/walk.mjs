@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
-/** @param {{ update?: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string }, run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", store: "records" | "plain", out: string, inCI: boolean }} w */
+/** @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, server: "daemon" | "installer" | "mac", store: "records" | "plain", out: string, inCI: boolean }} w */
 export async function walk(w) {
   const { run, ins, server, store } = w;
   const tag = `${store}`;
@@ -64,7 +64,7 @@ export async function walk(w) {
     }, { needs: [S("become yourself in the app (the code is spent)")] });
 
     await run.step(S(`the server installs from the line (${server})`), async () => {
-      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store, ...(w.update ? { release: w.update } : {}) };
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store };
       srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store, ownerId: mac.identity.id });
       return `${srv.kind}`;
     }, { needs: [S("add a server: the app shows the install line")] });
@@ -97,7 +97,6 @@ export async function walk(w) {
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
 
     const CALL = S("the app reaches the server and calls a tool");
-    if (w.update) await updateSteps({ w, run, S, mac, srv: () => srv, CALL });
     /** @type {any} */ let team = null, invite = null;
     await run.step(S("create a team space on the server (named in the app, signed with the identity)"), async () => {
       team = await mac.createTeamSpace(`team${person.slice(-6)}`);
@@ -290,13 +289,59 @@ export async function walkTerminal(w) {
 }
 
 /**
+ * The update walk (--update): an app with its own identity pairs a server that is the OLD release (v0.2.11 by default, installed by that release's own installer, which has no setup-code flow: it shows its
+ * long code), then asks for the update from the app. The steps are in updateSteps.
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, out: string, update: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string } }} w
+ */
+export async function walkUpdate(w) {
+  const { run, ins, update } = w;
+  const tag = "update";
+  const S = (/** @type {string} */ n) => `${tag}: ${n}`;
+  const dir = path.join(w.out, tag);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+  /** @type {any} */ let srv = null, made = null;
+  try {
+    await run.step(S("the app has an identity"), async () => {
+      const r = await mac.reserve(`walkeru${Math.random().toString(36).slice(2, 7)}`);
+      await mac.becomeYourself({ name: r.name, code: r.code });
+    });
+    await run.step(S(`the old release (${update.oldVersion}) installs with its own installer and shows its code`), async () => {
+      const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
+      srv = await startInstallerServer(a);
+      for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 30 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) throw e; await new Promise(r => setTimeout(r, 2000)); } }
+      assert.ok(made && /^vyre:\/\/wink\/2\?/.test(made.qr), "the server showed a long code");
+      return "a long code";
+    }, { needs: [S("the app has an identity")] });
+    const PAIR = S("the app pairs the server and the server names this identity its owner");
+    await run.step(PAIR, async () => {
+      const pairing = mac.pairWithServer(made.qr);
+      pairing.catch(() => {});
+      const ask = await mac.until(async () => { const x = await srv.operator("wink.server.pairing", {}); return x && x.asking ? x : null; }, 30_000, "the server to ask who is pairing");
+      const shown = await mac.until(() => mac.lastWords(), 15_000, "the app to show its three words");
+      assert.ok(ask.choices.includes(shown), "the server offers the words the app shows");
+      await srv.operator("wink.server.pair.answer", { yes: true, pick: ask.choices.indexOf(shown) + 1 });
+      const r = await pairing;
+      assert.ok(r.owner, "the server named an owner");
+    }, { needs: [S(`the old release (${update.oldVersion}) installs with its own installer and shows its code`)] });
+    await run.step(S("the app reaches the server and calls a tool"), async () => {
+      await mac.openSession();
+      assert.ok(await mac.callTool("system.info"), "system.info answered");
+    }, { needs: [PAIR] });
+    await updateSteps({ w: { update }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
+  } finally {
+    try { if (srv) await srv.stop(); } catch { /* gone */ }
+  }
+}
+
+/**
  * The update, from the app. The server was installed from the OLD release (v0.2.11 by default); the app asks for the update the way its Settings button does (update.status, then update.apply over its paired session, no ssh), and the box's own
  * root unit downloads the candidate, checks its signature, backs up, swaps and restarts. Then the same app, with no new pairing, finds the new version and everything it wrote before.
  * @param {{ w: any, run: any, S: (n: string) => string, mac: any, srv: () => any, CALL: string }} a
  */
 async function updateSteps({ w, run, S, mac, srv, CALL }) {
   const u = w.update;
-  const U = (/** @type {string} */ n) => S(`update: ${n}`);
+  const U = (/** @type {string} */ n) => S(n);
   /** @type {any} */ let before = null, notice = null;
   const sorted = (/** @type {any} */ l) => JSON.stringify((Array.isArray(l) ? l : (l && (l.items || l.entries || l.notes)) || []).map((/** @type {any} */ x) => (typeof x === "string" ? x : JSON.stringify({ name: x.name, kind: x.kind, text: x.text, id: x.id }))).sort());
   await run.step(U("the server runs the old release and the app shows its notice"), async () => {
