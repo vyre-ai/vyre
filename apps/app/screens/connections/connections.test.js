@@ -275,3 +275,15 @@ test("any app: the list is picked from the box's answer, and a new connection is
   assert.deepEqual(b.seen.slice(-2).map((x) => x.tool), ["connectors.connection.create", "connectors.connection.check"]);
   assert.deepEqual(b.seen.at(-1)?.input, { id: "ghl" });
 });
+
+test("any app: an assistant's proposal is shown as the card the person is asked, and yes or no are one call each", { skip: !strip }, async () => {
+  const { pickProposals } = await import("./any-app.ts");
+  const { connectionsSource } = await import("./source.ts");
+  const raw = { proposals: [{ proposal: "prop_1", by: "mcp", why: "from their docs", form: { label: "x" }, card: { title: "Connect Acme?", lines: ["It can reach api.acme.example and nothing else."] } }, { proposal: "bad" }, { nope: 1 }] };
+  assert.deepEqual(pickProposals(raw), [{ id: "prop_1", by: "mcp", why: "from their docs", title: "Connect Acme?", lines: ["It can reach api.acme.example and nothing else."] }]);
+  const b = box({ data: { "connectors.connection.proposals": raw } });
+  const s = connectionsSource(b.call);
+  assert.equal((await s.madeProposals()).length, 1);
+  await s.madeApprove("prop_1"); await s.madeDecline("prop_2");
+  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["connectors.connection.approve", { proposal: "prop_1" }], ["connectors.connection.decline", { proposal: "prop_2" }]]);
+});
