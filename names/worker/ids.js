@@ -48,7 +48,7 @@ export const ID_LIMITS = Object.freeze({
 });
 
 const enc = new TextEncoder();
-const ALPHA32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+export const ALPHA32 = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 /** The only thing the directory keeps of a reservation code: a hash that names the name and the code (ignoring case, dashes and spaces). @param {string} name @param {string} code */
 export async function reserveHash(name, code) { return sha256(`${RESERVE_TAG}\n${name}\n${String(code).toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/^VYRE/, "")}`); }
 /** The index key of a code on its own (so a pasted code finds its name): a hash, never the code. @param {string} code */

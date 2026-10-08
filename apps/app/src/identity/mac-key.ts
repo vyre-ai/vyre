@@ -24,8 +24,8 @@ export async function macDeviceKey(create = false): Promise<DeviceKey | null> {
   const id = shellIdentity();
   if (!id) return null;
   let pub: string;
-  // A create that fails says why (the shell's own words), so the screen never shows one generic line for every cause (IR-31).
-  try { pub = await id.public(create); } catch (e) { if (create) throw Object.assign(new Error(`This computer would not keep your key: ${(e as Error)?.message || String(e)}`), { code: "cannot_keep" }); return null; }
+  // A create that fails says why (the shell's own words), so the screen never shows one generic line for every cause (IR-31); the reason is also kept for lastKeyFailure.
+  try { pub = await id.public(create); keyFailure = ""; } catch (e) { keyFailure = reasonOf(e); if (create) throw Object.assign(new Error(`This computer would not keep your key: ${keyFailure}`), { code: "cannot_keep" }); return null; }
   const raw = unb64u(pub);
   return {
     publicKey: pub,
