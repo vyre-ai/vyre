@@ -128,8 +128,8 @@ test("install: minting the enrolment code is tried again when core is still maki
   const res = install(f.opts(f.rel), { run: flaky, root: f.root, key: f.kp.key, step: () => {} });
   assert.equal(res.code, "SEKRET-CODE-42");
   assert.equal(n, 3, "failed twice, then minted");
-  const f2 = fixture(t);
-  const always = (cmd, args) => { if (cmd.endsWith("sudo") && [...args].pop() === "code") throw new Error("still colliding"); return fakeRun().run(cmd, args); };
+  const f2 = fixture(t), r2 = fakeRun();
+  const always = (cmd, args) => { if (cmd.endsWith("sudo") && [...args].pop() === "code") throw new Error("still colliding"); return r2.run(cmd, args); };
   assert.throws(() => install(f2.opts(f2.rel), { run: always, root: f2.root, key: f2.kp.key, step: () => {} }), /still colliding/);
 });
 

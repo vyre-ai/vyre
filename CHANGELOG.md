@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(vyre-core): the Mac installer mints the first enrolment code again (up to 6 tries) when core is still making its database; the two migrations collided on the hosted runner ("UNIQUE constraint failed: _migrations") and ended the install.
 - fix(mac-server): a Mac installed with the server install line comes up as a server: install-mac-server.sh sets machine "server" in config.json (a choice or role already made is kept), and a machine set up as a server is role box so wink and the server side of the relay run (before, wink.server.code did not exist and custom record types were refused).
 - fix(mac-server): the installer ends as the Linux one does with the app's install line: the four check words, then "Done. Back in the Vyre app."; the old wink.server.code text stays only for an install with no setup code. The Records choice (VYRE_STORE) now reaches vyre.env, auto by default.
 - fix(vyre-core): the vault module failed to start on a vyre-core Mac ("paths[0] ... Received undefined"): a core tool's module was judged first party by a folder the manifest never carries; it now uses the module record's folder. A module that fails to start also logs where.

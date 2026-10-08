@@ -468,7 +468,7 @@
  "core/vitals/store.test.js": 8,
  "core/vitals/vitals.test.js": 9,
  "core/vyre-core/forward.test.js": 5,
- "core/vyre-core/installer.test.js": 22,
+ "core/vyre-core/installer.test.js": 23,
  "core/vyre-core/keys.test.js": 9,
  "core/vyre-core/link.test.js": 4,
  "core/vyre-core/release.test.js": 21,
