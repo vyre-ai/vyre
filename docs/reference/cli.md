@@ -64,7 +64,7 @@ In the order `vyre help` lists them.
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet, one route at a time |
-| [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
+| [`vyre link`](#vyre-link) | this device and its server: pair a server, see how it is reached, list or remove your devices |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code |
 | [`vyre send`](#vyre-send) | send files to another of your computers through your server |
@@ -620,10 +620,10 @@ vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
 
 ### vyre link
 
-Pair this Mac with your box, or approve a Mac on the box.
+This device and its server: pair a server, see how it is reached, list or remove your devices.
 
 ```
-vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout] [--json]
+vyre link [status|pair <code>|devices|unpair <device>] [--json]
 ```
 
 ### vyre phone
