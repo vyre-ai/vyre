@@ -245,11 +245,12 @@ test("a phone's typed code -> ack -> wait, real daemon and relay: the phone app 
 
 test("a device the box does not know is refused with words a client can tell from an unreachable box (the app lets a stale saved pairing go on them)", async t => {
   const w = await world(t);
-  const made = (await w.call("relay.pair.ticket", {}, "cli", PROOF)).data;
-  const status = (await w.call("relay.status", {}, "cli", PROOF)).data;
-  const c = connect({ relay: w.status.url, route: status.route, box: status.box || made.box, name: "stale", crypto: nodeCrypto(), keyStore: keystore(t), backoff: { min: 50, max: 100 } });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const seed = parseServerPayload(made.qr).seed;
+  const { offer } = await resolveTicket(seed, { relay: w.status.url });
+  const c = connect({ relay: w.status.url, route: offer.route, box: offer.box, name: "stale", crypto: nodeCrypto(), keyStore: keystore(t), backoff: { min: 50, max: 100 } });
   t.after(() => c.close());
   await until(() => c.lastError);
-  console.error("STALE", JSON.stringify(String(c.lastError.message)), JSON.stringify(Object.keys(status)));
+  console.error("STALE", JSON.stringify(String(c.lastError.message)));
   assert.match(String(c.lastError.message), /not a paired device|closed|refus/i);
 });
