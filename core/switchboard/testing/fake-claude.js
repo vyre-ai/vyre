@@ -29,8 +29,7 @@
 //   "vyre <tool> <json>"  calls a vyred tool the way the MCP server does inside this thread
 //                   (caller mcp:agent:<VYRE_AGENT>, or mcp), and says the JSON it got back
 //   anything else   echoes the prompt back in a few deltas
-// FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind. A session inside the OS sandbox keeps only the allow-listed variables (VYRE_*, not FAKE_*), so VYRE_FAKE_CLAUDE_LOG is the same setting for it.
-const FAKE_LOG = process.env.FAKE_CLAUDE_LOG || process.env.VYRE_FAKE_CLAUDE_LOG;
+// FAKE_CLAUDE_LOG, when set, gets one line per launch with argv and credential kind.
 // FAKE_CLAUDE_RESPONSES, when set, gets each answer to a can_use_tool request, as received.
 // FAKE_CLAUDE_TRANSCRIPTS, when set, is a projects folder: every turn is also written the way
 // Claude Code writes it, to <dir>/<cwd with each non-alphanumeric char as "-">/<session>.jsonl.
@@ -58,13 +57,13 @@ const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription"
  */
 let logged = false;
 function logLaunch(init = {}) {
-  if (logged || !FAKE_LOG) return;
+  if (logged || !process.env.FAKE_CLAUDE_LOG) return;
   logged = true;
   const extra = [];
   if (typeof init.appendSystemPrompt === "string") extra.push("--append-system-prompt", init.appendSystemPrompt);
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
-  fs.appendFileSync(FAKE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
+  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
     projects: process.env.VYRE_PROJECTS || null, connectors: argv.includes("--strict-mcp-config") ? [] : ["claude.ai Gmail", "claude.ai Google Drive", "claude.ai Claude Docs"], git: { name: process.env.GIT_AUTHOR_NAME || null, committer: process.env.GIT_COMMITTER_EMAIL || null, count: process.env.GIT_CONFIG_COUNT || null, k0: process.env.GIT_CONFIG_KEY_0 || null, v0: process.env.GIT_CONFIG_VALUE_0 || null, k1: process.env.GIT_CONFIG_KEY_1 || null }, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
@@ -539,18 +538,18 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     return;
   }
   if (m.type === "control_request" && m.request?.subtype === "set_max_thinking_tokens") {
-    if (FAKE_LOG) fs.appendFileSync(FAKE_LOG, JSON.stringify({ thinking: m.request.max_thinking_tokens }) + "\n");
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ thinking: m.request.max_thinking_tokens }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
   if (m.type === "control_request" && m.request?.subtype === "apply_flag_settings") {
-    if (FAKE_LOG) fs.appendFileSync(FAKE_LOG, JSON.stringify({ effort: m.request.settings ? m.request.settings.effortLevel ?? null : null }) + "\n");
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ effort: m.request.settings ? m.request.settings.effortLevel ?? null : null }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
   if (m.type === "control_request" && m.request?.subtype === "set_model") {
     MODEL = String(m.request.model || MODEL);
-    if (FAKE_LOG) fs.appendFileSync(FAKE_LOG, JSON.stringify({ model: MODEL }) + "\n");
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
@@ -570,7 +569,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       return;
     }
     permMode = String(m.request.mode);
-    if (FAKE_LOG) fs.appendFileSync(FAKE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
