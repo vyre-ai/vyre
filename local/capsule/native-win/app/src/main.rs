@@ -20,7 +20,7 @@ use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_opener::OpenerExt;
 use vyre_capsule_win::hotkey;
 use vyre_capsule_win::shell::Pinned;
-use vyre_capsule_win::{devicekey, drive, update};
+use vyre_capsule_win::{applog, bundled, devicekey, drive, update};
 use vyre_capsule_win::shell;
 
 /// The data-only signal native-core reads (C22). A value, never a callable host object.
@@ -28,6 +28,19 @@ use vyre_capsule_win::shell;
 /// update file keep the plain "Vyre" name, which the updater matches on.
 /// A Windows tool by full path from the Windows folder, never by name (no planting from the working directory).
 fn sys(rel: &str) -> String { shell::system_path(std::env::var("SystemRoot").ok().as_deref(), rel) }
+
+/// %LOCALAPPDATA%\Vyre\logs\app.log. Every refusal and failure of a key, a window or the bundled app lands here with its real reason (no key, seed or message is ever written).
+fn log(kind: &str, who: &str, what: &str) {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let file = applog::path(std::env::var("LOCALAPPDATA").ok().as_deref(), &std::env::temp_dir());
+    applog::append(&file, &applog::line(now, kind, who, what));
+}
+
+/// A result, with its failure logged under the command's name. The reason travels on to the page unchanged.
+fn logged<T>(who: &str, r: Result<T, String>) -> Result<T, String> {
+    if let Err(e) = &r { log("fail", who, e); }
+    r
+}
 
 const APP_NAME: &str = "Vyre Lumen";
 
@@ -59,8 +72,9 @@ fn taskbar_is_light() -> bool { false }
 /// What the main panel (the person's own server's page) is told about this shell, as frozen data and four calls. The calls are the identity key's (identity_public, identity_sign) and the TPM
 /// key's (enclave_public, enclave_sign): the page gets public keys and signatures, never a seed. They are the same shape as the Mac app's window.__vyreShell.identity, so the page runs one way.
 /// Only these four commands are permitted to the panel (capabilities/main-identity.json), and each refuses unless it is called from the pinned origin (`from_pinned`).
-fn shell_signal(version: &str) -> String {
+fn shell_signal(version: &str, boxless: bool) -> String {
     let v = serde_json::to_string(version).unwrap_or_else(|_| "\"\"".into());
+    let boxless = if boxless { "true" } else { "false" };
     format!(r#"(function () {{
   Object.defineProperty(window, "__VYRE_SHELL__", {{ value: Object.freeze({{ platform: "windows" }}), writable: false, configurable: false }});
   var inv = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
@@ -68,12 +82,14 @@ fn shell_signal(version: &str) -> String {
   var identity = Object.freeze({{
     public: function (create) {{ return inv("identity_public", {{ create: !!create }}); }},
     sign: function (message) {{ return inv("identity_sign", {{ message: message }}); }},
+    has: function () {{ return inv("identity_has", {{}}); }},
+    forget: function () {{ return inv("identity_forget", {{}}); }},
     enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
     enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }},
     agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
     agree: function (epk) {{ return inv("agree_secret", {{ epk: epk }}); }}
   }});
-  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: false, version: {v}, identity: identity }}), writable: false, configurable: false }});
+  Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: {boxless}, version: {v}, identity: identity }}), writable: false, configurable: false }});
 }})();"#)
 }
 
@@ -121,7 +137,62 @@ fn open_external(app: &AppHandle, url: &str) {
     }
 }
 
+/// The folder the app's web build was put in when this app was built (VYRE_APP_WEB_DIR overrides, for a hand-run check), or None when it was built without it.
+fn bundled_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
+    let dir = match std::env::var("VYRE_APP_WEB_DIR") {
+        Ok(d) if !d.is_empty() => std::path::PathBuf::from(d),
+        _ => app.path().resource_dir().ok()?.join("app-web"),
+    };
+    if bundled::has_build(&dir) { Some(dir) } else { None }
+}
+
+/// Open (or reveal) the app's own window: the bundled web build at its own origin, with this computer's keys behind it and no server needed. This is the first run on Windows (paste the
+/// reservation code, become yourself, then Join a team or Add a server) and every run after.
+static SETUP_WINDOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn show_app(app: &AppHandle, path: &str) {
+    let url = format!("{}{}", bundled::START, path.trim_start_matches('/'));
+    if let Some(w) = app.get_webview_window("main") {
+        if !path.is_empty() && path != "/quick" { if let Ok(u) = url.parse() { let _ = w.navigate(u); } }
+        let _ = w.show();
+        let _ = w.set_focus();
+        return;
+    }
+    let nav_app = app.clone();
+    let popup_app = app.clone();
+    let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(bundled::START.parse().expect("bundled url")))
+        .title(APP_NAME)
+        .inner_size(560.0, 760.0)
+        // WebView2 serves a custom scheme at http(s)://<scheme>.localhost; https makes the page a secure context, as the Mac's is.
+        .use_https_scheme(true)
+        .initialization_script(shell_signal(&app.package_info().version.to_string(), true))
+        .on_navigation(move |url| {
+            if bundled::is_page(url.as_str()) { return true; }
+            open_external(&nav_app, url.as_str());
+            false
+        })
+        .on_new_window(move |url, _features| {
+            if !bundled::is_page(url.as_str()) { open_external(&popup_app, url.as_str()); }
+            NewWindowResponse::Deny
+        })
+        .build();
+    match built {
+        Ok(w) => {
+            SETUP_WINDOW.store(true, std::sync::atomic::Ordering::SeqCst);
+            let w2 = w.clone();
+            w.on_window_event(move |e| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                    api.prevent_close();
+                    let _ = w2.hide();
+                }
+            });
+        }
+        Err(e) => log("fail", "show_app", &e.to_string()),
+    }
+}
+
 fn show_first_run(app: &AppHandle) {
+    if bundled_dir(app).is_some() { return show_app(app, ""); }
     if let Some(w) = app.get_webview_window("first-run") {
         let _ = w.show();
         let _ = w.set_focus();
@@ -137,6 +208,10 @@ fn show_first_run(app: &AppHandle) {
 /// Open (or reveal) the main panel at `path` on the pinned origin.
 fn show_panel(app: &AppHandle, path: &str) {
     let Some(pin) = pinned(app) else { return show_first_run(app) };
+    // Paired: the main window loads the person's server. A window that was the setup window (the bundled app) is closed first and built again, so nothing of it (its page, its boxless signal) carries over.
+    if SETUP_WINDOW.swap(false, std::sync::atomic::Ordering::SeqCst) {
+        if let Some(w) = app.get_webview_window("main") { let _ = w.destroy(); }
+    }
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.navigate(pin.url_for(path).parse().expect("pinned url"));
         let _ = w.show();
@@ -150,7 +225,7 @@ fn show_panel(app: &AppHandle, path: &str) {
     let built = WebviewWindowBuilder::new(app, "main", WebviewUrl::External(pin.url_for(path).parse().expect("pinned url")))
         .title(APP_NAME)
         .inner_size(560.0, 720.0)
-        .initialization_script(shell_signal(&app.package_info().version.to_string()))
+        .initialization_script(shell_signal(&app.package_info().version.to_string(), false))
         .on_navigation(move |url| {
             if nav_pin.allows(url.as_str()) { return true; }
             open_external(&nav_app, url.as_str());
@@ -356,13 +431,20 @@ async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Opt
 /// The identity key's and the TPM key's commands are the main panel's only ones, and only from the pinned origin: the capability lets the panel call them, and this refuses any other page
 /// (a navigation that slipped past, a frame) before a key is touched.
 fn from_pinned(app: &AppHandle, webview: &tauri::Webview, request: &tauri::ipc::Request<'_>) -> Result<(), String> {
-    if webview.label() != "main" { return Err("Not allowed here.".into()); }
-    let Some(pin) = pinned(app) else { return Err("Not allowed here.".into()) };
+    if webview.label() != "main" { log("refuse", "bridge", "a window other than main called a key command"); return Err("Not allowed here.".into()); }
+    // The app's own bundled page (its top-level page and the frame that made this call are both exactly its origin) is the other caller allowed; the pinned server's page is the first.
+    {
+        let top = webview.url().ok();
+        let frame = request.headers().get("origin").and_then(|v| v.to_str().ok());
+        if top.as_ref().map_or(false, |u| bundled::is_page(u.as_str())) && bundled::is_origin(frame) { return Ok(()); }
+    }
+    let Some(pin) = pinned(app) else { log("refuse", "bridge", "no paired server and not the bundled page"); return Err("Not allowed here.".into()) };
     // The top-level page is the pinned one...
     let url = webview.url().map_err(|_| "Not allowed here.".to_string())?;
-    if !pin.allows(url.as_str()) { return Err("Not allowed here.".into()); }
+    if !pin.allows(url.as_str()) { log("refuse", "bridge", "the page is not the pinned origin"); return Err("Not allowed here.".into()); }
     // ...and so is the frame that made THIS call: the capability admits any https frame, so a cross-origin iframe inside the pinned page would pass the check above. Its call carries its own Origin.
     let origin = request.headers().get("origin").and_then(|v| v.to_str().ok());
+    if !pin.is_origin(origin) { log("refuse", "bridge", "the calling frame is not the pinned origin"); }
     if !pin.is_origin(origin) { return Err("Not allowed here.".into()); }
     Ok(())
 }
@@ -375,10 +457,17 @@ static IDENTITY_LOCK: Mutex<()> = Mutex::new(());
 
 /// The Ed25519 identity seed, DPAPI-protected on this computer; made once with `create`. It never leaves Rust.
 fn identity_seed(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
+    let r = identity_seed_inner(app, create);
+    // "There is no key on this computer." with create false is an ordinary answer (nothing made yet), not a failure worth a line.
+    if let Err(e) = &r { if create || !e.starts_with("There is no key") { log("fail", "identity_seed", e); } }
+    r
+}
+
+fn identity_seed_inner(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
     let _guard = IDENTITY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let path = identity_path(app)?;
     if path.exists() {
-        let raw = protect(&std::fs::read(&path).map_err(|e| e.to_string())?, false)?;
+        let raw = protect(&std::fs::read(&path).map_err(|e| format!("Could not read the identity key file: {e}"))?, false)?;
         return raw.try_into().map_err(|_| "The identity key file is damaged.".to_string());
     }
     if !create { return Err("There is no key on this computer.".into()); }
@@ -386,10 +475,10 @@ fn identity_seed(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
     let mut k = [0u8; 32];
     rand::rngs::OsRng.fill_bytes(&mut k);
     let dir = path.parent().unwrap();
-    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("Could not make the folder for the identity key: {e}"))?;
     let tmp = dir.join(format!("identity.key.{}.tmp", std::process::id()));
-    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| e.to_string())?;
-    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    std::fs::write(&tmp, protect(&k, true)?).map_err(|e| format!("Could not save the identity key: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Could not save the identity key: {e}"))?;
     Ok(k)
 }
 
@@ -409,10 +498,31 @@ fn identity_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::R
     Ok(b64u(&vyre_capsule_win::identity::sign(&identity_seed(&app, false)?, &m)))
 }
 
+/// Is there an identity key on this computer? Answers without opening it.
+#[tauri::command]
+fn identity_has(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>) -> Result<bool, String> {
+    from_pinned(&app, &webview, &request)?;
+    Ok(identity_path(&app)?.exists())
+}
+
+/// Forget this computer's identity key (Settings, "Forget this computer's key"). The page asks for it by name; the line in the log says it happened.
+#[tauri::command]
+fn identity_forget(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>) -> Result<(), String> {
+    from_pinned(&app, &webview, &request)?;
+    let _guard = IDENTITY_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = identity_path(&app)?;
+    log("note", "identity_forget", "the identity key file was deleted at the page's request");
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => logged("identity_forget", Err(format!("Could not forget the key: {e}"))),
+    }
+}
+
 #[tauri::command]
 fn enclave_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
-    Ok(b64u(&ncrypt::public_point(create)?))
+    Ok(b64u(&logged("enclave_public", ncrypt::public_point(create))?))
 }
 
 /// The shell's own yes or no, in a Windows message box the page cannot draw over, with the words the shell wrote from the bytes.
@@ -437,21 +547,21 @@ fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Re
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
     let said = vyre_capsule_win::identity::chain_summary(&m).ok_or_else(|| "Vyre cannot tell what this would sign, so it did not.".to_string())?;
     if !confirm_native(&said) { return Err("Not approved. Nothing was changed.".into()); }
-    Ok(b64u(&ncrypt::sign(&m)?))
+    Ok(b64u(&logged("enclave_sign", ncrypt::sign(&m))?))
 }
 
 /// The agreement key (ECDH, no prompt per use): its public point, and the shared secret with a peer's point. The key stays in the TPM or the user's key store.
 #[tauri::command]
 fn agree_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
-    Ok(b64u(&ncrypt::agree_public(create)?))
+    Ok(b64u(&logged("agree_public", ncrypt::agree_public(create))?))
 }
 
 #[tauri::command]
 fn agree_secret(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, epk: String) -> Result<String, String> {
     from_pinned(&app, &webview, &request)?;
     let p = unb64u(&epk)?;
-    Ok(b64u(&ncrypt::agree_secret(&p)?))
+    Ok(b64u(&logged("agree_secret", ncrypt::agree_secret(&p))?))
 }
 
 /// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
@@ -552,6 +662,9 @@ fn selftest(out: &str) {
         let back = protect(&sealed, false)?;
         if back == secret { Ok(format!("{} byte blob", sealed.len())) } else { Err("did not round-trip".into()) }
     })());
+    // The TPM key, as a real PC does it: what the provider says at each step is the proof of what this machine can do. A hosted runner has no TPM, so the honest result there is the refusal and its status.
+    check("tpm-key", match ncrypt::public_point(true) { Ok(p) => Ok(format!("a TPM key was made ({} bytes)", p.len())), Err(e) => Ok(format!("no TPM key: {e}")) });
+    check("agreement-key", match ncrypt::agree_public(true) { Ok(p) => Ok(format!("an agreement key was made ({} bytes)", p.len())), Err(e) => Err(e) });
     check("taskbar-theme", Ok(if taskbar_is_light() { "light".into() } else { "dark".into() }));
     check("tray-icons-decode", (|| {
         for (n, b) in [("white", TRAY_DARK_TASKBAR), ("black", TRAY_LIGHT_TASKBAR)] {
@@ -567,6 +680,9 @@ fn selftest(out: &str) {
 }
 
 fn main() {
+    // A panic or an early exit must leave a line, not a silent window that never opened.
+    std::panic::set_hook(Box::new(|i| log("panic", "main", &i.to_string())));
+    log("note", "start", option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")));
     let args: Vec<String> = std::env::args().collect();
     if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
         if let Some(i) = args.iter().position(|a| a == "--selftest") {
@@ -574,6 +690,23 @@ fn main() {
         }
     }
     tauri::Builder::default()
+        // The app's web build, served to its own window (bundled.rs). A file outside the build, or a build that is not there, is a 404 and a line in the log.
+        .register_uri_scheme_protocol(bundled::SCHEME, |ctx, request| {
+            let reply = |status: u16, mime: &str, body: Vec<u8>| {
+                tauri::http::Response::builder().status(status).header("Content-Type", mime).header("X-Content-Type-Options", "nosniff").header("Cache-Control", "no-store").body(body).expect("response")
+            };
+            let Some(dir) = bundled_dir(ctx.app_handle()) else {
+                log("fail", "bundled", "this app was built without the app's web build");
+                return reply(404, "text/plain", b"not here".to_vec());
+            };
+            match bundled::resolve(request.uri().path(), &dir) {
+                bundled::Answer::File { path, mime } => match std::fs::read(&path) {
+                    Ok(body) => reply(200, mime, body),
+                    Err(e) => { log("fail", "bundled", &format!("could not read {}: {e}", path.display())); reply(500, "text/plain", b"error".to_vec()) }
+                },
+                bundled::Answer::Missing => reply(404, "text/plain", b"not here".to_vec()),
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // A second launch (a vyre:// link) arrives through the deep-link plugin below.
             show_panel(app, "/quick");
@@ -582,7 +715,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, identity_has, identity_forget, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
@@ -608,6 +741,7 @@ fn main() {
             tray = tray.tooltip(APP_NAME);
             if let Some(icon) = tray_icon().or_else(|| app.default_window_icon().cloned()) { tray = tray.icon(icon); }
             let tray = tray.build(app)?;
+            log("note", "setup", "tray built");
             // Follow the taskbar theme; once a minute is plenty.
             std::thread::spawn(move || loop {
                 std::thread::sleep(std::time::Duration::from_secs(60));
@@ -615,9 +749,11 @@ fn main() {
             });
 
             // Start in the tray; show the panel only when first-run is needed.
+            // Not paired yet: the first run (the bundled app when this build has it: reserve, become yourself, Join or Add a server). Paired: the tray.
             if pinned(&handle).is_none() { show_first_run(&handle); }
             ensure_link_window(&handle);
             spawn_update_loop(handle.clone());
+            log("note", "setup", "done");
 
             use tauri_plugin_deep_link::DeepLinkExt;
             let link_app = handle.clone();
@@ -632,8 +768,10 @@ fn main() {
             // A tray app keeps running with no window open: closing the last window (finishing pairing closes
             // the first-run page before the panel exists) asks to exit with no code, and that is refused.
             // Quit from the tray exits with a code and goes through.
-            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
+                log("note", "exit-requested", &format!("code {code:?}"));
                 if code.is_none() { api.prevent_exit(); }
             }
+            if let tauri::RunEvent::Exit = &event { log("note", "exit", "the event loop ended"); }
         });
 }
