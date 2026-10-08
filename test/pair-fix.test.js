@@ -204,7 +204,7 @@ test("typed code -> ack -> adopt, real daemon and relay: the app finishes the se
   const c = connect({ relay: w.status.url, route: r.paired.route, box: r.paired.box, name: "Alex's Mac", crypto: nodeCrypto(), keyStore: ks });
   t.after(() => c.close());
   // the leftover is the same usable device the long code makes: its channel reaches the paired-session door (not "no tool"), and the server made it a session
-  const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ device: r.paired.device }) });
+  const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   const chBody = await ch.json().catch(() => ({}));
   assert.notEqual(chBody.error && chBody.error.code, "no_such_tool", JSON.stringify(chBody));
   assert.equal(ch.status === 404, false, JSON.stringify(chBody));
