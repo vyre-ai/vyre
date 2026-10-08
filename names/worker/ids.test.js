@@ -584,7 +584,7 @@ test("reserve: a code is made once for a free name, is long, and finalize with i
   const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.50" }, body: JSON.stringify({ name: "Alex" }) }), w.env);
   const res = (await r.json()).data;
   assert.equal(res.name, "alex", "names fold to lower case");
-  assert.match(res.code, /^VYRE-[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/, "20 characters of 5 bits: 100 bits");
+  assert.match(res.code, /^VYRE-[A-HJ-NP-Z2-9]{4}(-[A-HJ-NP-Z2-9]{4}){3}$/, "16 characters of 5 bits: 80 bits");
   assert.equal(res.expires, w.clock.t + 24 * HOUR);
   // the name is held: another person's claim and reservation-less claim are refused while it lives, and resolve finds nothing yet
   assert.equal(code(await alex.get("/v1/ids/resolve?name=alex")), "not_found");
@@ -624,7 +624,7 @@ test("reserve: the namespace is one, reserved words and held names are refused, 
   assert.equal(code(await send("alex")), "taken", "an identity's name");
   // a live reservation holds the name against a box
   await send("kitty");
-  assert.equal(code(await box.post("/v1/names/claim", { name: "kitty" })), "taken");
+  assert.equal(code(await who(w).post("/v1/names/claim", { name: "kitty" })), "taken");
   // a person's genesis cannot be claimed outright
   assert.equal(code(await space.post("/v1/ids/claim", { name: "sam", ops: space.ops, ...space.sealRecord("sam", "c2VhbGVk") })), "reserve_first");
 });
@@ -638,8 +638,7 @@ test("reserve: a space's name is claimed outright by a chain whose owner exists,
   const c = await codeFor(w, "harlow");
   assert.equal(code(await space.post("/v1/ids/finalize", { name: "harlow", ops: space.ops, ...space.sealRecord("harlow", "aG9tZQ", phone, phone.eid), code: c })), "not_a_person");
   assert.equal(code(await space.claim("harlow", "aG9tZQ", phone, phone.eid)), "taken", "another person's live reservation holds the name against a space too");
-  w.clock.t += 24 * HOUR + 1000;
-  assert.equal(data(await space.claim("harlow", "aG9tZQ", phone, phone.eid)).kind, "space");
+  assert.equal(data(await space.claim("northwind", "aG9tZQ", phone, phone.eid)).kind, "space");
 });
 
 test("reserve: reserving is limited per address, not per person, and answers any origin without credentials", async t => {

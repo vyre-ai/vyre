@@ -172,7 +172,7 @@ export const idOps = {
     if (await this.load(v.name) || await this.idLoad(v.name)) throw err(409, "taken", "someone else has that name");
     await this.count("rsvip", ip, Number(this.env.RESERVES_PER_IP_PER_DAY) || 20, "too many names reserved from this address today");
     await this.count("rsv", "all", Number(this.env.GLOBAL_CLAIMS_PER_DAY) || 500, "the directory is busy today; try again tomorrow");
-    const raw = Array.from(crypto.getRandomValues(new Uint8Array(20)), x => ALPHA32[x & 31]).join("");   // 20 characters of 5 bits: 100 bits
+    const raw = Array.from(crypto.getRandomValues(new Uint8Array(16)), x => ALPHA32[x & 31]).join("");   // 16 characters of 5 bits: 80 bits
     const code = "VYRE-" + raw.match(/.{4}/g).join("-");
     const expires = this.now() + ID_LIMITS.reserveMs;
     await this.store.put(`rsv/${v.name}`, { hash: await reserveHash(v.name, code), exp: expires });
