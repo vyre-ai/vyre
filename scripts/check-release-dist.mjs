@@ -25,7 +25,7 @@ const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0
  * Empty until the key is made (keytool -genkeypair -v -keystore vyre-release.keystore -alias vyre -keyalg RSA -keysize 4096 -validity 36500): a publish with --android-release refuses while it is empty, so a debug-signed APK (Expo's template key, which is public) can never ship.
  * The value is public: `keytool -list -v -keystore vyre-release.keystore -alias <alias>` prints it as "SHA256:" with colons.
  */
-export const ANDROID_RELEASE_CERT_SHA256 = "";
+export const ANDROID_RELEASE_CERT_SHA256 = "e4fc5591981dbf8ec14c003db3b97fc4d42eec61edd8097e2da3db8f303d02eb";
 
 /** The SHA-256 digests of an APK's signing certificates, from the SDK's apksigner (verify also fails on a broken signature). @param {string} apk @returns {string[]} */
 export function apkSigners(apk) {
