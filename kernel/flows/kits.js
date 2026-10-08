@@ -391,7 +391,14 @@ export class KitManager {
         await this.#ensureDefType(chain, type);
         const data = { name: part.name, body: canonical(part.def), kit: kit.id };
         const existing = row.refs[key];
-        if (existing) { const cur = await this.k.records.get(chain, type, existing); if (cur) await this.k.records.update(chain, type, existing, data, cur.version); }
+        // A role two Kits both define (attorney) is one role: the second Kit joins the record the first made and adds its grants to it.
+        const shared = !existing && part.kind === "role" ? await this.#sharedRole(chain, type, part.name) : null;
+        if (shared) {
+          const was = JSON.parse(shared.data.body), have = (was.grants || []).map((/** @type {any} */ g) => canonical(g));
+          const grants = [...(was.grants || []), ...(part.def.grants || []).filter((/** @type {any} */ g) => !have.includes(canonical(g)))];
+          await this.k.records.update(chain, type, shared.id, { ...shared.data, body: canonical({ ...was, grants }) }, shared.version);
+          row.refs[key] = shared.id;
+        } else if (existing) { const cur = await this.k.records.get(chain, type, existing); if (cur) await this.k.records.update(chain, type, existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "teammate") {
         if (this.ports.teammates) await this.ports.teammates.create(chain, { name: part.name, instructions: part.def.instructions, kit: kit.id, trust: "external" });
@@ -417,6 +424,11 @@ export class KitManager {
     catch (e) { if (!e || !["already_exists", "conflict", "bad_input"].includes(/** @type {any} */ (e).code)) throw e; }
   }
 
+  /** The role record another Kit already made under this name, or null. @param {any} chain @param {string} type @param {string} name */
+  async #sharedRole(chain, type, name) {
+    try { return (await this.k.records.query(chain, type, { filter: { field: "name", op: "eq", value: name }, page: { limit: 1 } })).rows[0] || null; } catch { return null; }
+  }
+
   /** @param {any} chain @param {any} row @param {Part} part */
   async #drop(chain, row, part) {
     const key = `${part.kind}:${part.name}`;
@@ -424,7 +436,9 @@ export class KitManager {
     else if (["template", "role", "view"].includes(part.kind)) {
       const type = part.kind === "template" ? "template" : part.kind === "role" ? "def-role" : "def-view";
       const ref = row.refs[key];
-      if (ref) { const cur = await this.k.records.get(chain, type, ref); if (cur && !cur.deleted_at) await this.k.records.remove(chain, type, ref, cur.version); delete row.refs[key]; }
+      // a role another installed Kit still uses stays; it goes with the last Kit that holds it
+      const heldElsewhere = ref && (await this.store.list()).some((/** @type {any} */ r) => r.kit_id !== row.kit_id && r.refs && Object.values(r.refs).includes(ref));
+      if (ref) { const cur = heldElsewhere ? null : await this.k.records.get(chain, type, ref); if (cur && !cur.deleted_at) await this.k.records.remove(chain, type, ref, cur.version); delete row.refs[key]; }
     } else if (part.kind === "teammate" && this.ports.teammates) await this.ports.teammates.remove(chain, part.name);
     row.added = row.added.filter((/** @type {string} */ x) => x !== key);
   }

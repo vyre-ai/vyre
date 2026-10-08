@@ -195,7 +195,8 @@ test("module sdk: flow.steps and flow.triggers compile to what Flows already hav
   bad(m => { m.flow.triggers[0].event = "docs.other"; }, /not an event this module emits/);
   bad(m => { m.flow.triggers[1].event = "docs.signed"; }, /exactly one of event or watcher/);
   bad(m => { m.flow.triggers[0].name = "other.signed"; }, /must start with "docs\."/);
-  assert.deepEqual(capabilities(base()).flows, { steps: [{ tool: "docs.find", label: "Find a document", outward: false }, { tool: "docs.send", label: "Send a document", outward: true }], triggers: [{ name: "docs.signed-trigger", label: "A document is signed" }, { name: "docs.inbox", label: "A document lands" }] });
+  assert.deepEqual(capabilities(base(), { firstParty: true }).flows, { steps: [{ tool: "docs.find", label: "Find a document", outward: false }, { tool: "docs.send", label: "Send a document", outward: true }], triggers: [{ name: "docs.signed-trigger", label: "A document is signed" }, { name: "docs.inbox", label: "A document lands" }] });
+  assert.deepEqual(capabilities(base()).flows.steps.map(x => x.outward), [true, true], "an added module's step is outward whatever it says");
   // an old per-tool declaration no longer does anything
   const old = base(); delete old.flow; old.does.tools[0].flowAction = { risk: "read" };
   assert.deepEqual(flowSteps(old), []);
