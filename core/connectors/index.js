@@ -244,7 +244,11 @@ export default {
       input: obj({ connection: str, operation: str, input: { type: "object" } }, ["connection", "operation"]),
       run: async (input, meta) => {
         const caller = String((meta && meta.caller) || "");
-        const id = String(input.connection || ""), op = String(input.operation || "");
+        let id = String(input.connection || "");
+        const op = String(input.operation || "");
+        // A view names its app's Connection by the app (`docuseal`, or `self` from the app's own module) rather than by the id it was given when the person made it.
+        if (id === "self" && caller.startsWith("module:")) id = caller.slice(7);
+        if (!made.row(id)) { const hits = (await made.list()).connections.filter(/** @param {any} c */ c => c.app === id); if (hits.length === 1) id = hits[0].id; }
         const rec = await made.get(id);
         if (!PEOPLE.includes(caller)) {
           const name = caller.startsWith("module:") ? caller.slice(7) : "";

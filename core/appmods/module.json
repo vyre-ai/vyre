@@ -27,5 +27,31 @@
   },
   "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.started", "appmods.stopped", "docuseal.signed", "docuseal.form-completed"] },
   "shows": { "cli": [] },
+  "views": {
+    "docuseal-waiting": {
+      "title": "Waiting for signature", "icon": "clock", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda"],
+      "list": {
+        "connection": "docuseal", "operation": "submissions.list", "input": { "query": { "status": "pending", "limit": 50 } },
+        "map": { "rows": "data", "id": "id", "title": "template.name", "subtitle": "submitters.0.email", "accessory": "status" },
+        "empty": "Nothing is waiting for a signature."
+      }
+    },
+    "docuseal-send": {
+      "title": "Send for signature", "icon": "paperplane", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda", "send"],
+      "list": {
+        "connection": "docuseal", "operation": "templates.list", "input": { "query": { "limit": 50 } },
+        "map": { "rows": "data", "id": "id", "title": "name", "subtitle": "folder_name" },
+        "empty": "Make a template in DocuSeal first: open DocuSeal from the Apps screen.",
+        "actions": [{ "id": "send", "title": "Send for signature", "form": "send" }]
+      },
+      "forms": {
+        "send": {
+          "title": "Send {title} for signature",
+          "fields": [{ "name": "email", "label": "Signer's e-mail", "type": "text", "required": true }, { "name": "name", "label": "Signer's name", "type": "text" }],
+          "submit": { "title": "Send", "connection": "docuseal", "operation": "submissions.create", "input": { "body": { "template_id": "{id}", "send_email": false, "submitters": [{ "email": "{email}", "name": "{name}" }] } }, "outward": true }
+        }
+      }
+    }
+  },
   "teaches": {}
 }

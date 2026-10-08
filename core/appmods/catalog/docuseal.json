@@ -5,7 +5,7 @@
   "description": "Send a document to be signed and get the signed copy back in your Drive. Runs DocuSeal on this server.",
   "license": "AGPL-3.0",
   "drive": ["Signed"],
-  "notes": ["You make your document templates in DocuSeal\u0027s own screen: its free API cannot make them.", "DocuSeal has one user here, shared by the owner and the admins, who open it from Vyre without signing in again."],
+  "notes": ["You make your document templates in DocuSeal\u0027s own screen: its free API cannot make them.", "DocuSeal has one user here, shared by the owner and the admins, who open it from Vyre without signing in again.", "DocuSeal cannot send e-mail from this server, and the links it makes for people outside your team point inside your server for now: outside signers come with the public address."],
   "source": "https://github.com/docusealco/docuseal",
   "app": {
     "image": "docuseal/docuseal:3.3.1@sha256:e171808ce8dabb08491a49a6d8c477670a65ddce5e3de4764904b63a4487940f",

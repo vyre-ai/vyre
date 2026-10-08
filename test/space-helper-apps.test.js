@@ -437,6 +437,7 @@ test("app helper: `vyre admin purge-app` is an admin act (a terminal, a typed wo
   assert.deepEqual(r.appFw(), [], "both chains' rules are gone");
   assert.ok(!fs.existsSync(dir), "root's folder for the app is gone");
   assert.match(r.calls(), /compose .* down -v --remove-orphans/);
+  assert.match(r.calls(), /image rm docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}/, "the app's image goes with it");
   assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:docuseal"));
   assert.match(read(path.join(r.priv, "log")), /admin purge-app docuseal/);
 });
@@ -447,4 +448,21 @@ test("app helper: an install over a running watcher restarts it, so the watcher 
   const p = /** @type {any} */ (await r.run(["space-helper", "install"]));
   assert.equal(p.code, 0, p.out);
   assert.match(r.calls(), /systemctl try-restart vyre-spaces-watch\.service/);
+});
+
+test("app helper: purge-app keeps an image another app that still has a folder here runs", opts, async t => {
+  const r = await ready(t);
+  const { composeFile } = await import("../core/appmods/host-plan.js");
+  const first = r.catalogLine().trim();
+  r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "docuseal-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
+  r.flag("hostplan-compose-docuseal-two", composeFile("docuseal").replaceAll("vyre-app-docuseal", "vyre-app-docuseal-two"));
+  await r.run(["space-helper", "install"]);
+  for (const m of ["docuseal", "docuseal-two"]) { r.flag("hook-port", m === "docuseal" ? "43001" : "43002"); assert.equal((await r.appUp(m)).st.state, "ok", m); }
+  fs.writeFileSync(path.join(r.F, "calls"), "");
+  let a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app docuseal\n"));
+  assert.equal(a.code, 0, a.out);
+  assert.ok(!/image rm/.test(r.calls()), "docuseal-two still runs that digest");
+  a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal-two"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app docuseal-two\n"));
+  assert.equal(a.code, 0, a.out);
+  assert.match(r.calls(), /image rm docuseal\/docuseal/, "the last one takes it");
 });

@@ -316,3 +316,31 @@ test("through the public gate: an app's host reaches the apps' front, the ticket
   assert.deepEqual(gone, NOT_FOUND);
   assert.equal(asked, 0, "Headscale was never asked");
 });
+
+test("DocuSeal's two Vyre views are valid in the view language, name only operations the Connection declares, and the send is outward", async () => {
+  const { checkView } = await import("../../packages/module-sdk/capsule-view.js");
+  const mod = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const app = docuseal();
+  const declared = new Set(app.connection.operations.map(o => o.name));
+  assert.deepEqual(Object.keys(mod.views), ["docuseal-waiting", "docuseal-send"]);
+  for (const [id, v] of Object.entries(mod.views)) {
+    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(), firstParty: true }), [], id);
+    const ops = [];
+    (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === "object") { if (typeof x.operation === "string") ops.push([x.connection, x.operation]); Object.values(x).forEach(walk); } })(v);
+    assert.ok(ops.length, id);
+    for (const [c, o] of ops) { assert.equal(c, "docuseal"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
+  }
+  assert.equal(app.connection.operations.find(o => o.name === "submissions.create").kind, "send", "a send is held for the person's yes by the Connection itself");
+  assert.equal(mod.views["docuseal-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
+  assert.equal(mod.views["docuseal-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
+  assert.equal(mod.views["docuseal-waiting"].list.input.query.status, "pending");
+});
+
+test("the app lists DocuSeal's views, and one asked for before DocuSeal is installed says there is no Connection rather than failing", async t => {
+  const w = await world(t);
+  const list = (await w.cli("views.list", {})).data;
+  const rows = (Array.isArray(list) ? list : list.views || list.commands || []).filter(r => r.module === "appmods");
+  assert.deepEqual(rows.map(r => r.id).sort(), ["docuseal-send", "docuseal-waiting"]);
+  const frame = (await w.cli("views.get", { module: "appmods", command: "docuseal-waiting" })).data;
+  assert.ok(frame && frame.kind !== "list", `no Connection yet, so no rows: ${JSON.stringify(frame).slice(0, 200)}`);
+});

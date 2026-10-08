@@ -2415,7 +2415,17 @@ admin() {
       MSG=""; sp_app_fw_del "$tgt" || echo "vyre: a firewall rule for $tgt was left: ${MSG:-}" >&2
       hdock network disconnect -f "vyre-app-${tgt}_net" "$CTR_NAME" >/dev/null 2>&1 || true
       if [ -f "$SP_APPS/$tgt/compose.yml" ]; then sp_app_dc "$tgt" down -v --remove-orphans >/dev/null 2>&1 || die "the app's container and volumes could not be removed; nothing else was deleted"; fi
+      img=""; sp_app_load "$tgt" && img=$A_IMAGE
       rm -rf -- "${SP_APPS:?}/$tgt"
+      # The image goes with the app, unless another app that still has a folder here runs the same digest.
+      if [ -n "$img" ]; then
+        shared=0
+        for od in "$SP_APPS"/*/; do
+          on=$(basename "$od"); [ -f "${od}compose.yml" ] || continue; sp_app_name_ok "$on" || continue
+          if [ "$(sp_app_line "$on" | awk '{print $2}')" = "$img" ]; then shared=1; fi
+        done
+        if [ "$shared" = 0 ]; then hdock image rm "$img" >/dev/null 2>&1 || echo "vyre: the image of $tgt could not be removed" >&2; fi
+      fi
       say "the app $tgt is purged"
       ;;
     fscrypt-enable)

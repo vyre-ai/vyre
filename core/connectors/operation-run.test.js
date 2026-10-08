@@ -50,6 +50,11 @@ test("connectors.operation.run: a module reaches only its own app's Connection a
   const own = await run("module:docuseal", { operation: "list" });
   assert.notEqual(own.error?.code, "denied", JSON.stringify(own));
   assert.notEqual(own.error?.code, "not_found", JSON.stringify(own));
+  // `self` is the calling module's own app (the manifest of a wrapped app names no id); another module's `self` is that module's app, so it reaches nothing of docuseal's
+  const self = await d.registry.call("connectors.operation.run", { connection: "self", operation: "list" }, "module:docuseal");
+  assert.notEqual(self.error?.code, "denied", JSON.stringify(self)); assert.notEqual(self.error?.code, "not_found", JSON.stringify(self));
+  const other = await d.registry.call("connectors.operation.run", { connection: "self", operation: "list" }, "module:stranger");
+  assert.equal(other.error?.code, "not_found", "stranger has no Connection of its own app: self does not become docuseal");
   // only declared operations: not the generic request, not a name it made up
   assert.equal((await run("module:docuseal", { operation: "request", input: { method: "GET", path: "/" } })).error?.code, "not_found");
   assert.equal((await run("module:docuseal", { operation: "nope" })).error?.code, "not_found");
