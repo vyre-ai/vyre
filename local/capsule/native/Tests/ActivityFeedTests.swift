@@ -87,7 +87,7 @@ let activityFeedSuite = Suite("activity feed") { t in
         f.apply(frame(4, "status", ["state": "asking"]))
         t.eq(f.headerState, "waiting for you")
         f.apply(frame(5, "status", ["state": "finished"]))
-        t.eq(f.headerState, "working", "a thought still open and an ask unanswered keep it busy in the app's own terms; finished with nothing running reads empty once they close")
+        t.eq(f.headerState, "", "finished, with nothing running, says nothing")
     }
 
     t.test("the thinking line is the latest line of the latest thought, and the whole of it is kept") {
