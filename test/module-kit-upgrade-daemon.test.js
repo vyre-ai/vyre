@@ -76,7 +76,7 @@ test("an added module ships a Kit, and an upgrade keeps its records, its tables,
 
   // a project, and two items, one of them on the project
   const project = await d.kernel.gateway.records.create(chainOf(d), "project", { name: "Harlow intake" });
-  const ra = await d.registry.call("tasker.add", { title: "Call the court", project: project.urn }, "local");
+  const ra = await d.registry.call("tasker.add", { title: "Call the court", project: { urn: project.urn } }, "local");
   const rb = await d.registry.call("tasker.add", { title: "File the motion" }, "local");
   const a = ra.data, b = rb.data;
   assert.ok(a && a.urn && b && b.urn, `the module made records of the type its Kit defined: ${JSON.stringify([ra.error, rb.error])}`);
@@ -94,11 +94,11 @@ test("an added module ships a Kit, and an upgrade keeps its records, its tables,
   const diff = (await d.registry.call("flows.kit.diff", { kit: kit2, module: "tasker" }, "cli", await meta(d))).data;
   assert.ok(JSON.stringify(diff).includes("priority"), `the update shows the new field: ${JSON.stringify(diff).slice(0, 300)}`);
   await install(d, kit2, 2);
-  const c = (await d.registry.call("tasker.add", { title: "Send the invoice", project: project.urn, priority: "High" }, "local")).data;
+  const c = (await d.registry.call("tasker.add", { title: "Send the invoice", project: { urn: project.urn }, priority: "High" }, "local")).data;
   assert.ok(c && c.urn);
   const got = (await d.registry.call("records.get", { urn: a.urn }, "cli", await meta(d))).data;
   assert.equal(got.data.title, "Call the court", "the old record is intact after the Kit's update");
-  assert.equal(String(got.data.project).endsWith(project.urn.split("/").pop()), true, "and still on its project");
+  assert.equal(JSON.stringify(got.data.project).includes(project.urn), true, `and still on its project: ${JSON.stringify(got.data.project)}`);
   const linked2 = JSON.stringify((await d.registry.call("records.linked", { urn: project.urn }, "cli", await meta(d))).data);
   assert.ok(linked2.includes(a.urn) && linked2.includes(c.urn), "the project shows the old and the new item");
   assert.deepEqual((await d.registry.call("tasker.count", {}, "local")).data, { n: 3, list: 3 });
