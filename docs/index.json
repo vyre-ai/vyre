@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":343,"tool":1337,"event":455,"config":271,"env":253,"screen":0,"concept":39},
+  "counts": {"command":343,"tool":1337,"event":456,"config":271,"env":253,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1493,6 +1493,7 @@
     {"kind":"event","name":"summon.finished","definedIn":"core/team/index.js","page":"reference/events.md#team","module":"team","mentions":[{"page":"adr/0031-teammates.md","line":418,"anchor":"14-concurrency-and-usage-limits"},{"page":"adr/0031-teammates.md","line":507,"anchor":"15-modules-and-contracts"},{"page":"adr/0031-teammates.md","line":517,"anchor":"15-modules-and-contracts"}]},
     {"kind":"event","name":"summon.queued","definedIn":"core/team/index.js","page":"reference/events.md#team","module":"team","mentions":[{"page":"adr/0031-teammates.md","line":507,"anchor":"15-modules-and-contracts"}]},
     {"kind":"event","name":"summon.started","definedIn":"core/team/index.js","page":"reference/events.md#team","module":"team","mentions":[{"page":"adr/0031-teammates.md","line":417,"anchor":"14-concurrency-and-usage-limits"},{"page":"adr/0031-teammates.md","line":507,"anchor":"15-modules-and-contracts"},{"page":"adr/0031-teammates.md","line":517,"anchor":"15-modules-and-contracts"}]},
+    {"kind":"event","name":"summon.thread","definedIn":"core/team/index.js","page":"reference/events.md#team","module":"team","mentions":[]},
     {"kind":"tool","name":"sync.consent","definedIn":"core/sync/index.js","page":"reference/tools.md#syncconsent","module":"sync","mentions":[{"page":"design/drive-onboarding.md","line":139,"anchor":"open-questions-for-the-lead-and-the-reviewer"}]},
     {"kind":"tool","name":"sync.delete","definedIn":"core/sync/index.js","page":"reference/tools.md#syncdelete","module":"sync","mentions":[{"page":"design/import.md","line":74,"anchor":"on-the-device-module-import-device-role-owner-memory-iq-with-federation"}]},
     {"kind":"tool","name":"sync.delete.import","definedIn":"core/sync/index.js","page":"reference/tools.md#syncdeleteimport","module":"sync","mentions":[]},
