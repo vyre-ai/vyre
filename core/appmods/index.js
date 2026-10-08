@@ -11,8 +11,7 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
-import { createProxy } from "./proxy.js";
-import { isPerson } from "../../lib/caller.js";
+import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -175,7 +174,7 @@ export default {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
       return { name: r.name, version: r.version, state: r.state, runtime: await driver.status({ space: r.space, manifest: known(r.name) }) };
     } });
-    ctx.tool("appmods.screens", { description: "The screens installed apps add: [{ module, id, label, path, icon? }], path under /m/<module>/. A screen of an app that is not running is not listed.", input: obj({}), run: async () => ({
+    ctx.tool("appmods.screens", { description: "The screens installed apps add: [{ module, id, label, path, icon? }], path on the app's own origin (appmods.open makes the address). A screen of an app that is not running is not listed.", input: obj({}), run: async () => ({
       screens: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().flatMap((/** @type {any} */ r) => (known(r.name).screens || []).map((/** @type {any} */ s) => ({ module: r.name, ...s }))) }) });
     ctx.tool("appmods.logs", { description: "The last lines an app wrote. For the person who owns this server.", input: obj({ name: str, lines: { type: "integer" } }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
@@ -209,13 +208,13 @@ export default {
         const hookPort = await freePort("127.0.0.1");
         db.prepare("INSERT INTO appmods_apps (name, space, version, state, origin, hook_port, login_email, installed, note) VALUES (?,?,?,?,?,?,?,?,?)").run(m.name, sp, m.version, "installing", null, hookPort, `vyre+${m.name}@vyre.invalid`, Date.now(), "");
         try {
-          const up = await driver.up({ space: sp, manifest: m, vars: { name: m.name, origin: "http://localhost:3000" }, secrets, hookPort });
+          const up = await driver.up({ space: sp, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets, hookPort });
           db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, m.name);
           await healthy(m, up.origin);
           listen(m, up.hookHost, hookPort);
           if (m.app.bootstrap) {
             const out = await driver.exec({ space: sp, manifest: m }, [...m.app.bootstrap.exec, "{file}"], {
-              env: { APP_URL: up.origin, VYRE_LOGIN_EMAIL: `vyre+${m.name}@vyre.invalid`, VYRE_HOOK_URL: `http://${up.hookHost}:${hookPort}/hook`, VYRE_HOOK_TOKEN: hookToken },
+              env: { APP_URL: originFor(m.name, baseHost()), VYRE_LOGIN_EMAIL: `vyre+${m.name}@vyre.invalid`, VYRE_HOOK_URL: `http://${up.hookHost}:${hookPort}/hook`, VYRE_HOOK_TOKEN: hookToken },
               files: [{ name: m.app.bootstrap.script, text: bootstrapScript(m) }],
             });
             if (out.code !== 0) throw refuse(`setting ${m.name} up failed: ${out.stderr.trim().split("\n").filter(l => !/not writable|Bundler will use|Changing the owner|Unable to/.test(l)).slice(0, 4).join(" ").replace(/\s+/g, " ").slice(0, 400)}`, "bootstrap");
@@ -237,7 +236,7 @@ export default {
     ctx.tool("appmods.start", { description: "Start an installed app again.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
       const m = known(r.name);
-      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: "http://localhost:3000" }, secrets: await secretsOf(m), hookPort: r.hook_port });
+      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: await secretsOf(m), hookPort: r.hook_port });
       db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
       listen(m, up.hookHost, r.hook_port);
       ctx.events.emit("appmods.started", { name: m.name });
@@ -247,6 +246,7 @@ export default {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed", "not_found");
       await driver.stop({ space: r.space, manifest: known(r.name) });
       db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(r.name);
+      tickets.drop(r.name);
       ctx.events.emit("appmods.stopped", { name: r.name });
       return { name: r.name, state: "stopped" };
     } });
@@ -259,6 +259,7 @@ export default {
         await driver.down({ space: r.space, manifest: known(r.name), hookPort: r.hook_port }, { data: i.data === true });
         const l = listeners.get(r.name); if (l) { l.close(); listeners.delete(r.name); }
         db.prepare("DELETE FROM appmods_apps WHERE name = ?").run(r.name);
+        tickets.drop(r.name);
         for (const what of ["hook", ...(known(r.name).app.secrets || []).map((/** @type {any} */ s) => s.env.toLowerCase()), ...((known(r.name).app.bootstrap || {}).outputs || []).map((/** @type {any} */ o) => o.name.replace(/_/g, "-"))]) await ctx.call("vault.delete", { name: item(r.name, what) }).catch(() => {});
         ctx.events.emit("appmods.removed", { name: r.name });
         return { name: r.name, removed: true };
@@ -268,23 +269,59 @@ export default {
     // The daemon's hook door (POST /v1/appmods/<name>/hook) for apps that share the daemon's network; the token rides in x-vyre-token.
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
 
-    // The apps' own screens under /m/<module>/, behind Vyre's sign-in (proxy.js). Only an installed app that is running is served.
-    ctx.mount("m", createProxy({
-      isPerson: caller => isPerson(caller),
+    // The apps' own screens, each on its own origin (<module>.<base>), answered by Host before any Vyre route (proxy.js). Only an installed app that is running is served.
+    const tickets = createTickets();
+    ctx.mountHost(createHostProxy({
+      tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
         if (!m) return null;
-        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null,
+        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [],
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
     }));
+    /** The host Vyre is served at, which the apps' hosts hang from: config appmods.base, else <the box's name>.vyre.run, else localhost. */
+    const baseHost = () => {
+      const c = ctx.config || {};
+      const given = c.appmods && typeof c.appmods.base === "string" ? c.appmods.base : "";
+      if (/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(given)) return given.toLowerCase();
+      const n = c.network && c.network.name;
+      return typeof n === "string" && /^[a-z][a-z0-9-]{1,30}$/.test(n) ? `${n}.vyre.run` : "localhost";
+    };
+    /** Is this call from the Space's owner or an admin? An app has one signed-in user in the app (the install's), so for now only they may open it. @param {any} meta */
+    const ownerOrAdmin = async meta => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") throw refuse("this build runs without its kernel", "unavailable");
+      const chain = await ctx.kernel.chain(meta).catch(() => null);
+      const hop = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+      if (!hop || !hop.actor || hop.actor.kind !== "person" || chain.hops.length !== 1) return false;
+      if (hop.actor.id === ctx.kernel.owner) return true;
+      const mem = await ctx.kernel.grants.members.get(chain, hop.actor.id).catch(() => null);
+      return Boolean(mem && (mem.role === "owner" || mem.role === "admin"));
+    };
+    ctx.tool("appmods.open", {
+      description: "Open an installed app's screen: answers { url }, an address on the app's own origin that carries a one-time ticket good for a minute. Open it in the main pane or a browser tab; the app is already signed in. For the Space's owner and admins. `origin` is the address Vyre itself is open at (its host decides the app's host).",
+      input: obj({ name: str, screen: str, origin: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
+        if (!(await ownerOrAdmin(meta))) throw refuse("only the owner or an admin of this Space opens this app", "denied");
+        const m = known(r.name);
+        const screen = (m.screens || []).find((/** @type {any} */ s) => s.id === i.screen) || (m.screens || [])[0];
+        let base = baseHost();
+        if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
+        const here = originFor(r.name, base);
+        const t = tickets.issue(r.name, new URL(here).host, screen ? screen.path : "/");
+        return { url: `${here}${ENTER}?t=${t}`, host: new URL(here).host };
+      },
+    });
+    ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
+      hosts: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host) }) });
 
     // Apps that were running when this daemon stopped come back with it.
     for (const r of db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all()) {
-      secretsOf(known(r.name)).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: "http://localhost:3000" }, secrets, hookPort: r.hook_port }))
+      secretsOf(known(r.name)).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: originFor(r.name, baseHost()) }, secrets, hookPort: r.hook_port }))
         .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }

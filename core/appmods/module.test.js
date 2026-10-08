@@ -22,7 +22,7 @@ async function world(t) {
   const seen = { sign: [], reqs: [] };
   const origin = () => `http://127.0.0.1:${app.address().port}`;
   const app = http.createServer((q, r) => {
-    seen.reqs.push({ method: q.method, url: q.url, cookie: q.headers.cookie || "", origin: q.headers.origin || "", referer: q.headers.referer || "", auth: q.headers.authorization || "", vyre: Object.keys(q.headers).filter(k => k.startsWith("x-vyre")) });
+    seen.reqs.push({ host: q.headers.host || "", method: q.method, url: q.url, cookie: q.headers.cookie || "", origin: q.headers.origin || "", referer: q.headers.referer || "", auth: q.headers.authorization || "", vyre: Object.keys(q.headers).filter(k => k.startsWith("x-vyre")) });
     const authed = /(?:^|; )sess=authed(?:;|$)/.test(q.headers.cookie || "");
     let body = ""; q.on("data", d => { body += d; });
     q.on("end", () => {
@@ -36,9 +36,10 @@ async function world(t) {
       if (!authed) return void r.writeHead(302, { location: "/sign_in" }).end();
       if (q.url === "/") return void r.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "tracker=1; path=/" }).end(`<html><head><link rel="stylesheet" href="/packs/app.css"><script src="/packs/app.js" defer></script></head><body><a href="/templates/1">T</a><meta property="og:url" content="http://localhost:3000/"></body></html>`);
       if (q.url === "/packs/app.css") return void r.writeHead(200, { "content-type": "text/css" }).end("body{background:url(/img/x.png)}");
+      if (q.url === "/manifest.json") return void r.writeHead(200, { "content-type": "application/json" }).end("{}");
       if (q.url === "/packs/app.js") return void r.writeHead(200, { "content-type": "text/javascript" }).end("fetch('/api/x')");
       if (q.url === "/go") return void r.writeHead(302, { location: origin() + "/templates/1" }).end();
-      if (q.url === "/save" && q.method === "POST") return void r.writeHead(q.headers.origin === origin() ? 200 : 403, { "content-type": "application/json" }).end(JSON.stringify({ got: body }));
+      if (q.url === "/save" && q.method === "POST") return void r.writeHead(q.headers.origin === `http://${q.headers.host}` ? 200 : 403, { "content-type": "application/json" }).end(JSON.stringify({ got: body }));
       r.writeHead(404).end();
     });
   });
@@ -169,37 +170,54 @@ test("remove takes the container, the listener and every key; data goes only whe
   assert.equal((await w.cli("appmods.remove", { name: "docuseal" })).error.code, "not_found");
 });
 
-test("the app's screens are served under /m/<module>/ for a signed-in person only, signed in to the app for them, with the app's cookies and Vyre's kept apart", async t => {
+test("the app's screens are on the app's own origin: a ticket from Vyre's sign-in buys a cookie for that host only, the app is signed in for the person, nothing of Vyre is on that origin", async t => {
   const w = await world(t);
   await w.cli("appmods.install", { name: "docuseal" });
-  // not a person: a model, and a hook, are told nothing
-  for (const caller of ["mcp", "hook", "harness"]) assert.equal((await w.web("GET", "/m/docuseal/", { caller })).status, 404, caller);
-  assert.equal((await w.web("GET", "/m/nothing/", {})).status, 404, "an app that is not installed is not there");
-  const home = await w.web("GET", "/m/docuseal/", { headers: { cookie: "__Host-vyre_person=secret; other=1", authorization: "Bearer vyre-secret", "x-vyre-proof": "p" } });
+  const H = "docuseal.localhost:9999";
+  const at = (method, p, o = {}) => w.web(method, p, { ...o, headers: { host: H, ...(o.headers || {}) } });
+  // no cookie, no word: whoever asks, a person at the terminal included, gets a plain 404 on this origin
+  for (const caller of ["cli", "mcp", "hook"]) assert.equal((await at("GET", "/", { caller })).status, 404, caller);
+  assert.equal((await at("GET", "/v1/health")).status, 404, "Vyre's API is not on the app's origin");
+  assert.equal((await at("GET", "/manifest.json")).status, 200, "a public static path (the manifest lists it) is open without a session: a browser fetches it without cookies");
+  assert.equal((await at("POST", "/manifest.json")).status, 404, "and only a GET is open");
+  assert.equal((await w.web("GET", "/v1/health", { headers: { host: "localhost" } })).status, 200, "Vyre's own origin is untouched");
+  // a model cannot ask for the ticket; the owner can, and gets an address on the app's origin
+  assert.ok((await w.model("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).error);
+  const opened = await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" });
+  assert.ok(opened.data, JSON.stringify(opened));
+  assert.match(opened.data.url, /^http:\/\/docuseal\.localhost:9999\/__vyre\/enter\?t=[A-Za-z0-9_-]{20,}$/);
+  assert.equal(opened.data.host, H);
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, ["docuseal.localhost"]);
+  const ticket = new URL(opened.data.url).search;
+  // the wrong host cannot spend it (and it is gone); a new one is spent once at the right host
+  assert.equal((await w.web("GET", "/__vyre/enter" + ticket, { headers: { host: "docuseal.evil.example" } })).status, 404);
+  assert.equal((await at("GET", "/__vyre/enter" + ticket)).status, 404, "a ticket that was tried at the wrong host is spent");
+  const second = (await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).data.url;
+  const enter = await at("GET", "/__vyre/enter" + new URL(second).search);
+  assert.equal(enter.status, 302);
+  assert.equal(enter.headers.location, "/");
+  const cookie = /vyre_app=([A-Za-z0-9_-]+)/.exec(String(enter.headers["set-cookie"]))[1];
+  assert.match(String(enter.headers["set-cookie"]), /HttpOnly; SameSite=Lax/);
+  assert.ok(!/Domain=/i.test(String(enter.headers["set-cookie"])), "the cookie is for that host only");
+  assert.equal((await at("GET", "/__vyre/enter" + new URL(second).search)).status, 404, "once");
+  const jar = { cookie: `vyre_app=${cookie}; __Host-vyre_person=secret` };
+  const home = await at("GET", "/", { headers: jar });
   assert.equal(home.status, 200, home.text.slice(0, 200));
-  assert.match(home.text, /<head><script src="\/m\/docuseal\/__vyre\/shim\.js"><\/script>/);
-  assert.match(home.text, /href="\/m\/docuseal\/packs\/app\.css"/);
-  assert.match(home.text, /href="\/m\/docuseal\/templates\/1"/);
-  assert.match(home.text, /content="\/m\/docuseal\/"/, "the app's own origin became the prefix");
+  assert.ok(home.text.includes('href="/templates/1"') && home.text.includes("/packs/app.css"), "not one byte of the app is rewritten");
   assert.equal(home.headers["set-cookie"], undefined, "the app's cookies never reach the browser");
-  // the app signed in once, with the credentials the install kept, and saw none of Vyre's
-  assert.equal(w.seen.sign.length, 1);
-  const forwarded = w.seen.reqs.filter(r => r.url === "/");
-  assert.ok(forwarded.length >= 1);
+  assert.equal(w.seen.sign.length, 1, "the app was signed in once, with the credentials the install kept");
   for (const r of w.seen.reqs) { assert.ok(!r.cookie.includes("vyre") && !r.cookie.includes("secret"), "no Vyre cookie reached the app"); assert.equal(r.auth, ""); assert.deepEqual(r.vyre, []); }
-  assert.equal(forwarded[forwarded.length - 1].cookie, "sess=authed", "the app's own session is the proxy's");
-  // css and redirects and the shim
-  const css = await w.web("GET", "/m/docuseal/packs/app.css");
-  assert.match(css.text, /url\(\/m\/docuseal\/img\/x\.png\)/);
-  const go = await w.web("GET", "/m/docuseal/go");
+  assert.equal(w.seen.reqs.filter(r => r.url === "/").pop().cookie, "sess=authed");
+  assert.equal(w.seen.reqs.filter(r => r.url === "/").pop().host, H, "the app sees the host the person is on");
+  // another app's cookie, or none, is nothing here
+  assert.equal((await at("GET", "/", { headers: { cookie: "vyre_app=abc" } })).status, 404);
+  // a redirect to the app's own address stays on this origin; a write is the person's own origin
+  const go = await at("GET", "/go", { headers: jar });
   assert.equal(go.status, 302);
-  assert.equal(go.headers.location, "/m/docuseal/templates/1");
-  const shim = await w.web("GET", "/m/docuseal/__vyre/shim.js");
-  assert.equal(shim.status, 200);
-  assert.match(shim.headers["content-type"], /javascript/);
-  assert.equal((await w.web("GET", "/m/docuseal/__vyre/shim.js", { caller: "mcp" })).status, 404);
-  // a write carries the app's origin (its own anti-forgery check), not Vyre's
-  const save = await w.web("POST", "/m/docuseal/save", { headers: { "content-type": "application/json", origin: "https://box.example", "content-length": "7" }, body: '{"a":1}' });
+  assert.equal(go.headers.location, "http://docuseal.localhost:9999/templates/1");
+  const save = await at("POST", "/save", { headers: { ...jar, "content-type": "application/json", origin: "http://" + H, "content-length": "7" }, body: '{"a":1}' });
   assert.equal(save.status, 200, save.text);
-  assert.deepEqual(JSON.parse(save.text), { got: '{"a":1}' });
+  // removing the app ends the sessions and the host
+  await w.cli("appmods.remove", { name: "docuseal" });
+  assert.notEqual((await at("GET", "/", { headers: jar })).status, 200);
 });
