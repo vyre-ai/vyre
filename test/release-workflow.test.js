@@ -107,7 +107,7 @@ test("release.yml: the Lumen Mac app is built in this run on every channel, and 
   const gate = yml.slice(add, yml.indexOf("\n      - name:", add + 10));
   assert.match(gate, /MAC_SIGNING: \$\{\{ vars\.MAC_SIGNING \}\}/);
   assert.match(gate, /\[ "\$MAC_SIGNING" = required \]/);
-  assert.ok(gate.indexOf('"$MAC_SIGNING" = required') < gate.indexOf("exit 0"), "a required signing failure is raised before the quiet skip");
+  assert.ok(gate.indexOf('"$MAC_SIGNING" = required') < gate.indexOf('cp "$RUNNER_TEMP/mac/$f"'), "a required signing failure is raised before anything is copied");
   for (const m of mac.matchAll(/^          (APPLE_[A-Z0-9_]+): (.*)$/gm)) assert.match(m[2], /inputs\.sign && secrets\.APPLE_[A-Z0-9_]+ \|\| ''/);
 });
 
