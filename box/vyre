@@ -97,8 +97,15 @@ RUN=$UPD_ROOT/private/run
 BOXPREV=$DIR/box.prev
 SRCDIR=$DIR/src
 set_root_run() { ROOT_RUN=1; BOXPREV=$UPD_ROOT/private/box.prev; SRCDIR=$UPD_ROOT/private/src; }
+# need_docker: a person who cannot reach Docker (not root, not in the docker group) is told to use sudo, never shown Docker's own permission error.
+need_docker() {
+  [ "$(id -u)" = 0 ] && return 0
+  s=${DOCKER_HOST:-unix:///var/run/docker.sock}; s=${s#unix://}
+  [ -S "$s" ] && [ ! -w "$s" ] && die "this needs Docker, which only root can reach here: run it with sudo: sudo vyre ${VYRE_VERB:-$*}"
+  return 0
+}
 compose() {
-  if [ "$ROOT_RUN" != 1 ]; then docker compose "$@"; return; fi
+  if [ "$ROOT_RUN" != 1 ]; then need_docker; docker compose "$@"; return; fi
   [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
   if [ "$BUILDF" = 1 ]; then docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" "$@"
   else docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" "$@"
@@ -1984,6 +1991,7 @@ admin() {
 }
 
 case "${1:-}" in up|update) expire_code ;; esac
+VYRE_VERB=${1:-}
 case "${1:-}" in
   up)
     shift
@@ -2008,6 +2016,7 @@ case "${1:-}" in
     ;;
   uninstall)
     shift
+    need_docker
     uninstall "$@"
     ;;
   update-from-request)
