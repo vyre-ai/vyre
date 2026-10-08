@@ -135,6 +135,8 @@ export async function walk(w) {
         askSeen = ask.seen;
         await phone.until(() => shown.length, 15_000, "the phone to show its words");
         await mac.sayYes(shown[0].split(" "), ask.raw);
+        // the name's key lives in this app, not on the server: the server asks this app to sign the list change (wink.phone.pairing `enrol`), as the Devices screen's serveEnrol does
+        await mac.serveEnrol();
         const r = await joining;
         assert.equal(r.id, mac.identity.id, "the phone joined this person's identity");
         return `${shown[0]}`;
