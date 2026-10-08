@@ -465,3 +465,16 @@ test("the direct door: a paired SERVER (no relay app row) may read the network's
   await assert.rejects(() => d.serve("device:srv_live123/../x", "network.wink.status", {}), /not paired here any more/);
   assert.equal(seen.length, 1, "only the allowed read reached the registry");
 });
+
+test("a call relayed from a device meets the server's Gate as that device: the caller is the device's label whatever the input says, and nothing in the input lifts it", async () => {
+  const x = door();
+  await run(x.d, "t.a", { caller: "cli", as: "person:per_x", origin: "cli", agent: "kit", firstParty: true, presence: "fresh", session: "s9", via: { person: "per_x" } });
+  const s = x.seen[0];
+  assert.equal(s.caller, `device:${ID}`);
+  assert.equal(s.meta.firstParty, undefined, "no first-party flag from the wire");
+  assert.equal(s.meta.person, undefined, "no person session from the input");
+  assert.equal(s.meta.origin, undefined);
+  assert.equal(s.meta.agent, undefined);
+  assert.equal(s.meta.kernelFacts.kind, "device");
+  assert.equal(s.meta.kernelFacts.device_key_id, ID);
+});

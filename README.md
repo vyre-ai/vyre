@@ -21,6 +21,7 @@ Open source. Self-hosted. Any model.</p>
 
 <p align="center">
   <img src="docs/images/readme/vyre-demo.gif" width="860" alt="Press Option-Space in any app and ask your assistant: it hands the work to the right agent, reports back when it is done, and the three emails wait for your Face ID before they go out.">
+  <br><sub>A film of where Vyre 0.3.0 is heading. Today Lumen asks your assistant and finds your work; the hand-off between agents, live steps and one approval for several sends land in 0.3.0.</sub>
 </p>
 
 AI agents can already draft the email, chase the invoice and update the file. What they can't do is work inside your team: see the same client your people see, pick up a task where a colleague left it, use the company's keys without walking off with them, and stop before anything goes out in your name.

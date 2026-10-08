@@ -219,6 +219,15 @@ export const RESERVED_EVENTS = {
 /** Event nouns Vyre's own modules act on. An added module never emits these, whatever it is named: a module named "device" or "devices" must not say device.paired. */
 export const SHARED_EVENT_NOUNS = new Set(["device", "wink", "name", "relay", "vault", "turn", "settings", "spaces", "space", "chat", "task", "record", "records", "flow", "file", "files", "identity", "person", "kernel", "module", "approval", "stream", "network"]);
 
+/**
+ * Tools an added module can never name, whatever its needs.tools say: pairing, admitting or dropping devices, and setup change who can reach the server. A whole family is closed
+ * (relay, link, wink, presence) except the read-only status tools below; the list is checked at add time (`vyre module check`) and again on every ctx.call.
+ */
+const NEVER_FAMILIES = /^(relay|link|wink|presence)\./;
+const NEVER_EXCEPT = new Set(["relay.status", "relay.setup.status", "relay.devices.all", "relay.devices.list", "link.status", "link.health", "link.macs", "link.peers", "link.pending", "link.events", "wink.network.status"]);
+/** @param {string} tool */
+export const addedNever = tool => NEVER_FAMILIES.test(String(tool)) && !NEVER_EXCEPT.has(String(tool));
+
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
@@ -231,6 +240,7 @@ export function validate(m, { firstParty = false } = {}) {
   // of a load (ADR 0047 section 8) stay: no "vyre" reads as "1", and what is only deprecated
   // (string tool entries, a missing description) warns through addedWarnings(), never fails.
   if (!firstParty) out.push(...addedCheck(m).problems);
+  if (!firstParty && m.needs && Array.isArray(m.needs.tools)) for (const t of m.needs.tools) if (typeof t === "string" && addedNever(t)) out.push(`needs.tools "${t}": an added module can never use a tool that pairs, admits or drops a device or sets the server up`);
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
   // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
   if (String(m.name) === "kernel") out.push('name "kernel" is reserved for the kernel itself');
@@ -1204,6 +1214,9 @@ export class Registry {
         // own. Its own tools need no entry (reviews/platform.md CR-H2, as testing.js does).
         // A context with no registry row (the docs harvest builds one to read tool schemas) is no
         // module the registry started; every started module has its row before start() runs.
+        if (!as && rec && !fp && addedNever(tool)) {
+          return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which an added module can never use`), { code: "denied" }));
+        }
         if (!as && rec && !fp && !declared.has(tool) && !((m.needs && m.needs.tools) || []).includes(tool)) {
           return Promise.reject(Object.assign(new Error(`${m.name} called ${tool}, which needs.tools does not list`), { code: "undeclared" }));
         }
@@ -1279,6 +1292,8 @@ export class Registry {
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
       // box cannot be reached, so a caller can fall back to what this machine has.
       remote: async (tool, input = {}) => {
+        // Only Vyre's own modules reach another machine. An added module gets an answer, not a forward.
+        if (!firstPartyRec()) return { error: { code: "denied", message: "only Vyre's own modules may reach another machine" } };
         const r = await this.call("link.remote", { tool, input }, `module:${m.name}`, { door: true });
         return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a box" } } : r.data && r.data.result ? r.data.result : r;
       },
