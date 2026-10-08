@@ -677,6 +677,9 @@ fn selftest(out: &str) {
 }
 
 fn main() {
+    // A panic or an early exit must leave a line, not a silent window that never opened.
+    std::panic::set_hook(Box::new(|i| log("panic", "main", &i.to_string())));
+    log("note", "start", option_env!("VYRE_APP_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")));
     let args: Vec<String> = std::env::args().collect();
     if std::env::var("VYRE_SELFTEST").as_deref() == Ok("1") {
         if let Some(i) = args.iter().position(|a| a == "--selftest") {

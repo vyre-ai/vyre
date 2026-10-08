@@ -63,7 +63,11 @@ async function attach() {
   for (let i = 0; i < 60 && !browser; i++) {
     try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP}`); } catch { await sleep(1000); }
   }
-  if (!browser) throw new Error("the app's window never listened for the DevTools protocol");
+  if (!browser) {
+    let log = "(no app.log)";
+    try { log = fs.readFileSync(logFile, "utf8").slice(-1500); } catch { /* none */ }
+    throw new Error(`the app's window never listened for the DevTools protocol; app alive: ${proc ? proc.exitCode === null : "stopped"}, exit code ${proc ? proc.exitCode : "?"}; app.log: ${log}`);
+  }
   for (let i = 0; i < 60; i++) {
     for (const c of browser.contexts()) for (const p of c.pages()) if (p.url().startsWith("https://vyreapp.localhost/")) return { browser, page: p };
     await sleep(500);
