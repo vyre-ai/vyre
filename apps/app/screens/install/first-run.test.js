@@ -192,6 +192,7 @@ test("Get started goes to the reservation code; there is no question, and My Clo
 });
 
 test("the paste check accepts every character the directory can put in a code", async () => {
+  await import("../../../../names/worker/index.js"); // the Worker module first: ids.js and index.js import each other
   const { ALPHA32 } = await import("../../../../names/worker/ids.js");
   const { codeLooksRight } = await import("./first-run.js");
   for (const ch of ALPHA32) assert.equal(codeLooksRight(`vyre-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), true, ch);

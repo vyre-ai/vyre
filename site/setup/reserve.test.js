@@ -29,6 +29,7 @@ test("a reservation is a code, or a plain reason", () => {
 });
 
 test("every character the directory can put in a code is accepted by the page", async () => {
+  await import("../../names/worker/index.js"); // the Worker module first: ids.js and index.js import each other
   const { ALPHA32 } = await import("../../names/worker/ids.js");
   const { CODE_RE } = await import("./reserve.js");
   for (const ch of ALPHA32) assert.ok(CODE_RE.test(`VYRE-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}-${ch.repeat(4)}`), ch);
