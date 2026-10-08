@@ -5,6 +5,7 @@
 //   --modules   modules.json (scripts/modules-manifest.mjs) must be in the release, listed in SHA256SUMS, { v: 1, counter, release, modules } with the counter scripts/release-counter.mjs makes from VERSION
 //   --setup     setup.json (scripts/setup-hashes.mjs) must be in the release, listed in SHA256SUMS and { v: 1, files: [...] }: what scripts/check-served.mjs checks vyre.run against
 //   --installer the Windows installer (Vyre_<version>_x64-setup.exe and VyreSetup.exe) must be in the release
+//   --android   the Android app (Vyre-android.apk and Vyre_<version>_android.apk) must be in the release
 //   --mac       the Lumen Mac app (Vyre-Lumen-aarch64.dmg and Vyre-Lumen-x86_64.dmg, stable names) must be in the release
 //   --pulled   the release carries images: release.json names them by digest and compose.yml pins them (required for a release that boxes pull)
 //   --pubkey   SHA256SUMS.sig must be a valid Ed25519 signature by this key over "vyre-release-sums\n" + SHA256SUMS (the format every updater reads)
@@ -20,7 +21,7 @@ const EXACT_IMAGE = /^[ \t]*image: [A-Za-z0-9._/-]+(:[A-Za-z0-9._-]+)?@sha256:[0
 const REQUIRED = ["install-box.sh", "install-mac-server.sh", "compose.yml", "compose.build.yml", "vyre.env.example", "vyre", "Dockerfile", "dockerignore", "vyre.tgz", "VERSION", "release.json", "SHA256SUMS"];
 
 /** @param {string} dir @param {{ pulled?: boolean, pubkey?: string }} [o] @returns {string[]} the problems */
-export function check(dir, { pulled = false, pubkey = "", installer = false, mac = false, setup = false, modules = false } = {}) {
+export function check(dir, { pulled = false, pubkey = "", installer = false, android = false, mac = false, setup = false, modules = false } = {}) {
   const problems = [];
   const read = f => { try { return fs.readFileSync(path.join(dir, f)); } catch { return null; } };
   for (const f of REQUIRED) if (read(f) === null) problems.push(`missing ${f}`);
@@ -45,6 +46,12 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, mac
   if (installer) {
     const v = read("VERSION").toString("utf8").trim();
     for (const f of [`Vyre_${v}_x64-setup.exe`, "VyreSetup.exe"]) if (!listed.has(f)) problems.push(`the Windows installer ${f} is not in the release`);
+  }
+
+  // The Android app, both names, listed in SHA256SUMS (sideloaded: no store carries it yet).
+  if (android) {
+    const v = read("VERSION").toString("utf8").trim();
+    for (const f of [`Vyre_${v}_android.apk`, "Vyre-android.apk"]) if (!listed.has(f)) problems.push(`the Android app ${f} is not in the release`);
   }
 
   // The Lumen Mac app: the stable names the site's picker links to, one per architecture, listed in SHA256SUMS.
@@ -158,7 +165,7 @@ if (process.argv[1] && process.argv[1].endsWith("check-release-dist.mjs")) {
   const dir = args.find(a => !a.startsWith("--") && args[args.indexOf(a) - 1] !== "--pubkey");
   if (!dir) { console.error("usage: node scripts/check-release-dist.mjs <dist-dir> [--pulled] [--pubkey <spki-base64>]"); process.exit(2); }
   const pubkey = args.includes("--pubkey") ? args[args.indexOf("--pubkey") + 1] : "";
-  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), mac: args.includes("--mac"), setup: args.includes("--setup"), modules: args.includes("--modules"), pubkey });
+  const problems = check(dir, { pulled: args.includes("--pulled"), installer: args.includes("--installer"), android: args.includes("--android"), mac: args.includes("--mac"), setup: args.includes("--setup"), modules: args.includes("--modules"), pubkey });
   for (const p of problems) console.error(`release-dist: ${p}`);
   if (problems.length) process.exit(1);
   console.log(`release-dist: ${dir} is what the updater needs`);

@@ -90,6 +90,19 @@ test("release dist: with --installer the Windows installer must be in the releas
   assert.deepEqual(check(d, {}), [], "without the flag nothing is required");
 });
 
+test("release dist: with --android the APK must be in the release under both names", t => {
+  const d = dist(t);
+  const problems = check(d, { android: true });
+  assert.ok(problems.some(p => /Vyre_0\.2\.0_android\.apk is not in the release/.test(p)), problems.join("\n"));
+  assert.ok(problems.some(p => /Vyre-android\.apk is not in the release/.test(p)));
+  for (const f of ["Vyre_0.2.0_android.apk", "Vyre-android.apk"]) {
+    fs.writeFileSync(path.join(d, f), f);
+    fs.appendFileSync(path.join(d, "SHA256SUMS"), `${crypto.createHash("sha256").update(f).digest("hex")}  ${f}\n`);
+  }
+  assert.deepEqual(check(d, { android: true }), []);
+  assert.deepEqual(check(dist(t), {}), [], "without the flag nothing is required");
+});
+
 test("release dist: with --mac the two stable Lumen dmgs must be in the release, listed in SHA256SUMS", t => {
   const d = dist(t);
   const problems = check(d, { mac: true });
