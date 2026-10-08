@@ -18,7 +18,7 @@ export function groupsFrom(answer) {
   const lines = new Map((Array.isArray(answer && answer.groups) ? answer.groups : []).map((/** @type {any} */ g) => [String(g.id), String(g.line || "")]));
   for (const c of cards) {
     if (!c.group) continue;
-    const g = by.get(c.group) || { id: c.group, line: lines.get(c.group) || "", items: [] };
+    /** @type {Group} */ const g = by.get(c.group) || { id: c.group, line: lines.get(c.group) || "", items: [] };
     g.items.push(c);
     by.set(c.group, g);
   }

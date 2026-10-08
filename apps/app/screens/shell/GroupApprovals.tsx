@@ -50,7 +50,7 @@ function ItemRow({ item, dropped, onDrop, onEdit, onRead, onApproveOne }: { item
       })}
       <View className="flex-row gap-s2 pt-s1">
         {lines.some((w) => w.text.length > SHORT) ? <Button kind="ghost" size="sm" label={open ? "Show less" : "Show more"} onPress={() => setOpen(!open)} /> : null}
-        {item.partial && !item.readAll ? <Button kind="outline" size="sm" label="Read all" onPress={onRead} /> : null}
+        {item.partial && !item.readAll ? <Button kind="secondary" size="sm" label="Read all" onPress={onRead} /> : null}
         {item.partial && item.readAll && !dropped ? <Button kind="primary" size="sm" icon="faceid" label="Approve this one" onPress={onApproveOne} /> : null}
         {!item.partial && !dropped && lines.length ? <Button kind="ghost" size="sm" label="Edit" onPress={() => { const w = lines[lines.length - 1]; setDraft(w.text); setEditing(w.field); }} /> : null}
         <Button kind="ghost" size="sm" label={dropped ? "Keep" : "Drop"} onPress={onDrop} />
