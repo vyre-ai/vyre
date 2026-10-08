@@ -6,7 +6,7 @@ set -eu
 [ -n "${CI:-}" ] || { echo "build-update-releases: runs on a CI runner only (CI is unset)" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/../../.." && pwd)
 WORK=$1
-OLD_TAG=${2:-v0.2.11}
+OLD_TAG=${2:-v0.2.12}
 rm -rf "$WORK"; mkdir -p "$WORK/new" "$WORK/old"
 fail() { echo "build-update-releases FAILED: $*" >&2; exit 1; }
 node -e '
@@ -16,6 +16,8 @@ fs.writeFileSync(process.argv[1]+"/proof.pub",k.publicKey.export({type:"spki",fo
 NEWPUB=$(cat "$WORK/proof.pub")
 
 tar -C "$HERE" --exclude=.git --exclude=node_modules --exclude=site/box -cf - . | tar -C "$WORK/new" -xf -
+# The candidate must be above the old line (the updater never goes back): the copy is stamped one patch up.
+node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));p.version=process.argv[2];fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+"\n")' "$WORK/new/package.json" "${NEW_VERSION:-0.2.13}"
 CANDKEY=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/release-sig.js")
 [ -n "$CANDKEY" ] || fail "could not read the candidate's pinned key"
 for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh; do [ -f "$WORK/new/$f" ] && sed -i "s#$CANDKEY#$NEWPUB#g" "$WORK/new/$f"; done

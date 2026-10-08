@@ -289,8 +289,7 @@ export async function walkTerminal(w) {
 }
 
 /**
- * The update walk (--update): an app with its own identity pairs a server that is the OLD release (v0.2.11 by default, installed by that release's own installer, which has no setup-code flow: it shows its
- * long code), then asks for the update from the app. The steps are in updateSteps.
+ * The update walk (--update): an app with its own identity pairs a server that is the OLD release (v0.2.12 by default, installed by that release's own installer with the app's install line), then asks for the update from the app. The steps are in updateSteps.
  * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, out: string, update: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string } }} w
  */
 export async function walkUpdate(w) {
@@ -300,34 +299,34 @@ export async function walkUpdate(w) {
   const dir = path.join(w.out, tag);
   fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
   const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
-  /** @type {any} */ let srv = null, made = null;
+  /** @type {any} */ let reservation = null, flow = null, srv = null;
   try {
-    await run.step(S("the app has an identity"), async () => {
-      const r = await mac.reserve(`walkeru${Math.random().toString(36).slice(2, 7)}`);
-      await mac.becomeYourself({ name: r.name, code: r.code });
+    await run.step(S("reserve a name and become yourself in the app"), async () => {
+      reservation = await mac.reserve(`walkeru${Math.random().toString(36).slice(2, 7)}`);
+      await mac.becomeYourself({ name: reservation.name, code: reservation.code });
     });
-    await run.step(S(`the old release (${update.oldVersion}) installs with its own installer and shows its code`), async () => {
-      const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
+    await run.step(S("add a server: the app shows the install line"), async () => {
+      flow = mac.addServer();
+      await flow.begin("plain");
+      assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`));
+    }, { needs: [S("reserve a name and become yourself in the app")] });
+    await run.step(S(`the old release (${update.oldVersion}) installs from the line`), async () => {
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
       srv = await startInstallerServer(a);
-      for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 120 || !/relay gave no code|did not answer/.test(String(/** @type {Error} */ (e).message))) { let st = ""; try { st = JSON.stringify(await srv.operator("relay.connected", {})); } catch (x) { st = String(/** @type {Error} */ (x).message); } throw new Error(`${/** @type {Error} */ (e).message} (relay.connected: ${st.slice(0, 200)})`); } await new Promise(r => setTimeout(r, 2000)); } }
-      assert.ok(made && /^vyre:\/\/wink\/2\?/.test(made.qr), "the server showed a long code");
-      return "a long code";
-    }, { needs: [S("the app has an identity")] });
-    const PAIR = S("the app pairs the server and the server names this identity its owner");
-    await run.step(PAIR, async () => {
-      const pairing = mac.pairWithServer(made.qr);
-      pairing.catch(() => {});
-      const ask = await mac.until(async () => { const x = await srv.operator("wink.server.pairing", {}); return x && x.asking ? x : null; }, 30_000, "the server to ask who is pairing");
-      const shown = await mac.until(() => mac.lastWords(), 15_000, "the app to show its three words");
-      assert.ok(ask.choices.includes(shown), "the server offers the words the app shows");
-      await srv.operator("wink.server.pair.answer", { yes: true, pick: ask.choices.indexOf(shown) + 1 });
-      const r = await pairing;
-      assert.ok(r.owner, "the server named an owner");
-    }, { needs: [S(`the old release (${update.oldVersion}) installs with its own installer and shows its code`)] });
+    }, { needs: [S("add a server: the app shows the install line")] });
+    await run.step(S("the app finds the server and the four words match"), async () => {
+      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
+      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
+      assert.equal(flow.state.box.words.join(" "), await srv.words());
+    }, { needs: [S(`the old release (${update.oldVersion}) installs from the line`)] });
+    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
+      await flow.confirmWords();
+      assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
+    }, { needs: [S("the app finds the server and the four words match")] });
     await run.step(S("the app reaches the server and calls a tool"), async () => {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
-    }, { needs: [PAIR] });
+    }, { needs: [S("confirm the words in the app: adopt and pair")] });
     await updateSteps({ w: { update }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
   } finally {
     try { if (srv) await srv.stop(); } catch { /* gone */ }
