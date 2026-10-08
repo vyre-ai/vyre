@@ -1057,7 +1057,20 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (!mine.length) throw fail("not_found", "that answer is not in this chat");
       const authorOf = String((mine.find(f => f.author) || mine[0]).author || "");
       if (!botId(authorOf)) throw fail("bad_input", "a second opinion is asked on an assistant's answer");
-      const target = mentionedIn({ participants: participants(g), mentions: [to] })[0];
+      // One tap: a model the chat does not have yet ("codex", "grok/grok-4", or a model:<provider>/<model>#n slot) joins as part of this same act, as the chat's own run slot, the way a new chat's default
+      // model does. Only a person's own call gets here (the kernel gate above), and an assistant the chat already lists is used as it is.
+      let want = to;
+      if (!mentionedIn({ participants: participants(g), mentions: [to] })[0]) {
+        const m = /^(?:model:)?([a-z][a-z0-9-]{0,40})(?:\/([A-Za-z0-9][A-Za-z0-9._:/-]{0,80}?))?(?:#[0-9]{1,6})?$/.exec(to);
+        if (m && ["claude", "codex", "grok", "openrouter", "openai-compatible"].includes(m[1]) && !to.startsWith("person:") && !to.startsWith("assistant:")) {
+          want = /^model:.+#[0-9]{1,6}$/.test(to) ? to : `model:${m[1]}/${m[2] || "default"}#${100000 + (crypto.randomBytes(3).readUIntBE(0, 3) % 899999)}`;
+          const there0 = g.bots.get(authorOf);
+          join(grp, want, { cwd: (there0 && there0.cwd) || (kernelOn() ? chatFolder(grp) : undefined) });
+          const slot = g.bots.get(want);
+          if (slot) { slot.kind = "run"; save(slot); }
+        }
+      }
+      const target = mentionedIn({ participants: participants(g), mentions: [want] })[0];
       if (!target || !botId(target)) throw fail("bad_input", `${to} is not an assistant in this chat: add it to the chat first`);
       if (target === authorOf) throw fail("bad_input", "ask a different assistant or model than the one that answered");
       const answer = mine.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => String(f.data.text || "")).join("").trim();
