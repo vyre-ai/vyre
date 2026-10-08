@@ -21,7 +21,7 @@ const home = fs.mkdtempSync(path.join(os.tmpdir(), "chat-walk-"));
 const p = config.ensure(home);
 const db = open(p.db);
 const fk = createFakeKernel();
-const logs = new Logs({ maxFrames: 100000, coalesce: false });
+const logs = new Logs({ db, maxFrames: 100000, coalesce: false });
 let n = 0;
 const ctx = { log: () => {}, kernel: fk.kernel, call: async (/** @type {string} */ tool) => (tool === "threads.start" ? { data: { id: `thr_${++n}` } } : tool === "threads.get" ? { data: { events: [] } } : { data: {} }) };
 const groups = createGroups({ ctx, logs, db, now: () => Date.now(), replyPort: fk.port });
