@@ -3,6 +3,9 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- fix(install): the installer waits up to three minutes for the four words on a first start (it gave up after about thirty seconds), and says it is waiting.
+- fix(approvals): a held outward call that the person approved on the phone runs when the asker retries; the card held for the registry named no asking device, so every such retry was refused.
+- fix(box): a vyre command that needs Docker, run without sudo by someone who cannot reach Docker, says "run it with sudo: sudo vyre <command>" instead of Docker's permission error.
 - fix(security): an added module can never name a tool that pairs, admits or drops a device or sets the server up (the relay, link, wink and presence families, except their read-only status tools). `vyre module check` and the loader refuse a manifest that lists one, and a call to one from an added module is denied whatever its needs.tools say. test/added-module-never.test.js runs real added modules in a real daemon with the real presence check.
 - fix(security): only first-party modules may reach another machine. An added module is refused by ctx.remote and by link.call, link.remote and link.upload on a Mac, before anything is forwarded; Vyre's own modules (Files, Planner, Sync) are unchanged. test/remote-first-party.test.js refuses every model and added-module caller for each carrier.
 - docs(readme): the Lumen film is captioned as where 0.3.0 is heading, until a walk on real devices shows it working.
