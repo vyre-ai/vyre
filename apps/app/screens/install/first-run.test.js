@@ -193,3 +193,11 @@ test("a Mac server's line runs the Mac installer with the same code and Records 
   assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
   assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
 });
+
+test("the paste-your-code screen has a Windows Hello line and the Mac and phone line, in the words the lead approved", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN."));
+  assert.ok(src.includes("Vyre makes your key on this Mac, and the key never leaves it."));
+  assert.ok(src.includes('title="Paste your code"'));
+});

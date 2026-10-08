@@ -178,7 +178,7 @@ const HOME_FAQ = [
   ['Is Vyre free?', 'Yes. Vyre is open source under Apache 2.0. You use your own Claude, Codex, Grok or OpenRouter account, so you pay those providers directly and nobody pays Vyre.'],
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
-  ['Does it work on my phone?', 'Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.'],
+  ['Does it work on my phone?', 'Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), scan the code your computer shows, and check that both screens show the same words.'],
   ['Where does my data live?', 'Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
   ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.'],
@@ -250,7 +250,7 @@ const homeBody = `
         <a href="/mac/">${I.mac}<b>Mac</b><span>Vyre Lumen opens over any app with Option-Space.</span><i class="go">Mac &rarr;</i></a>
         <a href="/windows/">${I.win}<b>Windows</b><span>Vyre Lumen in your tray, with an Alt+Space panel.</span><i class="go">Windows &rarr;</i></a>
         <a href="/linux/">${I.server}<b>Linux server</b><span>Where your agents live and keep working. A Mac that stays on works too.</span><i class="go">Server &rarr;</i></a>
-        <a href="/phone/">${I.phone}<b>iPhone and Android</b><span>Your own address on your Home Screen, paired with Face ID.</span><i class="go">Phone &rarr;</i></a>
+        <a href="/phone/">${I.phone}<b>iPhone and Android</b><span>The Vyre app from a file, paired with Face ID or a fingerprint.</span><i class="go">Phone &rarr;</i></a>
       </div>
     </div>
   </div>
@@ -631,31 +631,30 @@ devicePage({
 devicePage({
   slug: 'phone', os: 'iOS, Android', name: 'Vyre on your phone', crumb: 'Phone',
   title: 'Vyre on your phone: your agents in your pocket',
-  desc: 'Open Vyre on your iPhone or Android phone at your own address, add it to your Home Screen, and pair it by scanning a code. Approve, deny and answer from anywhere.',
+  desc: 'Put the Vyre app on your Android phone from the release file, or on your iPhone from a build you install with Xcode, and pair it by scanning a code. Approve, deny and answer from anywhere.',
   h1: 'Your agents, <b>in your pocket.</b>',
-  lead: 'Vyre is a web app you add to your Home Screen. Scan a code to pair it, and approve what your agents wait on with Face ID.',
-  ogSub: 'Add Vyre to your Home Screen, scan a code to pair, and approve what your agents wait on.',
+  lead: 'Install the Vyre app from a file, scan a code to pair it, and approve what your agents wait on with Face ID or a fingerprint.',
+  ogSub: 'Install the Vyre app from a file, scan a code to pair, and approve what your agents wait on.',
   art: `<div style="display:flex;justify-content:center"><div class="phone" style="width:min(100%,290px)" role="img" aria-label="The Vyre phone app, Needs screen. Sample data."><div class="notch"></div><div class="scr"><div class="hdr"><span>alex.vyre.run</span><span>2 waiting</span></div><p class="ph">Needs you</p><div class="need">kit wants to email 14 Northwind customers the new order form<small>Held by rule: bulk email over 10</small><div class="acts"><span>Approve</span><span>Deny</span></div></div><div class="need">Which export format should kit use?<small>A question from kit</small></div><div class="faceid">&#9679; Face ID to approve</div></div></div></div><p class="demo-tag">Sample data.</p>`,
-  what: { h: 'Vyre, <b>on your Home Screen.</b>', items: [
+  what: { h: 'Vyre, <b>in your pocket.</b>', items: [
     ['Now, Chats, Agents, Find, Drive', 'Ask your memory from Find. Browse the folders your server shares from Drive.'],
-    ['Needs rows', 'Approve, deny or answer by swipe. Push tells you when something is waiting.'],
+    ['Needs rows', 'Approve, deny or answer by swipe. Open the app to see what is waiting.'],
     ['A full device', 'A phone paired by scanning makes its own Face ID key at that moment. No code typed on your computer.'],
     ['Face ID only when it matters', 'It is asked for the vault and for sends you did not ask for.'],
     ['A removed phone wipes itself', 'Remove a device and it is cut off and clears what it kept. The release signs the app’s files, so a changed file is refused.'],
   ] },
-  steps: { h: 'Nothing to install, <b>then scan.</b>', items: [
-    `<b>Open the Vyre app</b> on your phone. Vyre’s own network is built in: there is no VPN to install and nothing to sign in to.`,
-    `<b>Scan the code.</b> Your server, or a computer you are already signed in on, shows a code. Scan it with your phone, or paste the long code.`,
-    `<b>Add it to your Home Screen.</b> Open your server’s address in the phone’s browser and add Vyre to your Home Screen. Then turn on notifications.`,
-    `<b>Confirm the three words.</b> The phone and the other screen show the same three words. Say yes only if they match.`,
+  steps: { h: 'Install the file, <b>then scan.</b>', items: [
+    `<b>Install the app.</b> Android: download Vyre-android.apk from the <a href="https://github.com/vyre-ai/vyre/releases/latest">latest release</a> on the phone, open it, and allow installs when Android asks. iPhone: there is no App Store app yet; build the app and install it with Xcode, as the <a href="https://github.com/vyre-ai/vyre/blob/main/docs/using/mobile.md">phone guide</a> shows. Both are sideloaded.`,
+    `<b>Scan the code.</b> In the Vyre app on your computer, choose Add your phone. It shows a code. Scan it with the phone.`,
+    `<b>Confirm the words.</b> The phone and the computer show the same words. Say yes only if they match.`,
   ] },
-  needs: [['Phone', 'iPhone or Android, with a current browser'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
-  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.', 'Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.'],
+  needs: [['Phone', 'An Android phone, or an iPhone and a Mac with Xcode'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
+  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications to a closed phone app are not set up: Apple and Google push accounts are needed. Open the app to see what is waiting.', 'Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.'],
   faq: [
-    ['Is there an App Store app?', 'On a phone, Vyre is the web app you add to your Home Screen from your own address, on iPhone and Android.'],
+    ['Is there an App Store app?', 'Not yet. On Android you install the APK from the release page; on iPhone you build the app and install it with Xcode. Both are sideloaded.'],
     ['Does the phone need a VPN?', 'No. The phone reaches your server through Vyre’s own network, and where a direct path is not possible, through the relay. Your identity on the phone is a key that Face ID unlocks, so there is no separate login to the server.'],
     ['What happens if I lose my phone?', 'Remove it from another device. It is cut off from your server, and it wipes what it kept when it next opens.'],
-    ['Can I use Vyre from a phone browser without installing it?', 'Yes. A browser can open the Vyre web app and reach your server through the relay. Installing the app adds notifications and pairing with Face ID.'],
+    ['Do I get notifications?', 'Not when the app is closed, yet. Open the app and Now lists what is waiting for you.'],
   ],
 });
 
@@ -878,7 +877,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 - [Mac: Vyre Lumen](${SITE}/mac/): Option-Space ask window, built on your Mac
 - [Windows: Vyre Lumen](${SITE}/windows/): tray app with an Alt+Space panel
 - [Linux server](${SITE}/linux/): where Vyre runs
-- [Phone](${SITE}/phone/): the Vyre web app added to the Home Screen
+- [Phone](${SITE}/phone/): the Vyre app, sideloaded on Android (APK) or iPhone (Xcode)
 
 ## Machine-readable
 - [llms-full.txt](${SITE}/llms-full.txt): the same content in full
@@ -908,7 +907,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
-- Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
+- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
@@ -967,7 +966,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
-- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: a web app on the Home Screen.
+- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: the Vyre app, sideloaded.
 - Current release: ${VERSION}.
 
 ## Operating a user's own Vyre
@@ -983,7 +982,7 @@ const AGENT_JSON = {
   license: 'Apache-2.0',
   docs: { llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
   install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user.' },
-  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (Vyre Lumen)', 'Windows (Vyre Lumen)', 'iOS and Android (web app on the Home Screen)'] },
+  platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (Vyre Lumen)', 'Windows (Vyre Lumen)', 'iOS and Android (the app, sideloaded)'] },
 };
 
 const write = (p, s) => { mkdirSync(dirname(join(site, p)), { recursive: true }); writeFileSync(join(site, p), s); };
