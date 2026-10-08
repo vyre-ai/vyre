@@ -204,11 +204,12 @@ export async function walk(w) {
  */
 export async function walkTerminal(w) {
   const { run, ins, server } = w;
-  for (const way of /** @type {("long code" | "typed code" | "typed code in a browser")[]} */ (["long code", "typed code", "typed code in a browser"])) {
-    const browser = way === "typed code in a browser";   // a plain web page, not the Mac or Windows app: it must stay a limited device
+  for (const way of /** @type {("long code" | "typed code" | "typed code in a browser")[]} */ (["long code", "typed code", "typed code in a browser", "typed code, no identity proof"])) {
+    const browser = way === "typed code in a browser" || way === "typed code, no identity proof";   // a plain web page, not the Mac or Windows app
+    const noProof = way === "typed code, no identity proof";   // a stranger with only the typed code and no identity proof
     const tag = `terminal ${way}`;
     const S = (/** @type {string} */ n) => `${tag}: ${n}`;
-    const dir = path.join(w.out, tag.replace(/ /g, "-"));
+    const dir = path.join(w.out, tag.replace(/[ ,]+/g, "-"));
     fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
     const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay, capsule: server === "mac" });
     /** @type {any} */ let srv = null, made = null;
@@ -236,14 +237,24 @@ export async function walkTerminal(w) {
           const r = await pairing;
           assert.ok(r.owner, "the server named an owner");
         } else {
-          const r = await mac.pairByTypedCode({ input: made.code, typedAck: async ack => { await srv.operator("wink.server.confirm", { offer: made.offer, typed: ack }); } });
-          assert.ok(r.owner, "the server named an owner");
+          const r = await (noProof ? mac.pairByTypedCodeNoProof : mac.pairByTypedCode)({ input: made.code, typedAck: async ack => { await srv.operator("wink.server.confirm", { offer: made.offer, typed: ack }); } });
+          if (!noProof) assert.ok(r.owner, "the server named an owner");
         }
       }, { needs: [S("a fresh server with no setup code shows its code")] });
       if (browser) {
-        await run.step(S("a plain browser stays a limited device: no signed-in session"), async () => {
-          await assert.rejects(async () => { await mac.openSession(); }, /no tool presence\.person\.pair-challenge/, "a web page that pairs a server must not get the person-session path");
-        }, { needs: [S("the app pairs the server and the server names this identity its owner")] });
+        if (noProof) {
+          await run.step(S("a browser with no owner proof gets no signed-in session"), async () => {
+            let said = "";
+            try { await mac.openSession(); } catch (e) { said = String(/** @type {Error} */ (e).message); }
+            assert.ok(said, "a device that redeemed the typed code without the owner's identity proof got a signed-in session");
+            return `refused: ${said.slice(0, 80)}`;
+          }, { needs: [S("the app pairs the server and the server names this identity its owner")] });
+        } else {
+          await run.step(S("a browser that paired with the owner's identity proof is a device like any other: it has a signed-in session"), async () => {
+            await mac.openSession();
+            assert.ok(await mac.callTool("system.info"), "system.info answered");
+          }, { needs: [S("the app pairs the server and the server names this identity its owner")] });
+        }
         continue;
       }
       await run.step(S("the server made this app a signed-in session"), async () => {

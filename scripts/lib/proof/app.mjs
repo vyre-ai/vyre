@@ -124,6 +124,20 @@ export function createApp(o) {
     return pairing;
   }
 
+  /**
+   * What a stranger with only the typed code can do: redeem it and be a device, with NO owner identity proof (`server` left out of joinWithCode). Used to prove such a device gets no signed-in session.
+   * @param {{ input: string, typedAck: (ack: string) => Promise<void> }} a
+   */
+  async function pairByTypedCodeNoProof(a) {
+    let acked = false;
+    const r = /** @type {any} */ (await joinWithCode({ relay: o.relay, input: a.input, name: o.label, pollMs: 100, waitMs: 30_000,
+      onState: s => { if (s.state === "ack" && !acked) { acked = true; void a.typedAck(String(s.code)).catch(() => {}); } },
+      pairOptions: { crypto: relayCrypto, keyStore, about, presenceKey } }));
+    if (!r.ok) throw Object.assign(new Error(`the typed code did not pair: ${r.reason}`), { code: r.code || r.reason });
+    pairing = { ...r.paired, relay: r.paired.relay || o.relay };
+    return pairing;
+  }
+
   /** "Add a server": the app makes the install line; the caller runs it; the app finds the server, shows four words, and (once told they match) pairs. @param {{ onChange?: (s: any) => void }} [h] */
   function addServer(h = {}) {
     if (!me) throw new Error("this app has no identity yet");
@@ -276,7 +290,7 @@ export function createApp(o) {
   }
 
   return {
-    label: o.label, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
+    label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
     reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
