@@ -30,6 +30,8 @@ export const KINDS = Object.freeze([
   "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
   // One Chat: a run step (the tool calls between two of the assistant's messages), summarised once it closes
   "step-summary",
+  // A request handed to a teammate (SPEC-0.3.0 11.2, team/0.3/IFACE-activity.md): one row per request, updated by later frames with the same request
+  "handoff",
 ]);
 /** Never logged: what the home sends a viewer in place of a frame they may not see (viewer.js forViewer). It keeps the cursor and holds nothing. */
 export const STUBS = Object.freeze(["hidden"]);
@@ -37,6 +39,7 @@ export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
 export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "text", "field-ref", "field"]);
+export const HANDOFF_STATES = Object.freeze(["queued", "running", "done", "failed", "cancelled"]);
 export const STATES = Object.freeze(["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"]);
 
 /** Longest text a block carries; a longer output is cut with a note, never sent whole. */
@@ -89,6 +92,7 @@ const CHECK = {
   "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
   "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
   "step-summary": d => (idStr(d.step) && isInt(d.count) && isObj(d.kinds) && isStr(d.summary) && d.summary.length <= 200 && typeof d.ok === "boolean" ? null : "step-summary needs step, count, kinds, summary and ok"),
+  "handoff": d => (idStr(d.request) && isObj(d.to) && isStr(d.to.agent) && isStr(d.to.role) && HANDOFF_STATES.includes(d.state) && isStr(d.text) && d.text.length <= 300 && (d.thread === undefined || idStr(d.thread)) && (d.result === undefined || (isStr(d.result) && d.result.length <= 600)) ? null : "handoff needs request, to {agent, role}, state queued, running, done, failed or cancelled, and text (up to 300 characters)"),
   "fanout-keep": d => (idStr(d.group) && idStr(d.keep) ? null : "fanout-keep needs group and keep, a message id"),
   "hidden": d => (Object.keys(d).length === 0 ? null : "hidden holds nothing"),
   "text-cut": d => (idStr(d.message) && isStr(d.note) ? null : "text-cut needs message and note"),
@@ -144,6 +148,7 @@ export function validate(f) {
   if (!isObj(o.data)) return { ok: false, error: "data must be an object" };
   const bad = CHECK[kind](o.data);
   if (bad) return { ok: false, error: bad };
+  if (o.data.via !== undefined && !idStr(o.data.via)) return { ok: false, error: "via must be a request id" };
   if (o.span !== undefined && !(Array.isArray(o.data.parts) && o.data.parts.length === o.span)) return { ok: false, error: "a spanned frame needs one part per cursor" };
   return { ok: true };
 }

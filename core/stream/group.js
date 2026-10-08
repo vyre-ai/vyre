@@ -929,6 +929,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     known: grp => groups.has(grp) || logs.known(grp),
     /** Does any assistant of this chat's group answer on a thread of its own yet? (A chat whose one run was started outside the stream has none: its transcript is that run's own log.) @param {string} grp */
     bound: grp => (groups.has(grp) || logs.known(grp)) && [...group(grp).bots.values()].some(m => Boolean(m.thread)),
+    /** The chat a thread answers in and who it is there ("assistant:juno"), or null when the thread is in no chat. @param {string} thread */
+    ofThread: thread => { const m = byThread.get(thread); return m && m.grp ? { grp: m.grp, who: m.who } : null; },
     /** The people in a group, from its log. Call only for a known group. @param {string} grp */
     people: grp => new Set(group(grp).people),
 
