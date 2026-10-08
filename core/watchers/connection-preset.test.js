@@ -35,3 +35,32 @@ test("the poll must be one the Connection declares, with every variable it needs
   // a declaration in the preset's own input is not heard: only the one the caller resolved from the connectors module counts
   assert.throws(() => buildPreset({ kind: "connector", project: "p", connector: "gohighlevel-sales", poll: "contacts.recent", credential: "conn-x", vars: { location: "a" }, declaration: m.declaration }), /names a Connection|names a connector this build declares/);
 });
+
+test("a GoHighLevel-shaped poll fires: the generated watcher lists the contacts on the pinned host and files each with its own id and title", async t => {
+  const fs = await import("node:fs"), os = await import("node:os"), path = await import("node:path");
+  const m = form();
+  const p = buildPreset({ kind: "connector", project: "harlow-legal", connector: m.id, poll: "contacts.recent", credential: "conn-gohighlevel-sales", vars: { location: "abc" } }, { declaration: m.declaration });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-conn-poll-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "watcher.json"), JSON.stringify(p.json));
+  fs.writeFileSync(path.join(dir, "watch.mjs"), p.code);
+  const seen = /** @type {string[]} */ ([]);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = /** @type {any} */ (async (/** @type {string} */ u) => {
+    seen.push(String(u));
+    return new Response(JSON.stringify({ contacts: [{ id: "c1", contactName: "Dana Reyes", dateAdded: "2026-10-08T10:00:00Z" }, { id: "c2", contactName: "Sam Ortiz", dateAdded: "2026-10-08T11:00:00Z" }, { contactName: "no id" }] }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+  t.after(() => { globalThis.fetch = realFetch; });
+  const { default: watch } = await import(path.join(dir, "watch.mjs"));
+  /** @type {any[]} */ const filed = [], said = /** @type {string[]} */ ([]);
+  // the first look starts quietly from now; the next one files what the list shows
+  const first = await watch({ since: null, emit: (/** @type {any} */ x) => filed.push(x), log: (/** @type {string} */ x) => said.push(x) });
+  assert.equal(filed.length, 0); assert.ok(first.at);
+  await watch({ since: { at: Date.now() - 3600_000 }, emit: (/** @type {any} */ x) => filed.push(x), log: (/** @type {string} */ x) => said.push(x) });
+  assert.deepEqual(filed.map(x => [x.id, x.title]), [["c1", "Dana Reyes"], ["c2", "Sam Ortiz"]]);
+  assert.ok(said.some(l => /no id and was skipped/.test(l)));
+  assert.equal(seen.length, 1);
+  const u = new URL(seen[0]);
+  assert.equal(u.origin, "https://services.leadconnectorhq.com"); assert.equal(u.pathname, "/contacts");
+  assert.equal(u.searchParams.get("locationId"), "abc"); assert.equal(u.searchParams.get("limit"), "100");
+});
