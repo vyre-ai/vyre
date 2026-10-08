@@ -179,25 +179,21 @@ wrapper_node() {
   if [ "$SYSTEM" = 0 ] || node_ok; then command -v node; else printf '%s' "$NODE_DIST/bin/node"; fi
 }
 
-# filevault_gate: a Mac with FileVault on waits at the login window after any unplanned restart (a power cut, a crash) and runs nothing until someone signs in, so a server on it is offline until a person
-# is there (a Mac mini server was offline for this reason). The installer stops and asks before it installs a server on one; it never changes FileVault itself. --yes accepts it (the words are printed either way); with no keyboard
-# to ask and no --yes it stops, and says how to go on.
+# filevault_gate: a Mac with FileVault on waits at the login window after any unplanned restart (a power cut, a crash) and runs nothing until someone types the password, so a server on it is offline until a
+# person is there (a Mac mini server was offline for exactly this reason). Checked BEFORE anything is installed. The installer stops, in plain words, and goes on only when the line was run with
+# VYRE_ACCEPT_FILEVAULT=1. It never changes FileVault itself. Whether automatic login is set is read too (FileVault turns it off, so it is said, not relied on).
 filevault_gate() {
   [ "$SYSTEM" = 1 ] || return 0
   fv=$("$FDESETUP" status 2>/dev/null || true)
   case "$fv" in *"FileVault is On"*) ;; *) return 0 ;; esac
+  auto=$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)
   say ""
-  say "  FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that."
-  say "  (System Settings, Privacy & Security, FileVault. Vyre does not change it.)"
+  say "  FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1."
+  if [ -z "$auto" ]; then say "  (Automatic login is not set, and FileVault does not allow it.)"; fi
   say ""
-  if [ "$DRY" = 1 ]; then say "would ask whether to go on"; return 0; fi
-  [ "$YES" = 1 ] && { say "  going on, because you said --yes"; return 0; }
-  if [ -r /dev/tty ]; then
-    printf 'Install Vyre here anyway? [y/N] '; read -r a </dev/tty || a=""
-    case "$a" in y|Y|yes|YES) return 0 ;; esac
-    die "stopped: turn FileVault off and run the install line again, or run it again with --yes to keep FileVault on and accept that a power cut leaves this Mac waiting at the login window"
-  fi
-  die "stopped: FileVault is on, and there is no keyboard to ask. Turn FileVault off and run the install line again, or add --yes to keep it on and accept that a power cut leaves this Mac waiting at the login window"
+  if [ "${VYRE_ACCEPT_FILEVAULT:-}" = 1 ]; then say "  going on, because VYRE_ACCEPT_FILEVAULT=1"; return 0; fi
+  if [ "$DRY" = 1 ]; then say "would stop here unless VYRE_ACCEPT_FILEVAULT=1"; return 0; fi
+  die "stopped before installing anything: FileVault is on (see above)"
 }
 
 preflight() {

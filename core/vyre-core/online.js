@@ -50,7 +50,10 @@ export function fileVault(run) {
   return "unknown";
 }
 
-export const FILEVAULT_NOTICE = "FileVault is on: after a power cut this Mac waits for someone to sign in. For a server, turn FileVault off, or keep it and accept that.";
+export const FILEVAULT_NOTICE = "FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1.";
+
+/** What stays on a server card and in `vyre doctor` for a server installed with FileVault on: it will not come back by itself after a restart. */
+export const FILEVAULT_LASTING = "Stops after a restart until someone signs in.";
 
 /** Can this Mac restart through FileVault's login window for a planned restart (an update)? `fdesetup supportsauthrestart` prints true or false. @param {Run} run */
 export function authRestartSupported(run) {

@@ -303,7 +303,7 @@ export async function diagnose(deps = {}) {
   const vault = !macServer ? Promise.resolve(null) : (async () => {
     const label = "FileVault";
     const f = fileVault(sysRun);
-    if (f === "on") return failed("filevault", label, "on: after a power cut this Mac waits at the login window and nothing runs", "turn FileVault off in System Settings, Privacy & Security (Vyre does not change it), or keep it and accept that a power cut leaves this server waiting for someone to sign in");
+    if (f === "on") return failed("filevault", label, "on: stops after a restart until someone signs in (after a power cut this Mac waits at the login window and nothing runs)", "turn FileVault off in System Settings, Privacy & Security (Vyre does not change it), or keep it and accept that a power cut leaves this server waiting for someone to sign in");
     return f === "off" ? pass("filevault", label, "off") : unknown("filevault", label, "fdesetup did not say");
   })();
 

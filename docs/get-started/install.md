@@ -122,10 +122,11 @@ product, on the server or on your computers, so there is no sign-in that can be 
 - **Mac server (a Mac mini that stays on).** The installer sets the Mac to start when power returns and never to sleep
   (`pmset autorestart 1`, `sleep 0`, `disksleep 0`, `womp 1`, `powernap 0`), and checks that Vyre's system services start at boot and are kept running.
   `vyre doctor` checks the same settings and `vyre doctor --repair` puts them right (it asks for your Mac password once).
-- **FileVault.** If FileVault is on, a Mac waits at the login window after any unplanned restart, and nothing runs until someone signs in. No service can start before that.
-  The installer stops and asks before it installs a server on such a Mac, and says: "FileVault is on: after a power cut this Mac waits for someone to sign in.
-  For a server, turn FileVault off, or keep it and accept that." Vyre never changes FileVault itself. For a planned restart (an update) with FileVault on,
-  Vyre uses `fdesetup authrestart` where the Mac supports it, so the Mac comes back to the desktop without a person.
+- **FileVault.** If FileVault is on, a Mac waits at the login window after any unplanned restart, and nothing runs until someone types the password. No service can start before that.
+  The Mac installer checks this before it installs anything and stops: "FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then.
+  For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1."
+  The app's Add a server shows the same words, and `vyre doctor` reports it ("Stops after a restart until someone signs in"). Vyre never changes FileVault itself.
+  For a planned restart with FileVault on, Vyre uses `fdesetup authrestart` where the Mac supports it, so the Mac comes back to the desktop without a person.
 
 ## Looking after the server
 
