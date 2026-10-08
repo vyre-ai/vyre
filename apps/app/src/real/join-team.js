@@ -10,6 +10,7 @@ import * as C from "../../../../kernel/identity/chain.js";
 import { recordMessage } from "../../../../names/worker/id-messages.js";
 import { sha256 } from "@noble/hashes/sha256";
 import { canonical, payloadHash, b64url } from "../../modules/vyre-signer/presence-proof.js";
+import { spaceName } from "../state/space-name.js";
 import { openRecord } from "../identity/seal.js";
 
 const enc = new TextEncoder();
@@ -184,7 +185,7 @@ export async function openInvite(d, link) {
     let proven = false;
     try { proven = Boolean(payload.rootPublic) && Boolean(attest) && attest.pub === payload.rootPublic && typeof attest.sig === "string" && await C.verifyWith(String(attest.pub), enc.encode(attestMessage(spaceId, nonce)), attest.sig); } catch { proven = false; }
     if (!proven) throw refuse("server_not_proven", "This server could not prove that it holds this space, so Vyre will not join it. Ask the person who invited you.");
-    const view = { ...card, space: `${p.name}.vyre.run`, label: payload.label || p.name, fingerprint: rk, fingerprint_words: fingerprintWords(d.words, rk) };
+    const view = { ...card, space: `${p.name}.vyre.run`, label: spaceName({ label: payload.label, name: p.name }), fingerprint: rk, fingerprint_words: fingerprintWords(d.words, rk) };
     return {
       card: view, spaceId, channel, invite: p.invite,
       /** The person's yes: their presence key signs exactly this card, this device's identity key vouches for that key on this server, and the home makes the membership. */

@@ -3,10 +3,6 @@
   "owner": "launch",
   "seen": "lead integration 6 Oct 2026: a CLI over the socket is a person only with a measured outside ancestry (LB-1); under ssh on a test box it is not"
  },
- "core/daemon/app.test.js": {
-  "owner": "app-wire",
-  "seen": "lead integration 6 Oct 2026: needs the app's web export built in the checkout (npm run export:web); the gate builds it, a bare test run does not"
- },
  "core/runner/lent-wire.test.js": {
   "owner": "runner",
   "seen": "lead integration 7 Oct 2026: needs gocryptfs (apt install gocryptfs); the hosted runner has none, the test boxes do"
