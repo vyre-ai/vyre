@@ -13,6 +13,9 @@ import { fakeDns } from "./fake-dns.js";
 import * as wire from "../../core/relay/wire.js";
 import { world, who, key, identity, person, act } from "./testing.js";
 
+/** A name an older setup gave a server, as the directory still holds it until support moves it. */
+const legacy = (w, box, name) => { const map = w.rt.object("v1", "DIRECTORY").ctx.storage.map; map.set(`n/${name}`, { name, route: box.route, state: "claimed", claimedAt: w.clock.t, everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] }); map.set(`r/${box.route}`, name); };
+
 const BASE = "https://names.test";
 const HOUR = 3_600_000;
 const data = r => { assert.ok(r.json && r.json.data, JSON.stringify(r.json)); return r.json.data; };
@@ -44,14 +47,13 @@ test("ids: a person and a space claim names; anyone resolves the whole chain by 
   void chainsById;
 });
 
-test("ids: one namespace with the boxes, one name per identity, reserved and invalid names refused", async t => {
+test("ids: one namespace with the names an older setup gave a server, one name per identity, reserved and invalid names refused", async t => {
   const w = world(t), box = who(w);
   const alex = await person(w), other = await person(w);
   data(await alex.claim("alex"));
-  assert.equal(code(await box.post("/v1/names/claim", { name: "alex" })), "taken", "a box cannot take an identity's name");
   assert.equal(data(await box.get("/v1/names/check?name=alex", { unsigned: true })).status, "taken");
-  data(await box.post("/v1/names/claim", { name: "juno" }));
-  assert.equal(code(await other.claim("juno")), "taken", "an identity cannot take a box's name");
+  legacy(w, box, "juno");
+  assert.equal(code(await other.claim("juno")), "taken", "an identity cannot take a name a server still holds from an older setup");
   assert.equal(code(await alex.claim("alex2")), "one_per_identity");
   assert.equal(code(await alex.claim("alex")), "taken", "a name that is held cannot be reserved again");
   assert.equal(code(await other.claim("vyre")), "reserved");
@@ -300,12 +302,6 @@ test("ids: a young device may keep updating the space's record it signed itself 
   data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "cm91dGU", laptop, laptop.eid) }));
 });
 
-test("ids: the unchanged box claim path still works beside identities", async t => {
-  const w = world(t), box = who(w), alex = await person(w);
-  const c = data(await box.post("/v1/names/claim", { name: "harlow" }));
-  assert.equal(c.name, "harlow");
-  assert.equal(code(await alex.claim("harlow")), "taken");
-});
 
 test("ids: the directory refuses an op made at an old time, so an adder cannot hand a new entry a past age", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
@@ -376,7 +372,7 @@ test("cors: claim, append and update accept the app's origin (and only its exact
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
   }
-  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"]]) {
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/point"], ["POST", "/v1/names/acme"]]) {
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
     const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
     assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
@@ -542,13 +538,10 @@ test("reserve: the namespace is one, reserved words and held names are refused, 
   const send = async (name, ip = "203.0.113.60") => { const r = await worker.fetch(new Request(BASE + "/v1/ids/reserve", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": ip }, body: JSON.stringify({ name }) }), w.env); return { json: await r.json() }; };
   assert.equal(code(await send("vyre")), "reserved");
   assert.equal(code(await send("x")), "invalid");
-  data(await box.post("/v1/names/claim", { name: "juno" }));
-  assert.equal(code(await send("juno")), "taken", "a box's name (until boxes lose names) is taken");
+  legacy(w, box, "juno");
+  assert.equal(code(await send("juno")), "taken", "a name a server still holds from an older setup is taken");
   data(await alex.claim("alex"));
   assert.equal(code(await send("alex")), "taken", "an identity's name");
-  // a live reservation holds the name against a box
-  await send("kitty");
-  assert.equal(code(await who(w).post("/v1/names/claim", { name: "kitty" })), "taken");
   // a person's genesis cannot be claimed outright
   assert.equal(code(await space.post("/v1/ids/claim", { name: "sam", ops: space.ops, ...space.sealRecord("sam", "c2VhbGVk") })), "reserve_first");
 });

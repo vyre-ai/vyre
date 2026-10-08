@@ -583,7 +583,7 @@ export class Directory {
       return moved ? { name: null, moved } : { name: null };
     }
     const dns = dnsFor(this.env);
-    return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: rec.everPointed, ips: rec.ips,
+    return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: Boolean(rec.everPointed), ips: rec.ips || {},
       notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
   }
 
