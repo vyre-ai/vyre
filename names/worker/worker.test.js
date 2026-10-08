@@ -293,17 +293,17 @@ test("IR-9 a released name stays its owner's: the same route, or whoever holds t
   assert.equal(data(await reinstall.get(`/v1/names/check?name=harlow&reclaim=${r.reclaim}`)).status, "ok");
   assert.deepEqual([data(await stranger.get("/v1/names/check?name=harlow")).status, data(await reinstall.get("/v1/names/check?name=harlow")).status, data(await stranger.get("/v1/names/check?name=harlow&reclaim=wrongwrongwrongwrongwron")).status], ["taken", "taken", "taken"]);
   // claim: a stranger and a wrong code are refused with the same words as ever
-  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow" }, { ip: "203.0.113.11" })), "taken");
-  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim.replace(/.$/, c => (c === "a" ? "b" : "a")) }, { ip: "203.0.113.12" })), "taken");
-  assert.equal(code(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: "x" }, { ip: "203.0.113.13" })), "taken");
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow" })), "taken");
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim.replace(/.$/, c => (c === "a" ? "b" : "a")) })), "taken");
+  assert.equal(code(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: "x" })), "taken");
   // the new server, with the code, takes it; the old route's tombstone state is replaced, and it is the new server's to point
-  const back = data(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim }, { ip: "203.0.113.14" }));
+  const back = data(await reinstall.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim }));
   assert.deepEqual([back.name, back.mine], ["harlow", true]);
   assert.equal(data(await reinstall.get("/v1/names/check?name=harlow")).status, "mine");
   data(await reinstall.post("/v1/names/point", { name: "harlow", ip: "100.101.1.3" }));
   assert.equal(code(await old.post("/v1/names/point", { name: "harlow", ip: "100.101.1.2" })), "not_yours");
   // the code is not a way to take a name that is held
-  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim }, { ip: "203.0.113.15" })), "taken");
+  assert.equal(code(await stranger.post("/v1/names/claim", { name: "harlow", reclaim: r.reclaim })), "taken");
 });
 
 test("IR-9 the releasing route claims its own released name back without a code (the same server reinstalled over its keys)", async t => {
