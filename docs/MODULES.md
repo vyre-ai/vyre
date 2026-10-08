@@ -291,6 +291,31 @@ is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assista
 read) and a `context` (a title, a summary), decided from the person's own turn and never from a
 model. A kind has one provider; a second module that claims it fails to load.
 
+## Views: your screens, drawn by Vyre
+
+A module describes its screens under `views` and Vyre draws them, in the app (web, Mac, Windows, phone) and in the Capsule, in its own components. Nothing from a module runs in Vyre's window. This is the
+Capsule's view language below, promoted to the whole app and extended with a board and a summary; `shows.capsule`'s `view:<id>` entries are the older name for the same declaration, and `views` wins when both name an id.
+
+```json
+"views": {
+  "board": { "title": "Board", "icon": "tray",
+    "board": { "tool": "cards.list", "columns": [{ "id": "todo", "title": "To do" }, "doing", "done"],
+      "map": { "rows": "cards", "id": "id", "title": "name", "subtitle": "who", "column": "status" },
+      "actions": [{ "id": "move", "title": "Move", "tool": "cards.move", "input": { "id": "{id}", "status": "{column}" } }] } },
+  "counts": { "title": "Counts", "summary": { "tool": "cards.count",
+    "map": { "cards": [{ "label": "Open", "path": "open" }], "chart": { "kind": "bar", "rows": "byDay", "label": "day", "value": "n" } } } }
+}
+```
+
+A view is a `list` (with a `detail` and `actions`), a `board`, a `summary` or a `form`. A board groups the rows of its tool into the declared columns by the field `map.column` names; a row whose value is no
+declared column goes to a last column, Other. Dropping a card on a column calls the action with the id `move`, with `{column}` filled in (only a declared column; any other leaves the card where it is). A summary reads
+counts and one small bar or line chart by dotted path. `map` names fields by plain dotted path, templates fill a fixed set of names, an `outward` action shows its exact words first and sends only with the
+preview's own token, and the module's tools run as the module on behalf of the person who opened the view, never as the person. The app asks `views.list`, `views.get` and `views.act`; the Capsule asks
+`capsule.commands`, `capsule.view` and `capsule.act`, and shows only the views it can draw (list, detail, form).
+
+A view is also a sidebar screen: the entry is `{ "kind": "module", "module": "cards", "screen": "board" }` with the view's id as `screen`, and `sidebar.get` marks it `view: true`. A view id a new version drops hides
+the pin; it never deletes it.
+
 ## The Capsule: `view:` entries
 
 A module adds commands to the Capsule by declaring them under `shows.capsule`. The Capsule draws
