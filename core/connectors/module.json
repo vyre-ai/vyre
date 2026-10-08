@@ -25,6 +25,7 @@
       { "name": "connectors.connection.check", "effect": "read" },
       { "name": "connectors.connection.list", "effect": "read" },
       { "name": "connectors.connection.get", "effect": "read" },
+      { "name": "connectors.connection.export", "effect": "read" },
       { "name": "connectors.connection.rebuild", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.delete", "reach": "person", "effect": "write" },
       "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },
@@ -43,7 +44,8 @@
       "connectors.connection-created",
       "connectors.connection-updated",
       "connectors.connection-checked",
-      "connectors.connection-deleted"
+      "connectors.connection-deleted",
+      "connectors.connection-received"
     ]
   },
   "shows": {

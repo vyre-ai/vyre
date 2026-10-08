@@ -254,6 +254,13 @@ export default {
       input: obj({ id: str }, ["id"]),
       run: ({ id }) => made.get(String(id)),
     });
+    ctx.tool("connectors.connection.export", {
+      effect: "read",
+      callers: READERS,
+      description: "A Connection as a template to hand to another team: { id } -> the record without its id, key reference, fixed values (kept as {{name}} placeholders), light and dates. The key is never in it.",
+      input: obj({ id: str }, ["id"]),
+      run: ({ id }) => made.exportTemplate(String(id)),
+    });
     ctx.tool("connectors.connection.rebuild", {
       effect: "write",
       description: "Write a Connection's vault credential again from its record (after it shows out of step): { id }.",
@@ -339,6 +346,13 @@ export default {
       },
     });
 
-    return { async stop() { conn.stop(); } };
+    // An inbound webhook of a Connection: the person opens /hooks/conn-<id> with hooks.open (its signature scheme and signing secret are theirs to set, with presence); a delivery that verifies is
+    // announced by the hooks module as hook.received, and this tells the Connection's own listeners: { id, delivery, bytes }. The body is read with hooks.delivery, as for any route.
+    const offHook = ctx.events.on("hook.received", (/** @type {any} */ ev) => {
+      const p = ev && ev.payload, m = p && /^conn-([a-z][a-z0-9-]{0,39})$/.exec(String(p.route || ""));
+      if (m && made.row(m[1])) ctx.events.emit("connectors.connection-received", { id: m[1], delivery: String(p.id || ""), bytes: Number(p.bytes) || 0 });
+    });
+
+    return { async stop() { offHook?.(); conn.stop(); } };
   },
 };
