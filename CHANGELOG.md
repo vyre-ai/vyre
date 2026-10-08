@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- test(proof): `scripts/proof-install.mjs --live --host <ssh host>` is the real walk: a throwaway name reserved and claimed on names.vyre.run, the relay at relay.vyre.run, and a real server installed over ssh with the exact line the app's Add a server shows (the published installer), once with Records and once without, with the team-space step and a full wipe at the end. `scripts/proof-live-drop.mjs` frees the names it made with the support admin drop.
 - feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
 - fix(release): the Android release-notes line no longer ends the release job with an apostrophe inside a single-quoted printf; every bash run step in the workflows is now checked with bash -n (test/workflows-yaml.test.js).
