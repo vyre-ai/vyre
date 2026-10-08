@@ -15,6 +15,7 @@
     "health": { "path": "/", "ok": [200, 302], "startS": 120 },
     "limits": { "memoryMb": 1536, "cpus": 1.5, "pids": 512 },
     "egress": ["vyred"],
+    "login": { "path": "/sign_in", "token": "authenticity_token", "fields": { "user[email]": "{login_email}", "user[password]": "{login_password}" }, "ok": [302, 303] },
     "bootstrap": { "exec": ["bin/rails", "runner"], "script": "docuseal-bootstrap.rb", "outputs": [{ "name": "api_token" }, { "name": "login_password" }] }
   },
   "connection": {

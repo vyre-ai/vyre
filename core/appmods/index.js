@@ -11,6 +11,8 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
+import { createProxy } from "./proxy.js";
+import { isPerson } from "../../lib/caller.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -254,6 +256,20 @@ export default {
 
     // The daemon's hook door (POST /v1/appmods/<name>/hook) for apps that share the daemon's network; the token rides in x-vyre-token.
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
+
+    // The apps' own screens under /m/<module>/, behind Vyre's sign-in (proxy.js). Only an installed app that is running is served.
+    ctx.mount("m", createProxy({
+      isPerson: caller => isPerson(caller),
+      log: m => ctx.log.warn(m),
+      app: async name => {
+        const r = row(String(name));
+        if (!r || r.state !== "running" || !r.origin) return null;
+        const m = catalog.get(r.name);
+        if (!m) return null;
+        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null,
+          credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
+      },
+    }));
 
     // Apps that were running when this daemon stopped come back with it.
     for (const r of db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all()) {

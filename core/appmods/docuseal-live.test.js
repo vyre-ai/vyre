@@ -8,7 +8,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import http from "node:http";
+import { spawnSync, execFile } from "node:child_process";
+import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { namesOf } from "./runtime.js";
@@ -69,6 +71,49 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.deepEqual(ins.HostConfig.CapDrop, ["ALL"]);
   assert.equal(ins.HostConfig.Privileged, false);
   assert.match(ins.Config.Image, /@sha256:e171808c/);
+
+  // its screens, under /m/docuseal/, behind Vyre's sign-in: the real app's pages, signed in for the person, every address under the prefix
+  const web = (/** @type {string} */ p, caller = "cli") => new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: config.paths(root).socket, path: p, method: "GET", headers: { host: "localhost", "x-vyre-caller": caller } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
+    req.on("error", reject); req.end();
+  });
+  assert.equal((await web("/m/docuseal/", "mcp")).status, 404, "a model is told nothing");
+  let page = await web("/m/docuseal/");
+  for (let hop = 0; hop < 4 && page.status >= 300 && page.status < 400; hop++) { assert.match(page.headers.location, /^\/m\/docuseal\//, "a redirect stays under the prefix"); page = await web(page.headers.location); }
+  assert.equal(page.status, 200, page.text.slice(0, 300));
+  assert.ok(!/name="user\[password\]"/.test(page.text), "the person is already signed in to the app: no second login");
+  assert.match(page.text, /<head><script src="\/m\/docuseal\/__vyre\/shim\.js">/);
+  const css = /href="(\/m\/docuseal\/packs\/css\/[^"]+\.css)"/.exec(page.text);
+  assert.ok(css, "the app's stylesheet is under the prefix");
+  const sheet = await web(css[1]);
+  assert.equal(sheet.status, 200);
+  assert.match(sheet.headers["content-type"], /css/);
+  const js = /src="(\/m\/docuseal\/packs\/js\/[^"]+\.js)"/.exec(page.text);
+  assert.equal((await web(js[1])).status, 200);
+  assert.equal(page.headers["set-cookie"], undefined);
+  console.log(`screens: ${page.text.length} bytes of the app's own page under /m/docuseal/`);
+
+  // With VYRE_APPMODS_BROWSER=1 a real browser (puppeteer's image, on the host network) loads the screens through a bridge to the daemon's socket and walks to a second screen: every request it makes must be
+  // under the prefix and none may fail.
+  if (process.env.VYRE_APPMODS_BROWSER === "1") {
+    const seenReq = []; const bridge = http.createServer((q, r) => { const t1 = Date.now(); const up = http.request({ socketPath: config.paths(root).socket, path: q.url, method: q.method, headers: { ...q.headers, host: "localhost", "x-vyre-caller": "cli" } }, res => { seenReq.push(`${q.method} ${q.url.slice(0, 70)} ${res.statusCode} ${Date.now() - t1}ms`); r.writeHead(res.statusCode, res.headers); res.pipe(r); }); up.on("error", () => { r.writeHead(502).end(); }); q.pipe(up); });
+    await new Promise(r => bridge.listen(0, "127.0.0.1", r));
+    t.after(() => bridge.close());
+    const out = path.join(root, "browser"); fs.mkdirSync(out, { recursive: true }); fs.chmodSync(out, 0o777);
+    fs.copyFileSync(new URL("./browser-probe.cjs", import.meta.url), path.join(root, "probe.cjs"));
+    const run = await new Promise(res => execFile("docker", ["run", "--rm", "--network", "host", "-v", `${path.join(root, "probe.cjs")}:/home/pptruser/probe.cjs:ro`, "-v", `${out}:/out`, "ghcr.io/puppeteer/puppeteer:latest", "node", "/home/pptruser/probe.cjs", `http://127.0.0.1:${/** @type {any} */ (bridge.address()).port}`, "/m/docuseal"], { encoding: "utf8", timeout: 240_000 }, (err, stdout, stderr) => res({ stdout: String(stdout || ""), stderr: String(stderr || "") })));
+    const rep = JSON.parse(run.stdout.trim().split("\n").pop() || "{}");
+    console.log("browser: " + JSON.stringify(rep).slice(0, 1500)); if (rep.crash) console.log("bridge saw: " + seenReq.join(" | ").slice(0, 3000) + " stderr: " + String(run.stderr).slice(0, 500));
+    try { fs.copyFileSync(path.join(out, "page.png"), `/tmp/appmods-page-${process.pid}.png`); } catch { /* no picture */ }
+    assert.ok(!rep.crash, rep.crash);
+    assert.equal(rep.first.sawLogin, false, "no second login in a real browser");
+    // (the browser's own favicon fetch is the one request that is not the page's: Vyre answers it, never the app)
+    assert.deepEqual(rep.outside.filter((/** @type {string} */ p) => !/^\/favicon\.(svg|ico)$/.test(p)), [], "every request the page made is under the prefix");
+    assert.deepEqual(rep.failed, [], "no request failed");
+    assert.deepEqual(rep.statuses, {}, "no request answered with an error");
+    assert.deepEqual(rep.errors, [], "the console holds no error");
+    if (rep.second) assert.match(rep.second.url, /\/m\/docuseal\//, "the second screen is under the prefix too");
+  }
 
   // a document to sign (test fixture), then the app's API with its own token
   const id = docker(["inspect", "-f", "{{.Id}}", names.container]).stdout.trim();

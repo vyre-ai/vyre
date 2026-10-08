@@ -50,7 +50,7 @@ export function checkAppModule(m) {
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
-    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "tmp"];
+    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "tmp"];
     for (const k of Object.keys(a)) if (!ak.includes(k)) bad(`app.${k}`, `${k} is not part of app`);
     if (typeof a.image !== "string" || !PINNED_RE.test(a.image)) bad("app.image", "the image is pinned by digest: name:tag@sha256:<64 hex>");
     if (!(Number.isInteger(a.port) && a.port >= 1 && a.port <= 65535)) bad("app.port", "port is a whole number from 1 to 65535");
@@ -100,6 +100,19 @@ export function checkAppModule(m) {
         if (typeof b.script !== "string" || !/^[a-z0-9][a-z0-9._-]*$/.test(b.script)) bad("app.bootstrap.script", "script is the file in the catalog folder that is given to the command");
         if (!Array.isArray(b.outputs) || !b.outputs.every((/** @type {any} */ o) => isObj(o) && typeof o.name === "string" && /^[a-z][a-z0-9_]*$/.test(o.name))) bad("app.bootstrap.outputs", "outputs name what the command prints as NAME=value lines");
       }
+    }
+  }
+
+  // How Vyre signs in to the app's own screens for the person (so Vyre's sign-in is the only one): a form post to the app's login page with the credentials the bootstrap made.
+  if (isObj(a) && a.login !== undefined) {
+    const l = a.login;
+    if (!isObj(l)) bad("app.login", "login is an object");
+    else {
+      for (const k of Object.keys(l)) if (!["path", "token", "fields", "ok"].includes(k)) bad(`app.login.${k}`, `${k} is not part of login`);
+      if (typeof l.path !== "string" || !l.path.startsWith("/")) bad("app.login.path", "path is the app's sign-in page, starting with /");
+      if (typeof l.token !== "string" || !/^[a-z_]{1,40}$/.test(l.token)) bad("app.login.token", "token names the form's anti-forgery field");
+      if (!isObj(l.fields) || !Object.values(l.fields).every(v => typeof v === "string" && [...v.matchAll(/\{([a-z_]+)\}/g)].every(x => ["login_email", "login_password"].includes(x[1])))) bad("app.login.fields", "fields are the form's fields; a value may use {login_email} and {login_password}");
+      if (!(Array.isArray(l.ok) && l.ok.length > 0 && l.ok.every((/** @type {any} */ c) => Number.isInteger(c)))) bad("app.login.ok", "ok lists the status codes that mean signed in");
     }
   }
 
