@@ -379,6 +379,12 @@ async function startLocked(opts, root, p, release) {
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
     // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
     stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+    // A sent email is logged on the client it went to: the Gate's release, read back, filed as a Communication on the matching Contacts (core/daemon/sent-mail-log.js).
+    if (!basic) {
+      const { watchSentMail } = await import("./sent-mail-log.js");
+      watchSentMail({ events, kernel: /** @type {any} */ (kernel).gateway, log, call: (tool, input) => registry.call(tool, input, "module:leases"),
+        chain: () => /** @type {any} */ (kernel).chains.fromFacts({ kind: "device", device_key_id: "sent-mail-log", person: kernel.id.owner, path: "direct", session: "sent-mail-log" }) });
+    }
     // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
