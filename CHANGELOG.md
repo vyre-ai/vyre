@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
 - fix(release): the Android release-notes line no longer ends the release job with an apostrophe inside a single-quoted printf; every bash run step in the workflows is now checked with bash -n (test/workflows-yaml.test.js).
 - fix(release): the published Android app is signed with Vyre's own release key (the release job re-signs the APK from the `release` environment's ANDROID_KEYSTORE_B64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD), never with Expo's public debug key, which anyone could use to install over Vyre and inherit its data; check-release-dist.mjs --android-release refuses an APK not signed by the pinned release certificate, and a publish stops while none is pinned.
