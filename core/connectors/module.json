@@ -26,6 +26,7 @@
       { "name": "connectors.connection.list", "effect": "read" },
       { "name": "connectors.connection.get", "effect": "read" },
       { "name": "connectors.connection.export", "effect": "read" },
+      { "name": "connectors.connection.import", "effect": "read" },
       { "name": "connectors.connection.rebuild", "reach": "person", "effect": "write" },
       { "name": "connectors.connection.delete", "reach": "person", "effect": "write" },
       "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },

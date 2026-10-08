@@ -47,6 +47,10 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   d.registry.deps.events.emit("hooks", "hook.received", { route: "conn-nobody", id: "dlv_2", bytes: 1 });
   d.registry.deps.events.emit("hooks", "hook.received", { route: "stripe", id: "dlv_3", bytes: 1 });
   assert.deepEqual(heard().map(e => e.payload), [{ id: "acme-crm", delivery: "dlv_1", bytes: 42 }]);
+  const draft = await model("connectors.connection.import", { text: JSON.stringify({ openapi: "3.0.0", servers: [{ url: "https://api.acme-crm.invalid" }], paths: { "/contacts": { get: { operationId: "list" }, post: { operationId: "create" } } } }) });
+  assert.deepEqual(draft.data.operations.map(o => [o.name, o.method]), [["list", "GET"], ["create", "POST"]]);
+  assert.equal((await model("connectors.connection.import", { text: "nope" })).error?.code, "bad_input");
+  assert.equal((await model("connectors.connection.list")).data.connections.length, 1, "a draft saves nothing");
   const tpl = (await model("connectors.connection.export", { id: "acme-crm" })).data;
   assert.equal(tpl.credential.item, ""); assert.ok(!JSON.stringify(tpl).includes(KEY));
 

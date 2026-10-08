@@ -18,6 +18,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
+import { importSpec } from "../../records/connectors/import-spec.js";
 import { logCommunicationsFlow } from "../../records/comms/log-flow.js";
 
 const str = { type: "string" };
@@ -253,6 +254,13 @@ export default {
       description: "One Connection with its declaration (no key): { id }.",
       input: obj({ id: str }, ["id"]),
       run: ({ id }) => made.get(String(id)),
+    });
+    ctx.tool("connectors.connection.import", {
+      effect: "read",
+      callers: READERS,
+      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file as JSON. Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
+      input: obj({ text: str }, ["text"]),
+      run: ({ text }) => { try { return importSpec(String(text)); } catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); } },
     });
     ctx.tool("connectors.connection.export", {
       effect: "read",
