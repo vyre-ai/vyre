@@ -94,6 +94,31 @@ async function boxReachable(tool: (name: string, input?: Record<string, unknown>
 }
 
 /**
+ * Does the saved pairing point at a server that no longer knows this device? An older build kept the pairing of a typed code before the server's owner was set, and the server let the device go;
+ * the box then closes every hello, which is not what an unreachable box does (the relay says "box offline"). Three such closes in a row, or a removal, and the pairing is stale. Anything else
+ * (the connection opens, the box is offline, one odd close) is a server this person still has.
+ */
+async function staleSavedPairing(): Promise<boolean> {
+  try {
+    const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+    const p = await loadPairing();
+    if (!p) return false;
+    const mod = (await import("@vyre/relay-client/client.js")) as unknown as { connect: (o: unknown) => { state: string; lastError: Error | null; close: () => void } };
+    const c = mod.connect({ relay: p.relay, route: p.route, box: p.box, name: deviceName(), crypto: relayCrypto(), keyStore: relayKeyStore(), about, backoff: { min: 300, max: 600 } });
+    try {
+      const seen = new Set<Error>();
+      for (const until = Date.now() + 8000; Date.now() < until; await sleep(150)) {
+        if (c.state === "open") return false;
+        if (c.state === "relay_removed") return true;
+        if (c.lastError && c.lastError.message === "box closed the connection") seen.add(c.lastError);
+        if (seen.size >= 3) return true;
+      }
+      return false;
+    } finally { try { c.close(); } catch { /* closed */ } }
+  } catch { return false; }
+}
+
+/**
  * What pairing a server needs from this device's own name: who will own it (with the head and length of the chain the server checks the proof against), the signature that proves this device speaks for
  * that name over this pairing, and what this device is. Null when it has no name of its own yet. The long code (directSessionFor) and the typed code (MacServer, relay/client/join.js `server`) both take it.
  */
