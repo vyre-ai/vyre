@@ -150,6 +150,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
             }
+        case "presence.key":
+            // the Capsule's key for a Mac server: its public half (SPKI) and the id vyre-core will give it; the pairing carries it, and `presence` above signs with it behind Touch ID
+            guard let p = presence, let e = p.keyForServer() else { return reply(id, ["error": "This Mac could not make its key for the server."]) }
+            reply(id, ["public_key": e.publicKey, "id": e.id])
         case "identity.public", "identity.sign", "identity.has", "identity.forget":
             guard let id0 = identity else { return reply(id, ["error": "This Mac cannot keep your key."]) }
             switch op {
@@ -337,6 +341,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
+        presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
         identity: {

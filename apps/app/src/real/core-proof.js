@@ -37,19 +37,9 @@ export async function coreEnrolProof(o) {
   return `device key=${presenceKeyId(o.pageKey.spki)} ts=${ts} nonce=${nonce} sig=${b64url(p1363ToDer(raw))}`;
 }
 
-/** The point a Secure Enclave key gives (65 bytes, 0x04 || x || y, base64url) as the SPKI core stores, base64url. @param {string} point */
-export function spkiOfPoint(point) {
-  const pt = Uint8Array.from(atob(point.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (point.length % 4)) % 4)), (c) => c.charCodeAt(0));
-  if (pt.length !== 65 || pt[0] !== 4) throw new Error("not an uncompressed P-256 point");
-  const head = Uint8Array.from([0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00]);
-  const out = new Uint8Array(head.length + 65);
-  out.set(head); out.set(pt, head.length);
-  return b64url(out);
-}
-
 /**
  * The presence key this device offers in its pairing hello, with the proof a Mac server's core needs. With no setup key (a pairing that did not start from an install line) or no Secure Enclave key (a phone's, a browser's key is software to a release core, which refuses it
- * for this act), it is returned as it was. With `enclave` (this Mac's Secure Enclave key, SPKI base64url) the key offered IS that key, as the server's Capsule key: core takes it in the setup key's place, on the setup
+ * for this act), it is returned as it was. With `enclave` (this Mac app's Capsule key, SPKI base64url (shell.presenceKey)) the key offered IS that key, as the server's Capsule key: core takes it in the setup key's place, on the setup
  * key's signature over its enrolment, and its Touch ID proofs are the hardware kind a presence act on a release server needs.
  * @param {any} presenceKey @param {{ pageKey?: any, name: string, enclave?: string | null }} o
  */

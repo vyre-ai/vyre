@@ -6,11 +6,12 @@
 // The box is imported on first use so the pure parts stay runnable in Node.
 
 import type { PairingSession } from "../api/pairing-session";
-import { macKeyAvailable, macEnclavePublic } from "../identity/mac-key.ts";
+import { macKeyAvailable } from "../identity/mac-key.ts";
+import { shell } from "../shell/shell";
 // A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
-import { withCoreProof, spkiOfPoint } from "./core-proof.js";
-/** This Mac's Secure Enclave key as an SPKI, or null where there is none (a phone, a browser, a Mac with no Secure Enclave). */
-const macEnclaveSpki = async (): Promise<string | null> => { if (!macKeyAvailable()) return null; const p = await macEnclavePublic(false); return p ? spkiOfPoint(p) : null; };
+import { withCoreProof } from "./core-proof.js";
+/** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */
+const macCapsuleSpki = async (): Promise<string | null> => { const k = await shell()?.presenceKey?.().catch(() => null); return k ? k.public_key : null; };
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
@@ -175,7 +176,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
     payload: textOf(code), owner: inputs.owner, signIdentity: inputs.signIdentity, name: deviceName(),
-    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macEnclaveSpki() }), signal: abort.signal,
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await withCoreProof(inputs.presenceKey, { pageKey: extra && extra.pageKey, name: deviceName(), enclave: await macCapsuleSpki() }), signal: abort.signal,
     deviceKind: inputs.deviceKind, keyStorage: inputs.keyStorage,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });

@@ -301,6 +301,21 @@ public final class CapsulePresence {
         return try? SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: handle, authenticationContext: context)
     }
 
+    /// The id vyre-core gives a presence key: the first 22 characters of the base64url SHA-256 of its SPKI DER (core/presence fingerprint).
+    nonisolated static func keyId(spki: Data) -> String { String(PresenceCanonical.b64url(Data(SHA256.hash(data: spki))).prefix(22)) }
+
+    /// The Capsule's key as a Mac SERVER's Capsule key (ADR 0040, the Mac server install): made and kept here exactly as enroll() makes it, but sent nowhere. The pairing hands its public half to
+    /// the server, whose vyre-core takes it as the server's Capsule key on the setup key's signature; from then on proof(tool:input:) is that server's Touch ID, the same panel and the same
+    /// key. A key already made for this Mac's own vyred is reused (its id is the same fingerprint). nil when the Mac would not make or keep one.
+    func keyForServer() -> Enrolled? {
+        if let e = enrolled, store.loadHandle() != nil { return e }
+        guard let made = Self.makeDeviceKey(secureEnclave: hasSecureEnclave()), store.save(made.handle) else { return nil }
+        let e = Enrolled(id: Self.keyId(spki: made.der), publicKey: PresenceCanonical.b64url(made.der))
+        try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let data = try? JSONEncoder().encode(e), (try? data.write(to: file, options: .atomic)) != nil else { store.delete(); return nil }
+        return e
+    }
+
     /// The same, sent to `client` with `header` as x-vyre-presence: vyre-core's socket with the
     /// installer's one-time code (Host/CoreEnroll.swift), or vyred with Touch ID.
     func enroll(client: VyredClient, header: String) async -> String? {
