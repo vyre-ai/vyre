@@ -77,10 +77,10 @@ export function installLine(version, vars = {}) {
   return `curl -fsSL ${rc ? `${base}install-box.sh` : "vyre.run/i"} | ${env ? `${env} ` : ""}sh`;
 }
 
-/** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
 /** A reservation code as the Worker prints it: VYRE- and four groups of four. */
 export const codeLooksRight = (/** @type {string} */ c) => /^VYRE-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}-[A-Z2-7]{4}$/.test(String(c || "").trim().toUpperCase());
 
+/** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
 export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
 
 /** The Mac's "Add your phone": the phone becomes the one that approves. */

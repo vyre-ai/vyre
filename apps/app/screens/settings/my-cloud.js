@@ -99,7 +99,7 @@ export function cloudState(list) {
   return { personal, cloud, movedTo: typeof personal?.upgraded_to === "string" && personal.upgraded_to ? personal.upgraded_to : null };
 }
 
-/** What the card offers: add a server (Personal has none yet and no server is paired), set up (a server is paired), move (it exists and Personal has not moved), or done. @param {ReturnType<typeof cloudState>} s @param {boolean} hasServer a paired server exists to make it on @returns {"setup" | "move" | "moved" | "none"} */
+/** What the card offers: add a server (Personal has none yet and no server is paired), set up (a server is paired), move (it exists and Personal has not moved), or done. @param {ReturnType<typeof cloudState>} s @param {boolean} hasServer a paired server exists to make it on @returns {"add" | "setup" | "move" | "moved" | "none"} */
 export function offerFor(s, hasServer) {
   if (!s.personal) return "none";
   if (s.movedTo) return "moved";
