@@ -1347,7 +1347,7 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   const w = world(t);
   const { d, alex, space } = await harlow(t, w);
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
-  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const claim = async (name, agree) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
   const casey = await claim("casey", pt()), dana = await claim("dana", pt());
   const caseyPt = (await d.reg.call("spaces.identity.devices", { person: casey.id }, "cli")).data;
   assert.deepEqual(caseyPt, { devices: [] }, "before they share a space: nothing, though casey has a device with a point");
@@ -1633,7 +1633,7 @@ test("spaces.identity.devices.read on a SERVER (no identity of its own): the pai
   const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
   const device0 = await device(t); // a home that makes the directory's `hooks` live
   void device0;
-  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const claim = async (name, agree) => claimIdentity({ name, code: (await reserve(name)).code, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
   const owner = await claim("srvowner", pt()), stranger = await claim("srvstranger", pt());
   let claimed = /** @type {string | null} */ (owner.id);
   const kernelFor = () => ({ for: () => null, ownerClaimed: () => claimed });
