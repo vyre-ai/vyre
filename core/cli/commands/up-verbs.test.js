@@ -196,7 +196,7 @@ test("up.js commands: vyre commands lists vyre name's verbs; the others take fla
   assert.deepEqual(of("name").verbs.find(v => v.verb === "check").args, [{ name: "n", required: true }]);
   assert.deepEqual(of("name").verbs.filter(v => v.read).map(v => v.verb), ["status", "check"]);
   for (const n of ["up", "backup", "restore", "uninstall"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
-  assert.deepEqual(of("up").flags.map(f => f.name), ["box", "connect", "no-capsule", "keep-link", "dry-run", "json"]);
+  assert.deepEqual(of("up").flags.map(f => f.name), ["box", "connect", "no-capsule", "keep-link", "quiet", "dry-run", "json"]);
   assert.deepEqual(of("up").flags.find(f => f.name === "connect"), { name: "connect", value: "addr" });
   assert.deepEqual(of("restore").args, [{ name: "file", required: true }]);
 });

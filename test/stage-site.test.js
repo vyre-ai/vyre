@@ -44,7 +44,7 @@ test("stage-site: a test runner's loopback relay and install URL are accepted, f
   const r = spawnSync("sh", [path.join(REPO, "scripts", "stage-site.sh"), "--site", site, "--out", out], { encoding: "utf8", env: { ...process.env, VYRE_SETUP_RELAY: "ws://127.0.0.1:45123", VYRE_SETUP_INSTALL_URL: "http://127.0.0.1:45124/i" } });
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(out, "setup", "config.json"), "utf8")), { relay: "ws://127.0.0.1:45123", installUrl: "http://127.0.0.1:45124/i" });
-  assert.match(fs.readFileSync(path.join(out, "_headers"), "utf8"), /wss:\/\/relay\.vyre\.run http:\/\/127\.0\.0\.1:45123 ws:\/\/127\.0\.0\.1:45123;/);
+  assert.match(fs.readFileSync(path.join(out, "_headers"), "utf8"), /https:\/\/names\.vyre\.run http:\/\/127\.0\.0\.1:45123 ws:\/\/127\.0\.0\.1:45123;/);
 });
 
 test("stage-site: it refuses a relay that is not wss, an install URL that is not https, and a site that was never built", t => {
