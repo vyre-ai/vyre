@@ -291,7 +291,15 @@ async function standinIdentity(t) {
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
-  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
+  /** Another identity in the same directory (a second person), made by the app libraries as a box-less device makes it. @param {string} name */
+  const another = async name => {
+    const st = fileIdentityStore(path.join(tempHome(t), "spaces"));
+    const dir2 = idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen });
+    const ops2 = createIdentityOps({ store: st, dir: dir2, seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
+    await ops2.create({ name, password: "four plain words here", deviceLabel: `${name}'s phone`, code: (await dir2.reserve(name)).code });
+    return { id: /** @type {string} */ (st.status().id), eid: /** @type {string} */ (st.status().eid), store: st };
+  };
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock, fetch: fetchDir, another,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -1244,4 +1252,84 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
   const a = signOf("outward", { op: "slack.post", fields: { x: 1 } }), b = signOf("outward", { op: "mail.send", fields: { what: "slack.post", x: 1 } });
   assert.notDeepEqual(a.fields, b.fields);
   assert.notEqual(JSON.stringify(signOf("outward", { op: "mail.send", fields: { what: "A" } }).fields), JSON.stringify(signOf("outward", { op: "mail.send", fields: { what: "B" } }).fields), "even a field called what is signed, not dropped");
+});
+
+
+test("join a team with no server, end to end: a second identity that has only a name opens the invite, is admitted as a member through the invitee door of the real server, enrols its key there, and reaches the space with a member call", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { proofRequest } = await import("../kernel/remote/proof.js");
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const ident = await standinIdentity(t);
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  const sealDir = tmp("join-team-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit has a name in the same directory and NO server: no daemon is started for kit, only the app's libraries
+  const kit = await ident.another("kit");
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const body = { role: "member", invitee: to, ...extra };
+    const req = proofRequest(made.space, "inviteCreate", body);
+    const inv = await hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) });
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const kitSigner = sealSigner(kit.id);
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  const rows = new Map();
+  const deps = {
+    who: { id: kit.id, name: "kit", eid: kit.eid, sign: async m => new Uint8Array(await kit.store.sign(Buffer.from(m))) },
+    fetch: /** @type {any} */ (spacesHooks.fetch), base: "http://127.0.0.1:1", connect, openServerPeer, crypto: nodeCrypto(), words: WORDS,
+    signPresence: async req => kitSigner.proof(inviteeChain, req.op, req.fields),
+    presenceKey: async () => kitSigner.enrolment,
+    store: { get: async k => rows.get(k), put: async (k, v) => { rows.set(k, v); } },
+  };
+  // the card, read through the home's kernel, with the home proving it holds the space
+  const inv = await openInvite(deps, mine.link);
+  t.after(() => inv.close());
+  assert.deepEqual([inv.card.role, inv.card.status, inv.card.invitee], ["member", "pending", kit.id]);
+  assert.equal(inv.card.space, "harlow.vyre.run");
+  assert.match(inv.card.fingerprint_words, /^\w+ \w+ \w+ \w+$/);
+  assert.deepEqual(inv.channel, ROUTE, "the route came from the space's directory record, not from the link");
+  // not a member yet
+  await assert.rejects(() => callTeam(deps, made.space, "grants.members.list", []), e => e.code === "not_a_member");
+  // the yes: kit's presence key signs the card, kit's identity key vouches for that key, the server enrols it inside the accept
+  const joined = await inv.accept();
+  assert.equal(joined.joined, true);
+  assert.equal(joined.membership.role, "member");
+  const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
+  assert.deepEqual([member.person, member.role], [kit.id, "member"]);
+  assert.deepEqual(rows.get(`member-of/${made.space}`).channel, ROUTE, "the device keeps where the team's home is");
+  // the app reaches the team's space as a member and calls a tool; the server's sealing process has this device's key now
+  const list = await callTeam(deps, made.space, "grants.members.list", []);
+  const people = (Array.isArray(list) ? list : list.members || []).map(m => m.person);
+  assert.ok(people.includes(kit.id) && people.includes(f.owner.id), JSON.stringify(list).slice(0, 300));
+  assert.equal(await sealer.presenceCheck({ chain: hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-kit", person: kit.id, path: "direct" }), op: "grant.accept", fields: { x: 1 }, proof: kitSigner.proof(inviteeChain, "grant.accept", { x: 1 }) }) !== "unknown_key", true, "this device's presence key is enrolled on the server");
+  // the invite is spent; an invite meant for someone else, a forged fingerprint and a space nobody hosts show kit nothing
+  await assert.rejects(() => openInvite(deps, mine.link), e => e.code === "not_for_you");
+  const other = await linkFor("per_" + "x".repeat(26));
+  await assert.rejects(() => openInvite(deps, other.link), e => e.code === "not_for_you");
+  const fresh = await linkFor(kit.id);
+  const [id0, blob] = fresh.link.split("/join/")[1].split(".");
+  const bad = JSON.parse(Buffer.from(blob, "base64url").toString()); bad.rk = "0".repeat(32);
+  await assert.rejects(() => openInvite(deps, `https://harlow.vyre.run/join/${id0}.${Buffer.from(JSON.stringify(bad)).toString("base64url")}`), e => e.code === "forged");
+  await assert.rejects(() => openInvite(deps, "https://harlow.example.com/join/" + id0 + "." + blob), e => e.code === "bad_input");
+  assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted by the door");
 });
