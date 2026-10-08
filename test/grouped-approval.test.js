@@ -23,7 +23,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   t.after(() => { delete globalThis.__sent; configureYes({ verify: null }); });
   configureYes({ softwareOk: () => true, verify: async ({ op, fields, proof }) => (proof && proof.ok === true && proof.for === canon({ op, fields: canon(fields) }) ? null : "bad_signature") });
   const home = tempHome(t), root = path.join(home, "mods");
-  writeModule(root, "mail", { version: "0.1.0", vyre: "1", description: "Sends mail.", does: { tools: [{ name: "mail.send", reach: "anyone", outward: "send", summary: "send an email" }] } },
+  writeModule(root, "mail", { version: "0.1.0", vyre: "1", description: "Sends mail.", does: { tools: [{ name: "mail.send", reach: "anyone", outward: true, summary: "send an email" }] } },
     `export default { async start(ctx) { ctx.tool("mail.send", { input: { type: "object" }, run: async (i) => { (globalThis.__sent ||= []).push(i); return { sent: i.to }; } }); return {}; } };`);
   fs.mkdirSync(path.join(root, "approvals"), { recursive: true });
   fs.copyFileSync(path.join(REPO, "core", "approvals", "module.json"), path.join(root, "approvals", "module.json"));
