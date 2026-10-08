@@ -14,6 +14,8 @@ const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
 const ASK_MS = 5 * 60_000, MAX_OPEN = 5, MAX_PROOF = 4096;
 /** Cards the same asker holds within this long of each other are one group (one list, one yes); a group has at most MAX_GROUP cards. */
 const GROUP_MS = 90_000, MAX_GROUP = 20;
+/** How long after the registry redeemed a card the Gate may still use it for the send it covers. */
+const CARD_LIFE_MS = 2 * 60_000;
 /** Plain words for what each op does; an op not here is shown by its name. */
 const WORDS = { "grant.invite": "Invite someone to this space", "grant.role": "Change who is in this space and what they may do", "grant.create": "Give access", "grant.revoke": "Take access away", "grant.narrow": "Narrow an access", "grant.offer": "Offer something to the space", "task.decide": "Approve or reject a task" };
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -22,7 +24,7 @@ const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {stri
 export default {
   async start(ctx) {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
-    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
+    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, redeemedAt?: number, covered?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
     const open = new Map();
     const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > ASK_MS) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
     const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
@@ -47,12 +49,13 @@ export default {
     const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
     /** A device the owner declined cannot ask again for ten minutes. @type {Map<string, number>} */
     const refusedUntil = new Map();
+    /** Cards the registry redeemed for a call: the Gate may use each ONCE, within CARD_LIFE_MS, for the call it was redeemed for (approvals.cover). */
     setCardRedeemer((id, moment, request, device) => {
       const a = open.get(id);
       if (!a || !a.moment || a.state !== "approved" || !a.verified || now() - a.at > ASK_MS * 2) return "no_proof";
       if (a.used) return "replayed";
       if (a.moment !== moment || a.request.op !== request.op || canon(a.request.fields) !== canon(request.fields && typeof request.fields === "object" ? request.fields : {}) || (device && device !== a.device)) return "wrong_request";
-      a.used = true;
+      a.used = true; a.redeemedAt = now();
       return "ok";
     });
     // ---- a group of held calls: one list, one yes, each item its own exact words and its own proof ---------------------------------------------------
@@ -290,6 +293,20 @@ export default {
         a.input = next; a.request = request; a.op = sg.op; a.fields = sg.fields; a.payload_hash = payloadHash(sg.op, a.space, sg.fields); a.edited = true; a.seenAll = false; a.at = now();
         a.line = lineOfOp(request.op, request.fields, a.line.split(" wants to ")[0]);
         { const v = viewOf(next); return { id: a.id, payload_hash: a.payload_hash, words: v.words, ...(v.partial ? { partial: true } : {}), line: a.line }; }
+      },
+    });
+    ctx.tool("approvals.cover", {
+      internal: true,
+      description: "The Gate's own: was this card redeemed, just now, for exactly this tool, input and asker, and not yet used by the Gate? { ok: true } and it is used up, else { ok: false }.",
+      input: obj({ card: { type: "string" }, tool: { type: "string" }, input_sha256: { type: "string" }, asker: { type: "string" } }, ["card", "tool", "input_sha256", "asker"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:gate") throw refuse("only the Gate asks this", "denied");
+        const a = open.get(String(input.card));
+        const ok = Boolean(a && a.moment === "outward" && a.used === true && a.covered !== true && typeof a.redeemedAt === "number" && now() - a.redeemedAt <= CARD_LIFE_MS
+          && a.request.op === String(input.tool) && a.request.fields.input_sha256 === String(input.input_sha256) && a.from === String(input.asker));
+        if (ok && a) a.covered = true;
+        return { ok };
       },
     });
     ctx.tool("approvals.card-input", {

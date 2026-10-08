@@ -42,7 +42,8 @@ const CLIENTS = [
 /** The firm's Space on a real daemon: clients, the mail credential, a project with a billing teammate, juno's bound session, a mail server that records what reaches it. */
 async function world(/** @type {import("node:test").TestContext} */ t) {
   const root = tempHome(t);
-  const mods = path.join(root, "modules");
+  const mods = path.join(root, "firstparty");
+  fs.mkdirSync(mods, { recursive: true });
   const sent = /** @type {string[]} */ ([]);
   const outbox = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { sent.push(b); res.writeHead(200, { "content-type": "application/json" }); res.end('{"id":"m1","threadId":"t1"}'); }); });
   await new Promise(r => outbox.listen(0, "127.0.0.1", () => r(undefined)));
@@ -78,7 +79,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
   const junoSession = { id: started.id, key: bound.key };
   const framesOf = (/** @type {string} */ session) => { const db = openStore(paths(root).db); try { return db.prepare("SELECT json FROM stream_frames WHERE session = ? ORDER BY cur").all(session).map((/** @type {any} */ r) => JSON.parse(r.json)); } finally { db.close(); } };
-  return { root, d, owner, chain, meta, tool, asPerson, step, record, junoSession, started, framesOf, sent };
+  return { root, d, owner, chain, meta, tool, asPerson, step, record, junoSession, started, framesOf, sent, mods };
 }
 
 async function story(/** @type {import("node:test").TestContext} */ t) {
@@ -189,4 +190,65 @@ test("one card covers one send: a call that files two sends gets the first sent 
   const held = await asPerson("gate.held", {});
   assert.equal((held.items ?? held).length, 1, "the second send is held at the Gate: one card covers one send");
   assert.equal(sent.length, 1);
+});
+
+/** Hold one call as the plain model session `mcp`, approve its card alone with the app's own code, and give back what a retry needs. @param {any} w @param {string} toolName @param {any} input */
+async function approved(w, toolName, input) {
+  const first = await w.d.registry.call(toolName, input, "mcp", {});
+  assert.equal(first.error && first.error.code, "held_for_approval", JSON.stringify(first));
+  const p = await w.asPerson("approvals.pending", {});
+  const g = groupsFrom(p).find(x => x.items.some((/** @type {any} */ i) => i.id === first.error.approval));
+  const item = g.items.find((/** @type {any} */ i) => i.id === first.error.approval);
+  const signer = { signPresence: async (/** @type {any} */ req) => ({ op: req.op, fields: req.fields, n: `n${Math.random()}`, payload_hash: req.payload_hash, key_id: "k1" }) };
+  const res = await approveGroup({ group: { id: g.id, line: "", items: [item] }, signer, call: w.asPerson, person: w.owner });
+  assert.equal(res.results[0].answered, "approved");
+  return first.error.approval;
+}
+const gateHeld = async (/** @type {any} */ w) => { const h = await w.asPerson("gate.held", {}); return (h.items ?? h).length; };
+
+test("a forged mark does nothing: a covered field in the input, a made-up card id, a client asking the approvals queue, all hold or are refused", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const req = { kind: "send", via: "mail", to: "ap@northwind.example", content: { subject: "s", body: "b" }, why: "forged" };
+  // from a module, with a `covered` in the input as if it were the mark; and from a client the same
+  for (const [caller, extra] of [["module:billing", {}], ["cli", {}], ["mcp", {}]]) {
+    const r = await w.d.registry.call("gate.request", { ...req, covered: { card: "ap_01a11d8e-aad6-4f45-8e02-4b52bed61f9a", tool: "billing.email", input_sha256: "a".repeat(32), asker: "mcp" } }, caller, extra);
+    assert.ok(r.error || (r.data && r.data.state === "held"), `${caller}: ${JSON.stringify(r)}`);
+  }
+  assert.deepEqual(w.sent, [], "nothing was sent");
+  // the approvals queue answers only the Gate
+  for (const who of ["cli", "mcp", "module:billing"]) assert.ok((await w.d.registry.call("approvals.cover", { card: "ap_x", tool: "billing.email", input_sha256: "a".repeat(32), asker: "mcp" }, who, {})).error, `${who} cannot ask`);
+});
+
+test("a card for one email does not release another, and it cannot release twice", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const A = { to: "ap@northwind.example", subject: "Invoice 1042", body: "Pay A", cc: "partner@harlow.example" };
+  const B = { to: "billing@oakline.example", subject: "Invoice 1051", body: "Pay B", cc: "partner@harlow.example" };
+  const card = await approved(w, "billing.email", A);
+  // B with A's card: the card is bound to A's input, so the registry refuses it and nothing is filed
+  const wrong = await w.d.registry.call("billing.email", B, "mcp", { approval: card });
+  assert.equal(wrong.error && wrong.error.code, "approval_refused", JSON.stringify(wrong));
+  assert.equal(await gateHeld(w), 0);
+  assert.deepEqual(w.sent, []);
+  // A with A's card goes out; the same again is refused (the card is spent) and sends nothing more
+  const ok = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
+  assert.equal(ok.error, undefined, JSON.stringify(ok.error));
+  await until(() => w.sent.length === 1, "A reached the mail server");
+  const twice = await w.d.registry.call("billing.email", A, "mcp", { approval: card });
+  assert.equal(twice.error && twice.error.code, "approval_refused", JSON.stringify(twice));
+  assert.equal(w.sent.length, 1);
+});
+
+test("a tool of an ADDED module cannot use a card to skip the Gate's hold", { timeout: 300_000, skip: process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false }, async t => {
+  const w = await world(t);
+  // an added module: in the home's modules folder, not Vyre's own; its outward tool files a send at the Gate
+  writeModule(path.join(w.root, "modules"), "addon", { vyre: "1", description: "Sends a reminder.", does: { tools: [{ name: "addon.remind", reach: "anyone", outward: true, summary: "send a reminder" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("addon.remind", { input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "addon" }); return r; } }); return {}; } };`);
+  await until(async () => (await w.d.registry.status()).find((/** @type {any} */ m) => m.name === "addon" && m.state === "running") || (await w.d.registry.call("modules.reload", {}, "cli").catch(() => null)) && false, "the added module to run", 5000).catch(() => null);
+  const status = w.d.registry.status().find((/** @type {any} */ m) => m.name === "addon");
+  if (!status || status.state !== "running") { t.skip(`the added module did not load in this rig (${status ? status.state + ": " + status.error : "not found"})`); return; }
+  const card = await approved(w, "addon.remind", { to: "ap@northwind.example" });
+  const r = await w.d.registry.call("addon.remind", { to: "ap@northwind.example" }, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(await gateHeld(w), 1, "the Gate held it: an added module's send is not covered by the card");
+  assert.deepEqual(w.sent, []);
 });

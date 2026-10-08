@@ -27,6 +27,7 @@ import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/mod
 import { isPerson, deviceIdOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { holdFields } from "../../lib/hold-fields.js";
+import { COVERED } from "../../lib/covered.js";
 import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
@@ -1476,7 +1477,7 @@ export class Registry {
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; // set below, by the registry relay alone
-    delete meta.covered; // set below, only by a card this call just spent
+    delete meta[COVERED]; // set below, only by a card this call just redeemed
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1721,9 +1722,9 @@ export class Registry {
         }
         const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
         if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
-        // This call is the one the person approved on their phone (the card was bound to exactly this input and spent just now). A first-party module this call files a send through the Gate for is told so, once,
-        // so the Gate does not ask the same person for the same yes a second time (see the Gate's request).
-        meta = { ...meta, covered: { tool, card: approval, used: false } };
+        // This call is the one the person approved on their phone: the card was bound to exactly this input and was redeemed just now. A first-party module this call files a send through the Gate for carries
+        // the mark, and the Gate checks it with the approvals queue before it skips its own hold (lib/covered.js), so the person is not asked for the same yes twice.
+        meta = { ...meta, [COVERED]: { card: approval, tool, input_sha256: fields.input_sha256, asker } };
       } else {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
@@ -1765,7 +1766,7 @@ export class Registry {
       }
       // a card the running turn spent covers one send a module files for it; the nested call is handed that, by reference, so it can be used once
       const cur = currentCall();
-      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur.covered ? { covered: cur.covered } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
