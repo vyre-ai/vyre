@@ -23,8 +23,8 @@ test("a browser that cannot claim starts at Open Vyre on your phone; everything 
 
 test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
-  assert.equal(WELCOME.start, "Get started");
-  assert.equal(WELCOME.have, "I already have Vyre");
+  assert.equal(WELCOME.start, "Start");
+  assert.equal(WELCOME.have, "I already have a name");
   assert.equal(backOf("name", { welcome: true }), "welcome", "Get started goes to the reservation code");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
@@ -84,7 +84,7 @@ test("a browser that cannot reach the Vyre says This browser, a phone says Your 
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {
   for (const s of [BROWSER.title, BROWSER.line, BROWSER.notSetTitle, BROWSER.notSetLine, NO_VYRE.line, NO_VYRE.share]) assert.doesNotMatch(s, /curl|\| sh/);
-  assert.equal(ADD_PHONE.skip, "Skip");
+  assert.equal(ADD_PHONE.skip, "Not now");
 });
 
 test("who it is for: three answers, and a space for one person has nobody to invite", () => {
@@ -161,7 +161,7 @@ test("a phone's long code adds this device to the name (a browser too); a server
 test("Get started goes to the reservation code; there is no question, and My Cloud is the one card that adds a server", async () => {
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
-  assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("name"\)\}/, "Get started opens the code step");
+  assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("name"\)\}/, "Start opens the code step");
   assert.doesNotMatch(src, /step === "question"|QUESTION|afterQuestion|ownServer/);
   assert.match(src, /step === "mycloud"[\s\S]*<MyCloudCard \/>/, "the My Cloud page is the card");
   assert.doesNotMatch(src, /step === "mcwords"|step === "srv1"|step === "vps"/, "no second way to pair a server");
@@ -171,7 +171,9 @@ test("Get started goes to the reservation code; there is no question, and My Clo
 test("the first run offers Join a team first, Add a server second, and My Home on a Mac only", () => {
   assert.deepEqual(firstChoices("mac"), ["join", "server", "home"]);
   for (const k of ["windows", "ios", "android", "web"]) assert.deepEqual(firstChoices(k), ["join", "server"], k);
-  assert.match(FIRST.windows, /Windows is coming/);
+  assert.match(FIRST.windows, /alone is coming/);
+  assert.equal(FIRST.server.upgrades.mac, "This upgrades My Home to My Cloud.");
+  assert.equal(FIRST.server.upgrades.windows, "This sets up My Cloud.");
 });
 
 test("the paste check accepts every character the directory can put in a code", async () => {
@@ -190,4 +192,12 @@ test("a Mac server's line runs the Mac installer with the same code and Records 
   assert.equal(installLine("0.3.0-rc.1", { code, store: "auto", os: "mac" }), `curl -fsSL ${base}install-mac-server.sh | VYRE_BOX_URL=${base} VYRE_CODE=${code} VYRE_STORE=auto sh`);
   assert.equal(installLine("0.3.0", { code, store: "auto" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
   assert.equal(installLine("0.3.0", { code, store: "auto", os: "linux" }), `curl -fsSL vyre.run/i | VYRE_CODE=${code} VYRE_STORE=auto sh`);
+});
+
+test("the paste-your-code screen has a Windows Hello line and the Mac and phone line, in the words the lead approved", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  assert.ok(src.includes("Vyre makes your key with Windows Hello. It asks for your face, fingerprint or PIN."));
+  assert.ok(src.includes("Vyre makes your key on this Mac, and the key never leaves it."));
+  assert.ok(src.includes('title="Paste your code"'));
 });

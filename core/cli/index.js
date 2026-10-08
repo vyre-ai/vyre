@@ -44,7 +44,7 @@ export async function commands() {
 
 /** Where each command sits in `vyre help`. A command not named here goes under "More". */
 export const GROUPS = [
-  ["Start and connect", ["up", "status", "down", "box", "name", "link", "phone", "capsule"]],
+  ["Start and connect", ["up", "status", "down", "box", "name", "words", "link", "phone", "capsule"]],
   ["Projects and sessions", ["projects", "new", "open", "threads", "sessions", "resume", "start", "context", "pick", "unpick"]],
   ["Waiting on you", ["needs", "gate"]],
   ["Agents and watchers", ["agents", "watchers", "spend"]],

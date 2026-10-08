@@ -16,7 +16,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
-- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: a web app on the Home Screen.
+- Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: the Vyre app, sideloaded.
 - Current release: 0.2.9.
 
 ## Operating a user's own Vyre

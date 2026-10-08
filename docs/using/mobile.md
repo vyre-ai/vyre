@@ -1,6 +1,6 @@
 ---
 title: Mobile
-summary: Use Vyre on your phone by installing the Vyre app from the browser, turning on notifications for the moments you are needed, and approving work from the lock screen tap.
+summary: Put the Vyre app on your phone from a file (the Android APK, or an iPhone build you install with Xcode), pair it from your computer, and approve work with Face ID or a fingerprint.
 audience: users
 owner: mobile
 status: draft
@@ -8,35 +8,36 @@ status: draft
 
 # Mobile
 
-On a phone, Vyre is the Vyre app installed as a web app. You add it to your home screen
-from the browser, it opens full screen like an app, and it can notify you when a session asks
-permission, a draft waits at the Gate, a thread you watch finishes, or Vyre proposes a lesson.
-The phone reaches your box through Vyre's own network, like every other device, and through
-the relay when a direct path is not possible.
-
-Installing the web app is the way to put Vyre on a phone in 0.2.0, and the rest of this page
-describes it. Native iPhone and Android builds of the same app exist too (see
-[Native builds](#native-builds)), but you build and install them yourself.
+On a phone, Vyre is the Vyre app, installed from a file. It is not on the App Store or Google Play yet, so you sideload it:
+Android from the APK on the release page, iPhone from a build you install with Xcode. The app approves things for you with
+Face ID or a fingerprint, and it reaches your server through Vyre's own network, like every other device, and through the relay
+when a direct path is not possible.
 
 ## Set up the phone
 
-1. Open your box's address in Safari (iPhone) or Chrome (Android), for example
-   `https://alex.vyre.run/now`. There is nothing to install or sign in to first.
-2. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
-   the browser menu, then Install app or Add to Home screen.
-3. Open Vyre from the home screen icon. It opens at once, full screen, on the screen you
-   last had open if that was within a day, else on Now.
+You add the phone from the Vyre app on your computer: choose **Add your phone**, then follow the steps below. The app on the
+computer shows a code. The phone and the computer each show the same words, and you confirm they match.
 
-Now then shows **Set up this phone**, three steps with what is left:
+**Android**
 
-- **Install**: done once Vyre runs from the Home Screen. On Android, **Install** opens Chrome's
-  install prompt.
-- **Notifications**: **Turn on**, then allow the prompt (see
-  [Turn on notifications](#turn-on-notifications)).
-- **Passkey**: **Add**, then a code and a name for the phone (see
-  [Approving from the phone](#approving-from-the-phone)).
+1. On the phone, open the [latest release](https://github.com/vyre-ai/vyre/releases/latest) and download `Vyre-android.apk`.
+2. Open the file. Android asks you to allow installs from your browser or Files app. Allow it, then install.
+3. Open Vyre and scan the code on your computer. Check that both screens show the same words.
 
-**Not now** hides the card on that phone.
+The same key signs every release, so a newer APK installs over an older one and keeps your data. Because it does not come from a
+store, Android does not update it for you: download the new file when a release comes out.
+
+**iPhone**
+
+There is no App Store app yet. You build the app on a Mac with Xcode and install it on your phone over a cable:
+
+1. Install Xcode and sign in to it with your Apple ID. A free account is enough.
+2. In a copy of the Vyre source, run `apps/app/scripts/ios-sideload.sh --install` with your iPhone plugged in and unlocked. The script
+   builds the app and installs it. [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md) has the details.
+3. On the phone, trust your developer profile (Settings, General, VPN and Device Management), then open Vyre.
+4. Scan the code on your computer, and check that both screens show the same words.
+
+A build signed with a free Apple account stops working after seven days. Run the script again to install it afresh; your data stays.
 
 ## What you can do from the phone
 
@@ -66,72 +67,29 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
 Memory, Vault, Planner and Settings open from the Places sheet or their paths (`/memory`,
 `/vault`, `/planner`, `/settings`), laid out for a narrow screen.
 
-## Turn on notifications
+## Notifications
 
-1. In the installed app, open **Settings**, then **Notifications**.
-2. Press **Turn on notifications**, and allow the browser's prompt.
-3. Choose which moments notify you: **Permission questions**, **Held drafts**, **Threads you're
-   watching**, **Lessons**.
-4. Set **Quiet hours** if you want them (22:00 to 07:00 by default once turned on, in your phone's
-   time zone).
-5. Press **Send a test**.
-
-Other devices you turned on are listed with when a notification last reached them, and Remove.
-
-> [!SNAG] On an iPhone there is no Turn on notifications button
-> iOS delivers notifications only to an installed app (iOS 16.4 or later), not to a Safari tab.
-> Settings shows the steps instead of the button: add Vyre to your Home Screen, open it from
-> there, and come back to Settings.
-
-Tapping a notification opens the app at the right place: the held item, the thread, or the
-lessons in Settings.
-
-## What a notification shows
-
-Only that something needs you, and a link. The title is a fixed sentence per kind ("Something is
-waiting for your approval"), and the link holds only an id. It never carries a draft's words, a
-recipient, a tool's input or anything you typed: a push crosses Apple's, Google's or Mozilla's
-servers, and a lock screen shows it to whoever holds the phone. The payload is encrypted end to
-end. The details load after you tap, over your own connection to the box. The decision is
-[ADR 0011](../adr/0011-web-push.md).
-
-During quiet hours nothing is sent and nothing is queued; the moment stays in Now. A box that
-cannot reach the internet cannot notify, but the app still shows everything when you open it.
+Notifications to a closed app are not set up yet. Apple and Google need push accounts that Vyre does not have, and Vyre sends nothing
+to a central server. Until then, open the app to see what is waiting for you: **Now** lists the held drafts, the permission questions and
+the threads you watch. Nothing is lost while the app is closed; it waits in Now.
 
 ## Approving from the phone
 
-Send, Discard, Allow, Deny and taking over an agent's screen need proof that a person is at the
-device. On the phone that is a passkey, with Face ID or Touch ID. If you made your first passkey
-in Safari on your Mac, iCloud Keychain brings it to your iPhone, and the phone offers it when you
-approve.
+Send, Discard, Allow, Deny and taking over an agent's screen need proof that a person is at the device. On the phone that is Face ID,
+Touch ID or your fingerprint, using a key the phone keeps in its secure hardware.
 
 ## Offline
 
-When the box is out of reach, the installed app still opens. One line says "This phone is
+When the server is out of reach, the app still opens. One line says "This phone is
 offline." or "Your box is not answering.", with **Retry**. Now shows the counts from your last
 visit and when they were taken, and Chat shows your recent session list. Nothing can be sent or
 approved until the box answers.
 
 ## What it will not do
 
-- It will not open for anyone but you. Only your own paired devices reach your box; if the
-  address does not load, run `vyre doctor` on the box and read **Path to your server** and **Relay**.
-- It will not show a draft's contents in a notification.
-
-- The native builds do not get notifications yet. Notifications on the phone are the web app's
-  push, so they need the installed web app.
-
-## Native builds
-
-The phone app is one app, in `apps/app`. It runs as the web app your box serves, and the same code
-builds an Android APK and an iPhone app. The native builds keep the phone's signing key in the
-phone's hardware (Secure Enclave on an iPhone, Keystore on Android), and approvals ask for Face ID
-or a fingerprint. You type your box's name, and a passkey approves the phone once.
-
-In 0.2.0 you build these yourself: [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md)
-has the steps for a cable install, TestFlight and an Android APK, and they need your own Apple or
-Google developer account. Native push is not on the box yet, so the web app is the one that
-notifies you.
+- It will not open for anyone but you. Only your own paired devices reach your server; if it does not connect, run `vyre doctor` on the server and read **Path to your server** and **Relay**.
+- It will not notify you while it is closed, yet.
+- It will not update itself. Download the new APK, or build the iPhone app again, when a release comes out.
 
 ## Next
 

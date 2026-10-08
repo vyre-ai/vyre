@@ -19,7 +19,7 @@ Release 0.2.9. Updated 2026-10-08. Source: https://github.com/vyre-ai/vyre. Lice
 - Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by `vyre capsule install`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
-- Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
+- Phone: the Vyre app, sideloaded (the Android APK from the release, or an iPhone build installed with Xcode), paired by scanning a code, with Face ID or a fingerprint. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
@@ -67,7 +67,7 @@ Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays 
 Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.
 
 ### Does it work on my phone?
-Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.
+Yes, on Android and iPhone. You install the Vyre app from a file (it is not on a store yet), scan the code your computer shows, and check that both screens show the same words.
 
 ### Where does my data live?
 Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.

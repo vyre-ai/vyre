@@ -28,7 +28,7 @@ export async function startMacServer(o) {
   fs.mkdirSync(o.dir, { recursive: true });
   fs.writeFileSync(path.join(o.dir, "install.log"), all.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
   if (exit !== 0) throw new Error(`the Mac installer exited ${exit}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
-  const m = all.match(/Check words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
+  const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const call = (/** @type {string} */ tool, /** @type {any} */ input = {}) => spawnSync(process.execPath, [path.join(o.repo, "bin/vyre"), "call", tool, JSON.stringify(input)], { encoding: "utf8", env: { ...process.env, VYRE_HOME: vhome } });
   return {
     kind: "mac", store: o.store, logs: /** @type {string[]} */ ([]),

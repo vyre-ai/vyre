@@ -39,7 +39,7 @@ test("install-box.sh look: plain output has steps, checks and a finish, and no e
   assert.equal(r.status, 0, r.stderr);
   assert.ok(!/[^\x09\x0a\x20-\x7e]/.test(r.stdout), `plain output is printable ASCII:\n${r.stdout}`);
   const lines = r.stdout.split("\n");
-  const titles = ["Checking Docker", "Reading the box files", "Laying out ", "Installing the vyre command", "Starting Vyre"];
+  const titles = ["Checking this server", "Reading the box files", "Laying out ", "Adding the vyre command", "Starting Vyre"];
   let at = -1;
   titles.forEach((title, i) => {
     const n = lines.findIndex(l => l.startsWith(`[${i + 1}/5] ${title}`));
@@ -62,7 +62,7 @@ test("install-box.sh look: NO_COLOR and CI stay plain; VYRE_NO_UP has four steps
   }
   const r = run({ ...box(t), VYRE_NO_UP: "1" }, ["--dry-run", "--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^\[4\/4\] Installing the vyre command$/m);
+  assert.match(r.stdout, /^\[4\/4\] Adding the vyre command$/m);
   assert.ok(!r.stdout.includes("Starting Vyre"));
   assert.match(r.stdout, /not started \(VYRE_NO_UP=1\)/);
 });

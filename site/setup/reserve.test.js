@@ -23,7 +23,7 @@ test("a reservation is a code, or a plain reason", () => {
   const ok = reserveAnswer(200, { data: { name: "harlow", code: "VYRE-ABCD-EFGH-2345-6723", expires: 5 } });
   assert.deepEqual(ok, { ok: true, code: "VYRE-ABCD-EFGH-2345-6723", expires: 5 });
   assert.match(String(reserveAnswer(429, null).say), /Too many/);
-  assert.match(String(reserveAnswer(409, null).say), /Someone else/);
+  assert.match(String(reserveAnswer(409, null).say), /Someone has that name/);
   assert.equal(reserveAnswer(200, { data: { code: "nope" } }).ok, false);
   assert.equal(lasts(24 * 3_600_000, 0), "24 hours");
 });

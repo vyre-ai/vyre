@@ -2,7 +2,7 @@
  "apps/app/screens/customize/logic.test.js": 9,
  "apps/app/screens/devices/wink.test.js": 9,
  "apps/app/screens/flows/logic.test.js": 5,
- "apps/app/screens/install/first-run.test.js": 22,
+ "apps/app/screens/install/first-run.test.js": 23,
  "apps/app/screens/install/flow.test.js": 18,
  "apps/app/screens/install/real.test.js": 13,
  "apps/app/screens/memory/logic.test.js": 5,
@@ -904,5 +904,6 @@
  "web/js/phone-code.test.js": 12,
  "web/js/trace.test.js": 2,
  "web/onboard/device/link.test.js": 5,
- "web/vendor/jsqr/jsqr.test.js": 2
+ "web/vendor/jsqr/jsqr.test.js": 2,
+ "core/cli/commands/words.test.js": 2
 }
