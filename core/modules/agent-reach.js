@@ -308,7 +308,6 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
-  "sidebar.get", "sidebar.edit", // the person's own sidebar: an assistant may arrange it ("put Documents in my sidebar"); the tool refuses the team's default to anyone but the person at their own surface
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",
