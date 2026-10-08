@@ -122,7 +122,7 @@ test("install-box.sh v2: when the box is not running after the start, the instal
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
   assert.notEqual(r.status, 0, r.stdout);
   assert.match(r.stderr, /Vyre is not running/);
-  assert.doesNotMatch(r.stdout, /Your server is ready|Back in the Vyre app/);
+  assert.doesNotMatch(r.stdout, /Vyre is running on this server|Back in the Vyre app/);
 });
 
 test("install-box.sh v2: when the box is running after the start, the installer is done", t => {
@@ -378,9 +378,9 @@ test("install-box.sh v2: with a code the steps are sent sealed to the relay mail
   const reader = await mailboxReader({ relay: base, secret, key, wait: 0 });
   const lines = await reader.next(0);
   assert.ok(lines.length >= 6, `the steps arrived: ${JSON.stringify(lines)}`);
-  assert.match(lines[0], /^\[1\/4\] Checking Docker$/);
+  assert.match(lines[0], /^\[1\/4\] Checking this server$/);
   assert.ok(lines.some(l => /^done: /.test(l)));
-  assert.ok(lines.some(l => /Installing the vyre command/.test(l)));
+  assert.ok(lines.some(l => /Adding the vyre command/.test(l)));
   // A reader with another key gets nothing.
   const other = await createSetupKey();
   await assert.rejects(mailboxReader({ relay: base, secret, key: other, wait: 0 }).then(x => x.next(0)), /would not give this page/);
@@ -430,9 +430,9 @@ test("install-box.sh v2: the check words come from the box, show on the terminal
   const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"waiting","words":"lantern quiet river oak"}}' ;; esac ;; esac; exit 0` });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(r.stdout, /Your four words: lantern quiet river oak/);
   assert.match(r.stdout, /They should match the four on your screen\./);
-  assert.ok(r.stdout.indexOf("Check words") < r.stdout.indexOf("Done. Back in the Vyre app."), "words, then the plain last line");
+  assert.ok(r.stdout.indexOf("Your four words") < r.stdout.indexOf("Go back to the Vyre app to finish."), "words, then the plain last line");
   assert.ok(!b.calls().includes("lantern"), "the words are not sent anywhere");
 });
 
@@ -446,7 +446,7 @@ test("install-box.sh v2: IR-1 an account that cannot reach Docker still gets the
   const b = box(t, { sudo: AS_ROOT, docker: `case "$1" in info) [ -n "$FAKE_ROOT" ] || exit 1 ;; esac\n${ROOT_ONLY}` });
   const r = run({ ...b.env, VYRE_BOX_URL: site(b.base, { extra: { vyre: WRAPPER_STUB } }), VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes"]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(r.stdout, /Your four words: lantern quiet river oak/);
   assert.match(b.calls(), /sudo env VYRE_DIR=\S+ \S+ call relay\.setup\.status/, "the call went through sudo");
 });
 
@@ -454,15 +454,15 @@ test("install-box.sh v2: IR-1 words only a root caller can read are tried throug
   const b = box(t, { sudo: AS_ROOT, docker: ROOT_ONLY });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(r.stdout, /Your four words: lantern quiet river oak/);
 });
 
 test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with the command that shows them", t => {
   const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_WORDS_TRIES: "3" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /The check words did not show here\. Read them on this server with: sudo vyre call relay\.setup\.status/);
-  assert.ok(r.stdout.indexOf("check words did not show") < r.stdout.indexOf("Done. Back in the Vyre app."));
+  assert.match(r.stdout, /The four words did not show yet\. To see them, run: sudo vyre words/);
+  assert.ok(r.stdout.indexOf("four words did not show") < r.stdout.indexOf("Go back to the Vyre app to finish."));
 });
 
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
@@ -471,7 +471,7 @@ test("install-box.sh v2: IR-2 with a setup code the terminal shows the check wor
   const b = box(t, { docker: PAIRING_BOX });
   const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0" }, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /Check words: lantern quiet river oak/);
+  assert.match(r.stdout, /Your four words: lantern quiet river oak/);
   for (const gone of [/WINKLONGCODE/, /Long code/, /ABCD-EFGH/, /type this code/i, /Pair this server from your Vyre app/]) assert.doesNotMatch(r.stdout, gone);
   assert.ok(!b.calls().includes("wink.server.code"), "the pairing was not even asked for");
 });

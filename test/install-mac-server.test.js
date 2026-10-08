@@ -429,7 +429,7 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   let m = sys(t);
   let r = run({ ...m.env, VYRE_CODE: CODE }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /Check words: come pilot company release/);
+  assert.match(r.stdout, /Your four words: come pilot company release/);
   assert.match(r.stdout, /They should match the four on your screen\./);
   assert.match(r.stdout, /Done\. Back in the Vyre app\./);
   assert.ok(!/wink\.server\.code/.test(r.stdout), "the old pairing text is gone from an app-led install");
@@ -437,7 +437,7 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   m = sys(t);
   r = run({ ...m.env }, ["--yes", "--system"]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.ok(!/Check words|Back in the Vyre app/.test(r.stdout));
+  assert.ok(!/Your four words|Go back to the Vyre app/.test(r.stdout));
   assert.match(r.stdout, /wink\.server\.code/);
   // words that cannot be read are said so, with the command that shows them
   m = sys(t);
@@ -449,7 +449,7 @@ test("install-mac-server.sh: with the app's install line it prints the four chec
   fs.writeFileSync(path.join(l.src, "bin", "vyre"), "process.exit(1)\n");
   r = run({ ...l.env, VYRE_CODE: CODE }, ["--yes", "--from", l.src]);
   assert.equal(r.status, 0, r.stderr + r.stdout);
-  assert.match(r.stdout, /check words did not show here\. Read them on this Mac with: .*\/vyre call relay\.setup\.status/);
+  assert.match(r.stdout, /four words did not show yet\. To see them, run: .*\/vyre words/);
   assert.match(r.stdout, /Back in the Vyre app/);
 });
 

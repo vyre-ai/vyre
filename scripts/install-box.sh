@@ -124,7 +124,9 @@ hello() {
   else
     say "  Vyre${v:+ $v}"
   fi
-  say "  Let's set up your server. A few minutes, and nothing changes without asking."
+  say "  Installing Vyre on this server. This takes about two minutes."
+  say "  It checks the download against Vyre's signature before it installs anything."
+  say "  When it finishes, go back to the Vyre app."
   say ""
 }
 
@@ -159,7 +161,7 @@ finish() {
   elif [ "${VYRE_NO_UP:-0}" = 1 ]; then
     say "  $BOLD${BONE}Installed.$RESET Start it when you're ready: ${SIGNAL}vyre up$RESET"
   else
-    say "  $BOLD${BONE}Your server is ready.$RESET"
+    say "  $BOLD${BONE}Vyre is running on this server.$RESET"
     # The custody notice the user approved (kernel/seal/process.js custodyNote, server profile): said where the install says what it set up.
     say "  About your keys: $CUSTODY_NOTE"
     if [ "$LINK_ONLY" = 1 ]; then
@@ -168,9 +170,9 @@ finish() {
       if [ "$PAIRED" = 1 ]; then
         say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
       elif [ -n "$CODE" ]; then
-        say "  Done. Back in the Vyre app."
+        say "  Go back to the Vyre app to finish."
       else
-        say "  Next: finish pairing from your device (the long code above)."
+        say "  Next: open the Vyre app, choose Add a server, and run the line it shows on this server."
       fi
     fi
   fi
@@ -258,13 +260,13 @@ need_docker() {
   fi
   if ! compose_ok; then
     if docker compose version >/dev/null 2>&1; then
-      say "Vyre needs Docker Compose 2.24 or newer; this server has $(docker compose version --short)."
+      say "This server needs a newer Docker (Compose 2.24 or newer; it has $(docker compose version --short))."
     else
-      say "Vyre needs Docker Compose v2 (the \`docker compose\` plugin)."
+      say "This server needs a newer Docker (the \`docker compose\` plugin, version 2)."
     fi
     say "Update Docker with its own packages (docker-ce, docker-compose-plugin), or with:"
     say "  $cmd"
-    say "then run this installer again."
+    say "then run the line again."
     exit 1
   fi
   if docker info >/dev/null 2>&1; then DOCKER_SUDO=""
@@ -450,7 +452,7 @@ write_stack() {
         if awk -v p="$f" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get "$f"; fi
       done
       fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig" 2>/dev/null || rm -f "$TMP/SHA256SUMS.sig"
-      done_step "every file matches SHA256SUMS"
+      done_step "The download matches Vyre's signature"
       verify_images
     fi
     step "Laying out $DIR"
@@ -608,7 +610,7 @@ start() {
   fi
   if [ -n "$DOCKER_SUDO" ]; then
     say ""
-    say "Your account cannot reach Docker, so the vyre command needs sudo: sudo vyre up."
+    say "Your account cannot use Docker, so run vyre commands with sudo, like: sudo vyre up."
     say "Adding yourself to the docker group avoids that, and makes your account root-equivalent."
   fi
 }
@@ -705,10 +707,10 @@ show_words() {
       out=$(sudo -n env "VYRE_DIR=$DIR" "$WRAPPER" call relay.setup.status 2>/dev/null | tr -d '\n' || true)
       words=$(printf '%s' "$out" | sed -n 's/.*"words": *"\([a-z][a-z ]*\)".*/\1/p')
     fi
-    if [ -n "$words" ]; then say "  Check words: $BOLD$words$RESET"; say "  They should match the four on your screen."; return 0; fi
+    if [ -n "$words" ]; then say "  Your four words: $BOLD$words$RESET"; say "  Go back to the Vyre app. If it shows the same four, choose Same."; return 0; fi
     n=$((n + 1)); sleep 1
   done
-  say "  The check words did not show here. Read them on this server with: ${BOLD}${SUDO:+sudo }vyre call relay.setup.status${RESET}"
+  say "  The four words did not show yet. To see them, run: ${BOLD}${SUDO:+sudo }vyre words${RESET}"
 }
 
 # intake_code: the setup code from VYRE_CODE, for a program that installs for someone (the old browser setup page). It is never asked for on the terminal any more: the only
@@ -881,9 +883,9 @@ one_install() {
   command -v docker >/dev/null 2>&1 || return 0
   up=$(dk_quiet compose -p vyre ps -q 2>/dev/null | head -n 1 || true)
   [ -n "$up" ] || return 0
-  say "Vyre is already running in $DIR, so this installer leaves it alone."
-  say "  Update it:    vyre update"
-  say "  Start over:   vyre uninstall, then run this line again"
+  say "Vyre is already running here, so nothing was changed."
+  say "  To update it, run: vyre update"
+  say "  To start over, run: vyre uninstall, then run the line again."
   exit 0
 }
 
@@ -919,18 +921,18 @@ preflight() {
   d="$DIR"; [ -d "$d" ] || d=$(dirname "$DIR")
   [ -d "$d" ] || d=/
   disk=$(df -Pk "$d" 2>/dev/null | awk 'NR == 2 {print int($4 / 1024)}')
-  if [ -z "$mem" ]; then say "  memory: unknown on this system; Vyre will give each space its full records store if it finds room, and the small built-in one if it does not."; return 0; fi
+  if [ -z "$mem" ]; then say "  Memory could not be read here. Vyre uses Records if there is room, and the small built-in store if not."; return 0; fi
   # the same rule the daemon uses: a machine under 6 GB is measured against the tiny profile's need, not the small one's
   total=""; if [ -r /proc/meminfo ]; then total=$(awk '/^MemTotal:/ {print int($2 / 1024)}' /proc/meminfo); fi
   SPACE_MEM_MB_USED=$SPACE_MEM_MB
   if [ -n "$total" ] && [ "$total" -gt 0 ] && [ "$total" -lt "$TINY_BELOW_MB" ]; then SPACE_MEM_MB_USED=$SPACE_MEM_TINY_MB; fi
   fit=$(( (mem - 300) / (SPACE_MEM_MB_USED - 300) )); [ "$fit" -ge 0 ] || fit=0
   if [ -n "$disk" ] && [ "$disk" -lt "$SPACE_DISK_MB" ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and a space's full records store needs $SPACE_DISK_MB MB: this server is too small for it, so Vyre will use the small built-in store."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free but only $disk MB of disk, and Records needs $SPACE_DISK_MB MB. Vyre will use the small built-in store."
   elif [ "$fit" -ge 1 ]; then
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space$([ "$fit" = 1 ] || printf s) (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free: room for $fit space$([ "$fit" = 1 ] || printf s) with Records (each needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB)."
   else
-    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. A space's full records store needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB. This server is too small for it, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
+    say "  This server has $((mem / 1024)).$(( (mem % 1024) * 10 / 1024 )) GB of memory free. Records needs about $((SPACE_MEM_MB_USED / 1024)).$(( (SPACE_MEM_MB_USED % 1024) * 10 / 1024 )) GB. That is more than this server has, so Vyre will use the small built-in store. Everything works; very large record sets are slower."
   fi
 }
 
@@ -1128,7 +1130,7 @@ main() {
   fi
 
   [ "${VYRE_NO_UP:-0}" = 1 ] && STEPS=4
-  step "Checking Docker"
+  step "Checking this server"
   pick_owner
   need_docker
   docker_flavor
@@ -1139,16 +1141,16 @@ main() {
   if [ -n "$FROM" ] && [ "$DRY" != 1 ] && [ "$(id -u)" != 0 ] && [ -n "$DOCKER_SUDO" ]; then
     die "this account cannot reach Docker without sudo, and an install from a checkout starts as you. Run: sudo usermod -aG docker $(id -un), sign in again, then run this installer again (the docker group is root-equivalent on this server)."
   fi
-  if command -v docker >/dev/null 2>&1; then done_step "Docker and Compose are there"
+  if command -v docker >/dev/null 2>&1; then done_step "This server is ready"
   else done_step "Docker would be installed first (dry run)"
   fi
-  if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading and verifying"; fi
+  if [ -n "$FROM" ]; then step "Reading the box files"; else step "Downloading Vyre"; fi
   write_stack
   write_env
   write_kernel_env
   write_code
   if [ "$DRY" = 1 ]; then done_step "nothing written (dry run)"; else done_step "$DIR is laid out"; fi
-  step "Installing the vyre command"
+  step "Adding the vyre command"
   install_wrapper
   publish_signed_files
   if [ "$DRY" = 1 ]; then done_step "nothing installed (dry run)"; else done_step "vyre is at $WRAPPER"; fi
@@ -1157,7 +1159,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is up"; [ -n "$CODE" ] || pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; done_step "Vyre is running"; [ -n "$CODE" ] || pair_server; fi
     show_words
   fi
   finish
