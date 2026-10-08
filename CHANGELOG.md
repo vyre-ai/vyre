@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- docs(readme): the Lumen film is captioned as where 0.3.0 is heading, until a walk on real devices shows it working.
 - fix(install): the app's Add a server line (vyre.run/i with VYRE_CODE) ends after the four words; it no longer shows the old terminal pairing (a QR, a long code, a 5 minute wait ending "Nothing was paired") that 0.2.12 printed after them.
 - feat(names): the support-only admin drop also frees a name an IDENTITY holds (its keys lost, the person starting again), with no tombstone, so it can be reserved afresh.
 - fix(site): assemble-site.sh leaves release files over the 25 MiB Cloudflare Pages limit out of /box (the apps are linked from the GitHub release), and refuses if one the installers fetch is over it; the v0.2.12 site deploy stopped on the dmg and APK.
