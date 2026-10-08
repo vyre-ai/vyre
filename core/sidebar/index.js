@@ -84,8 +84,8 @@ export default {
 
     ctx.tool("sidebar.edit", {
       effect: "write", callers: WHO,
-      description: "Change the sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index) or group (group: a name, or null). scope is me (default) or team (the Space's default: only the person at their own surface).",
-      input: { type: "object", required: ["op"], properties: { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group"] }, what: str, key: str, entry: {}, scope: { type: "string", enum: ["me", "team"] }, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } } },
+      description: "Change the sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index), group (group: a name, or null) or set (entries: the whole list, from the app's drag and drop). scope is me (default) or team (the Space's default: only the person at their own surface).",
+      input: { type: "object", required: ["op"], properties: { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group", "set"] }, entries: { type: "array" }, what: str, key: str, entry: {}, scope: { type: "string", enum: ["me", "team"] }, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         const team = i.scope === "team";
         if (team && !isPerson(meta)) throw refuse("Only the person at their own screen sets the team's sidebar. Ask them to do it, or add it for yourself.", "denied");
@@ -93,6 +93,14 @@ export default {
         const cat = { modules: modules() };
         const views = [...(defaultFor(sp) || []), ...mine()].filter(e => e.kind === "view");
         const cur = team ? (defaultFor(sp) || builtinEntries()) : merge(defaultFor(sp) || builtinEntries(), mine());
+        // "set" replaces the whole list at once (the app's drag and drop); every entry is cleaned.
+        if (i.op === "set") {
+          const next = cleanList(i.entries);
+          if (!next.length) throw refuse("A sidebar needs at least one entry.", "bad_input");
+          if (team) { const d = defaults(); d[sp] = next; write("default", d); } else write("mine", next);
+          ctx.events.emit("sidebar.changed", { scope: team ? "default" : "mine", op: "set" });
+          return { ok: true, scope: team ? "team" : "me", entries: next };
+        }
         // Which entry the person means: a key, an entry, or a name (the assistant's "Documents").
         let target = null;
         if (typeof i.key === "string") target = cur.find(e => keyOf(e) === i.key) || null;

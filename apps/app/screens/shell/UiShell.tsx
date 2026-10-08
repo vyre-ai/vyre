@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { EmptyState, LoadingState, Shell, allowsMock, nowCount, useAppearance, useWorld } from "@vyre/ui";
-import { NAV } from "./nav";
+import { useNavDef, useSidebar } from "./sidebar";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
 import { whoIsThere } from "./gate.js";
 import { gatedPath } from "./basic.js";
 import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
 import { NeedsServer } from "./NeedsServer";
-import { call, signIn } from "../../src/api/box";
+import { call, listen, signIn } from "../../src/api/box";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
@@ -25,6 +25,9 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const { space, looks, setShowing } = useSpaces();
   const { data: DATA, set, fail } = useShell();
   useEffect(() => { startKeepingAppearance(); }, []);
+  // The sidebar: the arrangement for the showing Space, loaded when the box is reached and again whenever the box says it changed (this device or another).
+  const arranged = useNavDef(space);
+  const loadSidebar = useSidebar((x) => x.load);
   // Nobody signed in: ask once and show the sign-in state, instead of mounting screens that each get a refusal from the box.
   const [gate, setGate] = useState<"asking" | "in" | "out">(allowsMock() ? "in" : "asking");
   useEffect(() => {
@@ -39,6 +42,11 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     loadReal().then((d) => { if (!live) return; set(d); if (!d.spaces.some((x) => x.id === useSpaces.getState().space)) setShowing(startSpace(d)); }).catch((e) => live && fail(e instanceof Error ? e.message : "The box did not answer."));
     return () => { live = false; };
   }, [set, fail, setShowing, gate]);
+  useEffect(() => {
+    if (allowsMock() || gate !== "in") return;
+    void loadSidebar(space);
+    return listen((e) => { if (e.type === "sidebar.changed" || e.type === "settings.changed") void loadSidebar(space); });
+  }, [gate, space, loadSidebar]);
   // A browser or Windows window has no menu bar: Ctrl or Cmd with a comma opens Settings, with 1 to 4 the first four places. Lumen's own menu does this on a Mac.
   useEffect(() => {
     if (Platform.OS !== "web" || typeof window === "undefined" || (window as unknown as { __vyreShell?: unknown }).__vyreShell) return;
@@ -46,12 +54,12 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
       if (e.key === ",") { e.preventDefault(); router.push("/u/settings" as never); return; }
       const n = Number(e.key);
-      const to = n >= 1 && n <= 4 ? NAV.items[n - 1]?.href : undefined;
+      const to = n >= 1 && n <= 4 ? arranged.items[n - 1]?.href : undefined;
       if (to) { e.preventDefault(); router.push(to as never); }
     };
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
-  }, [router]);
+  }, [router, arranged]);
   // On a Basic personal space (no server) the places that need a server say so, and offer the team spaces and a server of the person's own.
   const showing = DATA.spaces.find((x) => x.id === space);
   const teams = DATA.spaces.filter((x) => x.id !== "all" && !x.basic);
@@ -59,7 +67,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;
-  const nav = { ...NAV, items: NAV.items.map((it) => (it.id === "now" && waiting ? { ...it, badge: waiting } : it)) };
+  const nav = { ...arranged, items: arranged.items.map((it) => (it.id === "now" && waiting ? { ...it, badge: waiting } : it)) };
   const look = looks[space === "all" ? "mine" : space];
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (

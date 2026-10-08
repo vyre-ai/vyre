@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { currentItem, isActive, isTopLevel, phoneSplit } from "./nav.js";
+import { allItems, currentItem, isActive, isTopLevel, phoneSplit } from "./nav.js";
 
 const item = (id, href, match) => ({ id, label: id, icon: "now", href, match });
 
@@ -45,4 +45,16 @@ test("a place named by the nav is top level; a task, a project or a record page 
   assert.equal(isTopLevel("/u/record/r1", all), false);
   assert.equal(isTopLevel("/u/now/needs", all), false);
   assert.equal(isTopLevel("/u/settings/account", all), false);
+});
+
+test("named groups: every item counts for current and top-level, and a phone's More lists them after the extra main items, each with its group", () => {
+  const nav = { items: [item("a", "/u/a"), item("b", "/u/b"), item("c", "/u/c"), item("d", "/u/d"), item("e", "/u/e")], more: [item("m", "/u/m")], bottom: [item("s", "/u/settings")], groups: [{ name: "Work", items: [item("w", "/u/w")] }] };
+  assert.deepEqual(allItems(nav).map((i) => i.id), ["a", "b", "c", "d", "e", "w", "m", "s"]);
+  assert.equal(currentItem("/u/w", allItems(nav))?.id, "w");
+  assert.equal(isTopLevel("/u/w", allItems(nav)), true);
+  const { tabs, more } = phoneSplit(nav);
+  assert.deepEqual(tabs.map((i) => i.id), ["a", "b", "c", "d"]);
+  assert.deepEqual(more.map((i) => i.id), ["e", "w", "m", "s"]);
+  assert.equal(more.find((i) => i.id === "w").group, "Work");
+  assert.equal(phoneSplit({ items: nav.items, more: [], bottom: [] }).more.length, 1, "no groups: as before");
 });

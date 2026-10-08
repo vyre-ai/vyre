@@ -1,29 +1,15 @@
-// The places of /u, in the prototype's order. Routes may not all exist yet: the other builders add theirs under app/u/.
-import type { NavDef } from "@vyre/ui";
+// The places of /u, in the prototype's order: the default sidebar. The list itself is lib/sidebar/model.js (PLACES), shared with the box's sidebar tools, so what a person arranges and what a
+// fresh install shows come from one place. Routes may not all exist yet: the other builders add theirs under app/u/.
+import type { NavDef, NavItem } from "@vyre/ui";
+import { builtinEntries, layout } from "../../../../lib/sidebar/model.js";
 import { RC } from "./rc";
 
-export const NAV: NavDef = {
-  items: [
-    { id: "now", label: "Now", icon: "now", href: "/u/now" },
-    { id: "chat", label: "Chat", icon: "chat", href: "/u/chats" },
-    { id: "projects", label: "Projects", icon: "projects", href: "/u/projects", match: ["/u/project"] },
-    { id: "contacts", label: "Contacts", icon: "contacts", href: "/u/records/contact" },
-    { id: "drive", label: "Drive", icon: "drive", href: "/u/drive" },
-    ...(RC.sites ? [{ id: "sites", label: "Sites", icon: "globe" as const, href: "/u/sites" }] : []),
-  ],
-  more: [
-    { id: "calendar", label: "Calendar", icon: "cal", href: "/u/calendar" },
-    { id: "memory", label: "Memory", icon: "memory", href: "/u/memory" },
-    { id: "vault", label: "Vault", icon: "vault", href: "/u/vault" },
-    { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" },
-    { id: "assistants", label: "Assistants", icon: "assistants", href: "/u/assistants" },
-    { id: "kits", label: "Kits", icon: "box", href: "/u/kits" },
-  ],
-  bottom: [
-    { id: "search", label: "Search", icon: "search", href: "/u/search" },
-    {
-      id: "settings", label: "Settings", icon: "settings", href: "/u/settings",
-      match: ["/u/appearance", "/u/spaces", "/u/wink", "/u/access", "/u/about", "/u/install"],
-    },
-  ],
-};
+/** The build's flags that decide which built-in places exist (Sites is only in some builds). */
+export const PLACE_FLAGS = { sites: Boolean(RC.sites) };
+
+/** A drawn layout as the shell's nav definition. @param {ReturnType<typeof layout>} l */
+export function navDef(l: ReturnType<typeof layout>): NavDef {
+  return { items: l.items as NavItem[], more: l.more as NavItem[], bottom: l.bottom as NavItem[], groups: l.groups.map((g) => ({ name: g.name, items: g.items as NavItem[] })) };
+}
+
+export const NAV: NavDef = navDef(layout(builtinEntries(), { flags: PLACE_FLAGS }));
