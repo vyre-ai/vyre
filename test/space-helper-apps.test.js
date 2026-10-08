@@ -388,13 +388,18 @@ test("app helper: with no catalog the helper behaves as before (no app directory
 
 test("app helper: app-up shares the up lane's rate limit with Twenty's up, and app-stop and app-down are never held back by it", opts, async t => {
   const r = await ready(t);
-  const ids = [];
-  for (let i = 0; i < 8; i++) ids.push(r.ask("app-up docuseal\n"));
-  const stop = r.ask("app-stop docuseal\n");
-  const h = /** @type {any} */ (await r.run(["space-helper-run"]));
-  assert.equal(h.code, 0, h.out);
-  const states = ids.map(i => r.status(i).state);
-  assert.ok(states.includes("busy"), `some are held back: ${states}`);
-  assert.ok(states.filter(x => x === "busy").length >= 2, `${states}`);
-  assert.notEqual(r.status(stop).state, "busy", "a stop is not an up");
+  // every app-up is refused at once (the vyre image is not the recorded one) so the eight land inside one minute; the count is taken before the work, as for Twenty's up
+  r.flag("ctr-image", "sha256:" + "c".repeat(64));
+  let states = [], stop = "";
+  for (let attempt = 0; attempt < 2 && !states.includes("busy"); attempt++) {   // a minute boundary inside the run resets the window: look again once
+    const ids = [];
+    for (let i = 0; i < 8; i++) ids.push(r.ask("app-up docuseal\n"));
+    const s = r.ask("app-stop docuseal\n");
+    const h = /** @type {any} */ (await r.run(["space-helper-run"]));
+    assert.equal(h.code, 0, h.out);
+    states = ids.map(i => r.status(i).state);
+    stop = r.status(s).state;
+  }
+  assert.ok(states.filter(x => x === "busy").length >= 2, `some are held back: ${states}`);
+  assert.notEqual(stop, "busy", "a stop is not an up");
 });
