@@ -204,6 +204,21 @@ export async function walk(w) {
  */
 export async function walkTerminal(w) {
   const { run, ins, server } = w;
+  if (server !== "daemon") {
+    // One setup: the installers no longer pair from their own terminal. A line run with no code from the app says where to go and starts no pairing.
+    const dir = path.join(w.out, "no-code");
+    fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+    await run.step("no code: the install line without the app's code sends the person to the app and starts no pairing", async () => {
+      const a = { dir, repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), noCodeProbe: true };
+      const r = /** @type {any} */ (server === "installer" ? await startInstallerServer(a) : await startMacServer(a));
+      const out = String(r.output || "");
+      fs.writeFileSync(path.join(dir, "output.txt"), out);
+      assert.match(out, /Open the Vyre app, choose "Add a server", and run the line it shows/, "the installer says where to go");
+      assert.doesNotMatch(out, /WINK-[A-Z0-9]{4}|vyre:\/\/wink\/|run vyre call wink\.server\.code/, "it printed a pairing code of its own");
+      return "sent to the app, no pairing code";
+    });
+    return;
+  }
   for (const way of /** @type {("long code" | "typed code" | "typed code in a browser")[]} */ (["long code", "typed code", "typed code in a browser", "typed code, no identity proof"])) {
     const browser = way === "typed code in a browser" || way === "typed code, no identity proof";   // a plain web page, not the Mac or Windows app
     const noProof = way === "typed code, no identity proof";   // a stranger with only the typed code and no identity proof
