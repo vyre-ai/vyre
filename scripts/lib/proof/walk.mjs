@@ -220,7 +220,7 @@ export async function walkTerminal(w) {
         const a = { dir: path.join(dir, "server"), repo, code: "", relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain") };
         srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: "", relay: a.relayForServer, directory: a.namesForServer, store: "plain" });
         // the relay link of a fresh server can still be coming up; the server says "try again in a minute", so try for half of one
-        for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 15 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) throw e; await new Promise(r => setTimeout(r, 2000)); } }
+        for (let i = 0; ; i++) { try { made = await srv.operator("wink.server.code", { qr: true }); break; } catch (e) { if (i >= 15 || !/relay gave no code/.test(String(/** @type {Error} */ (e).message))) { let st = ""; try { st = JSON.stringify(await srv.operator("relay.status", {})).slice(0, 500); } catch (e2) { st = String(/** @type {Error} */ (e2).message).slice(0, 200); } throw Object.assign(new Error(`${/** @type {Error} */ (e).message} relay.status: ${st}`), { code: /** @type {any} */ (e).code }); } await new Promise(r => setTimeout(r, 2000)); } }
         assert.ok(made && (way === "long code" ? /^vyre:\/\/wink\/2\?/.test(made.qr) : /^WINK-/.test(made.code)), `the server showed a ${way}`);
         return way === "long code" ? "a long code" : String(made.code).slice(0, 9) + "...";
       }, { needs: [S("the app has an identity")] });
