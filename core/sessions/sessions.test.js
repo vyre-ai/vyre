@@ -530,7 +530,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(r.data.thread, th.id);
     await w.finished(th.id, 2);
     const said = await w.said(th.id);
-    assert.match(said.at(-1), /^echo: \[Vyre handoff/);
+    assert.match(said.at(-1), /^echo: \[Vyre continuation:/);
     assert.match(said.at(-1), /plan the Northwind menu/, "the brief carries what was said");
     assert.match(said.at(-1), /now the prices/);
     const rec = (await w.tool("threads.get", { thread: th.id })).data;
@@ -539,10 +539,14 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(rec.events.some(e => e.type === "thread.text" && e.payload.notice && /^Switched to Grok\. It has this session's memory and files\. It starts from what was said so far, not from Claude's own working notes\./.test(e.payload.text)));
     const sw = rec.events.find(e => e.type === "thread.provider" && e.payload.to === "grok");
     assert.match(sw.payload.text, /^Switched to Grok\./, "the switch event says the same line");
-    // Back to Claude: it ran this thread before, so its own session returns, with no brief.
+    // Back to Claude: it ran this thread before, so its own session returns, and a catch-up (the seed with what was said while it was away) rides in front of the person's words.
     const back = await w.tool("threads.switch", { thread: th.id, provider: "claude", text: "and the hours" });
     assert.equal(back.error, undefined, JSON.stringify(back));
     assert.equal(back.data.resumed, true);
+    await w.finished(th.id, 3);
+    const caught = (await w.said(th.id)).at(-1);
+    assert.match(caught, /^echo: \[Vyre continuation: .*another model has had it since/s);
+    assert.match(caught, /Said while you were away[\s\S]*now the prices[\s\S]*and the hours$/);
     // An unknown provider is refused, and a switch mid-turn says busy.
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
   });
@@ -580,7 +584,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(turn.payload.provider, "grok", JSON.stringify(ev.filter(e => /^thread\.(turn|provider|text)$/.test(e.type)).map(e => [e.type, e.payload.provider, e.payload.reason, String(e.payload.text || "").slice(0, 30)])));
     assert.equal(ev.find(e => e.type === "thread.provider" && e.payload.reason === "back").payload.to, "claude");
     const said = await w.said(th.id);
-    assert.match(said.at(-1), /^echo: \[Vyre handoff/);
+    assert.match(said.at(-1), /^echo: \[Vyre continuation:/);
     assert.match(said.at(-1), /plan the Northwind menu/, "the one-turn provider gets the session's history");
     assert.match(said.at(-1), /and the prices/);
     // The session's own provider is told what was said while it was away, once, in front of the next turn.

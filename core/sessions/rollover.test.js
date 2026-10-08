@@ -265,4 +265,69 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(ev.payload.source, "estimated");
     assert.match(ev.payload.text, /about 5\d% full/);
   });
+
+  test(`${driver}: the switch eval: Claude to Codex and back, ten questions only the earlier turns can answer, every one right after each switch`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    // The recorded model (testing/golden.js): each agent answers a question only when its own session was sent the evidence.
+    const gold = JSON.parse(fs.readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "golden-switch.json"), "utf8"));
+    const saved = { FAKE_GOLDEN_FILE: process.env.FAKE_GOLDEN_FILE, FAKE_GOLDEN_DIR: process.env.FAKE_GOLDEN_DIR };
+    process.env.FAKE_GOLDEN_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "golden-switch.json");
+    process.env.FAKE_GOLDEN_DIR = path.join(w.root, "golden");
+    t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Codex", kind: "login" })).error, undefined);
+    const say = gold.turns.map(x => x.say);
+    let n = 0;
+    const turn = async (text, how) => {
+      const r = how === "start" ? await w.tool("threads.start", { cwd: w.work, prompt: text, surface: "deck" }) : how.provider
+        ? await w.tool("threads.switch", { thread: how.id, provider: how.provider, text }) : await w.tool("threads.send", { thread: how.id, text, surface: "deck" });
+      assert.equal(r.error, undefined, JSON.stringify(r));
+      const id = how === "start" ? r.data.id : how.id;
+      await w.finished(id, ++n);
+      return { id, said: (await w.said(id)).at(-1) };
+    };
+    const quiz = async (id, after, first) => {
+      const asked = gold.questions.filter(q => q.after === after);
+      for (const [i, q] of asked.entries()) {
+        const r = await turn(q.ask, i === 0 && first ? { id, provider: first } : { id });
+        assert.equal(r.said, q.answer, `${after}: ${q.ask}`);
+      }
+      return asked.length;
+    };
+    const th = (await turn(say[0], "start")).id;
+    for (const x of say.slice(1, 3)) await turn(x, { id: th });
+    let right = await quiz(th, "claude to codex", "grok");
+    for (const x of say.slice(3)) await turn(x, { id: th });
+    right += await quiz(th, "codex to claude", "claude");
+    assert.equal(right, 10, "all ten questions were asked, and every answer was right");
+    const switches = (await w.events(th)).filter(e => e.type === "thread.provider").map(e => `${e.payload.from} to ${e.payload.to}`);
+    assert.deepEqual(switches, ["claude to grok", "grok to claude"]);
+  });
+
+  test(`${driver}: a fact older than a switch's verbatim tail is not in the seed, which names a pointer that reads it back exactly`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Codex", kind: "login" })).error, undefined);
+    // The codeword ends the first message; more padded turns follow than the switch's 20,000-character tail can hold.
+    const pad = "padding words ".repeat(430);                                // about 6,000 characters
+    const first = `plan the Northwind menu with the spring specials ${pad} and the codeword is marzipan-7`;
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: first, surface: "deck" })).data;
+    await w.finished(th.id);
+    for (let i = 1; i <= 8; i++) {
+      assert.equal((await w.tool("threads.send", { thread: th.id, text: `bloat 1000 request number ${i} for the bakery ${pad}`, surface: "deck" })).error, undefined);
+      await w.finished(th.id, i + 1, 30_000);
+    }
+    assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "grok", text: "what was the codeword?" })).error, undefined);
+    await w.finished(th.id, 10);
+    const seed = (await w.said(th.id)).at(-1);
+    assert.doesNotMatch(seed, /marzipan-7/, "the fact is past the tail, so the new model cannot read it from the seed");
+    const m = /\| ([0-9a-f]{8}):(\d+) person [^\n]*plan the Northwind menu/.exec(seed);
+    assert.ok(m, seed.slice(0, 3000));
+    // The pointer is the model's memory_turn: the original words, whole.
+    const turn = (await w.tool("recall.turn", { session: m[1], seq: Number(m[2]), after: 1 })).data;
+    assert.equal(turn.turns[0].text, first.trim());
+    assert.match(turn.turns[0].text, /marzipan-7$/);
+  });
 }
