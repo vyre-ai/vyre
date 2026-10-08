@@ -41,6 +41,15 @@ test("connections: a person connects an app from a Vault key, a model cannot, an
   assert.match(chk.data.words, /does not resolve|could not run|no answer/);
   assert.equal((await model("connectors.connection.list")).data.connections[0].light, "red");
 
+  // an inbound delivery on this Connection's route is told to its listeners; another route is not
+  const heard = () => d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type === "connectors.connection-received");
+  d.registry.deps.events.emit("hooks", "hook.received", { route: "conn-acme-crm", id: "dlv_1", bytes: 42 });
+  d.registry.deps.events.emit("hooks", "hook.received", { route: "conn-nobody", id: "dlv_2", bytes: 1 });
+  d.registry.deps.events.emit("hooks", "hook.received", { route: "stripe", id: "dlv_3", bytes: 1 });
+  assert.deepEqual(heard().map(e => e.payload), [{ id: "acme-crm", delivery: "dlv_1", bytes: 42 }]);
+  const tpl = (await model("connectors.connection.export", { id: "acme-crm" })).data;
+  assert.equal(tpl.credential.item, ""); assert.ok(!JSON.stringify(tpl).includes(KEY));
+
   assert.equal((await model("connectors.connection.delete", { id: "acme-crm" })).error?.code, "denied");
   assert.equal((await model("connectors.connection.update", FORM)).error?.code, "denied");
   assert.deepEqual((await cli("connectors.connection.delete", { id: "acme-crm" })).data, { id: "acme-crm", removed: true });

@@ -15,7 +15,7 @@ const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !
 /** `{name}` in a text, filled from the person's fixed values. A name with no value is a problem, not an empty string. @param {string} text @param {Record<string, string>} vars @param {boolean} [encode] */
 function fill(text, vars, encode = false) {
   return text.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (_m, k) => {
-    if (typeof vars[k] !== "string" || !vars[k]) throw fail(`{${k}} has no value: add it under the fixed values`);
+    if (typeof vars[k] !== "string" || !vars[k] || /^\{\{.*\}\}$/.test(vars[k])) throw fail(`{${k}} has no value: add it under the fixed values`);
     return encode ? encodeURIComponent(vars[k]) : vars[k];
   });
 }

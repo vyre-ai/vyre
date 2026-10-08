@@ -98,6 +98,16 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");
       return { ...shape(r, await isStale(r)), declaration: JSON.parse(r.declaration) };
     },
+    /** A Connection as a template: what is the app's (host, how a key is sent, operations, polls, the names of fixed headers) and nothing that is the person's (the key's item, the values typed, the dates). */
+    exportTemplate: async (/** @type {string} */ id) => {
+      const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");
+      const rec = shape(r, false), f = r.form ? JSON.parse(r.form) : {};
+      const holes = (/** @type {Record<string, string>} */ vars) => Object.fromEntries(Object.keys(vars).map(k => [k, `{{${k}}}`]));
+      const vars = f.vars || {};
+      const sub = (/** @type {string} */ text) => Object.entries(vars).reduce((t, [k, v]) => (v ? t.split(encodeURIComponent(String(v))).join(`{${k}}`).split(String(v)).join(`{${k}}`) : t), text);
+      return { template: 1, label: rec.label, base_url: `https://${rec.host}`, send: f.send || rec.auth, headers: Object.fromEntries(Object.entries(f.headers || {}).map(([k, v]) => [k, sub(String(v))])), vars: holes(vars),
+        check: { path: sub(r.check_path) }, operations: rec.operations, credential: { item: "" } };
+    },
     rebuild: async (/** @type {string} */ id, /** @type {string} */ as) => { const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found"); return { id, credential: await materialize(r, as) }; },
     remove: async (/** @type {string} */ id, /** @type {string} */ as) => {
       if (!row(id)) throw fail(`no connection ${id}`, "not_found");

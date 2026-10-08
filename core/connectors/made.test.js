@@ -101,3 +101,23 @@ test("update replaces the record and the credential; delete removes both", async
   assert.ok(!w.items.has("conn-gohighlevel-sales")); assert.ok(w.items.has("ghl-pat"), "the key's own item stays");
   assert.equal((await w.m.list()).connections.length, 0);
 });
+
+test("a template carries the app and none of the person: no key item, no values, no id, no dates; filled in again it makes a Connection", async () => {
+  const w = world();
+  await w.m.save({ ...form(), operations: [{ name: "contacts.get", method: "GET", path: "/contacts/{id}", input: { params: { id: { type: "string", required: true } } } }] }, { as: "deck" });
+  const t = await w.m.exportTemplate("gohighlevel-sales");
+  assert.equal(t.template, 1);
+  assert.equal(t.credential.item, "");
+  assert.deepEqual(t.vars, { locationId: "{{locationId}}" });
+  assert.equal(t.check.path, "/locations/{locationId}", "the value typed is a hole again");
+  assert.deepEqual(t.headers, { Version: "2021-07-28" });
+  assert.deepEqual(t.operations.map(o => o.name), ["contacts.get"]);
+  const text = JSON.stringify(t);
+  for (const secret of ["ghl-pat", "loc_1", "deck", "created", "light", "gohighlevel-sales"]) assert.ok(!text.includes(secret), `${secret} is not in a template`);
+  // it does not make a Connection until the person fills it in
+  await assert.rejects(() => w.m.save({ ...t, credential: { item: "ghl-pat" } }, { as: "deck" }), /has no value/);
+  await assert.rejects(() => w.m.save({ ...t, vars: { locationId: "loc_9" } }, { as: "deck" }), /credential\.item/);
+  const again = await w.m.save({ ...t, vars: { locationId: "loc_9" }, credential: { item: "ghl-pat" }, label: "GoHighLevel Marketing" }, { as: "deck" });
+  assert.equal(again.id, "gohighlevel-marketing");
+  assert.equal((await w.m.get("gohighlevel-marketing")).check.path, "/locations/loc_9");
+});
