@@ -67,11 +67,13 @@ export function createFlowsHost(o) {
     const catalog = async () => {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
-      // A registered tool its module offers as a Flow step (flowAction) is an action a call step may name: read runs at once, outward is held for a yes first. `tool: true` says the runner
-      // does not ask the kernel's action table about it: the person's approval is the yes, and the tool's own module gates the rest.
-      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true };
+      // A registered tool its module lists in flow.steps is an action a call step may name: read runs at once, outward is held for a yes first. `tool: true` says the runner
+      // does not ask the kernel's action table about it: the person's approval is the yes, and the tool's own module gates the rest. Its typed fields ride along for the editor.
+      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true, inputs: t.inputs, outputs: t.outputs };
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
-      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {} };
+      // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
+      const triggers = o.flowTriggers ? o.flowTriggers() : [];
+      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
@@ -79,14 +81,10 @@ export function createFlowsHost(o) {
     const ports = {
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
-      // One entry point for a Flow's call step. A module tool registered as an action of the Space (`flow` in its manifest, core/daemon/module-actions.js) was authorized by the runner for the run's
-      // chain and runs through callAction; a module tool offered as a step (`flowAction`) runs as below.
+      // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
       call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string }} */ opts = {}) => {
         const tool = o.flowTools ? (o.flowTools() || []).find((/** @type {any} */ t) => t.name === action) : null;
-        if (!tool) {
-          if (o.callAction) return o.callAction(chain, action, resource, input, opts);
-          throw Object.assign(new Error(`${action} is not a step a Flow can run`), { code: "denied" });
-        }
+        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run`), { code: "denied" });
         if (!o.callFlow) throw Object.assign(new Error("this home has no way to run a module's tool from a Flow"), { code: "unavailable" });
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });

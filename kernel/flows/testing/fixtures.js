@@ -70,7 +70,7 @@ export const stagedCatalog = () => {
   const c = catalog();
   c.types.matter = { ...c.types.matter, fields: [...c.types.matter.fields.filter(f => f.name !== "stage"), { name: "practice_area", kind: "text", label: "Practice area" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Engagement", "Drafting", "Review", "Closed"] }],
     stages: [
-      { name: "Intake", tasks: [
+      { name: "Intake", owner: "role:attorney", tasks: [
         { title: "Research the client", doer: "teammate:research", output: { kind: "fields", target: ["practice_area"] }, how: "assistant", due_offset_ms: 86_400_000 },
         { title: "Welcome email", doer: "teammate:intake", checker: "role:attorney", output: { kind: "sent", target: "email" }, how: "tailor", template: "welcome", depends_on: ["Research the client"] },
       ] },

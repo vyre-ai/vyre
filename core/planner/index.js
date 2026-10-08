@@ -11,6 +11,7 @@ import { openRecords, fromEvent, recordOf } from "./records.js";
 import { parseRule } from "./rrule.js";
 import { MIGRATIONS as LEGACY_MIGRATIONS, importLegacy } from "./legacy.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
+import { taskEscalation } from "./escalate.js";
 import { calendar, shapeCal } from "./events.js";
 import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
@@ -1127,11 +1128,15 @@ export default {
     if (!K) return { async stop() {} };
     // A to-do's time is not stored on its Task: it rings from the working set, so its next ring is worked out again at start.
     for (const r of st.all()) if (r._task && r.state === "open" && r.at != null) r.next_fire = schedule(r, now()).next_fire;
+    // A task's escalate_after and escalate_to (stored by the kernel, read here): a wake hook on the one scheduler, so no second timer.
+    const escalation = taskEscalation({ K, st, scheduler, now, emit: (type, payload) => emit(type, payload), log: ctx.log });
     if (!linked) scheduler.start();
+    escalation.refresh().catch(() => {});
     offs.push(cal.watch());
     // The records are the truth: a reminder, note or to-do changed from the app, a Flow or another device is read back in.
     for (const [type, consumer] of [["reminder.*", "planner-reminders"], ["note.*", "planner-notes"], ["task.*", "planner-tasks"]]) {
       const off = K.events.subscribe(K.serviceChain(), consumer, { type }, e => {
+        if (type === "task.*") escalation.refresh().catch(() => {});
         // What the planner itself wrote is already in its working set.
         if (String(e.actor || "").split("@")[0] === "service:planner") return;
         const parts = String(e.subject || "").split("/");

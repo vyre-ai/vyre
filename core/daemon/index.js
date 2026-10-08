@@ -267,12 +267,11 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const { moduleActionPort } = await import("./module-actions.js");
-    const flowsHost = createFlowsHost({ log, callAction: moduleActionPort({ registry, owner: () => kernel.id.owner }), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
-      // The registered tools a Flow's call step may run (their module said so with flowAction), and the one way to run one: as the person, through the registry.
-      flowTools: () => registry.flowTools(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
+      // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
+      flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
       // The Google accounts the google module holds (a signed-in calendar), read and written through google.api as module:leases (the daemon's own label for the kernel's lease path)
@@ -440,8 +439,6 @@ async function startLocked(opts, root, p, release) {
         };
       },
     };
-    // A module's tools marked `flow` become actions of the Space, held by the owner and admins (kernel/index.js registerFlowActions).
-    registry.deps.registerFlowActions = (/** @type {string} */ name, /** @type {any[]} */ defs) => kernel.registerFlowActions(name, defs);
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
     db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");

@@ -189,3 +189,22 @@ export default defineKit({ id: "k", version: 1, includes: [L] });`);
   fails(wrap(`export const L = defineType({ name: "l", fields: { c: defineField.link({ to: "contact", inverse: { name: "same", label: "A" } }), d: defineField.link({ to: "contact", inverse: { name: "same", label: "B" } }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /already shows/);
   fails(wrap(`export const L = defineType({ name: "l", fields: { t: defineField.text({ many: true }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /Unknown option/);
 });
+
+test("compile: a stage owner is kept in the stored form, and must be a role the kit has", () => {
+  const kit = (/** @type {string} */ owner) => wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text(), st: defineStage([{ name: "x", owner: "${owner}", tasks: [defineTask({ title: "t1", doer: "role:attorney", output: { kind: "note" }, dueOffset: "2d" })] }, "y"]) } });\nexport const R = defineRole({ name: "attorney", kind: "role", label: "Attorney", description: "d", grants: [{ read: "a" }] });\nexport default defineKit({ id: "k", version: 1, includes: [A, R] });`);
+  const ok = compile(kit("role:attorney"));
+  assert.equal(ok.types[0].stages[0].owner, "role:attorney");
+  fails(kit("role:ghost"), "invalid_definition", /role:ghost is not a role defined in this kit/);
+  fails(kit("teammate:x"), "invalid_definition", /stage owner looks like/);
+});
+
+test("the law firm kit: stages carry an owner and tasks, and the text round-trips with them", () => {
+  const src = fs.readFileSync(new URL("../kits/law-firm/kit.ts", import.meta.url), "utf8");
+  const kit = compile(src);
+  const project = kit.types.find((t) => t.name === "project");
+  const pi = project.stage_sets.find((x) => x.name === "personal_injury").stages;
+  assert.ok(pi.filter((s) => s.tasks).every((s) => s.owner === "role:attorney" && s.tasks.every((t) => t.due_offset_ms > 0)), "a stage with tasks has an owner and every task a due offset");
+  assert.deepEqual(kit.roles.map((r) => r.name), ["attorney", "paralegal"]);
+  assert.deepEqual(compile(print(kit)), kit);
+  assert.deepEqual(JSON.parse(fs.readFileSync(new URL("../kits/law-firm/kit.json", import.meta.url), "utf8")), kit, "kit.json is the compiled kit.ts");
+});

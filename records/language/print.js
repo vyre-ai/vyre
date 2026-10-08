@@ -51,8 +51,9 @@ function labelless(name, o) { const { label, ...r } = o; return label !== undefi
 /** One list of stages as text. @param {any[]} stages @param {number} d */
 function stageItems(stages, d) {
   return stages.map((/** @type {any} */ s) => {
-    if (!s.tasks && s.enter_if === undefined) return pad(d + 1) + q(s.name);
+    if (!s.tasks && s.enter_if === undefined && s.owner === undefined) return pad(d + 1) + q(s.name);
     const parts = [`${pad(d + 2)}name: ${q(s.name)}`];
+    if (s.owner !== undefined) parts.push(`${pad(d + 2)}owner: ${q(s.owner)}`);
     if (s.enter_if !== undefined) parts.push(`${pad(d + 2)}enter_if: ${q(s.enter_if)}`);
     if (s.tasks) parts.push(`${pad(d + 2)}tasks: [\n${s.tasks.map((/** @type {any} */ tk) => pad(d + 3) + "defineTask(" + lit(taskOut(tk), d + 3) + ")").join(",\n")},\n${pad(d + 2)}]`);
     return `${pad(d + 1)}{\n${parts.join(",\n")},\n${pad(d + 1)}}`;
