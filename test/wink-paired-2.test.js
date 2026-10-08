@@ -1255,13 +1255,12 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
 });
 
 
-test("join a team with no server, end to end: a second identity that has only a name opens the invite, is admitted as a member through the invitee door of the real server, enrols its key there, and reaches the space with a member call", { timeout: 180_000 }, async t => {
+/** A real paired server with a team space "harlow" hosted on it by alex, whose name and key live in the (stand-in) app: the rig of the team tests below. */
+async function teamRig(t) {
   const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
   const { startSealer } = await import("../kernel/seal/client.js");
   const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
   const { proofRequest } = await import("../kernel/remote/proof.js");
-  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
-  const { WORDS } = await import("../relay/client/words.js");
   const ident = await standinIdentity(t);
   Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
   const sealDir = tmp("join-team-seal");
@@ -1279,8 +1278,6 @@ test("join a team with no server, end to end: a second identity that has only a 
   const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
     host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
   assert.ok(f.w.d.kernel.spaces.hosts(made.space));
-  // kit has a name in the same directory and NO server: no daemon is started for kit, only the app's libraries
-  const kit = await ident.another("kit");
   const hosted = f.w.d.kernel.spaces.hosted(made.space);
   const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
   const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
@@ -1290,6 +1287,15 @@ test("join a team with no server, end to end: a second identity that has only a 
     const inv = await hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) });
     return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
   };
+  return { ident, f, links, session, made, hosted, ownerChain, rkFp, linkFor, sealer, ownerSigner, sealSigner, ROUTE };
+}
+
+test("join a team with no server, end to end: a second identity that has only a name opens the invite, is admitted as a member through the invitee door of the real server, enrols its key there, and reaches the space with a member call", { timeout: 180_000 }, async t => {
+  const { openInvite, callTeam } = await import("../apps/app/src/real/join-team.js");
+  const { WORDS } = await import("../relay/client/words.js");
+  const { ident, f, made, hosted, ownerChain, linkFor, sealer, sealSigner, ROUTE } = await teamRig(t);
+  // kit has a name in the same directory and NO server: no daemon is started for kit, only the app's libraries
+  const kit = await ident.another("kit");
   const mine = await linkFor(kit.id);
   const kitSigner = sealSigner(kit.id);
   const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
