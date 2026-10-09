@@ -11,7 +11,7 @@
 //   node scripts/eval-honest.mjs report --out <dir>         the report from <dir>/rows.json
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { report, plan, lint } from "./lib/eval-honest.js";
 import { loadSealed } from "./eval-honest/run.mjs";
@@ -39,17 +39,19 @@ if (cmd === "seal") {
   const out = flag("out") || `${path.resolve(flag("home"))}-honest-${Date.now()}`;
   const rest = args.slice(1);
   if (!flag("out")) rest.push("--out", out);
-  // --report-on-signal: on a stall the supervisor asks the harness for a diagnostic report (its JS stack, where it is blocked) before it ends it.
-  const child = spawn(process.execPath, ["--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${out}`, path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: "inherit", env: process.env });
+  const child = spawn(process.execPath, [path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: "inherit", env: process.env });
   const STALL_MS = Number(flag("stall-min", "3")) * 60_000;
   const watch = setInterval(() => {
     let age = 0;
     try { age = Date.now() - fs.statSync(path.join(out, ".heartbeat")).mtimeMs; } catch { return; }   // no beat yet: still seeding
     if (age <= STALL_MS) return;
-    console.error(`STALLED: the harness has not beaten for ${Math.round(age / 1000)} s (its event loop is blocked). Taking a diagnostic report in ${out}, then ending it.`);
+    // What it was doing (the phase it last wrote) and whether its threads are spinning or waiting (a busy loop shows ~100% CPU; a call that waits on a process shows a sleeping state), then it is ended.
+    let phase = "unknown";
+    try { phase = JSON.parse(fs.readFileSync(path.join(out, ".heartbeat"), "utf8")).phase; } catch { /* unreadable */ }
+    console.error(`STALLED: the harness has not beaten for ${Math.round(age / 1000)} s (its event loop is blocked). It was in: ${phase}.`);
+    try { const ps = spawnSync("ps", ["-L", "-o", "tid,pcpu,stat,wchan:24", "-p", String(child.pid)], { encoding: "utf8" }); console.error(ps.stdout || ps.stderr); } catch { /* no ps */ }
     clearInterval(watch);
-    try { child.kill("SIGUSR2"); } catch { /* gone */ }
-    setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, 8000);
+    try { child.kill("SIGKILL"); } catch { /* gone */ }
   }, 15_000);
   child.on("exit", (code, sig) => { clearInterval(watch); process.exit(sig ? 3 : (code ?? 1)); });
 } else {
