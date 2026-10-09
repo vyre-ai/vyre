@@ -13,6 +13,7 @@ export const ACTIONS = Object.freeze([
   { action: "vault.totp", resource_type: "credential", risk: "write", label: "Use a one-time code", gloss: "Enters the current code without showing it." },
   { action: "vault.read", resource_type: "credential", risk: "read", label: "Read through a service key", gloss: "Looks something up with a key, changing nothing." },
   { action: "vault.call", resource_type: "credential", risk: "outward.send", label: "Act through a service key", gloss: "Makes a request that can change things at the service: a refund, a payment, a message." },
+  { action: "vault.release", resource_type: "credential", risk: "write", label: "Give a module a secret", gloss: "Hands a value to a module that holds a grant for it, to use while you are away." },
   { action: "vault.run", resource_type: "credential", risk: "admin", label: "Give a program a secret", gloss: "Puts the value in a program's environment." },
   { action: "vault.reveal", resource_type: "credential", risk: "admin", label: "Show a secret", gloss: "Shows the value to a person, on their own screen." },
   { action: "vault.share", resource_type: "credential", risk: "outward.share", label: "Share a login or key", gloss: "Lets someone outside the Space use it." },

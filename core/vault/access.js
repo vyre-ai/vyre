@@ -172,7 +172,7 @@ export class Access {
     if (rows.length) {
       const send = [];
       // Agents not answering yet (they start after the vault) leaves the rows where they are for the next call; an agent that is gone, or a row that fails its check, is dropped.
-      try { for (const g of rows) { const uid = this.v.rowOk("vault_agent_grants", g) ? await this.uidOf(g.agent) : null; if (uid) send.push({ id: g.id, agent: uid, item: g.item, origin: g.origin, expires: g.expires }); } } catch { return; }
+      try { for (const g of rows) { const uid = this.v.rowOk("vault_agent_grants", g) ? await this.uidOf(g.agent) : null; if (uid) send.push({ id: g.id, who: uid, item: g.item, origin: g.origin, expires: g.expires }); } } catch { return; }
       await K.vault.carryOver(send);
       this.v.emit("vault.agent-carried", { rows: rows.length, carried: send.length });
     }

@@ -53,9 +53,17 @@ export const SHARED_MIGRATIONS = [
    );`,
 ];
 
-export const VAULT_MEMBER_ROLES = ["owner", "admin", "member", "read-only"];
-const WRITE = new Set(["owner", "admin", "member"]);
-const ADMIN = new Set(["owner", "admin"]);
+/**
+ * The words a signed manifest carries for a member. Peers on other computers verify them, so they cannot change; each is one access level of the one grant model (kernel/seal/uses.js ACCESS_LEVELS),
+ * written once here. A person who is a member of a shared vault holds its key and so can read what is in it whatever the level says: "use without seeing" holds for this Space's agents, teams'
+ * assistants and projects (kernel grants) and for outsiders through passes, not for people in a shared vault (team/0.3/DESIGN-vaults-named.md).
+ */
+export const ROLE_LEVEL = Object.freeze({ owner: "manage", admin: "manage", member: "reveal", "read-only": "use" });
+export const VAULT_MEMBER_ROLES = Object.keys(ROLE_LEVEL);
+/** The role a level is written as in a manifest (the owner is the one `owner`). @param {string} level @param {boolean} [owner] */
+export const roleOfLevel = (level, owner = false) => (owner ? "owner" : /** @type {any} */ ({ manage: "admin", reveal: "member", use: "read-only" })[level]);
+const WRITE = new Set(VAULT_MEMBER_ROLES.filter(r => /** @type {any} */ (ROLE_LEVEL)[r] !== "use"));
+const ADMIN = new Set(VAULT_MEMBER_ROLES.filter(r => /** @type {any} */ (ROLE_LEVEL)[r] === "manage"));
 const MANIFEST_TAG = "vyre-manifest-v1", RECORD_TAG = "vyre-record-v1", RECEIPT_TAG = "vyre-receipt-v1", INVITE_TAG = "vyre-invite-v1";
 const INVITE_PREFIX = "vyre-invite:v1:";
 const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;

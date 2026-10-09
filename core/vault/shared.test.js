@@ -285,3 +285,16 @@ test("vault.move into a real shared vault: a live pass and a provider sign-in to
   assert.ok(refused.length >= 2 && refused.every(e => e.payload.action === "move"));
   assert.ok(!JSON.stringify([a.events, a.logs]).includes(tok));
 });
+
+test("shared vault roles are the signed words for the access levels: one table, a round trip, and the sets the checks use are what they were", async () => {
+  const { ROLE_LEVEL, VAULT_MEMBER_ROLES, roleOfLevel } = await import("./shared.js");
+  const { ACCESS_LEVELS } = await import("../../kernel/seal/uses.js");
+  assert.deepEqual(VAULT_MEMBER_ROLES, ["owner", "admin", "member", "read-only"], "the words older peers verify do not change");
+  for (const r of VAULT_MEMBER_ROLES) {
+    assert.ok(Object.hasOwn(ACCESS_LEVELS, /** @type {any} */ (ROLE_LEVEL)[r]), `${r} is a level`);
+    assert.equal(roleOfLevel(/** @type {any} */ (ROLE_LEVEL)[r], r === "owner"), r === "owner" ? "owner" : roleOfLevel(/** @type {any} */ (ROLE_LEVEL)[r]), r);
+  }
+  for (const r of ["admin", "member", "read-only"]) assert.equal(roleOfLevel(/** @type {any} */ (ROLE_LEVEL)[r]), r, `${r} round trips`);
+  assert.deepEqual(VAULT_MEMBER_ROLES.filter(r => /** @type {any} */ (ROLE_LEVEL)[r] === "manage"), ["owner", "admin"], "who administers");
+  assert.deepEqual(VAULT_MEMBER_ROLES.filter(r => /** @type {any} */ (ROLE_LEVEL)[r] !== "use"), ["owner", "admin", "member"], "who writes");
+});

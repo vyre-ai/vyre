@@ -43,6 +43,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { ACCESS_REQUESTS_MIGRATION } from "./access.js";
+import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
@@ -142,6 +143,8 @@ export const MIGRATIONS = [
   SAID_MIGRATION,
   // The one grant model: an assistant's request to lend a login waits here for a person; who may use a login is a kernel grant (access.js).
   ACCESS_REQUESTS_MIGRATION,
+  // The one grant model, module release: a grant in the kernel's shape beside the older columns, and the requests an assistant made (release.js).
+  RELEASE_BODY_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -154,9 +157,11 @@ const KV = 1;
  * which sealed version is current. A module that writes vyre.db cannot change them without the
  * MAC failing, and a row whose MAC fails is ignored and audited.
  */
+/** The columns vault_grants was signed over before the grant body existed: a row is converted only if it passes this. */
+const GRANTS_LEGACY = ["id", "item", "module", "watcher", "status"];
 export const MACED = {
   vault_items: ["id", "name", "kind", "url", "hosts", "origin", "rotate", "vault", "ver", "apps", "reprompt", "relay"],
-  vault_grants: ["id", "item", "module", "watcher", "status"],
+  vault_grants: ["id", "item", "module", "watcher", "status", "body"],
   vault_agent_grants: AGENT_GRANT_MACED,
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
@@ -366,6 +371,8 @@ export class Vault {
     /** Agent logins: what a grant is checked against, the words, the log of uses (ADR 0028, decision 2). Who may use a login is `access`. */
     this.agents = new AgentGrants(this);
     /** Who may use a login: kernel grants (access.js), set by index.js where there is a kernel. @type {import("./access.js").Access | null} */ this.access = null;
+    /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */
+    this.releases = new Release(this);
     /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
     this.emergency = new Emergency(this);
@@ -443,6 +450,8 @@ export class Vault {
     this.mkey = macKey(vk);
     // A failed upgrade leaves the vault closed, so the next key() runs it again.
     try { this.upgrade(dk); } catch (e) { this.vk = null; this.mkey = null; throw e; }
+    // Release grants the older table held become the grants they always were, in place (release.js).
+    this.releases.convert().catch(e => this.log(`vault: older grants were not converted yet: ${e.message}`));
     return vk;
   }
 
@@ -642,6 +651,15 @@ export class Vault {
     if (r.mac && same(r.mac, this.macOf(table, r))) return true;
     this.flag(table, r[KEY_COL[table] || "id"], r.mac);
     return false;
+  }
+
+  /** A vault_grants row signed before the grant body existed (its older columns); true when it passes. @param {"vault_grants"} _t @param {any} r */
+  rowOkLegacy(_t, r) {
+    if (!this.mkey) return true;
+    const f = {};
+    for (const c of GRANTS_LEGACY) f[c] = r[c] ?? null;
+    // Signed over the older columns, or by the upgrade that signs rows from before MACs existed (which signs the current columns, the body empty).
+    return Boolean(r.mac) && (same(r.mac, rowMac(/** @type {any} */ (this.mkey), "vault_grants", f)) || same(r.mac, this.macOf("vault_grants", r)));
   }
 
   flag(table, id, mac) {
@@ -887,8 +905,7 @@ export class Vault {
     // A login lent to an agent is filled while nobody is here, so it stays in the agent vault too.
     const lent = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE status = 'active' AND revoked IS NULL").all())
       .filter(g => (g.expires == null || g.expires > t) && this.rowOk("vault_agent_grants", g)).map(g => String(g.item));
-    return new Set([...lent, .../** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
-      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item))]);
+    return new Set([...lent, ...this.releases.items()]);
   }
 
   /** Move agent-vault items that belong in the personal vault there. Needs it unlocked. */
@@ -1307,7 +1324,7 @@ export class Vault {
 
   list({ filter } = {}) {
     const f = filter ? String(filter).toLowerCase() : "";
-    const grants = this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all().filter(g => this.rowOk("vault_grants", g));
+    const grants = this.releases.views();
     const items = this.db.prepare("SELECT * FROM vault_items ORDER BY name").all()
       .filter(r => this.rowOk("vault_items", r))
       .filter(r => !f || String(r.name).toLowerCase().includes(f) || String(r.description).toLowerCase().includes(f))
@@ -1334,7 +1351,9 @@ export class Vault {
     history.dropHistory(this.dir, r.id);
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
-    this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
+    const gone = this.releases.dropItem(name).catch(e => this.log(`vault: what was granted of ${name} was not taken back: ${e.message}`));
+    this.revoking.add(gone);
+    gone.finally(() => this.revoking.delete(gone));
     if (this.access) { const p = this.access.revokeItem(name, String(who)).catch(e => this.log(`vault: what was lent of ${name} was not taken back: ${e.message}`)); this.revoking.add(p); p.finally(() => this.revoking.delete(p)); }
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
@@ -1368,18 +1387,23 @@ export class Vault {
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
     if (project && !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(String(project))) throw new Error("project is a project id");
-    const status = kindOf(caller) === "mcp" ? "pending" : "active";
-    const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
-    if (old && old.status === "active" && this.rowOk("vault_grants", old)) return { grant: this.grantOut(old) };
+    const pending = kindOf(caller) === "mcp";
+    if (pending) {
+      // Claude asking waits as a request that carries no authority; only a person's approval makes the grant.
+      if (this.releases.views().some(v => v.item === name && v.module === module && v.watcher === watcher && v.project === project)) return { grant: this.grantOut({ id: "", item: name, module, watcher, project, status: "active" }) };
+      const old = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grant_requests WHERE item=? AND module=? AND watcher=? AND project=?").get(name, module, watcher, project));
+      const id = old ? old.id : "g_" + newId();
+      if (!old) this.db.prepare("INSERT INTO vault_grant_requests (id, item, module, watcher, project, by, at) VALUES (?,?,?,?,?,?,?)").run(id, name, module, watcher, project, String(caller), now());
+      this.audit("grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
+      this.emit("grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
+      return { grant: this.grantOut({ id, item: name, module, watcher, project, status: "pending" }) };
+    }
     // A module uses an item while nobody is here, so a granted item lives in the agent vault.
-    if (status === "active" && item.vault === PERSONAL) await this.reseal(item, AGENTS);
-    const id = old ? old.id : "g_" + newId();
-    this.db.prepare("INSERT OR REPLACE INTO vault_grants (id, item, module, watcher, status, by, at, project) VALUES (?,?,?,?,?,?,?,?)").run(id, name, module, watcher, status, String(caller), now(), project);
-    this.sign("vault_grants", id);
-    const g = this.db.prepare("SELECT * FROM vault_grants WHERE id=?").get(id);
-    this.audit(status === "active" ? "grant" : "grant-requested", name, caller, true, watcher ? `${module}/${watcher}` : module);
-    this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
-    return { grant: this.grantOut(g) };
+    if (item.vault === PERSONAL) await this.reseal(item, AGENTS);
+    const g = await this.releases.put({ name, module, watcher, project }, caller);
+    this.audit("grant", name, caller, true, watcher ? `${module}/${watcher}` : module);
+    this.emit("vault.granted", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
+    return { grant: this.grantOut({ ...g, status: "active" }) };
   }
 
   /** Write one use of an item to the audit trail, with its origin and surface (see agents.js). */
@@ -1387,24 +1411,16 @@ export class Vault {
 
   grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), ...(g.project ? { project: g.project } : {}), status: g.status }; }
 
-  revoke({ name, module, watcher, project }, caller, { onlyPendingBy = null } = {}) {
+  async revoke({ name, module, watcher, project }, caller, { onlyPendingBy = null } = {}) {
     // A named agent or another module may only withdraw a request it made itself, never an active grant (reviewer-2 M-V4).
+    const asked = (/** @type {string} */ extra, /** @type {any[]} */ args) => this.db.prepare(`DELETE FROM vault_grant_requests WHERE item=? AND module=?${project !== undefined ? " AND project=?" : ""}${watcher !== undefined ? " AND watcher=?" : ""}${extra}`)
+      .run(...[name, module, ...(project !== undefined ? [project] : []), ...(watcher !== undefined ? [watcher] : []), ...args]);
     if (onlyPendingBy) {
-      const w = watcher === undefined ? "" : watcher;
-      const r = this.db.prepare(`DELETE FROM vault_grants WHERE item=? AND module=? AND status='pending' AND by=?${project !== undefined ? " AND project=?" : ""}${watcher !== undefined ? " AND watcher=?" : ""}`)
-        .run(...[name, module, onlyPendingBy, ...(project !== undefined ? [project] : []), ...(watcher !== undefined ? [w] : [])]);
-      const n = Number(r.changes);
+      const n = Number(asked(" AND by=?", [onlyPendingBy]).changes);
       this.audit("revoke", name, caller, true, `${watcher ? `${module}/${watcher}` : module} (own pending request)`);
       return { revoked: n };
     }
-    const r = project !== undefined
-      ? (watcher === undefined
-        ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND project=?").run(name, module, project)
-        : this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND watcher=? AND project=?").run(name, module, watcher, project))
-      : (watcher === undefined
-        ? this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=?").run(name, module)
-        : this.db.prepare("DELETE FROM vault_grants WHERE item=? AND module=? AND watcher=?").run(name, module, watcher));
-    const n = Number(r.changes);
+    const n = Number(asked("", []).changes) + await this.releases.remove({ name, module, watcher, project });
     this.audit("revoke", name, caller, true, watcher ? `${module}/${watcher}` : module);
     if (n) this.emit("vault.revoked", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
     return { revoked: n };
@@ -1415,10 +1431,7 @@ export class Vault {
    * (a watcher reading through a service the vault does not hold the token of) asks it through `vault.granted`. A grant to the module as a whole is not a grant to a watcher.
    * @param {{ name: string, module: string, watcher?: string, project?: string }} q
    */
-  granted({ name, module, watcher = "", project }) {
-    return this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, module, watcher)
-      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
-  }
+  granted({ name, module, watcher = "", project }) { return this.releases.allowed({ name, module, watcher, project }); }
 
   /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
@@ -1482,7 +1495,7 @@ export class Vault {
     const r = this.mustRow(name);
     const mod = moduleOf(caller);
     await this.key();
-    if (mod && !this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND status='active'").all(name, mod).some(x => this.rowOk("vault_grants", x))) {
+    if (mod && !this.releases.holds(name, mod)) {
       this.audit("totp", name, caller, false, "no grant");
       throw new Error(`${name} is not granted to ${mod}`);
     }
@@ -1805,7 +1818,7 @@ export class Vault {
 
   pending() {
     return {
-      grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().filter(g => this.rowOk("vault_grants", g)).map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
+      grants: /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grant_requests ORDER BY at").all()).map(g => ({ ...this.grantOut({ ...g, status: "pending" }), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
       agentGrants: this.access ? this.access.pending() : [],
       ...this.share.requests(),
@@ -1819,12 +1832,12 @@ export class Vault {
       if (a) return a;
       throw new Error(`nothing pending with id ${id}`);
     }
-    const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE id=? AND status='pending'").get(id));
-    if (g && this.rowOk("vault_grants", g)) {
+    const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grant_requests WHERE id=?").get(id));
+    if (g) {
       const item = this.row(g.item);
       if (item && item.vault === PERSONAL) await this.reseal(item, AGENTS);
-      this.db.prepare("UPDATE vault_grants SET status='active', by=?, at=? WHERE id=?").run(String(caller), now(), id);
-      this.sign("vault_grants", id);
+      await this.releases.put({ name: g.item, module: g.module, watcher: g.watcher, project: g.project }, caller);
+      this.db.prepare("DELETE FROM vault_grant_requests WHERE id=?").run(id);
       this.audit("grant", g.item, caller, true, `approved ${g.module}${g.watcher ? "/" + g.watcher : ""}`);
       this.emit("vault.granted", { name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) });
       return { approved: this.grantOut({ ...g, status: "active" }) };

@@ -342,6 +342,8 @@ export function createGrantsStore(cfg) {
     return { membership, grants: made };
   }
 
+  /** Grants the vault module made and may take back: its own sources, never the maker's `manage`. */
+  const vaultMade = (/** @type {string} */ src) => (src.startsWith("vault:") ? src !== "vault:create" : /^install:[a-z0-9-]+:vault$/.test(src));
   /** Revoke a grant and everything handed on from it, noting each; the revoked grants, the first being `x`. */
   const killTree = async (/** @type {any} */ chain, /** @type {any} */ x, /** @type {any} */ reason, /** @type {any} */ decision) => {
     const out = [], why = String(reason || "").slice(0, 200);
@@ -816,16 +818,17 @@ export function createGrantsStore(cfg) {
       return last;
     },
     /**
-     * Agent logins a module kept in its own store before the one grant model, carried over once, each as the grant it always was: one agent, `vault.fill` on one item, at one exact origin, until its expiry. Made
-     * by the kernel for that module (no proof: the person gave them long ago), never wider than that, and a row already carried is skipped. @param {string} module @param {{ id: string, agent: string, item: string, origin: string, expires?: number | null }[]} rows
+     * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these two shapes): an agent's login (`vault.fill` on one item at one exact origin) or a module's
+     * release (`vault.release` on one item, for a watcher or a project when named). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null }[]} rows
      */
     async carryOver(module, rows) {
-      const k = kernelChain(), made = [], home = urn("vault", (await personalOf()).id);
+      const k = kernelChain(), made = [], home = urn("vault", (await personalOf()).id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
       for (const r of rows) {
-        const reason = `carried:${String(r.id)}`, actor = { kind: "agent", id: String(r.agent), space: cfg.space };
-        if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(String(r.item)) || !/^https?:\/\/[^/]+$/.test(String(r.origin)) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
         if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: ["vault.fill"], action_set_version: version, resource: { prefix: `${home}/item/${r.item}` }, conditions: { where: { origins: [r.origin] }, ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: { kind: "service", id: module, space: cfg.space }, source: "vault:agent", reason, status: "active", created_at: clock() });
+        const resource = { prefix: rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { where: { origins: [r.origin] }, ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: { kind: "service", id: module, space: cfg.space }, source: rel ? `install:${r.who}:vault` : "vault:agent", reason, status: "active", created_at: clock() });
         grants.set(g.id, g); made.push(g.id);
         await note(k, "grant.created", urn("grant", g.id), { grant: g });
       }
@@ -834,12 +837,12 @@ export function createGrantsStore(cfg) {
     /** The vault module ending what it lent (by id, or all under an address), and what was handed on from it: only grants it made (`vault:` but not the maker's own `manage`). Taking access away needs no person. @param {{ id?: string, prefix?: string, reason?: string }} q */
     async takeBack(q) {
       const out = [], why = String(q.reason || "taken back");
-      for (const g of [...grants.values()]) if (g.source.startsWith("vault:") && g.source !== "vault:create" && (q.id ? g.id === q.id : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
       return out;
     },
     personalVault: async () => (await personalOf()).id,
     /** The vault module reading its own live grants under an address. @param {string} prefix */
-    grantsOn: prefix => [...grants.values()].filter(g => g.status === "active" && g.source.startsWith("vault:") && g.resource.prefix.startsWith(prefix)),
+    grantsOn: prefix => [...grants.values()].filter(g => g.status === "active" && vaultMade(g.source) && g.resource.prefix.startsWith(prefix)),
 
     /**
      * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old

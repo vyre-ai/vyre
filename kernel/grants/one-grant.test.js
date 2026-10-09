@@ -233,9 +233,9 @@ test("carried-over agent logins: one agent, fill, one exact origin, until its ex
   const { gw, g, gs } = await rig();
   const prefix = `vyre://${SPACE}/vault/${await gs.personalVault()}/item/harlow-drive`;
   const rows = [
-    { id: "ag_one", agent: "kit", item: "harlow-drive", origin: "https://app.northwind.test", expires: T + 86400_000 },
-    { id: "ag_old", agent: "kit", item: "harlow-drive", origin: "https://old.northwind.test", expires: T - 1 },
-    { id: "ag_bad", agent: "kit", item: "harlow-drive", origin: "https://app.northwind.test/login", expires: null },
+    { id: "ag_one", who: "kit", item: "harlow-drive", origin: "https://app.northwind.test", expires: T + 86400_000 },
+    { id: "ag_old", who: "kit", item: "harlow-drive", origin: "https://old.northwind.test", expires: T - 1 },
+    { id: "ag_bad", who: "kit", item: "harlow-drive", origin: "https://app.northwind.test/login", expires: null },
   ];
   assert.equal((await gs.carryOver("vault", rows)).length, 1);
   assert.equal((await gs.carryOver("vault", rows)).length, 0, "twice makes one");

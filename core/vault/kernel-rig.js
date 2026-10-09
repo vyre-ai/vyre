@@ -44,5 +44,5 @@ export async function kernelRig(o = {}) {
     if (input.uid !== undefined) return { data: { name: Object.keys(agents).find(n => agents[n] === input.uid) || null } };
     return agents[input.name] ? { data: { uid: agents[input.name] } } : { error: { code: "not_found", message: `no agent ${input.name}` } };
   } };
-  return { K, ctx, gw, gs, owner, person, assistant, clock, agents, uid: (/** @type {string} */ n) => agents[n] };
+  return { K, ctx, gw, gs, chains, owner, person, assistant, clock, agents, uid: (/** @type {string} */ n) => agents[n] };
 }

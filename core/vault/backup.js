@@ -81,7 +81,7 @@ export async function backup(vault, passphrase, { params = SCRYPT } = {}) {
   const at = Date.now();
   const payload = {
     from: vault.name, at, items,
-    grants: db.prepare("SELECT * FROM vault_grants WHERE status = 'active' ORDER BY id").all().filter(ok("vault_grants")).map(({ mac, ...r }) => r),
+    grants: vault.releases.views().map(v => ({ id: v.id, item: v.item, module: v.module, watcher: v.watcher, project: v.project, status: "active", by: "backup", at: v.at })),
     people: db.prepare("SELECT * FROM vault_people ORDER BY name").all().map(r => ({ ...r })),
     passes: db.prepare("SELECT * FROM vault_passes ORDER BY id").all().filter(ok("vault_passes")).map(({ mac, ...r }) => r),
     held: db.prepare("SELECT * FROM vault_held ORDER BY id").all().map(r => ({ ...r })),
@@ -146,8 +146,8 @@ export async function restore(vault, blob, passphrase, { mode = "merge", who = "
     return n;
   };
   // Grants go in before items, so a granted login lands in the agent vault, where its module can use it.
-  const grants = insert("vault_grants", ["id", "item", "module", "watcher", "status", "by", "at"],
-    (payload.grants || []).map(g => ({ ...g, watcher: g.watcher ?? "" })));
+  let grants = 0;
+  for (const g of payload.grants || []) { await vault.releases.put({ name: g.item, module: g.module, watcher: g.watcher ?? "", project: g.project ?? "" }, "restore"); grants++; }
 
   const added = [], kept = [];
   for (const it of payload.items) {

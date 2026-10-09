@@ -683,8 +683,7 @@ export class ApiRequests {
 
   /** A module needs an active grant for the credential (a watcher's is its own); a person's surface does not. */
   granted(name, mod, watcher, audit) {
-    const rows = /** @type {any[]} */ (this.vault.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher));
-    if (rows.some(g => this.vault.rowOk("vault_grants", g))) return;
+    if (this.vault.releases.allowed({ name, module: mod, watcher })) return;
     audit(false, "no grant");
     throw bad(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} for vault.request · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`, "denied");
   }

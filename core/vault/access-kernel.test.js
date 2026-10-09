@@ -22,7 +22,7 @@ test("the vault's kernel handle: the owner's personal vault, agent logins carrie
   assert.match(vid, /^vault_/);
   assert.equal(await h.vault.personalVault(), vid, "one personal vault");
   const res = `vyre://${space}/vault/${vid}/item/harlow-drive`;
-  const made = await h.vault.carryOver([{ id: "ag_1", agent: "agt_kit", item: "harlow-drive", origin: "https://app.harlow.test", expires: Date.now() + 86400_000 }]);
+  const made = await h.vault.carryOver([{ id: "ag_1", who: "agt_kit", item: "harlow-drive", origin: "https://app.harlow.test", expires: Date.now() + 86400_000 }]);
   assert.equal(made.length, 1);
   assert.equal(await h.agentMay("agt_kit", "vault.fill", res, "https://app.harlow.test"), true);
   assert.equal(await h.agentMay("agt_kit", "vault.fill", res, "https://evil.test"), false, "another origin");
