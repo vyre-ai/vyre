@@ -13,6 +13,8 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
+  "previews.share": "chooses which people inside the Space (me, the project, everyone) may open a preview; nothing leaves the Space",
+  "previews.reply": "the person types the answer a stuck run asked for, on its card; it goes to the person's own agent and nowhere else",
   "work.file.share": "a share record by someone in the chat: it opens one file to the chat's project members inside the Space; nothing leaves the Space",
   "files.drop.push": "the daemon hands a sealed file to the person's own paired device (VyreDrop): module-only, nothing leaves the person's devices",
   "names.directory.publish": "publishes the Space's own signed directory record (its name and keys) through the names module: infrastructure, no content of the person's",

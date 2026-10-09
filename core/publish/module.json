@@ -7,84 +7,126 @@
   ],
   "requires": [],
   "does": {
-    "reads": ["publish.domain.verify", "publish.list", "publish.preview", "publish.status"],
+    "reads": [
+      "publish.domain.verify",
+      "publish.list",
+      "publish.preview",
+      "publish.status"
+    ],
     "tools": [
       {
         "name": "publish.create",
-        "reach": "anyone", "effect": "write",
+        "reach": "anyone",
+        "effect": "write",
         "projectArg": "project"
       },
       {
-        "name": "publish.preview", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.preview",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
         "name": "publish.plan",
-        "reach": "anyone", "effect": "read"
+        "reach": "anyone",
+        "effect": "read"
       },
       {
         "name": "publish.status",
-        "reach": "anyone", "effect": "read"
+        "reach": "anyone",
+        "effect": "read"
       },
       {
         "name": "publish.list",
-        "reach": "anyone", "effect": "read"
+        "reach": "anyone",
+        "effect": "read"
       },
       {
-        "name": "publish.approve", "asks": true, "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.approve",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.publish", "asks": true, "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.publish",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.rollback", "asks": true, "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.rollback",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.domain.add", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.domain.add",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.domain.verify", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.domain.verify",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.secret.grant", "asks": true, "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.secret.grant",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.secret.revoke", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.secret.revoke",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.edge", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.edge",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.edge.up", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.edge.up",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
-        "name": "publish.edge.down", "outward": true,
-        "reach": "anyone", "effect": "write"
+        "name": "publish.edge.down",
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
       },
       {
         "name": "publish.flow",
-        "reach": "anyone", "effect": "read"
+        "reach": "anyone",
+        "effect": "read"
       },
       {
-        "name": "publish.decide", "outward": true,
-        "reach": "person", "effect": "write"
+        "name": "publish.decide",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
       },
       {
-        "name": "publish.retire", "outward": true,
-        "reach": "person", "effect": "write"
+        "name": "publish.retire",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
       },
       {
-        "name": "publish.domain.remove", "outward": true,
-        "reach": "person", "effect": "write"
+        "name": "publish.domain.remove",
+        "outward": true,
+        "reach": "person",
+        "effect": "write"
       }
     ]
   },
@@ -106,7 +148,17 @@
   "needs": {
     "vault": [
       "per-deployment"
-    ]
+    ],
+    "kernel": {
+      "mints": [
+        {
+          "prefix": "credential/*",
+          "actions": [
+            "vault.run"
+          ]
+        }
+      ]
+    }
   },
   "teaches": {}
 }

@@ -632,6 +632,26 @@
   "documents.generate": {
    "class": "own",
    "why": "makes a document and files it in the Drive and as a record under the caller's own grants; a missing value refuses by name"
+  },
+  "ask.many": {
+   "class": "own",
+   "why": "a question card in its own chat only; the answers decide nothing, and what the agent then sends or changes still waits for the person"
+  },
+  "previews.open": {
+   "class": "own",
+   "why": "shows a page its server already serves or a file it wrote, as a card in its own chat; a command to run is refused for a model, Vyre's own ports are refused, and the preview is private to the person by default"
+  },
+  "previews.operator": {
+   "class": "own",
+   "why": "a live-screen card in its own chat; the person watches or takes over from it"
+  },
+  "previews.step": {
+   "class": "own",
+   "why": "moves only a card of its own chat (another thread answers not found)"
+  },
+  "previews.signin": {
+   "class": "own",
+   "why": "a card in its own chat asking the person to sign in; the keyboard is theirs, private, and the agent never sees the password"
   }
  }
 }
