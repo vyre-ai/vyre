@@ -7,7 +7,7 @@
   "title": "Documents",
   "kit": "documents.kit.json",
   "drive": ["Signed"],
-  "notes": ["You make your document templates in the Documents screen itself: the open-source engine behind it cannot make them through its API.", "Documents has one user here, shared by the owner and the admins, who open it from Vyre without signing in again.", "Documents does not send e-mail itself: Comms emails the signing link, held for your yes.", "Signing pages open for anyone who has the link, at this app's own address; everything else in Documents stays for you and your admins. Your logo and colours from Brand are laid over the signing page, with a credit to DocuSeal in the footer."],
+  "notes": ["You make your document templates in the Documents screen itself: the open-source engine behind it cannot make them through its API.", "Documents has one user here, shared by the owner and the admins, who open it from Vyre without signing in again.", "Signing pages open for anyone who has the link, at this app's own address, in your logo and colours; Comms emails the link, held for your yes. Everything else in Documents stays for you and your admins."],
   "source": "https://github.com/docusealco/docuseal",
   "app": {
     "image": "docuseal/docuseal:3.3.1@sha256:e171808ce8dabb08491a49a6d8c477670a65ddce5e3de4764904b63a4487940f",
