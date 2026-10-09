@@ -13,6 +13,7 @@ import { tempHome, present, asOwner } from "../test/helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
+process.env.VYRE_PREVIEW_THUMBS = "0";
 const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
 const { chromium } = require("playwright");
 const here = path.dirname(fileURLToPath(import.meta.url));

@@ -119,7 +119,9 @@ export default {
     const thumbDir = path.join((ctx.paths && ctx.paths.root) || os.tmpdir(), "previews-thumbs");
     try { fs.mkdirSync(thumbDir, { recursive: true, mode: 0o700 }); fs.chmodSync(thumbDir, 0o700); } catch { /* the next write says */ }
     const thumbFile = (/** @type {string} */ id) => path.join(thumbDir, `${id}.png`);
-    const chrome = seam.chrome !== undefined ? seam.chrome : findChrome(process.env, ctx.config && ctx.config.previews && ctx.config.previews.chrome);
+    // config previews.thumbs: false (or VYRE_PREVIEW_THUMBS=0) turns the pictures off; previews.chrome names the browser to use
+    const thumbsOn = !(process.env.VYRE_PREVIEW_THUMBS === "0" || (ctx.config && ctx.config.previews && ctx.config.previews.thumbs === false));
+    const chrome = seam.chrome !== undefined ? seam.chrome : thumbsOn ? findChrome(process.env, ctx.config && ctx.config.previews && ctx.config.previews.chrome) : null;
     const shoot = seam.capture || capture;
     /** @type {Set<string>} */ const shooting = new Set();
     /** Take the preview's picture: its own address on this machine, one screenshot, the last good one kept. Quiet when there is no Chrome, or the page does not come up. @param {string} id */

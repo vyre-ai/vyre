@@ -51,6 +51,7 @@ test("a preview's card gets its picture when it comes up and after a restart, on
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-thumbs-")));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   process.env.VYRE_CHROME = fakeChrome(dir);
+  process.env.VYRE_PREVIEW_THUMBS = "1";
   t.after(() => { delete process.env.VYRE_CHROME; });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));

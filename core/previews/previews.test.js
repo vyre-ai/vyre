@@ -13,6 +13,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
+process.env.VYRE_PREVIEW_THUMBS = "0"; // these tests are about the origin and the bridge; the picture has its own test (thumb.test.js)
 
 /** One request to the apps' front, as a browser on the preview's host would make it. @param {number} port @param {string} host @param {string} p @param {Record<string, string>} [headers] */
 const front = (port, host, p, headers = {}) => new Promise((resolve, reject) => {
