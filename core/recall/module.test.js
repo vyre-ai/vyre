@@ -111,9 +111,15 @@ test("recall module: a temp, dev or trial home never reads the person's ~/.claud
 });
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");
-const run = (args, env) => new Promise(resolve =>
+const once = (args, env) => new Promise(resolve =>
   execFile(process.execPath, [BIN, ...args], { env: { ...process.env, ...env, NO_COLOR: "1" } },
     (err, stdout, stderr) => resolve({ code: err ? err.code ?? 1 : 0, out: stdout + stderr })));
+// On a loaded machine the process listing that tells vyred who is calling can come back empty, and vyred answers "could not tell who is calling; try again": a person tries again, so the test does.
+const run = async (args, env) => {
+  let r = await once(args, env);
+  for (let i = 0; i < 5 && r.code !== 0 && /could not tell who is calling/.test(r.out); i++) { await new Promise(res => setTimeout(res, 1000)); r = await once(args, env); }
+  return r;
+};
 
 test("recall cli: up, index, recall, down against a temp home", async t => {
   const { root } = home(t, { vectors: false });
