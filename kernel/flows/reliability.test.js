@@ -298,3 +298,8 @@ test("a failure path's steps count for the Flow's powers and names", async () =>
   assert.equal(bad.ok, false);
   assert.ok(bad.errors.some((/** @type {any} */ e) => /nothing/.test(e.message)), "names in a handler are checked");
 });
+
+test("a block takes no policy yet: the schema refuses a key the runner would ignore", () => {
+  const bad = checkFlow(flowOf([{ id: "d", kind: "decide", if: "true", then: [], verify: { check: "true" } }]));
+  assert.ok(bad.some(p => /verify is not part of this/.test(p.message)), JSON.stringify(bad));
+});

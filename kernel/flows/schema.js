@@ -103,7 +103,8 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false) {
     else ids.add(s.id);
     if (!STEP_KINDS.includes(s.kind)) { out.push({ path: `${p}.kind`, message: `a step is one of ${STEP_KINDS.join(", ")}` }); return; }
     const keys = STEP_KEYS[/** @type {keyof typeof STEP_KEYS} */ (s.kind)];
-    const policyKeys = BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
+    // (a decide or a repeat takes no policy yet: a key the runner would ignore is refused, not accepted)
+    const policyKeys = BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] ? [] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
     onlyKeys(s, ["id", "kind", "label", ...keys, ...policyKeys], p, out);
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });
