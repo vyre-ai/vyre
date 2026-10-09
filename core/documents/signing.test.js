@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "../../kernel/flows/testing/world.js";
 import { SPACE } from "../../kernel/flows/testing/fixtures.js";
 import { catalog } from "../../kernel/flows/testing/fixtures.js";
-import { signingFlows } from "./signing.js";
+import { signingFlow } from "./signing.js";
 
 const mine = (/** @type {any} */ w, /** @type {string} */ type) => [.../** @type {Map<string, any>} */ (w.kernel.tables.get(type) || new Map()).values()];
 const OPTS = { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, email_field: "email", name_field: "client", base: "https://harlow.vyre.run/" };
@@ -20,13 +20,14 @@ function cat() {
 }
 
 test("the builder refuses what it cannot make a Flow from", () => {
-  assert.throws(() => signingFlows({ ...OPTS, type: "Matter!" }), /type must be/);
-  assert.throws(() => signingFlows({ ...OPTS, out_stage: "" }), /name the stage/);
-  assert.throws(() => signingFlows({ ...OPTS, template_id: 0 }), /template_id/);
-  assert.throws(() => signingFlows({ ...OPTS, base: "javascript:1" }), /base is the address/);
-  const f = signingFlows(OPTS);
-  assert.deepEqual(f.send.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
-  assert.equal(f.send.steps[2].input.body.expr.includes("https://harlow.vyre.run/sign/"), true);
+  assert.throws(() => signingFlow({ ...OPTS, type: "Matter!" }), /type must be/);
+  assert.throws(() => signingFlow({ ...OPTS, out_stage: "" }), /name the stage/);
+  assert.throws(() => signingFlow({ ...OPTS, template_id: 0 }), /template_id/);
+  assert.throws(() => signingFlow({ ...OPTS, base: "javascript:1" }), /base is the address/);
+  assert.throws(() => signingFlow({ ...OPTS, wait_days: 0 }), /wait_days/);
+  const f = signingFlow(OPTS);
+  assert.deepEqual(f.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
+  assert.equal(f.steps[1].then[2].input.body.expr.includes("https://harlow.vyre.run/sign/"), true);
 });
 
 test("a matter entering the stage gets a signing request and its link by email; the signed event moves it on", async () => {
@@ -35,9 +36,7 @@ test("a matter entering the stage gets a signing request and its link by email; 
     service: async (/** @type {any} */ q) => { services.push(q); return { status: 200, data: [{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }] }; },
     call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => { calls.push({ action, resource, input }); return { held: "gi_1" }; },
   } });
-  const f = signingFlows(OPTS);
-  await install(w, f.send);
-  await install(w, f.signed);
+  await install(w, signingFlow(OPTS));
   const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
   const rec = await w.kernel.records.create(alex, "matter", { client: "Dana Harlow", email: "dana@harlow.test", stage: "Intake" });
   await w.kernel.records.update(alex, "matter", rec.id, { stage: "Out for signature" }, rec.version);
