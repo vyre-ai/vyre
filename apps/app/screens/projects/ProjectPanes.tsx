@@ -74,7 +74,7 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
 }
 
 type Entry = { type: string; kind: string; id: string; urn: string; title: string; line: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
-const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records" };
+const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records", person: "person" };
 const dayKey = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
 const dayLabel = (ms: number) => {
   if (!ms) return "Earlier";

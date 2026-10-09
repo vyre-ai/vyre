@@ -13,7 +13,7 @@ const aboutOf = r => (r && r.data && r.data.about && r.data.about.urn) || null;
 const URN = /^vyre:\/\/[^/]+\/[a-z0-9][a-z0-9-]*\/[0-9a-f-]{36}$/;
 
   /** The kind a timeline entry is drawn as (its icon), by the record type. @param {string} type @param {any} d */
-const kindOf = (type, d) => (type === "communication" ? (d.kind === "text" ? "text" : d.kind === "call" ? "call" : d.kind === "meeting" ? "meeting" : "email") : type === "task" ? "task" : type === "chat-record" ? "chat" : type === "file-share" ? "file" : type === "flow-run" ? "flow" : /document|letter|contract|agreement/.test(type) ? "document" : "record");
+const kindOf = (type, d) => (type === "communication" ? (d.kind === "text" ? "text" : d.kind === "call" ? "call" : d.kind === "meeting" ? "meeting" : "email") : type === "task" ? "task" : type === "team-member" ? "person" : type === "chat-record" ? "chat" : type === "file-share" ? "file" : type === "flow-run" ? "flow" : /document|letter|contract|agreement/.test(type) ? "document" : "record");
 const dateOf = (/** @type {any} */ v) => { const n = typeof v === "number" ? v : Date.parse(String(v || "")); return Number.isFinite(n) ? n : 0; };
 const cap = (/** @type {string} */ x) => (x ? x[0].toUpperCase() + x.slice(1) : x);
 /** One plain line for a row, in the partner's words: what happened and to what. @param {string} type @param {any} d the record's data @param {string} title */
@@ -27,6 +27,7 @@ export function lineOf(type, d, title) {
   }
   if (type === "task") return d.status === "done" ? `Task done: ${title}` : d.status === "skipped" ? `Task skipped: ${title}` : d.status === "stuck" ? `Task stuck: ${title}` : `Task: ${title}`;
   if (type === "chat-record") return `Chat: ${title}`;
+  if (type === "team-member") return `${title} joined the team${d.role ? ` as ${d.role}` : ""}`;
   const state = String(d.status || d.state || "").toLowerCase();
   if (/signed|completed|filed|sent|approved/.test(state)) return `${title} ${state}`;
   return state && !/^(draft|active|open)$/.test(state) ? `${title} (${state})` : title;
@@ -57,13 +58,10 @@ export function createTimeline({ kernelOf, hub, inChat, me }) {
       }
       out.push({ type: x.type, kind: kindOf(x.type, d), id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, field: x.field });
     }
-    // the stages a project moved through: the stage engine says each time a stage's tasks are made
-    try {
-      for (const e of await k.events.read(chain, { type: "stage.tasks-made" })) {
-        if (!e || !e.data || e.data.record !== urn) continue;
-        out.push({ type: "stage", kind: "stage", id: String(e.seq || e.time), urn, title: String(e.data.stage || ""), line: `Moved to the ${String(e.data.stage || "next")} stage`, at: Number(e.time || 0) });
-      }
-    } catch { /* the caller may not read events: the story is the rest */ }
+    // the stages a project moved through: a stage's first task is made when the project enters it, so the earliest task of each stage dates the move (the stage engine keeps no history of its own)
+    const entered = new Map();
+    for (const x of rows) if (x.type === "task" && x.record.data && x.record.data.stage) { const st = String(x.record.data.stage), t = Number(x.record.created_at || x.record.updated_at || 0); if (!entered.has(st) || t < entered.get(st)) entered.set(st, t); }
+    for (const [st, t] of entered) out.push({ type: "stage", kind: "stage", id: `stage:${st}`, urn, title: st, line: `Entered the ${st} stage`, at: t });
     // files shared with the project from its chats: the share records whose path is under the project's folder
     try {
       const proj = urn.split("/")[3] === "project" ? await k.records.get(chain, "project", urn.split("/")[4]) : null;
