@@ -71,6 +71,8 @@ export default {
       // Schedules run in the Space's time zone: the planner's configured zone, else the server's own.
       zone: () => { const z = ctx.config && ctx.config.planner && ctx.config.planner.timezone; return validZone(z) ? String(z) : systemZone(); },
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
+      // A watcher that fires at a different time since schedules follow the Space's zone is told once, as a to-do in the planner.
+      notice: text => ctx.call("planner.add", { kind: "todo", title: text.slice(0, 120), body: text }),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       ask: async (prompt, o) => {

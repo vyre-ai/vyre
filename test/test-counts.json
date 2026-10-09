@@ -504,6 +504,7 @@
  "core/watchers/wake-runtime.test.js": 6,
  "core/watchers/wake.test.js": 4,
  "core/watchers/when.test.js": 2,
+ "core/watchers/zone-notice.test.js": 1,
  "core/wink/code.test.js": 12,
  "core/wink/control/gate.test.js": 20,
  "core/wink/control/headscale.test.js": 11,

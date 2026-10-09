@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1382,"event":470,"config":272,"env":256,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1382,"event":471,"config":272,"env":256,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2599,6 +2599,7 @@
     {"kind":"event","name":"watcher.fired","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[{"page":"build/tools-and-events.md","line":65,"anchor":"emit-an-event-ctxeventsemit"},{"page":"build/writing-a-module.md","line":99,"anchor":"the-rules-the-loader-enforces"},{"page":"architecture/spec.md","line":225,"anchor":"51-the-manifest-five-verbs"},{"page":"architecture/spec.md","line":293,"anchor":"6-events"}]},
     {"kind":"event","name":"watcher.paused","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[]},
     {"kind":"event","name":"watcher.resumed","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[]},
+    {"kind":"event","name":"watcher.schedule-moved","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[]},
     {"kind":"event","name":"watcher.woke","definedIn":"core/watchers/runtime.js","page":"reference/events.md#watchers","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.card","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherscard","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.create","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherscreate","module":"watchers","mentions":[{"page":"using/watchers.md","line":35,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":37,"anchor":"ask-for-a-watcher"},{"page":"using/watchers.md","line":156,"anchor":"which-surface-does-what"},{"page":"using/watchers.md","line":238,"anchor":"what-it-will-not-do"},{"page":"architecture/spec.md","line":224,"anchor":"51-the-manifest-five-verbs"},{"page":"architecture/spec.md","line":413,"anchor":"76-watchers--workstream"}]},
