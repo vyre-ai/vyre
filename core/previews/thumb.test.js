@@ -13,10 +13,10 @@ import { SCRATCH } from "../../test/scratch.mjs";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 
-/** A stand-in Chrome: writes a PNG-looking file where --screenshot says, and notes the address and flags it was given. @param {string} dir @param {{ sleep?: number }} [o] */
+/** A stand-in Chrome (like the real one, it only writes a .png or .jpeg): writes a PNG-looking file where --screenshot says, and notes the address and flags it was given. @param {string} dir @param {{ sleep?: number }} [o] */
 const fakeChrome = (dir, o = {}) => {
   const f = path.join(dir, "fake-chrome");
-  fs.writeFileSync(f, `#!/bin/sh\nfor a in "$@"; do case "$a" in --screenshot=*) out="\${a#--screenshot=}";; http*) url="$a";; esac; done\necho "$url" >> "${dir}/seen.txt"\necho "$@" >> "${dir}/args.txt"\n${o.sleep ? `sleep ${o.sleep}` : ""}\nprintf '\\211PNG\\r\\n\\032\\n' > "$out"; head -c 600 /dev/zero >> "$out"\n`, { mode: 0o755 });
+  fs.writeFileSync(f, `#!/bin/sh\nfor a in "$@"; do case "$a" in --screenshot=*) out="\${a#--screenshot=}";; http*) url="$a";; esac; done\ncase "$out" in *.png) ;; *) echo "Unsupported screenshot image file type" >&2; exit 0;; esac\necho "$url" >> "${dir}/seen.txt"\necho "$@" >> "${dir}/args.txt"\n${o.sleep ? `sleep ${o.sleep}` : ""}\nprintf '\\211PNG\\r\\n\\032\\n' > "$out"; head -c 600 /dev/zero >> "$out"\n`, { mode: 0o755 });
   return f;
 };
 
@@ -38,7 +38,7 @@ test("a screenshot is written whole to the file, loopback names resolve, and a b
   assert.ok(fs.statSync(out).size > 200);
   assert.equal(fs.statSync(out).mode & 0o777, 0o600, "private to the daemon's user");
   assert.match(fs.readFileSync(path.join(dir, "args.txt"), "utf8"), /--host-resolver-rules=MAP \*\.localhost 127\.0\.0\.1/);
-  assert.ok(!fs.existsSync(`${out}.part`));
+  assert.ok(!fs.existsSync(path.join(dir, "a.part.png")));
   const slow = path.join(dir, "slow"); fs.mkdirSync(slow);
   const t0 = Date.now();
   assert.equal(await capture({ chrome: fakeChrome(slow, { sleep: 30 }), url: "http://127.0.0.1:1/", out: path.join(slow, "b.png"), timeoutMs: 600 }), false);

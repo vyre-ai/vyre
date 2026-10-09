@@ -32,7 +32,7 @@ export function findChrome(env = process.env, configured = "") {
 export async function capture({ chrome, url, out, timeoutMs = 20_000, width = 800, height = 500 }) {
   for (const sandbox of [true, false]) {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-thumb-"));
-    const tmp = `${out}.part`;
+    const tmp = out.replace(/\.png$/, "") + ".part.png"; // Chrome picks the format from the extension
     const args = ["--headless", "--disable-gpu", "--hide-scrollbars", "--mute-audio", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--disable-sync", "--disable-background-networking",
       `--user-data-dir=${profile}`, `--window-size=${width},${height}`, "--virtual-time-budget=4000", "--host-resolver-rules=MAP *.localhost 127.0.0.1", `--screenshot=${tmp}`, ...(sandbox ? [] : ["--no-sandbox"]), url];
     const done = await new Promise(resolve => {
