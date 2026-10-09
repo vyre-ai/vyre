@@ -31,7 +31,7 @@ import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { checkAnswer, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
-import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
 import { agentClaim, callerKind } from "../modules/index.js";
@@ -54,7 +54,7 @@ const BATCH = 500;
 /**
  * @param {any} ctx the module's context
  * @param {{ verify?: (ip: string) => Promise<any>, insecure?: boolean, heartbeat?: number, pollMs?: number,
- *   hostname?: string, timeout?: number, ttl?: number, hold?: number, health?: { check: (which: any) => Promise<any> } }} seam test seams; production passes nothing
+ *   hostname?: string, timeout?: number, ttl?: number, hold?: number, health?: { check: (which: any) => Promise<any> }, yesWaitMs?: number, yesPollMs?: number }} seam test seams; production passes nothing
  */
 export function macSide(ctx, seam = {}) {
   const file = path.join(ctx.paths.root, "link.json");
@@ -169,20 +169,34 @@ export function macSide(ctx, seam = {}) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
       }
       extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
-      // A human-only tool also needs a proof the box can check: this Mac's Secure Enclave key,
-      // enrolled on the box at sign-in, signs this exact call after Touch ID (ADR 0032 part 2c).
-      if (human) {
-        if (!person.human || !person.human.key) return { error: { code: "presence_required", message: `${tool} needs your passkey on the box, or sign this Mac in again (vyre link signin) to use Touch ID here` } };
-        const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-        const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`);
-        let sig;
-        try { sig = await se.sign(person.human.handle, msg, `Vyre: ${tool} on your box`); }
-        catch (e) { return { error: { code: /** @type {any} */ (e).code || "presence_required", message: /** @type {Error} */ (e).message } }; }
-        extra["x-vyre-presence"] = `device key=${person.human.key} ts=${ts} nonce=${nonce} sig=${sig}`;
-      }
+      // A human-only tool that is one of the three moments needs the person's yes: no proof is made here (0.3.1 has no device-key header); the box names what must be approved and the yes goes by a card
+      // the owner's phone answers (askYes below).
     }
     if (!state.reachable && Date.now() < state.nextTry) return { error: { code: "box_unreachable", message: state.error || "the box is not reachable" } };
-    return boxCall(tool, input, conn, { headers: extra });
+    const r = await boxCall(tool, input, conn, { headers: extra });
+    if (human && r.error && r.error.code === "presence_required" && r.error.moment && r.error.request && saved.person) return askYes(tool, input, extra, r.error, saved.person);
+    return r;
+  }
+
+  /**
+   * The yes for a moment the box refused: ask a card for exactly the request the box named (as this Mac's signed-in person), wait while the owner's phone answers, and call again with the approved card
+   * (x-vyre-approval). The old Secure Enclave device-key proof this Mac used to send is gone (0.3.1).
+   */
+  async function askYes(tool, input, extra, refused, person) {
+    const as = (t, i, more = {}) => boxCall(t, i, conn, { headers: { ...personHeaders(person, "/v1/tools/" + encodeURIComponent(t), i), ...more } });
+    const reuse = ["vault.reveal", "vault.copy", "vault.totp"].includes(tool);
+    const asked = await as("approvals.ask", { moment: refused.moment, request: refused.request, ...(reuse ? { reuse: true } : {}) });
+    if (asked.error) return asked;
+    const id = asked.data.id;
+    const end = Date.now() + (seam.yesWaitMs ?? 5 * 60_000);
+    while (Date.now() < end) {
+      await new Promise(res => setTimeout(res, seam.yesPollMs ?? 1500));
+      const st = await as("approvals.status", { id });
+      if (st.error) return st;
+      if (st.data.state === "approved") return boxCall(tool, input, conn, { headers: { ...extra, "x-vyre-approval": id } });
+      if (st.data.state !== "waiting") return { error: { code: "presence_required", message: "that was not approved" } };
+    }
+    return { error: { code: "presence_required", message: "nobody approved it in time; ask again" } };
   }
 
   async function hello() {

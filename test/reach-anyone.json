@@ -1081,10 +1081,6 @@
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
-  "presence.session.open": {
-   "module": "presence",
-   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
-  },
   "projects.access.check": {
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local, module"

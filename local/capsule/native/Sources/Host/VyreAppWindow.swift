@@ -1,14 +1,14 @@
 // VyreAppWindow: the Vyre app on the Mac. The 0.3 app's web build (apps/app, `expo export -p web`, which this Mac's own vyred serves at /app/) runs
 // in a real window, a WKWebView, with the native things a web page cannot do: a menu bar, Command shortcuts, Touch ID answering the box's presence
-// challenge, notifications from the shell, and drag and drop of files (WKWebView hands a dropped file to the page itself).
+// challenge (now vyred's own Touch ID dialog, asked for by the page with approvals.local-yes), notifications from the shell, and drag and drop of files (WKWebView hands a dropped file to the page itself).
 //
 // The page never sees a port or a token. Its address is vyreapp://box/app/, and a WKURLSchemeHandler (BoxSchemeHandler) forwards every request
 // the page makes (the app's own files, /v1/tools/<name>, the event stream) to vyred over its unix socket, as the "capsule" caller, so the web
 // build is the same-origin page it already is. The window is Lumen's one regular-app surface: it makes Lumen a Dock app and gives it the full
 // menu bar while it is open, and puts both back (accessory app, the standard-shortcuts menu) when it closes.
 //
-// The bridge is one message handler, "vyre", and window.__vyreShell on the page side (VyreAppBridge.js in apps/app/src/shell). Calls: presence
-// (Touch ID, answered with CapsulePresence's x-vyre-presence header), notify, open (an https link in the browser). Native to page: a menu command
+// The bridge is one message handler, "vyre", and window.__vyreShell on the page side (VyreAppBridge.js in apps/app/src/shell). Calls: presence.key
+// (the Capsule's key for a Mac server), notify, open (an https link in the browser). Native to page: a menu command
 // is window.__vyreShell._command(path), which the app turns into a route change.
 
 import AppKit
@@ -143,15 +143,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private func handle(id: Int, op: String, args box: UncheckedBox) async {
         let args = box.value
         switch op {
-        case "presence":
-            guard let p = presence, let tool = args["tool"] as? String else { return reply(id, ["error": "Touch ID is not set up on this Mac yet."]) }
-            let input = args["input"] as? [String: Any] ?? [:]
-            switch await p.proofFromAnyThread(tool: tool, input: UncheckedBox(input), summary: args["summary"] as? String) {
-            case .success(let header): reply(id, ["header": header])
-            case .failure(let f): reply(id, ["error": f.message])
-            }
         case "presence.key":
-            // the Capsule's key for a Mac server: its public half (SPKI) and the id vyre-core will give it; the pairing carries it, and `presence` above signs with it behind Touch ID
+            // the Capsule's key for a Mac server: its public half (SPKI) and the id vyre-core will give it; the pairing carries it
             guard let p = presence, let e = p.keyForServer() else { return reply(id, ["error": "This Mac could not make its key for the server."]) }
             reply(id, ["public_key": e.publicKey, "id": e.id])
         case "identity.public", "identity.sign", "identity.has", "identity.forget":
@@ -340,7 +333,6 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         kind: "mac",
         boxless: !!window.__vyreBoxless,
         version: window.__vyreVersion || "",
-        presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         presenceKey: function () { return call("presence.key").then(function (r) { return { public_key: r.public_key, id: r.id }; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
@@ -394,7 +386,7 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
         let method = task.request.httpMethod ?? "GET"
         let body = BoxSchemeHandler.body(of: task.request)
         var headers: [String: String] = [:]
-        for k in ["x-vyre-presence", "x-vyre-presence-keep", "idempotency-key", "last-event-id"] { if let v = task.request.value(forHTTPHeaderField: k) { headers[k] = v } }
+        for k in ["x-vyre-presence", "x-vyre-approval", "x-vyre-yes", "idempotency-key", "last-event-id"] { if let v = task.request.value(forHTTPHeaderField: k) { headers[k] = v } }
         let accept = task.request.value(forHTTPHeaderField: "Accept") ?? "*/*"
         let stream = accept.contains("text/event-stream")
         let sock = socket

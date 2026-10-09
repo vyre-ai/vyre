@@ -14,7 +14,7 @@ export function boxOrigin(): string;
 /** A WebSocket on whichever path answers (direct or relay): same call for both. It does not move; on close, open another. */
 export function socket(path: string): Promise<WebSocket>;
 /** A read, now, never queued. */
-export function call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string }): Promise<Result<T>>;
+export function call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<Result<T>>;
 /** A write through the outbox: shown as sending at once, gone on the box's answer. */
 export function send<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string }): Promise<{ key: string; answered: Promise<Result<T>> }>;
 /** Send a write waiting on presence again, with a proof bound to its exact input. */

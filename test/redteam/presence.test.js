@@ -167,20 +167,3 @@ test("redteam P-GRANT: the first-passkey grant enrolls one passkey for its own a
   assert.equal((await enroll({ kind: "passkey", rp_id: "alex.vyre.run" }, old.grant)).ok, false, "past five minutes");
 });
 
-test("redteam P-SESSION: a session proves only a tool that allows it, only on its own device, only with its secret, and ends when closed", async t => {
-  const { p } = setup(t);
-  const s = p.openSession({ method: "device", keyId: "k1", peer: { stableId: "phone" } });
-  const proof = { method: "session", id: s.session, secret: s.secret };
-  const allows = { presence: { session: () => true } };
-  const reveal = { tool: "vault.reveal", input: { name: "x" }, caller: "deck" };
-  assert.equal((await p.verify({ ...reveal, def: allows, peer: { stableId: "phone" }, proof })).ok, true, "control: its own device, the Deck, an item that allows it");
-  assert.equal((await p.verify({ ...reveal, def: allows, peer: { stableId: "laptop" }, proof })).ok, false, "another device");
-  assert.equal((await p.verify({ ...reveal, def: allows, peer: { stableId: "phone" }, proof: { ...proof, secret: "wrong" } })).ok, false, "a wrong secret");
-  assert.equal((await p.verify({ ...reveal, def: { presence: { session: () => false } }, peer: { stableId: "phone" }, proof })).ok, false, "an item that wants its own proof every time");
-  assert.equal((await p.verify({ ...reveal, caller: "cli", def: allows, peer: { stableId: "phone" }, proof })).ok, false, "a vault reveal from a terminal");
-  assert.equal((await p.verify({ tool: "vault.put", input: { name: "x" }, caller: "deck", def: allows, peer: { stableId: "phone" }, proof })).ok, false, "a tool that is not session-eligible");
-  assert.throws(() => p.openSession({ method: "code" }), /after Touch ID|device key|passkey/, "a code never opens a session");
-  assert.throws(() => p.openSession({ method: "tty" }), /after Touch ID|device key|passkey/, "nor a terminal code");
-  assert.ok(p.closeSession(s.session));
-  assert.equal((await p.verify({ ...reveal, def: allows, peer: { stableId: "phone" }, proof })).ok, false, "after it is closed");
-});

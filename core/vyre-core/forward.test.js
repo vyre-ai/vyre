@@ -58,13 +58,13 @@ test("vyre-core forward: the registry passes a core tool's proof through untouch
   // notes.add stands in for a first-party forwarder (the vault's, on a core Mac).
   reg.tools.get("notes.add").core = true;
   const proof = { method: "device", key: "k1", ts: "1", nonce: "abcdefgh", sig: "s" };
-  // No core: vyred's own floor applies, as everywhere today.
-  assert.equal((await reg.call("notes.add", {}, "cli", { proof })).error.code, "presence_required");
-  assert.deepEqual(asked, ["notes.add"]);
+  // No core: vyred's own floor applies (notes.add is not one of the three moments here, so the person needs no proof), and the proof is not passed on.
+  assert.deepEqual((await reg.call("notes.add", {}, "cli", { proof })).data, { proof: null });
+  assert.deepEqual(asked, []);
   coreHolder.link = /** @type {any} */ ({ verify: async () => ({ ok: false }), keys: async () => [], challenge: async () => ({}), call: async () => ({}) });
   try {
     assert.deepEqual((await reg.call("notes.add", {}, "cli", { proof })).data, { proof: "device key=k1 ts=1 nonce=abcdefgh sig=s" });
-    assert.deepEqual(asked, ["notes.add"], "vyred never checked (or spent) it");
+    assert.deepEqual(asked, [], "vyred never checked (or spent) it");
   } finally { coreHolder.link = null; }
 });
 

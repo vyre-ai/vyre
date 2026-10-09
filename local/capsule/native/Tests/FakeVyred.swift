@@ -19,7 +19,12 @@ func vyScratch(_ name: String) -> String {
     return dir
 }
 
-struct FakeError: Error { var code: String; var message: String }
+struct FakeError: Error {
+    var code: String; var message: String
+    /// More fields of the error object (presence_required names the moment and the request).
+    var extra: [String: Any] = [:]
+    var object: [String: Any] { var o: [String: Any] = ["code": code, "message": message]; for (k, v) in extra { o[k] = v }; return o }
+}
 
 final class FakeVyred: @unchecked Sendable {
     typealias Tool = ([String: Any]) -> Any
@@ -33,10 +38,10 @@ final class FakeVyred: @unchecked Sendable {
     var eventsLog: [[String: Any]] = []
     private(set) var calls: [(tool: String, input: [String: Any])] = []
     private(set) var callers: Set<String> = []
-    /// The request headers of each tool call, in order (x-vyre-presence, x-vyre-presence-keep).
+    /// The request headers of each tool call, in order (x-vyre-approval, x-vyre-presence).
     private(set) var toolHeaders: [(tool: String, headers: [String: String])] = []
     /// Looks at a tool call's headers first: an error answers instead of the tool, and the
-    /// headers go back on the answer (x-vyre-presence-session).
+    /// headers go back on the answer.
     var headerHook: ((String, [String: String]) -> (FakeError?, [String: String]))?
     private(set) var streamsOpened = 0
     private(set) var healthChecks = 0
@@ -160,7 +165,7 @@ final class FakeVyred: @unchecked Sendable {
                     let line = String(decoding: VJ.encode(["draft": ["id": id, "text": text]]) ?? Data(), as: UTF8.self) + "\n"
                     _ = VySock.writeAll(c, self.chunk(line), deadline: Date().addingTimeInterval(5))
                 }
-                let result: [String: Any] = (out as? FakeError).map { ["error": ["code": $0.code, "message": $0.message]] } ?? ["data": out]
+                let result: [String: Any] = (out as? FakeError).map { ["error": $0.object] } ?? ["data": out]
                 if opened {
                     let last = String(decoding: VJ.encode(["result": result]) ?? Data(), as: UTF8.self) + "\n"
                     _ = VySock.writeAll(c, self.chunk(last) + Data("0\r\n\r\n".utf8), deadline: Date().addingTimeInterval(5))
@@ -168,7 +173,7 @@ final class FakeVyred: @unchecked Sendable {
                 }
                 respond(c, result); close(c); return
             }
-            answer = err.map { ["error": ["code": $0.code, "message": $0.message]] as Any } ?? route(method, path, query, body)
+            answer = err.map { ["error": $0.object] as Any } ?? route(method, path, query, body)
         } else { answer = route(method, path, query, body) }
         respond(c, answer, headers: extra)
         close(c)
@@ -195,7 +200,7 @@ final class FakeVyred: @unchecked Sendable {
             lock.lock(); calls.append((name, input)); let fn = tools[name]; lock.unlock()
             guard let fn else { return ["error": ["code": "no_such_tool", "message": "no tool \(name)."]] }
             let out = fn(input)
-            if let e = out as? FakeError { return ["error": ["code": e.code, "message": e.message]] }
+            if let e = out as? FakeError { return ["error": e.object] }
             return ["data": out]
         }
         return ["error": ["code": "not_found", "message": "no route \(path)"]]

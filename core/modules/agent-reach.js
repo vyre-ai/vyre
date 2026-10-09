@@ -195,7 +195,6 @@ export const PERSON_ONLY = new Map([
   ["names.serve", "needs the person's Face ID or presence: the person's name and domain"],
   ["names.unserve", "needs the person's Face ID or presence: the person's name and domain"],
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
-  ["presence.session.close", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
   ["publish.decide", "would let an assistant widen its own authority: publishing decisions"],
   ["publish.domain.remove", "would let an assistant widen its own authority: publishing decisions"],
   ["publish.retire", "would let an assistant widen its own authority: publishing decisions"],

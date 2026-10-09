@@ -93,6 +93,8 @@ export const momentOf = (tool) => {
   return null;
 };
 // Each moment covers an explicit tool list (wink-2, f0409aa1b); anything else is bad_input at ask, so a floor refusal on another tool is never turned into an ask.
+/** A reveal, a copy or a code asks for the five-minute reuse (lib/one-yes.js REUSE_OPS). */
+const REUSE_OPS = ["vault.reveal", "vault.copy", "vault.totp"];
 const VAULT_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.inject", "vault.resolve", "vault.render"]);
 const PAIR_TOOLS = new Set(["presence.enroll", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
 
@@ -105,6 +107,8 @@ const PAIR_TOOLS = new Set(["presence.enroll", "wink.phone.pair.answer", "wink.s
 export const heldAsk = (error, tool, input = {}) => {
   const d = error && error.code === "held" ? error.detail : null;
   if (d && ["pair", "vault", "outward"].includes(d.moment) && d.request && typeof d.request.op === "string") return { moment: d.moment, request: { op: d.request.op, fields: d.request.fields && typeof d.request.fields === "object" ? d.request.fields : {} } };
+  // The server names the moment and the exact request it needs approved (0.3.1): ask for that, whatever list this build mirrors.
+  if (error && error.code === "presence_required" && ["pair", "vault", "outward"].includes(error.moment) && error.request && typeof error.request.op === "string") return { moment: error.moment, request: { op: error.request.op, fields: error.request.fields && typeof error.request.fields === "object" ? error.request.fields : {} } };
   const moment = momentOf(tool);
   return error && error.code === "presence_required" && moment ? { moment, request: { op: String(tool), fields: input } } : null;
 };
@@ -119,7 +123,8 @@ export const heldAsk = (error, tool, input = {}) => {
 export async function askYes(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
-  const ask = await call("approvals.ask", { moment: o.moment, request: o.request });
+  const reuse = o.request && REUSE_OPS.includes(o.request.op);
+  const ask = await call("approvals.ask", { moment: o.moment, request: o.request, ...(reuse ? { reuse: true } : {}) });
   if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
   o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
   // A browser whose key is a passkey says its own yes: the caller answers the card it just opened. A failure leaves the ask for the phone.

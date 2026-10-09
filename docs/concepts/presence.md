@@ -1,6 +1,6 @@
 ---
 title: Presence
-summary: How Vyre tells a person from a model before a human-only action, which tools need it, and how each surface proves it.
+summary: How Vyre tells a person from a model, the three moments that need your yes, and how each surface gives it.
 audience: users, builders, agents
 owner: docs
 status: stable
@@ -8,57 +8,45 @@ status: stable
 
 # Presence
 
-Some actions are yours alone: approving what the Gate holds, answering a permission question, releasing a vault value, accepting a lesson, pairing a new Mac. Claude Code runs as your Unix user, so anything it runs can reach vyred's socket and claim to be the CLI. A caller label proves nothing. Presence is the proof that a person is at a device, checked by vyred itself, before one of those tools runs. The design is [ADR 0004](../adr/0004-presence.md).
+Some actions are yours alone. Claude Code runs as your Unix user, so anything it runs can reach vyred's socket and claim to be the CLI. A caller label proves nothing, so Vyre asks two questions in one place (`lib/one-yes.js`): is this call **you** (a verified person surface, never a model, an agent, a module or a guest), and for three moments, is there a fresh **yes** from one of your real devices.
 
-## What a presence tool does
+## The three moments
 
-When a tool needs presence, `vyred` refuses the call unless it carries a valid proof, whoever the caller claims to be:
+A yes is asked for exactly these, and for nothing else:
+
+- **Pairing, or widening reach.** Adding a device, changing the keys that can give a yes, and what widens what an agent, a module or an outsider can do: `presence.enroll`, `presence.remove`, `presence.code`, `link.pair.approve`, `relay.devices.trust`, `wink.approve`, `spaces.members.set-role`, `projects.access.grant`, `computers.egress.set`, `hooks.enable`, `learn.skill-install`, `appmods.install`, `pluginagent.grant` and the others listed in `MOMENT_OPS.pair` in `lib/one-yes.js`.
+- **A vault secret.** Showing, copying or computing a code for one; grants and passes; destroying shared secrets; a bulk import: `vault.reveal`, `vault.copy`, `vault.totp`, `vault.grant`, `vault.approve`, `vault.offboard`, `vault.restore`, `vault.import` and the others in `MOMENT_OPS.vault`.
+- **An outward send, post or pay.** A tool marked `outward: true` in its `module.json`, and `gate.approve`. A model's call to one is held as a card until you say yes.
+
+Every other tool that used to ask for a proof (about ninety of them) now needs only that the call is you: a signed-in person session or one of your own surfaces. No proof, no header. Your own actions on your own screens, such as answering Claude's questions, ask nothing (`PERSON_ONLY`).
+
+## What a refusal says
+
+A moment tool called without a yes answers 403:
 
 ```json
-{ "error": { "code": "presence_required", "message": "...", "methods": ["touchid", "tty"] } }
+{ "error": { "code": "presence_required", "message": "...", "moment": "vault",
+             "request": { "op": "vault.reveal", "fields": { "name": "mail-token" } },
+             "sign": { "op": "...", "space": "spc_...", "fields": {} } } }
 ```
 
-The HTTP status is 403. A proof is bound to one tool and one input (the SHA-256 of the input's canonical JSON), is used once, and expires after 2 minutes. A proof for "approve item A" cannot approve item B.
+`request` is exactly what must be approved: the tool and the plain fields of its input (a call with a long or nested input, such as an import, is bound by a digest of the whole input, so one yes covers exactly that call). `sign` is the bytes a device key signs for a direct yes.
 
-Before you prove anything, every method shows you the tool's summary: for the Gate, where the message is going and the start of its final words.
+## How you give the yes
 
-## Which tools need it
+| Form | Where | What happens |
+|---|---|---|
+| A card | every client | `approvals.ask { moment, request }` makes a card; your phone shows it and signs it; the client calls again with `x-vyre-approval: <id>`. A card is single use and bound to the exact call and the asking device. |
+| Touch ID or a terminal code | the Mac or a computer of your own | `approvals.local-yes { id }` shows the system dialog (or writes a code to your login terminal that you type back). The CLI, the Capsule and the Deck do this first. A server with no screen of its own leaves the card for your phone. |
+| A signed yes | a device holding a key enrolled with the sealing process | the device signs `sign` and sends it as `x-vyre-yes`. Single use. A software key counts only on a development build. |
 
-The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, or ask only for some inputs with a `when` function on the tool's presence setting, but it cannot take one away.
+A yes for `vault.reveal`, `vault.copy` or `vault.totp` may ask to be **reused for five minutes** by that device. During the window the same device calls those three tools with no proof; nothing else is covered, no agent ever is, and a restart ends it. There are no 30-minute sessions and no terminal window any more.
 
-- Sending: `gate.approve`, for a send, a payment or a deletion (every Gate kind today; a kind added later asks only if the Gate lists it).
-- Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
-- Learning: `learn.skill-install`.
-- Machines: `link.pair.approve`.
-- Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`, `presence.person.start`.
-- Who else reaches this box: `hooks.enable`, `hooks.open`, `hooks.close`, `computers.egress.set`, `projects.access.grant`.
+## Still the old way
 
-Your own actions on your own screens ask for no extra proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making, changing and resuming agents (`agents.create`, `agents.update`, `agents.resume`), changing a setting (`settings.set`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), and more besides. The list in `core/presence/index.js` is the full one. Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
-
-Over the network, your own surface means a signed-in person, not just a device of yours. A browser, the phone app or a paired Mac that reaches the box over the network or the relay is a device until you sign in with a passkey on it; a device that has not signed in gets `person_session_required` on these tools. A sign-in lasts 30 days from its last use and is tied to that device. You can list and end them in Settings. See [ADR 0032](../adr/0032-person-and-device.md).
-
-Your assistant may still change an agent's plain fields (name, instructions, model, effort, description) through Vyre's tools. See [Agents](../using/agents.md).
-
-`GET /v1/tools` and `vyre tools` mark these with `presence: true`. [Tools](../reference/tools.md) marks them "needs a person present".
-
-## How each surface proves it
-
-| Method | Where | What you do | Why a model cannot |
-|---|---|---|---|
-| `touchid` | the Mac | vyred shows the macOS authentication dialog (Touch ID, Watch or password) with the summary as its reason | it cannot press the sensor or type into the system dialog |
-| `tty` | a terminal on the Mac | vyred writes the summary and a 6-character code straight to your login terminal; you type the code back | the Bash tool's shell has no controlling terminal, and a `script` or tmux pty is not a login terminal |
-| `capsule` | Lumen | you click; Lumen signs the call with a key only it can read from the keychain | it cannot read a keychain item whose ACL names only Lumen |
-| `passkey` | the Vyre app | your device's passkey, with biometric verification | it cannot make a platform passkey assertion |
-| `device` | a phone or desktop app paired to the box | a key held in the device's secure hardware, released by Face ID, fingerprint or Windows Hello | it cannot unlock the device's hardware key |
-| `code` | enrolling a passkey | type a one-time code from `presence.code` into the Vyre app | only `presence.enroll` accepts it |
-| `session` | the Vyre app | a short session opened with a strong proof | only `vault.reveal`, `vault.copy` and `vault.totp` accept it |
-
-The CLI handles `presence_required` itself: Touch ID on a Mac that has it, the terminal code otherwise. It first needs a controlling terminal, so a process without one (the Bash tool) cannot even make a Touch ID dialog appear.
-
-```
-vyre call gate.approve '{"id":"h_12"}'   # asks for Touch ID, or prints where to type the code
-vyre call --tty gate.approve '{"id":"h_12"}'   # the terminal code, even where Touch ID exists
-```
+- **Signing in.** `presence.person.start` takes its passkey or device-key proof in `x-vyre-presence`: it authenticates you, it is not an act.
+- **Enrolling the first key** with a one-time code or grant (`presence.enroll`).
+- **A 0.3.0 client's `x-vyre-presence` header** is checked at the server's edge and turned into a card that goes through the same yes check; each method is logged once as deprecated and the adapter goes in 0.3.2.
 
 ## Enroll your keys
 
@@ -68,43 +56,30 @@ vyre presence code         # a one-time code to enroll a passkey in the Vyre app
 vyre presence remove <id>
 ```
 
-- Lumen enrolls its key at first run, with Touch ID.
-- When you set up in the Vyre app, the device that started setup holds the key for your name.
-- On a box, the box never takes a terminal code: there, the Vyre app's passkey is the only proof.
+On a box, the box never takes a terminal code: there, the card goes to your phone.
 
 > [!WHY] Why does the box refuse a terminal code?
-> A model on your Mac can often `ssh -t` to the box, since the Mac usually holds your SSH key, and get a real terminal there. Inside the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no login record lists, so vyred cannot tell your terminal from Claude's. A passkey needs a person at a device.
-
-## Sessions in the Vyre app
-
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, Lumen signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the device that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
-
-A session serves the Vyre app and Lumen. The CLI gets a narrower window of its own, with no secret on disk: after one Touch ID (or Lumen or passkey proof) from a login terminal, vyred remembers that login (the terminal, the login's first process and its start time, so a new tab that reuses the terminal's number starts with nothing), and that login's vault approvals and grants ask nothing until 30 minutes from the proof. Anything that puts a secret or a code on screen (`vyre vault get --reveal`, copy, one-time codes, `vyre vault run` resolving secrets) asks every time in a terminal. Each use of the window writes one line to that terminal ("vyre: used your Touch ID window for ...") and one to the vault's audit (`vyre vault audit`). vyred names the login from the kernel's word on which process connected and which terminal it runs in, never from anything the caller sends. A process under a Claude session, a process with no controlling terminal (the Bash tool, anything detached), and a `script` or expect pty that `who` does not list never ride it. A tmux pane rides the window of the logins its attached clients run in (tmux attached from your own login shell), and asks every time when a client is missing, is not a login, or runs under Claude. A terminal code proves its one call without opening a window. The window lives in vyred's memory, so a restart asks again. On a box the CLI never gets one: the Vyre app's passkey proves each call there. A Claude session's MCP tools and an agent are refused, and never asked.
-
-> [!WHY] Why does the terminal window not cover reveals?
-> Other processes running as you can type into your terminal: `tmux send-keys` into a pane you have attached, or AppleScript's `do script ... in window 1` into a Terminal tab. vyred sees your login shell run the command and cannot tell who typed it. Within a window nothing would ask, so a model could reveal a secret into a file without you touching anything. Approvals and grants also show in Needs and in notices, and each use prints a line in your terminal, so an injected one does not pass unseen; a secret on screen or in a file cannot be taken back. The Vyre app, Lumen and the phone keep the full window: their buttons are not typed into this way.
-
-Your own memory and lessons ask nothing: `vyre memory correct`, `merge` and `split`, and `vyre learn accept`, `retire` and `relax`. Their callers lists keep models and agents out.
+> A model on your Mac can often `ssh -t` to the box, since the Mac usually holds your SSH key, and get a real terminal there. Inside the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no login record lists, so vyred cannot tell your terminal from Claude's. A passkey or a card on your phone is the only yes there.
 
 ## What a tool sees
 
-A tool that ran after a proof gets `presence: { method, keyId }` in its second argument. The proof itself never reaches the tool. Events `presence.proved` and `presence.refused` carry the tool, the method and the caller, never a code or a key.
+A tool that ran after a yes gets `presence: { method, keyId }` in its second argument (`approval`, `yes`, `reuse` or `person`). The yes itself never reaches the tool. Events `presence.proved` and `presence.refused` carry the tool, the method and the caller, never a code or a key.
 
 ## Who is exempt
 
-- **Module callers** (`module:<name>`). Only the loader makes these, and modules are code you installed. A module that turns an outside event into a presence tool must prove the person itself.
+- **Module callers** (`module:<name>`). Only the loader makes these, and modules are code you installed. A module that turns an outside event into a moment must have the person's yes itself.
 - **A registry built without a verifier.** Only unit tests build one. vyred always builds one.
 
-A device caller is not exempt. `device:<id>` proves which device sent the call, not that you are there, and Claude Code on your Mac is on the same device.
+A device caller is not exempt for a moment. `device:<id>` proves which device sent the call, not that you are there, and Claude Code on your Mac is on the same device.
 
 ## What it will not defend
 
-Code running as you can rewrite Vyre itself: edit `core/presence`, restart vyred, or write into `vyre.db`. The Harness floor denies the direct forms of this (reading Vyre's internals, raw socket clients, forged `x-vyre-caller` or `x-vyre-presence` headers, human-only `vyre` commands), but a filter over shell text can always be dodged. The line Vyre holds: a model using Vyre's interfaces (the socket, the CLI, the MCP server) cannot complete a human-only action without a person proving presence after seeing the summary.
+Code running as you can rewrite Vyre itself: edit `core/presence`, restart vyred, or write into `vyre.db`. The Harness floor denies the direct forms of this (reading Vyre's internals, raw socket clients, forged `x-vyre-caller` or `x-vyre-yes` headers, human-only `vyre` commands), but a filter over shell text can be dodged by a determined enough command.
 
-On a Docker box, the sessions Vyre runs itself (the assistant, agents, chat) run as a separate user, `vyre-agent`, which cannot open vyred's socket or read `~/.vyre`. A Claude Code you start by hand in the container, and any session on a Mac or on a box without Docker, still runs as the same user as vyred, so for those the guarantee rests on the checks above. See [ADR 0032](../adr/0032-person-and-device.md).
+On a Docker box, the sessions Vyre runs itself (the assistant, agents, chat) run as a separate user, `vyre-agent`, which cannot open vyred's socket or read `~/.vyre`. A Claude Code you start by hand in the container, and any session on a Mac or on a box without Docker, still runs as the same user as vyred.
 
 ## Next
 
 - [The security floor](floor.md): the nine rules presence serves.
-- [Tools and events](../build/tools-and-events.md): declaring `presence` on your own tool.
+- [Tools and events](../build/tools-and-events.md): marking your own tool `outward`.
 - [Your private network](network.md): why a device identity is not a person.

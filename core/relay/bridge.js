@@ -22,8 +22,9 @@ const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
 /** Headers a device may send. Everything else is dropped: the caller comes from the channel, and a
  * device is never an agent, so it carries no agent key. Idempotency-Key rides along so a retried
  * write runs once (ADR 0029, R2); authorization and x-vyre-proof carry a person session (e2e's web
- * session) untouched, for the router to check against the device's peer. */
-const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|idempotency-key|authorization|x-vyre-proof|x-vyre-presence)$/;
+ * session) untouched, for the router to check against the device's peer. x-vyre-yes and x-vyre-approval carry a device's yes (0.3.1); x-vyre-presence stays only for a 0.3.0 device
+ * (the server turns it into a yes at its edge and logs it as deprecated; BACKLOG 0.3.2 drops it here). */
+const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|idempotency-key|authorization|x-vyre-proof|x-vyre-presence|x-vyre-yes|x-vyre-approval)$/;
 /** Headers that describe the hop, not the response. */
 const HOP = /^(connection|keep-alive|transfer-encoding|upgrade|strict-transport-security)$/;
 const MAX_HEAD = 16 * 1024;

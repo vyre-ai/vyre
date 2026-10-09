@@ -9,9 +9,7 @@
 // authentication browser on the direct path, the biometric key's device sign-in on the relay
 // (no browser). It exists once the phone is paired or has the box's direct address, and keeps a
 // token per path, since the box pins each to the tailnet node or the relay device.
-// HUMAN_ONLY calls carry the biometric key's presence proof; the presence session the box answers
-// with (x-vyre-presence-session, on any path) is kept from here, so the next sessionable call goes
-// with it and no prompt.
+// There are no presence proofs or sessions any more: an act that needs the yes goes by a card or a signed yes (src/real/box.ts).
 
 import { AppState } from "react-native";
 import { over } from "@vyre/resilience/web.js";
@@ -60,7 +58,7 @@ export function boxOrigin(): string {
 
 const store = memoryStore();
 
-// The biometric key is enrolled at the native sign-in and proves HUMAN_ONLY calls (e2e, ADR 0032).
+// The biometric key is enrolled at the native sign-in and signs the relay sign-in (e2e, ADR 0032).
 // The prompt shows only for those, and only when no live presence session covers the call.
 // The box pins presence sessions to the path (the tailnet node, or the relay device): one per path.
 let pathNow = () => (base ? "direct" : "relay");
@@ -101,16 +99,7 @@ const b = makeBox(async () => {
   p.onstate = (st) => connection.path(st.kind);
   connection.path(p.current);
   transport = (path, init) => p.fetch(path, init);
-  // A proof sent with x-vyre-presence-keep opens a presence session; the box names it in a header
-  // the tool caller does not pass on, so it is read here.
-  const o = over(async (path, init) => {
-    const r = await p.fetch(path, init);
-    if (init.headers?.["x-vyre-presence-keep"] === "1") {
-      const h = (r as { headers?: { get?: (n: string) => string | null } }).headers?.get?.("x-vyre-presence-session");
-      if (h && person) await person.presence.keep(h);
-    }
-    return r;
-  });
+  const o = over(async (path, init) => p.fetch(path, init));
   return {
     base: base || relayBase(paired as Pairing),
     // One path for follow(): which way the box is reached is the paths layer's job.

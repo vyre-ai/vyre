@@ -79,7 +79,7 @@ test("vyre-core vault: a module gets a value only under a grant core holds, and 
   assert.deepEqual((await call("vault.delete", { name: "orders-imap" }, { proved: true })).data, { deleted: "orders-imap" });
 });
 
-test("vyre-core vault: a value leaves only for the Capsule, with a proof or a session bound to that Capsule process", async t => {
+test("vyre-core vault: a value leaves only for the Capsule, with a proof for that call", async t => {
   const { call, at } = await core(t);
   await call("vault.put", { ...BANK, fields: { ...BANK.fields, totp: "JBSWY3DPEHPK3PXP" } }, { proved: true });
   // Not the Capsule: refused, proof or not.
@@ -87,23 +87,15 @@ test("vyre-core vault: a value leaves only for the Capsule, with a proof or a se
   const notCapsule = await call("vault.reveal", { name: "bank", field: "password" }, { proved: true });
   assert.equal(notCapsule.status, 403);
   assert.equal(notCapsule.error.code, "not_capsule");
-  assert.equal((await call("presence.session.open", {}, { proved: true })).error.code, "not_capsule");
   at.capsule = true;
   assert.equal((await call("vault.reveal", { name: "bank", field: "password" })).status, 401, "the Capsule still needs a proof");
   assert.deepEqual((await call("vault.reveal", { name: "bank", field: "password" }, { proved: true })).data, { name: "bank", field: "password", value: "sourdough-1042" });
   const code = await call("vault.totp", { name: "bank" }, { proved: true });
   assert.match(String(code.data && code.data.code), /^\d{6}$/);
 
-  // A session, bound to this Capsule process.
-  const s = (await call("presence.session.open", {}, { proved: true })).data;
-  const session = `session id=${s.session} secret=${s.secret}`;
-  assert.equal((await call("vault.reveal", { name: "bank", field: "username" }, { presence: session })).data.value, "alex");
-  at.key = "5151@Tue";
-  assert.match(String((await call("vault.reveal", { name: "bank", field: "username" }, { presence: session })).error.message), /another device/, "the same secret from another process proves nothing");
-  at.key = "4242@Mon";
-  // A reprompt item takes its own proof every time.
+  // A reprompt item and any other takes its own proof every time (core has no sessions any more).
   await call("vault.put", { name: "card", kind: "secret", fields: { value: "4111" }, reprompt: true }, { proved: true });
-  assert.equal((await call("vault.reveal", { name: "card" }, { presence: session })).status, 401);
+  assert.equal((await call("vault.reveal", { name: "card" })).status, 401);
 });
 
 test("vyre-core vault: unverified puts are capped per peer, so nothing can fill core's db with them", async t => {

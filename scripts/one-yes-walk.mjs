@@ -36,8 +36,10 @@ await new Promise(r => setTimeout(r, 300)); // the sealing process takes no proo
 const yes = (moment, tool, input = {}) => { const r = script("dev-sign-proof.mjs", ["--home", root, "--yes", moment, "--tool", tool, "--input", JSON.stringify(input), "--header"]); if (r.status !== 0) throw new Error(r.stderr); return r.stdout.trim(); };
 /** The device's signature over a card's payload, as the kernel-proof header value. @param {{ op: string, fields: any }} sign */
 const cardProof = sign => { const r = script("dev-sign-proof.mjs", ["--home", root, "--op", sign.op, "--fields", JSON.stringify(sign.fields), "--header"]); if (r.status !== 0) throw new Error(r.stderr); return r.stdout.trim(); };
-/** @param {string} tool @param {any} input @param {{ yes?: string, caller?: string, headers?: Record<string, string> }} [o] */
-const at = (tool, input, o = {}) => call(tool, input, { root, caller: o.caller || "cli", headers: { ...(o.yes ? { "x-vyre-presence": o.yes } : {}), ...(o.headers || {}) } });
+/** The device's yes, bare (the value of x-vyre-yes), and in the form a 0.3.0 client sends it (x-vyre-presence: yes proof=...). */
+const bare = (/** @type {string} */ h) => h.replace(/^yes proof=/, "");
+/** @param {string} tool @param {any} input @param {{ yes?: string, old?: string, caller?: string, headers?: Record<string, string> }} [o] */
+const at = (tool, input, o = {}) => call(tool, input, { root, caller: o.caller || "cli", headers: { ...(o.yes ? { "x-vyre-yes": bare(o.yes) } : {}), ...(o.old ? { "x-vyre-presence": o.old } : {}), ...(o.headers || {}) } });
 const refused = (/** @type {any} */ r) => r && r.error && r.error.code === "presence_required";
 
 const run = createRun({ out });
@@ -63,6 +65,18 @@ try {
     const r = await at("vault.reveal", { name: "walk-key" }, { yes: h });
     assert.equal(r.data?.value, "walk-secret-value", JSON.stringify(r.error || r.data));
     assert.ok(refused(await at("vault.reveal", { name: "walk-key" }, { yes: h })), "the same yes does not show it twice");
+  });
+  await run.step("vault: a 0.3.0 client's old header (x-vyre-presence: yes proof=) still gets a yes through the one check", async () => {
+    const h = yes("vault", "vault.reveal", { name: "walk-key" });
+    const r = await at("vault.reveal", { name: "walk-key" }, { old: h });
+    assert.equal(r.data?.value, "walk-secret-value", JSON.stringify(r.error || r.data));
+  });
+  await run.step("vault: a yes that asked to be reused opens five minutes of reveals for this device only", async () => {
+    const h = yes("vault", "vault.reveal", { name: "walk-key", reuse: true });
+    assert.equal((await at("vault.reveal", { name: "walk-key" }, { yes: h })).data?.value, "walk-secret-value", "the first reveal takes the yes");
+    assert.equal((await at("vault.reveal", { name: "walk-key" })).data?.value, "walk-secret-value", "the next one needs none");
+    assert.ok(refused(await at("vault.backup", { file: path.join(root, "x.vyre"), passphrase: "walk passphrase 123" })), "the window covers a reveal, not a backup");
+    assert.ok(refused(await at("vault.reveal", { name: "walk-key" }, { caller: "deck" })) || (await at("vault.reveal", { name: "walk-key" }, { caller: "deck" })).error, "another surface has no window");
   });
   await run.step("vault: backup (a value tool the vault used to ask twice) takes the same yes", async () => {
     const file = path.join(root, "walk.vyre-backup"), input = { file, passphrase: "walk passphrase 123" };

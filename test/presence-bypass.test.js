@@ -182,43 +182,6 @@ test("bypass: the person's own routes still work, once each", async t => {
   assert.equal(notLogin.status, 403, "a terminal who does not list, like a script pty, gets no code");
 });
 
-test("bypass: one strong proof opens a session on that device, and the sends after it ride it; nothing else opens one", async t => {
-  const b = await box(t);
-  const draft = async subject => (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject, body: "Draft by the model" } }, { root: b.root, caller: "mcp" })).data.id;
-  const tty = await raw(b.socket, "/v1/tools/presence.session.open", {}, { "x-vyre-caller": "cli" });
-  assert.equal(tty.status, 403, "no proof, no session");
-  // Held items say what approving takes, before anything is proved.
-  const before = (await call("gate.held", {}, { root: b.root, caller: "deck" })).data;
-  assert.deepEqual(before.map(x => x.presence), [{ required: true, covered: false, since: null }]);
-  // The Capsule's proof for this send, asking to keep: sent, and a session comes back in a header.
-  const first = await rawWithHeaders(b.socket, "/v1/tools/gate.approve", { id: b.id },
-    { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: b.id }), "x-vyre-presence-keep": "1" });
-  assert.equal(first.status, 200, JSON.stringify(first.body));
-  assert.equal(first.body.session, undefined, "the secret is never in the body");
-  const kept = String(first.headers["x-vyre-presence-session"] || "");
-  assert.match(kept, /^session id=\S+ secret=\S+ expires=\d+$/);
-  // The next send on this device rides it: no second Touch ID, and the item says it is covered.
-  const next = await draft("Engagement letter");
-  const cover = (await call("gate.get", { id: next }, { root: b.root, caller: "deck" })).data.presence;
-  assert.equal(cover.required, true);
-  assert.equal(cover.covered, true);
-  // since is when the proof was made, so a surface can say "confirmed 2 min ago".
-  const expires = Number(/expires=(\d+)/.exec(kept)[1]);
-  assert.ok(Number.isInteger(cover.since) && cover.since <= Date.now() && expires - cover.since === 30 * 60_000, JSON.stringify(cover));
-  const second = await raw(b.socket, "/v1/tools/gate.approve", { id: next }, { "x-vyre-caller": "capsule", "x-vyre-presence": kept });
-  assert.equal(second.status, 200, JSON.stringify(second.body));
-  assert.equal(b.mail.got.length, 2);
-  // A session is not a proof for anything outside its list, and a model with it still cannot approve.
-  const vault = await raw(b.socket, "/v1/tools/vault.delete", { name: "mail-token" }, { "x-vyre-caller": "cli", "x-vyre-presence": kept });
-  assert.equal(vault.body.error.code, "presence_required");
-  const third = await draft("Third");
-  assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: third }, { "x-vyre-caller": "mcp", "x-vyre-presence": kept })).status, 403);
-  // A proof without keep opens nothing.
-  const plain = await rawWithHeaders(b.socket, "/v1/tools/gate.approve", { id: third }, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: third }) });
-  assert.equal(plain.status, 200);
-  assert.equal(plain.headers["x-vyre-presence-session"], undefined);
-});
-
 test("bypass: revising, discarding and deleting sends nothing and asks for no proof; answering needs only a person", async t => {
   const b = await box(t);
   const deck = { "x-vyre-caller": "deck" };

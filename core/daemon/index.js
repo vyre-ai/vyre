@@ -27,7 +27,7 @@ import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
@@ -54,6 +54,11 @@ const DRAIN_MS = 5_000;
 function idemKey(req) {
   const k = String(req.headers["idempotency-key"] || "");
   return /^[A-Za-z0-9_.:-]{8,128}$/.test(k) ? k : undefined;
+}
+/** A device's signed yes sent with a request (`x-vyre-yes`: base64url JSON, at most 4 KB), over exactly this call (lib/one-yes.js signOf). It reaches the registry's floor and nothing else. @param {import("node:http").IncomingMessage} req */
+function yesHeader(req) {
+  const h = String(req.headers["x-vyre-yes"] || "");
+  return h && h.length <= 5500 && /^[A-Za-z0-9_-]+$/.test(h) ? h : undefined;
 }
 /**
  * A kernel presence proof sent with a request (`x-vyre-kernel-proof`: base64url JSON, at most 4 KB). It reaches the module as `meta.kernel_proof` and nowhere else: the legacy
@@ -463,6 +468,8 @@ async function startLocked(opts, root, p, release) {
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // The chain a direct yes (x-vyre-presence: yes) is checked in: the home's owner as one person, built the same way.
     registry.deps.ownerChain = () => personChainFor(kernel.id.owner);
+    // the home's own Space, which a signed yes names (the refusal carries `sign` so a client signs exactly the bytes the sealing process checks)
+    registry.deps.homeSpace = kernel.id.space;
     // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
@@ -1330,7 +1337,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
     const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
+    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"]) || Boolean(req.headers["x-vyre-yes"]) || Boolean(req.headers["x-vyre-approval"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
@@ -1361,7 +1368,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     done.then(() => inflight.delete(done));
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
-    const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    const terminal = socket && terminalOf && SIGNIN_TOOLS.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     if (socket && SIGNIN_TOOLS.has(name) && !terminal) { try { if (typeof events.log === "function") events.log(`terminal: ${name} got no terminal key (${terminalOf ? `caller label ${caller}, ${/^(cli|local)$/.test(caller) ? "the terminal check refused: see the line above" : "not cli or local, so it was never asked"}` : "no terminal check in this daemon"})`); } catch { /* logging never decides */ } }
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
@@ -1423,19 +1430,13 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
     let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
-      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+      idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
       delete result.data.token;
-    }
-    // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
-    if (result.session) {
-      const s = result.session;
-      delete result.session;
-      res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
     }
     const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : ["no_such_tool", "not_found"].includes(result.error.code) ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
       : result.error.code === "idempotency_conflict" ? 409 : 500;

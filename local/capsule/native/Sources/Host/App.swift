@@ -76,7 +76,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: p.panel.firstResponder, from: nil) }
         }
         NSApp.mainMenu = MainMenu.make(menuActions)
-        // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket and answers presence with Touch ID.
+        // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket ; its Touch ID is vyred's own dialog (approvals.local-yes).
         VyreAppWindow.shared.socket = vyredSocketPath(ProcessInfo.processInfo.environment)
         VyreAppWindow.shared.presence = presence
         VyreAppWindow.shared.identity = MacIdentity(store: BundleSeedStore(bundle: keys))
@@ -96,20 +96,11 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             if !self.panel.isShown { self.panel.show(front: PanelController.frontApp()) }
             return await self.model.askPresence(a)
         }
-        let presence = self.presence
-        vyred.presenceProof = { tool, input, summary in
-            let box = UncheckedBox(input)
-            return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box, summary: summary)
-        }
-        // The presence session lives in memory only: the Mac locking or sleeping ends it.
-        let ws = NSWorkspace.shared.notificationCenter
-        for n in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
-            ws.addObserver(forName: n, object: nil, queue: .main) { [vyred] _ in vyred.dropPresenceSession() }
-        }
         // The Mac's time zone changed (travel, or a setting): tell vyred, so the Planner reads times in it.
         NotificationCenter.default.addObserver(forName: .NSSystemTimeZoneDidChange, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.model.reportZone() }
         }
+        let ws = NSWorkspace.shared.notificationCenter
         // A Mac paired to a server tells it when it sleeps and wakes (link.sleep, link.wake), so the box knows at once. Not under the tests.
         if ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" {
             ws.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [vyred] _ in
@@ -118,9 +109,6 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [vyred] _ in
                 Task { await vyred.box.didWake(vyred) }
             }
-        }
-        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [vyred] _ in
-            vyred.dropPresenceSession()
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)

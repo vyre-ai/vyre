@@ -39,7 +39,7 @@ export const HUMAN_ONLY = new Set([
   "learn.skill-install",
   // A new machine joined to this one.
   "link.pair.approve",
-  "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
+  "presence.enroll", "presence.remove", "presence.code",
   // Signing a browser in as the person for 30 days (core/presence/person.js).
   "presence.person.start",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
@@ -198,16 +198,6 @@ export function personOnly(name, def) {
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session", "yes"];
 
 /**
- * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
- * one after another. The floor fixes this list; a tool must also say yes for the input at hand
- * (`presence.session(input)`), so an item that asks every time never rides a session.
- */
-export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant", "gate.approve",
-  // A person's messages from the Capsule (ADR 0022): each send is still previewed and confirmed
-  // there, and the session secret lives only in the surface that opened it.
-  "apps.send"]);
-
-/**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
  * that declaration they ask every time. gate.approve asks only for what goes out as the user:
  * sending, posting, paying or deleting outside (the no-nag rule). vault.account.unlock asks only
@@ -215,30 +205,6 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
  * Touch ID reader is asked once, not for the Mac login and then the vault password.
  */
 export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
-
-/**
- * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
- * a device paired over the relay (`device:<id>`), and the Capsule. The CLI rides its own window
- * instead, bound to the login terminal vyred saw (`terminal`, see Presence.verify): the CLI is a
- * first-class surface, and a secret on disk is something a model could read. A tailnet or relayed
- * caller reaches a HUMAN_ONLY tool only with a person session as well (ADR 0032; the registry's
- * gate runs first), so a script on that device cannot borrow the node's identity here.
- */
-// SHIM(legacy labels): the kernel-off fallback; with a kernel the registry asks `personOf` (the chain) instead.
-const vaultSessionCaller = caller => {
-  const c = String(caller || "");
-  if (/(?:^|[\s:])agent:/.test(c)) return false;
-  return c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
-};
-
-/** How long one proof covers a login's windowed calls: as long as a session. */
-const TERMINAL_WINDOW = 30 * 60_000;
-
-/**
- * What the CLI's window covers: actions that also show in Needs and in notices. Revealing, copying
- * and one-time codes put a secret or a code on screen, so a terminal proves each of those.
- */
-export const TERMINAL_WINDOWED = new Set(["vault.approve", "vault.grant"]);
 
 export { isYou, yes, configureYes, yesReason, signOf, momentOf, plainFieldsOf, opFitsMoment, lineOfOp, MOMENT_OPS, MOMENTS, YES_REASONS } from "../../lib/one-yes.js";
 export const MIGRATIONS = [`
@@ -423,6 +389,8 @@ export const MIGRATIONS = [`
 `, `
   -- A sign-in a phone approved lasts at most this many ms (12 hours): the browser's session then ends and the next sign-in asks again.
   ALTER TABLE presence_pair_grants ADD COLUMN cap_ms INTEGER;
+`, `
+  DROP TABLE IF EXISTS presence_sessions;
 `];
 
 const CHALLENGE_TTL = 120_000;
@@ -430,16 +398,6 @@ const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
 const GRANT_TTL = 5 * 60_000;
-// A session lasts 30 minutes from the proof, used or not (the no-nag rule: one proof covers
-// about 30 minutes on that device). There is no shorter idle cutoff inside that.
-const SESSION_MAX = 30 * 60_000;
-const SESSION_IDLE = SESSION_MAX;
-/**
- * The proofs strong enough to open a session: a gesture method. A presence session and the terminal window are not methods of their own: each INHERITS the method of the proof that opened it (PS-1), recorded
- * on the session row (`method`) and in `terminalOpener`, and every later `session` or `window` proof is checked with that opener through the one rule in kernel/seal/strength.js. `device` (a file key that a daemon
- * or browser can use with nobody there) opens a session only where the server takes software proofs (a development build behind its switch, marked software), never on a release-kind server.
- */
-const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
 const MAX_OPEN = 64;
 // No 0/O, 1/I/L: a code is read off a screen and typed by hand.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -574,8 +532,6 @@ export class Presence {
     this.standIn = standIn;
     /** DEVELOPMENT ONLY: does this server take a software-strength proof (a `device` key) for a presence-required act? Always false on a release-kind server (PW-1). */
     this.softwareOk = softwareOk;
-    /** The method that opened each terminal window, so a window inherits its opener's strength (PS-1). */
-    this.terminalOpener = new Map();
     /** A test's own link, or null for none; undefined reads the daemon's (core.link). */
     this.coreOpt = coreOpt;
     this.role = role;
@@ -605,25 +561,10 @@ export class Presence {
     this.nonces = new Map();
     this.dialogOpen = false;
     this.coolUntil = 0;
-    /** Login terminal -> when its window ends. In memory only: a restart asks again. */
-    /** @type {Map<string, number>} */
-    this.terminals = new Map();
   }
 
   /** vyre-core, when it holds this Mac's trust anchors. @returns {CoreLink|null} */
   get coreLink() { return this.coreOpt !== undefined ? this.coreOpt : core.link; }
-
-  /**
-   * One line on the terminal a window was used from, so a command someone else typed into it
-   * (tmux send-keys, AppleScript) cannot pass unseen.
-   * @param {string|null|undefined} tty @param {string} tool @param {any} input
-   */
-  windowNotice(tty, tool, input) {
-    if (!tty || this.noTtyWrites) return;
-    const what = tool === "vault.grant" ? `letting ${input && input.module} use ${input && input.name}` : tool === "vault.approve" ? `approving ${input && input.id}` : tool;
-    try { this.writeTty(`/dev/${tty}`, `\r\nvyre: used your Touch ID window for ${what}\r\n`); }
-    catch (e) { this.log(`presence: could not write the window notice to ${tty}: ${/** @type {Error} */ (e).message}`); }
-  }
 
   async touchid() {
     if (this.touchidImpl === undefined) this.touchidImpl = await lazy("./touchid/index.js", "authenticate");
@@ -643,27 +584,6 @@ export class Presence {
     const when = p && typeof p.when === "function" && input !== undefined ? () => Boolean(p.when(input)) : null;
     if (HUMAN_ONLY.has(tool)) return NARROWABLE.has(tool) && when ? when() : true;
     return when ? when() : Boolean(p);
-  }
-
-  /**
-   * Is there a live presence session for this device (the tailnet peer, or none for this
-   * machine's own surfaces)? A surface shows "covered" and sends the session instead of asking.
-   * @param {any} peer
-   */
-  covered(peer) { return this.coverage(peer).covered; }
-
-  /**
-   * The same, with when: `since` is when the newest live session for this device was proved and
-   * `expires` when it lapses (ms since the epoch), both null when there is none. A surface shows
-   * "confirmed 12 min ago" from since.
-   * @param {any} peer @returns {{ covered: boolean, since: number|null, expires: number|null }}
-   */
-  coverage(peer) {
-    const now = this.now();
-    const id = peerId(peer);
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT peer, created, expires FROM presence_sessions WHERE expires > ? AND last_used > ? ORDER BY created DESC").all(now, now - SESSION_IDLE));
-    const row = rows.find(r => (r.peer ?? null) === id);
-    return row ? { covered: true, since: Number(row.created), expires: Number(row.expires) } : { covered: false, since: null, expires: null };
   }
 
   /** What the person sees before proving anything. Never carries a control character. */
@@ -703,7 +623,6 @@ export class Presence {
     const now = this.now();
     for (const [id, c] of this.challenges) if (c.expires <= now) this.challenges.delete(id);
     for (const [n, until] of this.nonces) if (until <= now) this.nonces.delete(n);
-    for (const [t, until] of this.terminals) if (until <= now) { this.terminals.delete(t); this.terminalOpener.delete(t); }
   }
 
   /**
@@ -784,25 +703,6 @@ export class Presence {
     const strengthGate = (/** @type {string} */ m, /** @type {string|null} */ opener = null) => (m === "grant" ? null : strengthRefusal(strengthOfMethod(m, opener), softOk()));
     const SOFT_MSG = "this key is software; approve this in Vyre on your phone";
     this.prune();
-    // The CLI's window: after one strong proof from a login (Touch ID, the Capsule, a passkey), the
-    // same login's vault approvals and grants ask nothing for 30 minutes. vyred names the login from
-    // the kernel's word on who connected (core/daemon/index.js atTerminal), never from anything the
-    // caller sends. Anything that puts a secret or a code on screen stays per call: a terminal can
-    // be typed into by other processes (tmux send-keys, AppleScript), and a window must never turn
-    // that into a silent reveal. Each use writes a line to that terminal and says so to the tool.
-    const term = typeof terminal === "string" ? (terminal ? { key: terminal, tty: terminal } : null)
-      : terminal && typeof terminal.key === "string" && terminal.key ? terminal : null;
-    const cliLogin = Boolean(term) && /^(cli|local)$/.test(String(caller));
-    const sessionOk = async () => (def && def.presence && typeof def.presence.session === "function"
-      ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
-    const opens = cliLogin && SESSIONABLE.has(tool);
-    if (cliLogin && TERMINAL_WINDOWED.has(tool) && (this.terminals.get(/** @type {any} */ (term).key) || 0) > this.now() && await sessionOk()) {
-      if (strengthGate("window", this.terminalOpener.get(/** @type {any} */ (term).key) || null)) return refuse(SOFT_MSG, "software_key");
-      const tty = /** @type {any} */ (term).tty;
-      this.windowNotice(tty, tool, input);
-      this.emit("presence.proved", { tool, method: "window", caller });
-      return { ok: /** @type {true} */ (true), method: "window", keyId: null, where: tty || null };
-    }
     if (method === "stand-in") {
       // The automated walk's stand-in for a person's proof: honoured only where the daemon says so (a development build with the owner's hand-made file). Every event and audit row that follows
       // carries method "stand-in", so a walk can never be mistaken for a real proof. A packaged build says so once and refuses.
@@ -822,11 +722,9 @@ export class Presence {
     }
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
-    const sessionFrom = (/** @type {string} */ m) => SESSION_FROM.has(m) || (m === "device" && softOk());
     const proved = (keyId = null, opener = null) => {
       // a software proof is refused for the act itself on release (it can open nothing either: no session, no window), and marked software where it is accepted
       if (strengthGate(method, opener)) return refuse(SOFT_MSG, "software_key");
-      if (opens && sessionFrom(method)) { this.terminals.set(/** @type {any} */ (term).key, this.now() + TERMINAL_WINDOW); this.terminalOpener.set(/** @type {any} */ (term).key, method); }
       const soft = strengthOfMethod(method, opener) === "software" && method !== "grant";
       this.emit("presence.proved", { tool, method, caller, ...(soft ? { strength: "software" } : {}) });
       return { ok: /** @type {true} */ (true), method, keyId };
@@ -936,22 +834,6 @@ export class Presence {
       return proved(row.id);
     }
 
-    if (method === "session") {
-      if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
-      // A session proves a vault tool only for the person: the kernel's chain for the call says so (`personOf`, set by the presence module from ctx.kernel), never the caller's label. With no
-      // kernel (development) the old label rule stays: SHIM(legacy labels).
-      if (tool.startsWith("vault.") && !(this.personOf ? await this.personOf(meta || { caller }) : vaultSessionCaller(caller))) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
-      const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
-      if (ok !== true) return refuse("this item needs its own proof every time");
-      const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));
-      const now = this.now();
-      if (!row || row.expires <= now || row.last_used + SESSION_IDLE <= now) return refuse("no such session, or it ended");
-      if (!same(sha(String(proof.secret || "")).toString("hex"), row.hash)) return refuse("that session secret is wrong");
-      if (row.peer && row.peer !== peerId(peer)) return refuse("that session belongs to another device");
-      this.db.prepare("UPDATE presence_sessions SET last_used = ? WHERE id = ?").run(now, row.id);
-      return proved(row.key_id, row.method || null);
-    }
-
     if (method === "code") {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
@@ -982,26 +864,6 @@ export class Presence {
     }
 
     return refuse(`unknown presence method ${method}`);
-  }
-
-  /**
-   * Open a short session after a strong proof. The secret is returned once and kept only as a
-   * hash; it lasts 30 minutes from the proof, and only on the device that opened it.
-   * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
-   */
-  openSession({ method, keyId = null, peer = null } = {}) {
-    if (!method || !(SESSION_FROM.has(method) || (method === "device" && this.softwareOk() === true))) throw new Error("a session opens only after Touch ID, the Capsule or a passkey (a device key only on a development build)");
-    const now = this.now();
-    this.db.prepare("DELETE FROM presence_sessions WHERE expires <= ? OR last_used <= ?").run(now, now - SESSION_IDLE);
-    const id = b64url(12), secret = b64url(32);
-    this.db.prepare("INSERT INTO presence_sessions (id, hash, key_id, method, peer, created, last_used, expires) VALUES (?,?,?,?,?,?,?,?)")
-      .run(id, sha(secret).toString("hex"), keyId, method, peerId(peer), now, now, now + SESSION_MAX);
-    return { session: id, secret, expires: now + SESSION_MAX, idle: SESSION_IDLE };
-  }
-
-  /** @param {string} id */
-  closeSession(id) {
-    return Number(this.db.prepare("DELETE FROM presence_sessions WHERE id = ?").run(String(id)).changes) > 0;
   }
 
   /**
