@@ -135,6 +135,8 @@ vyre learn skills dismiss 3
 
 Installing and retiring a skill need presence.
 
+A skill Vyre proposes from what you repeat is also written into your skills library as a draft, at your own level, or at the project's when the procedure belongs to a project. You say yes on one card, like any other skill change. It is versioned, and once you approve it every AI session at that level has it. Nothing uses the draft before you do. See [Skills library](skills-library.md).
+
 ## Which surface does what
 
 | Task | Terminal | Vyre app | Lumen | Claude |
