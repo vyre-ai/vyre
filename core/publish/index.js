@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { fail } from "../../lib/publish/util.js";
+import { withSecretGrants, moveSecretsToGrants } from "../../lib/publish/grants.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
 import { edgePlan, runPlan, stopEdge } from "../../lib/publish/runner.js";
@@ -82,7 +83,7 @@ export default {
 
     // ---- the store, scoped to one space ----
     /** @param {string} space */
-    const storeFor = space => ({
+    const rawStoreFor = space => ({
       async get(/** @type {string} */ coll, /** @type {string} */ id) {
         const row = /** @type {any} */ (db.prepare(`SELECT body FROM ${TABLES[coll]} WHERE space = ? AND id = ?`).get(space, id));
         return row ? JSON.parse(row.body) : null;
@@ -95,6 +96,19 @@ export default {
         return /** @type {any[]} */ (db.prepare(`SELECT body FROM ${TABLES[coll]} WHERE space = ? ORDER BY rowid`).all(space)).map(r => JSON.parse(r.body));
       },
     });
+
+    /** The Space's kernel grants this module made (a deployment's secrets are kernel grants, lib/publish/grants.js). No kernel, no secrets: nothing is kept anywhere else. */
+    const grantsFor = () => {
+      const mint = () => { const m = ctx.kernel && ctx.kernel.mint; if (!m) throw refuse("deployment secrets are kernel grants, and this server has no kernel", "unavailable"); return m; };
+      return { list: async (/** @type {string} */ source) => (ctx.kernel && ctx.kernel.mint ? ctx.kernel.mint.list({ source }) : []), make: (/** @type {any} */ i) => mint().make(i), end: (/** @type {any} */ q) => mint().end(q) };
+    };
+    /** @param {string} space */
+    const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space);
+
+    // Records from before secrets were grants move now, once. If a move fails the record stays readable as it is (reads add the old list) and the next start tries again; Publish still starts.
+    for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {
+      try { await moveSecretsToGrants(rawStoreFor(space), storeFor(space)); } catch { /* retried at the next start */ }
+    }
 
     // ---- who is who: memberships come from the spaces module ----
     /** @type {Map<string, any>} */ const members = new Map();
