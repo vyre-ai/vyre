@@ -44,7 +44,17 @@ say "release assets $tag"
 mkdir -p "$out/box"
 # every asset of the release: SHA256SUMS names each signed file, so a fixed list here falls behind the release (0.2.9 added modules.json,
 # appbuild.json, setup.json, shell.json and install-mac-server.sh) and the check below fails on the files it did not fetch
-gh release download "$tag" -R vyre-ai/vyre --dir "$out/box" --clobber
+# A large download can break mid-stream (an HTTP/2 reset) and leave a file cut short: up to five rounds, each fetching what is missing and then
+# removing any file that does not match SHA256SUMS, so the next round fetches it whole. The check after the loop stays the judge.
+n=0
+while :; do
+  gh release download "$tag" -R vyre-ai/vyre --dir "$out/box" --skip-existing || true
+  bad=$(cd "$out/box" && [ -f SHA256SUMS ] && sum -c SHA256SUMS 2>/dev/null | sed -n 's/: FAILED.*$//p')
+  [ -f "$out/box/SHA256SUMS" ] && [ -z "$bad" ] && break
+  n=$((n + 1)); [ "$n" -lt 5 ] || { echo "assemble-site: the release download kept failing" >&2; exit 1; }
+  for b in $bad; do rm -f "$out/box/$b"; done
+  echo "assemble-site: download incomplete, round $((n + 1)) of 5" >&2; sleep 5
+done
 (cd "$out/box" && sum -c --quiet SHA256SUMS) || { echo "assemble-site: the release files do not match their SHA256SUMS" >&2; exit 1; }
 # Cloudflare Pages takes no file over 25 MiB. The apps (the Mac dmg and zip, the Android APK) are linked from the GitHub release, not served here,
 # so a file over the limit is left out; one the installers fetch (the --check list below) must never be, so that refuses.
