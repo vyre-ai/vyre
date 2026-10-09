@@ -114,6 +114,30 @@ export default {
       return { saved: to, name, size: data.length, from: "the Mac's Downloads, Desktop or Documents", note: "On the box now. Sending it anywhere (a Slack upload, an email) is a separate step, held for your yes." };
     }
 
+    // The operator card (previews.operator / previews.step) and the merged question (ask.many) belong to other modules; when they are not there, nothing is shown and the work goes on.
+    /** @type {Map<string, string>} the run of the card for a conversation and computer */
+    const cards = new Map();
+    const COMPUTER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+    /** The name Glass lists a computer by: an agent's own for the cloud computer, the Mac's name for a Mac. */
+    const glassName = (/** @type {import("./route.js").Target} */ t, /** @type {string | null} */ agent) => {
+      const raw = t.kind === "cloud" ? agent || "cloud" : t.name;
+      const clean = String(raw).replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[^A-Za-z0-9]+/, "").slice(0, 64);
+      return COMPUTER_NAME.test(clean) ? clean : "computer";
+    };
+    async function card(/** @type {any} */ meta, /** @type {import("./route.js").Target} */ target, /** @type {string | null} */ agent) {
+      const thread = meta && meta.thread ? String(meta.thread) : null;
+      if (!thread) return null;
+      const key = `${thread}|${target.id}`;
+      if (cards.has(key)) return cards.get(key) || null;
+      const r = await ask("previews.operator", { computer: glassName(target, agent), title: target.kind === "cloud" ? "Cloud computer" : target.name, thread });
+      if (r && r.run) { cards.set(key, String(r.run)); for (const k of cards.keys()) if (cards.size > 200) cards.delete(k); return String(r.run); }
+      return null;
+    }
+    const say = (/** @type {string | null} */ run, /** @type {string} */ line, state = "working") => (run ? ask("previews.step", { run, line, state }) : Promise.resolve(null));
+    /** What a person reads about an action: no value, no selector, only the place. */
+    const LINES = /** @type {Record<string, string>} */ ({ look: "Looking at the page", shot: "Taking a picture of the screen", tabs: "Looking at the open tabs", open: "Opening the page", click: "Clicking a control", type: "Typing in a field", fill: "Filling in the form", act: "Working on the page", press: "Pressing a key", find: "Looking for a file", get: "Bringing a file over", signin: "Signing in from your Vault" });
+    const lineFor = (/** @type {string} */ action, /** @type {any} */ input) => { const h = hostOf(input.url || input.site); return action === "open" && h ? `Opening ${h}` : action === "signin" && h ? `Signing in to ${h} from your Vault` : LINES[action] || "Working"; };
+
     ctx.tool("computer.targets", {
       description: "The computers you can work on by name: the cloud computer and each paired Mac (or this Mac), and whether each is online. Left unnamed, work goes to the cloud computer.",
       input: obj({}), effect: "read", callers: CALLERS,
@@ -128,8 +152,16 @@ export default {
         const action = String(input.do);
         const agent = agentOf(input, meta);
         const all = await targets();
-        const picked = resolveTarget(input.on, all);
-        if (!picked.ok) return { asked: true, question: picked.ask.question, choices: picked.ask.choices, allowOwn: true };
+        let picked = resolveTarget(input.on, all);
+        if (!picked.ok) {
+          // One card for the question, with the real names and room to type or speak another; the answer picks the computer and the work goes on.
+          const q = picked.ask;
+          const a = q.choices.length ? await ask("ask.many", { title: "Which computer?", thread: meta.thread, wait_ms: 55_000, questions: [{ id: "computer", prompt: q.question, choices: q.choices, allowText: true }] }) : null;
+          const ans = a && a.state === "answered" && a.answers && a.answers.computer;
+          const said = ans && (ans.choice || ans.text);
+          picked = said ? resolveTarget(said, all) : picked;
+          if (!picked.ok) return { asked: true, question: q.question, choices: q.choices, allowOwn: true, ...(a && a.id ? { card: a.id, state: a.state } : {}) };
+        }
         const target = picked.target;
         if (target.online === false) throw fail("offline", `${target.name} is offline; it will be done when it is back`);
 
@@ -153,24 +185,42 @@ export default {
         }
         if (input.url) { const h = hostOf(input.url); if (h) lastHost.set(where, h); }
 
-        if (action === "signin") {
-          if (target.kind !== "cloud") throw fail("unsupported", "signing in from a Vault login is done on the cloud computer for now; on your Mac, use the Vault's own fill");
-          if (!agent) throw fail("denied", "a login is lent to an agent; say which agent's computer with `agent`");
-          const r = await ctx.call("vault.agent.fill", { item: String(input.login || ""), ...(input.url ? { origin: new URL(String(input.url)).origin } : {}), agent, thread: meta.thread, lineage: meta.lineage });
-          if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
-          return { computer: target.name, ...r.data };
-        }
+        // The operator card: one per conversation and computer, and a line for what is being done, in words with no value in them.
+        const runId = await card(meta, target, agent);
+        await say(runId, lineFor(action, { ...input, site }));
+        const work = async () => {
 
-        if (target.kind === "mac" && action === "get") return { computer: target.name, ...(await bringFile(target, input.args || {}, agent)) };
-        if (target.kind === "mac") return { computer: target.name, ...(await onMac(target, { action, args: input.args || {}, ...(input.app ? { app: input.app } : {}), ...(input.screen ? { screen: true } : {}) })) };
-        const engine = engineFor(target.kind === "cloud" ? "cloud" : "here", action, { app: input.app, screen: input.screen });
-        if (!engine) throw fail("unsupported", `${action} is not something ${target.name} does${input.app ? " in an app" : " on a page"}`);
-        // This Mac is driven by a model through the engine's own tools, which carry its own grant for the Mac; the front door names the tool rather than lend it an identity it was not given.
-        if (target.kind === "here" && !isPerson(meta)) return { computer: target.name, direct: true, tool: engine, input: { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}) }, note: "Call this tool directly: it carries your own permission to drive this Mac." };
-        const call = { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}), ...(target.kind === "cloud" && agent ? { agent } : {}) };
-        const r = await ctx.call(engine, call);
-        if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
-        return { computer: target.name, engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) };
+          if (action === "signin") {
+            if (target.kind !== "cloud") throw fail("unsupported", "signing in from a Vault login is done on the cloud computer for now; on your Mac, use the Vault's own fill");
+            if (!agent) throw fail("denied", "a login is lent to an agent; say which agent's computer with `agent`");
+            const r = await ctx.call("vault.agent.fill", { item: String(input.login || ""), ...(input.url ? { origin: new URL(String(input.url)).origin } : {}), agent, thread: meta.thread, lineage: meta.lineage });
+            if (r.error && r.error.code === "denied" && /is not lent to/.test(String(r.error.message))) {
+              // Nothing is lent for this site: the person signs in themselves, on a card that opens the screen with the keyboard theirs.
+              const host = hostOf(input.url || input.site) || "the site";
+              const s = await ask("previews.signin", { computer: glassName(target, agent), site: host, why: "A login is needed here", thread: meta.thread, wait_ms: 55_000 });
+              if (s && s.state === "done") return { computer: target.name, signedIn: true, by: "you" };
+              return { computer: target.name, needsSignIn: true, site: host, ...(s ? { card: s.id, state: s.state } : { note: r.error.message }) };
+            }
+            if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+            return { computer: target.name, ...r.data };
+          }
+
+          if (target.kind === "mac" && action === "get") return { computer: target.name, ...(await bringFile(target, input.args || {}, agent)) };
+          if (target.kind === "mac") return { computer: target.name, ...(await onMac(target, { action, args: input.args || {}, ...(input.app ? { app: input.app } : {}), ...(input.screen ? { screen: true } : {}) })) };
+          const engine = engineFor(target.kind === "cloud" ? "cloud" : "here", action, { app: input.app, screen: input.screen });
+          if (!engine) throw fail("unsupported", `${action} is not something ${target.name} does${input.app ? " in an app" : " on a page"}`);
+          // This Mac is driven by a model through the engine's own tools, which carry its own grant for the Mac; the front door names the tool rather than lend it an identity it was not given.
+          if (target.kind === "here" && !isPerson(meta)) return { computer: target.name, direct: true, tool: engine, input: { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}) }, note: "Call this tool directly: it carries your own permission to drive this Mac." };
+          const call = { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}), ...(target.kind === "cloud" && agent ? { agent } : {}) };
+          const r = await ctx.call(engine, call);
+          if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+          return { computer: target.name, engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) };
+        };
+        try { return await work(); } catch (e) {
+          const err = /** @type {any} */ (e);
+          await say(runId, String(err && err.message || "It stopped").replace(/\s+/g, " ").slice(0, 140), "stuck");
+          throw e;
+        }
       },
     });
   },

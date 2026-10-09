@@ -113,3 +113,43 @@ test("this Mac: a person's call runs the engine; a model is pointed at the tool 
   assert.equal(model.tool, "chrome.open");
   assert.ok(!b.calls.some(c => c.tool === "chrome.open"), "nothing was lent an identity");
 });
+
+test("the operator card: one per conversation and computer, a plain line for each action, and a stuck line when it fails", async () => {
+  const b = await boot({ answers: { "previews.operator": { run: "r1" }, "previews.step": { run: "r1" }, "chrome.open": { ok: true } } });
+  await b.run({ do: "open", url: "https://example.org/secret?token=abc" }, "mcp agent:kit", { thread: "t-1" });
+  await b.run({ do: "look" }, "mcp agent:kit", { thread: "t-1" });
+  await b.run({ do: "look" }, "mcp agent:kit", { thread: "t-2" });
+  const ops = b.calls.filter(c => c.tool === "previews.operator");
+  assert.deepEqual(ops.map(c => [c.input.computer, c.input.thread]), [["kit", "t-1"], ["kit", "t-2"]], "once per conversation");
+  const steps = b.calls.filter(c => c.tool === "previews.step").map(c => c.input);
+  assert.deepEqual(steps.slice(0, 2).map(s => [s.run, s.line, s.state]), [["r1", "Opening example.org", "working"], ["r1", "Looking at the page", "working"]]);
+  assert.ok(!JSON.stringify(steps).includes("token=abc"), "no query, no value in a line");
+  const f = await boot({ answers: { "previews.operator": { run: "r2" }, "previews.step": { run: "r2" }, "chrome.snapshot": { error: { code: "failed", message: "Chrome is not connected" } } } });
+  await assert.rejects(f.run({ do: "look" }, "mcp agent:kit", { thread: "t-1" }), /not connected/);
+  assert.deepEqual(f.calls.filter(c => c.tool === "previews.step").map(c => c.input.state), ["working", "stuck"]);
+  // no conversation, no card; and a missing previews module changes nothing
+  const n = await boot({});
+  await n.run({ do: "look" }, "mcp agent:kit");
+  assert.ok(!n.calls.some(c => c.tool === "previews.operator"));
+});
+
+test("an ambiguous computer is one merged question; the answer picks the computer and the work goes on", async () => {
+  const b = await boot({ macs: MACS, answers: { "link.macs.call": [{ ok: true, data: { engine: "chrome.snapshot", title: "Inbox" } }], "ask.many": { id: "q1", state: "answered", answers: { computer: { choice: "Office Mac mini" } } } } });
+  const r = await b.run({ do: "look", on: "mac" }, "mcp agent:kit", { thread: "t-1" });
+  assert.equal(r.computer, "Office Mac mini");
+  const q = b.calls.find(c => c.tool === "ask.many").input;
+  assert.deepEqual([q.thread, q.questions[0].choices, q.questions[0].allowText], ["t-1", ["Alex's MacBook", "Office Mac mini"], true]);
+  // unanswered: the question comes back as an ask, nothing was done
+  const u = await boot({ macs: MACS, answers: { "ask.many": { id: "q2", state: "waiting" } } });
+  const nope = await u.run({ do: "look", on: "mac" }, "mcp agent:kit", { thread: "t-1" });
+  assert.equal(nope.asked, true);
+  assert.ok(!u.calls.some(c => c.tool === "link.macs.call"));
+});
+
+test("a login nobody lent turns into a sign-in card for the person, not a failure", async () => {
+  const b = await boot({ answers: { "vault.agent.fill": { error: { code: "denied", message: "harlow-test is not lent to kit for https://app.harlow.test in this conversation" } }, "previews.signin": { id: "s1", state: "done" } } });
+  const r = await b.run({ do: "signin", login: "harlow-test", url: "https://app.harlow.test/login" }, "mcp agent:kit", { thread: "t-1" });
+  assert.deepEqual([r.signedIn, r.by], [true, "you"]);
+  const c = b.calls.find(c => c.tool === "previews.signin").input;
+  assert.deepEqual([c.computer, c.site, c.thread], ["kit", "app.harlow.test", "t-1"]);
+});
