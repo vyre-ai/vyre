@@ -202,6 +202,11 @@ export const DECLARED = Object.freeze({
   "recall.links": "e8a4645fd",
   "recall.pointers": "e8a4645fd",
   "recall.turn": "e8a4645fd",
+  // the 0.3.1 integration (main green): the agent's small always-loaded core (docs, skills, the module index), the app modules' read tools and the Connection tools; each guard is its reach-anyone reason
+  "appmods.card": "428bfeb0b", "appmods.catalog": "428bfeb0b", "appmods.list": "428bfeb0b", "appmods.screens": "428bfeb0b", "appmods.status": "428bfeb0b", "appmods.connection": "ce0e2bacf", "appmods.hosts": "aaf71dbd9",
+  "connectors.connection.check": "3e523101d", "connectors.connection.get": "3e523101d", "connectors.connection.list": "3e523101d", "connectors.connection.export": "498b073eb", "connectors.connection.import": "43f3ae8e1",
+  "connectors.connection.propose": "565e81d11", "connectors.operation.run": "1d1318369",
+  "docs.find": "92291f02c", "docs.read": "92291f02c", "skills.find": "08ccfca4c", "skills.get": "08ccfca4c", "skills.list": "08ccfca4c", "vyre.core": "cb8fd02ae",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */

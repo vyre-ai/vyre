@@ -389,6 +389,14 @@
    "module": "connectors",
    "reason": "callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
   },
+  "docs.find": {
+   "module": "docs",
+   "reason": "read-only: ranks pages of the docs tree for an intent; a person's own surface gets the human docs, any other caller gets the human and the agent docs (the agent docs are not secret, the code is open source); nothing here writes, sends or reaches the network (core/docs/index.js)"
+  },
+  "docs.read": {
+   "module": "docs",
+   "reason": "read-only: returns a docs page or one section within a token budget; the same two sets as docs.find, chosen by who is calling; nothing here writes, sends or reaches the network (core/docs/index.js)"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
@@ -1389,6 +1397,18 @@
    "module": "sight",
    "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
   },
+  "skills.find": {
+   "module": "skills",
+   "reason": "read-only: ranks only the skills the caller may use; the project reach is projects.reach (the one door memory, recall and files ask) and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
+  },
+  "skills.get": {
+   "module": "skills",
+   "reason": "read-only: one skill's SKILL.md, only when the caller may use it; a skill the caller may not use does not exist for them (the same door as skills.list, core/skills/index.js)"
+  },
+  "skills.list": {
+   "module": "skills",
+   "reason": "read-only: lists only the skills the caller may use; the project reach is projects.reach and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
+  },
   "spaces.code.submit": {
    "module": "spaces",
    "reason": "the pairing code is the guard: its hash is held here, five tries, ten minutes, checked in the lib; it is the one tool a relay caller may use and refuses a spent or timed-out code"
@@ -2020,6 +2040,10 @@
   "vault.verify": {
    "module": "vault",
    "reason": "callers list in code (surfaces, tailnet, module; no model) and the presence proof carried to core"
+  },
+  "vyre.core": {
+   "module": "vyre-index",
+   "reason": "read-only: the module index joined from the generated architecture map and the daemon's own module list (name, group, folder, where it runs, state, version); no data of the person's, nothing here writes (core/vyre-index/index.js)"
   },
   "watchers.card": {
    "module": "watchers",

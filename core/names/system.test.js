@@ -225,7 +225,9 @@ function setup(t, extra) {
   const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper,
     VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock"),
     // The stub docker runs no daemon and packs nothing: no checkout signing, no wait for modules.
-    VYRE_DEV_SIGN: "0", VYRE_MODULES_TRIES: "0" };
+    VYRE_DEV_SIGN: "0", VYRE_MODULES_TRIES: "0",
+    // root's update folder is a host path (/var/lib/vyre-update): a real one on a test box is root's and refuses the test's writes
+    VYRE_UPDATE_ROOT: path.join(base, "vyre-update") };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };
 }

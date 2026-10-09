@@ -27,7 +27,7 @@ export function SpacesScreen() {
   const { members, spaces: SPACES, projects, warnings, error, loading, space, selfId, deviceId, load, setRole, remove, extendBy, addTemp } = useMembers();
   useEffect(() => { void load(); }, [load]);
   const cur = SPACES.find((x) => x.id === space);
-  const MY_ROLE = (MOCK ? "admin" : ROLE_IDS.includes(cur?.role ?? "") ? cur!.role : "member") as Role;
+  const MY_ROLE = (MOCK ? "admin" : (ROLE_IDS as readonly string[]).includes(cur?.role ?? "") ? cur!.role : "member") as Role;
   const ME = MOCK ? "alex" : selfId ?? "";
   const OWNER = members.find((m) => m.role === "owner")?.name ?? "its owner";
   const projectNames = MOCK ? TEMP_PROJECTS : projects.map((p) => p.name);

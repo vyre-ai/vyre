@@ -5,7 +5,7 @@
 // again carrying the signed proof. Nothing here keeps a proof; each one is for one call.
 
 import { post } from "../api/box";
-import { shell } from "../shell/shell";
+import { shell } from "../shell/shell.ts";
 import { getOptions, passkeyHeader } from "./presence-model.js";
 
 export const canProve = (): boolean => !!shell() || typeof window !== "undefined" && !!(window as unknown as { PublicKeyCredential?: unknown }).PublicKeyCredential && !!navigator?.credentials;

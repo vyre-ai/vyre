@@ -1562,6 +1562,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
  * EventSource resumes from Last-Event-ID on its own.
  */
 function stream(req, res, url, events, streams) {
+  // A client that went away while the request was being routed (or while the daemon was stopping) has no 'close' left to come: nothing to start, nothing to leak.
+  if (req.destroyed || res.destroyed || res.writableEnded) return;
   const type = url.searchParams.get("type") || "*";
   // since=latest skips the backlog: a surface that renders current state from tools only needs
   // what happens next, and replaying a long log to reach "now" is wasted work.
@@ -1604,6 +1606,7 @@ function stream(req, res, url, events, streams) {
   const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
   // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
   const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
+  beat.unref(); // a heartbeat never keeps the process alive; the stream ends with its connection or with the daemon
   const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
   streams.add(end);
   req.on("close", end);

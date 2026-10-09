@@ -5,7 +5,7 @@ import { ROLE_IDS, ROLE_RANK, ROLE_LABELS } from "../../../../kernel/contracts/i
 
 /** @typedef {"owner"|"admin"|"manager"|"member"|"temp"} Role */
 
-/** @type {{ id: Role, label: string, line: string }[]} */
+/** @type {Record<Role, string>} */
 const LINES = {
   owner: "Everything, including deleting, moving or handing over the space.",
   admin: "Members, devices, Customize, connectors and assistants. Cannot delete or move the space.",

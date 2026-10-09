@@ -14,6 +14,8 @@ import { call } from "../../core/daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { fakeSpeech, WORDS } from "./fake.js";
 import { talkLoop, utterance } from "./talk.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fake speech provider on loopback
 
 const HERE = import.meta.dirname;
 const VYRE = path.join(HERE, "..", "..", "bin", "vyre");
