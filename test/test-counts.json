@@ -633,6 +633,7 @@
  "lib/deeplink/index.test.js": 2,
  "lib/devicename.test.js": 4,
  "lib/git-safe-askpass.test.js": 5,
+ "lib/http.test.js": 7,
  "lib/identity.test.js": 6,
  "lib/identity/directory.test.js": 8,
  "lib/kernel-session.test.js": 14,
