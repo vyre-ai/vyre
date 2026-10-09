@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(test): the hang diagnostics broke five files (a node started under the permission model, a test that checks `setInterval.name`): the timer tracer watches with an async hook instead of replacing the timers, and the report flags go on the test runner's command line, not in NODE_OPTIONS, so nothing a test file starts inherits them. relay/client/bytes.js is regenerated from lib/bytes.js (scripts/sync-copies.mjs) after the `toBytes` typing.
 - test: more margin under the 300 s file limit: sessions.test.js is eight files and switchboard.test.js four (they ran 190 to 296 s on a busy box); wink.test.js keeps the camera-reader case, which takes about three minutes on its own, in wink-g.test.js; apps/test/world.js removes its `<home>.sessions` folder at exit (tmp-guard named it left behind).
 - test: a test file that passes and keeps its process open now says which timers are alive and where they were made (scripts/lib/trace-timers.mjs, preloaded by scripts/test-counts.mjs; written on the same SIGUSR2 as node's handle report). core/runner/hardening.test.js did this on CI only.
 - fix(app,lib): the app typechecks again after the one-role-list and one-bytes refactors (roles.js types its sentence table as Record<Role, string>, SpacesScreen compares the role as a string, `toBytes` is typed); the app's gzipped JS ceiling in app.yml moves from 1200 to 1250 KiB (0.3.1 measured 1203, 3% over the last green run, which the 10% rule allows).

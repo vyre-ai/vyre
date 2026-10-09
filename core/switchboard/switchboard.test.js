@@ -29,7 +29,7 @@ process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs th
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
 
-// 55 cases ran 367 s, past the 300 s per-file limit. They are dealt out to two files: this one, and
+// 55 cases ran 367 s, past the 300 s per-file limit. They are dealt out to four files: this one, and
 // switchboard-b, -c and -d.test.js, which set VYRE_SWITCHBOARD_SHARD=1 to 3 and import this module.
 const SHARDS = 4;
 const SHARD = Number(process.env.VYRE_SWITCHBOARD_SHARD ?? 0);

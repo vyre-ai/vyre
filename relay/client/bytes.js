@@ -24,7 +24,7 @@ export function concat(...parts) {
   return out;
 }
 
-/** Any binary shape a WebSocket, fetch or a caller may hand us, as a Uint8Array. */
+/** Any binary shape a WebSocket, fetch or a caller may hand us, as a Uint8Array. @param {any} v @returns {Uint8Array} */
 export function toBytes(v) {
   if (v == null) return EMPTY;
   if (v instanceof Uint8Array) return v;
