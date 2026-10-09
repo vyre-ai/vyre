@@ -26,7 +26,7 @@ async function rig(t) {
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   await d.kernel.gateway.records.define(owner, { add_types: [CONTACT, { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }] }] });
   const jane = (await ok("records.create", { type: "contact", data: { name: "Jane Doe", age: 40 } })).record;
-  await ok("records.seal-put", { urn: jane.urn, field: "ssn", value: "123-45-6789", class: "ssn" });
+  await ok("records.seal-put", { urn: jane.urn, field: "ssn", value: "123-45-6789", class: "us-ssn" });
   const secret = (await ok("records.create", { type: "matter", data: { title: "Harlow v. Harlow" } })).record;
   const outside = d.registry.modules.get("outside").handle;
   assert.ok(outside, "the outside module is running");
