@@ -187,3 +187,118 @@ test("files: a page, a folder, Markdown and a single-page app are served on a pr
   assert.equal((await call("previews.open", { title: "Nothing", path: path.join(dir, "missing") })).error.code, "bad_input");
   assert.equal((await call("previews.open", { title: "Relative", path: "site" })).error.code, "bad_input");
 });
+
+test("the bridge: a page that declared capabilities gets Claude's runtime shape, each asks the viewer, db keeps documents in Records under last-writer-wins and live subscribers hear every write", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
+  const frontPort = (await call("appmods.front", {}, "module:previews")).data.port;
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-pb-")));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html><html><head><title>Tasks</title></head><body><script>window.mine=1</script>tasks</body></html>");
+  fs.writeFileSync(path.join(dir, "plain.html"), "<!doctype html><html><head></head><body>nothing declared</body></html>");
+  const caps = { user: {}, sample: {}, downloads: true, db: { rules: [{ path: "board", read: "view", write: "admin" }, { path: "votes", read: "view", write: "owner" }, { path: "votes/{self}", write: "interact" }] } };
+  const pv = await call("previews.open", { title: "Tasks", path: dir, capabilities: caps });
+  assert.ok(pv.data, JSON.stringify(pv));
+  const id = pv.data.id;
+  const u = new URL((await call("previews.url", { id })).data.url);
+  const enter = /** @type {any} */ (await front(frontPort, u.host, u.pathname + u.search));
+  const cookie = String(enter.headers["set-cookie"]).split(";")[0];
+  const page = /** @type {any} */ (await front(frontPort, u.host, "/", { cookie }));
+  assert.match(page.body, /<script src="\/__vyre\/claude\.js"><\/script>/, "the bridge is added, to a page that declared capabilities");
+  assert.match(page.body, /window\.mine=1/, "and nothing else is touched");
+  const script = /** @type {any} */ (await front(frontPort, u.host, "/__vyre/claude.js", { cookie }));
+  assert.equal(script.status, 200);
+  assert.match(script.body, /window\.claude/);
+  assert.match(script.body, /use: function/);
+
+  /** One bridge call. @param {string} op @param {any} args @param {Record<string, string>} [extra] */
+  const bridge = (op, args = {}, extra = {}) => new Promise((resolve, reject) => {
+    const body = JSON.stringify({ op, args });
+    const req = http.request({ host: "127.0.0.1", port: frontPort, method: "POST", path: "/__vyre/api", headers: { host: u.host, cookie, "content-type": "application/json", "x-vyre-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...extra } },
+      res => { const c = /** @type {Buffer[]} */ ([]); res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, ...JSON.parse(Buffer.concat(c).toString() || "{}") })); });
+    req.on("error", reject); req.end(body);
+  });
+  const ok = async (/** @type {string} */ op, /** @type {any} */ args) => { const r = /** @type {any} */ (await bridge(op, args)); assert.ok(!r.error, `${op}: ${JSON.stringify(r)}`); return r.data; };
+  const code = async (/** @type {string} */ op, /** @type {any} */ args) => /** @type {any} */ ((await bridge(op, args)).error || {}).code;
+
+  // nothing is on until the viewer says so
+  assert.equal((/** @type {any} */ (await bridge("caps"))).status, 200);
+  const meta = await ok("caps", {});
+  assert.deepEqual([...meta.declared].sort(), ["db", "downloads", "sample", "user"]);
+  assert.equal(meta.state.db, "prompt");
+  assert.equal(meta.state.permissions, "granted");
+  assert.equal(await code("db.get", { path: "tasks/t1" }), "consent_required", "a declared capability still asks at its first use");
+  assert.equal((/** @type {any} */ (await bridge("db.get", { path: "tasks/t1" }, { "x-vyre-bridge": "0" }))).status, 403, "a request that is not from the page's own script is refused");
+  assert.equal((await ok("permissions.grant", { names: ["db", "user", "nope"], allow: true })).db, "granted");
+  assert.equal((await ok("caps", {})).state.sample, "prompt");
+  assert.equal(await code("sample.complete", { input: "hi" }), "consent_required");
+  await ok("permissions.grant", { names: ["sample"], allow: false });
+  assert.equal(await code("sample.complete", { input: "hi" }), "not_granted", "a no is a no");
+  assert.equal(await code("assets.upload", {}), "not_granted", "what the page did not declare is not there");
+
+  // user: an id of the page's own, the viewer's level
+  const me = await ok("user.info", {});
+  assert.match(me.id, /^[0-9a-f]{20}$/);
+  assert.equal(me.isOwner, true);
+  assert.equal(me.canEdit, true);
+  assert.equal(me.can["data.write"], true);
+
+  // db: documents at slash paths
+  assert.equal((await ok("db.get", { path: "tasks/t1" })).exists, false);
+  await ok("db.set", { path: "tasks/t1", data: { title: "Call the client", done: false, n: 2 } });
+  await ok("db.set", { path: "tasks/t2", data: { title: "File the motion", done: true, n: 1 } });
+  await ok("db.set", { path: "tasks/t3", data: { title: "Send the invoice", done: false, n: 3 } });
+  assert.deepEqual((await ok("db.get", { path: "tasks/t1" })).data, { title: "Call the client", done: false, n: 2 });
+  await ok("db.update", { path: "tasks/t1", data: { done: true, meta: { by: "me" } } });
+  await ok("db.update", { path: "tasks/t1", data: { meta: { at: 1 } } });
+  assert.deepEqual((await ok("db.get", { path: "tasks/t1" })).data, { title: "Call the client", done: true, n: 2, meta: { by: "me", at: 1 } }, "update merges nested objects");
+  assert.equal(await code("db.update", { path: "tasks/nope", data: { a: 1 } }), "invalid_argument", "update requires the document to exist");
+  const all = await ok("db.query", { path: "tasks", query: {} });
+  assert.deepEqual(all.docs.map((/** @type {any} */ x) => x.id), ["t1", "t2", "t3"], "without orderBy, by id");
+  assert.deepEqual((await ok("db.query", { path: "tasks", query: { where: [{ field: "done", op: "==", value: false }] } })).docs.map((/** @type {any} */ x) => x.id), ["t3"]);
+  assert.deepEqual((await ok("db.query", { path: "tasks", query: { orderBy: { field: "n", dir: "desc" }, limit: 2 } })).docs.map((/** @type {any} */ x) => x.id), ["t3", "t1"]);
+  assert.deepEqual((await ok("db.query", { path: "tasks", query: { where: [{ field: "n", op: "in", value: [1, 3] }] } })).docs.map((/** @type {any} */ x) => x.id), ["t2", "t3"]);
+  await ok("db.delete", { path: "tasks/t2", data: undefined });
+  await ok("db.delete", { path: "tasks/t2" });
+  assert.equal((await ok("db.get", { path: "tasks/t2" })).exists, false, "delete is idempotent");
+  assert.equal(await code("db.get", { path: "tasks" }), "invalid_argument", "a collection path is not a document path");
+  assert.equal(await code("db.get", { path: "a/../b" }), "invalid_argument");
+  assert.equal(await code("db.set", { path: "tasks/big", data: { s: "x".repeat(300_000) } }), "invalid_argument", "a document is at most 256 KiB");
+  assert.equal(await code("db.set", { path: "tasks/arr", data: [1, 2] }), "invalid_argument", "a document is an object");
+  assert.equal(await code("db.query", { path: "tasks", query: { where: [{ field: "a", op: "~", value: 1 }] } }), "invalid_argument");
+  // last writer wins: two writes in a row, the second stands
+  await Promise.all([ok("db.set", { path: "lww/a", data: { v: 1 } }), ok("db.set", { path: "lww/a", data: { v: 2 } })]);
+  assert.ok([1, 2].includes((await ok("db.get", { path: "lww/a" })).data.v));
+  // a lease: set-if-not-busy
+  const lease = await ok("db.acquire", { path: "locks/l1", holder: "tab-a", ttlMs: 5000 });
+  assert.equal(lease.acquired, true);
+  assert.equal((await ok("db.acquire", { path: "locks/l1", holder: "tab-b", ttlMs: 5000 })).acquired, false);
+  assert.equal((await ok("db.acquire", { path: "locks/l1", holder: "tab-a", ttlMs: 5000 })).acquired, true, "the holder renews");
+
+  // subscribers hear every write, live (server-sent events)
+  const events = /** @type {any[]} */ ([]);
+  const sse = http.request({ host: "127.0.0.1", port: frontPort, path: `/__vyre/api/stream?kind=query&path=tasks&q=${encodeURIComponent(JSON.stringify({ where: [{ field: "done", op: "==", value: false }] }))}`, headers: { host: u.host, cookie } }, res => {
+    let buf = ""; res.on("data", c => { buf += c; let i; while ((i = buf.indexOf("\n\n")) >= 0) { const frame = buf.slice(0, i); buf = buf.slice(i + 2); const m = /^event: (\w+)\ndata: (.*)$/m.exec(frame); if (m) events.push({ event: m[1], data: JSON.parse(m[2]) }); } });
+  });
+  sse.end();
+  t.after(() => sse.destroy());
+  assert.ok(await until(async () => events.length >= 1), "the first snapshot arrives");
+  assert.deepEqual(events[0].data.docs.map((/** @type {any} */ x) => x.id), ["t3"]);
+  await ok("db.set", { path: "tasks/t4", data: { title: "Pay the court fee", done: false, n: 4 } });
+  assert.ok(await until(async () => events.length >= 2), "a write by anyone reaches the subscriber");
+  assert.deepEqual(events[1].data.docs.map((/** @type {any} */ x) => x.id), ["t3", "t4"]);
+  await ok("db.update", { path: "tasks/t3", data: { done: true } });
+  assert.ok(await until(async () => events.length >= 3));
+  assert.deepEqual(events[2].data.docs.map((/** @type {any} */ x) => x.id), ["t4"], "a document that stops matching leaves the set");
+
+  // rules: the maker is owner, so every level passes; a member at "interact" is held to them
+  const o = /** @type {any} */ (await call("previews.resolve", { name: `pv-${id}` }, "module:appmods"));
+  const direct = (/** @type {Record<string, string>} */ headers) => new Promise(resolve => { const body = JSON.stringify({ op: "caps", args: {} }); const r = http.request({ host: "127.0.0.1", port: Number(new URL(o.data.origin).port), method: "POST", path: "/__vyre/api", headers: { host: `pv-${id}.localhost`, "content-type": "application/json", "x-vyre-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...headers } }, res => resolve(res.statusCode)); r.end(body); });
+  assert.equal(await direct({}), 401, "no viewer, no bridge");
+  assert.equal(await direct({ "x-vyre-viewer": "eyJ3IjoiZXZpbCJ9.forged" }), 401, "a local process cannot say who it is");
+  assert.equal((await call("previews.open", { title: "Plain", path: path.join(dir, "plain.html") })).data.preview.source, "files");
+});

@@ -15,6 +15,8 @@ import crypto from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
+import { createBridge } from "./bridge.js";
+import { createDocs } from "./docs.js";
 import { mayOpen, mayManage, ACCESS } from "./access.js";
 
 const str = { type: "string" };
@@ -32,10 +34,12 @@ export const MIGRATIONS = [
    CREATE INDEX previews_items_project ON previews_items (project);`,
   // A preview of files: the folder it serves (and the one file at its root), and the capabilities it declared (JSON), none by default.
   `ALTER TABLE previews_items ADD COLUMN root TEXT; ALTER TABLE previews_items ADD COLUMN file TEXT; ALTER TABLE previews_items ADD COLUMN caps TEXT;`,
+  // What each viewer allowed a preview to use: nothing is on by default; a no is kept too.
+  `CREATE TABLE previews_grants (preview TEXT NOT NULL, who TEXT NOT NULL, cap TEXT NOT NULL, allowed INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (preview, who, cap));`,
 ];
 
 /** The preview's name on the front: pv- and eight hex digits. */
-export const nameOf = (/** @type {string} */ id) => `pv-${id}`;
+export const nameOf_ = (/** @type {string} */ id) => `pv-${id}`;
 const ID = /^[0-9a-f]{8}$/;
 
 /** @type {{ start(ctx: any, seam?: any): Promise<{ stop(): Promise<void> }> }} */
@@ -67,10 +71,35 @@ export default {
       onState: (/** @type {string} */ id, /** @type {string} */ state, /** @type {{ error?: string }} */ info) => setState(id, state, info.error || ""),
     });
 
+    // ---- the bridge: what a page that declared capabilities can reach (bridge.js) ------------------------------------------------------------------------------------------------------------
+    const viewerKey = crypto.randomBytes(32).toString("hex");
+    const K = ctx.kernel;
+    const docs = seam.docs || (K && K.records && typeof K.serviceChain === "function" ? createDocs({ store: K.records, chain: () => K.serviceChain() }) : {
+      get: async () => { throw refuse("stored data needs the kernel, which this build runs without", "unavailable"); }, set: async () => { throw refuse("stored data needs the kernel, which this build runs without", "unavailable"); },
+      update: async () => { throw refuse("stored data needs the kernel, which this build runs without", "unavailable"); }, del: async () => { throw refuse("stored data needs the kernel, which this build runs without", "unavailable"); },
+      list: async () => { throw refuse("stored data needs the kernel, which this build runs without", "unavailable"); }, count: async () => 0, purge: async () => {},
+    });
+    const grants = {
+      get: (/** @type {string} */ id, /** @type {string} */ who, /** @type {string} */ cap) => { const g = db.prepare("SELECT allowed FROM previews_grants WHERE preview = ? AND who = ? AND cap = ?").get(id, who, cap); return g ? Number(g.allowed) : null; },
+      set: (/** @type {string} */ id, /** @type {string} */ who, /** @type {string} */ cap, /** @type {boolean} */ allowed) => { db.prepare("INSERT INTO previews_grants (preview, who, cap, allowed, at) VALUES (?,?,?,?,?) ON CONFLICT (preview, who, cap) DO UPDATE SET allowed = excluded.allowed, at = excluded.at").run(id, who, cap, allowed ? 1 : 0, now()); },
+    };
+    /** The name a person goes by in this Space, for the `user` capability; "Someone" when it is not known. @param {string} who */
+    const nameOf = async who => {
+      try {
+        const r = await ctx.call("spaces.members.list", {});
+        const list = r && r.data && (r.data.members || r.data);
+        const m = (Array.isArray(list) ? list : []).find((/** @type {any} */ x) => x && (x.person === who || x.id === who));
+        if (m && typeof m.name === "string" && m.name) return m.name;
+      } catch { /* the generic name */ }
+      return "Someone";
+    };
+    const bridge = createBridge({ row: (/** @type {string} */ id) => row(id), grants, docs, call: (/** @type {string} */ t, /** @type {any} */ i) => ctx.call(t, i), key: viewerKey, nameOf, log: (/** @type {string} */ m) => ctx.log.warn(m) });
+
     // ---- files: the container -----------------------------------------------------------------------------------------------------------------------------------------------------------------
     // One small server on this machine's loopback serves every files preview, told which by the host the front forwards. Nothing about a page's own format is checked or required.
     const staticSrv = createStatic({
       log: (/** @type {string} */ m) => ctx.log.warn(m),
+      api: (/** @type {any} */ req, /** @type {any} */ res, /** @type {string} */ id, /** @type {URL} */ url) => bridge.api(req, res, id, url),
       lookup: (/** @type {string} */ id) => { const r = row(id); return r && r.source === "files" && r.root && r.state !== "stopped" ? { root: r.root, file: r.file || null, caps: Boolean(r.caps) } : null; },
       drawn: async (/** @type {string} */ format, /** @type {string} */ title, /** @type {string} */ text) => {
         const r = await ctx.call("artifacts.render-page", { title, format, text });
@@ -209,7 +238,7 @@ export default {
         const who = await needPerson(meta); const r = mustRow(i.id);
         if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
         if (r.state === "stopped" || r.state === "crashed") throw refuse(r.state === "stopped" ? "it is stopped: restart it first" : "it is not running: restart it, or look at its log", "unavailable");
-        const t = await ctx.call("appmods.ticket", { name: nameOf(r.id), ...(i.origin ? { origin: i.origin } : {}) });
+        const t = await ctx.call("appmods.ticket", { name: nameOf_(r.id), who: who.id, role: who.role || "", ...(i.origin ? { origin: i.origin } : {}) });
         if (t.error) throw refuse(t.error.message || "the front door did not answer", t.error.code || "unavailable");
         return { url: t.data.url, host: t.data.host };
       },
@@ -248,7 +277,7 @@ export default {
         db.prepare("UPDATE previews_items SET wanted = 0 WHERE id = ?").run(r.id);
         if (r.mode === "supervised") sup.stop(r.id);
         setState(r.id, "stopped");
-        await ctx.call("appmods.drop", { name: nameOf(r.id) }).catch(() => {});
+        await ctx.call("appmods.drop", { name: nameOf_(r.id) }).catch(() => {});
         return { preview: view(row(r.id)) };
       },
     });
@@ -258,8 +287,11 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
         sup.forget(r.id);
+        bridge.forget(r.id);
+        void docs.purge(r.id).catch(() => {});
+        db.prepare("DELETE FROM previews_grants WHERE preview = ?").run(r.id);
         db.prepare("DELETE FROM previews_items WHERE id = ?").run(r.id);
-        await ctx.call("appmods.drop", { name: nameOf(r.id) }).catch(() => {});
+        await ctx.call("appmods.drop", { name: nameOf_(r.id) }).catch(() => {});
         emit("preview.removed", { id: r.id, thread: r.thread || null, project: r.project || null });
         return { removed: r.id };
       },
@@ -281,7 +313,7 @@ export default {
         if (i.access === "public") throw refuse("sharing with anyone who has the link is not available yet: it needs the public door, which comes with Publish", "unavailable");
         const { r } = await manage(i.id, meta);
         db.prepare("UPDATE previews_items SET access = ?, updated = ? WHERE id = ?").run(i.access, now(), r.id);
-        if (ACCESS.indexOf(i.access) < ACCESS.indexOf(r.access)) await ctx.call("appmods.drop", { name: nameOf(r.id) }).catch(() => {});
+        if (ACCESS.indexOf(i.access) < ACCESS.indexOf(r.access)) await ctx.call("appmods.drop", { name: nameOf_(r.id) }).catch(() => {});
         emit("preview.state", { id: r.id, state: r.state, title: r.title, thread: r.thread || null, project: r.project || null, access: i.access });
         card(row(r.id));
         return { preview: view(row(r.id)) };
@@ -296,9 +328,9 @@ export default {
         const m = /^pv-([0-9a-f]{8})$/.exec(String(i.name));
         const r = m && ID.test(m[1]) ? row(m[1]) : null;
         if (!r || r.state === "stopped" || r.state === "crashed") return { origin: null };
-        if (r.source === "files") return { origin: `http://127.0.0.1:${staticPort()}` };
+        if (r.source === "files") return { origin: `http://127.0.0.1:${staticPort()}`, viewerKey };
         if (!r.upstream) return { origin: null };
-        return { origin: `http://127.0.0.1:${r.upstream}` };
+        return { origin: `http://127.0.0.1:${r.upstream}`, viewerKey };
       },
     });
 
