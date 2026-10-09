@@ -22,6 +22,7 @@ import os from "node:os";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { fileURLToPath } from "node:url";
 import { createBridge } from "./bridge.js";
+import { createOpsTool } from "./ops-tool.js";
 import { createOversight } from "./oversight.js";
 import { diagnoseConnection } from "./diagnose.js";
 import { classify, originOf } from "./floor-url.js";
@@ -42,6 +43,8 @@ const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
   // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
   // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
   if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  // The paired box, after the link checked the person's allowlist for it (link.computer.allow / link.ops.allow): that allowlist is the grant. Nothing it asks is the person's own, so a send is still held.
+  if (String(caller) === "module:link") return null;
   return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -265,9 +268,10 @@ export default {
      * is for the Gate's release, which is the person's approval of an act already judged.
      * @param {string} op @param {any} input @param {any} meta @param {{ tool?: string, map?: (r: any) => any }} [o]
      */
-    async function dispatch(op, input, meta, o = {}) {
+    async function dispatch(op, input, meta, o = /** @type {any} */ ({})) {
       return via.run(meta || {}, async () => {
-        const agent = agentOf(meta.caller, meta);
+        // A Connection the person made (a website, run from a Flow or a view) is its own grant: the kernel and the connectors module have already judged who may run it.
+        const agent = o.connection === true ? null : agentOf(meta.caller, meta);
         const args = { ...input };
         delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget; delete args.pointBudget;
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
@@ -294,7 +298,8 @@ export default {
           // agent's, or the model's in a Claude session, may not: the extension holds those.
           // The person's own list of white-label GoHighLevel hosts (standalone: `config ghl-host`); always sent, so removing one takes effect.
           if (cfg.ghlHosts !== undefined) args.ghlHosts = typeof cfg.ghlHosts === "function" ? cfg.ghlHosts() : cfg.ghlHosts;
-          trust.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
+          // `o.asked`: the person's yes already covers exactly this call (a Flow's approved send, released by the kernel); only code in this module sets it.
+          trust.asked = (PEOPLE.includes(callerKind(meta.caller)) && !agent) || o.asked === true;
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
@@ -531,10 +536,48 @@ export default {
     tool("chrome.api", "An app's own API, learned from its traffic. route: TRY THIS FIRST for a read: give a hint and the best learned GET is called from inside the page and verified; the reply says route \"api\" with the data, or route \"ui\" with why (then drive the page), and an endpoint that fails twice is dropped. learn: reduce captured requests to a catalog (method, path, query and body shape, auth kind, sample status; values masked). catalog: read it. call: invoke one entry from inside the page. learn sees the calls of every frame, including a cross-origin iframe's (the workflow builder), and each entry records the frame it was learned in; call runs in that frame by default, so its own cookies and auth sign it, or in the frame you name. This is the way to call an app's backend with the person's login: prefer call over a fetch in chrome_eval, which cannot write and cannot read the stored login. A write (POST, PUT, PATCH, DELETE) is held for the person unless a plan they approved once (chrome_approve) covers it; a publish, a message or a payment always asks.",
       obj({ action: { type: "string", enum: Object.keys(API_OPS) }, tab, frame: { description: "For call: run in this frame (index, frame id, or a piece of its origin). Default: the frame the entry was learned in." }, entry: str, hint: { ...str, description: "For route: what the data is about, in a few words (\"contacts\", \"workflow status\")." }, params: { type: "object", description: "For route: path and query values for the entry." }, args: { type: "object" }, host: str, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (API_OPS)[action], { ...rest, action }, m); });
+    // Learned website operations: named, typed calls the site's own page makes, kept in the site record and signed inside the person's page. The tool is the agent's side; extension/caps/ops.js is the page's.
+    const opsTool = createOpsTool({ dispatch, call: (t, i) => ctx.call(t, i), originOf, isPerson: m => PEOPLE.includes(callerKind(m && m.caller)), denied, urls });
+    tool("chrome.op", "Learned operations on a website, called by name: ghl.listContacts(tag) instead of driving the page. The login stays in the browser. scout: the page's requests as a few lines (pass examples). learn: run the trigger twice with two different example inputs, diff the traffic, get a draft (a write is taught with its request BLOCKED and asks the person first). save: keep a draft; a read must first answer on an input that was not an example (verify). call: run a kept operation (name, inputs); a drift is repaired once automatically, a send or change is held for the person. list, versions, heal, check. rollback and forget are the person's. Pick the operation as name(inputs) -> fields, say it back, then build it. kit: the shipped recipe for a site (LinkedIn), operation by operation. A site that watches its accounts (LinkedIn) is used at a person's pace within daily limits, and the first security check stops it until the person resumes it.",
+      obj({ action: { type: "string", enum: ["kit", "list", "scout", "learn", "save", "call", "heal", "check", "versions", "rollback", "forget"] }, tab, site: { ...str, description: "The site's origin, e.g. https://app.example.com (or pass a tab on it)." }, name: { ...str, description: "camelCase, e.g. listContacts." },
+        kind: { type: "string", enum: ["read", "draft", "change", "send", "spend", "delete"], description: "For learn. Default read." }, trigger: { type: "object", description: "For learn: { url (with {input} slots), steps?: [{action: click|fill|press|wait|goto, selector, value}] } that makes the page send the request." },
+        examples: { description: "For learn: two objects of different input values. For scout: one object." }, wants: { type: "array", items: str, description: "For learn: the field names the person wants back (name, headline); the picks are found in the answer." }, match: { type: "object" }, id: int, draft: str, inputs: { type: "object" }, verify: { type: "object", description: "For save: inputs that were not an example." }, version: int, heal: bool, force: bool, limit: int }, ["action"]),
+      (i, m) => opsTool.run(i, m));
+    // The connectors module's way in (a Connection to a website, run from a Flow, a watcher or a view): the operation by site and name, as the person's signed-in Chrome runs it. A read runs at once;
+    // an outward one only when `approved` says the kernel has the person's yes for exactly this call (the vault passes it). Nothing else may call it.
+    ctx.tool("chrome.op.run", {
+      internal: true, callers: ["module"],
+      description: "Run one learned operation of a site in the person's Chrome, for the connectors module: { site, name, inputs, approved? } -> the operation's answer (ok, class, data, next). Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool, check: bool }, ["site", "name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        if (!m || m.caller !== "module:connectors") throw denied("denied", "only the connectors module runs a site's operation");
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: i.approved === true, check: i.check === true, connection: true });
+      } });
+    // The box's way to a learned website operation in this Mac's Chrome (rung "mac"), through the link module, which has already checked that the person allowed this operation for the box here and,
+    // for an outward one, the box's signed assertion for exactly this call. Nothing else may call it.
+    ctx.tool("chrome.op.call", {
+      internal: true, callers: ["module"],
+      description: "Run one learned READ of a site in the person's Chrome for the box, through the link: { site, name, inputs } -> the operation's answer. An operation that submits is refused here and goes through chrome.op.send. Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" } }, ["site", "name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        if (!m || m.caller !== "module:link") throw denied("denied", "only the link runs a site's operation for the box");
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, connection: true, only: "read" });
+      } });
+    // The same door for an operation that submits (a change, send, spend or delete). It runs only for the link, after the link checked the box's signed assertion for exactly this site, operation
+    // and inputs: that signature is the person's one yes (given on the box, once, for 60 s), so the registry's floor does not ask again (`asks`).
+    ctx.tool("chrome.op.send", {
+      internal: true, callers: ["module"],
+      description: "Run one learned operation that SUBMITS in the person's Chrome for the box, through the link, after the link verified the box's signed approval: { site, name, inputs, approved: true } -> the operation's answer. Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool }, ["site", "name", "approved"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        if (!m || m.caller !== "module:link") throw denied("denied", "only the link runs a site's operation for the box");
+        if (i.approved !== true) throw denied("denied", "chrome.op.send runs only with the person's approval");
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: true, connection: true, only: "send" });
+      } });
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
-    tool("chrome.site", "What Vyre for Chrome has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.",
+    tool("chrome.site", "What Vyre Computer has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.",
       obj({ action: { type: "string", enum: ["card", "flush"], description: "flush: send what was learned now instead of in 10 seconds." }, tab, origin: str }),
       (i, m) => dispatch(i.action === "flush" ? "site.flush" : "site.card", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.origin ? { origin: i.origin } : {}) }, m));
     tool("chrome.recipe", "Replay a flow that already worked on this site as ONE call: no model turn between steps. list: the recipes for this tab's site (name, steps, parameters, runs, what they write). run: name the recipe and give its parameters; it runs as a normal batch (the stop switch, the URL floor, the send-hold and any plan approval all apply). A recipe is saved when chrome_batch is given saveAs and every step worked; what a person typed is never kept, only {parameters}. Recipes last until the browser closes unless learning is on.",
@@ -742,15 +785,19 @@ function pinnedOrigin() {
   } catch { return null; }
 }
 
-/** The steps a person does in Chrome, in plain words. @param {string} dir @param {string} id @param {string[]} browsers */
+/** The page where a browser lists its extensions. Dia, Arc, Brave and Edge answer to their own scheme. @param {string} browser */
+export const extensionsPage = browser => ({ dia: "dia://extensions", arc: "arc://extensions", brave: "brave://extensions", edge: "edge://extensions" }[browser] || "chrome://extensions");
+
+/** The steps a person does in the browser, in plain words. @param {string} dir @param {string} id @param {string[]} browsers */
 export function guide(dir, id, browsers) {
+  const pages = [...new Set(browsers.map(extensionsPage))];
   return [
     `Vyre's connector is registered for ${browsers.join(", ")}. Two steps remain in the browser:`,
-    "1. Open chrome://extensions and turn on Developer mode (top right).",
+    `1. Open ${pages.join(" (or ")}${pages.length > 1 ? ")" : ""} and turn on Developer mode (top right).`,
     `2. Press Load unpacked and choose this folder: ${dir}`,
     `The extension's id should read ${id}. If it does not, tell Vyre: the connector only talks to that id.`,
     "Then run chrome.status: it should say connected.",
-    "Two bars in Chrome are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
+    "Two bars in the browser are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
     "Esc stops Vyre at once, and it waits for you before doing anything else.",
     "Agents can run a script in a page you are signed in to. Vyre blocks what it can see a script send to a site the page does not already use, and closes a worker it made when the call returns. It cannot hold a script that builds code from text or starts a worker some other way, so an agent you do not trust should not be given a page with your logins in it.",
   ].join("\n");

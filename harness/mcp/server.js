@@ -97,7 +97,7 @@ const store = createStore({ threshold: process.env.VYRE_MCP_REF_TOKENS !== undef
 const FEATURES = featuresOf(process.env.VYRE_MCP_FEATURES);
 const REF_OFF = process.env.VYRE_MCP_REF_TOKENS === "0" || !FEATURES.ref;
 /** Reads whose whole text is the answer (and which already cap themselves): a handle would only add a turn. */
-const WHOLE = new Set(["docs.read", "skills.get", "memory.turn", "work.chat.span", "artifacts.get", "recall.thread", "files.preview", "glass.files.preview"]);
+const WHOLE = new Set(["work.tools", "docs.read", "skills.get", "memory.turn", "work.chat.span", "artifacts.get", "recall.thread", "files.preview", "glass.files.preview"]);
 /** What tools_find has learned on this machine from the calls that followed it (lib/tools-learn.js); it lives in this home, mode 0600, word stems and tool names only. */
 const learner = createLearner({ keep: (stem) => Boolean(index && index.df.has(stem)), file: (() => { try { return path.join(home(), "tools-learned.json"); } catch { return null; } })() });
 /** The last tools_find in this session: its ask and the tools it showed, so the next call that follows one of them teaches the pairing. @type {{ query: string, shown: Set<string>, at: number } | null} */
@@ -179,7 +179,7 @@ const reply = (text, data) => ({ content: [{ type: "text", text }], structuredCo
 function present(data, tool = "", always = false) {
   if (REF_OFF && !always) return typeof data === "string" ? reply(data, undefined) : reply(JSON.stringify(data), data);
   const s = (tool && WHOLE.has(tool) && !always) ? { value: data } : store.shape(owner(), data, { always });
-  if ("ref" in s && s.ref) { const body = { handle: s.ref.handle, tokens: s.ref.tokens, expires_in: s.ref.expires_in, summary: s.ref.summary, read: "results_read { handle, select?, offset?, limit? }" }; return reply(JSON.stringify(body), body); }
+  if ("ref" in s && s.ref) { const body = { handle: s.ref.handle, tokens: s.ref.tokens, expires_in: s.ref.expires_in, summary: s.ref.summary, read: "results_read { handle, select?, where?, sort?, fields?, offset?, limit? }" }; return reply(JSON.stringify(body), body); }
   return typeof data === "string" ? reply(data, undefined) : reply(JSON.stringify(data), data);
 }
 

@@ -5,14 +5,14 @@
 
 /** @typedef {{ id: string, title: string, subtitle?: string, accessory?: string, icon?: string, group?: string, actions?: any[] }} ViewRow */
 
-/** The tool input for a view's frame. @param {{ module: string, view: string, q?: string, id?: string, form?: string }} a */
+/** The tool input for a view's frame. `surface` asks for the v2 screen drawn for that surface; `block` names the block a row was opened from. @param {{ module: string, view: string, q?: string, id?: string, form?: string, surface?: string, block?: string }} a */
 export function getInput(a) {
-  return { module: a.module, command: a.view, ...(a.q ? { q: a.q } : {}), ...(a.id ? { id: a.id, view: "detail" } : {}), ...(a.form ? { form: a.form, view: "form" } : {}) };
+  return { module: a.module, command: a.view, ...(a.surface ? { surface: a.surface } : {}), ...(a.block ? { block: a.block } : {}), ...(a.q ? { q: a.q } : {}), ...(a.id ? { id: a.id, view: "detail" } : {}), ...(a.form ? { form: a.form, view: "form" } : {}) };
 }
 
-/** The tool input for an action: ids and typed values, plus the preview's proof when the person said yes to an outward one. @param {{ module: string, view: string, action: string, id?: string, column?: string, q?: string, form?: string, fields?: Record<string, string>, asked?: { hash: string, token: string } | null }} a */
+/** The tool input for an action: ids and typed values, plus the preview's proof when the person said yes to an outward one. @param {{ module: string, view: string, action: string, block?: string, surface?: string, id?: string, column?: string, q?: string, form?: string, fields?: Record<string, string>, asked?: { hash: string, token: string } | null }} a */
 export function actInput(a) {
-  return { module: a.module, command: a.view, action: a.action, ...(a.id ? { id: a.id } : {}), ...(a.column ? { column: a.column } : {}), ...(a.q ? { q: a.q } : {}), ...(a.form ? { form: a.form } : {}),
+  return { module: a.module, command: a.view, action: a.action, ...(a.block ? { block: a.block } : {}), ...(a.surface ? { surface: a.surface } : {}), ...(a.id ? { id: a.id } : {}), ...(a.column ? { column: a.column } : {}), ...(a.q ? { q: a.q } : {}), ...(a.form ? { form: a.form } : {}),
     ...(a.fields ? { fields: a.fields } : {}), ...(a.asked ? { asked: { hash: a.asked.hash, token: a.asked.token } } : {}) };
 }
 

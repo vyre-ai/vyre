@@ -176,3 +176,20 @@ test("vault.request and its Gate sender: who may call, and what stops before the
   }
   assert.ok(senders.some(s => s.name === "vault-api" && s.module === "vault" && s.kinds.includes("spend")), JSON.stringify(senders));
 });
+
+test("a model, the assistant included, is shown and may call only what a kernel grant gives it: with none, an empty list, while the person sees everything and no value leaks", async t => {
+  const { reg } = await daemon(t);
+  const secret = fake("secret");
+  const made = await reg("vault.put", { name: "harlow-api", kind: "api-credential", description: "Harlow API", fields: { config: CONFIG, secret } });
+  assert.ok(made.data && made.data.created, JSON.stringify(made.error));
+  const wifi = await reg("vault.put", { name: "wifi", kind: "secret", description: "office wifi", value: fake("wifi") });
+  assert.ok(wifi.data && wifi.data.created, JSON.stringify(wifi.error));
+  // (the call itself is refused by the same check: core/vault/agent-api.test.js, where the network is faked; a daemon cannot resolve a made-up host)
+  for (const [caller, meta] of [["mcp:agent:juno", { agent: "juno", agentKind: "assistant" }], ["mcp:agent:kit", { agent: "kit", agentKind: "teammate" }], ["mcp", {}]]) {
+    const listed = (await reg("vault.list", {}, caller, meta)).data;
+    assert.deepEqual(listed.items, [], `${caller} holds no grant, so it is shown nothing`);
+    assert.ok(!JSON.stringify(listed).includes(secret), "never a value");
+  }
+  assert.equal((await reg("vault.list", {}, "cli")).data.items.length, 2, "the person sees everything");
+});
+

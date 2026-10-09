@@ -9,6 +9,7 @@ import { createApprovals } from "../tasks/approvals.js";
 import { createGate } from "../core/gate.js";
 import { roomedAuthorizer } from "../core/room.js";
 import { folderGuard } from "../core/folders.js";
+import { projectOracle } from "./project-members.js";
 import { sharedRead } from "./shares.js";
 import { GRANT_ACTIONS } from "../grants/index.js";
 import { createLimits } from "../core/limits.js";
@@ -42,14 +43,32 @@ export function createGateway(cfg) {
   const rawAuthorizer = createAuthorizer({ ...cfg, ...wiring, attrs, actions: [...RECORD_ACTIONS, ...SEAL_ACTIONS, ...TASK_ACTIONS, ...GRANT_ACTIONS, ...CHECKPOINT_ACTIONS, ...MEMORY_ACTIONS, ...(cfg.actions || [])] });
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const roomed = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
-  // A chat's folders are its participants' only (kernel/core/folders.js).
+  // A chat's folders are its participants' only, and a project's files its members' (kernel/core/folders.js).
+  const projectMembers = projectOracle({ space: cfg.space, chains: cfg.chains, records: () => records, tasks: cfg.tasks });
   const authorizer = gs && typeof gs.chatHas === "function" ? folderGuard(roomed, cfg.space, {
     chatHas: (/** @type {string} */ p, /** @type {string} */ c) => gs.chatHas(p, c),
     chatAssistants: (/** @type {string} */ c) => gs.chatAssistants(c),
-    sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records }),
+    sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records, logical: cfg.drive && cfg.drive.logical }),
+    projectHas: (/** @type {string} */ p, /** @type {string} */ project) => projectMembers.member(p, project),
+    projectAgent: (/** @type {string} */ a, /** @type {string} */ project) => projectMembers.agent(a, project),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
   records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
+  // Share to project over a sealed chat: a share record by someone in the chat wraps the file's key into the project's ring, and the last share of a path taken back rotates it (kernel/storage/sealed-drive.js).
+  if (cfg.drive && cfg.drive.share) {
+    const base = records, has = (/** @type {string} */ path) => base.query(cfg.chains.fromFacts({ kind: "module", module: "work", first_party: true }), "file-share", { filter: { field: "path", op: "eq", value: path }, page: { limit: 1 } });
+    records = Object.freeze({ ...base,
+      async create(/** @type {any} */ c, /** @type {string} */ t, /** @type {any} */ d, /** @type {any} */ o) {
+        const r = await base.create(c, t, d, o), by = String((base.attrsOf(r.urn) || {}).created_by || "");
+        if (t === "file-share" && by.startsWith("person:") && await sharedRead(`vyre://${cfg.space}/file/${d.path}`, by.slice(7), { space: cfg.space, chains: cfg.chains, gs, records: base })) await cfg.drive.share(String(d.path)).catch(() => {});
+        return r;
+      },
+      async remove(/** @type {any} */ c, /** @type {string} */ t, /** @type {string} */ id, /** @type {any} */ b, /** @type {any} */ o) {
+        const path = t === "file-share" ? ((await base.get(c, t, id)) || { data: {} }).data.path : null, r = await base.remove(c, t, id, b, o);
+        if (path && !(await has(path).catch(() => ({ rows: [{}] }))).rows.length) await cfg.drive.unshare(String(path)).catch(() => {});
+        return r;
+      } });
+  }
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */

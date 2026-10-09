@@ -5,11 +5,12 @@
 
 import { createContext, memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
+import { itemLabel, partsOf } from "./secure-paste.js";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience, authorLabel } from "./group.js";
@@ -109,6 +110,29 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
 }
 
 /** Highlight to assistant: the message, or the part of it the person selected, goes above the composer as a quoted reference. Nothing is sent. */
+/** The one renderer for words that may name a Vault item (vault://name): the name is a small shield chip wherever it sits, in a person's message or an assistant's reply. Plain words stay plain text. */
+export function RefText({ text, style }: { text: string; style?: object }) {
+  const parts = partsOf(text);
+  if (!parts.some((p) => "vault" in p)) return <Text size="read" selectable style={style}>{text}</Text>;
+  return <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text))}</Text>;
+}
+
+/** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
+export function UserText({ text, pending }: { text: string; pending: boolean }) {
+  const style = pending ? { opacity: 0.55 } : undefined;
+  const names = [...new Set(partsOf(text).flatMap((p) => ("vault" in p ? [p.vault] : [])))];
+  if (!names.length) return <Text size="read" selectable style={style}>{text}</Text>;
+  return (
+    <View style={{ gap: 6 }}>
+      <RefText text={text} style={style} />
+      <View accessibilityLabel={`${names.join(", ")} secured in the Vault`} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Icon name="shield" size={14} tone="ok" />
+        <Text size="caption" tone="muted">{names.length === 1 ? "Secured in the Vault" : `${names.length} keys secured in the Vault`}</Text>
+      </View>
+    </View>
+  );
+}
+
 function HighlightAction({ from, text, ctx }: { from: string; text: string; ctx: BlockCtx }) {
   const { color } = useUiTheme();
   const picked = useRef("");
@@ -166,7 +190,7 @@ function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
 function StreamText({ store, k, text, done }: { store: ChatStore; k: string; text: string; done: boolean }) {
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
-  if (cut >= text.length) return <Text size="read" selectable>{text}</Text>;
+  if (cut >= text.length) return <RefText text={text} />;
   // The rest is laid out, so the height is the final height; it is only not drawn yet.
   return (
     <Text size="read">
@@ -342,7 +366,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
-          <Text size="read" selectable style={it.pending ? { opacity: 0.55 } : undefined}>{it.text}</Text>
+          <UserText text={it.text} pending={!!it.pending} />
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
           {it.pending ? null : (
             <ActionRow>

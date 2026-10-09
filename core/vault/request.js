@@ -40,7 +40,7 @@ import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
-  readerMayRead, scopeAllows,
+  readerMayRead, scopeAllows, modelMayRead,
 } from "./api-request.js";
 import { scrub, scrubAll } from "../../lib/scrub.js";
 
@@ -104,6 +104,14 @@ function forms(v) {
  * at most maxBytes back. No redirect is followed here; execute() decides.
  * @param {Send} s @returns {Promise<Reply>}
  */
+/** The address of a call to a browser credential: https, the site's own host exactly, no login in it and no port. Nothing is resolved, because nothing is sent from here. @param {string} rawUrl @param {string[]} hosts */
+function browserTarget(rawUrl, hosts) {
+  let u;
+  try { u = new URL(rawUrl); } catch { throw bad("that address is not valid", "bad_input"); }
+  if (u.protocol !== "https:" || u.username || u.password || u.port || !hosts.includes(u.hostname.toLowerCase())) throw bad(`${printable(u.hostname, 80)} is not this connection's site`, "bad_input");
+  return { url: u, addresses: [] };
+}
+
 export function httpsTransport({ url, address, method, headers, body, timeoutMs = TIMEOUT_MS, maxBytes = MAX_RESPONSE }) {
   return new Promise((resolve, reject) => {
     const h = { ...headers };
@@ -214,9 +222,10 @@ export class ApiRequests {
    * A public document by its https address, for a person who pointed at it (an API description to import): a plain GET with no credential and no cookie, the address resolved and checked against
    * private, loopback, link-local and metadata ranges at every hop, the connection pinned to the address that was checked, at most 3 redirects (each checked the same way), a size cap, and a timeout.
    * It sends nothing of the person's. The caller decides who may ask (the connectors module, for a person's own import).
-   * @param {string} rawUrl @param {number} [maxBytes]
+   * `raw`: a non-2xx answer is returned as it is ({ status, body, type }) instead of refused, for a caller that judges the answer itself (a learned website operation).
+   * @param {string} rawUrl @param {number} [maxBytes] @param {{ raw?: boolean }} [o]
    */
-  async fetchPublic(rawUrl, maxBytes = 5_000_000) {
+  async fetchPublic(rawUrl, maxBytes = 5_000_000, o = {}) {
     let url = String(rawUrl || "");
     for (let hops = 0; ; hops++) {
       let host;
@@ -232,7 +241,7 @@ export class ApiRequests {
         continue;
       }
       if (r.truncated) throw bad(`that file is larger than ${Math.round(maxBytes / 1_000_000)} MB`, "too_large");
-      if (!(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
+      if (!o.raw && !(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
       return { status: r.status, body: Buffer.from(r.body).toString("utf8"), type: String(r.headers["content-type"] || "") };
     }
   }
@@ -274,7 +283,8 @@ export class ApiRequests {
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
     const rawUrl = buildUrl(input.url, input.query);
-    const target = config.app ? await this.appTarget(config, rawUrl) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
+    // A browser credential makes no network request from here (the browser does, to its own site), so there is nothing to resolve: the address only has to be the site's, exactly.
+    const target = config.app ? await this.appTarget(config, rawUrl) : config.auth.type === "browser" ? browserTarget(rawUrl, config.hosts) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
     const url = target.url;
     checkQuery(url);
     let body;
@@ -489,6 +499,9 @@ export class ApiRequests {
   async execute(plan, { who, said = null, released = null, raw = false }) {
     let known = [];
     const tag = `${plan.method} ${plan.url.hostname} ${plan.kind}${said ? ` said:${said}` : ""}${released ? ` released:${released}` : ""}`;
+    // A website signed in through a browser has no key here: everything above (the host, the route rules, the class, the Gate's hold and approval) judged this request the same as any other, and
+    // now it goes into the browser that holds the login, which signs it. The request is the operation's virtual address; the connectors module maps it back to the learned operation.
+    if (plan.config.auth.type === "browser") return this.executeBrowser(plan, { who, tag, said, released, raw });
     try {
       const auth = await this.authFor(plan);
       known = auth.known;
@@ -522,6 +535,29 @@ export class ApiRequests {
       const msg = scrub(String(/** @type {Error} */ (e)?.message || e), known);
       this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
       throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed", ...(/** @type {any} */ (e)?.retryAfter ? { retryAfter: /** @type {any} */ (e).retryAfter } : {}) });
+    }
+  }
+
+  /**
+   * The browser's turn: a request to a site Connection's virtual address, run in the browser that is signed in. `approved` says the person's yes already covers this exact call (a Gate release,
+   * or their own words): an outward operation is made only then, and a read always. The answer is the operation's extracted data, shaped like any reply.
+   * @param {any} plan @param {{ who: string, tag: string, said: string | null, released: string | null, raw: boolean }} o
+   */
+  async executeBrowser(plan, { who, tag, said, released, raw }) {
+    // the connectors module runs it (it holds the Connection and knows the rungs); a rig may hand in its own.
+    const run = this.deps.siteRun || (typeof this.deps.call === "function" ? async (/** @type {any} */ q) => { const r = await this.deps.call("connectors.site.run", q); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } : null);
+    try {
+      if (typeof run !== "function") throw bad(`${plan.name} is a website signed in through a browser, and no browser is connected to run it`, "unavailable");
+      if (plan.kind !== "read" && !(released || said)) throw bad("an outward call to a website waits for the person's yes", "denied");
+      const out = await run({ credential: plan.name, method: plan.method, path: plan.url.pathname, query: Object.fromEntries(plan.url.searchParams), ...(plan.body !== undefined ? { body: plan.body } : {}), approved: Boolean(released || said), who });
+      const body = Buffer.from(JSON.stringify(out && out.data !== undefined ? out.data : null));
+      const reply = { status: Number(out && out.status) || 200, headers: { "content-type": "application/json" }, body, truncated: false };
+      this.vault.audit("api-request", plan.name, who, reply.status < 500, `${tag} ${reply.status}`);
+      return raw ? this.rawShape(reply, []) : this.shape(reply, []);
+    } catch (e) {
+      const msg = scrub(String(/** @type {Error} */ (e)?.message || e), []);
+      this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
+      throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed" });
     }
   }
 
@@ -623,13 +659,20 @@ export class ApiRequests {
       if (use) { tagged = true; this.deps.call("vault.use.note", { item: name, thread: meta.thread, via: "vault.request" }).catch(() => {}); }
     }
 
-    // A model reads through a credential only inside its scope: a named agent, or a session bound to a project, must be named by the
-    // credential's { projects, agents } (or the person tagged the credential to its thread). The person's own session, the assistant and
-    // a module with a grant keep their reach. A read inside scope still runs with no prompt.
+    // A model (an agent or the assistant) reaches a credential only through a kernel grant of its own: its project's linked vault, a vault shared with it, or a task lease (the kernel decides: access.js
+    // effectFor). A read inside a grant runs with no prompt; anything outward is held for a person whatever the grant says. The person's own session and a thread the person tagged with this credential use it by right.
     const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
     const isModel = caller === "mcp" || caller.startsWith("mcp:");
-    if (isModel && plan.kind === "read" && (agentName || meta.project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged
-        && !scopeAllows(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project })) {
+    const access = /** @type {any} */ (this.vault).access;
+    if (isModel && !tagged && access && access.K) {
+      const who = access.modelName(/** @type {any} */ (meta), caller);
+      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call")) === "deny") {
+        audit(false, `${plan.method} ${plan.url.hostname} refused: no grant for ${who}`);
+        throw bad(`${name} is not available to ${who === "assistant" ? "the assistant" : `the agent ${who}`}: it needs a grant (its project's vault, a vault shared with it, or a lease for the task)`, "denied");
+      }
+    // SHIM(no kernel): a build with no kernel (development, tests) keeps the credential's older scope (modelMayRead); a packaged daemon always has the kernel.
+    } else if (isModel && plan.kind === "read" && !tagged
+        && !modelMayRead(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project, agentKind: /** @type {any} */ (meta).agentKind })) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
       throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");
     }
@@ -821,10 +864,10 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     (input, meta) => api.request(input, meta));
 
   internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
-    obj({ url: str, max_bytes: { type: "integer" } }, ["url"]),
-    async ({ url, max_bytes }, { caller }) => {
+    obj({ url: str, max_bytes: { type: "integer" }, raw: { type: "boolean" } }, ["url"]),
+    async ({ url, max_bytes, raw }, { caller }) => {
       if (caller !== "module:connectors") throw bad("only the connectors module fetches a description for a person's import", "denied");
-      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)));
+      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)), { raw: raw === true });
     });
 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",

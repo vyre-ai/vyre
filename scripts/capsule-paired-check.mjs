@@ -55,7 +55,7 @@ try {
   child = spawn(bin, [], { env: { ...process.env, VYRE_HOME: home, VYRE_SOCKET: sock, VYRE_CAPSULE_DRIVE: "1", VYRE_CAPSULE_TEST: "1" }, stdio: ["pipe", "pipe", "inherit"] });
   /** @type {((m: any) => void)[]} */ const waiting = [];
   readline.createInterface({ input: /** @type {any} */ (child.stdout) }).on("line", l => { let m; try { m = JSON.parse(l); } catch { return; } const w = waiting.shift(); if (w) w(m); });
-  const send = c => new Promise((r, j) => { waiting.push(r); child.stdin?.write(JSON.stringify(c) + "\n"); setTimeout(() => j(new Error(`no answer to ${JSON.stringify(c)}`)), 20_000); });
+  const send = (c, ms = 20_000) => new Promise((r, j) => { waiting.push(r); child.stdin?.write(JSON.stringify(c) + "\n"); setTimeout(() => j(new Error(`no answer to ${JSON.stringify(c)}`)), ms); });
   await new Promise((r, j) => { waiting.push(r); setTimeout(() => j(new Error("the app did not say ready")), 20_000); });
   const dir = process.env.VYRE_CAPSULE_SCREENS; if (dir) fs.mkdirSync(dir, { recursive: true });
   const still = async name => {
@@ -102,8 +102,9 @@ try {
 
   // The Mac's own things stay here.
   await send({ text: "" });
-  await send({ text: "safari" }); await pause(900);
-  p = await send({ probe: true });
+  // (the app search is Spotlight on a hosted runner: it can take most of a minute to answer, so ask again, patiently, until it has rows)
+  await send({ text: "safari" });
+  for (let i = 0; i < 20; i++) { await pause(900); p = await send({ probe: true }, 60_000); if (p.rows.length > 0) break; }
   check(p.rows.length > 0, "an app search still answers on this Mac");
 
   // The server goes away: the words say so.

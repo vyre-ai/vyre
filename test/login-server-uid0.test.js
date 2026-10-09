@@ -8,6 +8,8 @@ import { isLoginServer, surfaceAncestry } from "../core/daemon/index.js";
 
 const listener = { exe: "uid0", pid: 1272, started: "t", uid: 0, comm: "sshd", cmd: "sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups" };
 
+// the walk trusts links owned by vyred's own uid or root: the stand-in rows carry this account's uid, whatever it is (a CI runner is not 1000)
+const ME = typeof process.getuid === "function" ? process.getuid() : 1000;
 test("a root sshd or login the kernel hid the exe of is a login server", () => {
   assert.equal(isLoginServer(listener), true);
   assert.equal(isLoginServer({ ...listener, comm: "login", cmd: "/bin/login -p --" }), true);
@@ -21,12 +23,12 @@ test("a user-owned process called sshd, a tmux, a bare uid0 with no name and a w
 });
 test("the walk names a real ssh chain (listener, [priv], session, shell) as that server, and the stand-in turns it into outside", () => {
   const rows = {
-    100: { ppid: 1, args: "/usr/bin/node vyred", pgid: 100, sid: 100, uid: 1000, start: 1 },
+    100: { ppid: 1, args: "/usr/bin/node vyred", pgid: 100, sid: 100, uid: ME, start: 1 },
     1272: { ppid: 1, args: "sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups", pgid: 1272, sid: 1272, uid: 0, start: 2 },
     1320: { ppid: 1272, args: "sshd: alex [priv]", pgid: 1320, sid: 1320, uid: 0, start: 3 },
-    1612: { ppid: 1320, args: "sshd: alex@pts/0", pgid: 1320, sid: 1320, uid: 1000, start: 4 },
-    1700: { ppid: 1612, args: "-bash", pgid: 1700, sid: 1700, uid: 1000, start: 5 },
-    1800: { ppid: 1700, args: "node /usr/bin/vyre signin", pgid: 1800, sid: 1700, uid: 1000, start: 6 },
+    1612: { ppid: 1320, args: "sshd: alex@pts/0", pgid: 1320, sid: 1320, uid: ME, start: 4 },
+    1700: { ppid: 1612, args: "-bash", pgid: 1700, sid: 1700, uid: ME, start: 5 },
+    1800: { ppid: 1700, args: "node /usr/bin/vyre signin", pgid: 1800, sid: 1700, uid: ME, start: 6 },
   };
   const look = pid => rows[pid] || null;
   const exe = pid => (pid === 1272 || pid === 1320 || pid === 1612 ? null : pid === 1700 ? "/usr/bin/bash" : "/usr/bin/node");

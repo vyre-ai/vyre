@@ -44,12 +44,18 @@ const optionalRef = a => (a.item === undefined && a.field === undefined ? {} : c
 
 /**
  * @param {any} a
- * @returns {{ type: "service-account", item: string, field?: string, subject: string, scopes: string[] } |
+ * @returns {{ type: "browser" } | { type: "service-account", item: string, field?: string, subject: string, scopes: string[] } |
  *   { type: "oauth", client: { item: string, field?: string }, authorize_uri: string, token_uri: string, scopes: string[] } |
  *   { type: "bearer"|"api-key", item: string, field?: string, header?: string, format?: string }}
  */
 function normalizeAuth(a) {
-  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key", "basic"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer", "api-key" or "basic"');
+  if (!isObj(a) || !["service-account", "oauth", "bearer", "api-key", "basic", "browser"].includes(a.type)) throw bad('auth.type must be "service-account", "oauth", "bearer", "api-key", "basic" or "browser"');
+  // A website signed in through a browser (a learned-operations Connection): the login lives in that browser's profile and nowhere here. The credential holds the host and the route rules a Flow is checked
+  // against, and no secret; the vault never makes a request with it (request.js plan refuses), the connectors module runs the operation in the browser.
+  if (a.type === "browser") {
+    if (a.item !== undefined || a.field !== undefined || a.header !== undefined || a.format !== undefined || a.in !== undefined) throw bad("a browser credential holds no key, item or header: the login stays in the browser");
+    return { type: "browser" };
+  }
   if (a.type === "service-account") {
     const ref = optionalRef(a);
     if (typeof a.subject !== "string" || !a.subject) throw bad("a service-account credential needs auth.subject (the address it acts as), fixed here, never in a request");
@@ -257,6 +263,17 @@ export function scopeAllows(config, { agent, project }) {
   const agentOk = sc.agents === "*" || Boolean(agent && sc.agents.includes(agent));
   const projectOk = sc.projects === "*" || Boolean(project && sc.projects.includes(project));
   return agentOk && projectOk;
+}
+
+/**
+ * May a model call read through this credential? The one answer vault.request acts on and vault.list shows, so a list never offers what a request would refuse (and never hides what it allows).
+ * The person's own session and the assistant keep their reach; a named agent, or a session bound to a project, needs the credential's scope.
+ * @param {{ scope?: any }} config @param {{ agent?: string, project?: string, agentKind?: string }} who
+ */
+export function modelMayRead(config, { agent, project, agentKind }) {
+  if (agentKind === "assistant") return true;
+  if (!agent && !project) return true;
+  return scopeAllows(config, { agent, project });
 }
 
 /**

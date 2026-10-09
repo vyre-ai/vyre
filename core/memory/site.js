@@ -1,21 +1,21 @@
 // @ts-check
-// site.*: what Vyre for Chrome learned about each website, kept in Vyre Memory (team/0.2/chrome-learning-plan.md).
+// site.*: what Vyre Computer learned about each website, kept in Vyre Memory (team/0.2/chrome-learning-plan.md).
 //
 // The record's rules (allowlist, privacy, merge, self-heal) are lib/site-knowledge.js, shared with the extension
-// and standalone Vyre for Chrome, so a record means the same thing on every side. This file is the store and the
+// and standalone Vyre Computer, so a record means the same thing on every side. This file is the store and the
 // tools: one row per origin and per family, the small arrival card Chrome reads on every page, a bounded event
 // ring, and a 24-hour undo for a forgotten record.
 //
 // Callers: the person's own surfaces and first-party modules (Chrome's bridge) read and write; an agent never
 // does (Chrome's own tools read it on the person's behalf). Two settings, both on by default: memory.site.learn
-// (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
+// (learn at all) and memory.site.sync (take what standalone Vyre Computer learned on its own).
 
 import fs from "node:fs";
 import os from "node:os";
 import nodePath from "node:path";
 import { answerSite, neededKeys } from "./site-answer.js";
 import {
-  sanitize, testNow, applyRung, canonTemplate, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
+  sanitize, testNow, applyRung, canonTemplate, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS, opsOnly, rollbackOp,
 } from "../../lib/site-knowledge.js";
 
 import { current as whoNow } from "./who.js";
@@ -26,7 +26,7 @@ const PERSON_LABEL = /^(?:tailnet:(?!agent:)|device:)\S+$/;
 const GONE_MS = 365 * 24 * 3_600_000;
 const UNDO_MS = 24 * 3_600_000;
 const EVENTS_PER_KEY = 200;
-const PARTS = ["frames", "controls", "api", "flows", "notes", "ready", "wall", "signedIn"];
+const PARTS = ["frames", "controls", "api", "ops", "flows", "notes", "ready", "wall", "signedIn"];
 
 /** Tables this part of memory owns, for memory.wipe and memory.export when they land. */
 export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "memory_site_forgotten", "memory_site_gone", "memory_site_forgotten_items"]);
@@ -101,7 +101,7 @@ export function register(ctx, { denied }) {
     return card;
   };
   const event = (/** @type {string} */ key, /** @type {string} */ kind, item = null, outcome = null) => { q.ev.run(key, now(), kind, item, outcome); q.trim.run(key, key, EVENTS_PER_KEY); };
-  const counts = (/** @type {any} */ r) => ({ controls: r.controls.length, api: r.api.length, flows: r.flows.length, notes: r.notes.length, frames: r.frames.length });
+  const counts = (/** @type {any} */ r) => ({ controls: r.controls.length, api: r.api.length, ops: (r.ops || []).length, flows: r.flows.length, notes: r.notes.length, frames: r.frames.length });
   const familyKey = (/** @type {string} */ id) => `family:${id}`;
   const cardFor = (/** @type {string} */ key) => { const r = /** @type {any} */ (q.cardOf.get(key)); return r ? { card: JSON.parse(r.card), rev: Number(r.rev) } : null; };
   /** Forgotten records leave the disk after 24 hours, whenever the store is used, not only at start. */
@@ -136,7 +136,7 @@ export function register(ctx, { denied }) {
   ctx.tool("memory.site.get", {
     effect: "read",
     callers: SITE_CALLERS,
-    description: "What Vyre for Chrome knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
+    description: "What Vyre Computer knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
     input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, since_rev: { type: "integer" }, family_rev: { type: "integer" },
       parts: { type: "array", items: { type: "string", enum: PARTS } } } },
     run: async (i, { caller, ...meta } = {}) => {
@@ -164,7 +164,8 @@ export function register(ctx, { denied }) {
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
       if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
-      if (!(await setting("memory.site.learn"))) return { accepted: false, learning: false };
+      // Teaching an operation is deliberate work, not noticing: the learn switch governs only what Chrome notices on its own.
+      if (!opsOnly(i.patch) && !(await setting("memory.site.learn"))) return { accepted: false, learning: false };
       const target = i.target === "family" ? "family" : "origin";
       const own = load(i.origin);
       let key = i.origin;
@@ -203,7 +204,7 @@ export function register(ctx, { denied }) {
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
       if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
-      if (!(await setting("memory.site.learn"))) return { conf: null, learning: false };
+      if (i.part !== "ops" && !(await setting("memory.site.learn"))) return { conf: null, learning: false };
       const own = load(i.origin);
       if (i.rung != null) {
         // Which rung of the page ladder worked on this page: the count is the store's, never a number the client sends.
@@ -230,6 +231,22 @@ export function register(ctx, { denied }) {
       save(rec);
       event(key, "report", `${i.part}:${String(i.id).slice(0, 60)}`, i.outcome);
       return { conf: list[at].conf, quarantined: isQuarantined(list[at]) };
+    },
+  });
+
+  ctx.tool("memory.site.rollback", {
+    effect: "write",
+    callers: SITE_CALLERS,
+    description: "Put a learned website operation back to an earlier version it still holds: { origin, name, version } -> { rolledBack, version }. The version it replaces becomes the newest entry of the history, so a rollback can itself be undone.",
+    input: { type: "object", required: ["origin", "name", "version"], properties: { origin: { type: "string" }, name: { type: "string" }, version: { type: "integer" } } },
+    run: async (i, { caller, ...meta } = {}) => {
+      if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
+      if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
+      const rec = load(i.origin);
+      const next = rec && rollbackOp(rec, String(i.name || ""), Number(i.version), now());
+      if (!next) return { rolledBack: false };
+      save(next); event(i.origin, "rollback", `ops:${String(i.name).slice(0, 60)}`, null);
+      return { rolledBack: true, version: next.ops.find((/** @type {any} */ x) => x.name === i.name).version };
     },
   });
 
@@ -375,7 +392,7 @@ export function register(ctx, { denied }) {
   ctx.tool("memory.site.sync", {
     effect: "write",
     callers: SITE_CALLERS,
-    description: "Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
+    description: "Two-way sync with a replica (standalone Vyre Computer on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
     input: { type: "object", properties: { have: { type: "object" }, push: { type: "array", maxItems: 100, items: { type: "object" } } } },
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
@@ -409,7 +426,7 @@ export function register(ctx, { denied }) {
   });
   return {
     isPerson,
-    /** memory.ask's step: what Vyre for Chrome knows about a site the question names, or null. */
+    /** memory.ask's step: what Vyre Computer knows about a site the question names, or null. */
     answer: (/** @type {string} */ question) => {
       // Match the question against an index of names, families and hosts first; only the matched sites' records are parsed.
       const index = /** @type {any[]} */ (q.index.all()).map(r => ({ key: String(r.key), names: String(r.names || "").split("|").filter(Boolean), family: r.family ? String(r.family) : null }));

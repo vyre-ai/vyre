@@ -82,7 +82,7 @@ test("module: the manifest is valid and every tool it declares is registered", a
   assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
   const { reg, connect } = await rig(t);
   assert.equal(reg.status().find((/** @type {any} */ m) => m.name === "chrome")?.state, "running");
-  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check");
+  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check" && n !== "chrome.op.run" && n !== "chrome.op.send" && n !== "chrome.op.call");
   const listed = reg.listTools().map((/** @type {any} */ x) => x.name);
   for (const name of declared) assert.ok(listed.includes(name), name);
   assert.ok(!listed.includes("chrome.release"), "release is internal: only the Gate calls it");
@@ -697,4 +697,18 @@ test("chrome.fill: an agent caller (mcp, a vouched \"cli agent:\" spelling, a ha
   assert.equal(ok.error, undefined);
   assert.equal(x.ops("page.fill").length, 1);
   assert.notEqual(seen[0] && seen[0].asked, true, "the agent's call never carries the person's approval");
+});
+
+test("module: chrome.op.run is the connectors module's alone; chrome.op names the site and refuses a model's rollback", async t => {
+  const { reg } = await rig(t);
+  for (const caller of ["cli", "mcp", "module:gate", "capsule"]) {
+    const r = await reg.call("chrome.op.run", { site: "https://app.example.com", name: "searchPeople" }, caller);
+    assert.ok(r.error, `${caller} ran it`);
+    assert.ok(/denied|connectors|no tool/.test(`${r.error.code} ${r.error.message}`), `${caller}: ${r.error.message}`);
+  }
+  assert.ok(!reg.listTools().some((/** @type {any} */ x) => x.name === "chrome.op.run"), "it is an internal tool: no model's list shows it");
+  const noSite = await reg.call("chrome.op", { action: "list" }, "cli");
+  assert.match(String(noSite.error && noSite.error.message), /name the site/);
+  const model = await reg.call("chrome.op", { action: "rollback", site: "https://app.example.com", name: "x", version: 1 }, "mcp");
+  assert.match(String(model.error && model.error.message), /only the person/);
 });

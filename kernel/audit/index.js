@@ -108,7 +108,7 @@ export function verifyLog(cfg) {
 }
 
 /** The event at a seq: by `get` when the log has it (a durable log reads one row), else by scanning (a plain list of events). @param {any} log @param {number} seq */
-function eventAt(log, seq) {
+export function eventAt(log, seq) {
   if (typeof log.get === "function") return log.get(seq);
   return log.read({}).find((/** @type {any} */ x) => x.seq === seq);
 }
@@ -191,22 +191,6 @@ export function createDeviceCheckpoints(cfg) {
       return e && e.hash === cp.hash ? { ok: true } : { ok: false, why: "history_differs" };
     },
   });
-}
-
-/**
- * Two devices compare the checkpoints they hold. The same position with two hashes is a split (the home told them different histories); a checkpoint
- * that is valid for neither is refused. Two honest checkpoints at different positions cannot be told apart without a log, so with one they are checked
- * for inclusion.
- * @param {any} a @param {any} b @param {crypto.KeyObject | string} publicKey @param {{ read(f?: any): any[] }} [log]
- * @returns {{ ok: boolean, why?: string }}
- */
-export function compareCheckpoints(a, b, publicKey, log) {
-  if (!verifyCheckpoint(a, publicKey) || !verifyCheckpoint(b, publicKey)) return { ok: false, why: "bad_signature" };
-  if (a.seq === b.seq) return a.hash === b.hash ? { ok: true } : { ok: false, why: "split_history" };
-  if (!log) return { ok: true };
-  const [lo, hi] = a.seq < b.seq ? [a, b] : [b, a];
-  const e = eventAt(log, lo.seq), h = eventAt(log, hi.seq);
-  return e && e.hash === lo.hash && h && h.hash === hi.hash ? { ok: true } : { ok: false, why: "history_differs" };
 }
 
 export { sha256, KernelError };

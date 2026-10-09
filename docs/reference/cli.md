@@ -770,7 +770,7 @@ vyre voice [talk [--send <thread>] | status | key [provider] [--stdin]] [--json]
 The Vyre MCP server on stdio, for plain claude.
 
 ```
-vyre mcp [serve | install [--yes]] [--json]
+vyre mcp [serve | design | install [--yes]] [--json]
 ```
 
 ### vyre update

@@ -720,8 +720,14 @@ const run = {
     // {already:true} and never starts a second turn (ADR 0029 R2).
     const r = await tool("threads.send", { thread: f.id, text: route.body, surface: SURFACE, ...(how ? { mode: how } : {}), ...(images ? { images } : {}) }, { once: true });
     if (!r) return 1;
-    if (json()) { emit(r); return r.sent || r.queued || r.already ? 0 : 1; }
+    if (json()) { emit(r); return r.sent || r.queued || r.already || r.held ? 0 : 1; }
     if (r.already) { out(dim("  already sent (a retry of the same message)")); return 0; }
+    // A key in the words: held at the Gate, not sent. The yes saves it to the Vault and sends the message with a vault:// reference.
+    if (r.held) {
+      out(beacon(`  held: that message has ${(r.keys || []).length === 1 ? "a key" : "keys"} in it${(r.keys || []).length ? " (" + r.keys.join(", ") + ")" : ""}`));
+      out(dim(`  vyre gate approve ${r.id} saves ${(r.keys || []).length === 1 ? "it" : "them"} to your Vault and sends the message with a vault:// reference · vyre gate reject ${r.id} sends nothing`));
+      return 0;
+    }
     const qid = queuedId(r);
     if (r.queued) {
       // Held until the turn ends (a terminal session always queues): it can still be changed.

@@ -37,7 +37,9 @@ export async function ensureUp() {
   child.unref();
   // A first start makes the store and starts every module: about 3s on an idle Mac, and past 5s
   // on a busy one, where a shorter wait said "did not start" about a vyred that was starting.
-  for (let i = 0; i < 150; i++) {
+  // VYRE_UP_WAIT_MS lengthens the wait (tests on a loaded machine; the container wait above reads it too).
+  const startWait = Number(process.env.VYRE_UP_WAIT_MS) || 15_000;
+  for (let t = 0; t < startWait; t += 100) {
     await new Promise(r => setTimeout(r, 100));
     if (await ping(p.socket)) return { ok: true, started: true, pid: child.pid };
     if (child.exitCode !== null) break;

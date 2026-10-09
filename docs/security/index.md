@@ -58,7 +58,7 @@ One residual is known and recorded: labels tell an agent's computer apart from e
 
 Chrome's debugging port inside a computer is never exposed without authentication ([ADR 0012](../adr/0012-cdp-proxy.md)). Details: [ADR 0009](../adr/0009-container-hardening.md), and Glass's stream in [ADR 0003](../adr/0003-glass-stream.md).
 
-## Vyre for Chrome: what a script run in your page can reach
+## Vyre Computer: what a script run in your page can reach
 
 `chrome_eval` runs an agent's script in a page where you are signed in. Unless you approved it, the script can read but not send anything out. The network rules hold for the whole run:
 
@@ -79,7 +79,7 @@ Known residuals:
 - **Which origins count as already used** is seeded at the first guard from what Chrome reports as loaded and from the page's own resource-timing entries. Page script can rewrite those entries before Vyre first runs a script on that tab. Responses seen outside a guard are recorded by Chrome, not the page.
 - **The guard's diagnostics** (what was allowed and why) never go back to the model. Only a test harness reads them.
 
-## Vyre for Chrome: acting on a picture
+## Vyre Computer: acting on a picture
 
 `chrome_point` clicks, types, scrolls, hovers and drags at a point of a screenshot, for a surface with no controls in the page (a canvas, a video, a frame Vyre cannot read into). It is the last rung, and a new write path, so:
 

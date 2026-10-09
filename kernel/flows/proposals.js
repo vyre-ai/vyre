@@ -29,13 +29,22 @@ export function proposerOf(chain) {
 /** The assistant behind a chain, by name, or null when the person is acting alone. @param {any} chain */
 export const assistantOf = chain => { const h = (chain && chain.hops || []).find((/** @type {any} */ x) => x.actor.kind === "agent"); return h ? String(h.actor.id) : null; };
 
+/**
+ * Another module's kind of proposal (an agent's change to itself, a template, a skill, a plugin): the SAME card, task, hash and approve-and-apply path as a Flow, with the kind supplying only what is its own.
+ *   draft(chain, spec, proposer) -> { form, title, idem, checker }   store the draft; `form` is small plain data (ids and hashes, never the draft itself); `checker` is the person whose yes it needs (the thing's owner or an admin)
+ *   title(form)              -> the title the stored draft really has, or null when the form does not describe one (a card that names one thing and points at another applies nothing)
+ *   mayCheck(checker, form)  -> may this person give the yes now (asked again when the yes arrives)
+ *   apply(checker, form)     -> do it, as the checker
+ * @typedef {{ draft: (chain: any, spec: any, proposer: any) => Promise<{ form: any, title: string, idem: string, checker: any }>, title: (form: any) => Promise<string | null>, mayCheck: (checker: any, form: any) => Promise<boolean>, apply: (checker: any, form: any) => Promise<any> }} ProposalKind
+ */
+
 export class Proposals {
   /**
-   * @param {{ kernel: any, runner: any, store: any, chain: () => any, chains: { forFlow: (o: any) => any, forDoer?: (o: any) => any }, catalog: () => any, applyTypes?: ((approver: any, diff: any) => Promise<any>) | null,
+   * @param {{ kernel: any, runner: any, store: any, chain: () => any, chains: { forFlow: (o: any) => any, forDoer?: (o: any) => any }, catalog: () => any, applyTypes?: ((approver: any, diff: any) => Promise<any>) | null, kinds?: Record<string, ProposalKind>,
    *   isAdmin?: ((who: any) => Promise<boolean> | boolean) | null, clock?: () => number, log?: (m: string) => void }} o
    */
   constructor(o) { this.k = o.kernel; this.runner = o.runner; this.store = o.store; this.chain = o.chain; this.chains = o.chains; this.catalogFn = o.catalog; this.applyTypes = o.applyTypes || null;
-    this.isAdmin = o.isAdmin || null; /** @type {Map<string, Promise<any>>} per task, events are handled one after another */ this.queue = new Map(); this.now = o.clock || Date.now; this.log = o.log || (() => {}); /** @type {Set<string>} tasks already applied or dropped in this process */ this.settled = new Set(); }
+    this.isAdmin = o.isAdmin || null; /** @type {Map<string, ProposalKind>} */ this.kinds = new Map(Object.entries(o.kinds || {})); /** @type {Map<string, Promise<any>>} per task, events are handled one after another */ this.queue = new Map(); this.now = o.clock || Date.now; this.log = o.log || (() => {}); /** @type {Set<string>} tasks already applied or dropped in this process */ this.settled = new Set(); }
 
   /**
    * Put a draft in front of an owner or an admin as one task in Now. The proposer is the person the call is for (an assistant's chain narrowed from them); they must be an owner or an
@@ -43,12 +52,19 @@ export class Proposals {
    * @param {any} chain the caller's chain @param {{ what: string, id?: string, version?: number, diff?: any, note?: string }} spec
    */
   async propose(chain, spec) {
-    const approver = proposerOf(chain);
+    let approver = proposerOf(chain);
     if (!approver) throw bad("a proposal is made for a person, by that person or by their assistant", "chain_not_person");
-    if (this.isAdmin && !(await this.isAdmin(approver))) throw Object.assign(new Error("only an owner or an admin approves a change to the Space, so only they are asked"), { code: "not_found" });
+    const kind = this.kinds.get(String(spec.what));
+    if (!kind && this.isAdmin && !(await this.isAdmin(approver))) throw Object.assign(new Error("only an owner or an admin approves a change to the Space, so only they are asked"), { code: "not_found" });
     const by = assistantOf(chain);
     /** @type {any} */ let form; let title; let idem;
-    if (spec.what === "flow") {
+    if (kind) {
+      const d = await kind.draft(chain, spec, approver);
+      if (!d.checker || d.checker.kind !== "person") throw bad("a proposal needs a person to say yes");
+      approver = d.checker;
+      form = { kind: "proposal", what: spec.what, ...d.form, ...(by ? { by } : {}) };
+      title = d.title; idem = `proposal:${spec.what}:${d.idem}`;
+    } else if (spec.what === "flow") {
       const v = await this.store.getVersion(String(spec.id || ""), Number(spec.version));
       if (!v) throw bad("no such Flow version", "not_found");
       if (v.approver) throw bad("that version is already approved");
@@ -82,6 +98,7 @@ export class Proposals {
 
   /** The card a proposal's task must carry, recomputed from the store and the form's own data, never taken from the form's words. @param {any} form @returns {Promise<string | null>} the title, or null when the form does not describe a stored draft */
   async titleOf(form) {
+    if (this.kinds.has(form.what)) { const t = await /** @type {ProposalKind} */ (this.kinds.get(form.what)).title(form); return t === null ? null : String(t).slice(0, 200); }
     if (form.what === "flow") {
       const v = await this.store.getVersion(String(form.flow || ""), Number(form.version));
       if (!v || v.approver || v.hash !== form.hash) return null;
@@ -125,13 +142,14 @@ export class Proposals {
       this.settled.add(id);
       if (row.outcome !== "approved") return { declined: form.what };
       const checker = row.checker;
-      if (!checker || checker.kind !== "person" || (row.doer && row.doer.kind === "person" && row.doer.id === checker.id) || (this.isAdmin && !(await this.isAdmin(checker)))) { this.log(`proposal ${id} ignored: its checker is not an owner or an admin`); return { ignored: "not_admin_checked" }; }
+      if (!checker || checker.kind !== "person" || (row.doer && row.doer.kind === "person" && row.doer.id === checker.id) || (this.kinds.has(form.what) ? !(await /** @type {ProposalKind} */ (this.kinds.get(form.what)).mayCheck(checker, form)) : (this.isAdmin && !(await this.isAdmin(checker))))) { this.log(`proposal ${id} ignored: its checker is not an owner or an admin`); return { ignored: "not_admin_checked" }; }
       const { proposal_hash: claimed, ...bare } = form;
       if (claimed !== await sha(JSON.stringify(bare))) { this.log(`proposal ${id} ignored: its form does not match its hash`); return { ignored: "form_hash" }; }
       const want = await this.titleOf(form);
       if (want === null || want !== row.title) { this.log(`proposal ${id} ignored: its card does not match the stored draft`); return { ignored: "card_mismatch" }; }
       try {
-        if (form.what === "flow") await this.runner.approve(form.flow, form.version, checker, form.hash);
+        if (this.kinds.has(form.what)) await /** @type {ProposalKind} */ (this.kinds.get(form.what)).apply(checker, form);
+        else if (form.what === "flow") await this.runner.approve(form.flow, form.version, checker, form.hash);
         else if (form.what === "types") { if (!this.applyTypes) throw bad("this Space cannot apply definition changes here", "unavailable"); await this.applyTypes(checker, form.diff); }
         return { applied: form.what, task: id };
       } catch (e) { this.log(`proposal ${id} could not be applied: ${/** @type {Error} */ (e).message}`); return { failed: form.what, task: id, error: /** @type {Error} */ (e).message }; }

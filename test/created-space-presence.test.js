@@ -24,12 +24,12 @@ async function defineInCreated(t, standIn) {
   return h.gateway.records.define(chain, { add_types: [TYPE] }).then(() => "applied", (/** @type {any} */ e) => e.code);
 }
 
-test("a created Space accepts its owner's admin act under the development stand-in, and asks for presence without it", { timeout: 120_000, todo: "defining a type is no longer an act that asks for presence (the user's rule: presence only for pairing, vault secrets and outbound send, post or pay); fails on trunk too. Its owner rewrites it on an act that still asks (team/BACKLOG.md)" }, async t => {
-  assert.equal(await defineInCreated(t, false), "needs_presence", "no stand-in file: presence is asked for");
+test("a created Space accepts its owner's admin act, with or without the development stand-in (defining a type asks for no presence any more)", { timeout: 120_000 }, async t => {
+  assert.equal(await defineInCreated(t, false), "applied", "no stand-in file: the owner's device still defines a type (presence is asked only for pairing, vault secrets and outbound acts)");
   assert.equal(await defineInCreated(t, true), "applied", "the stand-in file reaches the created Space's own kernel");
 });
 
-test("a real person session reaches a created Space through chainIn with no stand-in: the owner's device that signed in defines a type there, and the same device with no session is asked for presence", { timeout: 120_000, todo: "defining a type is no longer an act that asks for presence (the user's rule: presence only for pairing, vault secrets and outbound send, post or pay); fails on trunk too. Its owner rewrites it on an act that still asks (team/BACKLOG.md)" }, async t => {
+test("a real person session reaches a created Space through chainIn with no stand-in: the owner's device that signed in defines a type there, and the same device with no session is not the owner's session", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
@@ -43,5 +43,6 @@ test("a real person session reaches a created Space through chainIn with no stan
   await h.gateway.records.define(signedIn, { add_types: [TYPE] });
   assert.ok((await h.gateway.records.create(signedIn, "note", { title: "from the phone" })).urn, "the signed-in owner device works in the created Space");
   const noSession = await as({});
-  await assert.rejects(() => h.gateway.records.define(noSession, { add_types: [{ ...TYPE, name: "other" }] }), { code: "needs_presence" });
+  const bare = await h.gateway.records.define(noSession, { add_types: [{ ...TYPE, name: "other" }] }).then(() => "applied", (/** @type {any} */ e) => e.code);
+  assert.notEqual(bare, "needs_presence", "defining a type asks for no presence any more");
 });

@@ -20,6 +20,8 @@ import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
+import { createTemplates, registerTemplateTools } from "./templates.js";
+import { createPersistent } from "./persistent.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -119,7 +121,7 @@ export default {
           dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
           if (dbh.prepare("SELECT 1 FROM work_flags WHERE key = 'access-restore'").get()) return;
           const k = kernelOf();
-          const general = await hubOf().generalProject();
+          const general = await hubOf().personalProject();
           await k.ask.request(k.serviceChain("work"), {
             title: "Restore who could see your projects", record: general.urn,
             doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
@@ -129,9 +131,33 @@ export default {
         } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
       const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
-      // every Space has a General project, made with it
-      void hubOf().generalProject().catch(() => {});
+      // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
+      void hubOf().personalProject().then(() => hubOf().migrateGeneral()).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
+    // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
+    registerTemplateTools({ ctx, chainOf, templates: createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
+      flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } }) });
+    // One persistent chat per person for their assistant and for @Engineer (core/work/persistent.js, R031-94)
+    /** @type {any} */ let persistent = null;
+    const persistentOf = () => persistent || (persistent = createPersistent({ db: ctx.store.db, kernel: kernelOf,
+      agentOf: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const r = (await kernelOf().records.query(chain, "chat-record", { filter: { field: "chat", op: "eq", value: chat }, page: { limit: 1 } })).rows[0]; return r ? String(r.data.agents || "").split(",").map(x => x.trim()).filter(Boolean) : []; } }));
+    ctx.tool("work.chat.persistent", { description: "Your pinned chat with your assistant (kind assistant) or with @Engineer (kind engineer): its id, or null when there is none yet, and whether you may have one (the Engineer is for an owner or an admin). There is one of each per person; it stays the same chat as the session rolls over.",
+      input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
+    ctx.tool("work.chat.pinned", { description: "Whether a chat is a person's pinned assistant or Engineer chat: { kind: \"assistant\" | \"engineer\" | null }. For vyred, which lets only the pinned assistant chat run with the assistant's authority.", internal: true, callers: ["module"],
+      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { if (!ctx.store || !ctx.store.db) throw unavailable(); return { kind: persistentOf().kindOf(String(i.person), String(i.chat)) }; } });
+    // Share to project (R031-41): a share is one `file-share` record by someone in the chat. The kernel does the rest: it opens that one file to the project's members and, for an encrypted chat, wraps the file's key into the project's ring (and rotates it when the last share goes).
+    ctx.tool("work.file.share", { description: "Share one file of a chat you are in with that chat's project: its members open that one file and nothing else. Give the file's path (Projects/<project>/chat/<chat>/<name>).",
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => { const r = await kernelOf().records.create(await chainOf(extra), "file-share", { path: String(i.path) }); return { shared: true, id: r.id }; } });
+    ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const k = kernelOf(), chain = await chainOf(extra);
+        const rows = (await k.records.query(chain, "file-share", { filter: { field: "path", op: "eq", value: String(i.path) }, page: { limit: 50 } })).rows || [];
+        let removed = 0;
+        for (const r of rows) { try { await k.records.remove(chain, "file-share", r.id, r.version); removed++; } catch { /* not this person's to take back */ } }
+        return { unshared: removed };
+      } });
+    ctx.tool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
+      input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),
@@ -399,7 +425,11 @@ export default {
             return row ? Number(row.n) || 0 : 0;
           } catch { return 0; }
         };
-        const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        const projRows = (await k.records.query(chain, "project", { page: { limit: 500 } })).rows || [];
+        const projects = new Map(projRows.map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        // Personal is private: a chat filed in somebody else's Personal project is not listed (R031-03)
+        const others = new Set(projRows.filter((/** @type {any} */ p) => p.data.personal_of && p.data.personal_of !== personId).map((/** @type {any} */ p) => p.urn));
+        rows = rows.filter((/** @type {any} */ r) => !(r.data.project && others.has(r.data.project.urn)));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
           if (!mine.has(r.data.chat)) return base;
@@ -408,6 +438,8 @@ export default {
           return { ...base, open: true, unread: unreadOf(personId, r.data.chat), providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
         }));
         if (input.mine) rows = rows.filter((/** @type {any} */ r) => r.open);
+        const pins = persistentOf().pinnedOf(personId);
+        if (pins.size) rows = rows.map((/** @type {any} */ r) => (pins.has(r.chat) ? { ...r, pinned: pins.get(r.chat) } : r));
         rows.sort((/** @type {any} */ a, /** @type {any} */ b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
         return { chats: rows };
       },
@@ -539,7 +571,7 @@ export default {
       },
     });
     ctx.tool("work.chat.create", {
-      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.",
+      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (your Personal project when none). Returns the chat's id.",
       input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } },
         id: { type: "string", description: "the chat's id (chat_<uuid>), chosen by the device that made the ring: the ring is bound to it" }, ring: { type: "object", description: "the chat's key ring, made on the creator's device (createRing in lib/chat-keys.js: wrapped to every device of every participant); with it the chat's folders are stored sealed. Left out, the chat is in the clear." } }),
       run: async (input, extra) => {
@@ -627,9 +659,15 @@ export default {
       },
     });
     ctx.tool("work.tools", {
-      description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
-      input: obj(),
-      run: async (_input, extra) => ({ tools: await surfaceOf().list(await chainOf(extra)) }),
+      description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do: name, what it does and its risk. A tool the caller cannot use is not listed. Give `tool` for one tool with its input shape, or `schemas: true` for every shape.",
+      input: obj({ tool: { type: "string" }, schemas: { type: "boolean" } }),
+      run: async (input, extra) => {
+        const all = await surfaceOf().list(await chainOf(extra));
+        const one = input && input.tool ? all.filter(t => t.name === String(input.tool)) : null;
+        if (one) return { tools: one };
+        // A catalog of every shape is most of 30,000 characters; the names and one line each are enough to choose, and the shape of the one chosen is a call away.
+        return { tools: input && input.schemas === true ? all : all.map(t => ({ name: t.name, risk: t.risk, description: String(t.description || "").split(/(?<=\.) /)[0].slice(0, 70) })) };
+      },
     });
     ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",

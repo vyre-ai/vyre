@@ -6,7 +6,8 @@
 // providers or a summary; those are the engine's and come back to participants through `work.chat.get`. The INDEX is what must be exact: every chat with its kernel id, times and Drive folder.
 //
 //   createProject(chain, { name, repo?, client? })    the record, its short name, its Drive folder NAMED BY ITS ID (Projects/<id>: a rename never touches Drive), its memory scope
-//   generalProject()                                  the Space's default project: a chat started with no project lands here
+//   personalProject(person)                           a person's private default project, "Personal": a chat started with no project lands in its creator's (R031-03)
+//   migrateGeneral()                                  once: the old shared "General" project's chats each go to their creator's Personal, and General is archived
 //   onChatCreated / onChatChanged                     the kernel's `chat.created` and `chat.changed`: the record and its mirrored people and agents
 //   onStarted / onChatLinked / onStopped              the switchboard's and the Harness's run events: title, project, status, last active
 //   moveChat(chat, project, by)                       "Move to project": the record's link, and the chat's two Drive folders moved under the other project, as the person who moved it
@@ -17,9 +18,9 @@
 import os from "node:os";
 import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
 
-const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat";
+const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat", PERSONAL = "Personal";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
-const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "former", "started", "last_active", "status", "drive", "location"] };
+const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope", "personal_of"], [CHAT]: ["chat", "people", "agents", "former", "started", "last_active", "status", "drive", "location"] };
 /** The only part of the Drive the hub ever moves. */
 const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
 
@@ -40,14 +41,22 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     for (let n = 1; n < 1000; n++) { const s = n === 1 ? base : `${base}-${n}`; if (!(await find(PROJECT, "slug", s))) return s; }
     throw Object.assign(new Error("could not find a free short name for this project"), { code: "conflict" });
   }
+  /** The Project's owner field for the person it is made for: the named owner, else the first hop of the caller's chain when that is a person. @param {any} caller @param {string} [named] */
+  const ownerOf = (caller, named) => {
+    const h = caller && Array.isArray(caller.hops) ? caller.hops[0] : null;
+    const id = named || (h && h.actor && h.actor.kind === "person" ? h.actor.id : null);
+    return id ? { actor: { kind: "person", id: String(id), space: kernel.space } } : null;
+  };
   /** @param {any} caller the chain the record is made under (the person's own); the folder marker is the service's */
-  async function createProject(caller, { name, repo, client, slug }) {
+  async function createProject(caller, { name, repo, client, slug, personal_of, owner }) {
     const nm = String(name || "").trim();
     if (!nm || nm.length > 120) throw Object.assign(new Error("a project has a name of up to 120 characters"), { code: "bad_input" });
     if (slug !== undefined && !(typeof slug === "string" && SLUG_RE.test(slug))) throw Object.assign(new Error("the short name is lower case letters, numbers and dashes"), { code: "bad_input" });
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
-    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}) });
+    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
+      // the person who makes a project owns it: the Project's own files open for its owner and its team (kernel/gateway/project-members.js), so a project nobody owned would have files nobody could open
+      ...(ownerOf(caller, owner) ? { owner: ownerOf(caller, owner) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
     // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
     // project. With a Drive, the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
     const plain = !kernel.drive;
@@ -86,9 +95,43 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return p;
   }
 
-  /** The Space's default project, "General": made on first need. A session started without a project is filed here, and "Move to project" files it later. */
-  /** @type {Promise<any> | null} */ let generalOnce = null;
-  const generalProject = () => (generalOnce ||= (async () => (await find(PROJECT, "slug", GENERAL)) || createProject(chain(), { name: "General", slug: GENERAL }))().catch(e => { generalOnce = null; throw e; }));
+  /** @type {Map<string, Promise<any>>} one in flight per person */
+  const personalOnce = new Map();
+  /** The short name of a person's Personal project. @param {string} person */
+  const personalSlug = person => `personal-${slugify(person) || "owner"}`.slice(0, 64).replace(/-+$/, "");
+  /**
+   * A person's private default project, "Personal": made on first need, owned by that person. A chat started with no project is filed in its creator's, and "Move to project" files it later (R031-03).
+   * The record's owner attribute is the person, so a member's record reads reach it only through their own grants; `personal_of` is what the lists and the app filter by.
+   * @param {string} [person] defaults to the Space's owner (a terminal session is the owner's)
+   */
+  const personalProject = person => {
+    const who = String(person || kernel.owner || "owner");
+    if (!personalOnce.has(who)) personalOnce.set(who, (async () => (await find(PROJECT, "personal_of", who)) || createProject(chain(), { name: PERSONAL, slug: personalSlug(who), personal_of: who, owner: who }))().catch(e => { personalOnce.delete(who); throw e; }));
+    return /** @type {Promise<any>} */ (personalOnce.get(who));
+  };
+  /** Is this Project somebody's Personal (or the old shared General, until it is migrated)? @param {any} proj */
+  const isUnfiled = proj => Boolean(proj && proj.data && (proj.data.personal_of || proj.data.slug === GENERAL));
+  /** The person a chat belongs to: the first of its people (the kernel lists the creator first), else the Space's owner. @param {any} rec a chat record @param {string[]} [people] */
+  const creatorOf = (rec, people) => String((people && people[0]) || (rec && String(rec.data.people || "").split(",")[0]) || kernel.owner || "owner");
+  /**
+   * The old single "General" project becomes each creator's Personal, once: every chat in it moves (the record link, its Drive folders), then General is archived. Idempotent; the returned list is what
+   * moved, for the log. @returns {Promise<{ chat: string, to: string }[]>}
+   */
+  async function migrateGeneral() {
+    const gen = await find(PROJECT, "slug", GENERAL);
+    if (!gen || gen.data.status === "archived") return [];
+    const moved = [];
+    const chats = (await kernel.records.query(chain(), CHAT, { filter: { field: "project", op: "eq", value: { urn: gen.urn } }, page: { limit: 500 } })).rows || [];
+    for (const c of chats) {
+      const person = creatorOf(c);
+      const to = await personalProject(person);
+      await moveChat(c.data.chat, to.urn, chain());
+      moved.push({ chat: c.data.chat, to: person });
+    }
+    if (!moved.length || chats.length === moved.length) await kernel.records.update(chain(), PROJECT, gen.id, { status: "archived", archived_at: iso(now()) }, gen.version);
+    log(`project hub: migrated ${moved.length} chat${moved.length === 1 ? "" : "s"} from General to their creators' Personal projects`);
+    return moved;
+  }
   /** A Project's Drive folder: its own field, or (in the instant between its creation and the hub setting it) the same id-named path. @param {any} proj */
   const rootOf = proj => proj.data.drive_path || (kernel.drive ? `Projects/${proj.id}` : "");
 
@@ -108,7 +151,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (typeof chat !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(chat)) return null;
     const have = await findChat(chat);
     if (have) return have;
-    const proj = (hints.project ? await ensureProject(String(hints.project)).catch(() => null) : null) || await generalProject();
+    const proj = (hints.project ? await ensureProject(String(hints.project)).catch(() => null) : null) || await personalProject(hints.people && hints.people[0]);
     const at = iso(hints.at || now());
     try {
       return await kernel.records.create(chain(), CHAT, { title: String(hints.title || UNTITLED).slice(0, 120), project: { urn: proj.urn }, chat, people: ids(hints.people), agents: ids(hints.agents),
@@ -158,9 +201,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (o.status && rec.data.status !== o.status) patch.status = o.status;
     if (o.title && (!rec.data.title || rec.data.title === UNTITLED)) patch.title = String(o.title).slice(0, 120);
     if (o.project) {
-      const general = await generalProject().catch(() => null);
+      const home = await personalProject(creatorOf(rec)).catch(() => null);
       const cur = rec.data.project && rec.data.project.urn;
-      if (general && cur === general.urn) { const proj = await ensureProject(o.project).catch(() => null); if (proj && proj.urn !== general.urn) Object.assign(patch, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, rec.data.chat) }); }
+      if (home && cur === home.urn) { const proj = await ensureProject(o.project).catch(() => null); if (proj && proj.urn !== home.urn) Object.assign(patch, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, rec.data.chat) }); }
     }
     return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version);
   }
@@ -351,5 +394,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ teamMember, createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
 }

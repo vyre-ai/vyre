@@ -8,7 +8,7 @@
 // kept here), and the system actor of a join link (a link is a kernel invite). Role display names stay local to the module (not authority). See team/archive/work-journals/kernel-2.md for the
 // callers still on the legacy shape.
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
-import { SpacesError, abilitiesOf, roleRank } from "../../lib/spaces/members.js";
+import { SpacesError, abilitiesOf, roleRank, roleAtLeast } from "../../lib/spaces/members.js";
 import { kernelMembers } from "./kernel-members.js";
 
 /** A raw kernel refusal as the legacy SpacesError code it is. @param {any} e @returns {SpacesError | any} */
@@ -25,7 +25,7 @@ export function legacyError(e) {
   if (code === "not_allowed") {
     if (/at least one owner/.test(msg)) return own("last_owner", "A space must always have an owner. Make someone else an owner first.");
     const m = /^an? (\w+) cannot make someone (\w+)/.exec(msg);
-    if (m && roleRank(m[2]) < roleRank(m[1])) return own("exceeds_role", "You cannot give a role above your own.");
+    if (m && roleRank(m[2]) > roleRank(m[1])) return own("exceeds_role", "You cannot give a role above your own.");
     return own("forbidden", "Your role cannot do that here.");
   }
   return e;
@@ -57,7 +57,7 @@ export function createKernelMembers(deps) {
   async function owners(k) {
     const list = await m.list(need(k));
     const me = list.length === 1 ? list[0] : null;
-    if (me && !["owner", "admin", "manager"].includes(me.role)) return null;
+    if (me && !roleAtLeast(me.role, "manager")) return null;
     return list.filter((/** @type {any} */ x) => x.role === "owner").length;
   }
   const withWarnings = async (/** @type {any} */ r, /** @type {any} */ k) => ({ ...r, warnings: warnings(await owners(k).catch(() => null)) });

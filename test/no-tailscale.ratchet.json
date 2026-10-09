@@ -168,7 +168,6 @@
   "test/journey.test.js",
   "test/journey/rig.js",
   "test/journey/tailscale.mjs",
-  "test/known-red.json",
   "test/link-cli.test.js",
   "test/link-guard.test.js",
   "test/link-harness.js",

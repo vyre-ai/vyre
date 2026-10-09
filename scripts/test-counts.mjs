@@ -12,7 +12,6 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const KNOWN_RED = path.join(REPO, "test", "known-red.json");
 export const RECORD = path.join(REPO, "test", "test-counts.json");
 export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/*/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js"];
 
@@ -37,10 +36,24 @@ export function problems(ran, recorded, { full }) {
   return out;
 }
 
-/** @param {string} countsFile @param {boolean} full @param {Set<string>} [skip] known-red files, left out of the count check */
-function check(countsFile, full, skip = new Set()) {
+/** What kept a hung file's processes open: the live libuv handles of every diagnostic report in the folder, one line each. @param {string} dir */
+function openHandles(dir) {
+  /** @type {string[]} */ const lines = [];
+  let names = []; try { names = fs.readdirSync(dir).filter(n => n.endsWith(".json")); } catch { /* no report was written */ }
+  for (const n of names) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(dir, n), "utf8"));
+      const live = (r.libuv || []).filter((/** @type {any} */ h) => h.is_active && !["signal", "async", "check", "prepare", "idle"].includes(h.type));
+      lines.push(`  process ${r.header && r.header.processId} (${String((r.header && r.header.commandLine || []).slice(-1)[0] || "").slice(-70)}): ${live.length} live handle(s)` + live.slice(0, 8).map((/** @type {any} */ h) => `\n    ${h.type}${h.remoteEndpoint ? " to " + JSON.stringify(h.remoteEndpoint) : ""}${h.localEndpoint ? " on " + JSON.stringify(h.localEndpoint) : ""}${h.path ? " " + h.path : ""}${h.pid ? " pid " + h.pid : ""}`).join(""));
+      const st = r.javascriptStack && r.javascriptStack.stack; if (st && st.length) lines.push("    at " + st.slice(0, 4).join("\n       "));
+    } catch { /* an unreadable report */ }
+  }
+  return lines.length ? "\n----- what kept it open (node diagnostic report):\n" + lines.join("\n") + "\n" : "\n----- no diagnostic report was written\n";
+}
+
+/** @param {string} countsFile @param {boolean} full */
+function check(countsFile, full) {
   const ran = readJson(countsFile), recorded = fs.existsSync(RECORD) ? readJson(RECORD) : {};
-  for (const f of skip) { delete ran[f]; delete recorded[f]; }
   const bad = problems(ran, recorded, { full });
   const total = Object.values(ran).reduce((a, b) => a + b, 0);
   console.log(`test-counts: ${Object.keys(ran).length} files, ${total} tests ran`);
@@ -84,10 +97,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       for (let i = next++; i < files.length; i = next++) {
         const f = files[i], out = path.join(dir, `${i}.json`);
         await new Promise(done => {
-          const child = spawn(process.execPath, ["--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
-            { cwd: REPO, env: { ...process.env, VYRE_TEST_COUNTS_OUT: out } });
+          // The file runs in its own process group with node's diagnostic report armed on SIGUSR2: a file that keeps the process open after its tests is not only named, the report lists the handles that kept it open.
+          const rep = path.join(dir, `rep-${i}`);
+          fs.mkdirSync(rep, { recursive: true });
+          // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
+          const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
+            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
-          let timedOut = false; const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, limit);
+          const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };
+          let timedOut = false;
+          const timer = setTimeout(() => {
+            timedOut = true; signalGroup("SIGUSR2");
+            setTimeout(() => { buf += openHandles(rep); signalGroup("SIGKILL"); }, 2500);
+          }, limit);
           child.on("close", code => {
             clearTimeout(timer);
             if (fs.existsSync(out)) Object.assign(ran, readJson(out)); else ran[f] ??= 0;
@@ -101,19 +123,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     };
     await Promise.all(Array.from({ length: Math.min(width, files.length) }, worker));
     fs.rmSync(dir, { recursive: true, force: true });
-    // test/known-red.json: files that are red today, each with its owner. They are reported, not failed; the list only shrinks (test/known-red.test.js). Anything else that is red fails the run.
-    /** @type {Record<string, { owner: string }>} */ const known = fs.existsSync(KNOWN_RED) ? readJson(KNOWN_RED) : {};
-    const newHung = hung.filter(f => !known[f]), newFailed = failed.filter(f => !known[f]);
-    const stillRed = [...hung, ...failed].filter(f => known[f]);
-    const nowGreen = Object.keys(known).filter(f => ran[f] !== undefined && !hung.includes(f) && !failed.includes(f));
-    if (stillRed.length) console.error(`test-counts: ${stillRed.length} known-red files are still red (test/known-red.json):\n  ` + stillRed.map(f => `${f} (${known[f].owner})`).join("\n  "));
-    if (nowGreen.length) console.error("test-counts: these known-red files passed; delete them from test/known-red.json:\n  " + nowGreen.join("\n  "));
-    if (newHung.length) console.error("test-counts: files that did not finish (an open handle or a test that never settles):\n  " + newHung.join("\n  "));
-    if (newFailed.length) console.error("test-counts: files that failed:\n  " + newFailed.join("\n  "));
+    // No file is allowed to be red: there is no list of known failures. A file that fails or does not finish fails the run.
+    if (hung.length) console.error("test-counts: files that did not finish (an open handle or a test that never settles):\n  " + hung.join("\n  "));
+    if (failed.length) console.error("test-counts: files that failed:\n  " + failed.join("\n  "));
     const countsFile = process.env.VYRE_TEST_COUNTS_KEEP || path.join(os.tmpdir(), `vyre-test-counts-${process.pid}.json`);
     fs.writeFileSync(countsFile, JSON.stringify(ran, null, 1) + "\n");
-    const g = check(countsFile, full, new Set(stillRed)); if (!process.env.VYRE_TEST_COUNTS_KEEP) fs.rmSync(countsFile, { force: true });
-    process.exit(newHung.length || newFailed.length || g ? 1 : 0);
+    const g = check(countsFile, full); if (!process.env.VYRE_TEST_COUNTS_KEEP) fs.rmSync(countsFile, { force: true });
+    process.exit(hung.length || failed.length || g ? 1 : 0);
   } else if (cmd === "check") process.exit(check(rest[0], rest[1] === "--full"));
   else if (cmd === "update") { fs.writeFileSync(RECORD, JSON.stringify(Object.fromEntries(Object.entries(readJson(rest[0])).sort()), null, 1) + "\n"); console.log("recorded " + RECORD); }
   else if (cmd === "diff") process.exit(diff(rest[0] || "origin/work/kernel"));

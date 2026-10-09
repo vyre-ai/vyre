@@ -12,7 +12,10 @@
 //   child's stdout --translate--> thread.* / ask.* events --> /v1/events/stream --> every surface
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
+import { capsFromInit } from "../../lib/harness-caps.js";
 import { newId } from "../../lib/id.js";
+import { refuseKey, planSecure } from "../../lib/secure-paste.js";
+import { locateSecrets } from "../../lib/credential-shapes.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -46,7 +49,8 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { ROLL, contextOf, decide as rollDecide, seedOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
+import { tokensOfChars } from "../../lib/tokens.js";
+import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js";
@@ -987,6 +991,8 @@ export class Switchboard {
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
     at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o) };
+    at("skill library");
+    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o) };
     at("spawn");
     // A thread rolled over and not yet written to has a fresh native session waiting for its first message, and the seed that rides with it: a restart in between must not try
     // to resume a session that never began, and must not lose the seed.
@@ -1317,6 +1323,21 @@ export class Switchboard {
     st.idle.unref?.();
   }
 
+  /**
+   * The approved skills and plugins of the Space's library as a plugin folder for this thread (R031-19): Claude's `--plugin-dir`, or for Codex the folder its per-session CODEX_HOME links (`VYRE_SKILLS_DIR`, core/sessions/drivers/codex.js): the Space's, the person's, this agent's and this project's, written once per content by the
+   * skills module. Null for a job or lean thread that names its own plugins, for another provider's thread (it is given the same library in its own layout), or when nothing is approved.
+   * @param {any} rec @param {any} o
+   */
+  async libraryPlugin(rec, o) {
+    const ai = o.provider || rec.provider || "claude";
+    if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
+    try {
+      const r = await this.deps.call("skills.materialise", { ai, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
+      return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+    } catch { return null; }
+  }
+
   spawn(id, o) {
     // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
     const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
@@ -1324,6 +1345,8 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
+    // another provider's session is told where its skills were written (its driver links them into the home it runs with)
+    if (o.libraryPlugin && o.provider && o.provider !== "claude") env.VYRE_SKILLS_DIR = o.libraryPlugin;
     // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
     // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
     // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
@@ -1354,7 +1377,7 @@ export class Switchboard {
     if (sock) delete env.VYRE_HOME;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
-    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
+    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugin === false || !o.libraryPlugin || (o.provider && o.provider !== "claude") ? [] : [o.libraryPlugin]), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
     // "Doesn't ask": nothing reaches a question, so the floor also runs here, in process, on every
     // call (the plugin's PreToolUse hook runs it too; this one needs no vyred round trip).
@@ -1425,6 +1448,8 @@ export class Switchboard {
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
+    // What the harness showed about itself at start (R031-85): its capabilities, stored per harness, replaced at every start.
+    if (m && m.type === "system" && m.subtype === "init" && rec && rec.provider) { const hc = capsFromInit(rec.provider, m); if (hc) this.deps.call("sessions.harness.learn", hc).catch(() => {}); }
     if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) {
       // What the provider says it runs is the truth (the record held what was asked for, an alias or an account default): the row follows it and a changed
@@ -1833,6 +1858,33 @@ export class Switchboard {
   }
 
   /**
+   * The hard guard (R031-00u): before a message goes to an idle session, if the window used plus this message would reach ROLL.guard, roll first, so one turn cannot overflow the window.
+   * It follows the same rules as rollCheck (a conversation Vyre runs, the setting on, nothing running, not within the gap of the last roll). Claude Code's own compaction is never turned off:
+   * it stays the backstop for whatever this does not catch.
+   * @param {string} id @param {string} text
+   */
+  async rollGuard(id, text) {
+    const st0 = this.live.get(id);
+    if (!st0 || st0.turn || st0.stopping || st0.switching || this.rolling.has(id) || this.switches.has(id) || this.once.has(id)) return;
+    const L = st0.launch || {};
+    if (L.once || L.quick || L.rolls === false) return;
+    const rec0 = this.record(id);
+    if (!rec0 || (rec0.purpose && !["chat", "project", "agent"].includes(String(rec0.purpose)))) return;
+    const cfg = await this.rollSettings(rec0.project);
+    if (!cfg.enabled) return;
+    const st = this.live.get(id);
+    if (st !== st0 || st.turn || st.stopping || st.switching || this.rolling.has(id) || this.switches.has(id)) return;
+    const rec = this.record(id);
+    if (!rec) return;
+    const ctx = contextOf({ used: st.used || 0, window: st.window || 0, chars: st.used ? 0 : this.rollChars(id), model: rec.model, provider: rec.provider });
+    const share = ctx.share + tokensOfChars([...String(text || "")].length) / ctx.window;
+    if (share < ROLL.guard * (ctx.source === "estimated" ? 5 / 6 : 1)) return;
+    const last = /** @type {any} */ (this.db.prepare("SELECT turn FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 1").get(id));
+    if (last && Math.max(0, (Number(rec.turns) || 0) - Number(last.turn || 0)) < ROLL.gap) return;
+    await this.startRoll(id, { reason: "window", why: `this message would take the window to ${Math.round(share * 100)}%`, ctx }).catch(() => {});
+  }
+
+  /**
    * Begin a rollover, now: it is held in this.rolling so a person's message to the thread waits for it. Returns the promise (a manual roll waits for the answer).
    * @param {string} id @param {{ reason: string, why?: string, ctx?: any }} o
    */
@@ -1920,22 +1972,35 @@ export class Switchboard {
     /** @type {ReturnType<typeof receiptsOf> | null} */ let receipts = null;
     /** @type {string[]} */ let facts = [];
     /** @type {string[]} */ let waiting = [];
-    // VYRE_MANAGED_CONTEXT=off leaves the receipts and the ledger out: only the token proof sets it, to measure the seed with and without them.
-    if (thread && process.env.VYRE_MANAGED_CONTEXT !== "off") {
-      receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
+    // The receipts and the ledger are OFF unless VYRE_MANAGED_CONTEXT=on (lead ruling, 9 Oct, after token proof round 5): no valid long-session run has shown they help (the long task is one turn, and a
+    // rollover only happens between turns, so none fired). They come back on by default when a multi-turn run shows a seed with them beats one without.
+    const managed = process.env.VYRE_MANAGED_CONTEXT === "on";
+    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET === "on"))) {
+      if (managed) receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
-        this.deps.call("gate.held", { thread }).catch(() => null),
+        this.deps.call("approvals.items", {}).catch(() => null),
       ]);
       const writes = w && !w.error && w.data && Array.isArray(w.data.writes) ? w.data.writes : [];
       facts = writes.filter((/** @type {any} */ x) => x && x.state !== "forgotten" && x.from && x.from.thread === thread && x.text).map((/** @type {any} */ x) => `${x.kind || "fact"}: ${x.text}`).slice(0, ROLL.ledgerFacts);
-      const items = g && !g.error && g.data && Array.isArray(g.data.held) ? g.data.held : Array.isArray(g.data) ? g.data : [];
+      // The drafts this thread has waiting at the Gate, from the one waiting list: each card carries the Gate's own row as `facts`.
+      const cards = g && !g.error && g.data && Array.isArray(g.data.items) ? g.data.items : [];
+      const items = cards.filter((/** @type {any} */ c) => c && c.source === "gate" && c.facts && c.facts.thread === thread).map((/** @type {any} */ c) => c.facts);
       waiting = items.map((/** @type {any} */ x) => `${x.id || ""} ${x.summary || x.kind || ""}`.trim()).filter(Boolean);
+    }
+    // R031-00u: the reference sheet, off unless VYRE_ROLLOVER_SHEET=on (or the managed-context switch above): on by default only if the eval (R031-00v) shows it helps. Pointers come from Recall's
+    // index of the windows, one read; a moment it cannot place simply has no pointer.
+    let sheet = "";
+    if (thread && kind === "roll" && (process.env.VYRE_ROLLOVER_SHEET === "on" || managed)) {
+      const calls = sheetCalls(this.deps.ofThread(thread, { types: ["thread.tool"] })).slice(-400);
+      const m = calls.length ? await this.deps.call("recall.marks", { sessions: chain, at: calls.map(c => c.at) }).catch(() => null) : null;
+      const ptrs = m && !m.error && m.data && Array.isArray(m.data.marks) ? m.data.marks : [];
+      sheet = sheetOf({ calls, ptrs, facts, decisions: decisions.map((/** @type {any} */ d) => `${d.topic ? d.topic + ": " : ""}${d.text || d.value}`), held: waiting }).text;
     }
     const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
     const moved = kind !== "roll" && thread;
     const tail = moved ? this.rollTurns(thread, 400, since) : held ? held.tail : thread ? this.rollTurns(thread) : [];
-    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
+    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, windows: kind === "roll" ? chain : [], sheet, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
   }
 
   /**
@@ -1991,10 +2056,7 @@ export class Switchboard {
     this.db.prepare(`INSERT INTO threads_rolls (thread, at, reason, native_from, native_to, provider, model, used, win, share, source, turn, seed_chars, seed_tail)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, Date.now(), why ? `${reason}: ${why}` : reason, from, to, provider, rec.model || null, ctx ? Math.round(ctx.used) : null, ctx ? Math.round(ctx.window) : null,
       ctx ? Math.round(ctx.share * 1000) / 1000 : null, ctx ? ctx.source : null, Number(row && row.turns) || 0, seed.chars, seed.tail);
-    const pct = ctx ? Math.round(ctx.share * 100) : null;
-    const line = `Continued in a fresh session${pct !== null ? ` (the window was ${ctx.source === "estimated" ? "about " : ""}${pct}% full)` : ""}. It has the files as they are, your decisions, a plan, an index of what came before and the last turns word for word; every earlier turn is stored and one search away.`;
-    this.emit("thread.text", { message: "vyre", text: line, done: true, notice: true }, id, rec.project);
-    this.emit("thread.rolled", { thread: id, from, to, reason, ...(ctx ? { used: Math.round(ctx.used), window: Math.round(ctx.window), share: Math.round(ctx.share * 1000) / 1000, source: ctx.source } : {}), seed_chars: seed.chars, seed_tail: seed.tail, text: line }, id, rec.project);
+    this.emit("thread.rolled", { thread: id, from, to, reason, ...(ctx ? { used: Math.round(ctx.used), window: Math.round(ctx.window), share: Math.round(ctx.share * 1000) / 1000, source: ctx.source } : {}), seed_chars: seed.chars, seed_tail: seed.tail, quiet: true }, id, rec.project);
     // The seed rides in front of the next message (write() takes it); set before the launch, which hands over any queued words at once.
     this.carry.set(id, seed.text);
     // An agent's thread comes back with the agent's own credentials and scope, which only the agents module can give it (as sendOne does); the thread's saved options carry the fresh window.
@@ -2058,7 +2120,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
@@ -2348,6 +2410,8 @@ export class Switchboard {
         || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
       if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
     }
+    // The window would overflow with this message: roll first, so it goes to a fresh session with the seed (R031-00u).
+    await this.rollGuard(id, text); given();
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session. (A duplicate was answered above, before anything is opened.)
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
@@ -3947,6 +4011,7 @@ export default {
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
         guard(caller, "start sessions");
+        if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
@@ -4090,6 +4155,59 @@ export default {
       throw Object.assign(new Error(e.message), { code: e.code });
     };
 
+    // A key in a person's own message: held as a card, not bounced (R031-68). The raw key lives only in this process's memory under a random ref, and only for HELD_KEY_MS; the Gate holds the words with
+    // `vault://name` where the key was, and the person's yes on that card (the Gate's outward approval, a verified yes) is what lets the Vault save the key and the message go out. A no, a restart or the
+    // timeout sends nothing and keeps nothing. Anyone who is not a person's own surface is refused outright (refuseKey).
+    const HELD_KEY_MS = 30 * 60_000;
+    /** @type {Map<string, { until: number, items: { name: string, label: string, input: any }[], text: string, i: any, caller: string, peer: any }>} */
+    const heldKeys = new Map();
+    const KEY_SENDER = "threads:key";
+    let keySenderOffered = false;
+    const offerKeySender = async () => {
+      if (keySenderOffered) return;
+      const r = await ctx.call("gate.offer", { name: KEY_SENDER, tool: "threads.key-release", kinds: ["send"], content: { body: "the message, with vault://name where each key was", summary: "what the card says it does" } });
+      if (r.error) throw Object.assign(new Error(`the Gate did not take the key sender: ${r.error.message}`), { code: r.error.code || "failed" });
+      keySenderOffered = true;
+    };
+    /** @type {(i: any, meta?: any) => Promise<any>} */ let sendHandler;
+    const holdKey = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!locateSecrets(i.text).length) return null;
+      if (!personTurn(meta.caller)) { refuseKey(i.text); }
+      let taken = [];
+      try { const l = await ctx.call("vault.list", {}); taken = (l.data && l.data.items || []).map((/** @type {any} */ x) => x.name); } catch { /* the save says if the Vault is not there */ }
+      const plan = planSecure(String(i.text), taken);
+      const now = Date.now();
+      for (const [k, v] of heldKeys) if (v.until < now) heldKeys.delete(k);
+      const ref = crypto.randomBytes(12).toString("hex");
+      heldKeys.set(ref, { until: now + HELD_KEY_MS, items: plan.items, text: plan.text, i: { ...i, text: plan.text }, caller: String(meta.caller), peer: meta.peer });
+      const what = plan.items.map(x => x.label).join(" and ");
+      await offerKeySender();
+      const r = await ctx.call("gate.request", { kind: "send", via: KEY_SENDER, to: [String(i.thread)], content: { ref, body: plan.text, summary: `Save your ${what} to the Vault and send this message` },
+        why: `Save this ${what} to your Vault and send the message with it?`, thread: String(i.thread) });
+      if (r.error) { heldKeys.delete(ref); throw Object.assign(new Error(r.error.message), { code: r.error.code }); }
+      return { held: true, state: "held", id: r.data && r.data.id, keys: plan.items.map(x => x.label),
+        message: `That message has ${plan.items.length === 1 ? "a key" : "keys"} in it, so it is held. Approve it and Vyre saves ${plan.items.length === 1 ? "it" : "them"} to your Vault and sends the message with ${plan.items.map(x => "vault://" + x.name).join(", ")} in its place. A no sends nothing.` };
+    };
+    ctx.tool("threads.key-release", {
+      description: "The Gate's sender for a held message that carried a key: once the person approves the card, save the key to the Vault and send the message with its vault:// reference. Not a public name.", internal: true,
+      input: { type: "object", required: ["id", "to", "content"], properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } } },
+      callers: ["module"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (meta.caller !== "module:gate") throw Object.assign(new Error("the Gate alone releases a held key message"), { code: "denied" });
+        const ref = String(i.content && i.content.ref || "");
+        const h = heldKeys.get(ref);
+        if (!h || h.until < Date.now()) { heldKeys.delete(ref); throw Object.assign(new Error("this message was held too long, or the box restarted since: paste the key and send it again"), { code: "expired" }); }
+        // The yes on the card covered this: the Gate only calls here after the person's approval.
+        for (const it of h.items) {
+          const r = await ctx.call("vault.put", it.input);
+          if (r.error) throw Object.assign(new Error(`the Vault did not take your ${it.label}: ${r.error.message}`), { code: r.error.code || "failed" });
+        }
+        const sent = await sendHandler(h.i, { caller: h.caller, peer: h.peer, firstParty: false });
+        heldKeys.delete(ref);
+        return { saved: h.items.map(x => x.name), sent: true, ...(sent && sent.uuid ? { uuid: sent.uuid } : {}) };
+      },
+    });
+
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
@@ -4103,8 +4221,10 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
+      (sendHandler = async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
+        // a key never reaches a model, from any surface (lib/secure-paste.js): a person's own surface gets it held as a card, anyone else a refusal
+        { const held = await holdKey(i, meta); if (held) return held; }
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
@@ -4133,7 +4253,7 @@ export default {
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
-      });
+      }));
 
     tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
       { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
@@ -4337,6 +4457,7 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { ...EDIT_SHAPE, text: str } },
       async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "edit and retry messages");
+        refuseKey(i.text);
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit and retry a message"), { code: "denied" });
         return sb.editRetry(i.thread, i.message || null, String(i.text), { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
@@ -4626,6 +4747,29 @@ export default {
     // For recall: who really started a session under an account's folder, from this record and never
     // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
     // For github's Undo, which stops the turn first (a person pressing stop) and then resets the worktree.
+    // R031-84: each API-key account's own model list, for the model registry (core/models). The key is taken the way a launch takes it, used for one request to the provider's own list and never
+    // returned; the answer is the provider's JSON. Internal: only a module may ask.
+    ctx.tool("threads.models-fetch", {
+      description: "Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const { fetchModels, MODEL_LISTING_PROVIDERS } = await import("../../lib/model-endpoints.js");
+        const { httpFetch } = await import("../../lib/http.js");
+        /** @type {any[]} */ const out = [];
+        for (const provider of MODEL_LISTING_PROVIDERS) {
+          const l = /** @type {any} */ (await ctx.call("sessions.accounts.list", { provider }).catch(() => null));
+          const rows = l && !l.error && Array.isArray(l.data) ? l.data : [];
+          for (const a of rows.filter((/** @type {any} */ x) => x && x.kind === "api-key")) {
+            try {
+              const c = await accountEnv(a);
+              const key = Object.values(c.env || {}).find((v) => typeof v === "string" && v);
+              out.push(key ? await fetchModels(a, String(key), { fetch: httpFetch, hostSafe }) : { provider, account: String(a.id), ok: false, error: "no key" });
+            } catch (e) { out.push({ provider, account: String(a.id), ok: false, error: e instanceof Error ? e.message.slice(0, 100) : "no key" }); }
+          }
+        }
+        return out;
+      },
+    });
     ctx.tool("threads.interrupt-in", {
       description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },

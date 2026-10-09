@@ -11,7 +11,8 @@
   "does": {
     "reads": [
       "agents.history",
-      "agents.list"
+      "agents.list",
+      "agents.versions"
     ],
     "tools": [
       {
@@ -80,11 +81,45 @@
         "name": "agents.delete",
         "reach": "person",
         "effect": "write"
+      },
+      {
+        "name": "agents.change.draft",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.change.title",
+        "reach": "modules"
+      },
+      {
+        "name": "agents.change.apply",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.versions",
+        "reach": "anyone"
+      },
+      {
+        "name": "agents.spawn",
+        "projectArg": ["project"],
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "agents.mirror",
+        "reach": "modules",
+        "effect": "write"
       }
     ]
   },
   "watches": {
-    "emits": []
+    "emits": [
+      "summon.queued",
+      "summon.started",
+      "summon.thread",
+      "summon.finished"
+    ]
   },
   "shows": {
     "cli": [
@@ -98,7 +133,65 @@
     "daemon": [
       "credentials"
     ],
-    "kernel": {}
+    "kernel": {
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update",
+        "records.remove",
+        "events.read"
+      ],
+      "types": [
+        {
+          "name": "agent",
+          "label": "Agent",
+          "icon": "IconRobot",
+          "fields": [
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "Name",
+              "required": true
+            },
+            {
+              "name": "uid",
+              "kind": "text",
+              "label": "Id",
+              "unique": true
+            },
+            {
+              "name": "kind",
+              "kind": "choice",
+              "label": "Kind",
+              "options": [
+                "assistant",
+                "agent"
+              ]
+            },
+            {
+              "name": "owner",
+              "kind": "text",
+              "label": "Owner"
+            },
+            {
+              "name": "builtin",
+              "kind": "boolean",
+              "label": "Built in"
+            },
+            {
+              "name": "model",
+              "kind": "text",
+              "label": "Model"
+            },
+            {
+              "name": "tags",
+              "kind": "text",
+              "label": "Tags"
+            }
+          ]
+        }
+      ]
+    }
   },
   "teaches": {
     "tips": [

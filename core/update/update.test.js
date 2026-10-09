@@ -180,3 +180,34 @@ test("update.auto_install is a registry setting: off by default, kept under upda
   assert.equal(JSON.parse(fs.readFileSync(path.join(b.root, "config.json"), "utf8")).update.install, true);
   assert.equal((await b.call("update.status")).data.install, true);
 });
+
+test("R031-47: what's new says nothing on a first run, the running version's notes once after an update, and not again once seen", async t => {
+  const api = await releasesApi(t, { value: [] });
+  const b = await box(t, api.url);
+  const v = build().version;
+  const first = (await b.call("update.whats-new")).data;
+  assert.deepEqual(first, { show: false, version: v }, "a new install has nothing new");
+  // an update happened: the person last saw an older version
+  fs.writeFileSync(path.join(b.root, "whatsnew.json"), JSON.stringify({ seen: { owner: "0.0.1" } }));
+  const after = (await b.call("update.whats-new")).data;
+  assert.equal(after.show, true);
+  assert.equal(after.from, "0.0.1");
+  assert.equal(after.version, v);
+  assert.ok(after.notes.length > 100 && after.notes.length <= 3100, `${after.notes.length} characters`);
+  assert.equal((await b.call("update.whats-new")).data.show, true, "it keeps coming back until it is seen");
+  assert.equal((await b.call("update.whats-new-seen", { version: "9.9.9" })).data.ok, false, "a seen for another version is not this one");
+  assert.equal((await b.call("update.whats-new-seen", { version: v })).data.ok, true);
+  assert.equal((await b.call("update.whats-new")).data.show, false, "once");
+});
+
+test("R031-47: whatsNewText reads a version's notes, cuts a long one at a paragraph, and gives nothing for a version with no notes", async () => {
+  const { whatsNewText } = await import("./index.js");
+  const dir = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "notes-"));
+  fs.writeFileSync(path.join(dir, "1.2.3.md"), "Headline.\n\n- one\n- two\n");
+  assert.equal(whatsNewText("1.2.3", dir), "Headline.\n\n- one\n- two");
+  fs.writeFileSync(path.join(dir, "1.2.4.md"), "Headline.\n\n" + Array.from({ length: 400 }, (_, i) => `- bullet number ${i} with some words in it`).join("\n"));
+  const long = /** @type {string} */ (whatsNewText("1.2.4", dir));
+  assert.ok(long.length < 3100 && /and more/.test(long));
+  assert.equal(whatsNewText("9.9.9", dir), null);
+  assert.equal(whatsNewText("../etc/passwd", dir), null);
+});

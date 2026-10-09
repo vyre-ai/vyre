@@ -15,7 +15,7 @@ import { createHub } from "./hub.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 // the Project a Basic device keeps: the same fields the hub writes, with no link to a contact (there are no contacts on Basic)
-const PROJECT = { name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "slug", kind: "text", label: "Short name" }, { name: "status", kind: "choice", label: "Status", options: ["active", "archived", "moved"] }, { name: "drive_path", kind: "text", label: "Drive folder" }, { name: "memory_scope", kind: "text", label: "Memory scope" }] };
+const PROJECT = { name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "slug", kind: "text", label: "Short name" }, { name: "status", kind: "choice", label: "Status", options: ["active", "archived", "moved"] }, { name: "drive_path", kind: "text", label: "Drive folder" }, { name: "memory_scope", kind: "text", label: "Memory scope" }, { name: "personal_of", kind: "text", label: "Personal of" }, { name: "owner", kind: "actor", label: "Owner" }] };
 
 test("a Basic device writes and lists a chat through the same hub writer: made from the kernel's chat.created, mirrored on chat.changed, filled by a run, and listed with its fields", async () => {
   const db = new DatabaseSync(path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-basic-chat-")), "kernel.db"));

@@ -1,5 +1,5 @@
 // @ts-check
-// sitestore: Vyre for Chrome's site knowledge as files, for a person with no Vyre server (team/0.2/chrome-learning-plan.md, section 7).
+// sitestore: Vyre Computer's site knowledge as files, for a person with no Vyre server (team/0.2/chrome-learning-plan.md, section 7).
 //
 // One JSON record per origin at <dataDir>/sites/<sha256(origin)[0:16]>.json, written atomically. The same pure code as Vyre Memory does the cleaning
 // and merging (extension/shared/sk/site-knowledge.js), so a record means the same thing in both and a box can later take these files as a replica
@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow, applyRung } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow, applyRung, rollbackOp } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
 export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
@@ -37,6 +37,8 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
       const rec = read(key);
       if (!rec) return { data: { origin: null, rev: 0 } };
       if (Number.isInteger(i.since_rev) && /** @type {number} */ (i.since_rev) >= rec.rev) return { data: { not_modified: true, rev: rec.rev } };
+      // The parts asked for in full (the operations a tool calls by name); otherwise the small arrival card.
+      if (Array.isArray(i.parts) && i.parts.length) return { data: { origin: Object.fromEntries(i.parts.map((/** @type {string} */ p) => [p, p === "wall" ? rec.login.wall : p === "signedIn" ? rec.login.signedIn : rec[p]]).filter((/** @type {any} */ [, v]) => v !== undefined)), rev: rec.rev } };
       return { data: { origin: arrivalCard(rec, { now: now() }), rev: rec.rev } };
     },
     /** Merge a patch, never replace. @param {{ origin: string, target?: string, patch: any }} i */
@@ -61,7 +63,7 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
         if (next !== rec) write(next);
         return { data: { rung: true, rev: next.rev } };
       }
-      if (!["controls", "api", "frames", "flows"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
+      if (!["controls", "api", "frames", "flows", "ops"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
       const rec = read(key);
       const list = rec && rec[i.part];
       const at = Array.isArray(list) ? list.findIndex((/** @type {any} */ x) => itemId(i.part, x) === String(i.id)) : -1;
@@ -71,10 +73,20 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
       write(rec);
       return { data: { known: true, conf: list[at].conf, misses: list[at].misses || 0, quarantined: !!list[at].qAt } };
     },
+    /** Put an operation back to an earlier version it still holds. @param {{ origin: string, name: string, version: number }} i */
+    rollback(i) {
+      const key = String(i && i.origin || "");
+      if (!keyOk(key)) return { error: { code: "bad_request", message: "not an origin" } };
+      const rec = read(key);
+      const next = rec && rollbackOp(rec, String(i.name || ""), Number(i.version), now());
+      if (!next) return { data: { rolledBack: false } };
+      write(next);
+      return { data: { rolledBack: true, version: next.ops.find((/** @type {any} */ x) => x.name === i.name).version } };
+    },
     /** What is known, by origin. */
     list() {
       let files = []; try { files = fs.readdirSync(dir).filter(f => f.endsWith(".json")); } catch { /* none yet */ }
-      return { data: files.map(f => { try { const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); return { origin: r.key, rev: r.rev, updated: r.updated, controls: r.controls.length, api: r.api.length, flows: r.flows.length, frames: r.frames.length }; } catch { return null; } }).filter(Boolean) };
+      return { data: files.map(f => { try { const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); return { origin: r.key, rev: r.rev, updated: r.updated, controls: r.controls.length, api: r.api.length, ops: (r.ops || []).length, flows: r.flows.length, frames: r.frames.length }; } catch { return null; } }).filter(Boolean) };
     },
     /** Forget one origin entirely. @param {{ origin: string }} i */
     forget(i) {

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Vyre for Chrome",
+  "name": "Vyre Computer",
   "version": "0.2.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1NXPWaI52ka3Gx36hO3TCWQaijOzDmUmCMaJJM5czXCoSr2QOZj1ec2S7X9yce4giFL4GJ6AyphGAFI/RKMGCKNuSu2A99PQcgCkDW8GEYrVw6qQFbuAkFOBBLq218ePpfIDAuGFNJ6soE1wnoD9ZkBQcReTQnjEhU3mLmsATaLnF3aDbrx+XVeaefNZoNqQFdAwHWmvDIKZbESUvuEJouD+tgnY2jdfv/POkehFmzZYWmneN8spD4ciw/T8waqWmQTUBcSjZOvIU/hhXqH98yVKSLm/mHtQTZUIf7K2nqudp6DhzU0tUUArYJly8fF3OgGl06oiHi37vzINcGIV7QIDAQAB",
   "description": "Lets Vyre work in your own Chrome, on the pages you allow, with you watching.",
@@ -22,7 +22,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Vyre for Chrome",
+    "default_title": "Vyre Computer",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

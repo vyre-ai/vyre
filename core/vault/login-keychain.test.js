@@ -53,7 +53,7 @@ test("dialogs: VYRE_ALLOW_DIALOGS=1 opens a custom home, never under tests, and 
   assert.equal(dialogsAllowed({ VYRE_HOME: "/Users/alex/vyre-home", VYRE_ALLOW_DIALOGS: "yes" }), false, "only the exact value 1");
 });
 
-test("a temp home's vyred outside tests keeps its vault key in a file and never runs security", { timeout: 60_000 }, async t => {
+test("a temp home's vyred outside tests keeps its vault key in a file and never runs security", { timeout: 120_000 }, async t => {
   const home = tempHome(t);
   const { bin, log } = fakeBins(home);
   const p = config.ensure(home);
@@ -65,7 +65,8 @@ test("a temp home's vyred outside tests keeps its vault key in a file and never 
   t.after(() => { try { child.kill("SIGTERM"); } catch {} });
   const { ping } = await import("../daemon/index.js");
   const { call } = await import("../daemon/client.js");
-  for (let i = 0; i < 150 && !(await ping(p.socket)); i++) await new Promise(r => setTimeout(r, 100));
+  // up to 60 s: a box under load took 25 s to answer its first ping
+  for (let i = 0; i < 600 && !(await ping(p.socket)); i++) await new Promise(r => setTimeout(r, 100));
   assert.ok(await ping(p.socket), "vyred came up");
 
   const put = await call("vault.put", { name: "northwind-ads", kind: "api-key", fields: { value: "fixture-value" } }, { root: home, caller: "cli" });

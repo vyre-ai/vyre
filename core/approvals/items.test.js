@@ -33,6 +33,8 @@ test("a card is rebuilt from the owner's list, closes with the outcome the owner
     call: async tool => {
       if (tool === "gate.held") { if (world.broke) throw new Error("down"); return { data: world.held }; }
       if (tool === "threads.asks") return { data: [] };
+      if (tool === "flows.attention") return { data: { runs: [] } };
+      if (tool === "models.evals") return { data: { evals: [] } };
       return { error: { code: "unknown_tool" } };
     },
     on: (pattern, fn) => { handlers.set(pattern, fn); return () => handlers.delete(pattern); },
@@ -57,4 +59,76 @@ test("a card is rebuilt from the owner's list, closes with the outcome the owner
   assert.ok(said.some(s => s.type === "approvals.changed"));
   await items.stop();
   assert.equal(handlers.size, 0, "stopping lets go of every event");
+});
+
+test("fromAttention: a failed run is one `run` card answered by flows.settle (retry, skip, stop); a stale one is quiet and only stops; a gate moves on with a reason", async () => {
+  const { fromAttention } = await import("./items.js");
+  const rows = fromAttention([
+    { run: "run_1", flow: "fl_1", label: "Welcome", kind: "failed", step: "mail", step_label: "the email", message: "the Acme connection answered 503 three times", since: 5, loud: true },
+    { run: "run_2", flow: "fl_1", label: "Welcome", kind: "stale", step: "ask", step_label: "the yes", message: "a person has not answered yet", since: 4, loud: false },
+    { run: "run_3", flow: "gate:matter:Intake", label: "Stage gate: matter Intake", kind: "stuck", step: "tasks", step_label: "tasks", message: "a task of Intake is stuck", since: 3, loud: true, gate: true },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.source]), [["flows:run_1", "run", "flows"], ["flows:run_2", "run", "flows"], ["flows:run_3", "run", "flows"]]);
+  assert.equal(rows[0].title, "Welcome stopped at the email");
+  assert.equal(rows[0].detail, "the Acme connection answered 503 three times");
+  assert.deepEqual(rows[0].answer, { tool: "flows.settle", input: { run: "run_1" }, fill: ["action"], choices: ["retry", "skip", "stop"] });
+  assert.equal(rows[1].quiet, true);
+  assert.deepEqual(rows[1].answer.choices, ["stop"]);
+  assert.equal(rows[2].title, "Stage gate: matter Intake is held");
+  assert.deepEqual(rows[2].answer, { tool: "flows.settle", input: { run: "run_3", action: "advance" }, fill: ["reason"] });
+  assert.equal(rows[0].quiet, undefined);
+  assert.deepEqual(fromAttention([]), []);
+});
+
+test("a run card opens when the owner lists it and closes with an outcome when the run is retried or stopped", async () => {
+  /** @type {any} */ const world = { runs: [{ run: "run_9", flow: "fl_1", label: "Welcome", kind: "failed", step: "mail", step_label: "the email", message: "boom", since: 1, loud: true }] };
+  /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
+  const items = createItems({
+    now: () => Date.now(),
+    call: async tool => (tool === "flows.attention" ? { data: { runs: world.runs } } : { data: [] }),
+    on: (pattern, fn) => { handlers.set(pattern, fn); return () => handlers.delete(pattern); },
+  });
+  const first = await items.list();
+  assert.deepEqual(first.items.filter((/** @type {any} */ x) => x.kind === "run").map((/** @type {any} */ x) => x.id), ["flows:run_9"]);
+  world.runs = [];
+  /** @type {any} */ (handlers.get("flow.*"))({ type: "flow.cancelled", payload: { run: "run_9" } });
+  await wait(300);
+  const after = await items.list();
+  assert.equal(after.items.filter((/** @type {any} */ x) => x.kind === "run").length, 0);
+  const closed = after.recent.find((/** @type {any} */ x) => x.id === "flows:run_9");
+  assert.equal(closed.outcome, "stopped");
+  await items.stop();
+});
+
+test("R031-45: a stuck task is one `task` card with its reason, answered by tasks.move, and it closes when the task is unblocked", async () => {
+  const { fromStuckTasks } = await import("./items.js");
+  const rows = fromStuckTasks([{ task: "t1", label: "Send the engagement letter", reason: "the client has no email on file", since: 7 }]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail]), [["tasks:t1", "task", "Send the engagement letter is stuck", "the client has no email on file"]]);
+  assert.deepEqual(rows[0].answer, { tool: "tasks.move", input: { id: "t1" }, fill: ["to", "reason"], choices: ["ready", "skipped"] });
+  /** @type {any} */ const world = { tasks: [{ task: "t1", label: "Send the engagement letter", reason: "no email", since: 7 }] };
+  /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
+  const items = createItems({ now: () => Date.now(), call: async tool => (tool === "flows.attention" ? { data: { runs: [], tasks: world.tasks } } : { data: [] }), on: (p, fn) => { handlers.set(p, fn); return () => handlers.delete(p); } });
+  assert.deepEqual((await items.list()).items.filter((/** @type {any} */ x) => x.kind === "task").map((/** @type {any} */ x) => x.id), ["tasks:t1"]);
+  world.tasks = [];
+  /** @type {any} */ (handlers.get("task.*"))({ type: "task.unblocked", payload: { task: "t1" } });
+  await wait(300);
+  const after = await items.list();
+  assert.equal(after.items.filter((/** @type {any} */ x) => x.kind === "task").length, 0);
+  assert.equal(after.recent.find((/** @type {any} */ x) => x.id === "tasks:t1").outcome, "unblocked");
+  await items.stop();
+});
+
+test("R031-87: a new model's pending evals are one `eval` card with a cost from its price (or the cost unknown), answered by models.eval-approve, declined by models.eval-decline; settled ones are not cards", async () => {
+  const { fromEvals } = await import("./items.js");
+  const rows = fromEvals([
+    { model: "codex/gpt-5.5", label: "GPT-5.5", state: "pending", price_known: true, total_usd: 7.5, types: [{ id: "a" }, { id: "b" }], at: 5 },
+    { model: "grok/grok-5", label: "grok-5", state: "pending", price_known: false, total_usd: null, types: [{ id: "a" }], at: 4 },
+    { model: "claude/x", state: "approved", types: [], at: 3 },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail]), [
+    ["models:codex/gpt-5.5", "eval", "New model GPT-5.5: run evals?", "2 evals, about $7.50 in all"],
+    ["models:grok/grok-5", "eval", "New model grok-5: run evals?", "1 evals; the cost is unknown (no price for this model yet)"],
+  ]);
+  assert.deepEqual(rows[0].answer, { tool: "models.eval-approve", input: { model: "codex/gpt-5.5" }, fill: ["evals"] });
+  assert.deepEqual(rows[0].decline, { tool: "models.eval-decline", input: { model: "codex/gpt-5.5" } });
 });

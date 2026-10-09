@@ -70,6 +70,11 @@
           "label": "Notes"
         },
         {
+          "name": "tags",
+          "kind": "text",
+          "label": "Tags"
+        },
+        {
           "name": "date_of_birth",
           "kind": "date",
           "label": "Date of birth"

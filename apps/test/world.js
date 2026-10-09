@@ -45,7 +45,8 @@ const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-mobile-")));
 // alex's folders sit outside VYRE_HOME: the security floor refuses writes into Vyre's own state.
 const alexRoot = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-mobile-alex-")));
 const ALEX = path.join(alexRoot, "alex");
-process.on("exit", () => { for (const d of [root, alexRoot]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
+// (`<home>.sessions` is where the daemon puts its sessions' temp folders, beside the home: it goes with it)
+process.on("exit", () => { for (const d of [root, alexRoot, `${root}.sessions`]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
 
 // No real Claude Code, no hooks in the user's settings, no login keychain: a fake claude that
 // speaks stream-json, a harness dir inside the home, and the file keystore.

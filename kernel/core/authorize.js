@@ -253,7 +253,11 @@ export function createAuthorizer(cfg) {
       // A session's lines are its person's own (reviewer-2's KW-1): reading one needs the session's owner attribute to name the person asking, whatever role or `*/*` grant they hold. A session
       // with no owner attribute is read by nobody (fail closed), so a capture that does not say whose session it is leaks nothing. The Space's owner reads their own, like anyone.
       const segs = segments(resource);
-      if (segs && OWNER_SCOPED_TYPES.has(segs[1]) && def.risk === "read") {
+      // A person's Personal project (R031-03) is theirs alone: a project record made with an owner attribute is read and written only by that person and their assistants. A chain with no person is refused
+      // too, except the one module that made the row and keeps it (its `created_by` is that same service): no other module, admin or assistant reads it unless it relays the person.
+      const lastHop = chain.hops[chain.hops.length - 1].actor;
+      const privateProject = Boolean(segs && segs[1] === "project" && typeof attrs.owner === "string" && !(lastHop.kind === "service" && attrs.created_by === `service:${lastHop.id}` && !chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")));
+      if (segs && ((OWNER_SCOPED_TYPES.has(segs[1]) && def.risk === "read") || privateProject)) {
         const asker = chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
         const canon = (/** @type {string} */ id) => (typeof cfg.canonicalPerson === "function" ? cfg.canonicalPerson(id) : id);
         if (!asker || typeof attrs.owner !== "string" || canon(attrs.owner) !== canon(asker)) return deny("not_yours");
@@ -446,6 +450,7 @@ export function createAuthorizer(cfg) {
       if (!input || !isChain(chain) || !chain.hops.length || !reg.get(action)) return false;
       if (chain.space !== cfg.space || !/^[a-z][a-z0-9_]{0,63}$/.test(type)) return false;
       if (cfg.rules && cfg.rules.touches ? cfg.rules.touches(chain, action) : Boolean(cfg.rules)) return false;
+      if (type === "project") return false; // a Personal project tells its rows apart (the owner rule above)
       const proto = `vyre://${cfg.space}/${type}/x`;
       for (const h of chain.hops) {
         const actor = h.actor;

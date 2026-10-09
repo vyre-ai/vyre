@@ -39,14 +39,15 @@ export function createToolSurface({ kernel, space, types, actions = () => [], ta
       const probe = await kernel.authorize({ chain, action: "records.read", resource: urn(t.name), probe: true });
       const allow = (probe.obligations || []).filter((/** @type {any} */ o) => o.type === "fields").reduce((/** @type {Set<string> | null} */ acc, /** @type {any} */ o) => (acc === null ? new Set(o.allow) : new Set([...acc].filter(x => o.allow.includes(x)))), null);
       const names = fields.map((/** @type {any} */ f) => f.name).filter((/** @type {string} */ n) => !allow || allow.has(n));
-      out.push({ name: `${nm}.find`, description: `Find ${label} records, optionally where a field has a value. Sealed fields come back as placeholders.`, risk: "read", action: "records.read", resource: urn(t.name),
-        schema: { type: "object", properties: { where: { type: "object", description: `Field and value pairs. Fields: ${names.join(", ")}.` }, limit: { type: "integer" } } },
+      out.push({ name: `${nm}.find`, description: `Find ${label} records, optionally where a field has a value. At most 50 a call, in the order made unless you sort; "more" says there are others and "next_cursor" fetches them. Sealed fields come back as placeholders.`, risk: "read", action: "records.read", resource: urn(t.name),
+        schema: { type: "object", properties: { where: { type: "object", description: `Field and value pairs. Fields: ${names.join(", ")}.` }, limit: { type: "integer", description: "1 to 50" }, cursor: { type: "string", description: "next_cursor from the last call" }, sort: { type: "array", description: "[{ field, dir: asc | desc }]: for the first or last few, sort and set limit instead of reading them all" } } },
         run: async (/** @type {any} */ c, /** @type {any} */ i) => {
           const where = i.where && typeof i.where === "object" ? Object.entries(i.where) : [];
-          const page = await kernel.records.query(c, t.name, { ...(where.length ? { filter: { and: where.map(([field, value]) => ({ field, op: "eq", value })) } } : {}), page: { limit: Math.min(Number(i.limit) || 25, 50) } });
-          return { ok: true, type: t.name, records: page.rows };
+          const limit = Math.min(Number(i.limit) || 25, 50);
+          const page = await kernel.records.query(c, t.name, { ...(where.length ? { filter: { and: where.map(([field, value]) => ({ field, op: "eq", value })) } } : {}), ...(Array.isArray(i.sort) && i.sort.length ? { sort: i.sort } : {}), page: { limit, ...(typeof i.cursor === "string" && i.cursor ? { cursor: i.cursor } : {}) } });
+          return { ok: true, type: t.name, records: page.rows, ...(page.next_cursor ? { more: true, next_cursor: page.next_cursor } : {}), ...(Number(i.limit) > 50 ? { capped_at: 50 } : {}) };
         } });
-      out.push({ name: `${nm}.create`, description: `Add a ${label}.`, risk: "write", action: "records.create", resource: urn(t.name),
+      out.push({ name: `${nm}.create`, description: t.name === "task" ? "A to-do or reminder is planner_add; this is a work item on a record." : `Add a ${label}.`, risk: "write", action: "records.create", resource: urn(t.name),
         schema: { type: "object", required: ["data"], properties: { data: { type: "object", description: `Fields: ${names.join(", ")}.` } } },
         run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, type: t.name, record: await kernel.records.create(c, t.name, i.data || {}) }) });
       out.push({ name: `${nm}.update`, description: `Change fields on a ${label}.`, risk: "write", action: "records.update", resource: urn(t.name),

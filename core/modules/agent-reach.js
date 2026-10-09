@@ -127,6 +127,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
+  ["work.template.golive", "puts a template version live: the template's owner or an admin in their own name; an assistant proposes it (flows.propose what: template) and the owner approves on a card"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.kit.remove", "changes the Space's shape and revokes grants"],
@@ -158,6 +159,19 @@ export const PERSON_ONLY = new Map([
   ["computers.member.rotate", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.resume", "controls the person's own machine"],
   ["computers.tailnet.set", "controls the person's own machine: its network and hand-back"],
+  ["connectors.site.connect", "makes a website Connection from what was learned: the person's own act"],
+  ["connectors.site.sync", "changes which learned operations a website Connection exposes: the person's own act"],
+  ["connectors.site.rollback", "puts a learned operation back to an earlier version: the person's own act"],
+  ["connectors.site.limits.set", "would let an assistant widen its own authority: the pace and caps that protect an account"],
+  ["connectors.site.resume", "the person's go-ahead after a site stopped at a challenge: only they can clear it"],
+  ["link.ops.allow", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["link.ops.revoke", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["link.ops.list", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["vault.tagged", "the person's own view of where a # tag has lent a login: conversation ids and hosts, never a value"],
+  ["vault.untag", "needs the person's Face ID or presence: secrets, devices and vault access"],
+  ["link.computer.allow", "would let an assistant widen its own authority: what the box may do on this Mac"],
+  ["link.computer.revoke", "needs the person's Face ID or presence: pairing and devices (what the box may do on this Mac)"],
+  ["link.computer.list", "needs the person's Face ID or presence: pairing and devices (what the box may do on this Mac)"],
   ["connectors.scope", "widens what a connector may reach"],
   ["connectors.declare", "makes a vault credential: the person's own act, with their own key"],
   ["appmods.install", "installing or running third-party code on the server is the owner's act"],
@@ -167,6 +181,14 @@ export const PERSON_ONLY = new Map([
   ["appmods.open", "gives a browser a signed-in session on the app"],
   ["appmods.logs", "an app's logs can carry its users' data"],
   ["views.act", "a view action is the person's click; its outward acts are still held"],
+  ["views.shown", "the chat's own question of what a thread was shown"],
+  ["views.preview", "resolves a proposed screen's data as the person, for the owner's before and after"],
+  ["design.proposals", "the owner's list of proposed screen changes, with what each reads and runs"],
+  ["design.decide", "the yes or no to a proposed screen is the screen owner's alone"],
+  ["design.screen.remove", "removing a space screen is the person's act"],
+  ["brand.set", "the space's identity is saved by a person: an agent drafts it and the person says yes"],
+  ["design.css.status", "the owner's view of custom styling and why one was turned off"],
+  ["design.css.verify", "re-checking custom CSS turns one off: the person's call"],
   ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
   ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
   ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
@@ -310,7 +332,8 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
+  "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
+  "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",

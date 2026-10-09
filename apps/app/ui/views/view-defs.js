@@ -90,7 +90,10 @@ function withStoredViews(base, def, viewName) {
 
 /** What the type shows with nothing stored: the table's entry, or a plain list (title is the first field, five columns) for a type this table does not know. @param {{ name: string, label?: string, kind?: string, fields: readonly { name: string, kind?: string }[] }} def @param {Record<string, ViewDefinition>} table @returns {ViewDefinition} */
 function defaultViewDef(def, table) {
-  if (table[def.name]) return table[def.name];
+  const known = table[def.name];
+  // The table is the sample world's: its Project names a record by `title`. The Space's own Project (a core type) is named by `name`, so a table entry whose title field the type lacks gives way to the type's own.
+  if (known && !(known.titleField && !def.fields.some(f => f.name === known.titleField) && def.fields.some(f => f.name === "name"))) return known;
+  if (known) return { ...known, titleField: "name", ...(known.board ? { board: { ...known.board, card: known.board.card.map(c => (c === "title" ? "name" : c)) } } : {}) };
   // A type this table does not know (a space's own, or one a Kit added): a plain list. It holds work, and shows under Projects, only when its definition says so
   // (`kind: "project"`, set in Customize or by a Kit). Having a stage is not enough: a role such as a Prospect has stages and is not a project.
   // A board groups by the stage field, or by the first choice field when there is no stage (a Lead by its Practice area).

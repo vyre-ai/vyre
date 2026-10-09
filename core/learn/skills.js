@@ -290,6 +290,22 @@ function nameFor(steps) {
   return name === "learned" ? "learned-procedure" : name;
 }
 
+/** A Vyre step in the words someone would ask it in. @param {string} step */
+export function plainStep(step) {
+  if (!step.startsWith("vyre:")) return `\`${step}\``;
+  const body = step.slice("vyre:".length);
+  const words = (/** @type {string} */ x) => x.replace(/[_-]+/g, " ");
+  const rec = /^work\.call:([^.]+)\.([^.]+)$/.exec(body);
+  if (rec) { const v = /** @type {Record<string, string>} */ ({ find: "look up", create: "add", update: "change", move_stage: "move the stage of" })[rec[2]] || words(rec[2]); return `${v} ${words(rec[1])}`; }
+  const m = /^([^.:]+)\.([^.:]+)(?::.*)?$/.exec(body);
+  if (!m) return words(body);
+  const [, area, verb] = m;
+  if (verb === "add" || verb === "create") return `add to the ${words(area)}`;
+  if (["find", "list", "get", "search"].includes(verb)) return `look up in the ${words(area)}`;
+  if (verb === "send") return `send with ${words(area)}`;
+  return `${words(verb)} (${words(area)})`;
+}
+
 /**
  * A deterministic SKILL.md for a candidate, used when no model drafted one.
  * @param {{steps: string[], sessions?: number}} candidate
@@ -299,7 +315,11 @@ export function template(candidate) {
   const steps = candidate.steps;
   const name = nameFor(steps);
   const list = steps.map(s => /^\w+:\w+$/.test(s) ? stepText(s).replace(/\.$/, "").toLowerCase() : `\`${s}\``);
-  const description = `Use when the task is the procedure the user repeats: ${list.join(", then ")}.`.slice(0, 1024);
+  // A model picks a skill by what its description says in words. A Vyre procedure's steps are tool ids, which no request ever names, so say what they do ("look up clients, then look up matters,
+  // then add to the planner") and keep the ids for the body. A non-Vyre step keeps its own text.
+  const description = steps.some(x => x.startsWith("vyre:"))
+    ? `Use when asked to ${steps.map(plainStep).join(", then ")}. A procedure Vyre learned from repeats (${list.join(", then ")}); it ends in one tools_run.`.slice(0, 1024)
+    : `Use when the task is the procedure the user repeats: ${list.join(", then ")}.`.slice(0, 1024);
   const n = candidate.sessions || 0;
   return [
     "---",

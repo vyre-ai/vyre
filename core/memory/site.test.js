@@ -1,5 +1,5 @@
 // @ts-check
-// site.*: the store for what Vyre for Chrome learns. Fictional data only (a made-up GoHighLevel-like app).
+// site.*: the store for what Vyre Computer learns. Fictional data only (a made-up GoHighLevel-like app).
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -138,7 +138,7 @@ test("site.list, site.forget and site.restore: one item, a whole site, then the 
   await w.call("memory.site.put", { origin: AGENCY, patch: { family: "ghl", names: ["GHL"] } });
   const list = (await w.call("memory.site.list", {})).data.sites;
   assert.deepEqual(list.map(s => s.key).sort(), [AGENCY, ORIGIN]);
-  assert.deepEqual(list.find(s => s.key === ORIGIN).counts, { controls: 1, api: 1, flows: 0, notes: 0, frames: 0 });
+  assert.deepEqual(list.find(s => s.key === ORIGIN).counts, { controls: 1, api: 1, ops: 0, flows: 0, notes: 0, frames: 0 });
   assert.equal((await w.call("memory.site.forget", { key: ORIGIN, part: "api", id: "e_1" })).data.forgotten, 1);
   assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin.api.length, 0);
   assert.equal((await w.call("memory.site.forget", { key: ORIGIN })).data.forgotten, 1);
@@ -287,7 +287,7 @@ test("memory.ask: a question about a known site is answered in code, with its so
   assert.ok(!a.error, a.error);
   assert.equal(a.data.via, "site");
   assert.equal(a.data.abstained, false);
-  assert.match(a.data.answer, /^From what Vyre for Chrome learned: GoHighLevel \(app\.ghl\.example\)\./);
+  assert.match(a.data.answer, /^From what Vyre Computer learned: GoHighLevel \(app\.ghl\.example\)\./);
   assert.match(a.data.answer, /1 control known on 1 page/);
   assert.match(a.data.answer, /1 endpoint of its own API/);
   assert.match(a.data.answer, /create-workflow \(learned, 4 runs, 1 failed\)/);
@@ -300,7 +300,7 @@ test("memory.ask: a question about a known site is answered in code, with its so
   // An agent in a project never gets it, whatever it asks.
   const agent = await w.call("memory.ask", { question: Q }, "mcp:agent:juno", { agent: "juno", granted: [] });
   assert.notEqual(agent.data && agent.data.via, "site");
-  assert.ok(!JSON.stringify(agent).includes("Vyre for Chrome learned"));
+  assert.ok(!JSON.stringify(agent).includes("Vyre Computer learned"));
 });
 
 test("memory.ask: a family answers for all its origins, and what used to work is said", async t => {

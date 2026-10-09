@@ -1,0 +1,970 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Vyre design language: blocks</title>
+<style>:root{color-scheme:light dark;--bg:#fff;--fg:#16161a;--mut:#62626b;--line:#e4e4ea}@media(prefers-color-scheme:dark){:root{--bg:#101014;--fg:#ececf1;--mut:#9a9aa6;--line:#26262e}}
+body{margin:0 auto;max-width:880px;padding:32px 16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}h1{font-size:28px}h2{font-size:20px;margin:0}small{font-size:12px;color:var(--mut);margin-left:8px;font-weight:400}
+section{border-top:1px solid var(--line);padding:20px 0}dl{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:12px 0}dt{color:var(--mut)}dd{margin:0}code,pre{font:12px/1.5 ui-monospace,monospace}pre{overflow:auto;padding:12px;border:1px solid var(--line);border-radius:8px}
+summary{cursor:pointer;color:var(--mut)}nav{display:flex;flex-wrap:wrap;gap:4px 14px}</style></head><body>
+<h1>Blocks</h1><p>Generated from <code>lib/views/blocks.js</code>. Layouts: col, row, grid, split, tabs, stack. Up to 24 blocks per screen, 4 levels deep.</p>
+<nav><a href="#list">list</a><a href="#board">board</a><a href="#summary">summary</a><a href="#detail">detail</a><a href="#form">form</a><a href="#stats">stats</a><a href="#keyvalue">keyvalue</a><a href="#table">table</a><a href="#timeline">timeline</a><a href="#calendar">calendar</a><a href="#chart">chart</a><a href="#document">document</a><a href="#text">text</a><a href="#empty">empty</a><a href="#stages">stages</a><a href="#people">people</a><a href="#activity">activity</a><a href="#approval">approval</a><a href="#gallery">gallery</a><a href="#map">map</a><a href="#banner">banner</a><a href="#actions">actions</a><a href="#records">records</a><a href="#filter">filter</a></nav>
+<section id="list"><h2>list<small>tier 1</small></h2><p>Rows with a title, a line under it and one accessory.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>density</code> default | tight</dd>
+<dt>Content</dt><dd>rows, more, empty</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>top 5 and a count</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Smith intake",
+    "subtitle": "Dana, today",
+    "accessory": "new"
+   },
+   {
+    "id": "2",
+    "title": "Lee engagement letter",
+    "subtitle": "Waiting for signature",
+    "accessory": "sent"
+   }
+  ]
+ },
+ "phone": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Smith intake",
+    "subtitle": "Dana, today",
+    "accessory": "new"
+   },
+   {
+    "id": "2",
+    "title": "Lee engagement letter",
+    "subtitle": "Waiting for signature",
+    "accessory": "sent"
+   }
+  ]
+ },
+ "chat": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Smith intake",
+    "subtitle": "Dana, today",
+    "accessory": "new"
+   },
+   {
+    "id": "2",
+    "title": "Lee engagement letter",
+    "subtitle": "Waiting for signature",
+    "accessory": "sent"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="board"><h2>board<small>tier 1</small></h2><p>Cards in columns by a stage or choice.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>columns, more, empty</dd><dt>Phone</dt><dd>one column at a time</dd><dt>Chat and Lumen</dt><dd>a count per column</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "columns": [
+   {
+    "id": "todo",
+    "title": "To do",
+    "rows": [
+     {
+      "id": "1",
+      "title": "Write brief"
+     }
+    ]
+   },
+   {
+    "id": "doing",
+    "title": "Doing",
+    "rows": [
+     {
+      "id": "2",
+      "title": "Review"
+     }
+    ]
+   }
+  ]
+ },
+ "phone": {
+  "columns": [
+   {
+    "id": "todo",
+    "title": "To do",
+    "rows": [
+     {
+      "id": "1",
+      "title": "Write brief"
+     }
+    ]
+   },
+   {
+    "id": "doing",
+    "title": "Doing",
+    "rows": [
+     {
+      "id": "2",
+      "title": "Review"
+     }
+    ]
+   }
+  ]
+ },
+ "chat": {
+  "items": [
+   {
+    "label": "To do",
+    "value": "1"
+   },
+   {
+    "label": "Doing",
+    "value": "1"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="summary"><h2>summary<small>tier 1</small></h2><p>Counts as cards and one small chart.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>cards, chart, empty</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>cards only</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "cards": [
+   {
+    "label": "Open",
+    "value": "12"
+   },
+   {
+    "label": "Done",
+    "value": "48"
+   }
+  ],
+  "chart": {
+   "kind": "bar",
+   "points": [
+    {
+     "label": "Mon",
+     "value": 3
+    },
+    {
+     "label": "Tue",
+     "value": 5
+    }
+   ]
+  }
+ },
+ "phone": {
+  "cards": [
+   {
+    "label": "Open",
+    "value": "12"
+   },
+   {
+    "label": "Done",
+    "value": "48"
+   }
+  ],
+  "chart": {
+   "kind": "bar",
+   "points": [
+    {
+     "label": "Mon",
+     "value": 3
+    },
+    {
+     "label": "Tue",
+     "value": 5
+    }
+   ]
+  }
+ },
+ "chat": {
+  "items": [
+   {
+    "label": "Open",
+    "value": "12"
+   },
+   {
+    "label": "Done",
+    "value": "48"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="detail"><h2>detail<small>tier 1</small></h2><p>One record: a body, fields and actions.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>title, body, fields</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>four fields</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "title": "Smith intake",
+  "body": "New matter from the website form.",
+  "fields": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Stage",
+    "value": "Intake"
+   }
+  ]
+ },
+ "phone": {
+  "title": "Smith intake",
+  "body": "New matter from the website form.",
+  "fields": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Stage",
+    "value": "Intake"
+   }
+  ]
+ },
+ "chat": {
+  "title": "Smith intake",
+  "body": "New matter from the website form.",
+  "fields": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Stage",
+    "value": "Intake"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="form"><h2>form<small>tier 1</small></h2><p>Fields and one submit. An outward submit shows its exact words first.</p>
+<dl><dt>Data</dt><dd>tool, operation, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>id, title, fields, submit</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>a line pointing to the app</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "id": "note",
+  "title": "Add a note",
+  "fields": [
+   {
+    "name": "note",
+    "label": "Note",
+    "type": "multiline",
+    "required": true
+   }
+  ],
+  "submit": {
+   "title": "Save"
+  }
+ },
+ "phone": {
+  "id": "note",
+  "title": "Add a note",
+  "fields": [
+   {
+    "name": "note",
+    "label": "Note",
+    "type": "multiline",
+    "required": true
+   }
+  ],
+  "submit": {
+   "title": "Save"
+  }
+ },
+ "chat": {
+  "text": "Add a note: open it in the app to fill it in."
+ }
+}</pre></details></section>
+<section id="stats"><h2>stats<small>tier 1</small></h2><p>One to four big numbers, each with an optional change.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>cols</code> number 1 to 4</dd>
+<dt>Content</dt><dd>items, more</dd><dt>Phone</dt><dd>two columns</dd><dt>Chat and Lumen</dt><dd>three numbers</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "items": [
+   {
+    "label": "Open matters",
+    "value": "42",
+    "delta": "+3"
+   },
+   {
+    "label": "Billed",
+    "value": "$18.4k",
+    "delta": "+12%"
+   },
+   {
+    "label": "Overdue",
+    "value": "5",
+    "tone": "warn"
+   }
+  ]
+ },
+ "phone": {
+  "items": [
+   {
+    "label": "Open matters",
+    "value": "42",
+    "delta": "+3"
+   },
+   {
+    "label": "Billed",
+    "value": "$18.4k",
+    "delta": "+12%"
+   },
+   {
+    "label": "Overdue",
+    "value": "5",
+    "tone": "warn"
+   }
+  ]
+ },
+ "chat": {
+  "items": [
+   {
+    "label": "Open matters",
+    "value": "42",
+    "delta": "+3"
+   },
+   {
+    "label": "Billed",
+    "value": "$18.4k",
+    "delta": "+12%"
+   },
+   {
+    "label": "Overdue",
+    "value": "5",
+    "tone": "warn"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="keyvalue"><h2>keyvalue<small>tier 1</small></h2><p>Labels and values, optionally in groups.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>pairs, more</dd><dt>Phone</dt><dd>one column</dd><dt>Chat and Lumen</dt><dd>four pairs</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "pairs": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Opened",
+    "value": "3 Oct"
+   },
+   {
+    "label": "Owner",
+    "value": "Lee"
+   }
+  ]
+ },
+ "phone": {
+  "pairs": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Opened",
+    "value": "3 Oct"
+   },
+   {
+    "label": "Owner",
+    "value": "Lee"
+   }
+  ]
+ },
+ "chat": {
+  "pairs": [
+   {
+    "label": "Client",
+    "value": "Dana Smith"
+   },
+   {
+    "label": "Opened",
+    "value": "3 Oct"
+   },
+   {
+    "label": "Owner",
+    "value": "Lee"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="table"><h2>table<small>tier 1</small></h2><p>Columns and rows you can sort and open. A cell is text, or typed by a field kind (money, stage, person, link, date, sealed...): the app draws it with that kind's own renderer, and a sealed cell carries no value, only that it is on file.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>sort</code> text, up to 40<br><code>desc</code> true or false<br><code>controls</code> true or false</dd>
+<dt>Content</dt><dd>columns, rows, more, empty, total</dd><dt>Phone</dt><dd>rows of two lines</dd><dt>Chat and Lumen</dt><dd>a short list</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "columns": [
+   {
+    "id": "name",
+    "title": "Name"
+   },
+   {
+    "id": "stage",
+    "title": "Stage"
+   },
+   {
+    "id": "fee",
+    "title": "Fee"
+   }
+  ],
+  "rows": [
+   {
+    "id": "1",
+    "cells": {
+     "name": "Smith",
+     "stage": "Intake",
+     "fee": "$2,000"
+    }
+   },
+   {
+    "id": "2",
+    "cells": {
+     "name": "Lee",
+     "stage": "Signing",
+     "fee": "$4,500"
+    }
+   }
+  ]
+ },
+ "phone": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Smith",
+    "subtitle": "Intake · $2,000"
+   },
+   {
+    "id": "2",
+    "title": "Lee",
+    "subtitle": "Signing · $4,500"
+   }
+  ]
+ },
+ "chat": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Smith",
+    "subtitle": "Intake · $2,000"
+   },
+   {
+    "id": "2",
+    "title": "Lee",
+    "subtitle": "Signing · $4,500"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="timeline"><h2>timeline<small>tier 1</small></h2><p>Dated events with who did them.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>events, more, empty</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>last three</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "events": [
+   {
+    "id": "1",
+    "when": "Today 9:12",
+    "title": "Engagement letter sent",
+    "actor": "Dana"
+   },
+   {
+    "id": "2",
+    "when": "Yesterday",
+    "title": "Intake call",
+    "actor": "Lee"
+   }
+  ]
+ },
+ "phone": {
+  "events": [
+   {
+    "id": "1",
+    "when": "Today 9:12",
+    "title": "Engagement letter sent",
+    "actor": "Dana"
+   },
+   {
+    "id": "2",
+    "when": "Yesterday",
+    "title": "Intake call",
+    "actor": "Lee"
+   }
+  ]
+ },
+ "chat": {
+  "events": [
+   {
+    "id": "1",
+    "when": "Today 9:12",
+    "title": "Engagement letter sent",
+    "actor": "Dana"
+   },
+   {
+    "id": "2",
+    "when": "Yesterday",
+    "title": "Intake call",
+    "actor": "Lee"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="calendar"><h2>calendar<small>tier 2</small></h2><p>Dated items on a month, week or agenda.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>view</code> month | week | agenda</dd>
+<dt>Content</dt><dd>events, more, empty</dd><dt>Phone</dt><dd>agenda</dd><dt>Chat and Lumen</dt><dd>next three</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "events": [
+   {
+    "id": "1",
+    "date": "2026-10-12",
+    "title": "Closing, Smith"
+   },
+   {
+    "id": "2",
+    "date": "2026-10-14",
+    "title": "Hearing, Lee"
+   }
+  ]
+ },
+ "phone": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Closing, Smith",
+    "subtitle": "2026-10-12"
+   },
+   {
+    "id": "2",
+    "title": "Hearing, Lee",
+    "subtitle": "2026-10-14"
+   }
+  ]
+ },
+ "chat": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Closing, Smith",
+    "subtitle": "2026-10-12"
+   },
+   {
+    "id": "2",
+    "title": "Hearing, Lee",
+    "subtitle": "2026-10-14"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="chart"><h2>chart<small>tier 1</small></h2><p>A series as bars, a line, an area or a donut.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>kind</code> bar | line | area | donut</dd>
+<dt>Content</dt><dd>points, empty</dd><dt>Phone</dt><dd>same, fewer ticks</dd><dt>Chat and Lumen</dt><dd>the latest number</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "points": [
+   {
+    "label": "Mon",
+    "value": 3
+   },
+   {
+    "label": "Tue",
+    "value": 5
+   },
+   {
+    "label": "Wed",
+    "value": 4
+   },
+   {
+    "label": "Thu",
+    "value": 8
+   }
+  ]
+ },
+ "phone": {
+  "points": [
+   {
+    "label": "Mon",
+    "value": 3
+   },
+   {
+    "label": "Tue",
+    "value": 5
+   },
+   {
+    "label": "Wed",
+    "value": 4
+   },
+   {
+    "label": "Thu",
+    "value": 8
+   }
+  ]
+ },
+ "chat": {
+  "items": [
+   {
+    "label": "Thu",
+    "value": "8",
+    "spark": [
+     3,
+     5,
+     4,
+     8
+    ]
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="document"><h2>document<small>tier 1</small></h2><p>A preview of a file or an artifact: pages, an image or text.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>kind</code> page | image | text</dd>
+<dt>Content</dt><dd>title, kind, text, url, pages</dd><dt>Phone</dt><dd>one page, tap for more</dd><dt>Chat and Lumen</dt><dd>title and first page</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "title": "Engagement letter",
+  "kind": "text",
+  "text": "Dear Dana, thank you for choosing us."
+ },
+ "phone": {
+  "title": "Engagement letter",
+  "kind": "text",
+  "text": "Dear Dana, thank you for choosing us."
+ },
+ "chat": {
+  "title": "Engagement letter",
+  "kind": "text",
+  "text": "Dear Dana, thank you for choosing us."
+ }
+}</pre></details></section>
+<section id="text"><h2>text<small>tier 1</small></h2><p>A heading, a paragraph or a note. Plain words, no markup.</p>
+<dl><dt>Data</dt><dd>static, tool, operation, records, flow</dd><dt>Props</dt><dd><code>style</code> heading | prose | note</dd>
+<dt>Content</dt><dd>text</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>first 160 characters</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "text": "Everything the firm needs this week, in one place."
+ },
+ "phone": {
+  "text": "Everything the firm needs this week, in one place."
+ },
+ "chat": {
+  "text": "Everything the firm needs this week, in one place."
+ }
+}</pre></details></section>
+<section id="empty"><h2>empty<small>tier 1</small></h2><p>Nothing here yet, with one next step.</p>
+<dl><dt>Data</dt><dd>static</dd><dt>Props</dt><dd><code>icon</code> icon name</dd>
+<dt>Content</dt><dd>title, hint</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>same</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "title": "No matters yet",
+  "hint": "Add the first one to see it here."
+ },
+ "phone": {
+  "title": "No matters yet",
+  "hint": "Add the first one to see it here."
+ },
+ "chat": {
+  "title": "No matters yet",
+  "hint": "Add the first one to see it here."
+ }
+}</pre></details></section>
+<section id="stages"><h2>stages<small>tier 2</small></h2><p>Steps of a process and where it is now.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>steps, current</dd><dt>Phone</dt><dd>mini steps</dd><dt>Chat and Lumen</dt><dd>the current step</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "steps": [
+   {
+    "id": "intake",
+    "title": "Intake"
+   },
+   {
+    "id": "sign",
+    "title": "Signing"
+   },
+   {
+    "id": "done",
+    "title": "Done"
+   }
+  ],
+  "current": "sign"
+ },
+ "phone": {
+  "steps": [
+   {
+    "id": "intake",
+    "title": "Intake"
+   },
+   {
+    "id": "sign",
+    "title": "Signing"
+   },
+   {
+    "id": "done",
+    "title": "Done"
+   }
+  ],
+  "current": "sign"
+ },
+ "chat": {
+  "items": [
+   {
+    "label": "Stage",
+    "value": "Signing"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="people"><h2>people<small>tier 2</small></h2><p>People or agents with a role.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>people, more</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>a stack of faces</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "people": [
+   {
+    "id": "1",
+    "name": "Dana Smith",
+    "role": "Client"
+   },
+   {
+    "id": "2",
+    "name": "Lee Park",
+    "role": "Attorney"
+   }
+  ]
+ },
+ "phone": {
+  "people": [
+   {
+    "id": "1",
+    "name": "Dana Smith",
+    "role": "Client"
+   },
+   {
+    "id": "2",
+    "name": "Lee Park",
+    "role": "Attorney"
+   }
+  ]
+ },
+ "chat": {
+  "people": [
+   {
+    "id": "1",
+    "name": "Dana Smith",
+    "role": "Client"
+   },
+   {
+    "id": "2",
+    "name": "Lee Park",
+    "role": "Attorney"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="activity"><h2>activity<small>tier 2</small></h2><p>What happened on a record or project, newest first.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>events, more, empty</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>last three</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "events": [
+   {
+    "id": "1",
+    "when": "2m",
+    "title": "Flow ran: send intake",
+    "actor": "Flows"
+   }
+  ]
+ },
+ "phone": {
+  "events": [
+   {
+    "id": "1",
+    "when": "2m",
+    "title": "Flow ran: send intake",
+    "actor": "Flows"
+   }
+  ]
+ },
+ "chat": {
+  "events": [
+   {
+    "id": "1",
+    "when": "2m",
+    "title": "Flow ran: send intake",
+    "actor": "Flows"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="approval"><h2>approval<small>tier 2</small></h2><p>Something that needs a yes: the exact words and the answer. It never shrinks.</p>
+<dl><dt>Data</dt><dd>tool, operation, static, records, flow</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>title, words, from</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>same</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "title": "Send the engagement letter",
+  "words": [
+   {
+    "label": "To",
+    "value": "dana@smith.example"
+   },
+   {
+    "label": "Subject",
+    "value": "Your engagement letter"
+   }
+  ]
+ },
+ "phone": {
+  "title": "Send the engagement letter",
+  "words": [
+   {
+    "label": "To",
+    "value": "dana@smith.example"
+   },
+   {
+    "label": "Subject",
+    "value": "Your engagement letter"
+   }
+  ]
+ },
+ "chat": {
+  "title": "Send the engagement letter",
+  "words": [
+   {
+    "label": "To",
+    "value": "dana@smith.example"
+   },
+   {
+    "label": "Subject",
+    "value": "Your engagement letter"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="gallery"><h2>gallery<small>tier 2</small></h2><p>Tiles of images or documents.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>cols</code> number 2 to 4</dd>
+<dt>Content</dt><dd>tiles, more, empty</dd><dt>Phone</dt><dd>two columns</dd><dt>Chat and Lumen</dt><dd>three tiles</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "tiles": [
+   {
+    "id": "1",
+    "title": "Floor plan"
+   },
+   {
+    "id": "2",
+    "title": "Photo 1"
+   }
+  ]
+ },
+ "phone": {
+  "tiles": [
+   {
+    "id": "1",
+    "title": "Floor plan"
+   },
+   {
+    "id": "2",
+    "title": "Photo 1"
+   }
+  ]
+ },
+ "chat": {
+  "tiles": [
+   {
+    "id": "1",
+    "title": "Floor plan"
+   },
+   {
+    "id": "2",
+    "title": "Photo 1"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="map"><h2>map<small>tier 2</small></h2><p>Pins on a map.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60</dd>
+<dt>Content</dt><dd>pins, more, empty</dd><dt>Phone</dt><dd>a list of places</dd><dt>Chat and Lumen</dt><dd>a short list</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "pins": [
+   {
+    "id": "1",
+    "title": "Office",
+    "lat": "37.77",
+    "lng": "-122.42"
+   }
+  ]
+ },
+ "phone": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Office"
+   }
+  ]
+ },
+ "chat": {
+  "rows": [
+   {
+    "id": "1",
+    "title": "Office"
+   }
+  ]
+ }
+}</pre></details></section>
+<section id="banner"><h2>banner<small>tier 1</small></h2><p>One line that needs attention.</p>
+<dl><dt>Data</dt><dd>static, tool, operation, records, flow</dd><dt>Props</dt><dd><code>tone</code> plain | ok | warn | err | accent<br><code>icon</code> icon name</dd>
+<dt>Content</dt><dd>text</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>same</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "text": "Connect your calendar to see events here."
+ },
+ "phone": {
+  "text": "Connect your calendar to see events here."
+ },
+ "chat": {
+  "text": "Connect your calendar to see events here."
+ }
+}</pre></details></section>
+<section id="actions"><h2>actions<small>tier 1</small></h2><p>A row of buttons; one is the primary.</p>
+<dl><dt>Data</dt><dd>static</dd><dt>Props</dt><dd><code>primary</code> text, up to 30</dd>
+<dt>Content</dt><dd>none</dd><dt>Phone</dt><dd>a bottom bar</dd><dt>Chat and Lumen</dt><dd>up to three</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {},
+ "phone": {},
+ "chat": {}
+}</pre></details></section>
+<section id="records"><h2>records<small>tier 2</small></h2><p>The space's own records of one type as a list, board, calendar or dashboard, with the type's own sorting, filters and stored views. The app draws it from its store.</p>
+<dl><dt>Data</dt><dd>records</dd><dt>Props</dt><dd><code>page</code> true or false</dd>
+<dt>Content</dt><dd>none</dd><dt>Phone</dt><dd>phone rows</dd><dt>Chat and Lumen</dt><dd>a line pointing to the app</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {},
+ "phone": {},
+ "chat": {
+  "text": "These records are in the app."
+ }
+}</pre></details></section>
+<section id="filter"><h2>filter<small>tier 2</small></h2><p>Search and filter pills for the blocks beside it.</p>
+<dl><dt>Data</dt><dd>static</dd><dt>Props</dt><dd><code>search</code> true or false<br><code>pills</code> text, up to 200</dd>
+<dt>Content</dt><dd>fields</dd><dt>Phone</dt><dd>a sheet</dd><dt>Chat and Lumen</dt><dd>left out</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {
+  "fields": [
+   {
+    "name": "q",
+    "label": "Search"
+   }
+  ]
+ },
+ "phone": {
+  "fields": [
+   {
+    "name": "q",
+    "label": "Search"
+   }
+  ]
+ },
+ "chat": "left out"
+}</pre></details></section>
+</body></html>

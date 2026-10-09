@@ -22,6 +22,7 @@ const NOT_OUTWARD = {
   "files.send": "Taildrop from your Mac to your own box",
   "github.session.review": "reads comments on open pull requests; a read",
   "glass.files.upload": "a one-use path for a file into a folder on your own target",
+  "chrome.op.call": "one learned READ in the person's own Chrome for the box: it refuses an operation that submits and points to chrome.op.send, which is marked outward",
   "link.call": "a Mac calls a tool on its own box",
   "link.macs.call": "the box calls a tool on its own paired Mac",
   "link.reply": "a paired Mac answers its own box's question",
@@ -78,6 +79,7 @@ function allTools() {
 
 /** What each `asks: true` tool's declared ask flow is proven by: a test where an agent's call is held (or refused) and never runs. The file must hold the named test. A tool that does not say `asks` is held in the approvals queue by the registry (core/modules/modules.test.js, the held_for_approval case). */
 const ASKS_PROOF = {
+  "chrome.op.send": ["test/site-mac-rung.test.js", "an outward operation runs on the Mac only with the box's signed assertion for exactly that call, from the connectors module alone, and once"],
   "publish.approve": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
   "publish.publish": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
   "publish.rollback": ["core/publish/publish.test.js", "create, preview, plan, approve held then decided, publish held then decided, rollback"],

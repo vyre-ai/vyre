@@ -16,15 +16,15 @@ Every service in Vyre is a module on one contract: projects, recall, the vault, 
 |---|---|---|
 | Core | `core/<name>/` in the Vyre package | `projects`, `recall`, `memory`, `vault`, `watchers`, `threads`, `sessions`, `gate`, `names`, `link`, `relay`, `artifacts`, `github`, `team`, `spend` |
 | Harness | `core/harness/`, called by the Claude Code plugin in `harness/` | `harness` (Brief, Enrich, Rules, Learn and Stop, as tools the hooks call) |
-| Surfaces and Mac pieces | `local/<name>/` | `capsule` (Lumen), `hands` (computer use on macOS), `chrome` (Vyre for Chrome on the Mac), `voice`, `screen` |
-| First-party optional | `modules/<name>/` | `hands-desktop`, `chrome` (the box's side of Vyre for Chrome) |
+| Surfaces and Mac pieces | `local/<name>/` | `capsule` (Lumen), `hands` (computer use on macOS), `chrome` (Vyre Computer on the Mac), `voice`, `screen` |
+| First-party optional | `modules/<name>/` | `hands-desktop`, `chrome` (the box's side of Vyre Computer) |
 | Yours, or third-party | `~/.vyre/modules/<name>/` | anything you write or install |
 
 The kind changes nothing about the contract. A module you write gets the same `ctx` as the vault does.
 
 Some parts of vyred are plumbing, not modules, and have no `module.json`: the config, the store, the event log, the loader, the daemon, the CLI and the transcript adapter (`core/config`, `core/store`, `core/events`, `core/modules`, `core/daemon`, `core/cli`, `core/transcripts`). Every module gets them through `ctx`. Do not list them under `requires`.
 
-A module's name comes from its manifest, not its folder: `core/switchboard/` is the `threads` module, `local/hands-mac/` is `hands`, and `modules/hands-chrome/` and `local/hands-chrome-mac/` are both `chrome`, the box's side and the Mac's side of Vyre for Chrome. See [modules](../reference/modules.md) for the full list.
+A module's name comes from its manifest, not its folder: `core/switchboard/` is the `threads` module, `local/hands-mac/` is `hands`, and `modules/hands-chrome/` and `local/hands-chrome-mac/` are both `chrome`, the box's side and the Mac's side of Vyre Computer. See [modules](../reference/modules.md) for the full list.
 
 ## How vyred loads them
 

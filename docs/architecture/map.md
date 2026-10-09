@@ -211,10 +211,13 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | --- | --- |
 | `.claude-plugin/` | The Claude Code plugin marketplace entry that points at `harness/`. |
 | `.github/` | GitHub Actions workflows: tests, releases, the Windows and Mac proofs, the docs build. |
+| `.wrangler/` | (not described yet) |
 | `apps/` | The Vyre app (Expo, in `apps/app`): web, iPhone and Android from one codebase. |
 | `bin/` | The `vyre` command's entry file and the git credential helper. |
 | `box/` | The server's Docker image, its compose files and the `vyre` command that runs on the host. |
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
+| `deck/` | (not described yet) |
+| `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
@@ -323,6 +326,7 @@ Mail, Google, GitHub, webhooks, apps, computers and screens.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `appmods` | `core/appmods/` | box | Open-source apps (Documents first) run as containers on a server, from a pinned catalog. |
+| `computer` | `core/computer/` | box and local | Vyre Computer: one front door over the cloud computer, your Macs and the screen engines; computers by name, interface first, screen last. |
 | `computers` | `core/computers/` | box | Each agent's own computer, a shared pool of screens, and take-over. |
 | `connectors` | `core/connectors/` | box and local | The catalog of vendors that run their own MCP server, and connections a firm makes itself. |
 | `github` | `core/github/` | box and local | Sign in with GitHub, repositories, a project from a repository. |
@@ -343,7 +347,9 @@ What the surfaces draw, and what keeps them informed.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `appearance` | `core/appearance/` | box and local | The theme, the colour scheme and the design tokens as settings. |
+| `brand` | `core/brand/` | box and local | The space's brand profile (logo, colours, fonts, names, letterhead), the default for what the space makes. |
 | `commands` | `core/commands/` | box and local | Every command-line verb the running modules declare, as one list. |
+| `design` | `core/design/` | box and local | The design language's keeper: the block catalogue, the space's own screens, proposals to change them, and guarded custom CSS. |
 | `docs` | `core/docs/` | box and local | Find and read the docs from inside Vyre: docs.find and docs.read, with the agent docs offered only to agents. |
 | `mentions` | `core/mentions/` | box and local | The # tag: one picker over everything a person may mention. |
 | `push` | `core/push/` | box and local | Notifications to a phone or laptop for the moments the person asked about. |

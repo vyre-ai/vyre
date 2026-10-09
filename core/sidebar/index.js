@@ -18,7 +18,7 @@
 
 import { isPerson } from "../../lib/caller.js";
 import { createSidebarService } from "./service.js";
-import { builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES } from "../../lib/sidebar/model.js";
+import { pinEntry, PIN_KINDS, builtinEntries, cleanList, merge, keyOf, find, add, remove, setHidden, move, moveBefore, setGroup, MAX_ENTRIES } from "../../lib/sidebar/model.js";
 
 const MIGRATIONS = [`CREATE TABLE sidebar_lists (k TEXT PRIMARY KEY, v TEXT NOT NULL)`];
 /** The caller the daemon's own sidebar service arrives as. */
@@ -180,6 +180,28 @@ export default {
       description: "Change the caller's OWN sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index), group (group: a name, or null), set (entries: the whole list, from the app's drag and drop) or reset (drop my own list; for sidebar.edit only). \"Put Documents in my sidebar\" is { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
       run: async (/** @type {any} */ i) => doEdit(await ownerId(), i),
+    });
+
+    // Pin anything (R031-48): a project, a Flow, a Connection's place, a records list or a saved view, by id, to the caller's OWN sidebar. An assistant may ("pin the Acme intake Flow").
+    ctx.tool("sidebar.pin", {
+      effect: "write", callers: WHO,
+      description: "Pin a project, a Flow, a Connection, a records list (its type) or a saved view to the caller's OWN sidebar: { what: project | flow | connection | records | view, id, label?, href? (a view's /u/ address), group? }. Pinning it twice pins it once. Take it off with sidebar.unpin.",
+      input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, label: str, href: str, group: str, space: str } },
+      run: async (/** @type {any} */ i) => {
+        const entry = pinEntry(String(i.what), String(i.id), i.label, i.href);
+        if (!entry) throw refuse(`I cannot pin that: what is ${PIN_KINDS.join(", ")}, id is a short name, and a view needs an address under /u/.`, "bad_input");
+        return doEdit(await ownerId(), { op: "add", entry, ...(i.group ? { group: String(i.group) } : {}), ...(i.space ? { space: i.space } : {}) });
+      },
+    });
+    ctx.tool("sidebar.unpin", {
+      effect: "write", callers: WHO,
+      description: "Take a pinned project, Flow, Connection, records list or view off the caller's OWN sidebar: { what, id }.",
+      input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, space: str } },
+      run: async (/** @type {any} */ i) => {
+        const entry = pinEntry(String(i.what), String(i.id), undefined, i.what === "view" ? "/u/x" : undefined);
+        if (!entry) throw refuse("I cannot find that to unpin.", "bad_input");
+        return doEdit(await ownerId(), { op: "remove", key: keyOf(entry), ...(i.space ? { space: i.space } : {}) });
+      },
     });
 
     ctx.tool("sidebar.team", {

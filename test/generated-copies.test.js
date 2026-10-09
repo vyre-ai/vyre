@@ -20,5 +20,6 @@ test("every generated copy is exactly what scripts/sync-copies.mjs generates", (
 
 test("shared/sk holds nothing but the generated files", () => {
   const dir = path.join(ROOT, "local/hands-chrome-mac/extension/shared/sk");
-  assert.deepEqual(fs.readdirSync(dir).sort(), Object.keys(generatedFiles()).filter(p => p.startsWith("local/hands-chrome-mac/extension/shared/sk/")).map(p => path.basename(p)).sort());
+  const all = (/** @type {string} */ d) => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? all(path.join(d, e.name)) : [path.relative(dir, path.join(d, e.name))]));
+  assert.deepEqual(all(dir).sort(), Object.keys(generatedFiles()).filter(p => p.startsWith("local/hands-chrome-mac/extension/shared/sk/")).map(p => p.slice("local/hands-chrome-mac/extension/shared/sk/".length)).sort());
 });

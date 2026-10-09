@@ -1,4 +1,4 @@
-# Vyre for Chrome: GoHighLevel playbook
+# Vyre Computer: GoHighLevel playbook
 
 In Claude Code every tool name has an underscore where this page writes a dot: `chrome.ghl` is `chrome_ghl`, `chrome.act` is `chrome_act`.
 
@@ -38,6 +38,7 @@ Read this before you build or edit a workflow in the person's own Chrome. It is 
 | Several fields by label | `chrome.fill` with `fields: [{label, value}]` and `partial: true` |
 | Wait for the page to finish | `chrome.wait` with `settled: true`, or a `selector` (with `enabled`, `stable`, or `gone`) |
 | A step that may not exist | `chrome.act` with `optional: true` (it answers `skipped`) |
+| Read or do the same thing again and again | `chrome.op call` (a learned operation, below) |
 
 `chrome.fill` by label matches the way a person reads a form: the field's label, its aria-label or placeholder, or the text next to it. If two fields fit, it says so and sets neither. Inside an open drawer or dialog it prefers that drawer's fields.
 
@@ -109,3 +110,20 @@ Before a job with many changes ("create these 8 workflows as drafts"), call `chr
 3. DevTools (`chrome_inspect`, `chrome_console`, `chrome_net`, `chrome_sources`, `chrome_eval`) for a page that resists: read the real DOM, see the request that failed, find a hidden control.
 4. Role and name from a snapshot, when a label is odd.
 5. `chrome_screenshot`, and read it. Last, because it is slow and cannot be acted on precisely.
+
+## Learned operations: teach a page once, then call it by name
+
+Driving the page is for the first time. For a read or a send you will do more than once (contacts with a tag, a conversation's messages), teach the page's own request as a named operation and call that. The login stays in the browser: the request is built and signed inside the person's page, and only the extracted answer comes back.
+
+The method, in order. Do not skip the first two.
+
+1. **Pin the intent**, three questions at most: what do you want from this site, with which inputs, and is it a read or does it change something.
+2. **Propose the operations as `name(inputs) -> fields`** (`listContacts(tag) -> name, email, phone`) and wait for the person's yes.
+3. **Scout**: `chrome.op scout` with an example shows the page's requests as a few lines each. Pick the one that carries the example.
+4. **Learn with two examples**: `chrome.op learn` with a `trigger` (the page URL with `{input}` slots, plus any clicks or fills that make it send the request) and two different example inputs. Two examples let it tell an input from a nonce.
+5. **Verify on an input that was not an example**: `chrome.op save` with `verify`. A read is kept only if it answers there. Never call it done on an example.
+6. **Call it**: `chrome.op call` with `name` and `inputs`. A drift (the site changed) is repaired once by running the trigger again; the repair is kept only if a replay answers. If it says it could not repair, teach it again.
+
+A write (`kind: send`, `change`, `spend`, `delete`) is taught with its request blocked, after the person says yes, so nothing is sent while learning. Every later call of it is held for the person. It is made once and never retried when the outcome is unknown: check the site first.
+
+Limits: no CAPTCHA solving; a site that challenges the browser needs a person once. A request the site signs per call (a nonce that changes every time) needs the page itself, which this does. Logins expire: the answer says to sign in again.

@@ -393,6 +393,14 @@
    "module": "connectors",
    "reason": "callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
   },
+  "docs.find": {
+   "module": "docs",
+   "reason": "read-only: ranks pages of the docs tree for an intent; a person's own surface gets the human docs, any other caller gets the human and the agent docs (the agent docs are not secret, the code is open source); nothing here writes, sends or reaches the network (core/docs/index.js)"
+  },
+  "docs.read": {
+   "module": "docs",
+   "reason": "read-only: returns a docs page or one section within a token budget; the same two sets as docs.find, chosen by who is calling; nothing here writes, sends or reaches the network (core/docs/index.js)"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
@@ -1341,6 +1349,14 @@
    "module": "sidebar",
    "reason": "scope check: a change touches only the caller's OWN list (one per person), never the Space default; an assistant may make it for the person, who can undo it; refuses an entry that is not installed"
   },
+  "sidebar.pin": {
+   "module": "sidebar",
+   "reason": "scope check: it adds one entry to the caller's OWN list (one per person), never the Space default; an assistant may do it for the person, who can undo it; the entry is built from a kind and an id, never an address the caller invents except a view under /u/"
+  },
+  "sidebar.unpin": {
+   "module": "sidebar",
+   "reason": "scope check: it removes one entry from the caller's OWN list only; the person can pin it again"
+  },
   "sidebar.get": {
    "module": "sidebar",
    "reason": "read-only: the Space's default and the caller's own list; nothing of another person's is shown, and a team member reads only through the Space's kernel as themselves"
@@ -1380,6 +1396,18 @@
   "sight.watch": {
    "module": "sight",
    "reason": "callers list in code: cli, local, deck, capsule and module only (no mcp, no agent); an agent proxied through sight.watch is refused by agentCaller; read-only"
+  },
+  "skills.find": {
+   "module": "skills",
+   "reason": "read-only: ranks only the skills the caller may use; the project reach is projects.reach (the one door memory, recall and files ask) and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
+  },
+  "skills.get": {
+   "module": "skills",
+   "reason": "read-only: one skill's SKILL.md, only when the caller may use it; a skill the caller may not use does not exist for them (the same door as skills.list, core/skills/index.js)"
+  },
+  "skills.list": {
+   "module": "skills",
+   "reason": "read-only: lists only the skills the caller may use; the project reach is projects.reach and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
   },
   "spaces.code.submit": {
    "module": "spaces",
@@ -2013,6 +2041,10 @@
    "module": "vault",
    "reason": "callers list in code (surfaces, tailnet, module; no model) and the presence proof carried to core"
   },
+  "vyre.core": {
+   "module": "vyre-index",
+   "reason": "read-only: the module index joined from the generated architecture map and the daemon's own module list (name, group, folder, where it runs, state, version); no data of the person's, nothing here writes (core/vyre-index/index.js)"
+  },
   "watchers.card": {
    "module": "watchers",
    "reason": "read-only: the card is worked out from the folder, no network, no model"
@@ -2124,6 +2156,42 @@
   "work.tools": {
    "module": "work",
    "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "chrome.op": {
+   "module": "chrome",
+   "reason": "held: a learned operation runs only in a signed-in page; a write is held at the Gate and sent once; the person's Chrome must be connected, and an agent needs the person's grant and a posted plan (callers list, check)"
+  },
+  "connectors.site.limits": {
+   "module": "connectors",
+   "reason": "read-only: the account governor's numbers for one website (callers list)"
+  },
+  "connectors.site.list": {
+   "module": "connectors",
+   "reason": "read-only: the website Connections, names and lights, never a cookie (callers list)"
+  },
+  "connectors.site.operations": {
+   "module": "connectors",
+   "reason": "read-only: one website Connection's operations and their health, never a value (callers list)"
+  },
+  "connectors.site.propose": {
+   "module": "connectors",
+   "reason": "held: only a proposal the person approves; nothing is learned or connected until their yes (callers list, check)"
+  },
+  "connectors.site.rows": {
+   "module": "connectors",
+   "reason": "read-only: one row per website operation for a view (callers list)"
+  },
+  "computer.targets": {
+   "module": "computer",
+   "reason": "read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
+  },
+  "computer.use": {
+   "module": "computer",
+   "reason": "guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
+  },
+  "vault.agent.fill": {
+   "module": "vault",
+   "reason": "guard: a vouched agent signs in on its own computer only, with a login lent to it at that exact origin (a grant or a # tag in this conversation); the value is typed by vyred and never returned; Vyre Computer alone may call it for an agent (callers list, check, owner)"
   }
  }
 }

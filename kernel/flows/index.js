@@ -10,6 +10,9 @@
 
 import { diffFlows } from "./diff.js";
 import { testKit } from "./kit-test.js";
+import { flowFromCalls } from "../../lib/flow-from-calls.js";
+import { printLines } from "./lines.js";
+import { connectorsOf } from "./health.js";
 import { cheatsheet } from "./cheatsheet.js";
 import { applyPatch, PatchError } from "./patch.js";
 import { normalizeFlow } from "./text.js";
@@ -48,6 +51,8 @@ function need(i, key, where) {
   return i[key];
 }
 
+const isPlain = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
+
 function personOf(chain) {
   const hops = chain && chain.hops;
   if (!Array.isArray(hops) || hops.length !== 1 || hops[0].actor.kind !== "person") throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" });
@@ -62,7 +67,7 @@ function personOf(chain) {
  *   store?: any, kitStore?: any, clock?: () => number,
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
- *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
+ *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, kinds?: Record<string, import("./proposals.js").ProposalKind>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -71,7 +76,7 @@ export function createFlows(o) {
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits, policy: o.policy, settings: o.settings });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
   const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin }) : null;
-  const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
+  const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, kinds: o.proposals.kinds, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
   /** The stages module this Space runs: made here, or attached by the host that makes it. @type {any} */ let stagesRef = stages;
   const cat = async () => o.catalog();
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {
@@ -79,6 +84,8 @@ export function createFlows(o) {
     if (!v) throw Object.assign(new Error("no such Flow"), { code: "not_found" });
     return v;
   };
+  /** The Connections a Flow uses (the `conn-` prefix off), from the version that runs or the newest. @param {string} id @returns {Promise<string[]>} */
+  const connectionsOf = async (id) => { try { const v = await view(id); return connectorsOf(v.flow).map((/** @type {string} */ c) => c.replace(/^conn-/, "")); } catch { return []; } };
   const latest = async (/** @type {string} */ id) => { const r = await store.flowRow?.(id); const last = r && r.versions[r.versions.length - 1]; return last ? store.getVersion(id, last.version) : null; };
 
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
@@ -114,7 +121,24 @@ export function createFlows(o) {
     },
     "flows.get": async (chain, i) => { const v = await view(need(i, "id", "the Flow's id (flows.list)"), [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
-    "flows.list": async () => { const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h])); return rows.map((/** @type {any} */ r) => { const h = hs.get(r.id); return h ? { ...r, label: h.label, level: h.level, line: h.line } : r; }); },
+    "flows.list": async () => {
+      const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
+      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); return { ...r, ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+    },
+    // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
+    "flows.connections": async (chain, i) => {
+      const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
+      /** @type {Map<string, any[]>} */ const by = new Map();
+      for (const r of await store.list()) {
+        for (const c of await connectionsOf(r.id)) {
+          if (i && i.connection && c !== String(i.connection)) continue;
+          const h = hs.get(r.id);
+          if (!by.has(c)) by.set(c, []);
+          /** @type {any[]} */ (by.get(c)).push({ id: r.id, label: h ? h.label : r.id, active: r.status === "active", ...(h ? { level: h.level, line: h.line } : {}) });
+        }
+      }
+      return { connections: [...by].map(([connection, flows]) => ({ connection, flows })).sort((a, b) => (a.connection < b.connection ? -1 : 1)) };
+    },
     "flows.health": async (chain, i) => { const h = await runner.health(i && i.id); if (i && i.id && !h) throw Object.assign(new Error("no such Flow"), { code: "not_found" }); return i && i.id ? h : { flows: h, control: await runner.controlState() }; },
     // Saved test cases (t2). An assistant may add a case (that only makes approval stricter) but not change or remove one: that is a person's.
     "flows.test.save": async (chain, i) => {
@@ -246,6 +270,39 @@ export function createFlows(o) {
       if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
       await runner.retry(i.run, { skip: i.skip === true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
     },
+    // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
+    "flows.attention": async () => ({ runs: await runner.attention(), ...(o.stuckTasks ? { tasks: await Promise.resolve(o.stuckTasks()).catch(() => []) } : {}) }),
+    "flows.settle": async (chain, i) => {
+      const who = personOf(chain);
+      const run = need(i, "run", "the run's id (flows.attention)");
+      const action = need(i, "action", "retry, skip, stop or advance");
+      if (action === "retry") { await runner.retry(run, { by: who.id }); return { ok: true, action }; }
+      if (action === "skip") {
+        if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
+        await runner.retry(run, { skip: true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id }); return { ok: true, action };
+      }
+      if (action === "stop") return { ...(await runner.cancel(run, { by: who.id, reason: i.reason })), action };
+      if (action === "advance") {
+        if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
+        return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
+      }
+      throw Object.assign(new Error("action is retry, skip, stop or advance"), { code: "bad_input" });
+    },
+    // "Turn this into a Flow" (R031-42): the calls an assistant made by hand become a stored draft (and, with propose, a checked proposal). The draft is an ordinary one: define's errors name the place.
+    "flows.from-chat": async (chain, i) => {
+      const name = need(i, "name", "a short name for the Flow");
+      if (!Array.isArray(i.calls) || !i.calls.length || i.calls.length > 40) throw Object.assign(new Error("calls is the list of { tool, input } the assistant made, 1 to 40"), { code: "bad_input" });
+      const c = await cat();
+      const m = flowFromCalls({ name: String(name), ...(i.label ? { label: String(i.label) } : {}), calls: i.calls, ...(isPlain(i.variables) ? { variables: i.variables } : {}) }, { types: c.types, actions: c.actions });
+      if (!m.flow.steps.length) return { ok: false, errors: [{ path: "calls", message: "none of those calls can be a step of a Flow" }], unmapped: m.unmapped };
+      const by = chain.hops[chain.hops.length - 1].actor;
+      const d = await runner.define(null, normalizeFlow(m.flow), by);
+      if (!d.ok) return { ...d, unmapped: m.unmapped };
+      const out = { ok: true, id: d.id, version: d.version, hash: d.hash, lines: printLines(normalizeFlow(m.flow)), inputs: m.inputs, unmapped: m.unmapped, warnings: d.warnings,
+        next: "Read the lines, add what is unmapped (flows.patch), save a test case (flows.test.save), then flows.propose, which checks it before a person is asked." };
+      if (i.propose === true) return { ...out, proposal: await tools["flows.propose"](chain, { what: "flow", id: d.id, version: d.version }) };
+      return out;
+    },
     "flows.cancel": async (chain, i) => { const who = personOf(chain); need(i, "run", "the run's id (flows.runs)"); return runner.cancel(i.run, { by: who.id, reason: i.reason }); },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
     "kits.diff": async (chain, i) => kits.diff(i.kit),
@@ -296,6 +353,15 @@ export function createFlows(o) {
     },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
+    // The vault asks, before it lends a Connection to a task's doer, which approved Kit version the task is from and which Connections that version names for it (vault.connections.lend).
+    "kits.credentials": async (chain, i) => {
+      const task = need(i, "task", "the task id");
+      const ent = stagesRef ? stagesRef.entries().find((/** @type {any} */ e) => e.tasks.some((/** @type {any} */ t) => t.id === task)) : null;
+      const t = ent && ent.tasks.find((/** @type {any} */ x) => x.id === task);
+      const hit = ent && t ? await kits.credentialsFor({ type: ent.type, stage: ent.stage, title: t.title }) : null;
+      if (!hit) throw Object.assign(new Error("no approved Kit version names credentials for that task"), { code: "not_found" });
+      return hit;
+    },
   };
 
   return {

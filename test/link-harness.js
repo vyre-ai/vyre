@@ -86,7 +86,7 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  *   the box's presence verifier; kernel: start both with the kernel on (the planner keeps its records there).
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {}, kernel = undefined } = {}) {
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, macConfig = {}, router = false, boxPresence = present, macSeam = {}, kernel = undefined } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -98,7 +98,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   let macSessions = [];
   if (macTranscripts) { macSessions = [path.join(macRoot, "transcripts")]; writeTranscripts(macSessions[0], Array.isArray(macTranscripts) ? macTranscripts : undefined); }
   fs.writeFileSync(path.join(macRoot, "config.json"), JSON.stringify({ role: "local", transcripts: macSessions, files: { roots: [macWork] },
-    ...(macTranscripts ? { recall: { every: 0, vectors: false } } : {}) }));
+    ...(macTranscripts ? { recall: { every: 0, vectors: false } } : {}), ...macConfig }));
   const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
   // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
   linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],

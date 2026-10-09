@@ -8,7 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import * as redact from "./extension/shared/redact.js";
+import * as redact from "./extension/shared/sk/siteops/redact.js";
 import { createBridge } from "./bridge.js";
 import { encode } from "./native-host/stdio.js";
 

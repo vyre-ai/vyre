@@ -159,6 +159,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.models-fetch",
+        "reach": "modules"
+      },
+      {
         "name": "threads.mode",
         "reach": "person",
         "effect": "write"
@@ -259,6 +263,10 @@
       },
       {
         "name": "threads.launch",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.key-release",
         "reach": "modules"
       },
       {

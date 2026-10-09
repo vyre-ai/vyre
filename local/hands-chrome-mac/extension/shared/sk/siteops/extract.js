@@ -1,0 +1,259 @@
+// GENERATED from lib/siteops/extract.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
+// @ts-check
+// extract: turn a response body into the compact value an agent sees: parse, extract, pick, cap.
+//
+// Ported from api-anything (github.com/goodnight000/api-anything, MIT, (c) goodnight000; see NOTICE). PURE and dependency free. HTML answers are read from the live DOM by the shell
+// (the page is already parsed there), so the node-html-parser path of the original is not ported: `extract` takes an optional `html(body, recipe)` reader for those.
+
+import { jsonValueEnd, parseJson } from "./codec.js";
+
+export const XSSI = ")]}'";
+// Anti-JSON-hijacking prefixes: Google's, Meta's /ajax/* and older Google and Facebook APIs.
+const PREFIXES = [XSSI, "for (;;);", "while(1);"];
+
+/** The XSSI prefix a body starts with, if any. @param {string} body */
+export const xssiOf = body => PREFIXES.find(p => body.trimStart().startsWith(p));
+
+/**
+ * Strip the XSSI prefix and parse JSON losslessly. Google `rt=c` length-prefixed chunks, and Meta-style bodies that repeat the prefix before each JSON value, become an array.
+ * @param {string} body @param {string} [xssiPrefix] @returns {any}
+ */
+export function parseBody(body, xssiPrefix) {
+  let text = body.trimStart();
+  const prefix = xssiPrefix ?? xssiOf(text) ?? "";
+  if (prefix && text.startsWith(prefix)) text = text.slice(prefix.length);
+  text = text.trim();
+  if (/^\d+[ \t]*\r?\n/.test(text)) return parseChunks(text);
+  const parts = prefix ? text.split(prefix) : [text];
+  return parts.length > 1 ? parts.map(p => parseJson(p.trim())) : parseJson(text);
+}
+
+/** @param {string} text @returns {any[]} */
+function parseChunks(text) {
+  /** @type {any[]} */ const out = [];
+  const head = /\s*\d+[ \t]*\r?\n\s*/y;
+  let i = 0;
+  while (i < text.length) {
+    head.lastIndex = i;
+    const m = head.exec(text);
+    if (!m) break;
+    i += m[0].length;
+    // Chunk lengths count bytes or UTF-16 units depending on the server; scanning the JSON is exact.
+    const end = jsonValueEnd(text, i);
+    out.push(parseJson(text.slice(i, end)));
+    i = end;
+  }
+  return out;
+}
+
+/** A string holding JSON (Google's batchexecute nests payloads this way), parsed; else undefined. @param {string} s @returns {any} */
+export function innerJson(s) {
+  if (!/^\s*[[{]/.test(s)) return undefined;
+  try { return parseJson(s); } catch { return undefined; }
+}
+
+/**
+ * Resolve "a.b[0].c", "[1][0][2]", `a["x.y"]`, stepping into JSON-encoded strings. Undefined if any step is missing. `[*]` maps the rest of the path over an array and flattens one level,
+ * skipping items where it is missing (`sections[*].items`).
+ * @param {any} obj @param {string} [path] @returns {any}
+ */
+export function getPath(obj, path) {
+  if (!path) return obj;
+  const steps = [...path.matchAll(/\[(\d+)\]|\[(\*)\]|\["((?:[^"\\]|\\.)*)"\]|[^.[\]]+/g)];
+  /** @param {any} cur @param {number} i @returns {any} */
+  const walk = (cur, i) => {
+    for (; i < steps.length; i++) {
+      const m = steps[i];
+      if (typeof cur === "string") cur = innerJson(cur);
+      if (cur == null || typeof cur !== "object") return undefined;
+      if (m[2]) {
+        if (!Array.isArray(cur)) return undefined;
+        const found = cur.map(x => walk(x, i + 1)).filter(v => v !== undefined);
+        // items present but none has the rest of the path: the path moved, not "no results"
+        return cur.length && !found.length ? undefined : found.flat();
+      }
+      const key = m[1] ?? (m[3] !== undefined ? JSON.parse(`"${m[3]}"`) : m[0]);
+      cur = cur[key];
+    }
+    return cur;
+  };
+  return walk(obj, 0);
+}
+
+/** Pick fields: commas separate them, except inside [], {} or () of a regex, or escaped as \, @param {string} s @returns {string[]} */
+export function splitPick(s) {
+  /** @type {string[]} */ const out = [];
+  let cur = "", depth = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c === "\\" && s[i + 1] === ",") { cur += ","; i++; continue; }
+    if (c === "\\") { cur += c + (s[++i] ?? ""); continue; }
+    if ("[{(".includes(c)) depth++;
+    if ("]})".includes(c)) depth = Math.max(0, depth - 1);
+    if (c === "," && depth === 0) { out.push(cur.trim()); cur = ""; continue; }
+    cur += c;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/**
+ * Keep only the given paths, per item for arrays. `name=path` renames the output key, and `name=path~regex` keeps the part of a string that the regex's group 1 (or whole match) finds
+ * (`publicId=navigationUrl~/in/([^/?]+)`); a non-string or no match drops the field.
+ * @param {any} value @param {string[]} paths @returns {any}
+ */
+export function pick(value, paths) {
+  const named = paths.map(p => {
+    const [, name, rest] = /^([\w$-]+)=(.+)$/.exec(p) ?? [p, undefined, p];
+    const cut = rest.indexOf("~");
+    const path = cut < 0 ? rest : rest.slice(0, cut);
+    return { name: name ?? path, path, re: cut < 0 ? undefined : new RegExp(rest.slice(cut + 1)) };
+  });
+  /** @param {any} item */
+  const one = item => {
+    if (!item || typeof item !== "object") return item;
+    /** @type {Record<string, any>} */ const out = {};
+    for (const { name, path, re } of named) {
+      let v = getPath(item, path);
+      if (re) { const m = typeof v === "string" ? re.exec(v) : null; v = m ? (m[1] ?? m[0]) : undefined; }
+      if (v !== undefined) out[name] = v;
+    }
+    return out;
+  };
+  if (!Array.isArray(value)) return one(value);
+  // an item with none of the fields (a shelf, an ad, a logo entity) is not a result: drop it, not {}
+  return value.map(one).filter(x => !(x && typeof x === "object" && !Object.keys(x).length));
+}
+
+/** JSON embedded in a document; the regex's group 1 marks where the JSON value starts. @param {string} body @param {string} regex @returns {any} */
+export function extractEmbedded(body, regex) {
+  const m = new RegExp(regex, "d").exec(body);
+  if (!m || m[1] === undefined) return undefined;
+  const start = /** @type {any} */ (m).indices[1][0];
+  try { return parseJson(body.slice(start, jsonValueEnd(body, start))); }
+  catch { try { return parseJson(m[1]); } catch { return undefined; } }
+}
+
+/**
+ * Body to extracted value per the op's response spec. Undefined when the extract path is missing. A page-format answer (`html`) is read by `readers.html(body, recipe)`, which the shell
+ * supplies from the live DOM; without one it is the body text.
+ * @param {any} res @param {string} body @param {{ html?: (body: string, recipe: any) => any }} [readers]
+ */
+export function extract(res, body, readers = {}) {
+  let data;
+  if (res.format === "html") data = res.html && readers.html ? readers.html(body, res.html) : body;
+  else if (res.format === "embedded") data = res.embedded ? extractEmbedded(body, res.embedded.regex) : undefined;
+  else data = parseBody(body, res.xssiPrefix);
+  if (res.extract && data !== undefined) data = getPath(data, res.extract);
+  if (res.pick && res.pick.length && data !== undefined) data = pick(data, res.pick);
+  return data;
+}
+
+/** @param {any} v */
+const size = v => (JSON.stringify(v) ?? "null").length;
+// A member at most this big is kept whole or dropped, never shortened: a number or a short string can't be.
+const ATOM = 200;
+
+/**
+ * v in at most `budget` JSON chars: strings cut, arrays cut at an item boundary (never below one item while one fits), objects keep their members in order with the biggest ones shortened
+ * to a common cap, then drop trailing members. undefined when not even an empty container fits.
+ * @param {any} v @param {number} budget @param {number} [total] @returns {any}
+ */
+function cut(v, budget, total = size(v)) {
+  if (total <= budget) return v;
+  if (typeof v === "string") {
+    let s = v.slice(0, Math.max(0, budget - 2));
+    while (s && size(s) > budget) s = s.slice(0, s.length - Math.max(1, size(s) - budget));
+    return size(s) <= budget ? s : undefined;
+  }
+  if (budget < 2) return undefined;
+  if (Array.isArray(v)) {
+    /** @type {any[]} */ const out = [];
+    let used = 2;
+    for (const item of v) {
+      const n = size(item);
+      if (used + n + (out.length ? 1 : 0) > budget) {
+        if (!out.length) { const one = cut(item, budget - 2, n); if (one !== undefined) out.push(one); }
+        break;
+      }
+      out.push(item);
+      used += n + (out.length > 1 ? 1 : 0);
+    }
+    return out;
+  }
+  if (v && typeof v === "object") {
+    const entries = Object.entries(v).filter(([, x]) => x !== undefined);
+    const cost = entries.map(([k, x]) => ({ key: size(k) + 1, value: size(x) }));
+    // Water-fill: the largest cap (>= ATOM) at which every member fits, members above it shortened.
+    const room = budget - 2 - Math.max(0, entries.length - 1);
+    const sorted = cost.map(c => c.key + c.value).sort((a, b) => a - b);
+    let cap = Infinity, below = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const left = sorted.length - i;
+      if (below + sorted[i] * left > room) { cap = Math.max(Math.min(ATOM, budget - 2), Math.floor((room - below) / left)); break; }
+      below += sorted[i];
+    }
+    /** @type {Record<string, any>} */ const out = {};
+    let used = 2;
+    for (let i = 0; i < entries.length; i++) {
+      const [k, x] = entries[i];
+      const c = cost[i];
+      const value = c.key + c.value <= cap ? x : cut(x, cap - c.key, c.value);
+      if (value === undefined) continue;
+      const n = c.key + (value === x ? c.value : size(value)) + (used > 2 ? 1 : 0);
+      if (used + n > budget) break;
+      out[k] = value;
+      used += n;
+    }
+    return out;
+  }
+  return undefined;
+}
+
+/**
+ * Hard cap on what goes back to the agent: the result is never over maxChars. Arrays are cut at an item boundary, an item too big on its own is cut rather than dropped, strings are cut as
+ * strings, objects stay objects. The note says what was cut.
+ * @param {any} value @param {number} [maxChars] @returns {{ data: any, truncated?: string }}
+ */
+export function capOutput(value, maxChars = 20_000) {
+  const total = size(value);
+  if (total <= maxChars) return { data: value };
+  const data = cut(value, maxChars, total) ?? null;
+  const hint = "narrow with pick or extract";
+  if (Array.isArray(value)) {
+    const n = data.length;
+    const whole = n > 0 && data[n - 1] === value[n - 1];
+    return { data, truncated: `showing ${n} of ${value.length} items${n && !whole ? " (the last one cut to fit)" : ""} (cap ${maxChars} chars); ${hint}` };
+  }
+  if (value && typeof value === "object" && data && typeof data === "object") {
+    const all = Object.keys(value), kept = Object.keys(data);
+    const shortened = kept.filter(k => data[k] !== value[k]).length;
+    return { data, truncated: `cut to ${size(data)} of ${total} chars (cap ${maxChars}): showing ${kept.length} of ${all.length} keys${shortened ? `, ${shortened} of them shortened` : ""}; ${hint}` };
+  }
+  return { data, truncated: `cut to ${size(data)} of ${total} chars (cap ${maxChars}); ${hint}` };
+}
+
+// numeric ids, short upper-case codes (SFO, US), and ids with digits (item-85809106, u_123)
+const ID_KEY = /^(\d+|[A-Z0-9]{2,5}|[\w:.-]*\d[\w:.-]*)$/;
+
+/** Key paths to types (first array item only; an id-keyed map as "*"), for drift detection. @param {any} value @param {number} [maxPaths] @returns {Record<string, string>} */
+export function inferShape(value, maxPaths = 200) {
+  /** @type {Record<string, string>} */ const out = {};
+  let n = 0;
+  /** @param {any} v @param {string} path @param {number} depth */
+  const visit = (v, path, depth) => {
+    if (n >= maxPaths) return;
+    const type = v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
+    if (path) { out[path] = type; n++; }
+    if (depth >= 6) return;
+    if (Array.isArray(v)) { if (v.length) visit(v[0], `${path}[]`, depth + 1); }
+    else if (type === "object") {
+      const entries = Object.entries(v);
+      // An id-keyed map (airports: {SFO: {...}}) has different keys for other args: its keys are "*".
+      if (entries.length && entries.every(([k, c]) => ID_KEY.test(k) && c !== null && typeof c === "object")) visit(entries[0][1], path ? `${path}.*` : "*", depth + 1);
+      else for (const [k, c] of entries) visit(c, path ? `${path}.${k}` : k, depth + 1);
+    }
+  };
+  visit(value, "", 0);
+  return out;
+}

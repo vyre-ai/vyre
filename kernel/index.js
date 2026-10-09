@@ -414,6 +414,8 @@ export async function createKernel(cfg) {
     const e = all[all.length - 1];
     return e ? { ...e.data, unverified: !checkpoint } : null;
   }
+  // A stored grant wider than its parent (made before containment compared every dimension) is cut at every boot, and the cut is logged.
+  if (grantsStore && cfg.bootstrap !== false && !fresh && typeof grantsStore.containmentPass === "function") await grantsStore.containmentPass();
   // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
   // for the daemon to act on (`boot.tamper`); it never throws here.
   // The log anchor (BL-2): the sealing process keeps the newest (seq, head) it was shown outside the database; the restart compares the log with it, which the log's own checkpoints cannot do.

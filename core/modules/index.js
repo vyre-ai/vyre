@@ -1229,7 +1229,9 @@ export class Registry {
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
-        if ((m.name === "capsule" || m.name === "views") && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        // A screen of the space's own (core/design) is its own declaration: the owner said yes to the screen and the tools it names, so the views module may run them as the person who opened it.
+        const spaceScreen = m.name === "views" && opts && opts.space === true && !String(as).startsWith("module:");
+        if ((m.name === "capsule" || m.name === "views") && !spaceScreen && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
@@ -1517,6 +1519,9 @@ export class Registry {
     delete meta[VIEW_FOR];
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
     const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
+    // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
+    // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
+    if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.
@@ -1547,8 +1552,6 @@ export class Registry {
       // recognises reaches nothing. The relay's setup gate (core/relay/setup.js) still holds the setup channel to its own list first.
       if (classReach(gateCaller, tool, () => this.declaredSetupTools()) === false) return ["web", "setup"].includes(callerKind(gateCaller)) ? { error: { code: "no_such_tool", message: `no tool ${tool}` } } : { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       if (!(callerAllowed(def.callers, gateCaller, tool, () => this.declaredSetupTools()) || agentOpensPerson(tool, def, gateCaller, meta)) || personRefusesAgent(tool, def, gateCaller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
-      // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others.
-      if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
       // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
@@ -1876,6 +1879,17 @@ export class Registry {
           for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
         }
         for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
+        // A screen in the design language: every block's data tool, its row detail and its actions, and the screen's forms.
+        const sc = e.screen && typeof e.screen === "object" ? e.screen : null;
+        if (sc) {
+          for (const b of Object.values(sc.blocks || {})) {
+            const blk = /** @type {any} */ (b) || {};
+            if (blk.data && toolOf(blk.data)) declared.add(toolOf(blk.data));
+            if (blk.detail && toolOf(blk.detail)) declared.add(toolOf(blk.detail));
+            for (const a of Array.isArray(blk.actions) ? blk.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
+          }
+          for (const f of Object.values(sc.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
+        }
       };
       for (const [key, v] of Object.entries(cap)) {
         if (key.startsWith("results:")) declared.add(key.slice(8));

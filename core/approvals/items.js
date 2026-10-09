@@ -7,10 +7,30 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
-export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access"]);
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval"]);
 const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
+
+/**
+ * What a surface needs beyond a card's title, taken from the owner's own row: who asked and where (agent, thread and its name, project), what a draft is (kind, via, where it goes, its summary), the
+ * questions and their choices, and what answering takes. A NAMED list, not the row: the agent's reasons, a draft's words and an ask's anchors never ride on a card (test/waiting). The same
+ * fields the same surfaces already get from gate.held and threads.asks. Dropped when settled.
+ */
+const pick = (/** @type {any} */ row, /** @type {string[]} */ keys) => Object.fromEntries(keys.filter(k => row && row[k] !== undefined && row[k] !== null).map(k => [k, row[k]]));
+const questionsOf = (/** @type {any} */ qs) => (Array.isArray(qs) ? qs.slice(0, 8).map(q => ({ question: clean(q && q.question, 300), header: clean(q && q.header, 60), multiSelect: Boolean(q && q.multiSelect),
+  options: (Array.isArray(q && q.options) ? q.options : []).slice(0, 12).map((/** @type {any} */ o) => ({ label: clean(o && (o.label ?? o), 120), ...opt("description", clean(o && o.description, 200)) })) })) : undefined);
+const ASK_FACTS = ["id", "kind", "tool", "summary", "destination", "thread", "thread_name", "agent", "project", "at", "presence", "state", "decision", "source", "machine", "always", "always_project"];
+const GATE_FACTS = ["id", "kind", "via", "to", "summary", "agent", "thread", "project", "at", "presence", "error"];
+/** @param {any} row @param {"ask"|"gate"} kind */
+const factsOf = (row, kind) => {
+  try {
+    const f = pick(row, kind === "ask" ? ASK_FACTS : GATE_FACTS);
+    if (kind === "ask" && Array.isArray(row.questions)) f.questions = questionsOf(row.questions);
+    for (const k of ["summary", "destination", "thread_name", "agent", "error"]) if (typeof f[k] === "string") f[k] = clean(f[k], 300);
+    return { facts: f };
+  } catch { return {}; }
+};
 
 /** threads.asks rows. A question is answered with a decision and its answers; a permission with a decision. */
 export const fromAsks = rows => rows.map(a => {
@@ -23,7 +43,7 @@ export const fromAsks = rows => rows.map(a => {
   const mac = a.source === "mac";
   const machine = mac && a.machine ? clean(a.machine, 80) : "";
   return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
-    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
+    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads", ...factsOf(a, "ask"),
     answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
       : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
 });
@@ -35,7 +55,7 @@ export const fromHeld = rows => rows.map(h => {
   const title = clean(h.summary) || `A ${clean(h.kind, 20) || "draft"}${via ? ` via ${via}` : ""}`;
   const detail = clean([via, to && `to ${to}`].filter(Boolean).join(" "), DETAIL_MAX);
   return { id: `gate:${h.id}`, kind: "draft", title, ...opt("detail", detail), ...opt("project", h.project), ...opt("thread", h.thread),
-    at: at(h.at), source: "gate", answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
+    at: at(h.at), source: "gate", ...factsOf(h, "gate"), answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
 });
 
 const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 4).map(x => clean(x && typeof x === "object" ? x.name : x, 60)).filter(Boolean).join(", ");
@@ -59,6 +79,34 @@ export const fromVault = (/** @type {any} */ p) => {
 };
 
 /**
+ * flows.attention rows (f3): a run that stopped, is stuck, or a stage held back. Retry, Skip and Stop are one answer (`flows.settle`), a gate's is to move it on (`advance`, with a reason). Plain words only:
+ * the reason is the run's own message, already redacted by the owner; no step data. A quiet row (a person simply has not answered yet) is marked so a surface does not push for it.
+ */
+export const fromAttention = rows => rows.map(r => {
+  const gate = Boolean(r.gate);
+  return { id: `flows:${r.run}`, kind: "run", title: gate ? `${clean(r.label, 80)} is held` : `${clean(r.label, 80)} ${r.kind === "stuck" ? "is stuck at" : r.kind === "paused" ? "paused at" : r.kind === "stale" ? "is waiting at" : "stopped at"} ${clean(r.step_label || r.step, 60) || "a step"}`,
+    ...opt("detail", cap(clean(r.message), DETAIL_MAX)), at: at(r.since), source: "flows", ...(r.loud === false ? { quiet: true } : {}),
+    answer: gate ? { tool: "flows.settle", input: { run: r.run, action: "advance" }, fill: ["reason"] }
+      : r.kind === "stale" ? { tool: "flows.settle", input: { run: r.run }, fill: ["action"], choices: ["stop"] }
+      : { tool: "flows.settle", input: { run: r.run }, fill: ["action"], choices: ["retry", "skip", "stop"] } };
+});
+
+/**
+ * flows.attention's stuck tasks (R031-45): a task someone flagged stuck waits on a person to unblock or skip it. One `task` card each, the reason in the detail, answered by `tasks.move`.
+ */
+export const fromStuckTasks = rows => rows.map(t => ({ id: `tasks:${t.task}`, kind: "task", title: `${clean(t.label, 100) || "A task"} is stuck`, ...opt("detail", cap(clean(t.reason), DETAIL_MAX)), at: at(t.since), source: "flows",
+  answer: { tool: "tasks.move", input: { id: t.task }, fill: ["to", "reason"], choices: ["ready", "skipped"] } }));
+
+/**
+ * models.evals (R031-87): a new model whose evals the owner has not yet answered. One `eval` card each: what it would cost (from the model's own price, or "cost unknown"), answered by
+ * models.eval-approve (all the proposed types; the owner may name fewer) or declined. Nothing runs from the card; approving only queues.
+ */
+export const fromEvals = rows => rows.filter(r => r && r.state === "pending").map(r => ({
+  id: `models:${r.model}`, kind: "eval", title: `New model ${clean(r.label, 60) || clean(r.model, 60)}: run evals?`,
+  ...opt("detail", cap(r.price_known && typeof r.total_usd === "number" ? `${(r.types || []).length} evals, about $${r.total_usd.toFixed(2)} in all` : `${(r.types || []).length} evals; the cost is unknown (no price for this model yet)`, DETAIL_MAX)),
+  at: at(r.at), source: "models", answer: { tool: "models.eval-approve", input: { model: r.model }, fill: ["evals"] }, decline: { tool: "models.eval-decline", input: { model: r.model } } }));
+
+/**
  * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
  * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
  */
@@ -67,6 +115,12 @@ export const OWNERS = [
     ["ask.*", (t, p) => (t === "ask.answered" ? [`threads:${p && p.ask}`, one(p && p.decision) || "answered"] : t === "ask.cancelled" ? [`threads:${p && p.ask}`, "cancelled"] : null)]] },
   { name: "gate", tool: "gate.held", map: d => fromHeld(Array.isArray(d) ? d : []), watch: [
     ["gate.*", (t, p) => (t === "gate.released" ? [`gate:${p && p.id}`, "sent"] : t === "gate.rejected" ? [`gate:${p && p.id}`, "refused"] : t === "gate.settled" ? [`gate:${p && p.id}`, one(p && p.outcome) || "sent"] : t === "gate.failed" ? [`gate:${p && p.id}`, "failed"] : null)]] },
+  { name: "flows", tool: "flows.attention", map: d => [...fromAttention(d && Array.isArray(d.runs) ? d.runs : []), ...fromStuckTasks(d && Array.isArray(d.tasks) ? d.tasks : [])], watch: [
+    ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
+    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
+    ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
+  { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
+    ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
     ["vault.granted", null], ["vault.revoked", null], ["vault.reveal-asked", null], ["vault.revealed-to-pass", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
 ];
@@ -98,7 +152,8 @@ export function createItems({ call, on, now, log = () => {}, emit = () => {}, ex
       const live = new Set(rows.map(r => r.id));
       for (const [id, card] of open) if (card.source === o.name && !live.has(id)) {
         open.delete(id);
-        recent.set(id, { ...card, state: "settled", outcome: hints.get(id) || "settled", settled_at: t });
+        const { facts: _f, ...bare } = card;
+        recent.set(id, { ...bare, state: "settled", outcome: hints.get(id) || "settled", settled_at: t });
         hints.delete(id);
       }
       for (const r of rows) open.set(r.id, { ...(open.get(r.id) || {}), ...r, state: "waiting" });

@@ -8,6 +8,7 @@ import { Readable } from "node:stream";
 import { namer, sealFile, openFile, openShared, shareFile, unshareFile } from "../../lib/chat-keys.js";
 import { seal, open } from "../../lib/keywrap.js";
 
+const FILES = /^Projects\/([^/]+)\/files(?:\/(.*))?$/;
 const FOLDER = /^Projects\/([^/]+)\/(chat|made)\/([^/]+)(?:\/(.*))?$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message = code) => Object.assign(new Error(message), { code });
 const NAMES = ".names";
@@ -16,16 +17,24 @@ const enc = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
 
 /**
  * @param {any} drive the Drive underneath
- * @param {{ keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null, sealed?: (chat: string) => boolean }} src what this process holds: a chat's keys when it is unlocked; `sealed(chat)` says whether the chat keeps its folders sealed (a chat with no ring does not, and its paths pass straight through)
+ * @param {{ projectFiles?: boolean, keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null, sealed?: (chat: string) => boolean }} src what this process holds: a chat's keys when it is unlocked; `sealed(chat)` says whether the chat keeps its folders sealed (a chat with no ring does not, and its paths pass straight through)
  */
 export function sealedDrive(drive, src) {
   /** @param {string} p */
-  const parse = p => { const m = FOLDER.exec(String(p).replace(/\/{2,}/g, "/")); return m && (!src.sealed || src.sealed(m[3])) ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null; };
+  const parse = p => {
+    const q = String(p).replace(/\/{2,}/g, "/");
+    // a project's own file area is sealed like a chat folder, under the project's server-held key (its "chat" id is `project-files:<project>`, so the one code path below serves both)
+    const f = src.projectFiles ? FILES.exec(q) : null;
+    if (f) return { project: f[1], kind: "files", chat: `project-files:${f[1]}`, rest: f[2] === undefined || f[2] === "" ? null : f[2], root: `Projects/${f[1]}/files` };
+    const m = FOLDER.exec(q); return m && (!src.sealed || src.sealed(m[3])) ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null;
+  };
   const keysOf = (/** @type {string} */ chat) => { const k = src.keysFor(chat); if (!k) throw err("unavailable", "this chat's key is not unlocked here"); return k; };
   /** @param {string} p */
   /** A file shared to a project is found through the PROJECT's ring alone (a member who is not in the chat never holds the chat's name key): the project's sealed index of what was shared, kept in memory
    *  once loaded (`loadShared`). @type {Map<string, Map<string, any>>} */
   const shared = new Map();
+  /** Shares taken back while no participant held the chat's key: the file stopped opening to the project at once, but its key is still owed a rotation, done by the first participant access (`settle`). @type {Map<string, Map<string, any>>} */
+  const owed = new Map();
   const sharedPath = (/** @type {string} */ project) => `Projects/${project}/.shared`;
   const sharedAad = (/** @type {string} */ project) => `project-shared:${project}`;
   const sharedId = (/** @type {any} */ pk, /** @type {{ kind: string, chat: string, rest: string|null }} */ w) => namer(pk).id(`${w.kind}/${w.chat}/${w.rest}`);
@@ -58,19 +67,28 @@ export function sealedDrive(drive, src) {
   const loadShared = async project => {
     const pk = src.projectKeysFor ? src.projectKeysFor(project) : null;
     if (!pk) return { loaded: 0 };
-    let entries = {};
-    try { entries = JSON.parse(Buffer.from(open(JSON.parse(Buffer.from(await drive.get(sharedPath(project))).toString("utf8")), pk.nameKey, sharedAad(project))).toString("utf8")).entries || {}; } catch { entries = {}; }
-    shared.set(project, new Map(Object.entries(entries)));
+    let entries = {}, owing = {};
+    try { const ix = JSON.parse(Buffer.from(open(JSON.parse(Buffer.from(await drive.get(sharedPath(project))).toString("utf8")), pk.nameKey, sharedAad(project))).toString("utf8")); entries = ix.entries || {}; owing = ix.owed || {}; } catch { entries = {}; }
+    shared.set(project, new Map(Object.entries(entries))); owed.set(project, new Map(Object.entries(owing)));
     return { loaded: Object.keys(entries).length };
   };
-  const saveShared = (/** @type {string} */ project, /** @type {(m: Map<string, any>) => void} */ mutate) => turn(`project:${project}`, async () => {
+  const saveShared = (/** @type {string} */ project, /** @type {(m: Map<string, any>, o: Map<string, any>) => void} */ mutate) => turn(`project:${project}`, async () => {
     const pk = src.projectKeysFor ? src.projectKeysFor(project) : null;
     if (!pk) return;
     if (!shared.has(project)) await loadShared(project);
     const m = shared.get(project) || new Map();
-    mutate(m); shared.set(project, m);
-    await drive.put(sharedPath(project), enc(seal(JSON.stringify({ entries: Object.fromEntries(m) }), pk.nameKey, sharedAad(project))), { by: "sealed-drive" });
+    const o = owed.get(project) || new Map();
+    mutate(m, o); shared.set(project, m); owed.set(project, o);
+    await drive.put(sharedPath(project), enc(seal(JSON.stringify({ entries: Object.fromEntries(m), owed: Object.fromEntries(o) }), pk.nameKey, sharedAad(project))), { by: "sealed-drive" });
   });
+
+  /** The first access by someone who holds a chat's key does the rotations owed on its files. @param {string} chat */
+  const settle = async chat => {
+    for (const [project, o] of owed) {
+      const pk = src.projectKeysFor ? src.projectKeysFor(project) : null;
+      for (const e of pk ? [...o.values()] : []) if (e.chat === chat) { try { await self.unshare(`Projects/${project}/${namer(pk).open(e.name)}`); } catch { /* still owed */ } }
+    }
+  };
 
   const self = {
     // the pool under the Drive (wink storage places its encrypted chunks on paired drives through it) and the path check: a chat's sealing is above them, never in them
@@ -83,7 +101,7 @@ export function sealedDrive(drive, src) {
     async put(p, bytes, o = {}) {
       const w = parse(p);
       if (!w || w.rest === null) return drive.put(p, bytes, o);
-      const k = keysOf(w.chat), n = namer(k), sp = stored(p), r = sealFile(k, `${sp}#${Math.random().toString(36).slice(2)}`, Buffer.from(bytes));
+      const k = keysOf(w.chat), n = namer(k), sp = stored(p), r = (await settle(w.chat), sealFile(k, `${sp}#${Math.random().toString(36).slice(2)}`, Buffer.from(bytes)));
       return turn(w.root, async () => {
         const res = await drive.put(sp, enc(r.content), o);
         const ix = await readIndex(w), key = rel(sp, w), e = (ix.files[key] ||= { name: n.seal(w.rest), recs: {} });
@@ -98,10 +116,12 @@ export function sealedDrive(drive, src) {
       if (!w || w.rest === null) return drive.get(p, o);
       if (!src.keysFor(w.chat)) {
         // not in the chat: only a file shared to the project opens, through the project's ring, at the version that was shared
+        if (!shared.has(w.project)) await loadShared(w.project);
         const e = sharedEntry(w), pk = src.projectKeysFor ? src.projectKeysFor(w.project) : null;
         if (!e || !pk) throw err("unavailable", "this chat's key is not unlocked here");
         return new Uint8Array(openShared(pk, e.rec, JSON.parse(Buffer.from(await drive.get(e.stored, { version: e.ver })).toString("utf8"))));
       }
+      await settle(w.chat);
       const k = keysOf(w.chat), sp = stored(p), version = o.version ?? drive.stat(sp, {}).version;
       const box = JSON.parse(Buffer.from(await drive.get(sp, { version })).toString("utf8"));
       const rec = (await readIndex(w)).files[rel(sp, w)]?.recs?.[version];
@@ -132,6 +152,7 @@ export function sealedDrive(drive, src) {
       if (inside && w) {
         // inside one chat folder (the folder itself or below): its whole index, then those under the sub-prefix
         let k = null; try { k = keysOf(w.chat); } catch { return []; }
+        await settle(w.chat);
         const n = namer(k), ix = await readIndex(w), subRaw = new Map(drive.list(w.root).map((/** @type {any} */ e) => [rel(String(e.path), w), e]));
         for (const [key, f] of Object.entries(ix.files)) {
           const e = subRaw.get(key); if (!e) continue;
@@ -163,6 +184,11 @@ export function sealedDrive(drive, src) {
       const sp = stored(p);
       return turn(w.root, async () => { const r = await drive.restore(sp, version, o); const ix = await readIndex(w), e = ix.files[rel(sp, w)]; if (e && e.recs[version]) { e.recs[r.version] = e.recs[version]; await writeIndex(w, ix); } return r; });
     },
+    /** The logical path a project's index holds for a stored one (what a share record names), or null. @param {string} sp */
+    logical(sp) {
+      for (const [project, m] of shared) { const pk = src.projectKeysFor ? src.projectKeysFor(project) : null; for (const e of pk ? m.values() : []) if (e.stored === sp) return `Projects/${project}/${namer(pk).open(e.name)}`; }
+      return null;
+    },
     /** Share one file's key to a project's ring (a wrap, never a copy). A project whose key is not held here is skipped: the kernel grant still decides who reads. @param {string} p */
     async share(p) {
       const w = parse(p); if (!w || w.rest === null) return { wrapped: false };
@@ -176,7 +202,7 @@ export function sealedDrive(drive, src) {
         await writeIndex(w, ix);
         // and the project's own index: where the file is stored and its name, sealed under the PROJECT's ring, with the one wrap that opens it
         const rec = { ...e.recs[ver], shares: { [pk.id]: e.recs[ver].shares[pk.id] } };
-        await saveShared(w.project, m => m.set(sharedId(pk, w), { stored: sp, ver, rec, name: namer(pk).seal(`${w.kind}/${w.chat}/${w.rest}`) }));
+        await saveShared(w.project, (m, o) => { o.delete(sharedId(pk, w)); m.set(sharedId(pk, w), { stored: sp, ver, rec, name: namer(pk).seal(`${w.kind}/${w.chat}/${w.rest}`) }); });
         return { wrapped: true };
       });
     },
@@ -185,6 +211,7 @@ export function sealedDrive(drive, src) {
       const w = parse(p); if (!w || w.rest === null) return { rotated: false };
       const pk = src.projectKeysFor ? src.projectKeysFor(w.project) : null;
       if (!pk) return { rotated: false };
+      if (!src.keysFor(w.chat)) { const id = sharedId(pk, w); await saveShared(w.project, (m, o) => { const e = m.get(id); if (e) { o.set(id, { ...e, chat: w.chat }); m.delete(id); } }); return { rotated: false, owed: true }; }
       const k = keysOf(w.chat), sp = stored(p);
       return turn(w.root, async () => {
         const ix = await readIndex(w), e = ix.files[rel(sp, w)]; if (!e) throw err("not_found");
@@ -195,7 +222,7 @@ export function sealedDrive(drive, src) {
         for (const r of Object.values(e.recs)) delete /** @type {any} */ (r).shares[pk.id];
         e.recs[res.version] = rec;
         await writeIndex(w, ix);
-        await saveShared(w.project, m => m.delete(sharedId(pk, w)));
+        await saveShared(w.project, (m, o) => { m.delete(sharedId(pk, w)); o.delete(sharedId(pk, w)); });
         return { rotated: true, version: res.version };
       });
     },

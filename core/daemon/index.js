@@ -272,13 +272,16 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, onDevice: fn => events.on("link.mac-online", () => fn()), publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
       lights: async () => { const r = await registry.call("connectors.connection.list", {}, "module:vyred"); const rows = r && !r.error && r.data && Array.isArray(r.data.connections) ? r.data.connections : []; return Object.fromEntries(rows.filter((/** @type {any} */ c) => c && c.id && c.light).map((/** @type {any} */ c) => [`conn-${c.id}`, String(c.light)])); },
       // The Space's settings for Flows (concurrency, stuck and stale limits, the backlog cap): read through the settings tool, as the daemon itself.
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
+      // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
+      agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
+      callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
@@ -461,7 +464,7 @@ async function startLocked(opts, root, p, release) {
       set: (/** @type {string} */ t, /** @type {any} */ rec) => { db.prepare("INSERT INTO kernel_turns (thread, body) VALUES (?, ?) ON CONFLICT (thread) DO UPDATE SET body = excluded.body").run(t, JSON.stringify(rec)); },
       delete: (/** @type {string} */ t) => { db.prepare("DELETE FROM kernel_turns WHERE thread = ?").run(t); },
       all: () => /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => /** @type {[string, any]} */ ([r.thread, JSON.parse(r.body)])) };
-    const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats });
+    const kernelSessions = createKernelSessions({ kernel, turns, chats: kernel.kernelFor({ name: "kernel-sessions" }).chats, pinned: async (/** @type {any} */ chain, /** @type {string} */ chat) => { const person = chain && chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id; if (!person) return false; const r = await registry.call("work.chat.pinned", { person, chat }, "module:vyred"); return Boolean(r && r.data && r.data.kind === "assistant"); } });
     // A chain of exactly that person, built by the kernel as a DEVICE chain of this home (vyred's own key), never from session facts: a chain made from a session token is delegated and may not mint a session (CH-7), so the opener must not be one. A person who is no longer a member gets none.
     const canonPerson = (/** @type {string} */ p) => { const f = kernel.kernelFor({ name: "kernel-sessions" }).canonicalPerson; return typeof f === "function" ? f(p) : p; };
     // A person id kept from before the owner adopted an identity (a stored turn, a queued message) opens as the identity: canonicalPerson maps the replaced id forward and leaves any other as given.
@@ -1222,7 +1225,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
   // A named agent with no row is granted nothing.
   if (via.agent) {
-    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    const g = await registry.call("agents.scope", { name: via.agent, ...(via.thread ? { thread: via.thread } : {}) }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
     if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
@@ -1560,6 +1563,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
  * EventSource resumes from Last-Event-ID on its own.
  */
 function stream(req, res, url, events, streams) {
+  // A client that went away while the request was being routed (or while the daemon was stopping) has no 'close' left to come: nothing to start, nothing to leak.
+  if (req.destroyed || res.destroyed || res.writableEnded) return;
   const type = url.searchParams.get("type") || "*";
   // since=latest skips the backlog: a surface that renders current state from tools only needs
   // what happens next, and replaying a long log to reach "now" is wasted work.
@@ -1602,6 +1607,7 @@ function stream(req, res, url, events, streams) {
   const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
   // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
   const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
+  beat.unref(); // a heartbeat never keeps the process alive; the stream ends with its connection or with the daemon
   const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
   streams.add(end);
   req.on("close", end);
