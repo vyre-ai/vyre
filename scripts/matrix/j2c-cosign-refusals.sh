@@ -83,9 +83,9 @@ R4="ghcr.io/vyre-ai/vyre@sha256:$(printf '0%.0s' $(seq 1 64))"
 mkrel() { # mkrel NAME REF
   d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp -R "$BOX"/. "$d"/
   # The released compose.yml is made the way release.yml makes it (scripts/pin-release-compose.mjs): every image line literal and pinned by digest.
-  # The computers image gets a placeholder digest here (nothing pulls it). "unpinned" then puts a moving tag back on the tailscale line.
+  # The computers image gets a placeholder digest here (nothing pulls it). "unpinned" then puts a moving tag on the first image line (the box image; the network product is gone from the compose file).
   node "$HERE/scripts/pin-release-compose.mjs" "$d/compose.yml" "$2" "ghcr.io/vyre-ai/vyre-computer@sha256:$(printf 'b%.0s' $(seq 1 64))" || return 1
-  [ "${3:-}" = unpinned ] && sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$d/compose.yml"
+  [ "${3:-}" = unpinned ] && sed -i '0,/^\([[:space:]]*image: \).*$/s||\1ghcr.io/vyre-ai/vyre:stable|' "$d/compose.yml"
   printf '{"version":"%s","channel":"stable","box":{"ref":"%s"}}\n' "$V0" "$2" >"$d/release.json"
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
@@ -147,8 +147,8 @@ updrefused B3-update-unsigned-digest upd-unsigned "$R1" 'no signatures'
 updrefused B4-update-wrong-identity upd-wrongid "$R2" 'identit'
 updrefused B5-update-key-signature upd-key "$R3" 'no matching signatures|certificate'
 updrefused B6-update-digest-not-held upd-missing "$R4" 'no signatures|manifest|not found'
-# A release that is not pinned by digest at all (tailscale left on its tag) is refused before cosign runs.
-mkupd upd-tag "$R1"; sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$WORK/upd-tag/compose.yml"
+# A release that is not pinned by digest at all (the box image left on a moving tag) is refused before cosign runs.
+mkupd upd-tag "$R1"; sed -i '0,/^\([[:space:]]*image: \).*$/s||\1ghcr.io/vyre-ai/vyre:stable|' "$WORK/upd-tag/compose.yml"
 (cd "$WORK/upd-tag" && fl=$(awk '{print $2}' SHA256SUMS | sort -u) && for f in $fl; do sha256sum "$f"; done >SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
 node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$WORK/upd-tag" "$WORK/good.pem"
 askupd upd-tag; ready; v=$(hv)
