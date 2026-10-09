@@ -143,7 +143,13 @@ export function registerOutside(ctx, seam = {}) {
 
   // ---- the endpoint -----------------------------------------------------------------------------------------------------------------------------------------------------------------------
   const refused = (/** @type {string} */ source, /** @type {string} */ reason, agent = "") => emit("outside.refused", { source: String(source).slice(0, 64), reason, ...(agent ? { id: agent } : {}) });
-  const mcp = createMcp({ store, door, now, kernel: K, emit, hold, heldState, refuse: refused, name: "vyre" });
+  // An agent given a Vault reach also gets the Vault's two tools, served by the Vault (trust): none until it offers them, and none for an agent that holds no vault reach.
+  const extra = async (/** @type {any} */ agent) => {
+    const r = /** @type {any} */ (await ctx.call("vault.mcp.agent.tools", { agent: agent.id }));
+    if (r.error || !r.data || !Array.isArray(r.data.tools) || !r.data.tools.length) return null;
+    return { tools: r.data.tools, call: async (/** @type {string} */ tool, /** @type {any} */ args, /** @type {string} */ source) => { const c = /** @type {any} */ (await ctx.call("vault.mcp.agent.call", { agent: agent.id, tool, arguments: args, source })); if (c.error) throw fail(c.error.message, c.error.code); return c.data; } };
+  };
+  const mcp = createMcp({ store, door, now, kernel: K, emit, hold, heldState, extra, refuse: refused, name: "vyre" });
 
   // ---- tools ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
   const lines = (/** @type {string} */ url, /** @type {string} */ token, /** @type {string} */ name) => {
