@@ -32,7 +32,7 @@ export async function kernelRig(o = {}) {
     space: SPACE, owner: OWNER, grants: gw.grants, authorize: gw.authorize,
     chain: async (/** @type {any} */ meta) => (meta && meta.chain) || owner(),
     proofFrom: () => ({ presence: { n: Math.random() } }),
-    vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault() }),
+    vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p) }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
     agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin) => {
       if (!AGENT_ACTIONS.includes(action)) return false;

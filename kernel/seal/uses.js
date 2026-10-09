@@ -45,6 +45,8 @@ export const ACCESS_LEVELS = Object.freeze({
   reveal: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal"]),
   manage: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate", "grants.create"]),
 });
+/** The surfaces a Connection can be lent to, each as the chain surfaces it covers: a grant to the group `surface:<name>` reaches any chain that came in through one of them. */
+export const SURFACE_GROUPS = Object.freeze({ capsule: ["capsule"], phone: ["mobile"], chat: ["mcp"], agents: ["harness"] });
 /** The actions an assistant (an agent actor, or a chain that holds one) may ever hold: `use` only. reveal and manage are a person's. */
 export const AGENT_ACTIONS = ACCESS_LEVELS.use;
 /** @param {string} level @returns {readonly string[]} the actions of a level, or throws on a name that is not one */

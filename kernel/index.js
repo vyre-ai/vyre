@@ -304,7 +304,7 @@ export async function createKernel(cfg) {
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
-      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault() }) } : {}),
+      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder

@@ -11,7 +11,7 @@ import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 import { containsDims } from "../core/authorize.js";
 import { canonical, sha256 } from "../core/canonical.js";
-import { ACCESS_LEVELS, AGENT_ACTIONS, levelActions, levelOf } from "../seal/uses.js";
+import { ACCESS_LEVELS, AGENT_ACTIONS, levelActions, levelOf, SURFACE_GROUPS } from "../seal/uses.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", ALICE = "per_alice", BOB = "per_bob", CAROL = "per_carol";
 let T = 1_800_000_000_000;
@@ -246,4 +246,21 @@ test("carried-over agent logins: one agent, fill, one exact origin, until its ex
   const mine = (await g.list(owner())).filter(x => x.source === "vault:agent");
   assert.equal(mine.length, 1);
   assert.deepEqual(mine[0].conditions.where.origins, ["https://app.northwind.test"]);
+});
+
+test("a Connection is open to a surface by a grant to the group surface:<name>: it reaches chains that came in through that surface, takes no fresh proof to make, and names only the four surfaces", async () => {
+  const { gw, g } = await rig();
+  const conn = `vyre://${SPACE}/connection/cn_mail`;
+  assert.deepEqual(Object.keys(SURFACE_GROUPS), ["capsule", "phone", "chat", "agents"]);
+  const open = (/** @type {string} */ name) => g.create(owner(), { subject: { kind: "group", id: `surface:${name}` }, actions: [...levelActions("use")], resource: { prefix: conn }, conditions: {}, source: "vault:connection" });
+  await assert.rejects(() => open("fax"), { code: "bad_input" });
+  const grant = await open("capsule");
+  assert.equal(grant.status, "active", "made on the person's own session, no fresh proof");
+  const via = (/** @type {string} */ surface) => chains.fromFacts({ kind: "socket", surface, uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  assert.equal((await ask(gw, via("capsule"), "vault.read", conn)).effect, "allow");
+  assert.equal((await ask(gw, via("deck"), "vault.read", conn)).effect, "deny", "another surface");
+  assert.equal((await ask(gw, via("capsule"), "vault.read", `vyre://${SPACE}/connection/cn_other`)).effect, "deny", "another connection");
+  assert.notEqual((await ask(gw, via("capsule"), "vault.reveal", conn)).effect, "allow", "use, not reveal");
+  await g.revoke(owner(), grant.id, "closed", { presence: proof("grants.revoke", { id: grant.id, reason: "closed" }, `vyre://${SPACE}/grant/${grant.id}`) });
+  assert.equal((await ask(gw, via("capsule"), "vault.read", conn)).effect, "deny", "taken back");
 });

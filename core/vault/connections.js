@@ -23,6 +23,8 @@
 
 import { provider as catalog, CAPABILITIES } from "./providers.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { asPerson } from "../../lib/project-reach.js";
+import { ACCESS_LEVELS } from "../../kernel/seal/uses.js";
 
 /** The vault_connections table (vault.js appends it to MIGRATIONS). */
 export const CONNECTIONS_MIGRATION = `CREATE TABLE vault_connections (
@@ -194,7 +196,7 @@ export function checkUse(use) {
 export class Connections {
   /**
    * @param {import("./vault.js").Vault} vault
-   * @param {{ call?: (tool: string, input: any) => Promise<any>, modules?: () => any[], log?: (m: string) => void, now?: () => number }} deps
+   * @param {{ call?: (tool: string, input: any) => Promise<any>, modules?: () => any[], log?: (m: string) => void, now?: () => number, kernel?: any }} deps
    */
   constructor(vault, deps = {}) {
     this.v = vault;
@@ -203,8 +205,11 @@ export class Connections {
     this.modules = deps.modules || (() => []);
     this.log = deps.log || (() => {});
     this.now = deps.now || Date.now;
+    /** The kernel's handle for the vault (grants and the vault's own port): where a person's choice of surfaces lives. Null in a build with no kernel. */
+    this.kernel = deps.kernel && deps.kernel.grants && deps.kernel.vault ? deps.kernel : null;
     /** When last_used was last written, per row, so a busy row writes once a minute. @type {Map<string, number>} */
     this.touched = new Map();
+    /** @type {Set<Promise<any>>} grants being taken back from connections that were removed or reset */ this.drops = new Set();
     /** A thread's surface, from its origin, once looked up. @type {Map<string, "capsule"|"phone"|"chat">} */
     this.threads = new Map();
     /** Sources synced since start; one not yet synced is synced before anything is read. */
@@ -270,6 +275,7 @@ export class Connections {
     // Signing a row needs the key; nothing to sign means nothing to open the vault for.
     if (found.length) await this.v.key();
     const out = this.apply("google", found, { removeMissing: true });
+    await this.settled();
     this.synced.add("google");
     return out;
   }
@@ -298,6 +304,7 @@ export class Connections {
     // Signing a row needs the key; nothing to sign means nothing to open the vault for.
     if (found.length) await this.v.key();
     const out = this.apply("mcp", found, { removeMissing: true });
+    await this.settled();
     this.synced.add("mcp");
     return out;
   }
@@ -320,6 +327,7 @@ export class Connections {
     // Signing a row needs the key; nothing to sign means nothing to open the vault for.
     if (found.length) await this.v.key();
     const out = this.apply("vault", found, { removeMissing: true });
+    await this.settled();
     this.synced.add("vault");
     return out;
   }
@@ -375,6 +383,7 @@ export class Connections {
         this.db.prepare("UPDATE vault_connections SET provider=?, account=?, auth=?, label=?, capabilities=?, surfaces=?, items=?, use=?, edited=?, updated=? WHERE id=?")
           .run(next.provider, next.account, next.auth, next.label, next.capabilities, next.surfaces, next.items, next.use, next.edited, t, r.id);
         this.v.sign("vault_connections", r.id);
+        if (!good) void this.drop(r.id);
         if (!good) this.v.audit("connection-reset", null, "vault", false, `connection ${r.id} failed its check; it is granted to no surface until a person grants it again`);
         const shown = fields.filter(k => k !== "edited");
         if (shown.length || !good) events.push(["vault.connection-changed", { id: r.id, fields: good ? shown : [...new Set([...shown, "surfaces"])] }]);
@@ -383,6 +392,7 @@ export class Connections {
       if (removeMissing) for (const r of old.values()) {
         if (json(r.edited, []).includes("registered")) continue;
         this.db.prepare("DELETE FROM vault_connections WHERE id = ?").run(r.id);
+        void this.drop(r.id);
         events.push(["vault.connection-removed", { id: r.id }]);
         removed++;
       }
@@ -418,6 +428,7 @@ export class Connections {
     await this.v.key();
     const { ids } = this.apply(source, [{ ref: String(ref), provider, account: account.trim(), auth, label: cut((label || account).trim(), 200),
       capabilities: caps.length ? caps : ["other"], items: items ? items.map(String) : [], use: uses }], { registered: true });
+    await this.settled();
     if (items && items.length) await this.resync(["vault"]).catch(() => {});
     return { id: ids[0], source, capabilities: caps.length ? caps : ["other"] };
   }
@@ -428,6 +439,7 @@ export class Connections {
     const r = /** @type {any} */ (this.db.prepare("SELECT id FROM vault_connections WHERE source = ? AND ref = ?").get(source, String(ref ?? "")));
     if (!r) return { removed: false };
     this.db.prepare("DELETE FROM vault_connections WHERE id = ?").run(r.id);
+    await this.drop(r.id);
     this.v.emit("vault.connection-removed", { id: r.id });
     await this.resync().catch(() => {});
     return { removed: true, id: r.id };
@@ -460,6 +472,33 @@ export class Connections {
 
   items() { return new Map(this.v.list().items.map(i => [i.name, i])); }
 
+  /** A connection is gone: what was granted on it goes with it, and a connection made later under the same address inherits nothing. @param {string} id */
+  drop(id) {
+    if (!this.kernel) return Promise.resolve();
+    const p = this.kernel.vault.takeBack({ prefix: this.urn(id), reason: "the connection is gone or was reset" }).catch(e => this.log(`vault connections: grants on ${id} were not taken back: ${e.message}`));
+    this.drops.add(p);
+    p.finally(() => this.drops.delete(p));
+    return p;
+  }
+
+  /** Wait for the grants being taken back (a sync that removed or reset rows calls this before it answers). */
+  async settled() { await Promise.all([...this.drops]); }
+
+  /** The address a connection's grants are made on. @param {string} id */
+  urn(id) { return `vyre://${this.kernel ? this.kernel.space : "space"}/connection/${id}`; }
+
+  /**
+   * The surfaces a connection is open to: the ones a person chose, which are kernel grants to the group `surface:<name>` on the connection's address, and the ones it started with
+   * (`surfaces`, the seed a person has not yet had to touch: capsule and chat for a row they saw coming). A row that fails its check is open to none.
+   * @param {any} r @param {boolean} ok
+   */
+  surfacesOf(r, ok) {
+    if (!ok) return [];
+    const have = new Set(/** @type {string[]} */ (json(r.surfaces, [])));
+    if (this.kernel) for (const g of this.kernel.vault.grantsOn(this.urn(r.id))) if (g.subject.kind === "group" && String(g.subject.id).startsWith("surface:")) have.add(String(g.subject.id).slice(8));
+    return SURFACE_NAMES.filter(n => have.has(n));
+  }
+
   /** One row as a listing shows it. `full` is for a person: surfaces, tamper flag. */
   out(r, ok, full, byName) {
     const capabilities = json(r.capabilities, []);
@@ -467,7 +506,7 @@ export class Connections {
     const { state, needs } = this.stateOf(r, byName);
     return { id: r.id, source: r.source, ref: r.ref, provider: r.provider, account: r.account, auth: r.auth, label: r.label, capabilities,
       state, ...(needs.length ? { needs } : {}),
-      ...(full ? { surfaces: ok ? json(r.surfaces, []) : [], ...(ok ? {} : { tampered: true }) } : {}), uses, default: json(r.defaults, []), last_used: r.last_used ?? null, added: r.added, updated: r.updated };
+      ...(full ? { surfaces: this.surfacesOf(r, ok), ...(ok ? {} : { tampered: true }) } : {}), uses, default: json(r.defaults, []), last_used: r.last_used ?? null, added: r.added, updated: r.updated };
   }
 
   /**
@@ -539,7 +578,7 @@ export class Connections {
     const out = [];
     for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_connections ORDER BY source, account, ref").all())) {
       const ok = this.v.rowOk("vault_connections", r);
-      if (eyes && !(ok && json(r.surfaces, []).includes(eyes))) continue;
+      if (eyes && !this.surfacesOf(r, ok).includes(eyes)) continue;
       const row = this.out(r, ok, person, byName);
       // A pick offers only what is actually usable; a person's own full list still shows what needs fixing.
       if (capability && row.state !== "ready") continue;
@@ -600,36 +639,52 @@ export class Connections {
     return `Let ${who} use ${what}`;
   }
 
-  async setSurfaces(id, fn, caller, action) {
+  /**
+   * Change where a connection may be used. Opening it to a surface is a kernel grant by the person (to the group `surface:<name>`, on the connection's address); closing one needs no one,
+   * and takes back the grant (or drops the surface from the seed the row started with). @param {string} id @param {(s: string[]) => string[]} fn @param {string} caller @param {string} action @param {any} [meta]
+   */
+  async setSurfaces(id, fn, caller, action, meta = { caller }) {
     await this.ready();
     const r = this.must(id);
     const ok = this.v.rowOk("vault_connections", r);
-    const before = ok ? json(r.surfaces, []) : [];
+    const before = this.surfacesOf(r, ok);
     const next = SURFACE_NAMES.filter(s => fn(before).includes(s));
+    const added = next.filter(s => !before.includes(s)), K = this.kernel;
+    if ((added.length || !ok) && !K) throw fail("choosing where a connection may be used is a grant, and this build has no kernel", "unavailable");
     await this.v.key();
-    this.db.prepare("UPDATE vault_connections SET surfaces=?, updated=? WHERE id=?").run(JSON.stringify(next), Date.now(), r.id);
+    if (K) {
+      // A row that failed its check starts again: whatever was granted on it is taken back before a person grants anew.
+      if (!ok) await K.vault.takeBack({ prefix: this.urn(r.id), reason: "the connection failed its check" });
+      if (added.length) {
+        const { chain, proof } = await asPerson(K, meta);
+        for (const n of added) await K.grants.create(chain, { subject: { kind: "group", id: `surface:${n}` }, actions: [...ACCESS_LEVELS.use], resource: { prefix: this.urn(r.id) }, conditions: {}, source: "vault:connection" }, proof);
+      }
+      for (const g of K.vault.grantsOn(this.urn(r.id))) if (g.subject.kind === "group" && !next.includes(String(g.subject.id).slice(8))) await K.vault.takeBack({ id: g.id, reason: "taken back" });
+    }
+    const seed = ok ? /** @type {string[]} */ (json(r.surfaces, [])).filter(n => next.includes(n)) : [];
+    this.db.prepare("UPDATE vault_connections SET surfaces=?, updated=? WHERE id=?").run(JSON.stringify(seed), Date.now(), r.id);
     this.v.sign("vault_connections", r.id);
     this.v.audit(action, null, caller, true, `connection ${r.id} (${r.source}:${cut(r.ref, 64)}): ${next.join(", ") || "no surface"}`);
     if (!ok || JSON.stringify(before) !== JSON.stringify(next)) this.v.emit("vault.connection-changed", { id: r.id, fields: ["surfaces"] });
     return { connection: this.out(this.must(id), true, true, this.items()) };
   }
 
-  /** @param {{ id: string, surface: string }} input @param {string} caller */
-  grant({ id, surface }, caller) {
+  /** @param {{ id: string, surface: string }} input @param {string} caller @param {any} [meta] the call, for the person's chain */
+  grant({ id, surface }, caller, meta) {
     this.checkSurface(surface);
-    return this.setSurfaces(id, s => [...s, surface], caller, "connection-grant");
+    return this.setSurfaces(id, s => [...s, surface], caller, "connection-grant", meta);
   }
 
   /**
    * Taking access away never needs a person, but a surface may only drop its own: the Capsule
    * cannot revoke chat's use of a row, and Claude in chat cannot revoke the Capsule's.
-   * @param {{ id: string, surface: string }} input @param {string} caller @param {boolean} [personSession]
+   * @param {{ id: string, surface: string }} input @param {string} caller @param {boolean} [personSession] @param {any} [meta]
    */
-  async revoke({ id, surface }, caller, personSession) {
+  async revoke({ id, surface }, caller, personSession, meta) {
     this.checkSurface(surface);
     const own = await this.surface(caller, personSession);
     if (own !== "person" && surface !== own) throw fail(`this caller is the ${own || "no"} surface; it cannot revoke ${surface}`, "denied");
-    return this.setSurfaces(id, s => s.filter(x => x !== surface), caller, "connection-revoke");
+    return this.setSurfaces(id, s => s.filter(x => x !== surface), caller, "connection-revoke", meta);
   }
 
   /** @param {{ id: string, label?: string, capabilities?: string[] }} input @param {string} caller */
@@ -690,7 +745,7 @@ export class Connections {
     if (!r) return { allowed: false, surface: own, reason: "no such connection" };
     await this.v.key();
     if (!this.v.rowOk("vault_connections", r)) return { allowed: false, surface: own, reason: "the connection failed its check; a person must grant it again" };
-    if (!json(r.surfaces, []).includes(own)) return { allowed: false, surface: own, reason: `${cut(r.label, 80)} is not granted to ${own}; grant it in Vault, Connections` };
+    if (!this.surfacesOf(r, true).includes(own)) return { allowed: false, surface: own, reason: `${cut(r.label, 80)} is not granted to ${own}; grant it in Vault, Connections` };
     this.touch(r.id);
     return { allowed: true, surface: own };
   }

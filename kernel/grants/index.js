@@ -14,7 +14,7 @@ import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
-import { ACCESS_LEVELS } from "../seal/uses.js";
+import { ACCESS_LEVELS, SURFACE_GROUPS } from "../seal/uses.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
 /** The actions the grants calls register with the authorizer. All but `list` are risk `grant`. */
@@ -65,8 +65,8 @@ export const GRANT_ACTIONS = Object.freeze([
 ].map(a => Object.freeze(a)));
 
 
-/** The action a grant is gated under: an owner or an admin giving an assistant or a service access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
-export const grantActionOf = input => (input && !input.parent && input.subject && input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind) ? "grants.member" : "grants.create");
+/** The action a grant is gated under: an owner or an admin giving an assistant, a service or a surface access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
+export const grantActionOf = input => (input && !input.parent && input.subject && ((input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind)) || (input.subject.kind === "group" && String(input.subject.id).startsWith("surface:"))) ? "grants.member" : "grants.create");
 
 /** Does a resource match a rule's pattern: equal, or the pattern ends in `/*` and the resource is under it. @param {string} pattern @param {string} resource */
 const urnMatches = (pattern, resource) => (pattern.endsWith("/*") ? resource === pattern.slice(0, -2) || resource.startsWith(pattern.slice(0, -1)) : pattern === resource);
@@ -236,6 +236,7 @@ export function createGrantsStore(cfg) {
    * @param {string} id @param {any} actor @param {any} [chain]
    */
   const inTeam = (id, actor, chain) => {
+    if (typeof id === "string" && id.startsWith("surface:")) return Boolean(chain && Array.isArray(chain.hops)) && chain.hops.some((/** @type {any} */ x) => x.via && (/** @type {any} */ (SURFACE_GROUPS)[id.slice(8)] || []).includes(x.via.surface));
     // A project's people and assistants are a group too (`project:<id>`): "also let this project's members use it" is one grant to it.
     if (typeof id === "string" && id.startsWith("project:")) {
       const m = projectMembers(id.slice(8));
@@ -276,7 +277,7 @@ export function createGrantsStore(cfg) {
     // A named action must exist; a pattern is checked at use (it covers only what existed at action_set_version).
     for (const a of i.actions) if (!a.includes("*") && !reg().has(a)) throw new KernelError("bad_input", `${a} is not an action`);
     // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
-    if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)))) throw new KernelError("bad_input", "a grant to a team names a team or a project of this Space");
+    if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
     if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
   }
 
@@ -837,6 +838,8 @@ export function createGrantsStore(cfg) {
       return out;
     },
     personalVault: async () => (await personalOf()).id,
+    /** The vault module reading its own live grants under an address. @param {string} prefix */
+    grantsOn: prefix => [...grants.values()].filter(g => g.status === "active" && g.source.startsWith("vault:") && g.resource.prefix.startsWith(prefix)),
 
     /**
      * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old
