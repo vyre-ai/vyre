@@ -44,6 +44,9 @@ await drive.put(ownerChain, `${dir}/Existing trust.pdf`, enc("%PDF-1.4\n1 0 obj<
 await drive.put(ownerChain, `${made}/Document checklist.md`, enc("# Missing documents\n- Deed to the Raleigh house\n- Latest brokerage statement\n- Prior will, if any"));
 await drive.put(ownerChain, `${made}/Family tree.png`, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
 await call("work.file.share", { path: `${made}/Document checklist.md` });
+// Backups: the box's own Space is backed up, the team's Harbor Space is not (its owner has not turned backups on)
+await d.kernel.spaces.host({ owner: "per_" + "c".repeat(26), name: "Harbor" });
+await call("spaces.bundle.enrol", { code: "abcdefghijklmnopqrstuvwxyz" });
 // a project with a history: started from the estate-plan template (its stage), tasks, mail and texts logged on it, a file shared, a chat about it
 for (const name of ["research", "drafting"]) {
   await call("agents.create", { name, kind: "agent", projects: [], instructions: name === "research" ? "Finds and reads the documents." : "Drafts the trust and the will." });
@@ -123,6 +126,10 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
     await pg.waitForTimeout(3000);
     await pg.getByText("Timeline", { exact: true }).first().click().catch((e) => console.log("no Timeline tab:", e.message.slice(0, 80)));
     await shot("project-timeline");
+  }
+  {
+    await pg.goto(`${BASE}/u/settings/backups`, { waitUntil: "domcontentloaded" });
+    await shot("settings-backups");
   }
   if (label === "1440") {
     await pg.goto(`${BASE}/u/chats/new?about=${encodeURIComponent(proj.project)}&name=${encodeURIComponent("Rivera Family Trust")}`, { waitUntil: "domcontentloaded" });

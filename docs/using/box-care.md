@@ -333,13 +333,15 @@ it off the box:
 cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
-**The Space's members, grants and sealed values** come back too, once you have given your recovery code a single time (the `spaces.bundle.enrol` tool, or ask your assistant to set up the Space bundle). From then on Vyre writes `space-bundle.vyb` into the home by itself, every hour, with no further asking, and every `vyre backup` carries it. The bundle holds the Space's id, its members and grants, and each sealed value (an SSN, a bank number) sealed under a key that only your recovery code opens. None of the old box's own keys is in it, and nothing in it is readable without the code.
+**The Space's members, grants and sealed values** come back too, once you have given your recovery code a single time (the `spaces.bundle.enrol` tool, or ask your assistant to set up the Space bundle). From then on Vyre writes `space-bundles/<space>.vyb` into the home by itself, every hour, with no further asking, and every `vyre backup` carries the folder. Every Space on the box has its own bundle and its own owner's code: a team's Space is turned on by its owner (Settings, Backups), and until then that screen says plainly "Space Harbor isn't backed up: its owner hasn't turned on backups." A bundle holds the Space's id, its members and grants, a copy of its store (for a team's Space), and each sealed value (an SSN, a bank number) sealed under a key that only that owner's recovery code opens. None of the old box's own keys is in it, and nothing in it is readable without the code.
 
 On a fresh box, restore the backup and the Space in one step:
 
 ```
 vyre restore vyre-backup-2026-10-10.vyre --force --recovery-code <your code>
 ```
+
+If the box holds Spaces with different owners, `vyre restore` asks for each owner's code in turn (Enter leaves one for later), brings back every Space it has a code for, and names the rest.
 
 The Space keeps its id, so every link and record reference still works. Its sealed values are sealed again under the new box's own keys. Your members are back with their roles, and the log says the Space was restored and from what point. What a member sealed on their own device (their vault, their chats' keys) is carried as ciphertext, never re-keyed: it opens again when that person's device next connects to the restored Space. The old log itself is not carried, only where it ended.
 
