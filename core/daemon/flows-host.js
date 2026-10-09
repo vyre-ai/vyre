@@ -196,12 +196,22 @@ export function createFlowsHost(o) {
       mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
       apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("work.template.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
     };
+    /** A skill or plugin draft approved (R031-20): the same card; the level's owner (a plugin with code is approved with the acknowledgement of exactly what it declares). */
+    const skillKind = {
+      draft: async (/** @type {any} */ _chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const r = await callModule("skills.change.draft", { name: String(spec.name || ""), level: String(spec.level || ""), scope: String(spec.scope ?? ""), version: Number(spec.version), proposer: proposer.id });
+        return { form: { draft: r.id, hash: r.hash, owner: r.owner || null, ...(r.ack ? { ack: r.ack, declares: r.declares } : {}) }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("skills.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => (f.owner ? checker.id === f.owner || isAdminOf(checker) : isAdminOf(checker)),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("skills.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id, ...(f.ack ? { ack: f.ack } : {}) }),
+    };
     const proposals = {
       chain: flowsChain,
       isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
       // the agents are this home's own: only the home's Space takes a change to one
-      kinds: { template: templateKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
+      kinds: { template: templateKind, skill: skillKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.

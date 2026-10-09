@@ -31,6 +31,10 @@ A project template is stages and tasks a project follows. Each task has a doer, 
 
 Never edit an agent. Propose: `tools_call flows.propose { what: "agent", agent, patch: { instructions?, skills?, model?, effort?, tags? } }`. The agent's owner approves on one card; each approved change is a version (`tools_call agents.versions`) that can be rolled back. Permissions (projects, credentials, a computer) are the person's own act and are not in a proposal.
 
+## Skills and plugins
+
+A skill is a SKILL.md with `name` and `description` in its front matter; the description is what an AI reads to choose it. `tools_call skills.draft { name, level, scope?, body }` writes a DRAFT at a level: `space` (everyone's agents), `personal`, `agent` (scope: the agent's name) or `project` (scope: its short name). Nothing uses a draft. `tools_call flows.propose { what: "skill", name, level, scope, version }` puts one card in front of the level's owner. A plugin is `kind: "plugin"` with JSON `{ name, description, skills?, commands?, hooks?, mcp? }`; one with a hook or an MCP server has code, and the card shows exactly what it declares. Never put a key in a skill.
+
 ## Say it plainly
 
 After you propose, say what the template does in two or three sentences and that it waits for a yes. Do not claim it is live.

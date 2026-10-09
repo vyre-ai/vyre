@@ -75,7 +75,7 @@ export const ENGINEER = Object.freeze({
     "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
     "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
     "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
-    "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
+    "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
     "Say what you proposed and what it will do, in plain words, and wait for the card.",
   ].join("\n"),
   /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
@@ -85,7 +85,7 @@ export const ENGINEER = Object.freeze({
     "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
     "flows.patch", "flows.cheatsheet", "flows.describe", "flows.test.save", "flows.test.run", "flows.test.list", "flows.health",
     "work.template.define", "work.template.test", "work.template.list", "work.template.get", "work.template.library", "work.template.install", "work.template.from-project",
-    "agents.list", "agents.versions", "skills.find", "skills.get", "skills.list", "docs.find", "docs.read"]),
+    "agents.list", "agents.versions", "skills.find", "skills.get", "skills.list", "skills.draft", "skills.versions", "docs.find", "docs.read"]),
 });
 
 /** The agent's thinking effort, as sessions.effort names it. */
@@ -660,7 +660,7 @@ export default {
         const task = String(i.task || "").trim();
         if (!task) throw Object.assign(new Error("say what the helper is to do"), { code: "bad_input" });
         // never wider than the parent: its tool list (when it is held to one) and its projects
-        const mine = Array.isArray(meta.agentOnly) ? meta.agentOnly : null;
+        const mine = Array.isArray(meta.agentOnly) ? meta.agentOnly.filter((/** @type {string} */ t) => t !== "agents.spawn") : null;   // a helper never starts helpers, whatever its parent holds
         let only = null;
         if (i.tools !== undefined) {
           if (!Array.isArray(i.tools) || i.tools.some((/** @type {any} */ t) => typeof t !== "string")) throw Object.assign(new Error("tools is a list of tool names"), { code: "bad_input" });
