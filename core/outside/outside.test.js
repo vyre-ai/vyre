@@ -113,19 +113,18 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
 });
 
 test("ending an agent takes everything back at once, even a request it is still waiting on", { timeout: 120_000 }, async t => {
-  const { ok, rpc, use, tools, events, heldList } = await rig(t);
+  const { ok, call, rpc, use, events, heldList } = await rig(t);
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
-  const asked = await use(reg.token, "records_create", { type: "contact", fields: { name: "Late Arrival" } });
+  await use(reg.token, "records_create", { type: "contact", fields: { name: "Late Arrival" } });
   const item = (await heldList()).find(x => /Late Arrival/.test(x.summary || ""));
   assert.equal((await ok("outside.revoke", { id: reg.id })).revoked, true);
   assert.equal((await rpc(reg.token, "tools/list")).status, 401, "the token opens nothing");
-  const done = await ok("gate.approve", { id: item.id }).catch(e => e);
-  assert.ok(!done || done.state === "held" || done.state === "failed" || done.error || done instanceof Error, "an item approved after the end does nothing: " + JSON.stringify(done));
+  const done = await call("gate.approve", { id: item.id });
+  assert.notEqual(done.data && done.data.state, "sent", "an item approved after the end does nothing: " + JSON.stringify(done));
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Late Arrival").length, 0);
   assert.equal((await ok("outside.revoke", { id: reg.id })).revoked, false, "ending twice is harmless");
   assert.ok(events.some(e => e.type === "outside.revoked"));
-  void asked; void tools;
 });
 
 test("a leaked or guessed token is counted per address and locks that address out; what is recorded carries names and addresses, never values", { timeout: 120_000 }, async t => {
