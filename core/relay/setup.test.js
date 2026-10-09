@@ -427,6 +427,7 @@ test("setup: a hello for a box with no setup session is refused, and so is a pla
   await w.d.registry.call("relay.enable", {}, "cli", { proof: { method: "passkey", id: "x" } });
   await settle(100);
   const status = (await w.d.registry.call("relay.status", {}, "cli")).data;
+  assert.deepEqual(status.tunnel, { url: null, connected: false }, "no public door until an address is set");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
   // The relay is up but no setup was begun; nothing is registered for this code, so the page finds no offer at all.
   await assert.rejects(p.offer(), { code: "ticket_gone" });
