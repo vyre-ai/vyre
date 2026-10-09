@@ -35,7 +35,7 @@
         "reach": "anyone"
       },
       {
-        "name": "documents.signed.link",
+        "name": "documents.signed-link",
         "outward": true,
         "effect": "write",
         "reach": "anyone"
@@ -69,7 +69,7 @@
         }
       },
       {
-        "name": "documents.signed.link",
+        "name": "documents.signed-link",
         "label": "Make a 30-day link to the signed copy",
         "outward": true,
         "inputs": {

@@ -43,7 +43,7 @@ export function signingFlow(o) {
         { id: "signed", kind: "wait", event: "documents.signed", where: `"" + event.data.submission == "" + ${first}.submission_id`, timeout_ms: days * 86_400_000, on_timeout: "fail" },
         { id: "move", kind: "stage", type, record: { expr: "trigger.id" }, to: o.signed_stage },
         // the finished copy goes to the signer by a link that stops working after 30 days (they ask for a new one by replying); both are the person's yes
-        { id: "copy", kind: "call", action: "documents.signed.link", resource: "vyre://space/documents", input: { slug: { expr: `${first}.slug` }, days: 30 } },
+        { id: "copy", kind: "call", action: "documents.signed-link", resource: "vyre://space/documents", input: { slug: { expr: `${first}.slug` }, days: 30 } },
         { id: "thanks", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: { expr: mine }, subject: "Your signed copy",
           body: { expr: '"Thank you for signing. Your signed copy is here, and the link works for 30 days (reply if you need a new one): " + steps.copy.url' } } },
       ], else: [] },

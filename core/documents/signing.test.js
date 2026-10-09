@@ -15,7 +15,7 @@ function cat() {
   const c = catalog();
   const matter = { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "signature_submission", kind: "text", label: "Signature" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] };
   return { ...c, types: { ...c.types, matter },
-    actions: { ...c.actions, "comms.send": { risk: "outward.send", label: "Send an email or a text", tool: true }, "documents.signed.link": { risk: "outward.send", label: "Make a link", tool: true } },
+    actions: { ...c.actions, "comms.send": { risk: "outward.send", label: "Send an email or a text", tool: true }, "documents.signed-link": { risk: "outward.send", label: "Make a link", tool: true } },
     connectors: { ...c.connectors, "conn-documents": { allow: [{ method: "GET", path: "/api/*" }, { method: "POST", path: "/api/submissions" }], operations: { "submissions.create": { method: "POST", path: "/api/submissions", kind: "send", input: { body: { template_id: { type: "number" }, send_email: { type: "boolean" }, submitters: { type: "array" } }, encoding: "json" } } } } } };
 }
 
@@ -34,7 +34,7 @@ test("a matter entering the stage gets a signing request and its link by email; 
   /** @type {any[]} */ const services = [], calls = [];
   const w = await world({ cat: cat(), ports: {
     service: async (/** @type {any} */ q) => { services.push(q); const json = [{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }]; return { status: 200, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify(json)).toString("base64") }; },
-    call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => { calls.push({ action, resource, input }); return action === "documents.signed.link" ? { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: 1 } : { held: "gi_1" }; },
+    call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => { calls.push({ action, resource, input }); return action === "documents.signed-link" ? { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: 1 } : { held: "gi_1" }; },
   } });
   await install(w, signingFlow(OPTS));
   const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
@@ -67,7 +67,7 @@ test("a matter entering the stage gets a signing request and its link by email; 
     for (const t of held) w.kernel.completeTask(t.id, { outcome: "approved" });
     await settle(w);
   }
-  const linkCall = calls.find(c => c.action === "documents.signed.link");
+  const linkCall = calls.find(c => c.action === "documents.signed-link");
   assert.deepEqual(linkCall.input, { slug: "abc123", days: 30 });
   const thanks = calls.filter(c => c.action === "comms.send").at(-1);
   assert.equal(thanks.input.subject, "Your signed copy");

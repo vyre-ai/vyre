@@ -98,7 +98,7 @@ export function registerDocuments(ctx) {
       return { path, version: put.version, size: out.length, sha256, format, template: tname, template_version: tver, used, ...(rec ? { record: rec } : { record: null, note: "no Document record type here yet: install Documents from Apps to file these on the client" }) };
     });
 
-  ctx.tool("documents.signed.link", {
+  ctx.tool("documents.signed-link", {
     description: "A link to the signed copy of a finished document that stops working after 30 days (or sooner): { slug (the signer's, from documents.send or the signing request), days? (1 to 30) } -> { url, expires }. The signing page's own address does not open the finished file; this does, for the time you give it. Call it again for a new one. Outward: it makes the finished file reachable by whoever holds the link.",
     input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
