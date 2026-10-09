@@ -278,7 +278,6 @@ export function previewsScript(o: { tps?: number } = {}): Segment[] {
   c.push("status", { state: "working", turn: "turn-1" });
   c.push("user-message", { message: "m1", text: "Build me a small intake form I can show Maria this afternoon, and let me look at it.", state: "sent" }, 40);
   c.say("a1", "I built the form with the three questions you listed and started it on a port. It validates the date and keeps nothing until you press send.", tps, 200);
-  c.push("tool-started", { tool_id: "preview:0a1b2c3d", tool: "previews.open", kind: "", summary: "Showing the intake form" }, 150);
   c.push("tool-finished", { tool_id: "preview:0a1b2c3d", ok: true, result: { block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "port", mode: "session", access: "me", thumb: 1 } }, 300);
   c.say("a2", "It stays up as long as this session does. If you want it to be there tomorrow, tap Keep it running and I will leave it to Vyre.", tps, 200);
   c.push("status", { state: "waiting", turn: "turn-1" }, 60);
