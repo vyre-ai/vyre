@@ -975,5 +975,6 @@
  "lib/siteops/codec.test.js": 6,
  "lib/siteops/extract.test.js": 6,
  "lib/siteops/learn.test.js": 10,
- "lib/siteops/store.test.js": 7
+ "lib/siteops/store.test.js": 7,
+ "lib/siteops/run.test.js": 5
 }
