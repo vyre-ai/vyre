@@ -25,7 +25,10 @@ export function register({ vault, tool, internal }) {
     return { items: out };
   });
   tool("vault.mcp.pass.revoke", null, "End a pass for an outside agent: its token opens nothing from now on. Needs no one.", obj({ id: str }, ["id"]), (input, { caller }) => vault.mcp.revoke(input.id, String(caller)));
-  tool("vault.mcp.reveal.clear", [...people, "mobile"], "Turn down an outside agent's ask to see a value (it was never sent).", obj({ id: str }, ["id"]), ({ id }) => ({ cleared: vault.mcp.clearReveal(id) }));
+  tool("vault.mcp.reveal.allow", [...people, "mobile"], "Let an outside agent see one value, once: your fresh yes, then its next poll for that ask returns the value a single time and it is gone. Logged as vault.revealed-to-pass, never with the value.",
+    obj({ id: str }, ["id"]), ({ id }, { caller }) => vault.mcp.allowReveal(id, String(caller)),
+    presence("Show a value to an outside agent, once", ({ id }) => { const r = vault.mcp.reveals().find(x => x.id === id); return r ? `Show ${String(r.item).slice(0, 60)} to ${String(r.pass).slice(0, 60)}'s agent, once` : "Show a value to an outside agent, once"; }));
+  tool("vault.mcp.reveal.clear", [...people, "mobile"], "Decline an outside agent's ask to see a value (it was never sent).", obj({ id: str }, ["id"]), ({ id }) => ({ cleared: vault.mcp.clearReveal(id) }));
   // What the public gate (core/wink) asks: is the endpoint listening, and where it is reachable from outside once the gate has an address.
   internal("vault.mcp.status", "Whether the Vault MCP endpoint is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.", obj({}), (_i, { caller }) => {
     if (caller !== "module:wink") throw Object.assign(new Error("only the public gate asks where the Vault MCP listens"), { code: "denied" });

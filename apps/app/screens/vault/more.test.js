@@ -201,3 +201,11 @@ test("a pass for an outside agent: its input, what is wrong in words, and the li
   assert.deepEqual(pickMcpMade({ token: "vmcp_x", name: "Dana", expires: 5, lines: { claude: "claude mcp add a", codex: "codex mcp add a" } }), { token: "vmcp_x", name: "Dana", expires: 5, claude: "claude mcp add a", codex: "codex mcp add a" });
   assert.deepEqual(pickMcpMade(null), { token: "", name: "", expires: null, claude: "", codex: "" });
 });
+
+test("an outside agent's ask to see a value: read from vault.pending, and the line it shows", async () => {
+  const { pickReveals, revealLine } = await import("./more-model.ts");
+  const rows = pickReveals({ mcpReveals: [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }, { item: "x" }], grants: [] });
+  assert.deepEqual(rows, [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }]);
+  assert.equal(revealLine(rows[0]), "Dana's Claude's agent asks to see stripe-live: to debug");
+  assert.deepEqual(pickReveals(null), []);
+});

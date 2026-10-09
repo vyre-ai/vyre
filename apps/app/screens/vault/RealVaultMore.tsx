@@ -2,9 +2,11 @@
 // edit and SSH sheets. Nothing here shows a value: a replaced value is typed into a field that is cleared on save, and a made one is made on the box.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
+import { Pressable } from "react-native";
+import * as Clipboard from "expo-clipboard";
+import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Icon, LoadingState, Row, Segmented, Sheet, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
 import { vaultMore } from "./more";
-import { EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
+import { EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
   type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
@@ -16,7 +18,7 @@ type Props = { rows: ListRow[]; reload: () => void; openItem: (name: string) => 
 // ---- Passes ----
 
 export function PassesPage({ rows, reload }: Props) {
-  const [d, setD] = useState<{ passes: Pass[]; pending: Pending[] } | null>(null);
+  const [d, setD] = useState<{ passes: Pass[]; pending: Pending[]; reveals: Reveal[] } | null>(null);
   const [problem, setProblem] = useState("");
   const [sharing, setSharing] = useState<string[] | null>(null);
   const [offboarding, setOffboarding] = useState(false);
@@ -35,6 +37,22 @@ export function PassesPage({ rows, reload }: Props) {
   return (
     <View className="gap-s3 pt-s2">
       <Text tone="muted" size="secondary">A pass lets another person's Vyre use an item. Their Vyre asks yours, yours makes the call; a relayed pass never lets the value leave your server.</Text>
+      {d.reveals.length ? (
+        <View className="gap-s2">
+          <Text strong size="secondary">{`Asking to see a value, ${d.reveals.length}`}</Text>
+          <Card flush>
+            {d.reveals.map((x, i) => (
+              <View key={x.id}>{i ? <Divider /> : null}
+                <Row title={<Text>{revealLine(x)}</Text>} sub={
+                  <View className="flex-row gap-s2 pt-s1">
+                    <Button size="sm" label="Allow once" onPress={() => act(() => vaultMore.allowReveal(x.id), "Allowed. They can take it once.")} />
+                    <Button kind="ghost" size="sm" label="Decline" onPress={() => act(() => vaultMore.declineReveal(x.id), "Declined. Nothing was sent.")} />
+                  </View>} />
+              </View>
+            ))}
+          </Card>
+        </View>
+      ) : null}
       {d.pending.length ? (
         <View className="gap-s2">
           <Text strong size="secondary">{`Waiting for you, ${d.pending.length}`}</Text>
@@ -59,6 +77,33 @@ export function PassesPage({ rows, reload }: Props) {
         : <Card><EmptyState title="No passes" body="Nobody else's Vyre can use anything here." /></Card>}
       <NewPassSheet open={sharing !== null} preset={sharing ?? []} rows={rows} people={[...new Set(d.passes.map((p) => p.holder).filter(Boolean))]} onClose={() => setSharing(null)} onMade={() => { load(); reload(); }} />
       <OffboardSheet open={offboarding} people={[...new Set(given.map((p) => p.holder))]} onClose={() => setOffboarding(false)} onDone={() => { load(); reload(); }} />
+    </View>
+  );
+}
+
+/** A choice that is plainly on or off: filled with a check when chosen, outlined when not. */
+function PickChip({ on, label, onPress }: { on: boolean; label: string; onPress: () => void }) {
+  const { color } = useUiTheme();
+  return (
+    <Pressable accessibilityRole="button" accessibilityState={{ selected: on }} onPress={onPress} style={{ alignSelf: "flex-start" }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, minHeight: 28, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: on ? color.accent : color["edge-strong"], backgroundColor: on ? color.accent : "transparent" }}>
+        {on ? <Icon name="check" size={12} tone="accent-ink" /> : null}
+        <Text size="caption" medium style={{ color: on ? color["accent-ink"] : color["text-2"] }}>{label}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+/** One line to give an outsider: a button that copies it, over the line itself in a code box, collapsed to one row. */
+function CopyLine({ label, line, extra }: { label: string; line: string; extra?: string }) {
+  const { color } = useUiTheme();
+  const text = extra ? `${line}\n${extra}` : line;
+  return (
+    <View className="gap-s2">
+      <Button kind="secondary" size="sm" icon="copy" label={label} onPress={() => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); }} />
+      <View style={{ borderRadius: 8, borderWidth: 1, borderColor: color["edge-strong"], paddingHorizontal: 10, paddingVertical: 8 }}>
+        <Text mono selectable size="caption" numberOfLines={1}>{line}</Text>
+      </View>
     </View>
   );
 }
@@ -97,11 +142,9 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
     <Sheet open={open} onClose={onClose} title={madeMcp ? "Pass made" : "New pass for an outside agent"}>
       {madeMcp ? (
         <View className="gap-s3">
-          <Text>{`Give ${madeMcp.name} one of these lines. It is shown once and holds no key: their agent can have calls made with the credentials and never sees them.`}</Text>
-          <Text size="caption" strong tone="label">Claude Code</Text>
-          <Text mono selectable size="secondary">{madeMcp.claude}</Text>
-          <Text size="caption" strong tone="label">Codex</Text>
-          <Text mono selectable size="secondary">{madeMcp.codex}</Text>
+          <Text>{`Give ${madeMcp.name} one of these. It is shown once and holds no key: their agent can have calls made with the credentials and never sees them.`}</Text>
+          <CopyLine label="Copy for Claude Code" line={madeMcp.claude} />
+          <CopyLine label="Copy for Codex" line={madeMcp.codex.split("   #")[0]} extra={madeMcp.codex.includes("export ") ? madeMcp.codex.slice(madeMcp.codex.indexOf("export ")) : ""} />
           <Button kind="primary" label="Done" onPress={onClose} />
         </View>
       ) : (
@@ -112,16 +155,22 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
           <Segmented label="Ends after" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
           <View className="gap-s1">
             <Text size="caption" strong tone="label">Credentials</Text>
-            <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <Chip key={r.name} selected={m.items.includes(r.name)} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })}>{r.name}</Chip>)}</View>
+            <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <PickChip key={r.name} on={m.items.includes(r.name)} label={r.name} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })} />)}</View>
           </View>
           {mcpHosts.length ? (
             <View className="gap-s1">
               <Text size="caption" strong tone="label">Hosts it may call</Text>
-              <View className="flex-row flex-wrap gap-s2">{mcpHosts.map((x) => <Chip key={x} selected={!m.offHosts.includes(x)} onPress={() => setM({ ...m, offHosts: m.offHosts.includes(x) ? m.offHosts.filter((y) => y !== x) : [...m.offHosts, x] })}>{x}</Chip>)}</View>
+              <View className="flex-row flex-wrap gap-s2">{mcpHosts.map((x) => <PickChip key={x} on={!m.offHosts.includes(x)} label={x} onPress={() => setM({ ...m, offHosts: m.offHosts.includes(x) ? m.offHosts.filter((y) => y !== x) : [...m.offHosts, x] })} />)}</View>
             </View>
           ) : null}
-          <Field label="Calls it may make" value={m.budget} onChangeText={(budget) => setM({ ...m, budget })} help="Leave empty for no limit. A change to anything still waits for you." />
-          <Chip selected={m.reveal} onPress={() => setM({ ...m, reveal: !m.reveal })}>May ask to see a value</Chip>
+          <Field label="Call limit (optional)" value={m.budget} onChangeText={(budget) => setM({ ...m, budget })} help="How many calls the pass may make in all. Leave empty for no limit. A call that changes something still waits for you." />
+          <View className="flex-row items-center gap-s3">
+            <View className="flex-1 gap-s1">
+              <Text strong size="secondary">May ask to see a value</Text>
+              <Text size="caption" tone="muted">Their agent can ask; you approve each value once.</Text>
+            </View>
+            <Switch on={m.reveal} onChange={(reveal) => setM({ ...m, reveal })} label="May ask to see a value" />
+          </View>
           <Text size="secondary" tone="muted">The key never leaves your server. A read runs at once; anything that changes something waits for your yes. Ending the pass stops it at once.</Text>
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           <Button kind="primary" label={busy ? "Sharing" : "Share"} disabled={busy} onPress={goMcp} />

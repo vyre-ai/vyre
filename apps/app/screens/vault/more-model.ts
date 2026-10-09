@@ -196,6 +196,15 @@ export function pickMcpMade(d: unknown): { token: string; claude: string; codex:
     claude: typeof o.lines?.claude === "string" ? o.lines.claude : "", codex: typeof o.lines?.codex === "string" ? o.lines.codex : "" };
 }
 
+export type Reveal = { id: string; item: string; pass: string; why: string };
+/** vault.pending's mcpReveals: what an outside agent asked to see, waiting for the person. */
+export function pickReveals(d: unknown): Reveal[] {
+  const o = d as { mcpReveals?: unknown } | null;
+  return arr(o?.mcpReveals).map((r) => ({ id: str(r.id), item: str(r.item), pass: str(r.pass), why: str(r.why) })).filter((r) => r.id);
+}
+/** The line a waiting ask reads as. */
+export const revealLine = (r: Reveal): string => `${r.pass}'s agent asks to see ${r.item}${r.why ? `: ${r.why}` : ""}`;
+
 /** What revoking a pass tells the person: sealed ones left a copy, so those items must be replaced. */
 export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a sealed copy.` : `Ended. ${holder} cannot use it any more.`);
 

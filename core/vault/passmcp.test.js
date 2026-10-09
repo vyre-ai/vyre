@@ -58,19 +58,37 @@ test("gate 1: a pass sees only its items, by name and kind; another item is abse
   assert.equal(other.text.replace("other-api", "X"), nothing.text.replace("no-such-api", "X"), "an item that is not on the pass reads the same as one that does not exist");
 });
 
-test("gate 2: a pass cannot hold reveal; reveal-ask is only on a pass that allows it, raises an ask for the owner and sends nothing", async t => {
-  const { mk: make, tool, rpc, v, rig, net, secrets } = await mk(t);
+test("gate 2: a pass cannot hold reveal; reveal-ask is only on a pass that allows it; nothing is sent until the owner allows it, then the value comes once and is gone", async t => {
+  const { mk: make, tool, rpc, v, rig, net, secrets, events, db } = await mk(t);
   const plain = await make();
   assert.equal((await tool(plain.token, "vault_reveal_ask", { item: "graph-api" })).isError, true);
   const p = await make({ reveal: true });
   assert.ok((await rpc(p.token, "tools/list")).body.result.tools.some(x => x.name === "vault_reveal_ask"));
-  const r = await tool(p.token, "vault_reveal_ask", { item: "graph-api", why: "to debug" });
-  assert.equal(r.data.asked, true);
+  const ask = (await tool(p.token, "vault_reveal_ask", { item: "graph-api", why: "to debug" })).data;
+  assert.equal(ask.asked, true);
   assert.deepEqual(v.pending().mcpReveals.map(x => [x.item, x.why]), [["graph-api", "to debug"]]);
-  assert.ok(!JSON.stringify(r).includes(secrets.graph) && net.calls.length === 0, "nothing was released or called");
+  assert.deepEqual((await tool(p.token, "vault_reveal_ask", { id: ask.id })).data, { waiting: true });
+  assert.ok(!JSON.stringify(ask).includes(secrets.graph) && net.calls.length === 0, "nothing was released or called");
   // the grants a pass holds are read and call on its items: never reveal, edit, share or fill
   const mine = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source.startsWith("vault:pass:"));
   assert.ok(mine.length === 2 && mine.every(g => g.actions.join() === "vault.read,vault.call" && g.subject.actor.id.startsWith("ext_")));
+  // declined: the agent is told no, and cannot be allowed afterwards
+  const no = (await tool(p.token, "vault_reveal_ask", { item: "graph-api" })).data;
+  assert.equal(v.mcp.clearReveal(no.id), true);
+  assert.deepEqual((await tool(p.token, "vault_reveal_ask", { id: no.id })).data, { declined: true });
+  assert.throws(() => v.mcp.allowReveal(no.id, "cli"), /no ask/);
+  // allowed (the owner's fresh yes): the next poll returns it ONCE, then it is gone; it is logged without the value
+  v.mcp.allowReveal(ask.id, "cli");
+  assert.equal(v.pending().mcpReveals.length, 0, "it is no longer waiting for the owner");
+  const got = (await tool(p.token, "vault_reveal_ask", { id: ask.id })).data;
+  assert.deepEqual(got, { value: secrets.graph, once: true });
+  assert.equal((await tool(p.token, "vault_reveal_ask", { id: ask.id })).data.gone, true, "the second poll has nothing");
+  const logged = JSON.stringify([events, db.prepare("SELECT * FROM vault_audit").all()]);
+  assert.ok(events.some(e => e.type === "vault.revealed-to-pass" && e.p.item === "graph-api" && e.p.pass === p.id));
+  assert.ok(!logged.includes(secrets.graph), "the value is in no event or audit row");
+  // another pass cannot poll this ask
+  const other = await make({ name: "Other", reveal: true });
+  assert.equal((await tool(other.token, "vault_reveal_ask", { id: ask.id })).isError, true);
 });
 
 test("gate 3: an ended or expired pass opens nothing; a leaked token for it opens nothing; a source sending wrong tokens is locked out", async t => {

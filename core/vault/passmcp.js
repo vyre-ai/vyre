@@ -15,7 +15,7 @@ export const MCP_PASSES_MIGRATION = `CREATE TABLE vault_mcp_passes (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, issuer TEXT NOT NULL, token_hash TEXT NOT NULL, items TEXT NOT NULL, hosts TEXT NOT NULL DEFAULT '[]', expires INTEGER NOT NULL,
      rate INTEGER NOT NULL, budget INTEGER, uses INTEGER NOT NULL DEFAULT 0, reveal INTEGER NOT NULL DEFAULT 0, created INTEGER NOT NULL, last_used INTEGER, revoked INTEGER
    );
-   CREATE TABLE vault_mcp_reveals (id TEXT PRIMARY KEY, pass TEXT NOT NULL, item TEXT NOT NULL, why TEXT, at INTEGER NOT NULL);`;
+   CREATE TABLE vault_mcp_reveals (id TEXT PRIMARY KEY, pass TEXT NOT NULL, item TEXT NOT NULL, why TEXT, at INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'asked', allowed_at INTEGER);`;
 
 const DAY = 86_400_000, DEFAULT_DAYS = 7, MAX_DAYS = 90, DEFAULT_RATE = 30;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -35,7 +35,9 @@ const TOOLS = [
   { name: "vault_request", description: "Make one HTTP call to a vendor API with a shared credential, at the vault's home. The key is added there and never shown to you. A read runs at once; anything that changes something waits for its owner to approve and answers { held }.",
     inputSchema: { type: "object", required: ["item", "method", "path"], properties: { item: { type: "string" }, method: { type: "string", enum: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"] }, path: { type: "string", description: "starting with /" }, query: { type: "object" }, body: {} } } },
 ];
-const REVEAL_TOOL = { name: "vault_reveal_ask", description: "Ask the owner to show you a shared value. The value is never sent to you here: the owner is asked, and decides.", inputSchema: { type: "object", required: ["item"], properties: { item: { type: "string" }, why: { type: "string" } } } };
+const REVEAL_TOOL = { name: "vault_reveal_ask", description: "Ask the owner to let you see a shared value, once. Call with { item, why } to ask; the owner is asked and decides. Call again with { id } to see whether they allowed it: if so the value comes back one time and is then gone.", inputSchema: { type: "object", properties: { item: { type: "string" }, why: { type: "string" }, id: { type: "string" } } } };
+/** An allowed reveal waits this long for the agent's next poll, then lapses. */
+const REVEAL_WAIT_MS = 10 * 60_000;
 
 export class PassMcp {
   /** @param {import("./vault.js").Vault} vault @param {{ requests: any, url?: () => string, log?: (m: string) => void }} deps requests: the ApiRequests relay (request.js) */
@@ -86,11 +88,20 @@ export class PassMcp {
 
   /** What outside agents asked to see, waiting for the person (vault.pending). The value is never sent to them. */
   reveals() {
-    return /** @type {any[]} */ (this.db.prepare("SELECT r.id, r.item, r.why, r.at, p.name AS pass FROM vault_mcp_reveals r JOIN vault_mcp_passes p ON p.id = r.pass ORDER BY r.at").all()).map(r => ({ id: r.id, item: r.item, pass: r.pass, why: r.why || "", at: r.at }));
+    return /** @type {any[]} */ (this.db.prepare("SELECT r.id, r.item, r.why, r.at, p.name AS pass FROM vault_mcp_reveals r JOIN vault_mcp_passes p ON p.id = r.pass WHERE r.state = 'asked' ORDER BY r.at").all()).map(r => ({ id: r.id, item: r.item, pass: r.pass, why: r.why || "", at: r.at }));
   }
 
-  /** The person turns an ask down (or answers it elsewhere): it is cleared. */
-  clearReveal(/** @type {string} */ id) { return Number(this.db.prepare("DELETE FROM vault_mcp_reveals WHERE id=?").run(String(id)).changes) > 0; }
+  /** The person turns an ask down: it is cleared and the agent is told no. */
+  clearReveal(/** @type {string} */ id) { return Number(this.db.prepare("UPDATE vault_mcp_reveals SET state='declined' WHERE id=? AND state='asked'").run(String(id)).changes) > 0; }
+
+  /** The person's fresh yes (the tool's presence proof is that moment): this one value may be taken once by the pass that asked, within ten minutes. Nothing is read or kept here. */
+  allowReveal(/** @type {string} */ id, /** @type {string} */ caller) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT r.*, p.name AS pname FROM vault_mcp_reveals r JOIN vault_mcp_passes p ON p.id = r.pass WHERE r.id=? AND r.state='asked' AND p.revoked IS NULL").get(String(id)));
+    if (!r) throw bad(`no ask ${id} waiting`, "not_found");
+    this.db.prepare("UPDATE vault_mcp_reveals SET state='allowed', allowed_at=? WHERE id=?").run(this.now(), r.id);
+    this.v.audit("pass-mcp-reveal-allowed", r.item, caller, true, `once, to ${r.pname}`);
+    return { allowed: true, item: r.item, pass: r.pname };
+  }
 
   /** The passes, newest first, never a token. */
   list() {
@@ -108,7 +119,7 @@ export class PassMcp {
     this.db.prepare("UPDATE vault_mcp_passes SET revoked=? WHERE id=?").run(this.now(), p.id);
     const K = this.K;
     if (K) for (const g of K.vault.grantsOn(`vyre://${K.space}/vault/`)) if (g.source === `vault:pass:${this.actor(p.id)}`) await K.vault.takeBack({ id: g.id, reason: "the pass was ended" });
-    this.db.prepare("DELETE FROM vault_mcp_reveals WHERE pass=?").run(p.id);
+    this.db.prepare("UPDATE vault_mcp_reveals SET state='declined' WHERE pass=? AND state IN ('asked', 'allowed')").run(p.id);
     this.v.audit("pass-mcp-revoke", null, caller, true, p.name);
     this.v.emit("vault.mcp-pass-ended", { id: p.id, name: p.name });
     return { revoked: true };
@@ -166,6 +177,21 @@ export class PassMcp {
     return out;
   }
 
+  /** The agent's poll for an ask it made: waiting, declined, or the value, once. The value is read now, from the vault, and is never stored, logged or kept. */
+  async takeReveal(/** @type {any} */ pass, /** @type {string} */ id, /** @type {(ok: boolean, item: string | null, why: string) => void} */ note) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_mcp_reveals WHERE id=? AND pass=?").get(id, pass.id));
+    if (!r) throw bad("no such ask on this pass", "not_found");
+    if (r.state === "asked") return { waiting: true };
+    if (r.state === "declined") return { declined: true };
+    if (r.state === "delivered") return { gone: true, message: "it was shown once and is gone" };
+    if (this.now() - r.allowed_at > REVEAL_WAIT_MS) { this.db.prepare("UPDATE vault_mcp_reveals SET state='delivered' WHERE id=?").run(r.id); return { gone: true, message: "the answer lapsed; ask again" }; }
+    const c = await this.v.apiCredential(r.item);
+    this.db.prepare("UPDATE vault_mcp_reveals SET state='delivered' WHERE id=?").run(r.id);
+    note(true, r.item, "the value was shown once");
+    this.v.emit("vault.revealed-to-pass", { pass: pass.id, name: pass.name, item: r.item });
+    return { value: c.secret, once: true };
+  }
+
   /** One call of a tool, as the pass. @param {any} pass @param {string} tool @param {any} a @param {string} source */
   async call(pass, tool, a, source) {
     const who = `pass:${pass.id}:${pass.name}`.slice(0, 120);
@@ -173,13 +199,14 @@ export class PassMcp {
     if (tool === "vault_list") return { items: await this.items(pass) };
     if (tool === "vault_reveal_ask") {
       if (!pass.reveal) throw bad("this pass cannot ask to see a value", "denied");
+      if (a.id !== undefined) return this.takeReveal(pass, String(a.id), note);
       const item = String(a.item || "");
       if (!this.itemUrn(pass, item)) throw bad(`${item.slice(0, 80)} is not on this pass`, "not_found");
       const id = newPrefixedId("vr");
       this.db.prepare("INSERT INTO vault_mcp_reveals (id, pass, item, why, at) VALUES (?,?,?,?,?)").run(id, pass.id, item, String(a.why || "").slice(0, 200), this.now());
       note(true, item, "asked to see the value");
       this.v.emit("vault.reveal-asked", { pass: pass.id, name: pass.name, item });
-      return { asked: true, message: "your request was sent to the owner; the value is never sent here" };
+      return { asked: true, id, message: "your request was sent to the owner; call again with this id to see their answer" };
     }
     if (tool !== "vault_request") throw bad("unknown tool", "not_found");
     const item = String(a.item || ""), method = String(a.method || "GET").toUpperCase(), K = this.K;
