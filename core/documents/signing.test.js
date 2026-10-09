@@ -3,7 +3,8 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, install, settle } from "../../kernel/flows/testing/world.js";
+import { world, install, settle, ALEX } from "../../kernel/flows/testing/world.js";
+import { SPACE } from "../../kernel/flows/testing/fixtures.js";
 import { catalog } from "../../kernel/flows/testing/fixtures.js";
 import { signingFlows } from "./signing.js";
 
@@ -37,7 +38,7 @@ test("a matter entering the stage gets a signing request and its link by email; 
   const f = signingFlows(OPTS);
   await install(w, f.send);
   await install(w, f.signed);
-  const alex = { ...(await w.kernel.chainFor({ flow: "t", approver: { kind: "person", id: "per_alex", space: "spc_harlow000001" }, tainted: false, space: "spc_harlow000001" })) };
+  const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
   const rec = await w.kernel.records.create(alex, "matter", { client: "Dana Harlow", email: "dana@harlow.test", stage: "Intake" });
   const m = mine(w, "matter")[0];
   await w.kernel.records.update(alex, "matter", m.id, { stage: "Out for signature" }, m.version);
