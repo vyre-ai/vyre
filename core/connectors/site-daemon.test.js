@@ -23,7 +23,7 @@ async function world(/** @type {any} */ t) {
   const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), "vc-site-"));
   t.after(() => fs.rmSync(sockDir, { recursive: true, force: true }));
   const sockPath = path.join(sockDir, "chrome.sock");
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, chrome: { sockPath, extensionOrigin: null } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "local", vault: { keystore: "file" }, chrome: { sockPath, extensionOrigin: null } }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const cli = (/** @type {string} */ tool, input = {}) => call(tool, input, { root, caller: "cli" });
