@@ -14,15 +14,17 @@ not rebuild any of that inside a watcher.
 ## The steps, in order
 
 Each is a tool call. The Vyre tools are MCP tools (`mcp__plugin_vyre_vyre__<name>` in Claude
-Code; load them with ToolSearch when they are deferred). Call them directly, never from a shell.
+Code; load them with ToolSearch when they are deferred). Only a short core is listed, so run the
+others with `tools_call` as `{ "tool": "<name>", "arguments": { ... } }`. Call them directly, never
+from a shell.
 
-1. `watchers_list` → its `dir` is where watchers live on this machine.
-2. `projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
+1. `tools_call watchers_list` → its `dir` is where watchers live on this machine.
+2. `tools_call projects_of` with `{ "cwd": "<the current folder>" }` → the project's `slug`.
 3. Write `<dir>/<name>/watcher.json` and `<dir>/<name>/watch.js` (section 3).
    If it needs a credential, give the user the grant command for this watcher and wait
    (section 2).
-4. `watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
-5. Show the user the items and the schedule; on their yes, `watchers_create` with `{ "name" }`.
+4. `tools_call watchers_test` with `{ "name": "<name>" }` → fix and repeat until it returns `ok: true`.
+5. Show the user the items and the schedule; on their yes, `tools_call watchers_create` with `{ "name" }`.
 
 The sections below say how to decide each part.
 
@@ -34,22 +36,22 @@ fits; "watch X and file it into this project" leaves nothing open.
 1. **Source**: what is being watched (an inbox, an API, a page, a folder, a feed). Prefer a
    JSON API or feed over scraping HTML when the source has one.
 2. **What counts as an item**: one email, one invoice, one post. Pick the natural unit.
-3. **Project**: which Vyre project items file into. The `projects_of` tool with the current
-   folder gives its project's `slug`; `projects_list` lists them all. Use the slug.
+3. **Project**: which Vyre project items file into. The `tools_call projects_of` tool with the current
+   folder gives its project's `slug`; `tools_call projects_list` lists them all. Use the slug.
 4. **Schedule**: cron syntax (five fields, `*`, `*/n`, ranges, lists, or `@hourly`, `@daily`).
    Default `*/15 * * * *`. Use less often when the source is slow or rate limited. A step
    cannot exceed its field: every two hours is `0 */2 * * *`, never `*/120 * * * *`. For a source
    that pushes (a form, a webhook), use `"webhook"`. For a webhook that comes from the internet
-   through a hooks route (`hooks_list` shows them), leave `schedule` out and set
+   through a hooks route (`tools_call hooks_list` shows them), leave `schedule` out and set
    `"on": "hook.received"` with `"where": { "route": "<route name>" }`; the watcher then runs once
    per verified delivery on that route.
 
 ## Check for a preset first
 
 For mail, a calendar, a GitHub repo, a Slack channel or a public feed, do not write code: call
-`watchers_preset` with `kind` (`mail`, `calendar`, `repo`, `slack` or `feed`), the project and the
+`tools_call watchers_preset` with `kind` (`mail`, `calendar`, `repo`, `slack` or `feed`), the project and the
 few fields it names. It writes the watcher off with a card; show the card, and after the person
-agrees, turn it on with `watchers_create {name, hash}`. Anything else is a custom watcher, below.
+agrees, turn it on with `tools_call watchers_create {name, hash}`. Anything else is a custom watcher, below.
 
 ## 2. Credentials come from the Vault, by name, granted to this one watcher
 
@@ -69,7 +71,7 @@ your reply. A public source needs no credential, but still names its host under 
    ```
 
    A grant can only come from a person. A grant is for one watcher, never for every watcher; a
-   second watcher that needs the same item needs its own. If you call `vault_grant` yourself,
+   second watcher that needs the same item needs its own. If you call `tools_call vault_grant` yourself,
    the grant stays `pending` and the watcher still cannot use the item until a person approves
    it in a terminal: `vyre vault pending` lists what waits, `vyre vault approve <id>` allows
    one. You cannot approve it; `vault_approve` is not open to Claude. The command above is
@@ -92,15 +94,15 @@ code, and never decides a send. Prefer a plain rule when one works, since an ask
 
 Add a `summary` to `watcher.json` so the card can say what the watcher does in plain words:
 `"summary": { "when": "Every 15 minutes", "check": "Is it an invoice?", "do": "Files each invoice into Harlow Legal" }`
-(`check` is optional; one sentence each). Before asking the user to turn it on, call `watchers_card`
+(`check` is optional; one sentence each). Before asking the user to turn it on, call `tools_call watchers_card`
 and show what it returns. The lines about what it reads, whether it can act and what it costs are
 worked out by Vyre from the folder, not from your summary, so keep the summary honest: it is shown
-next to them. Pass the card's `hash` to `watchers_create` so the tap turns on exactly that code.
+next to them. Pass the card's `hash` to `tools_call watchers_create` so the tap turns on exactly that code.
 
 ## 3. Write two files in the watchers folder
 
-Call the `watchers_list` tool first. It is an MCP tool, not a shell command: Claude Code names
-it `mcp__plugin_vyre_vyre__watchers_list` (load it with ToolSearch if it is deferred). Its `dir`
+Call `tools_call watchers_list` first. It is an MCP tool, not a shell command: Claude Code names
+`tools_call` `mcp__plugin_vyre_vyre__tools_call` (load it with ToolSearch if it is deferred). Its `dir`
 is the watchers folder on this machine. Write into `<dir>/<name>/` and nowhere else; the folder
 moves with `VYRE_HOME`, so never guess it. Name the watcher `<project>-<thing>`, kebab-case:
 `harlow-invoices`.
@@ -165,16 +167,16 @@ Rules for `watch.js`:
 
 ## 4. Dry-run, show, then turn it on
 
-1. Run the `watchers_test` tool with the watcher's name. It runs once with `since: null`,
+1. Run the `tools_call watchers_test` tool with the watcher's name. It runs once with `since: null`,
    files nothing, and returns the items it would have emitted, with its logs. Do not run
-   `watch.js` yourself with `node`: only `watchers_test` runs it as it will really run,
+   `watch.js` yourself with `node`: only `tools_call watchers_test` runs it as it will really run,
    sandboxed and with the vault. If it returns `problems` or an `error`, fix the files and run
    it again. Zero items is a fine answer when nothing matches today; the logs show whether
    the source was read. Never widen the filter past what the user asked for just to get items
    (a SQLite watcher does not file Postgres posts); say nothing matches yet and carry on.
 2. Show the user the first few items, one line each, and the schedule in words (the result's
    `every`, such as "every 15 minutes").
-3. Only when they agree, call `watchers_create` to turn it on, after `watchers_test` has
+3. Only when they agree, call `tools_call watchers_create` to turn it on, after `tools_call watchers_test` has
    returned, never in the same batch of tool calls. It turns on exactly what was
    dry-run: if you edit either file afterwards, dry-run again first. It runs once straight away,
    then on the schedule. Tell them `vyre watchers` lists it, `vyre watchers items <name>` shows

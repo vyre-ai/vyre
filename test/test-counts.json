@@ -948,5 +948,6 @@
  "apps/app/src/auth/presence-words.test.js": 1,
  "core/vyre-index/vyre-index.test.js": 2,
  "test/tools-budget.test.js": 2,
- "test/tools-find-quality.test.js": 2
+ "test/tools-find-quality.test.js": 2,
+ "test/tools-text-names.test.js": 5
 }

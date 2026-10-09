@@ -14,7 +14,7 @@ A Flow is a small program: when something happens, run these steps. A step is do
 
 ## You propose, a person applies
 
-You cannot change a Flow directly. Draft it and propose it (`flows.propose`). The proposal becomes a task for a person; their approval applies it, as them. A draft you can check without side effects: `flows.simulate` runs it against sample input and shows what each step would do.
+You cannot change a Flow directly. Draft it and propose it (`tools_call flows.propose`). The proposal becomes a task for a person; their approval applies it, as them. A draft you can check without side effects: `tools_call flows.simulate` runs it against sample input and shows what each step would do.
 
 ## Steps
 
@@ -52,7 +52,7 @@ A Flow has up to 200 steps, nested up to 6 deep, and a repeat runs at most 1000 
 - Put a person in the loop with `ask` or `assign` wherever a judgement call or an outward act is involved. Do not try to remove the person from a send.
 - Name connections by id. Never put a credential in a step.
 - Use `decide` for branching and `repeat` for lists. A repeat has a limit; stay under it.
-- Test with `flows.simulate` before proposing. Say in the proposal what it will do and what it will not.
+- Test with `tools_call flows.simulate` before proposing. Say in the proposal what it will do and what it will not.
 
 ## The code step
 

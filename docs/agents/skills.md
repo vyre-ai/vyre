@@ -28,4 +28,4 @@ Read the skill first, once. Follow it, and say you did. If it conflicts with wha
 
 ## Finding one
 
-`skills.find` ranks the skills you may use for what you are about to do, in plain words, and `skills.list` lists them. `skills.get` reads one by its id. Each result says what the skill is for and what reading it costs. A skill you may not use is not listed, not ranked and not readable.
+`skills.find` ranks the skills you may use for what you are about to do, in plain words, and `skills.list` lists them. `tools_call skills.get` reads one by its id. Each result says what the skill is for and what reading it costs. A skill you may not use is not listed, not ranked and not readable.

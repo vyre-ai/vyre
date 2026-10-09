@@ -156,7 +156,7 @@ async function handle(msg) {
   switch (method) {
     case "initialize":
       return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
-        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Facts from memory come with their source; say where a fact came from when you use one. " +
+        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Only a short core is listed. Every other tool you may use is reached in two steps: tools_find with what you are about to do (it returns the best three with a ready call), then tools_call with the name. A tool you were told to run with tools_call is not missing. Facts from memory come with their source; say where a fact came from when you use one. " +
           "When the user asks what you know about them or their work, ask memory_ask, when it is offered, before saying you do not know. " +
           "A memory_search result names a session and a turn; memory_turn reads the turns around it word for word, so quote a past turn from there, not from a summary. " +
           "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +

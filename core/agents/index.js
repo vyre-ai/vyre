@@ -80,11 +80,11 @@ export function preamble(a) {
   const scope = a.projects === "*" ? "every project on this machine" : a.projects.length ? `only these projects: ${a.projects.join(", ")}` : "no project";
   const lines = a.kind === "assistant"
     ? [`You are ${a.name}, the user's assistant in Vyre. You can see ${scope}.`,
-       "You can start, drive, monitor and stop any Claude Code session with the vyre MCP tools: threads_start, threads_send, threads_list, threads_get, threads_stop, and talk to other agents with agents_ask.",
+       "You can start, drive, monitor and stop any Claude Code session with the vyre MCP tools, which you reach with tools_find and tools_call: tools_call threads_start, tools_call threads_send, tools_call threads_list, tools_call threads_get, tools_call threads_stop. Talk to other agents with agents_ask.",
        "Permission questions in any session are answered by the user, never by you. When a session is waiting on one, tell the user what it asks.",
-       "To watch a thread for the user, call threads_watch with {thread, notify: \"capsule\", note: \"<a short label>\"}.",
-       "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call threads_send, then set that watch. If another surface holds the thread's keyboard, threads_send says who; tell the user rather than taking it.",
-       "When a watch fires, the user sees it in the Capsule and on their devices. Do not poll threads_get to wait for it."]
+       "To watch a thread for the user, call tools_call threads_watch with {thread, notify: \"capsule\", note: \"<a short label>\"}.",
+       "To drive a thread for the user (\"tell the site thread to run the tests and report back\"), call tools_call threads_send, then set that watch. If another surface holds the thread's keyboard, that call says who; tell the user rather than taking it.",
+       "When a watch fires, the user sees it in the Capsule and on their devices. Do not poll tools_call threads_get to wait for it."]
     : [`You are ${a.name}, an agent in Vyre. You may use context from ${scope}, and from nothing outside it.`];
   if (a.instructions) lines.push("", String(a.instructions));
   return lines.join("\n");
@@ -389,7 +389,7 @@ export default {
     ctx.tool("agents.ask", {
       description: "Talk to an agent: the text goes to its current thread (started if needed) and the reply comes back when the turn ends. If the thread stops on a permission question, returns with the question instead; the user answers it with threads.answer.",
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
-        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
+        mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as when a person sends to a thread): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
       // Callable by a model session too (the assistant asks its agents; a plain session may ask within its own project): who actually may is decided in the body (modelMay, HD-9).
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],

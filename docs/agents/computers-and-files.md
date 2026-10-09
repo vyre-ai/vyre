@@ -13,13 +13,13 @@ when: You need to read or write files, run something on a computer, use a browse
 ## Files
 
 - Work in your project's folder or workspace. Make files there.
-- Find files with `files.search`, look at one with `files.preview`, bring one over with `files.fetch`. These stay inside the folders the person chose. Outside them, a path is refused.
+- Find files with `files.search`, look at one with `files.preview`, bring one over with `tools_call files.fetch`. These stay inside the folders the person chose. Outside them, a path is refused.
 - Do not read the Vyre home, other people's workspaces or system files. If a task seems to need one, say so.
 - Every file change is visible to the person, including changes a command made. Do not hide one.
 
 ## Your own computer
 
-An agent can have its own computer: a screen, a browser and a desktop on the server, separate from the person's own. Ask `computers.list` for yours, `computers.checkout` to take one, `computers.release` when you are done. A computer has limits (`computers.limits`): time, memory, network. Stay inside them.
+An agent can have its own computer: a screen, a browser and a desktop on the server, separate from the person's own. Ask `tools_call computers.list` for yours, `tools_call computers.checkout` to take one, `tools_call computers.release` when you are done. A computer has limits (`tools_call computers.limits`): time, memory, network. Stay inside them.
 
 ## Glass and take-over
 

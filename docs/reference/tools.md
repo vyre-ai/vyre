@@ -36,7 +36,7 @@ Talk to an agent: the text goes to its current thread (started if needed) and th
 - Input:
   - `agent` string, required
   - `text` string, required
-  - `mentions` list of object: The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread.
+  - `mentions` list of object: The # tags the composer picked, from a person's own surface only (as when a person sends to a thread): each is resolved for the agent's thread.
     - `id` string, required
     - `kind` string, required
     - `name` string
@@ -2945,7 +2945,7 @@ The user discards a held item. Nothing is sent.
 
 ### `gate.request`
 
-Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See gate.senders for the `via` values and what each takes.
+Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See tools_call gate.senders for the `via` values and what each takes.
 
 - Input:
   - `content` object, required
@@ -8511,7 +8511,7 @@ Where the sign-in ask stands: waiting, approved (with the credential, once, only
 
 ### `skills.find`
 
-The skills that fit what you are about to do, best first: { id, name, level, description, tokens }. `query` is plain words ("keep a password out of a file"). Only skills you may use are ranked. Read one with skills.get.
+The skills that fit what you are about to do, best first: { id, name, level, description, tokens }. `query` is plain words ("keep a password out of a file"). Only skills you may use are ranked. Read one with tools_call skills.get.
 
 - Input:
   - `query` string, required

@@ -162,7 +162,7 @@ export class Gate {
     if (o) return { s: { type: "module", module: o.module }, t: moduleType(o) };
     if (!s) {
       const names = [...Object.keys(this.senderConfig), ...Object.keys(this.offered)];
-      throw new Error(`no sender "${via}"${names.length ? `; the senders are ${names.join(", ")}` : "; none is configured (gate.senders in config.json)"}`);
+      throw new Error(`no sender "${via}"${names.length ? `; the senders are ${names.join(", ")}` : "; none is configured (the gate senders list in config.json)"}`);
     }
     return { s, t: this.types[s.type] };
   }
@@ -402,7 +402,7 @@ export class Gate {
     if (!SENDS.test(own) || READS.test(own)) return { decision: null };
     const names = Object.keys(this.senderConfig);
     const how = names.length
-      ? `Call the Vyre tool gate_request with via one of: ${names.join(", ")} (gate_senders says what each takes).`
+      ? `Call the Vyre tool gate_request with via one of: ${names.join(", ")} (tools_call gate_senders says what each takes).`
       : "No Gate sender is configured, so it cannot go out yet; tell the user what you would send and to whom.";
     return { decision: "deny", reason: `Agents do not send directly. The Gate holds it until the user approves the final words. ${how}` };
   }

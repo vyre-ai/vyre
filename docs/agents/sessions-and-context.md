@@ -27,8 +27,8 @@ A short brief: who the person is (`about`), the project and its notes, anything 
 ## Finding what happened
 
 - `recall.search` finds past turns by meaning across the person's sessions. Give it the topic in plain words.
-- `memory.relevant` and `memory.facts` return what Vyre knows that bears on your task. `memory.why` says where a fact came from.
-- `projects.context` gives a project's notes and state. `context.now` says where the person is right now.
+- `tools_call memory.relevant` and `tools_call memory.facts` return what Vyre knows that bears on your task. `tools_call memory.why` says where a fact came from.
+- `tools_call projects.context` gives a project's notes and state. `context.now` says where the person is right now.
 - `waiting.list` lists what waits on the person. Check it before you tell them something is stuck.
 
 Search before you ask the person something they may already have said. Do not paste a whole transcript into your reasoning: read the turn you need.

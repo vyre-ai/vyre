@@ -25,8 +25,8 @@ Connections that ship as declarations, with their operations:
 
 ## Using one
 
-1. List what is connected: `connectors.list`. A connection the person did not make or approve is not there to use.
-2. Look at its operations: `connectors.declared` shows them with their marks.
+1. List what is connected: `tools_call connectors.list`. A connection the person did not make or approve is not there to use.
+2. Look at its operations: `tools_call connectors.declared` shows them with their marks.
 3. Run one: `connectors.operation.run` with the connection and operation. Reads and drafts run. An operation marked outward (see the kinds above) is held for a person (read `outward-acts.md`).
 
 You never see or pass the key. The system attaches it outside you when the call is made.
@@ -37,7 +37,7 @@ You cannot connect one. Tell the person which service you need and what for. A p
 
 ## MCP servers
 
-Some vendors run their own MCP server. `mcp.servers` lists the ones the person connected, `mcp.tools` lists a server's tools, `mcp.call` runs one. Each server is a sender at the Gate, so anything that leaves goes through approval the same way.
+Some vendors run their own MCP server. `tools_call mcp.servers` lists the ones the person connected, `tools_call mcp.tools` lists a server's tools, `tools_call mcp.call` runs one. Each server is a sender at the Gate, so anything that leaves goes through approval the same way.
 
 ## Mail and calendar
 

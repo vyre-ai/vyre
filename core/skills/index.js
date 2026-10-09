@@ -121,7 +121,7 @@ export default {
 
     ctx.tool("skills.find", {
       effect: "read",
-      description: "The skills that fit what you are about to do, best first: { id, name, level, description, tokens }. `query` is plain words (\"keep a password out of a file\"). Only skills you may use are ranked. Read one with skills.get.",
+      description: "The skills that fit what you are about to do, best first: { id, name, level, description, tokens }. `query` is plain words (\"keep a password out of a file\"). Only skills you may use are ranked. Read one with tools_call skills.get.",
       input: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 }, project: { type: "string", maxLength: 64 } }, required: ["query"] },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const list = await visible(meta, { project: input.project });
