@@ -4,6 +4,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Segmented, Switch, Text, showToast } from "@vyre/ui";
 import { vaultImport } from "./import";
+import { TwoFactorCard } from "./TwoFactorCard";
 import { pickFile } from "./pick-file";
 import type { importSource } from "./import-source";
 import type { Picked } from "./import-source";
@@ -20,6 +21,7 @@ export default function ImportPage({ reload, io = REAL }: { reload: () => void; 
     <View className="w-full gap-s4 self-start" style={{ maxWidth: 720 }}>
       <FromApp reload={reload} io={io} />
       <FromProjects reload={reload} io={io} />
+      <TwoFactorCard reload={reload} />
     </View>
   );
 }

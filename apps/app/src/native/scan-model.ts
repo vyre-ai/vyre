@@ -13,6 +13,8 @@ export type ScannedCode =
 
 /** The longest text kept from a code we do not know; a QR can hold far more than a person needs to see. */
 export const MAX_OTHER = 512;
+/** The longest one-time-code address kept (a Google Authenticator export split in codes of about 2 KB). */
+export const MAX_OTP = 4096;
 
 export function readCode(text: string | null | undefined): ScannedCode | null {
   const raw = String(text ?? "").trim();
@@ -21,6 +23,8 @@ export function readCode(text: string | null | undefined): ScannedCode | null {
   if (w.ok && w.kind === "offer") return { kind: "pair", offer: w.offer };
   if (w.ok && w.kind === "typed") return { kind: "typed", code: w.code };
   if (w.ok) return { kind: "wink", ticket: w.ticket, relay: w.relay, for: w.for };
+  // A one-time-code address is read whole: a Google Authenticator export is far longer than the text kept from other codes, and a cut one imports nothing.
+  if (/^otpauth(-migration)?:\/\//i.test(raw)) return { kind: "other", text: raw.slice(0, MAX_OTP) };
   return { kind: "other", text: raw.slice(0, MAX_OTHER) };
 }
 
