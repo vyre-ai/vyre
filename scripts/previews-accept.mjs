@@ -32,8 +32,9 @@ try {
   const frontPort = (await call("appmods.front", {}, "module:previews")).data.port;
   const pv = await call("previews.open", { title: "Case tasks", path: dir, capabilities: { db: {}, user: {}, sample: {}, downloads: true } });
   assert.ok(pv.data, JSON.stringify(pv));
-  const ticket = new URL((await call("previews.url", { id: pv.data.id })).data.url);
-  const url = `http://${ticket.hostname}:${frontPort}${ticket.pathname}${ticket.search}`;
+  // on localhost the front has a port, so the address names it (the ticket is made for that exact host)
+  const ticket = new URL((await call("previews.url", { id: pv.data.id, origin: `http://localhost:${frontPort}` })).data.url);
+  const url = ticket.href;
   browser = await chromium.launch();
   for (const scheme of ["light", "dark"]) {
     const ctx = await browser.newContext({ viewport: { width: 420, height: 800 }, colorScheme: scheme, acceptDownloads: true });
@@ -42,7 +43,7 @@ try {
     page.on("pageerror", (e) => errors.push(String(e)));
     page.on("console", (m) => { if (process.env.ACCEPT_DEBUG) console.log("console:", m.type(), m.text()); });
     page.on("response", (r) => { if (process.env.ACCEPT_DEBUG) console.log("http:", r.status(), r.url().replace(/\?t=.*/, "")); });
-    await page.goto(scheme === "light" ? url : `http://${ticket.hostname}:${frontPort}/`, { waitUntil: "networkidle" });
+    await page.goto(scheme === "light" ? url : `${ticket.origin}/`, { waitUntil: "networkidle" });
     if (scheme === "dark") { /* a second context has no session: the preview is closed to it */ assert.equal(await page.locator("body").innerText(), "not found"); await ctx.close(); continue; }
     // the viewer is asked, in the page's own words, before stored data starts
     const allow = page.getByRole("button", { name: "Allow" });
