@@ -387,7 +387,7 @@ shardTest("switchboard: a thread streams to two clients, asks, is answered, and 
   }
   assert.equal(fs.existsSync(target), false);
   // A call vyred traced to this very thread never answers its own ask, even as a person's surface.
-  const own = await w.d.registry.call("threads.answer", { ask: raised.payload.ask, decision: "allow" }, "cli", { thread: id });
+  const own = await w.d.registry.call("threads.answer", { ask: raised.payload.ask, decision: "allow" }, "cli", { thread: id, proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: w.d.kernel.id.owner, path: "relay", session: "ps_1" } }); // (the person's device, so the chat gate lets the call in and the denial under test is the ask's own)
   assert.equal(own.error?.code, "denied", JSON.stringify(own));
   assert.equal(fs.existsSync(target), false);
 
@@ -406,21 +406,13 @@ shardTest("switchboard: a thread streams to two clients, asks, is answered, and 
   // The lease: the other surface is read-only until it takes the keyboard.
   // A person's own surfaces (and their tailnet login) are one participant: none locks another out.
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
-  // The owner over the tailnet (the verified label whose login is the recorded owner) is the person's Deck, not a participant of its own.
+  // The owner's device is the person's Deck, not a participant of its own.
   // With the kernel on the owner's device is the facts the listener proves (a paired app row), not the label.
-  d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES ('aaaaaaaaaaaaaaaa', 'phone', 'p', 1, 'app', 0, NULL)").run();
-  const ownerFacts = { kind: "device", device_key_id: "aaaaaaaaaaaaaaaa", person: d.kernel.id.owner, path: "wink", session: "ps1" };
-  const asOwner = (name, input) => d.registry.call(name, input, "tailnet:owner@example", { person: true, kernelFacts: ownerFacts, peer: { login: "owner@example", node: "phone", stableId: "aaaaaaaaaaaaaaaa" } });
-  assert.equal((await asOwner("threads.send", { thread: id, text: "over the tailnet", surface: "whatever" })).data.sent, true);
+  // (the owner's device over the socket, as the real listener proves it; the tailnet caller this once was is gone with Tailscale)
+  const asOwner = (name, input) => tool(name, { surface: "phone", ...input });
+  assert.equal((await asOwner("threads.send", { thread: id, text: "over the socket" })).data.sent, true);
   assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone");
-  // Two different people: taking the keyboard really moves it, and the taker types at once; the owner is read-only until they take it back.
-  const asBob = (name, input) => d.registry.call(name, input, "tailnet:bob@example", { person: true });
-  assert.equal((await asBob("threads.send", { thread: id, text: "bob without the keyboard" })).data.sent, false, "another login contests the owner's keyboard");
-  const took = (await asBob("threads.lease", { thread: id })).data;
-  assert.deepEqual([took.holder, took.previous], ["tailnet:bob@example", "phone"], "the keyboard moved to the other person");
-  assert.equal((await asBob("threads.send", { thread: id, text: "bob types at once" })).data.sent, true);
-  const locked = (await asOwner("threads.send", { thread: id, text: "owner while bob has it" })).data;
-  assert.deepEqual([locked.sent, locked.holder], [false, "tailnet:bob@example"]);
+  // (a second person contesting the owner's keyboard needs the kernel's people, which this file's single-owner home has none of: BACKLOG)
   assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone", "the owner takes it back");
   assert.equal((await asOwner("threads.send", { thread: id, text: "owner again" })).data.sent, true);
   await until(() => of(a.got, id, "thread.finished").length >= 3, "the turns before the lease checks go on");
@@ -702,10 +694,10 @@ shardTest("adopt: a terminal session nobody has open is resumed headless with th
   assert.equal(r1.open_elsewhere, true);
   assert.match(r1.note, /written \ds ago.*Only one keyboard/);
   // A one-turn ask on another provider is refused for it too, before anything is said.
-  const ask = await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule", mentions: [{ kind: "account", id: "codex" }] }, "capsule");
+  const ask = await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule", mentions: [{ kind: "account", id: "codex" }] });
   assert.equal(ask.error.code, "open_elsewhere", JSON.stringify(ask));
   assert.match(ask.error.message, /open somewhere else.*Nothing was sent, and the turn did not move to another provider\./);
-  const q1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" }, "capsule")).data;
+  const q1 = (await tool("threads.send", { thread: busy.id, text: "hi", surface: "capsule" })).data;
   assert.deepEqual([q1.sent, q1.queued, q1.name, q1.note], [false, true, "Intake form", "Intake form is busy in your terminal. I'll hand it your message when this turn ends."]);
 
   // Open but idle in a terminal: a running claude names it (`claude --resume <id>`).
@@ -740,7 +732,7 @@ shardTest("queued for a terminal session: the Stop hook hands it over, Claude an
   // A fake session "busy in a terminal": its transcript was written a second ago. Nothing here
   // is a real Claude Code session; the hooks are called the way hook.js calls them.
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
-  const q = (await tool("threads.send", { thread: busy.id, text: "which branch are you on?", surface: "capsule" }, "capsule")).data;
+  const q = (await tool("threads.send", { thread: busy.id, text: "which branch are you on?", surface: "capsule" })).data;
   assert.equal(q.queued, true);
   const queued = await until(() => of(s.got, busy.id, "thread.queued")[0], "thread.queued");
   assert.deepEqual([queued.payload.text, queued.payload.surface], ["which branch are you on?", "capsule"]);
@@ -762,7 +754,7 @@ shardTest("queued for a terminal session: the Stop hook hands it over, Claude an
   assert.equal(of(s.got, busy.id, "thread.text").length, 1);
 
   // Idle in the terminal: the next prompt the user types there carries it.
-  await tool("threads.send", { thread: busy.id, text: "also bump the version", surface: "capsule" }, "capsule");
+  await tool("threads.send", { thread: busy.id, text: "also bump the version", surface: "capsule" });
   const enrich = (await tool("harness.enrich", { session: busy.id, prompt: "run the tests", cwd: work }, "harness")).data;
   assert.match(enrich.text, /^Message from the user via the Capsule: also bump the version\n\nThis was sent while the session was idle/);
   assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "Bumped and tested." }, "harness")).data, { ok: true });
@@ -773,22 +765,22 @@ shardTest("queued for a terminal session: the Stop hook hands it over, Claude an
 shardTest("threads.unqueue: a person takes back words not yet handed over; handed-over words stay; a model cannot", async t => {
   const { work, tool, transcripts } = await boot(t);
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
-  const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" }, "capsule")).data;
-  const b = (await tool("threads.send", { thread: busy.id, text: "second", surface: "capsule" }, "capsule")).data;
+  const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" })).data;
+  const b = (await tool("threads.send", { thread: busy.id, text: "second", surface: "capsule" })).data;
   assert.ok(Number.isInteger(a.queued_id) && b.queued_id > a.queued_id, JSON.stringify(b));
   assert.match((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "mcp")).error.message, /only a person's surface|not available to mcp callers/);
-  assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "capsule")).data, { unqueued: [a.queued_id] });
+  assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id })).data, { unqueued: [a.queued_id] });
   // Only "second" is handed over at the Stop.
   const stop = (await tool("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false }, "harness")).data;
   assert.equal(stop.reason, "Message from the user via the Capsule: second");
-  const late = (await tool("threads.unqueue", { thread: busy.id, queued: b.queued_id }, "capsule")).data;
+  const late = (await tool("threads.unqueue", { thread: busy.id, queued: b.queued_id })).data;
   assert.deepEqual(late.unqueued, []);
   assert.match(late.note, /already handed over/);
   // All of a thread's at once.
-  await tool("threads.send", { thread: busy.id, text: "third", surface: "deck" }, "deck");
-  await tool("threads.send", { thread: busy.id, text: "fourth", surface: "deck" }, "deck");
-  assert.equal((await tool("threads.unqueue", { thread: busy.id }, "deck")).data.unqueued.length, 2);
-  assert.match((await tool("threads.unqueue", { thread: busy.id }, "deck")).data.note, /Nothing is waiting/);
+  await tool("threads.send", { thread: busy.id, text: "third", surface: "deck" });
+  await tool("threads.send", { thread: busy.id, text: "fourth", surface: "deck" });
+  assert.equal((await tool("threads.unqueue", { thread: busy.id })).data.unqueued.length, 2);
+  assert.match((await tool("threads.unqueue", { thread: busy.id })).data.note, /Nothing is waiting/);
 });
 
 shardTest("threads.list: live is true for a session bound to a running claude that is not ours, and false once it exits", async t => {
@@ -803,10 +795,10 @@ shardTest("threads.list: live is true for a session bound to a running claude th
   await new Promise(r => setTimeout(r, 200));
   assert.ok((await tool("threads.bind", { session: term.id, pid: proc.pid }, "harness")).data.key);
   // Queued for a person, which adopts its record, so threads.list has a row for it.
-  assert.equal((await tool("threads.send", { thread: term.id, text: "hi", surface: "capsule" }, "capsule")).data.queued, true);
-  const row = () => tool("threads.list", {}, "capsule").then(r => r.data.find(x => x.id === term.id));
+  assert.equal((await tool("threads.send", { thread: term.id, text: "hi", surface: "capsule" })).data.queued, true);
+  const row = () => tool("threads.list", {}).then(r => r.data.find(x => x.id === term.id));
   assert.equal((await row()).live, true);
-  assert.deepEqual((await tool("threads.live", {}, "capsule")).error ? "internal" : "open", "internal", "threads.live is for modules only");
+  assert.deepEqual((await tool("threads.live", {})).error ? "internal" : "open", "internal", "threads.live is for modules only");
   proc.kill();
   await until(async () => (await row()).live === false, "live false after the terminal exits");
 });
@@ -818,7 +810,7 @@ shardTest("agents.history: each question with its answer and thread, newest last
   // agents.list says whether each may have a computer; core/computers decides on it.
   assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
   for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
-    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" }, "deck")).data.text, `echo: ${text}`);
+    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
   }
   const juno = (await tool("agents.history", { agent: "juno" })).data;
   assert.deepEqual(juno.map(x => [x.agent, x.text, x.answer, x.surface]), [["juno", "one", "echo: one", "deck"], ["juno", "three", "echo: three", "deck"]]);
@@ -918,7 +910,7 @@ shardTest("threads.watch: said once when the thread finishes or asks, always whe
   const { id } = (await tool("threads.start", { cwd: work, prompt: "hello", surface: "deck" })).data;
   await until(async () => (await tool("threads.get", { thread: id })).data.events.some(e => e.type === "thread.finished"), "the first turn");
 
-  const w = (await tool("threads.watch", { thread: id, until: "finished", notify: "capsule", note: "tell me when the intake is done" }, "capsule")).data;
+  const w = (await tool("threads.watch", { thread: id, until: "finished", notify: "capsule", note: "tell me when the intake is done" })).data;
   assert.match(w.watch, /^w[0-9a-f]{12}$/);
   await tool("threads.send", { thread: id, text: "build the intake", surface: "deck" });
   const fired = await until(() => of(s.got, id, "thread.watched")[0], "thread.watched");
@@ -1045,9 +1037,9 @@ shardTest("learned skills: the account's and the project's folders load as plugi
 shardTest("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
   const { preamble } = await import("../agents/index.js");
   const brief = preamble({ name: "juno", kind: "assistant", projects: "*" });
-  assert.match(brief, /threads_watch with \{thread, notify: "capsule", note: "<a short label>"\}/);
-  assert.match(brief, /call threads_send, then set that watch/);
-  assert.match(brief, /Do not poll threads_get/);
+  assert.match(brief, /tools_call threads_watch with \{thread, notify: "capsule", note: "<a short label>"\}/);
+  assert.match(brief, /call tools_call threads_send, then set that watch/);
+  assert.match(brief, /Do not poll tools_call threads_get/);
   assert.doesNotMatch(preamble({ name: "scout", kind: "agent", projects: ["harlow"] }), /threads_watch/);
 });
 
@@ -1061,7 +1053,7 @@ shardTest("agents.delete: a person removes a stopped agent and its spend; never 
   assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
   await tool("agents.stop", { agent: "probe" });
   // deleting takes back what the agent was given, a person's own act: a call that carries no person is refused and nothing is deleted
-  assert.equal((await tool("agents.delete", { agent: "probe" }, "deck")).error?.code, "denied", "no person on the call");
+  assert.equal((await tool("agents.delete", { agent: "probe" }, "deck")).error?.code, "denied", "no person on the call (a deck label over the socket proves nothing)");
   assert.deepEqual((await kernelCaller(d, root, "deck")("agents.delete", { agent: "probe" })).data, { agent: "probe", deleted: true });
   assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
@@ -1324,7 +1316,7 @@ shardTest("fake claude: the echo and ask turns are written to the transcript too
 shardTest("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
   const { tool } = await boot(t);
   await tool("agents.create", { name: "kit", projects: [] });
-  const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
+  const r = await tool("agents.update", { agent: "kit", computer: true });
   assert.equal(r.error, undefined, r.error && r.error.message);
   assert.equal(r.data.computer, true);
   assert.equal(r.data.name, "kit", "agent is not stored as a field");
@@ -1336,12 +1328,12 @@ shardTest("agents.update: names its agent by name or agent, as the Deck's Give a
 
 shardTest("agents.create: computer true, as the Deck's New agent and Create your assistant boxes send it, is kept", async t => {
   const { tool } = await boot(t);
-  const r = await tool("agents.create", { name: "kit", kind: "agent", projects: [], computer: true }, "deck");
+  const r = await tool("agents.create", { name: "kit", kind: "agent", projects: [], computer: true });
   assert.equal(r.error, undefined, r.error && r.error.message);
   assert.equal(r.data.computer, true);
-  const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true }, "deck");
+  const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true });
   assert.equal(juno.error, undefined, juno.error && juno.error.message);
-  await tool("agents.create", { name: "pax", kind: "agent", projects: [] }, "deck");
+  await tool("agents.create", { name: "pax", kind: "agent", projects: [] });
   const list = (await tool("agents.list", {})).data.filter(a => !a.builtin);
   assert.equal(list.find(a => a.name === "kit").computer, true);
   assert.equal(list.find(a => a.name === "juno").computer, true);
@@ -1447,10 +1439,10 @@ shardTest("steer and queue while an ask is open: both are kept, threads.get show
   const edit = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Edit"), "the Edit ask");
   assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
 
-  const steer = (await tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" }, "deck")).data;
+  const steer = (await tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" })).data;
   assert.equal(steer.sent, true, JSON.stringify(steer));
   assert.equal(steer.steered, true, JSON.stringify(steer));
-  const queued = (await tool("threads.send", { thread: id, text: "then check the hours", surface: "deck", mode: "queue" }, "deck")).data;
+  const queued = (await tool("threads.send", { thread: id, text: "then check the hours", surface: "deck", mode: "queue" })).data;
   assert.equal(queued.queued, true, JSON.stringify(queued));
   assert.ok(Number.isInteger(queued.queued_id), JSON.stringify(queued));
 
@@ -1466,7 +1458,7 @@ shardTest("steer and queue while an ask is open: both are kept, threads.get show
   const q = got.events.find(e => e.type === "thread.queued");
   assert.ok(q, "thread.queued is in threads.get");
   assert.deepEqual([q.payload.queued, q.payload.text], [queued.queued_id, "then check the hours"]);
-  assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued.map(r => r.queued), [queued.queued_id]);
+  assert.deepEqual((await tool("threads.queue", { thread: id })).data.queued.map(r => r.queued), [queued.queued_id]);
 
   // The answer: the steer is taken in at the turn's next step, the queued words are the next turn.
   await tool("threads.answer", { ask: edit.id, decision: "allow", surface: "deck" });
@@ -1479,7 +1471,7 @@ shardTest("steer and queue while an ask is open: both are kept, threads.get show
   await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && /echo: then check the hours/.test(e.payload.text)), "the queued turn's reply");
   const took = of(s.got, id, "thread.text").find(e => e.payload.done && /took in: use the rye price too/.test(e.payload.text));
   assert.ok(took, "the steered words reached Claude in the running turn");
-  assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
+  assert.deepEqual((await tool("threads.queue", { thread: id })).data.queued, []);
 });
 
 shardTest("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
