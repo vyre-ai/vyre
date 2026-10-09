@@ -70,6 +70,11 @@
           "label": "Notes"
         },
         {
+          "name": "tags",
+          "kind": "text",
+          "label": "Tags"
+        },
+        {
           "name": "last_signed_at",
           "kind": "datetime",
           "label": "Last signed a document"
