@@ -977,8 +977,8 @@
  "lib/siteops/learn.test.js": 10,
  "lib/siteops/store.test.js": 7,
  "lib/siteops/run.test.js": 5,
- "local/hands-chrome-mac/ext-ops.test.js": 7,
- "local/hands-chrome-mac/ops-tool.test.js": 6,
+ "local/hands-chrome-mac/ext-ops.test.js": 8,
+ "local/hands-chrome-mac/ops-tool.test.js": 7,
  "records/connectors/site.test.js": 5,
  "core/vault/service-site.test.js": 4,
  "core/connectors/site-daemon.test.js": 8,
@@ -988,5 +988,6 @@
  "modules/hands-chrome/siteops.test.js": 3,
  "test/site-mac-rung.test.js": 3,
  "core/connectors/governor.test.js": 6,
- "lib/siteops/kit-benchmark.test.js": 6
+ "lib/siteops/kit-benchmark.test.js": 6,
+ "lib/siteops/kits.test.js": 4
 }

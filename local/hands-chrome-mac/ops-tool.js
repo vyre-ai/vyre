@@ -7,6 +7,7 @@
 // dispatch() files it.
 
 import crypto from "node:crypto";
+import { KITS, kitFor, teachPlan } from "./extension/shared/sk/siteops/kits/linkedin.js";
 
 const isObj = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
 const DRAFT_TTL_MS = 60 * 60_000;
@@ -102,6 +103,13 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
       return { site: origin, operations: ops, ...(ops.length ? {} : { note: "nothing is kept for this site yet; scout the page, then learn an operation" }) };
     }
 
+    if (action === "kit") {
+      if (!i.site) return { kits: Object.values(KITS).map(k => ({ id: k.id, label: k.label, site: k.origins[0], operations: k.operations.map(o => `${o.name}(${o.inputs.map(x => x.name).join(", ")}) [${o.kind}]`), note: k.note })) };
+      const k = kitFor(String(i.site));
+      if (!k) return { kit: null, why: `no kit is shipped for ${String(i.site).slice(0, 60)}; teach its operations one at a time with learn` };
+      return { kit: k.id, site: k.origins[0], note: k.note, plan: teachPlan(k), method: "For each step: say the operation back as name(inputs) -> fields and wait for a yes; scout; learn with two examples the person chooses; save with a verify input that was not an example." };
+    }
+
     if (action === "scout") {
       const tab = await tabFor(i, siteOf(i), m);
       return dispatch("ops.scout", { tab, examples: isObj(i.examples) ? i.examples : (Array.isArray(i.examples) && isObj(i.examples[0]) ? i.examples[0] : {}), limit: i.limit }, m);
@@ -110,13 +118,13 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     if (action === "learn") {
       const origin = siteOf(i);
       const tab = await tabFor(i, origin, m);
-      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}) }, m);
+      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}), ...(Array.isArray(i.wants) ? { wants: i.wants } : {}) }, m);
       if (!isObj(res) || res.held || !res.ok || !res.operation) return res;
       const id = "d" + crypto.randomBytes(5).toString("hex");
       drafts.set(id, { operation: res.operation, origin, examples: Array.isArray(i.examples) ? i.examples : [], at: now });
       while (drafts.size > MAX_DRAFTS) drafts.delete(/** @type {string} */ (drafts.keys().next().value));
       const readOp = res.operation.kind === "read";
-      return { draft: id, ...summary(res.operation), warnings: res.warnings, next: readOp
+      return { draft: id, ...summary(res.operation), warnings: res.warnings, ...(res.missingFields ? { missingFields: res.missingFields } : {}), ...(Array.isArray(res.operation.response.pick) ? { returns: res.operation.response.pick } : {}), next: readOp
         ? `prove it: call chrome_op save with draft ${id} and verify = an input that was NOT one of your examples; it is kept only if that answers`
         : `a ${res.operation.kind} is kept without being run: call chrome_op save with draft ${id}; every later call waits for the person's yes` };
     }
@@ -188,7 +196,7 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
       return { forgotten: !!(r && r.accepted), name: i.name };
     }
 
-    throw denied("bad_request", "action is one of list, scout, learn, save, call, heal, check, versions, rollback, forget");
+    throw denied("bad_request", "action is one of kit, list, scout, learn, save, call, heal, check, versions, rollback, forget");
   }
 
   return { run, drafts, callStored };

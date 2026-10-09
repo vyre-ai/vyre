@@ -15,7 +15,10 @@ const DEST = "local/hands-chrome-mac/extension/shared/sk";
 const SOURCES = ["lib/credential-shapes.js", "lib/site-knowledge.js"];
 // lib/siteops/*.js (the learned website operations, ported methods and the one learner) is pure and runs in the extension too: it is copied, one folder down, beside the site-knowledge copy that
 // imports its spec, and the files the extension imports at its old paths (apilearn.js, redact.js) are generated from it as well, so one learner serves both.
-const SITEOPS = fs.readdirSync(path.join(ROOT, "lib/siteops")).filter(f => f.endsWith(".js") && !f.endsWith(".test.js") && f !== "fixtures.js");
+const SITEOPS = [
+  ...fs.readdirSync(path.join(ROOT, "lib/siteops")).filter(f => f.endsWith(".js") && !f.endsWith(".test.js") && f !== "fixtures.js"),
+  ...fs.readdirSync(path.join(ROOT, "lib/siteops/kits")).filter(f => f.endsWith(".js") && !f.endsWith(".test.js")).map(f => `kits/${f}`),
+];
 
 /** @returns {Record<string, string>} destination path (relative to the repo) to the text it must hold */
 export function generatedFiles() {

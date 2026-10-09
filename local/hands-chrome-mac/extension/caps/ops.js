@@ -13,6 +13,8 @@
 //   ops.check   can this tab sign this operation right now: the right site, and which references resolve (names only).
 
 import { learnOperation } from "../shared/sk/siteops/learn.js";
+import { suggestPick } from "../shared/sk/siteops/pickfields.js";
+import { parseBody } from "../shared/sk/siteops/extract.js";
 import { STATE_EXPRESSION, resolverFor, loginWall } from "../shared/sk/siteops/page.js";
 import { runOperation } from "../shared/sk/siteops/run.js";
 import { healOperation } from "../shared/sk/siteops/heal.js";
@@ -206,7 +208,17 @@ const ops = {
         trigger, ...(args?.match ? { match: args.match } : {}), ...(Number.isInteger(args?.id) ? { id: args.id } : {}), ...(Array.isArray(args?.public) ? { public: args.public } : {}),
         ...(args?.keepExamples === true ? { keepExamples: true } : {}), now: new Date().toISOString() });
     } catch (e) { return { ok: false, class: "input", reason: String(/** @type {any} */ (e).message || e), next: "pick the request that carries the example (ops.scout, then pass its id) or change the example" }; }
-    return { ok: true, operation: learned.operation, warnings: learned.warnings, origin, request: { id: learned.exchange.id }, aborted: write ? true : undefined };
+    // The fields the person wants back ("name, headline, location"): found in the answer the learned request got, so nobody writes a path by hand.
+    /** @type {string[]|undefined} */ let missing;
+    if (Array.isArray(args?.wants) && args.wants.length && learned.operation.kind === "read") {
+      try {
+        const body = String((first.exchanges.find((/** @type {any} */ e) => e.id === learned.exchange.id)?.response || {}).body || "");
+        const sp = suggestPick(parseBody(body, learned.operation.response.xssiPrefix), args.wants.map(String), { extract: learned.operation.response.extract });
+        if (sp.pick.length) learned.operation.response.pick = sp.pick;
+        missing = sp.missing.length ? sp.missing : undefined;
+      } catch { /* an answer that is not JSON has no fields to pick */ }
+    }
+    return { ok: true, operation: learned.operation, warnings: learned.warnings, ...(missing ? { missingFields: missing } : {}), origin, request: { id: learned.exchange.id }, aborted: write ? true : undefined };
   },
 
   async "ops.scout"(args, ctx) {

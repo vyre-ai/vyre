@@ -148,3 +148,19 @@ test("opsOnly: only a patch about taught operations skips the passive-learning s
   assert.equal(opsOnly({ key: ORIGIN }), false);
   assert.equal(opsOnly(null), false);
 });
+
+test("kit: the shipped recipe for a site is listed, planned in order, and a site with none says so", async () => {
+  const r = rig();
+  try {
+    const all = await r.tool.run({ action: "kit" }, M);
+    assert.deepEqual(all.kits.map((/** @type {any} */ k) => k.id), ["linkedin"]);
+    assert.match(all.kits[0].operations[4], /^sendMessage\(to, text\) \[send\]$/);
+    const plan = await r.tool.run({ action: "kit", site: "https://www.linkedin.com" }, M);
+    assert.equal(plan.kit, "linkedin");
+    assert.equal(plan.plan.length, 6);
+    assert.match(plan.note, /held for your yes/);
+    assert.match(plan.method, /say the operation back/);
+    const none = await r.tool.run({ action: "kit", site: "https://app.example.com" }, M);
+    assert.equal(none.kit, null);
+  } finally { r.done(); }
+});
