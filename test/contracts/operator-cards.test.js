@@ -31,7 +31,7 @@ test("operator-cards v1: the run, sign-in and question cards keep the shapes the
   assert.equal(shapeDiff(last("thread.operator"), { ...F.events["thread.operator"], steps: [] }), "", "the first card has no steps yet");
   assert.equal(last("thread.operator").line, "Getting started");
   const step = await call("previews.step", { ...F.calls.step.input, run }, "module:computer");
-  assert.equal(shapeDiff(step.data, F.calls.step.output), "");
+  assert.equal(shapeDiff(step.data, F.calls.step.output), "", JSON.stringify(step));
   assert.equal(shapeDiff(last("thread.operator"), F.events["thread.operator"]), "");
   assert.deepEqual(last("thread.operator").steps, [{ line: "Opening the workflow list", state: "working" }]);
   for (let i = 0; i < 9; i++) await call("previews.step", { run, line: "x".repeat(300) }, "module:computer");
@@ -48,7 +48,7 @@ test("operator-cards v1: the run, sign-in and question cards keep the shapes the
   assert.ok((await call("previews.reply", { run, text: "123456" }, "mcp")).error, "a model never replies for the person");
   assert.equal((await call("previews.reply", { run, text: "  " })).error.code, "bad_input");
   assert.equal((await call("previews.reply", { run, text: "123456" })).data.state, "working");
-  assert.equal(shapeDiff(await pending.then(r => r.data), F.calls.runGet.output), "");
+  const got = await pending; assert.equal(shapeDiff(got.data, F.calls.runGet.output), "", JSON.stringify(got));
   assert.equal(last("thread.operator").ask, "", "the box to type in goes away once answered");
 
   // a model moves only a card of its own chat
