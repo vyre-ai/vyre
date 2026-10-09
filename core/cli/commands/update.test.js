@@ -16,6 +16,8 @@ import { tempHome } from "../../../test/helpers.js";
 import { setJson } from "../kit.js";
 import * as config from "../../config/index.js";
 import { update, prune, publishRelease } from "./update.js";
+import { allowLoopbackForTests } from "../../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 process.env.VYRE_NO_DIALOGS = "1";
 

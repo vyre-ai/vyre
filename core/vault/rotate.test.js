@@ -8,6 +8,8 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROVIDERS, DEFAULT_ENDPOINTS, rotationFor, rotate, signV4 } from "./rotate.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 // Every provider here is a fake server on 127.0.0.1 started inside the test; no request leaves the
 // machine. Fake values are made at run time, so no key-shaped literal sits in the source.

@@ -20,7 +20,7 @@
 // would carry the auth header somewhere else). No dependencies.
 
 import crypto from "node:crypto";
-import { autoFetch } from "../../lib/http.js";
+import { httpFetch } from "../../lib/http.js";
 
 const TIMEOUT_MS = 20_000;
 
@@ -187,7 +187,7 @@ export async function rotate(item, fields, opts = {}) {
     throw new Error("AWS: these are temporary credentials (they carry a session token); they expire on their own and cannot be rotated. Rotate the long-term key they came from.");
   if (!r.auto) throw new Error(`${LABEL[/** @type {keyof typeof LABEL} */ (p)] || p} cannot be rotated automatically: ${r.steps}`);
   const ctx = {
-    fetch: opts.fetch || autoFetch,
+    fetch: opts.fetch || httpFetch,
     base: /** @param {keyof typeof DEFAULT_ENDPOINTS} k */ k => String((opts.endpoints && opts.endpoints[k]) || DEFAULT_ENDPOINTS[k]).replace(/\/+$/, ""),
     endpoints: opts.endpoints || {},
     now: () => (typeof opts.now === "function" ? opts.now() : typeof opts.now === "number" ? opts.now : Date.now()),
