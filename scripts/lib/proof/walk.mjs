@@ -392,26 +392,31 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
   }, { needs: [U("record what the vault and records hold before the update")] });
   await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
     // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
+    // Wait for the box to say it runs the new version AT THE BOX (a docker exec, no app sign-in), then make exactly ONE sign-in try as the app would on reconnecting: more wrong tries lock the device out (presence LOCK_MS).
     let last = "", st = null;
-    const deadline = Date.now() + 4 * 60_000;   // wall clock: four minutes, however long each try takes
-    for (let i = 0; Date.now() < deadline && !st; i++) {
+    const deadline = Date.now() + 5 * 60_000;
+    let boxVersion = "";
+    while (Date.now() < deadline && boxVersion !== u.newVersion) {
       await new Promise(r => setTimeout(r, 5000));
-      try { const s = await within(20_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
-      catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
-      if (i % 6 === 0) console.log(`update: waiting for the new version (${Math.round((Date.now() - (deadline - 4 * 60_000)) / 1000)} s): ${last}`);
+      try { boxVersion = String(JSON.parse(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "system.info", "{}"], { encoding: "utf8", timeout: 20_000 }).stdout || "{}").version || ""); } catch { boxVersion = ""; }
     }
+    console.log(`update: the box says ${boxVersion || "nothing"}; one sign-in try from the app`);
+    try { const s = await within(60_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}`; }
+    catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 200); }
+    console.log(`update: the one try: ${st ? "signed in" : last}`);
     if (!st) {
       // what the host and the box say, so a stall names its step
       const sh = (/** @type {string} */ c) => { try { return String(spawnSync("sh", ["-c", c], { encoding: "utf8", timeout: 30_000 }).stdout || ""); } catch { return ""; } };
-      const op = (/** @type {string} */ tool) => sh(`docker exec -u vyre vyre-vyre-1 vyre call ${tool} '{}' 2>&1 | head -c 1500`);
-      // a FRESH direct call the way the app reaches a box it can see: the device's own signed session over https on :7443, no relay
-      const direct = await within(60_000, () => directSession(mac)).then(r => `direct session ok: ${JSON.stringify(r).slice(0, 200)}`, e => `direct session failed: ${String(e && e.message).slice(0, 300)}`);
-      const diag = ["== direct", direct, "== relay.devices.list (on the box)", op("relay.devices.list"), "== system.info (on the box)", op("system.info"), "== box log files", sh("docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do tail -n 60 \"$f\"; done' 2>&1 | grep -i 'relay\\|wink\\|pair\\|device\\|denied' | tail -40"), "== docker ps", sh("docker ps -a 2>&1 | head -20"), "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== update unit", sh("sudo journalctl -u vyre-update.service --no-pager -n 60 2>&1"),
-        "== box log", sh("docker logs --tail 40 vyre-vyre-1 2>&1"), "== version file", sh("cat /srv/vyre/VERSION 2>&1")].join("\n");
+      const op = (/** @type {string} */ tool, /** @type {string} */ input = "{}") => sh(`docker exec -u vyre vyre-vyre-1 vyre call ${tool} '${input}' 2>&1 | head -c 2500`);
+      let devId = ""; try { devId = String(JSON.parse(op("relay.devices.list")).devices[0].id); } catch { /* unlisted */ }
+      const logs = "docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do tail -n 400 \"$f\"; done' 2>&1";
+      const diag = ["== box says", boxVersion, "== relay.devices.list", op("relay.devices.list"), `== wink.device.record ${devId}`, op("wink.device.record", JSON.stringify({ id: devId })),
+        "== DEBUG lines from presence.person.pair-challenge", sh(`${logs} | grep DEBUG | tail -10`), "== relay and pairing log lines", sh(`${logs} | grep -i 'relay\\|device\\|denied\\|refus\\|pair' | tail -40`),
+        "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== docker ps", sh("docker ps -a 2>&1 | head -10")].join("\n");
       fs.writeFileSync(path.join(w.out, "update-diag.txt"), diag);
       console.log(diag);
     }
-    assert.ok(st, `the server did not come back on ${u.newVersion} within 10 minutes: ${last}`);
+    assert.ok(st, `the app could not sign in to the server on ${u.newVersion} (box says ${boxVersion || "nothing"}): ${last}`);
     assert.equal(st.current, u.newVersion, "the version changed");
     return `${notice.current} -> ${st.current}`;
   }, { needs: [U("the app asks for the update (update.apply, the Settings button's call)")] });

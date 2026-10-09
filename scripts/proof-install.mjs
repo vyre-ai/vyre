@@ -41,7 +41,7 @@ try {
   /** @type {any} */ let update = null;
   if (updateProof) {
     await run.step("update: the old release and the candidate are built and served (one throwaway key)", async () => {
-      update = await buildUpdateReleases({ work: path.join(process.env.RUNNER_TEMP || os.tmpdir(), "update-proof-releases"), oldTag: take("--old-tag", "v0.2.12"), log: path.join(out, "build-releases.log") });
+      update = await buildUpdateReleases({ work: path.join(process.env.RUNNER_TEMP || os.tmpdir(), "update-proof-releases"), oldTag: take("--old-tag", "v0.2.12"), candidateTag: take("--candidate-tag", ""), log: path.join(out, "build-releases.log") });
       return `${update.oldVersion} -> ${update.newVersion}`;
     });
   }

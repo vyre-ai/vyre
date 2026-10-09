@@ -7,6 +7,7 @@ set -eu
 HERE=$(cd "$(dirname "$0")/../../.." && pwd)
 WORK=$1
 OLD_TAG=${2:-v0.2.12}
+CAND_TAG=${3:-}   # a released tag as the candidate (the control run); empty: this checkout
 rm -rf "$WORK"; mkdir -p "$WORK/new" "$WORK/old"
 fail() { echo "build-update-releases FAILED: $*" >&2; exit 1; }
 node -e '
@@ -15,9 +16,12 @@ fs.writeFileSync(process.argv[1]+"/proof.pem",k.privateKey.export({type:"pkcs8",
 fs.writeFileSync(process.argv[1]+"/proof.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
 NEWPUB=$(cat "$WORK/proof.pub")
 
-tar -C "$HERE" --exclude=.git --exclude=node_modules --exclude=site/box -cf - . | tar -C "$WORK/new" -xf -
+if [ -n "$CAND_TAG" ]; then git -C "$HERE" archive "$CAND_TAG" | tar -C "$WORK/new" -xf - || fail "no tag $CAND_TAG in this checkout (fetch tags)"
+else tar -C "$HERE" --exclude=.git --exclude=node_modules --exclude=site/box -cf - . | tar -C "$WORK/new" -xf -; fi
+# The candidate's COPY gets one debug line in presence.person.pair-challenge (what peer and caller the box saw); this build is only ever served by this proof, never released.
+node -e 'const fs=require("fs");const f=process.argv[1];let s=fs.readFileSync(f,"utf8");const k=s.indexOf("presence.person.pair-challenge");const m="const peer = meta.peer;";const i=s.indexOf(m,k);if(k<0||i<0){console.error("debug line: anchor not found");process.exit(0)}s=s.slice(0,i+m.length)+"\n        ctx.log(\"DEBUG pair-challenge peer=\" + JSON.stringify(peer) + \" caller=\" + String(meta.caller));"+s.slice(i+m.length);fs.writeFileSync(f,s)' "$WORK/new/core/presence/module.js"
 # The candidate must be above the old line (the updater never goes back): the copy is stamped one patch up.
-node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));p.version=process.argv[2];fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+"\n")' "$WORK/new/package.json" "${NEW_VERSION:-0.2.13}"
+[ -n "$CAND_TAG" ] || node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));p.version=process.argv[2];fs.writeFileSync(process.argv[1],JSON.stringify(p,null,2)+"\n")' "$WORK/new/package.json" "${NEW_VERSION:-0.2.13}"
 CANDKEY=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/release-sig.js")
 [ -n "$CANDKEY" ] || fail "could not read the candidate's pinned key"
 for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh; do [ -f "$WORK/new/$f" ] && sed -i "s#$CANDKEY#$NEWPUB#g" "$WORK/new/$f"; done

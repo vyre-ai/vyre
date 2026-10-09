@@ -5,6 +5,11 @@
 name: install-proof
 on:
   workflow_dispatch:
+    inputs:
+      candidate_tag:
+        description: "update proof: a released tag as the candidate (the control run), empty for this checkout"
+        required: false
+        default: ""
   push:
     branches: ["work/install-proof", "work/update-proof"]
     paths: ["scripts/proof-install.mjs", "scripts/lib/proof/**", ".github/workflows/install-proof.yml"]
@@ -44,7 +49,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       # v0.2.11 (built from its tag the way a release is, signed with a throwaway key) is installed by its own installer; the app pairs with it, then asks for the update through update.apply and the box's own root unit installs this checkout.
       - name: A real update, asked for from the app
-        run: node scripts/proof-install.mjs --server installer --update --out proof-out
+        run: node scripts/proof-install.mjs --server installer --update --candidate-tag "${{ inputs.candidate_tag }}" --out proof-out
       - name: Diagnostics
         if: failure()
         run: |
