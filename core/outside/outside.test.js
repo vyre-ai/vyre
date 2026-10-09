@@ -102,7 +102,9 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
 
   // a no
   const second = await use(reg.token, "records_create", { type: "contact", fields: { name: "Nope Person" } });
-  const item2 = ((await ok("gate.held", {})).items || (await ok("gate.held", {})).held || []).find(x => /Nope Person/.test(x.summary || ""));
+  const heldNow = await ok("gate.held", {});
+  const item2 = (heldNow.items || heldNow.held || []).find(x => /Nope Person/.test(x.summary || ""));
+  assert.ok(item2, JSON.stringify({ second, heldNow }).slice(0, 700));
   await ok("gate.reject", { id: item2.id });
   assert.equal((await use(reg.token, "held_get", { held: second.json.held })).json.state, "declined");
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Nope Person").length, 0);
