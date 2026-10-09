@@ -36,7 +36,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
- *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null }) => Promise<any> | any }} o
+ *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
 export function createLentHome(o) {
@@ -85,7 +85,7 @@ export function createLentHome(o) {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
     if (!o.resume) { owed.delete(session); return; }
-    try { await o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason }); owed.delete(session); }
+    try { await o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) }); owed.delete(session); }
     catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
@@ -102,10 +102,19 @@ export function createLentHome(o) {
     for (const s of [...owed]) await resumeOwed(s);
   };
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
+  // The home's own chain: it reads a session the lender gave up from the same store, to resume it on the server. A private object, never on the wire, so nothing a peer sends can be it.
+  const HOME = Object.freeze({ space: o.space, hops: [] });
   const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, ...(o.key ? { key: o.key } : {}), authorize: async ({ chain, resource }) => {
+    if (chain === HOME) return { effect: "allow" };
     const session = String(resource).split("/checkpoint/")[1] || "";
     try { mine(chain, session); return { effect: "allow" }; } catch { return { effect: "deny" }; }
   } });
+  /** What the server reads to carry a session on: the last acknowledged checkpoint, the transcript up to it, and its files. */
+  const viewOf = (/** @type {string} */ session) => Object.freeze({
+    checkpoint: () => store.getCheckpoint(HOME, session),
+    transcript: (/** @type {number} */ from, /** @type {number} */ limit) => store.getTranscript(HOME, session, from, limit),
+    file: (/** @type {string} */ rel, /** @type {number} */ version) => store.getFile(HOME, session, rel, version),
+  });
   const sweep = () => { while (uploads.size > MAX_UPLOADS) { const k = uploads.keys().next().value; const u = uploads.get(k); uploads.delete(k); try { fs.rmSync(u.dir, { recursive: true, force: true }); } catch {} } };
 
   return {
