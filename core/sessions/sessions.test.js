@@ -38,9 +38,9 @@ import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/
 // The module harness here has no inference door: providers run on the legacy direct path. The door path is lib/door-bridge.test.js.
 process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
 // This file runs 149 cases and took over nine minutes, past the 300 s per-file limit. The cases in the driver loop
-// are dealt out to four files (this one, sessions-b/c/d.test.js, which set VYRE_SESSIONS_SHARD and import this module);
+// are dealt out to eight files (this one and sessions-b to sessions-h.test.js, which set VYRE_SESSIONS_SHARD and import this module);
 // the cases above the loop run in the first only.
-const SHARDS = 4;
+const SHARDS = 8;
 const SHARD = Number(process.env.VYRE_SESSIONS_SHARD ?? 0);
 let dealt = 0;
 const shardTest = (...a) => (dealt++ % SHARDS === SHARD ? test(...a) : undefined);

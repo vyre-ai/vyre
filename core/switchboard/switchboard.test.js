@@ -30,8 +30,8 @@ const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", 
 fs.chmodSync(FAKE, 0o755);
 
 // 55 cases ran 367 s, past the 300 s per-file limit. They are dealt out to two files: this one, and
-// switchboard-b.test.js, which sets VYRE_SWITCHBOARD_SHARD=1 and imports this module.
-const SHARDS = 2;
+// switchboard-b, -c and -d.test.js, which set VYRE_SWITCHBOARD_SHARD=1 to 3 and import this module.
+const SHARDS = 4;
 const SHARD = Number(process.env.VYRE_SWITCHBOARD_SHARD ?? 0);
 let dealt = 0;
 const shardTest = (...a) => (dealt++ % SHARDS === SHARD ? test(...a) : undefined);

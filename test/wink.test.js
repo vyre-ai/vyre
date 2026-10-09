@@ -5,11 +5,13 @@
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
-// This file has 46 cases of 5 to 25 s each, which ran past the 300 s per-file limit. The cases are dealt out to 6 files (wink.test.js and its -b.. siblings, which set VYRE_WINK_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+// This file has 46 cases of 5 to 25 s each, which ran past the 300 s per-file limit. The cases are dealt out to 7 files (wink.test.js and its -b.. siblings, which set VYRE_WINK_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
 const SHARDS = 6;
-const SHARD = Number(process.env.VYRE_WINK_SHARD ?? 0);
+const SHARD_NAME = String(process.env.VYRE_WINK_SHARD ?? "0"), SHARD = Number(SHARD_NAME);
 let dealt = 0;
-const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
+// The camera reader's case takes about three minutes whatever the machine (the phone's join waits out a window after the typed-back code), so it runs alone, in wink-g.test.js ("slow"); the rest are dealt out.
+const SLOW = /the camera reader/;
+const shardTest = (/** @type {any[]} */ ...a) => (SLOW.test(String(a[0])) ? SHARD_NAME === "slow" : dealt++ % SHARDS === SHARD) ? /** @type {any} */ (test)(...a) : undefined;
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
