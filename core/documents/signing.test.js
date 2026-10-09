@@ -33,7 +33,7 @@ test("the builder refuses what it cannot make a Flow from", () => {
 test("a matter entering the stage gets a signing request and its link by email; the signed event moves it on", async () => {
   /** @type {any[]} */ const services = [], calls = [];
   const w = await world({ cat: cat(), ports: {
-    service: async (/** @type {any} */ q) => { services.push(q); return { status: 200, data: [{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }] }; },
+    service: async (/** @type {any} */ q) => { services.push(q); const json = [{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }]; return { status: 200, ok: true, headers: {}, body: JSON.stringify(json), json, truncated: false }; },
     call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => { calls.push({ action, resource, input }); return { held: "gi_1" }; },
   } });
   await install(w, signingFlow(OPTS));
