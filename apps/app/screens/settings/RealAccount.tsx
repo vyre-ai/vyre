@@ -3,7 +3,7 @@
 // The sample's PIN switch, defaults and retention have no tool on the box, so they are not here.
 import { useCallback, useEffect, useState } from "react";
 import { HIDDEN, claimBlocked } from "../shell/rc";
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
@@ -120,7 +120,7 @@ export function RealAbout() {
         </Card>
       ) : null}
       <Group title="Open-source credits">
-        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} /></View>)}</Card>
+        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
     </Page>

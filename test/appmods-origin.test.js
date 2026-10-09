@@ -1,5 +1,5 @@
 // @ts-check
-// An app module's origin is SAME-SITE with Vyre's (docuseal.alex.vyre.run and alex.vyre.run), and same-site is not same-origin: a page on the app's origin can make the browser send requests to Vyre with
+// An app module's origin is SAME-SITE with Vyre's (documents.alex.vyre.run and alex.vyre.run), and same-site is not same-origin: a page on the app's origin can make the browser send requests to Vyre with
 // Vyre's SameSite cookie. This proves Vyre does not take that cookie as the person's: through the daemon's real request path, a request that carries the cookie and says it was started by another
 // origin (Sec-Fetch-Site: same-site, Origin: the app's address) is refused for a read of person data and for a person's own change alike; the cookie has no Domain (the __Host- prefix makes one
 // impossible), so the browser never sends it to the app's host and the app's page cannot read it; and the same cookie from Vyre's own page still works.
@@ -14,7 +14,7 @@ import { COOKIE } from "../core/presence/person.js";
 import { tempHome, present } from "./helpers.js";
 
 const DEVICE = "abcdefghijklmnop";
-const APP = { origin: "https://docuseal.alex.vyre.run", "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" };
+const APP = { origin: "https://documents.alex.vyre.run", "sec-fetch-site": "same-site", "sec-fetch-mode": "cors" };
 
 async function box(t) {
   const root = tempHome(t);

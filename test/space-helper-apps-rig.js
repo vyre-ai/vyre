@@ -49,12 +49,12 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
   if (sub === "down") { fs.rmSync(F + "/app-running-" + m, { force: true }); fs.rmSync(F + "/app-net-" + m, { force: true }); process.exit(0); }
   process.exit(0);
 }
-if (a[0] === "pull" && a[a.length - 1].includes("docuseal")) {
+if (a[0] === "pull" && a[a.length - 1].includes("documents")) {
   if (has("pull-fails-app")) { process.stderr.write("pull access denied\\n"); process.exit(1); }
   fs.appendFileSync(F + "/pulled", a[a.length - 1] + "\\n"); fs.writeFileSync(F + "/app-image-have", "1"); process.exit(0);
 }
 // the app's image is on this machine only after a pull (or when a test says it already is)
-if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("docuseal")) process.exit(has("app-image-have") ? 0 : 1);
+if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("documents")) process.exit(has("app-image-have") ? 0 : 1);
 if (a[0] === "exec" && a.includes("node") && a.some(x => x.includes("config.json"))) { if (has("public")) out(rd("public")); process.exit(0); }
 if (a[0] === "exec") {
   const ei = a.indexOf("--env-file");
@@ -170,16 +170,16 @@ export function appRig(t) {
   fs.writeFileSync(path.join(F, "daemon-uid"), String(process.getuid()));
   const priv = path.join(r.SP, "private");
   const appFw = (pid = "4242") => { try { return JSON.parse(fs.readFileSync(path.join(F, "appfw-" + pid), "utf8")); } catch { return []; } };
-  /** An `app-up docuseal` request, run. */
+  /** An `app-up documents` request, run. */
   // the up-lane rate limit is the Space helper's own (six a minute, shared with Twenty's `up`); a test that asks for many ups lifts it
   const helper = () => r.run(["space-helper-run"], { VYRE_SPACES_UP_PER_MIN: "1000" });
-  const appUp = async (m = "docuseal") => { const id = r.ask(`app-up ${m}\n`); const h = /** @type {any} */ (await helper()); return { id, h, st: r.status(id) }; };
+  const appUp = async (m = "documents") => { const id = r.ask(`app-up ${m}\n`); const h = /** @type {any} */ (await helper()); return { id, h, st: r.status(id) }; };
   const catalogLine = () => fs.readFileSync(path.join(priv, "app-modules"), "utf8");
   return { ...r, helper, priv, appFw, appUp, catalogLine, REPO };
 }
 
 /** A list line for the tests, with fields replaced by name. @param {Record<string, string>} [over] */
 export function lineOf(over = {}) {
-  const f = { name: "docuseal", image: "docuseal/docuseal:3.3.1@sha256:" + "e".repeat(64), port: "3000", mem: "1536", cpus: "1.5", pids: "512", hook: "43001", script: "docuseal-bootstrap.rb", exec: "bin/rails+runner", outs: "api_token+login_password", hpath: "/", hok: "200+302", hstart: "120", ...over };
+  const f = { name: "documents", image: "docuseal/docuseal:3.3.1@sha256:" + "e".repeat(64), port: "3000", mem: "1536", cpus: "1.5", pids: "512", hook: "43001", script: "docuseal-bootstrap.rb", exec: "bin/rails+runner", outs: "api_token+login_password", hpath: "/", hok: "200+302", hstart: "120", ...over };
   return Object.values(f).join(" ");
 }

@@ -13,10 +13,10 @@ type Preview = { title: string; words: { label: string; value: string }[]; asked
  * draws the frame with Vyre's own components: a list, a board, a summary, a detail or a form. Actions go back as ids (views.act). No module code runs in this window. An action that sends something
  * outward shows its exact words first and sends only on a second yes.
  */
-export function ViewHost({ module, view, label }: { module: string; view: string; label: string }) {
+export function ViewHost({ module, view, label, initialQ }: { module: string; view: string; label: string; initialQ?: string }) {
   const [frame, setFrame] = useState<Frame | null>(null);
   const [trail, setTrail] = useState<Frame[]>([]);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQ ?? "");
   const [arg, setArg] = useState<{ name?: string; placeholder?: string } | null>(null);
   const [error, setError] = useState("");
   const [note, setNote] = useState<{ tone: "plain" | "warn" | "err"; text: string } | null>(null);
@@ -30,7 +30,7 @@ export function ViewHost({ module, view, label }: { module: string; view: string
     try { setFrame(await tool<Frame>("views.get", getInput({ module, view, q: text }))); setTrail([]); }
     catch (e) { setError(e instanceof Error ? e.message : "This view did not load."); }
   }, [module, view]);
-  useEffect(() => { void load(""); }, [load]);
+  useEffect(() => { void load(initialQ ?? ""); }, [load, initialQ]);
   useEffect(() => {
     tool<{ commands: { module: string; id: string; arg?: { name?: string; placeholder?: string } }[] }>("views.list", {}).then((r) => setArg(r.commands.find((c) => c.module === module && c.id === view)?.arg ?? null)).catch(() => {});
   }, [module, view]);

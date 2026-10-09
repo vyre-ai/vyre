@@ -44,6 +44,8 @@ export const SEEING: { id: string; name: string; works: string; family: AvatarFa
 export const RECORD_COUNTS: Record<string, number> = { contact: 124, matter: 38, trip: 6 };
 
 export const VERSION = "0.3";
-export const CREDITS = [
+export const CREDITS: { name: string; line: string; href?: string }[] = [
   { name: "Twenty", line: "The business-records engine behind Vyre's own gateway. Its server is AGPL-3.0 and its SDK packages are MIT." },
+  // The signing engine behind Documents (the app module that sends a document to be signed). AGPL-3.0: its source is public, and the link is the obligation.
+  { name: "DocuSeal", line: "The open-source signing engine behind Documents. AGPL-3.0; its source is at github.com/docusealco/docuseal.", href: "https://github.com/docusealco/docuseal" },
 ];

@@ -1,7 +1,7 @@
 {
   "name": "appmods",
   "version": "0.1.0",
-  "description": "Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal first) that run on this server, with their screens, their API as a Connection and their events.",
+  "description": "Apps from the open-source world as modules: a catalog of pinned apps (Documents first) that run on this server, with their screens, their API as a Connection and their events.",
   "roles": ["box"],
   "requires": ["vault"],
   "needs": { "daemon": ["flowsHost"], "vault": ["per-app"], "kernel": { "actions": ["drive.write", "drive.read"], "prefixes": ["file/Signed"] } },
@@ -25,30 +25,30 @@
       { "name": "appmods.connection", "effect": "read", "reach": "anyone" }
     ]
   },
-  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.started", "appmods.stopped", "docuseal.signed", "docuseal.form-completed"] },
+  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.started", "appmods.stopped", "documents.signed", "documents.form-completed"] },
   "shows": { "cli": [] },
   "views": {
-    "docuseal-waiting": {
-      "title": "Waiting for signature", "icon": "clock", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda"],
+    "documents-waiting": {
+      "title": "Waiting for signature", "icon": "clock", "root": true, "keywords": ["sign", "signature", "documents", "contract", "nda"],
       "list": {
-        "connection": "docuseal", "operation": "submissions.list", "input": { "query": { "status": "pending", "limit": 50 } },
+        "connection": "documents", "operation": "submissions.list", "input": { "query": { "status": "pending", "limit": 50 } },
         "map": { "rows": "body.data", "id": "id", "title": "template.name", "subtitle": "submitters.0.email", "accessory": "status" },
         "empty": "Nothing is waiting for a signature."
       }
     },
-    "docuseal-send": {
-      "title": "Send for signature", "icon": "paperplane", "root": true, "keywords": ["sign", "signature", "docuseal", "contract", "nda", "send"],
+    "documents-send": {
+      "title": "Send for signature", "icon": "paperplane", "root": true, "arg": { "name": "q", "placeholder": "Signer's e-mail" }, "keywords": ["sign", "signature", "documents", "contract", "nda", "send"],
       "list": {
-        "connection": "docuseal", "operation": "templates.list", "input": { "query": { "limit": 50 } },
+        "connection": "documents", "operation": "templates.list", "input": { "query": { "limit": 50 } },
         "map": { "rows": "body.data", "id": "id", "title": "name", "subtitle": "folder_name" },
-        "empty": "Make a template in DocuSeal first: open DocuSeal from the Apps screen.",
+        "empty": "Make a template first: open Documents from the Apps screen.",
         "actions": [{ "id": "send", "title": "Send for signature", "form": "send" }]
       },
       "forms": {
         "send": {
           "title": "Send {title} for signature",
-          "fields": [{ "name": "email", "label": "Signer's e-mail", "type": "text", "required": true }, { "name": "name", "label": "Signer's name", "type": "text" }],
-          "submit": { "title": "Send", "connection": "docuseal", "operation": "submissions.create", "input": { "body": { "template_id": "{id}", "send_email": false, "submitters": [{ "email": "{email}", "name": "{name}" }] } }, "outward": true }
+          "fields": [{ "name": "email", "label": "Signer's e-mail", "type": "text", "required": true, "default": "{q}" }, { "name": "name", "label": "Signer's name", "type": "text" }],
+          "submit": { "title": "Send", "connection": "documents", "operation": "submissions.create", "input": { "body": { "template_id": "{id}", "send_email": false, "submitters": [{ "email": "{email}", "name": "{name}" }] } }, "outward": true }
         }
       }
     }

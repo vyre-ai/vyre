@@ -36,13 +36,16 @@ export function checkAppModule(m) {
   /** @type {{ path: string, message: string }[]} */ const out = [];
   const bad = (/** @type {string} */ path, /** @type {string} */ message) => out.push({ path, message });
   if (!isObj(m)) return [{ path: "", message: "a manifest is an object" }];
-  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "drive", "notes", "license", "source", "$schema"];
+  const known = ["name", "version", "vyre", "description", "app", "connection", "events", "screens", "drive", "notes", "license", "source", "kit", "title", "$schema"];
   for (const k of Object.keys(m)) if (!known.includes(k) && !k.startsWith("x-")) bad(k, `${k} is not part of an app module manifest`);
   if (typeof m.name !== "string" || !NAME_RE.test(m.name)) bad("name", "a name is lowercase letters, digits and dashes, 2 to 31 characters");
   if (typeof m.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(m.version)) bad("version", "version is semver");
   if (m.vyre !== undefined && m.vyre !== "1") bad("vyre", 'vyre is "1"');
   if (typeof m.description !== "string" || !m.description.trim() || m.description.length > 200) bad("description", "one plain sentence, at most 200 characters");
   if (m.license !== undefined && typeof m.license !== "string") bad("license", "license is a string");
+  // The Kit the app ships (record types and a Flow), a file beside the manifest, proposed to the owner at install; and the name the person sees, which is never the open-source engine's own.
+  if (m.kit !== undefined && !(typeof m.kit === "string" && /^[a-z0-9][a-z0-9._-]*\.json$/.test(m.kit))) bad("kit", "kit is the file name of the Kit, in the catalog folder");
+  if (m.title !== undefined && !(typeof m.title === "string" && m.title.trim() && m.title.length <= 40)) bad("title", "title is the name people see, up to 40 characters");
   if (m.source !== undefined && !(typeof m.source === "string" && /^https:\/\//.test(m.source))) bad("source", "source is an https address");
 
   // The Drive folders the app's files may be put in (the owner agrees at install; the module is granted these and no others).
@@ -206,7 +209,7 @@ export function parseAppModule(m) {
 export function cardOf(m) {
   const a = m.app;
   return {
-    name: m.name, version: m.version, description: m.description, license: m.license || null, source: m.source || null,
+    name: m.name, title: m.title || m.name, version: m.version, description: m.description, license: m.license || null, source: m.source || null,
     runs: `${String(a.image).split("@")[0]} in a container on this server`,
     pinned: String(a.image).split("@")[1],
     uses: [`up to ${a.limits.memoryMb} MB of memory`, `${a.limits.cpus} CPU`, ...(a.volumes || []).map((/** @type {any} */ v) => `a folder of its own for ${v.path}`), ...(a.secrets || []).length ? ["its own keys, made now and kept in your Vault"] : []],
@@ -214,6 +217,7 @@ export function cardOf(m) {
     saves: (m.drive || []).length ? `the files it gets back, in ${(m.drive || []).map((/** @type {string} */ d) => `${d}/`).join(" and ")} in your Drive` : null,
     opensFor: "the owner and the admins of this Space",
     notes: m.notes || [],
+    adds: m.kit ? "A Document record for each document, linked to the signer and the project, and a Flow that files each signed one: both wait for your own yes" : null,
     shows: (m.screens || []).map((/** @type {any} */ s) => s.label),
     screensNeed: (m.screens || []).length ? "Its screens open on your server's own address under your Vyre name, so they need a server with a public address. A server with none still runs the app for your Flows and its webhooks, but cannot show its screens." : null,
     tells: (m.events || []).map((/** @type {any} */ e) => e.event),

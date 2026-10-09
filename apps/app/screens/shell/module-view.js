@@ -21,9 +21,9 @@ export function missingFields(frame, values) {
   return (Array.isArray(frame && frame.fields) ? frame.fields : []).filter((/** @type {any} */ f) => f.required && !String(values[f.name] ?? "").trim()).map((/** @type {any} */ f) => String(f.label || f.name));
 }
 
-/** The form values to start from: each field empty, or its first choice for a choice with a default. @param {any} frame */
+/** The form values to start from: the field's own default when the server gave one (the signer's e-mail from a record), else empty, or its first choice for a required choice. @param {any} frame */
 export function initialValues(frame) {
-  return Object.fromEntries((Array.isArray(frame && frame.fields) ? frame.fields : []).map((/** @type {any} */ f) => [f.name, f.type === "choice" && Array.isArray(f.choices) && f.choices[0] && f.required ? String(typeof f.choices[0] === "string" ? f.choices[0] : f.choices[0].id ?? f.choices[0].value ?? "") : ""]));
+  return Object.fromEntries((Array.isArray(frame && frame.fields) ? frame.fields : []).map((/** @type {any} */ f) => [f.name, typeof f.default === "string" && f.default ? f.default : f.type === "choice" && Array.isArray(f.choices) && f.choices[0] && f.required ? String(typeof f.choices[0] === "string" ? f.choices[0] : f.choices[0].id ?? f.choices[0].value ?? "") : ""]));
 }
 
 /**

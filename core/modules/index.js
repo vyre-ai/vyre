@@ -625,6 +625,8 @@ const RELAY_ALLOWED = Object.freeze({
   work: ["spaces.storage."],
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
+  // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
+  appmods: ["flows.kit.propose"],
 });
 
 export class Registry {

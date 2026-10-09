@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 14 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 16 | 6 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 10 | 0 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 11 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
@@ -136,7 +136,7 @@ The theme preset, the scheme and the design tokens as hub settings (ADR 0035), c
 
 ## appmods
 
-Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal first) that run on this server, with their screens, their API as a Connection and their events.
+Apps from the open-source world as modules: a catalog of pinned apps (Documents first) that run on this server, with their screens, their API as a Connection and their events.
 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
@@ -155,7 +155,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [10](tools.md#approvals), 2 of them only for other modules
+- Tools: [11](tools.md#approvals), 3 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`

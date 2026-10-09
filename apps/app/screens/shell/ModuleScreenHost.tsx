@@ -12,7 +12,7 @@ import { ViewHost } from "./ViewHost";
  * A module's screen, from the sidebar. It lives on the module's own origin: the app asks the box for a one-time ticket that signs this person in there, then shows the page in the main pane
  * where the platform can embed it (a browser, the Mac and Windows windows) and in a new window where it cannot. Until the box can give a ticket (no app-module host on it) the plain address is used.
  */
-export function ModuleScreenHost({ module, screen }: { module: string; screen: string }) {
+export function ModuleScreenHost({ module, screen, q }: { module: string; screen: string; q?: string }) {
   const { modules, loaded } = useSidebar();
   const drawn = (modules as { module: string; screens: { id: string; view?: boolean }[] }[]).find((m) => m.module === module)?.screens.find((s) => s.id === screen)?.view;
   const plain = drawn ? null : screenUrl(modules as never, module, screen);
@@ -28,7 +28,7 @@ export function ModuleScreenHost({ module, screen }: { module: string; screen: s
   const how = openHow(Platform.OS);
   useEffect(() => { if (url && how === "window") Linking.openURL(url).catch((e) => setFailed(e instanceof Error ? e.message : "The window did not open.")); }, [url, how]);
   if (!loaded) return <Page title={label} back="/u/now"><Text tone="muted">Loading.</Text></Page>;
-  if (drawn) return <ViewHost module={module} view={screen} label={label} />;
+  if (drawn) return <ViewHost module={module} view={screen} label={label} {...(q ? { initialQ: q } : {})} />;
   if (!plain) return <Page title={label} back="/u/now"><Banner>This screen is not available here yet. Its module may not be installed on this server, or the server has not given it an address.</Banner></Page>;
   if (how === "pane") {
     return (
