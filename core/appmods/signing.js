@@ -80,3 +80,43 @@ export function signerCookies(header) {
 export function handOn(c) {
   return c.split(";").filter((p, i) => i === 0 || !/^\s*domain\s*=/i.test(p)).join(";");
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------- the signed copy's link
+
+import crypto from "node:crypto";
+
+/** Where an expiring link to the signed copy lives on the app's host. */
+export const SIGNED = "/signed/";
+export const MAX_LINK_DAYS = 30;
+const b64u = (/** @type {Buffer} */ b) => b.toString("base64url");
+const mac = (/** @type {Buffer} */ key, /** @type {string} */ exp, /** @type {string} */ slug) => b64u(crypto.createHmac("sha256", key).update(`vyre-signed-link\n${exp}\n${slug}`).digest());
+
+/**
+ * A link to the signed copy of one document: the signer's slug and an end time, under a key only the box holds. The signing page's own address keeps working; this is the only way to the finished PDF.
+ * @param {Buffer} key @param {string} slug @param {number} expiresMs
+ */
+export function mintLink(key, slug, expiresMs) {
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw new Error("not a signer's slug");
+  const exp = String(Math.floor(expiresMs / 1000));
+  return `${exp}.${slug}.${mac(key, exp, slug)}`;
+}
+
+/** @param {Buffer} key @param {string} token @param {number} now @returns {{ ok: true, slug: string } | { ok: false, expired: boolean }} */
+export function checkLink(key, token, now) {
+  const m = /^(\d{9,11})\.([A-Za-z0-9_-]{1,80})\.([A-Za-z0-9_-]{43})$/.exec(String(token));
+  if (!m) return { ok: false, expired: false };
+  const want = Buffer.from(mac(key, m[1], m[2])), got = Buffer.from(m[3]);
+  if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return { ok: false, expired: false };
+  return Number(m[1]) * 1000 > now ? { ok: true, slug: m[2] } : { ok: false, expired: true };
+}
+
+/** What the signed-copy answer looks like when the link has run out: plain, without the slug, and it says what to do. */
+export const EXPIRED_HTML = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Link expired</title><body style="font:16px/1.5 system-ui,sans-serif;max-width:32rem;margin:15vh auto;padding:0 1rem"><h1>This link has expired</h1><p>Links to a signed copy last 30 days. Ask whoever sent you the document for a new one.</p></body>';
+
+/** The URLs of the signed files in the app's answer about a finished document, whatever its shape: every string that is a file path. @param {unknown} v @returns {string[]} */
+export function filePaths(v) {
+  /** @type {string[]} */ const out = [];
+  const walk = (/** @type {any} */ x, d = 0) => { if (d > 5) return; if (typeof x === "string") { if (/^\/(?:file|blobs_proxy)\/[A-Za-z0-9_=%.-]+\/[A-Za-z0-9_.~%\/-]+$/.test(x) && !x.includes("..")) out.push(x); } else if (Array.isArray(x)) x.forEach(y => walk(y, d + 1)); else if (x && typeof x === "object") Object.values(x).forEach(y => walk(y, d + 1)); };
+  walk(v);
+  return [...new Set(out)];
+}

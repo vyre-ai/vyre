@@ -8,7 +8,7 @@
 //   - Nothing but the app's origin is ever fetched, and the app's `Location` redirects to its own address are put back on this origin.
 import http from "node:http";
 import crypto from "node:crypto";
-import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS } from "./signing.js";
+import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS, SIGNED, checkLink, EXPIRED_HTML, filePaths } from "./signing.js";
 
 export const ENTER = "/__vyre/enter";
 export const COOKIE = "vyre_app";
@@ -92,8 +92,8 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[] }, credentials: () => Promise<Record<string, string>> }>,
- *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string> }} o
+ * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
+ *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
 export function createHostProxy(o) {
@@ -162,6 +162,29 @@ export function createHostProxy(o) {
         res.end(method === "HEAD" ? undefined : css);
         return true;
       }
+    }
+    // The signed copy, by an expiring link only: /signed/<token>[/<n>]. The app's own address for the finished file is not public (the signer's slug opens the signing page, not the PDF).
+    if (sign && !ticketed && app.signing && app.signing.signed && o.linkKey && method === "GET" && url.pathname.startsWith(SIGNED)) {
+      const m = /^\/signed\/([^/]+)(?:\/(\d))?$/.exec(url.pathname);
+      const key = o.linkKey(mh.name);
+      const c = m && key ? checkLink(key, m[1], (o.now || Date.now)()) : null;
+      if (!c) return plain(404, "not found");
+      if (!c.ok) {
+        if (c.expired) { res.writeHead(410, { "content-type": "text/html; charset=utf-8", ...publicHeaders(true) }); res.end(EXPIRED_HTML); return true; }
+        return plain(404, "not found");
+      }
+      try {
+        const list = await upstream(app.origin, "GET", app.signing.signed.list.replace(":slug", c.slug), { accept: "application/json", "accept-encoding": "identity" });
+        const files = filePaths(JSON.parse((await readAll(list, 1024 * 1024)).toString("utf8") || "null"));
+        const at = files[Number(m && m[2] || 0)];
+        if (!at) return plain(404, "not found");
+        const f = await upstream(app.origin, "GET", at, { "accept-encoding": "identity" });
+        if ((f.statusCode || 0) !== 200) { await readAll(f).catch(() => {}); return plain(502, "The signed copy is not available right now. Try again in a minute."); }
+        const name = at.split("/").pop() || "signed.pdf";
+        res.writeHead(200, { "content-type": String(f.headers["content-type"] || "application/pdf"), "content-disposition": `attachment; filename="${name.replace(/[^A-Za-z0-9._-]/g, "_")}"`, ...(f.headers["content-length"] ? { "content-length": String(f.headers["content-length"]) } : {}), ...publicHeaders(false), "cache-control": "no-store" });
+        f.pipe(res);
+        return true;
+      } catch (e) { log(`appmods: ${mh.name} signed copy: ${/** @type {Error} */ (e).message}`); return plain(502, "The signed copy is not available right now. Try again in a minute."); }
     }
     const exact = ["GET", "HEAD"].includes(method) && Array.isArray(app.public) && app.public.includes(url.pathname);
     const signing = Boolean(sign && sign.open(method, url.pathname));

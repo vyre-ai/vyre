@@ -3,7 +3,7 @@
 //
 // When a <type> enters <out stage>: if it has not been sent yet, make the signing request on the Documents connection (no e-mail from the signing engine), remember its number on the record, email
 // the signer their link through Comms (held for the person's yes, so the final words are theirs), then WAIT for Documents to say that document was signed and move the record to <signed stage>.
-// The signed copy is filed on the client by the Documents Flow that ships with the app. Nothing here runs anything; it only returns the definition.
+// The signed copy is filed on the client by the Documents Flow that ships with the app, and the signer is emailed a link to it that stops working after 30 days. Nothing here runs anything; it only returns the definition.
 //
 // (An expression that calls a function on an indexed member is too deep for the Flow language, so the number is joined to text with +.)
 
@@ -42,6 +42,10 @@ export function signingFlow(o) {
           body: { expr: `"Your document is ready to sign: ${base}/sign/" + ${first}.submission_id + "/" + ${first}.slug` } } },
         { id: "signed", kind: "wait", event: "documents.signed", where: `"" + event.data.submission == "" + ${first}.submission_id`, timeout_ms: days * 86_400_000, on_timeout: "fail" },
         { id: "move", kind: "stage", type, record: { expr: "trigger.id" }, to: o.signed_stage },
+        // the finished copy goes to the signer by a link that stops working after 30 days (they ask for a new one by replying); both are the person's yes
+        { id: "copy", kind: "call", action: "documents.signed.link", resource: "vyre://space/documents", input: { slug: { expr: `${first}.slug` }, days: 30 } },
+        { id: "thanks", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: { expr: mine }, subject: "Your signed copy",
+          body: { expr: '"Thank you for signing. Your signed copy is here, and the link works for 30 days (reply if you need a new one): " + steps.copy.url' } } },
       ], else: [] },
     ],
   };

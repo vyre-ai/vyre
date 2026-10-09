@@ -14,6 +14,7 @@ import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { signingBrand } from "../../lib/brand/profile.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -27,6 +28,8 @@ export const MIGRATIONS = [
    );`,
   `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
   `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
+  // the key an app's expiring links to a signed copy are made under; it never leaves the box
+  `CREATE TABLE appmods_link_keys (name TEXT PRIMARY KEY, key BLOB NOT NULL);`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -322,8 +325,17 @@ export default {
     const brandCss = async () => {
       try { const r = await ctx.call("brand.resolve", {}); return r && !r.error && r.data ? signingBrand(r.data) : ""; } catch { return ""; }
     };
+    /** The key an app's signed-copy links are made under: made once, kept in the box's own store. @param {string} name */
+    const linkKey = name => {
+      const have = /** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name));
+      if (have) return Buffer.from(have.key);
+      const key = crypto.randomBytes(32);
+      db.prepare("INSERT OR IGNORE INTO appmods_link_keys (name, key) VALUES (?, ?)").run(name, key);
+      return Buffer.from(/** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name)).key);
+    };
     const hostProxy = createHostProxy({
       brand: brandCss,
+      linkKey,
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
@@ -377,6 +389,23 @@ export default {
         const here = originFor(r.name, base);
         const t = tickets.issue(r.name, new URL(here).host, screen ? screen.path : "/");
         return { url: `${here}${ENTER}?t=${t}`, host: new URL(here).host };
+      },
+    });
+    ctx.tool("appmods.signed.link", {
+      internal: true, callers: ["module"],
+      description: "An expiring link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 30, default 30) } -> { url, expires }. Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else.",
+      input: obj({ name: str, slug: str, days: { type: "integer" } }, ["name", "slug"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module makes a link to its signed copies", "denied");
+        const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
+        const m = known(name);
+        if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link", "unsupported");
+        const days = i.days === undefined ? MAX_LINK_DAYS : i.days;
+        if (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days`, "bad_input");
+        const expires = Date.now() + days * 86_400_000;
+        let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
+        return { url: `${originFor(name, baseHost())}${SIGNED}${token}`, expires };
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({

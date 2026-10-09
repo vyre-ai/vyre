@@ -98,6 +98,20 @@ export function registerDocuments(ctx) {
       return { path, version: put.version, size: out.length, sha256, format, template: tname, template_version: tver, used, ...(rec ? { record: rec } : { record: null, note: "no Document record type here yet: install Documents from Apps to file these on the client" }) };
     });
 
+  ctx.tool("documents.signed.link", {
+    description: "A link to the signed copy of a finished document that stops working after 30 days (or sooner): { slug (the signer's, from documents.send or the signing request), days? (1 to 30) } -> { url, expires }. The signing page's own address does not open the finished file; this does, for the time you give it. Call it again for a new one. Outward: it makes the finished file reachable by whoever holds the link.",
+    input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const slug = String(i.slug || "");
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw refuse("slug is the signer's code from the signing request", "bad_input");
+      const r = await ctx.call("appmods.signed.link", { name: "documents", slug, ...(i.days !== undefined ? { days: i.days } : {}) });
+      if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+      return r.data;
+    },
+  });
+
   ctx.tool("documents.signing.flow", {
     description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, base, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. When a record of that type enters out_stage it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (held for your yes), waits for the signature and moves the record to signed_stage. Nothing is created: define it with the Flows tools.",
     input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, base: str, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id", "base"]),

@@ -33,6 +33,12 @@
         "name": "documents.signing.flow",
         "effect": "read",
         "reach": "anyone"
+      },
+      {
+        "name": "documents.signed.link",
+        "outward": true,
+        "effect": "write",
+        "reach": "anyone"
       }
     ]
   },
@@ -60,6 +66,19 @@
           "sha256": "string",
           "format": "string",
           "record": "string"
+        }
+      },
+      {
+        "name": "documents.signed.link",
+        "label": "Make a 30-day link to the signed copy",
+        "outward": true,
+        "inputs": {
+          "slug": "string",
+          "days": "number"
+        },
+        "outputs": {
+          "url": "string",
+          "expires": "number"
         }
       }
     ]
