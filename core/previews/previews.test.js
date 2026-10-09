@@ -317,3 +317,47 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
   assert.equal(await direct({ "x-vyre-viewer": "eyJ3IjoiZXZpbCJ9.forged" }), 401, "a local process cannot say who it is");
   assert.equal((await call("previews.open", { title: "Plain", path: path.join(dir, "plain.html") })).data.preview.source, "files");
 });
+
+test("a React page: a .jsx file, or a folder with App.jsx, is built and mounted; its own sibling files, a broken file and an import the list does not have each say so plainly", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli") => d.registry.call(tool, input, caller);
+  const frontPort = (await call("appmods.front", {}, "module:previews")).data.port;
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-pj-")));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, "App.jsx"), `import { useState } from "react";\nimport Card from "./Card.jsx";\nexport default function App() { const [n] = useState(1); return <Card n={n} />; }\n`);
+  fs.writeFileSync(path.join(dir, "Card.jsx"), `export default function Card({ n }) { return <div className="p-4">card {n}</div>; }\n`);
+  const browse = async (/** @type {string} */ id) => { const u = new URL((await call("previews.url", { id })).data.url); const enter = /** @type {any} */ (await front(frontPort, u.host, u.pathname + u.search)); const cookie = String(enter.headers["set-cookie"]).split(";")[0]; return (/** @type {string} */ p) => /** @type {Promise<any>} */ (front(frontPort, u.host, p, { cookie })); };
+
+  const pv = await call("previews.open", { title: "Card", path: dir, capabilities: { user: {} } });
+  const get = await browse(pv.data.id);
+  const home = await get("/");
+  assert.equal(home.status, 200);
+  assert.match(home.headers["content-type"], /text\/html/);
+  assert.match(home.body, /<script type="importmap">/);
+  assert.match(home.body, /<script src="\/__vyre\/claude\.js"><\/script>/, "a page that declared capabilities gets the bridge");
+  assert.match(home.body, /import\("\/App\.jsx"\)/);
+  const app = await get("/App.jsx");
+  assert.match(app.headers["content-type"], /javascript/);
+  assert.match(app.body, /from "\.\/Card\.jsx"/);
+  assert.match(app.body, /react\/jsx-runtime/);
+  assert.match((await get("/Card.jsx")).body, /className: "p-4"/, "its own sibling files are built too");
+
+  // a broken file and an import the list does not have each say so, as the error the page shows
+  fs.writeFileSync(path.join(dir, "Card.jsx"), "export default function Card() {\n  return <div>\n}\n");
+  assert.match((await get("/Card.jsx")).body, /^throw new Error\(".*Card\.jsx:\d+: /);
+  fs.writeFileSync(path.join(dir, "Card.jsx"), `import x from "left-pad";\nexport default () => <p>{x}</p>;\n`);
+  assert.match((await get("/Card.jsx")).body, /which Vyre does not provide/);
+
+  // a single .tsx file is the preview, and a plain page (no capabilities) gets no bridge
+  fs.writeFileSync(path.join(dir, "Solo.tsx"), "export default function Solo(): JSX.Element { return <i>solo</i>; }\n");
+  const solo = await call("previews.open", { title: "Solo", path: path.join(dir, "Solo.tsx") });
+  const getSolo = await browse(solo.data.id);
+  const page = await getSolo("/");
+  assert.match(page.body, /import\("\/Solo\.tsx"\)/);
+  assert.ok(!page.body.includes("claude.js"));
+  assert.ok(!/: JSX\.Element/.test((await getSolo("/Solo.tsx")).body));
+});

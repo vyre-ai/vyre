@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
+import { build, entryIn, shell, failing, JSX_EXT } from "./jsx.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -70,8 +71,24 @@ export function createStatic(o) {
       }
       if (!["GET", "HEAD"].includes(String(req.method))) { res.writeHead(405, { allow: "GET, HEAD" }); return void res.end("method not allowed"); }
       // A preview of one file serves that file at "/" (and its own folder's files beside it); a folder serves itself.
-      const f = url.pathname === "/" && pv.file ? pv.file : resolveIn(pv.root, url.pathname);
+      let f = url.pathname === "/" && pv.file ? pv.file : resolveIn(pv.root, url.pathname);
+      const base0 = { "cache-control": "no-store", "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" };
+      // A React page: a .jsx or .tsx file as the preview (or a folder with index.jsx and no index.html) is shown by a small page that mounts its default export.
+      if (url.pathname === "/" && (!f || JSX_EXT.test(f))) {
+        const entry = f ? path.relative(pv.root, f) : (!pv.file ? entryIn(pv.root) : null);
+        if (entry && JSX_EXT.test(entry)) {
+          const html = shell({ title: path.basename(entry).replace(JSX_EXT, ""), entry: entry.split(path.sep).map(encodeURIComponent).join("/"), bridge: pv.caps });
+          res.writeHead(200, { ...base0, "content-type": "text/html; charset=utf-8" });
+          return void res.end(req.method === "HEAD" ? undefined : html);
+        }
+      }
       if (!f) return void gone();
+      if (JSX_EXT.test(f)) {
+        // a .jsx, .tsx or .ts file asked for as a module: its JavaScript, or a module that says why not
+        const b = await build(f);
+        res.writeHead(200, { ...base0, "content-type": "text/javascript; charset=utf-8" });
+        return void res.end(req.method === "HEAD" ? undefined : b.ok ? b.js : failing(b.error));
+      }
       const st = fs.statSync(f);
       if (st.size > MAX_FILE) { res.writeHead(413); return void res.end("too big"); }
       const ext = path.extname(f).toLowerCase();

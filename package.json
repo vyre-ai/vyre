@@ -37,13 +37,15 @@
     "@noble/ciphers": "1.3.0",
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
+    "esbuild-wasm": "0.28.2",
     "yaml": "2.9.1"
   },
   "bundleDependencies": [
     "@noble/ciphers",
     "@noble/curves",
     "@noble/hashes",
-    "yaml"
+    "yaml",
+    "esbuild-wasm"
   ],
   "files": [
     "bin",

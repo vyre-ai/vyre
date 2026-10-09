@@ -10,6 +10,8 @@ Allowed:
 
 Outside the kernel, one more package is allowed in the shipped build: `yaml` 2.9.1, for reading an API description given as YAML (`records/connectors/import-spec.js`, loaded lazily, with the core schema and no custom tags). The kernel never imports it, and `kernel/dependencies.test.js` still fails on any bare import under `kernel/`.
 
+One more is allowed in the shipped build, also outside the kernel: `esbuild-wasm` 0.28.2, for turning a preview's `.jsx`, `.tsx` or `.ts` file into JavaScript a browser runs (`core/previews/jsx.js`, loaded lazily, transform only: it bundles nothing, resolves no packages and reads no files). It is the WebAssembly build, so there is one portable package and no native binary per platform. The kernel never imports it, and `kernel/dependencies.test.js` still fails on any bare import under `kernel/`.
+
 Everything else outside the repo is refused. `kernel/dependencies.test.js` fails on any other bare import under `kernel/` (outside tests) and on a version that is not exact or that differs between the root and the app.
 
 Ruled by team-lead, 5 Oct 2026, from the one-crypto ruling (36e4dfd). Changing this list is a ruling, not an edit.
