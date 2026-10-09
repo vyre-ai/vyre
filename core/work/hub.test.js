@@ -170,3 +170,14 @@ test("R031-01: a blank project is a record with members, tags, chats and a files
   assert.equal((await hub.chatRecord("chat_r1")).data.project.urn, proj.urn, "a chat belongs to it");
   assert.ok(proj.data.drive_path.startsWith("Projects/"), "and it has a files folder");
 });
+
+test("a project is owned by the person who makes it (so its files open for them), and a Personal project by its person", async () => {
+  const { kernel } = fake();
+  const hub = createHub({ kernel });
+  const mine = await hub.createProject({ hops: [{ actor: { kind: "person", id: "per_ann", space: "spc_x" } }] }, { name: "Okafor" });
+  assert.deepEqual(mine.data.owner, { actor: { kind: "person", id: "per_ann", space: "spc_x" } });
+  const personal = await hub.personalProject("per_bob");
+  assert.equal(personal.data.owner.actor.id, "per_bob");
+  const noPerson = await hub.createProject({ who: "p" }, { name: "Plain" });
+  assert.equal(noPerson.data.owner, undefined, "a chain with no person names no owner");
+});

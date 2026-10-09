@@ -1,9 +1,9 @@
 // What a project page shows (R031-14, 15), pure. A free-flow project opens on its chats, with Files and Memory beside them; a project that started from a template opens on its stages and tasks first.
-// On a wide window the panes sit side by side instead of behind tabs: two from 1100 points, three from 1700.
+// On a wide window the panes sit side by side instead of behind tabs: two from 1100 points, three from 1280 (a laptop shows all of Stages, Chats and Files).
 export type PaneId = "stages" | "chats" | "files" | "memory" | "team";
 
 export const WIDE = 1100;
-export const WIDER = 1700;
+export const WIDER = 1280;
 
 export const LABEL: Record<PaneId, string> = { stages: "Stages", chats: "Chats", files: "Files", memory: "Memory", team: "Team" };
 

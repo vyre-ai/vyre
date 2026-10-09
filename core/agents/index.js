@@ -63,17 +63,29 @@ export const MIGRATIONS = [
  * the list, from the stored row: agents.scope's `only`); a Flow it writes is a draft until a person approves it, and a Kit or a definition change becomes one task in Now that an owner or
  * an admin approves (kernel/flows/proposals.js). It has no project, no credential of its own, no computer, and nothing it holds can apply a change.
  */
+const ENGINEER_0_3_0 = [
+  "You are the Engineer. You help an owner or an admin change how their Space works: record types and fields, stages, Flows, Kits.",
+  "You only propose. Write a Flow with flows.define (it is stored unapproved), check it with flows.compile-text, flows.simulate and flows.card, then ask for it with flows.propose.",
+  "A Kit goes through flows.kit.propose. A change to record types goes through flows.propose with what: types and a diff.",
+  "Each proposal becomes one task in Now. An owner or an admin approves it; you cannot. Say what you proposed and what it will do, in plain words, and wait.",
+].join("\n");
 export const ENGINEER = Object.freeze({
   name: "engineer",
   instructions: [
-    "You are the Engineer. You help an owner or an admin change how their Space works: record types and fields, stages, Flows, Kits.",
-    "You only propose. Write a Flow with flows.define (it is stored unapproved), check it with flows.compile-text, flows.simulate and flows.card, then ask for it with flows.propose.",
-    "A Kit goes through flows.kit.propose. A change to record types goes through flows.propose with what: types and a diff.",
-    "Each proposal becomes one task in Now. An owner or an admin approves it; you cannot. Say what you proposed and what it will do, in plain words, and wait.",
+    "You are the Engineer. You set up an owner's or an admin's Space by conversation: record types, stages, Flows, Kits, project templates, and the instructions of the agents. Be brief and concrete; ask one question at a time and only when you cannot go on without it.",
+    "You only propose. A person's yes on one card applies it, and every applied change is a version they can roll back. You cannot approve, start a project, or change anyone's permissions.",
+    "Read before you write: docs.find for the page, skills.find for the way (build-a-template), flows.cheatsheet before a Flow.",
+    "A Flow: flows.define, then flows.compile-text, flows.simulate and flows.test.save, then flows.propose. A template: work.template.define, work.template.test (it shows every brief and creates nothing), then flows.propose with what: template, template, version. An agent's words, skills or tags: flows.propose with what: agent, agent, patch. A skill or plugin: skills.draft, then flows.propose with what: skill, name, level, scope, version. Record types: flows.propose with what: types and a diff. A Kit: flows.kit.propose.",
+    "Say what you proposed and what it will do, in plain words, and wait for the card.",
   ].join("\n"),
+  /** The instructions this build shipped before, so a home that still has one of them is brought up to date and one an admin edited is left alone. */
+  previous: Object.freeze([ENGINEER_0_3_0]),
   /** The tools its session may call. Reads of the Space's own definitions and the drafting and proposing tools; nothing that applies, approves, sends or reads outside them. */
   tools: Object.freeze(["flows.define", "flows.compile-text", "flows.code", "flows.card", "flows.get", "flows.list", "flows.graph", "flows.simulate", "flows.runs", "flows.run",
-    "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types"]),
+    "flows.propose", "flows.kit.card", "flows.kit.propose", "flows.kit.list", "records.types",
+    "flows.patch", "flows.cheatsheet", "flows.describe", "flows.test.save", "flows.test.run", "flows.test.list", "flows.health",
+    "work.template.define", "work.template.test", "work.template.list", "work.template.get", "work.template.library", "work.template.install", "work.template.from-project",
+    "agents.list", "agents.versions", "skills.find", "skills.get", "skills.list", "skills.draft", "skills.versions", "docs.find", "docs.read"]),
 });
 
 /** The agent's thinking effort, as sessions.effort names it. */
@@ -127,6 +139,9 @@ export default {
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
       db.prepare("UPDATE agents_agents SET builtin = 1, kind = 'agent', projects = '[]', auth = '{}', skills = '[]', computer = 0, updated_at = ? WHERE name = ?").run(Date.now(), ENGINEER.name);
     }
+    // a home that still has an older shipped text gets the current one; one an admin wrote is kept
+    { const row = /** @type {any} */ (db.prepare("SELECT instructions FROM agents_agents WHERE name = ? AND builtin = 1").get(ENGINEER.name));
+      if (row && ENGINEER.previous.includes(String(row.instructions))) db.prepare("UPDATE agents_agents SET instructions = ?, updated_at = ? WHERE name = ?").run(ENGINEER.instructions, Date.now(), ENGINEER.name); }
     if (!db.prepare("SELECT 1 FROM agents_agents WHERE name = ?").get(ENGINEER.name)) {
       const now = Date.now();
       db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at, uid) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -645,7 +660,7 @@ export default {
         const task = String(i.task || "").trim();
         if (!task) throw Object.assign(new Error("say what the helper is to do"), { code: "bad_input" });
         // never wider than the parent: its tool list (when it is held to one) and its projects
-        const mine = Array.isArray(meta.agentOnly) ? meta.agentOnly : null;
+        const mine = Array.isArray(meta.agentOnly) ? meta.agentOnly.filter((/** @type {string} */ t) => t !== "agents.spawn") : null;   // a helper never starts helpers, whatever its parent holds
         let only = null;
         if (i.tools !== undefined) {
           if (!Array.isArray(i.tools) || i.tools.some((/** @type {any} */ t) => typeof t !== "string")) throw Object.assign(new Error("tools is a list of tool names"), { code: "bad_input" });
