@@ -100,7 +100,7 @@ async function front(t, { brand = async () => "" } = {}) {
     r.on("error", reject); r.end(body);
   });
   const sid = () => { const tk = tickets.issue("documents", HOST, "/"); return `vyre_app=${tickets.trade(tk, HOST)?.sid}`; };
-  return { a, call, sid };
+  return { a, call, sid, port };
 }
 
 test("a signer opens the page with no ticket: dressed, credited, uncached, and the app sees a stranger, never the admin", async t => {
@@ -142,8 +142,17 @@ test("a signer's actions go through: the submit, the decline, the signature uplo
   assert.equal(red.status, 302);
   assert.equal(red.headers.location, "/s/abc123");
   assert.equal(f.a.seen.filter(s => s.url === "/s/abc123").length, 1, "the redirect did not touch the app");
-  // a stranger cannot send a huge body
-  const big = await new Promise(resolve => { const r = http.request({ host: "127.0.0.1", port: 0 }, () => {}); r.destroy(); resolve(null); void big; });
+  // a stranger cannot send a huge body: the declared length is refused before a byte is read, and the app is not touched
+  const before = f.a.seen.length;
+  const status = await new Promise(resolve => {
+    const port = f.port;
+    const r = http.request({ host: "127.0.0.1", port, method: "POST", path: "/api/attachments", headers: { host: HOST, "content-length": String(21 * 1024 * 1024) } }, res => { res.resume(); resolve(res.statusCode); r.destroy(); });
+    r.on("error", () => resolve(null));
+    r.write("x");
+  });
+  assert.equal(status, 413);
+  assert.equal(f.a.seen.length, before);
+}); r.destroy(); resolve(null); void big; });
 });
 
 test("the owner keeps everything: with a ticket the admin pages open, signed in as the install, and the signer's cookie never reaches the admin jar", async t => {
