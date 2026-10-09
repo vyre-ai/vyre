@@ -692,14 +692,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): the @ picker's signed-in AI accounts by provider, names only"
  },
  {
-  "tool": "sidebar.edit",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): arranges the caller's own sidebar (add, remove, hide, show, move, group): a reversible change to the person's own list; the Space's default is sidebar.team, which is held"
- },
- {
-  "tool": "sidebar.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the sidebar: the Space's default, the person's own list and the installed module screens that can be added"
- },
- {
   "tool": "sidebar.team",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (changes what everyone in the Space sees in their sidebar: held for an owner or admin's yes)"
  },
@@ -802,6 +794,10 @@
  {
   "tool": "stream.react",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): adds or takes back an emoji reaction on a group chat message"
+ },
+ {
+  "tool": "stream.second-opinion",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (adds a paid model to the chat and spends on the person's account)"
  },
  {
   "tool": "stream.send",
@@ -970,6 +966,14 @@
  {
   "tool": "vault.revoke",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.revoke opened to a model or a module in 59980bf43 (4 Oct 2026); the body decides: callerKind check inside: a named agent or a module can only withdraw its own pending request; only the person's surfaces and an unnamed session revoke freely (G-MV4)"
+ },
+ {
+  "tool": "views.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one screen a module declares; the data it shows is fetched as the viewer, under the viewer's own grants"
+ },
+ {
+  "tool": "views.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer"
  },
  {
   "tool": "voice.listen",

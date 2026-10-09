@@ -139,7 +139,8 @@ async function world(t) {
     content: { subject: "Opening hours", body: "The shop opens at 7 from Monday." } }, "mcp");
   assert.equal(held.data.state, "held", JSON.stringify(held));
   for (const prompt of ["ask", "bash npm test", "write menu.md"]) {
-    assert.ok((await tool("threads.start", { cwd: work, prompt, surface: "deck" })).data, prompt);
+    const started = await tool("threads.start", { cwd: work, prompt, surface: "deck" });
+    assert.ok(started.data, `${prompt}: ${JSON.stringify(started.error || started)}`);
   }
   const asks = await until(async () => { const r = (await tool("threads.asks", {})).data || []; return r.length === 3 ? r : null; }, "three asks");
   return { root, screen, work, tool, draft: held.data.id,
