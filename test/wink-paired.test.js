@@ -437,7 +437,7 @@ test("device-first attacks: a removed device holding a token and a stream is ref
   t.after(() => conn.close());
   const raw = async (tool, input) => (await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })).json().catch(() => ({}));
   const ch = (await raw("presence.person.pair-challenge", {})).data.challenge;
-  const sig = Buffer.from(await f.sign(new TextEncoder().encode(`paired-start\n${done.device}\n${ch}`))).toString("base64url");
+  const sig = await f.sign(`paired-start\n${done.device}\n${ch}`);
   const signedIn = await raw("presence.person.start-paired", { sig });
   assert.ok(signedIn.data && signedIn.data.token, `the device's own key, answering a fresh challenge, signs in: ${JSON.stringify(signedIn)}`);
   const replayed = await raw("presence.person.start-paired", { sig });
