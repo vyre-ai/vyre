@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1395,"event":477,"config":273,"env":256,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1396,"event":478,"config":273,"env":256,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1898,6 +1898,7 @@
     {"kind":"tool","name":"vault.mcp.pass.create","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppasscreate","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.pass.list","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppasslist","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.pass.revoke","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppassrevoke","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.mcp.reveal.allow","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcprevealallow","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.reveal.clear","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcprevealclear","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.status","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcpstatus","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.member-added","definedIn":"core/vault/shared.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":238,"anchor":"7-contract-fit"}]},
@@ -1941,6 +1942,7 @@
     {"kind":"tool","name":"vault.reveal","definedIn":"core/vault/forward.js","page":"reference/tools.md#vaultreveal","module":"vault","mentions":[{"page":"concepts/presence.md","line":30,"anchor":"which-tools-need-it"},{"page":"concepts/presence.md","line":54,"anchor":"how-each-surface-proves-it"},{"page":"concepts/floor.md","line":73,"anchor":"8-no-vault-value-appears-on-any-screen-log-or-event"},{"page":"adr/0004-presence.md","line":215,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"},{"page":"adr/0004-presence.md","line":271,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"},{"page":"adr/0018-mobile.md","line":102,"anchor":"3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey"},{"page":"adr/0018-mobile.md","line":168,"anchor":"7--vault-on-the-phone"},{"page":"adr/0040-vyre-core.md","line":127,"anchor":"3-the-protocol-between-vyred-and-vyre-core"},{"page":"adr/0040-vyre-core.md","line":151,"anchor":"3-the-protocol-between-vyred-and-vyre-core"}]},
     {"kind":"event","name":"vault.reveal-asked","definedIn":"core/vault/passmcp.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.revealed","definedIn":"core/vault/tools/surfaces.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":237,"anchor":"7-contract-fit"}]},
+    {"kind":"event","name":"vault.revealed-to-pass","definedIn":"core/vault/passmcp.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.revert","definedIn":"core/vault/tools/history.js","page":"reference/tools.md#vaultrevert","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.revoke","definedIn":"core/vault/forward.js","page":"reference/tools.md#vaultrevoke","module":"vault","mentions":[{"page":"architecture/spec.md","line":388,"anchor":"75-vault--workstream"},{"page":"adr/0001-vault-crypto.md","line":147,"anchor":"6-who-may-call-what"},{"page":"design/session-credentials.md","line":123,"anchor":"the-project-column-on-grants-done-this-session-d-below-is-the-sha"}]},
     {"kind":"event","name":"vault.revoked","definedIn":"core/vault/vault.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
