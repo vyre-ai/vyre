@@ -15,7 +15,7 @@ import { startsLikeCredential, mentionsCredentialPrefix, credentialAtTokenStart 
 /** Where a vendor prefix is still written by hand, and why. Each is a decision, not an oversight; the other runtimes are held to the table by the parity checks below. */
 const ALLOWED = new Map([
   ["lib/credential-shapes.js", "the one table"],
-  ["local/hands-chrome-mac/extension/shared/sk/", "generated from lib/credential-shapes.js (scripts/sync-sk.mjs, test/sk-sync.test.js)"],
+  ["local/hands-chrome-mac/extension/shared/sk/", "generated from lib/credential-shapes.js (scripts/sync-copies.mjs, test/generated-copies.test.js)"],
   ["core/onboard/index.js", "names Anthropic's two sign-in token KINDS (setup token and API key) for the picker; the table has one Anthropic row and does not distinguish them"],
   ["modules/vault-extension/keyfind.js", "runs in a web page and cannot import lib/; keyfind.test.js holds every row to classify()"],
   ["modules/vault-extension/testing/", "browser checks that mint fake keys"],

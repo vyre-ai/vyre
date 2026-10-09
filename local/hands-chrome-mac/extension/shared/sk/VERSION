@@ -1,1 +1,1 @@
-generated from lib/credential-shapes.js and lib/site-knowledge.js by scripts/sync-sk.mjs; test/sk-sync.test.js fails on drift
+generated from lib/credential-shapes.js and lib/site-knowledge.js by scripts/sync-copies.mjs; test/generated-copies.test.js fails on drift

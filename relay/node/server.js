@@ -17,7 +17,7 @@
 import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
-import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
 import { isPublicAddress } from "../../lib/netguard.js";
 import { createTunnelFront } from "./tunnel.js";
 import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
@@ -437,7 +437,7 @@ export function createRelay(o = {}) {
       socket.end("HTTP/1.1 400 Bad Request\r\nconnection: close\r\n\r\n");
       return;
     }
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: ${acceptKey(key)}\r\n\r\n`);
+    socket.write(upgradeHead(key));
     socket.setNoDelay(true);
     const peer = new Peer(/** @type {any} */ (socket), limits.frame);
     if (head && head.length) socket.unshift(head);

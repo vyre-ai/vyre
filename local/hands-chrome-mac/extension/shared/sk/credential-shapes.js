@@ -1,4 +1,4 @@
-// GENERATED from lib/credential-shapes.js by scripts/sync-sk.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
+// GENERATED from lib/credential-shapes.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
 // @ts-check
 // credential-shapes: what a credential LOOKS LIKE, in one place (consolidation inventory item 3, R031-00c). Folds lib/secret-detect.js, lib/secret-shapes.js, lib/secret-text.js and core/vault/detect.js
 // (a re-export) into one module, and is the one list of vendor key shapes the rest of the repo reads: lib/sanitize.js (transcripts), core/sync/scrub.js (session files), core/memory/write.js (memory writes),

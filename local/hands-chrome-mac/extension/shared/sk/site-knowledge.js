@@ -1,4 +1,4 @@
-// GENERATED from lib/site-knowledge.js by scripts/sync-sk.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
+// GENERATED from lib/site-knowledge.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
 // @ts-check
 // site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the

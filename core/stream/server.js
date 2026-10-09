@@ -15,7 +15,7 @@
 // Adapters: serveSSE (HTTP, with Last-Event-ID) and serveWS (RFC 6455 over an upgraded socket,
 // the helpers core/term and Glass use).
 
-import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
 import { heartbeatFrame, resetFrame } from "./protocol.js";
 import { forViewer, forViewerAsync, hasRefs, hiddenFrame } from "./viewer.js";
 import { kindOf, startOf } from "./frame.js";
@@ -199,7 +199,7 @@ export function serveWS(log, req, socket, head, opts = {}) {
   const key = req.headers && req.headers["sec-websocket-key"];
   const upgrade = req.headers && String(req.headers["upgrade"] || "").toLowerCase();
   if (upgrade !== "websocket" || !key) { refuse(socket, 400, "Bad Request"); return null; }
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
+  socket.write(upgradeHead(key));
   socket.setNoDelay?.(true);
   /** @type {(() => void)[]} */ const closers = [];
   /** @type {((m: any) => void)[]} */ const listeners = [];
