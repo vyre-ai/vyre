@@ -142,7 +142,7 @@ export const B_CHECKS = {
 // ------------------------------------------------------------------ guards
 /**
  * A run is valid only if the stream shows what the prereg says it should: a fresh thread, the right number of claude processes, the pinned model, and, for a roll arm, a roll that happened.
- * @param {{ fresh: boolean, processes: number, model: string, rolled?: boolean|null, compacted?: boolean|null }} run
+ * @param {{ fresh: boolean, processes: number, model: string, models?: string[], rolled?: boolean|null, compacted?: boolean|null }} run
  * @param {{ model: string, processes: number|number[], roll?: "vyre"|"compact"|"none"|null }} want
  * @returns {string[]} reasons the run is invalid; empty when valid
  */
@@ -152,6 +152,7 @@ export function guards(run, want) {
   const ok = Array.isArray(want.processes) ? want.processes : [want.processes];
   if (!ok.includes(run.processes)) bad.push(`${run.processes} claude process(es), expected ${ok.join(" or ")}`);
   if (want.model && run.model && run.model !== want.model) bad.push(`ran ${run.model}, pinned ${want.model}`);
+  if (run.models && run.models.length > 1) bad.push(`the model changed during the run: ${run.models.join(", ")}`);
   if (want.model && !run.model) bad.push("the stream did not name its model");
   if (want.roll === "vyre" && !run.rolled) bad.push("the roll did not happen (no thread.rolled and a second process with the seed)");
   if (want.roll === "compact" && !run.compacted) bad.push("no compaction summary in the stream");
@@ -161,11 +162,15 @@ export function guards(run, want) {
 /** Did the stream show Claude Code's own compaction? @param {string} stream */
 export const compactedIn = (stream) => /"subtype":"compact_boundary"|"compact_metadata"|This session is being continued from a previous conversation/.test(stream);
 
-/** The model the stream's init named, and how many init events (claude processes) it holds. @param {string} stream */
+/**
+ * The model the stream's init events named, and how many init events it holds. Claude Code in stream-json mode emits one init per message, so an init count is NOT a process count (probe 1: one process, ten
+ * inits); the number of claude processes is the number of tee files (`parts`) the run made. `models` lists every distinct model seen, so a run that changed model midway is caught.
+ * @param {string} stream
+ */
 export function initsOf(stream) {
   /** @type {string[]} */ const models = [];
   for (const line of stream.split("\n")) { try { const e = JSON.parse(line); if (e.type === "system" && e.subtype === "init") models.push(String(e.model || "")); } catch { /* not a json line */ } }
-  return { processes: models.length, model: models[0] || "" };
+  return { inits: models.length, model: models[0] || "", models: [...new Set(models)] };
 }
 
 // ------------------------------------------------------------------ the report
@@ -183,6 +188,7 @@ const sum = (/** @type {number[]} */ xs) => xs.reduce((a, b) => a + b, 0);
 export function report(rows, o = {}) {
   const lines = [`# ${o.title || "Honest eval report"}`, ""];
   if (o.seal) lines.push(`Pre-registration seal: ${o.seal}`, "");
+  lines.push("Disclosure: the process-count guard was corrected after probe 1, before any counted run. It first counted init events (Claude Code emits one per message, so a ten-message thread showed ten); it now counts claude processes (the tee files a run made) and also requires one model throughout. Guards are not part of the pre-registration.", "");
   const shas = [...new Set(rows.map((r) => r.sha))];
   lines.push(`Tree sha(s) the runs were made on: ${shas.join(", ") || "none"}${shas.length > 1 ? " (more than one: a fix was made between runs; the cells below are split by it in the run list)" : ""}.`, `Runs: ${rows.length} (${rows.filter((r) => r.valid).length} valid, ${rows.filter((r) => !r.valid).length} invalid, listed). Spend: ${f$(sum(rows.map((r) => r.usd)))}.`, "");
   for (const ev of [...new Set(rows.map((r) => r.eval))]) {
