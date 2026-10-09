@@ -34,14 +34,13 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${shown.length > 1 ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
           : (
             <>
-              <View className="flex-row"><Button kind="ghost" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f?.row as { urn?: string } | undefined)?.urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /></View>
               {width >= WIDE
                 // wide: the panes sit side by side as the Overview; the Timeline and the Team are one tap away
                 ? <Segmented label="Project" value={picked ?? "overview"} onChange={(v: string) => setTab(v === "overview" ? null : (v as PaneId))} options={[["overview", "Overview"], ...tabsFor(data).filter(([p]) => p === "timeline" || p === "team")]} />

@@ -38,9 +38,8 @@ export function RecordScreen({ id }: { id: string }) {
   // One header for the pushed page (ui-system.md section 7): the face or emblem, the title, "Matter \u00B7 Juniper Studio".
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} />
+      <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} actions={<Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} />} />
       {canSend && email ? <View className="flex-row px-s4 pt-s2"><Button kind="ghost" size="sm" label="Send for signature" onPress={() => router.push(`/u/module/appmods/documents-send?q=${encodeURIComponent(email)}` as never)} /></View> : null}
-      <View className="flex-row px-s4 pt-s2"><Button kind="ghost" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(rec.urn)}&name=${encodeURIComponent(title)}` as never)} /></View>
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} /></Appear>
       </ScrollView>

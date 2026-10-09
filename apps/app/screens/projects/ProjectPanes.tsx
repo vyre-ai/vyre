@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, LoadingState, Row, Text } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, Text } from "@vyre/ui";
+import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
 import { spaceList } from "../drive/real";
 import { treeOf, type Body } from "../templates/model";
@@ -72,25 +73,41 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
   );
 }
 
-type Entry = { type: string; id: string; urn: string; title: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
-const dayOf = (ms: number) => (ms ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "");
+type Entry = { type: string; kind: string; id: string; urn: string; title: string; line: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
+const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records" };
+const dayKey = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+const dayLabel = (ms: number) => {
+  if (!ms) return "Earlier";
+  const now = new Date(), d = new Date(ms), days = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+  return days === 0 ? "Today" : days === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
+};
 
-/** Everything that links to this project, newest first (work.timeline): tasks, files, messages, documents and chats. A chat shows when it is the viewer's or its people shared it, by title only. */
+/** The project's story, newest first and grouped by day (work.timeline): stages it moved through, tasks done, messages sent, files shared, chats and Flow runs, each a type mark and one plain line. A chat shows when it is the viewer's or its people shared it, by title only. */
 export function TimelinePane({ slug }: { slug: string }) {
   const router = useRouter();
   const [rows, setRows] = useState<Entry[] | null>(null);
-  useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 100 }).then((r) => setRows(r.error ? [] : r.data?.entries ?? [])); }, [slug]);
+  useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 200 }).then((r) => setRows(r.error ? [] : r.data?.entries ?? [])); }, [slug]);
   if (rows === null) return <LoadingState rows={3} />;
-  if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Tasks, files, messages and shared chats linked to this project show here, newest first." />;
+  if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Stages, tasks, messages, files and shared chats linked to this project show here, newest first." />;
+  const days: { key: string; at: number; items: Entry[] }[] = [];
+  for (const e of rows) { const k = e.at ? dayKey(e.at) : "none"; const g = days[days.length - 1]; if (g && g.key === k) g.items.push(e); else days.push({ key: k, at: e.at, items: [e] }); }
+  const open = (e: Entry) => router.push((e.type === "chat" && e.chat ? `/u/chats/${e.chat}` : e.type === "stage" || e.type === "file-share" ? undefined : `/u/record/${e.id}`) as never);
   return (
-    <Card flush>
-      {rows.map((e, i) => (
-        <View key={e.urn}>
-          {i ? <Divider /> : null}
-          <Row title={e.title} sub={`${e.type === "chat" ? "Chat" : e.type}${e.at ? ` \u00B7 ${dayOf(e.at)}` : ""}`} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
-            onPress={() => router.push((e.type === "chat" ? (e.chat ? `/u/chats/${e.chat}` : `/u/record/${e.id}`) : `/u/record/${e.id}`) as never)} />
+    <View className="gap-s3">
+      {days.map((g) => (
+        <View key={g.key}>
+          <SectionLabel>{dayLabel(g.at)}</SectionLabel>
+          <Card flush>
+            {g.items.map((e, i) => (
+              <View key={`${e.type}:${e.id}`}>
+                {i ? <Divider /> : null}
+                <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={e.line} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
+                  onPress={e.type === "stage" || e.type === "file-share" ? undefined : () => open(e)} />
+              </View>
+            ))}
+          </Card>
         </View>
       ))}
-    </Card>
+    </View>
   );
 }
