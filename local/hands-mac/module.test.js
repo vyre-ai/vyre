@@ -182,3 +182,23 @@ test("hold: the destination string has control and bidi characters in a window t
   assert.ok(!/[\u0000-\u001f\u2028\u2029\u202e]/.test(req.to), JSON.stringify(req.to));
   assert.match(req.to, /^Messages: juno/);
 });
+
+test("the link runs what the paired box asked without a second grant (link.computer.allow was the grant); an added module of any other name still needs one", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp({ app: "Notes", texts: ["hello"], elements: [{ path: "/0/0/1", role: "AXButton", name: "New", enabled: true }] });
+  const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
+  for (const name of ["link", "stranger"]) {
+    const dir = path.join(home, "mods", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name, version: "0.0.1", roles: ["local"], does: { tools: [`${name}.probe`] } }));
+    fs.writeFileSync(path.join(dir, "index.js"), `export default { async start(ctx) { ctx.tool("${name}.probe", { effect: "read", description: "x", input: { type: "object" }, run: async () => { const r = await ctx.call("hands.observe", { app: "Notes" }); return r.error ? { error: r.error.message } : { ok: true }; } }); } };`);
+  }
+  const found = [...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([path.join(home, "mods")])];
+  const firstParty = reg.isFirstParty.bind(reg);
+  reg.isFirstParty = (/** @type {string} */ d) => d.startsWith(path.join(home, "mods", "link")) || firstParty(d);
+  await reg.start(found, { role: "local" });
+  assert.deepEqual((await reg.call("link.probe", {}, "cli")).data, { ok: true });
+  assert.match(String((await reg.call("stranger.probe", {}, "cli")).data.error), /not granted|no permission/);
+});
