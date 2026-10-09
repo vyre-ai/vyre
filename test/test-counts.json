@@ -294,7 +294,7 @@
  "core/planner/records.test.js": 16,
  "core/planner/time.test.js": 4,
  "core/presence/hello-fixture.test.js": 3,
- "core/presence/presence.test.js": 41,
+ "core/presence/presence.test.js": 43,
  "core/presence/rsa.test.js": 8,
  "core/presence/touchid/touchid.test.js": 6,
  "core/presence/webauthn.test.js": 18,
