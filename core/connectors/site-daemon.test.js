@@ -67,7 +67,7 @@ test("a read runs through the vault, the connectors module and the chrome module
   await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
   seen = [];
   const x = await extension(w.sockPath);
-  t.after(() => x.close());
+  t.after(() => { x.sock.destroy(); });
   await online(w.d);
   const out = await w.cli("connectors.operation.run", { connection: "linkedin", operation: "search_people", input: { query: { query: "gamma labs" } } });
   assert.ok(!out.error, JSON.stringify(out));
@@ -97,7 +97,7 @@ test("a send is held for the person's yes, never sent without it, and the sign-i
   await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
   seen = [];
   const x = await extension(w.sockPath, { "ops.call": (/** @type {any} */ a) => (a.op.name === "searchPeople" ? { ok: false, class: "auth", reason: "HTTP 401", next: "sign in again" } : { ok: true, class: "ok", data: { sent: true }, status: 200 }) });
-  t.after(() => x.close());
+  t.after(() => { x.sock.destroy(); });
   await online(w.d);
   // an assistant's send: the vault holds it
   const held = await w.model("connectors.operation.run", { connection: "linkedin", operation: "send_message", input: { body: { recipient: "alan-turing", text: "a fresh note" } } });
