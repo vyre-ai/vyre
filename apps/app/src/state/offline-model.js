@@ -11,14 +11,15 @@ export const OFFLINE_AFTER_MS = 60_000;
 export const clock = (ms, fmt) => (fmt ? fmt(new Date(ms)) : timeOf(ms));
 
 /**
- * The notice, or null when there is nothing to say.
- * @param {{ status: "live" | "reconnecting" | "offline", lastSeen: number | null, now: number, fmt?: (d: Date) => string }} o
+ * The notice, or null when there is nothing to say. It exists only for a server that is PAIRED and has answered at least once (`lastSeen`): a first run with no server (the app's own window before "Join a team"
+ * or "Add a server"), or a pairing that never got an answer, has no server to be offline from.
+ * @param {{ status: "live" | "reconnecting" | "offline", lastSeen: number | null, now: number, paired: boolean, fmt?: (d: Date) => string }} o
  * @returns {{ fact: string, detail: string } | null}
  */
-export function offlineNotice({ status, lastSeen, now, fmt }) {
+export function offlineNotice({ status, lastSeen, now, paired, fmt }) {
+  if (!paired || lastSeen === null) return null;
   // The device itself has no network: that is its own, older pill, and the server is not at fault.
   if (status !== "reconnecting") return null;
-  if (lastSeen !== null && now - lastSeen < OFFLINE_AFTER_MS) return null;
-  const fact = lastSeen !== null ? `Your server has been offline since ${clock(lastSeen, fmt)}` : "Your server is not answering";
-  return { fact, detail: "Check that it is switched on and online. A Mac server that restarted may be waiting at its login window." };
+  if (now - lastSeen < OFFLINE_AFTER_MS) return null;
+  return { fact: `Your server has been offline since ${clock(lastSeen, fmt)}`, detail: "Check that it is switched on and online. A Mac server that restarted may be waiting at its login window." };
 }
