@@ -2,7 +2,7 @@
 
 Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.
 
-Release 0.2.12. Updated 2026-10-08. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
+Release 0.2.13. Updated 2026-10-09. Source: https://github.com/vyre-ai/vyre. Licence: Apache 2.0.
 
 ## What it is
 - One session runs Claude, Codex, Grok or OpenRouter. Each reply shows which model wrote it. You can switch model mid-session (the new model gets a summary of the conversation) or address one model for a single message with an @, such as @codex.
@@ -44,9 +44,9 @@ Sessions, memory and the vault stay on your machines. vyre.run holds your name's
 - Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
 - Later: a Vyre-hosted home for people without a server.
 
-## Known gaps in 0.2.12
+## Known gaps in 0.2.13
 - Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.
+- Screen Share (live view and computer use) comes later; Chrome control works today.
 - The Mac server installer has not run on a real Mac yet.
 - Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 - Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.
@@ -82,4 +82,4 @@ No. Vyre runs them with your own accounts and adds memory, a vault, teammates, w
 Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.
 
 ### Is it ready?
-It is 0.2.12, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.2.12 does not do yet.
+It is 0.2.13, and what this page shows works today. Some things come next, and the direction page lists them. The known gaps list what 0.2.13 does not do yet.
