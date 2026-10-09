@@ -14,6 +14,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
+import { createStatic } from "./static.js";
 import { mayOpen, mayManage, ACCESS } from "./access.js";
 
 const str = { type: "string" };
@@ -29,6 +30,8 @@ export const MIGRATIONS = [
    );
    CREATE INDEX previews_items_thread ON previews_items (thread);
    CREATE INDEX previews_items_project ON previews_items (project);`,
+  // A preview of files: the folder it serves (and the one file at its root), and the capabilities it declared (JSON), none by default.
+  `ALTER TABLE previews_items ADD COLUMN root TEXT; ALTER TABLE previews_items ADD COLUMN file TEXT; ALTER TABLE previews_items ADD COLUMN caps TEXT;`,
 ];
 
 /** The preview's name on the front: pv- and eight hex digits. */
@@ -64,6 +67,20 @@ export default {
       onState: (/** @type {string} */ id, /** @type {string} */ state, /** @type {{ error?: string }} */ info) => setState(id, state, info.error || ""),
     });
 
+    // ---- files: the container -----------------------------------------------------------------------------------------------------------------------------------------------------------------
+    // One small server on this machine's loopback serves every files preview, told which by the host the front forwards. Nothing about a page's own format is checked or required.
+    const staticSrv = createStatic({
+      log: (/** @type {string} */ m) => ctx.log.warn(m),
+      lookup: (/** @type {string} */ id) => { const r = row(id); return r && r.source === "files" && r.root && r.state !== "stopped" ? { root: r.root, file: r.file || null, caps: Boolean(r.caps) } : null; },
+      drawn: async (/** @type {string} */ format, /** @type {string} */ title, /** @type {string} */ text) => {
+        const r = await ctx.call("artifacts.render-page", { title, format, text });
+        if (r.error) throw new Error(r.error.message);
+        return r.data.html;
+      },
+    });
+    await new Promise(resolve => { staticSrv.once("listening", resolve); staticSrv.once("error", resolve); staticSrv.listen(0, "127.0.0.1"); });
+    const staticPort = () => { const a = staticSrv.address(); return a && typeof a !== "string" ? a.port : 0; };
+
     // ---- who ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** The person behind a call and their role in this Space: { id, role }, or null for anyone who is not a person. @param {any} meta */
     const whoIs = async meta => {
@@ -97,15 +114,48 @@ export default {
       sup.start(r.id, { command: r.command, cwd: r.cwd, port, env: seam.env || {} });
     };
 
+    /** Open a file or folder as a preview of its own. An agent's path must be inside the folder its session works in (a person's own may be anywhere they can read). */
+    const openFiles = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {any} */ person) => {
+      let real;
+      try { real = fs.realpathSync(String(i.path)); } catch { throw refuse("that path does not exist", "bad_input"); }
+      if (!path.isAbsolute(String(i.path))) throw refuse("give an absolute path", "bad_input");
+      const st = fs.statSync(real);
+      const thread = (person && i.thread ? String(i.thread) : (meta && meta.thread) || null);
+      if (!person && !String((meta && meta.caller) || "").startsWith("module:")) {
+        const t = thread ? await ctx.call("threads.get", { thread, limit: 1 }).catch(() => null) : null;
+        const cwd = t && t.data && ((t.data.thread && t.data.thread.cwd) || t.data.cwd);
+        let base = ""; try { base = cwd ? fs.realpathSync(String(cwd)) : ""; } catch { base = ""; }
+        if (!base || !(real === base || real.startsWith(base + path.sep))) throw refuse("a preview of files must be inside the folder this session works in", "denied");
+      }
+      const root = st.isDirectory() ? real : path.dirname(real);
+      const file = st.isDirectory() ? null : real;
+      // The page declares what it wants, the way a Claude artifact does at publish: in the call, else in .vyre/preview.json beside it. Nothing is on by default, and the viewer allows each one.
+      let caps = i.capabilities && typeof i.capabilities === "object" && !Array.isArray(i.capabilities) ? i.capabilities : null;
+      if (!caps) { try { const c = JSON.parse(fs.readFileSync(path.join(root, ".vyre", "preview.json"), "utf8")); if (c && c.capabilities && typeof c.capabilities === "object") caps = c.capabilities; } catch { /* none declared */ } }
+      const id = crypto.randomBytes(4).toString("hex");
+      const t = now();
+      const creator = person ? person.id : (ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : "owner");
+      const access = ACCESS.includes(i.access) ? i.access : i.project ? "project" : "me";
+      const title = String(i.title || "").trim().slice(0, 80) || path.basename(real);
+      db.prepare(`INSERT INTO previews_items (id, space, project, thread, title, source, mode, port, upstream, state, access, created_by, created, updated, wanted, root, file, caps)
+        VALUES (?,?,?,?,?, 'files', 'session', NULL, ?, 'live', ?, ?, ?, ?, 0, ?, ?, ?)`)
+        .run(id, ctx.space || null, i.project ? String(i.project) : null, thread, title, staticPort(), access, creator, t, t, root, file, caps ? JSON.stringify(caps).slice(0, 8000) : null);
+      emit("preview.opened", { id, title, thread, project: i.project || null });
+      card(row(id));
+      return { id, state: "live", preview: view(row(id)), message: `${title} is a preview now: a card is in the chat, and the person opens it from there.` };
+    };
+
     // ---- tools -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     ctx.tool("previews.open", {
-      description: "Show the person something running: a web page or app your server serves on a port. Call it after you start a dev server or an app, with { port, title }. A card appears in this chat; the person opens it on its own address, and can share it with the project or team. Say `command` (how you started it) so Vyre can offer to keep it running after this session ends. Returns { id, state }.",
-      input: obj({ title: str, port: { type: "integer" }, command: str, cwd: str, thread: str, project: str, access: { type: "string", enum: [...ACCESS] } }, ["title"]),
+      description: "Show the person something: a web page or app your server serves on a port ({ port }), or a file or folder you wrote ({ path }: an HTML page or app, a Markdown, SVG or Mermaid file, a built site). The page can be anything; Vyre adds nothing to it unless it declares capabilities (the way a Claude artifact does: db, user, sample, permissions, downloads), which the viewer then allows or not. Call it after you start a dev server or an app, with { port, title }. A card appears in this chat; the person opens it on its own address, and can share it with the project or team. Say `command` (how you started it) so Vyre can offer to keep it running after this session ends. Returns { id, state }.",
+      input: obj({ title: str, port: { type: "integer" }, command: str, cwd: str, path: str, capabilities: { type: "object" }, thread: str, project: str, access: { type: "string", enum: [...ACCESS] } }, ["title"]),
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const person = await whoIs(meta);
         const byModel = !person && !String((meta && meta.caller) || "").startsWith("module:");
         const title = String(i.title || "").trim().slice(0, 80) || "Preview";
+        const wantsFiles = typeof i.path === "string" && i.path.trim() !== "";
+        if (wantsFiles) return openFiles(i, meta, person);
         const wantsCommandRun = typeof i.command === "string" && i.command.trim() && !Number.isInteger(i.port);
         if (wantsCommandRun && !person) throw refuse("starting a command here is the person's own act: start the server yourself and give its port", "denied");
         const cwd = typeof i.cwd === "string" && i.cwd ? i.cwd : null;
@@ -182,6 +232,7 @@ export default {
       description: "Restart a preview Vyre keeps running.", input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
+        if (r.source === "files") { if (!r.root || !fs.existsSync(r.root)) throw refuse("its folder is gone", "unavailable"); setState(r.id, "live"); return { preview: view(row(r.id)) }; }
         if (r.mode !== "supervised") throw refuse("this server is the agent's own: ask it to restart it, or keep it running here first", "unavailable");
         db.prepare("UPDATE previews_items SET wanted = 1 WHERE id = ?").run(r.id);
         if (!sup.has(r.id)) await runSupervised(row(r.id)); else sup.restart(r.id);
@@ -244,7 +295,9 @@ export default {
         if (!meta || meta.caller !== "module:appmods") throw refuse("the front alone asks where a preview leads", "denied");
         const m = /^pv-([0-9a-f]{8})$/.exec(String(i.name));
         const r = m && ID.test(m[1]) ? row(m[1]) : null;
-        if (!r || !r.upstream || r.state === "stopped" || r.state === "crashed") return { origin: null };
+        if (!r || r.state === "stopped" || r.state === "crashed") return { origin: null };
+        if (r.source === "files") return { origin: `http://127.0.0.1:${staticPort()}` };
+        if (!r.upstream) return { origin: null };
         return { origin: `http://127.0.0.1:${r.upstream}` };
       },
     });
@@ -349,11 +402,15 @@ export default {
     for (const r of db.prepare("SELECT * FROM previews_items").all()) {
       if (r.mode === "supervised" && r.wanted === 1 && r.command && r.cwd && fs.existsSync(r.cwd)) {
         sup.start(r.id, { command: r.command, cwd: r.cwd, port: r.upstream, env: seam.env || {} });
+      } else if (r.source === "files") {
+        // A folder served by this module comes back with it, on this start's own port.
+        db.prepare("UPDATE previews_items SET upstream = ? WHERE id = ?").run(staticPort(), r.id);
+        if (r.root && fs.existsSync(r.root) && r.state !== "stopped") setState(r.id, "live"); else if (!r.root || !fs.existsSync(r.root)) setState(r.id, "stopped", "its folder is gone");
       } else if (r.mode === "session") {
         answers(r.upstream).then(up => setState(r.id, up ? "live" : "stopped")).catch(() => setState(r.id, "stopped"));
       }
     }
 
-    return { async stop() { sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
+    return { async stop() { staticSrv.close(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
   },
 };

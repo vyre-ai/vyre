@@ -131,3 +131,59 @@ test("the live screen cards: an operator run with a status line, and a private s
   assert.equal((await waiting).data.state, "done", "the agent carries on once the person is done");
   assert.equal((await call("previews.signin", { computer: "kit", site: "" }, "module:siteops")).error.code, "bad_input");
 });
+
+test("files: a page, a folder, Markdown and a single-page app are served on a preview's own origin as written; the root is a wall", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
+  const frontPort = (await call("appmods.front", {}, "module:previews")).data.port;
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-pf-")));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const outside = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-pf-out-")));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(outside, "secret.txt"), "outside the wall");
+  fs.mkdirSync(path.join(dir, "site", "assets"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "site", "index.html"), "<!doctype html><html><head><title>Site</title></head><body><script>window.page='mine'</script>hello folder</body></html>");
+  fs.writeFileSync(path.join(dir, "site", "assets", "app.js"), "console.log('app')");
+  fs.writeFileSync(path.join(dir, "site", ".env"), "SECRET=1");
+  fs.symlinkSync(path.join(outside, "secret.txt"), path.join(dir, "site", "leak.txt"));
+  fs.writeFileSync(path.join(dir, "notes.md"), "# Notes\n\nSome **bold** words.\n");
+
+  /** Sign in to a preview and fetch paths from it. @param {string} id */
+  const browse = async id => {
+    const u = new URL((await call("previews.url", { id })).data.url);
+    const enter = /** @type {any} */ (await front(frontPort, u.host, u.pathname + u.search));
+    const cookie = String(enter.headers["set-cookie"]).split(";")[0];
+    return (/** @type {string} */ p) => /** @type {Promise<any>} */ (front(frontPort, u.host, p, { cookie }));
+  };
+
+  const site = await call("previews.open", { title: "Site", path: path.join(dir, "site") });
+  assert.ok(site.data, JSON.stringify(site));
+  assert.equal(site.data.preview.source, "files");
+  const get = await browse(site.data.id);
+  const home = await get("/");
+  assert.equal(home.status, 200);
+  assert.match(home.headers["content-type"], /text\/html/);
+  assert.match(home.body, /window\.page='mine'/, "the page is served as written");
+  assert.ok(!home.body.includes("__vyre"), "nothing is added to a page that declared nothing");
+  assert.match((await get("/assets/app.js")).headers["content-type"], /javascript/);
+  assert.equal((await get("/some/client/route")).body.includes("hello folder"), true, "a single-page app falls back to its index");
+  for (const bad of ["/../notes.md", "/%2e%2e/notes.md", "/.env", "/leak.txt", "/assets/../../notes.md", "/assets/%00x"]) assert.equal((await get(bad)).status, 404, `refused: ${bad}`);
+
+  // one Markdown file is drawn as a page
+  const md = await call("previews.open", { title: "Notes", path: path.join(dir, "notes.md") });
+  const getMd = await browse(md.data.id);
+  const page = await getMd("/");
+  assert.equal(page.status, 200);
+  assert.match(page.body, /<h1[^>]*>Notes<\/h1>/);
+  assert.match(page.body, /<strong>bold<\/strong>/);
+
+  // a model's path must be inside the folder its session works in: with no verified session it is refused
+  const agent = await call("previews.open", { title: "Peek", path: outside }, "mcp");
+  assert.ok(agent.error && agent.error.code === "denied", JSON.stringify(agent));
+  assert.equal((await call("previews.open", { title: "Nothing", path: path.join(dir, "missing") })).error.code, "bad_input");
+  assert.equal((await call("previews.open", { title: "Relative", path: "site" })).error.code, "bad_input");
+});

@@ -1071,6 +1071,18 @@ export default {
       },
     });
 
+    // The same drawing the artifacts viewer uses, for a module that serves a file of its own (previews: a Markdown, SVG or Mermaid file becomes a page). Text in, the page's html out; nothing stored.
+    ctx.tool("artifacts.render-page", {
+      description: "A Markdown, SVG or Mermaid text as a drawn page: { html }. Internal: modules only. Nothing is stored.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["format", "text"], properties: { title: { type: "string" }, format: { type: "string", enum: ["markdown", "svg", "mermaid"] }, text: { type: "string" } } },
+      run: async (/** @type {any} */ i) => {
+        const text = String(i.text || "");
+        if (text.length > MAX_BYTES) throw Object.assign(new Error("that is too large to draw"), { code: "too_big" });
+        const r = page({ title: String(i.title || "Page").slice(0, 120), format: i.format, files: { [MAIN_FILE[i.format]]: text } });
+        return { html: r.html };
+      },
+    });
+
     ctx.tool("artifacts.share", {
       callers: PEOPLE,
       description: "Make a public link to an artifact that anyone with it can open, served by the person's own server. It shows the version shared unless version is \"latest\", and it expires (1d, 7d, 30d by default, or never). Sharing publicly is posting as the person: it runs when the person tapped it or asked for it, and otherwise waits for their approval. Refused when public links are off or when the artifact looks like it holds a secret.",
