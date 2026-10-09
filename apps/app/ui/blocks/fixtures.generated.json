@@ -3331,6 +3331,20 @@
      "surface": "chat"
     }
    }
+  },
+  "design-changes": {
+   "title": "Design changes",
+   "screens": {
+    "full": {
+     "component": "design-changes"
+    },
+    "compact": {
+     "component": "design-changes"
+    },
+    "glance": {
+     "component": "design-changes"
+    }
+   }
   }
  }
 }

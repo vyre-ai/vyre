@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import data from "../ui/blocks/fixtures.generated.json";
+import { DesignChangesView } from "../screens/design/DesignChanges";
 
 type Fx = { title: string; screens: Record<string, any> };
 const FX = (data as { fixtures: Record<string, Fx> }).fixtures;
@@ -23,6 +24,20 @@ function fromQuery(raw?: string): Record<string, any> | null {
   } catch { return null; }
 }
 
+/** Whole screens that are components, not block screens: drawn from sample data so a picture of them needs no box. */
+function Sample({ name }: { name: string }) {
+  const { phone } = useUiTheme();
+  if (name === "design-changes") {
+    const desk = (FX.desk?.screens.full ?? null) as any, list = (FX["block-list"]?.screens.full ?? null) as any;
+    const items = [
+      { id: 1, kind: "screen" as const, screenId: "desk", title: "Intake desk", why: "A single page for what is waiting.", by: "mcp:agent:engineer", status: "pending", before: {}, after: {}, uses: { reads: ["intake.queue"], runs: ["intake.close"] } },
+      { id: 2, kind: "css" as const, screenId: "space", title: "Styling: space", why: "Softer cards, in the firm's colour.", by: "mcp:agent:engineer", status: "pending", before: null, after: '[data-block="kpis"] { border-radius: var(--r-card); }', uses: { reads: [], runs: [] }, appliesTo: "web" },
+    ];
+    return <DesignChangesView items={items} shots={{ 1: { before: list, after: desk } }} phone={phone} busy={null} error="" onAnswer={() => {}} onRetry={() => {}} />;
+  }
+  return null;
+}
+
 export default function Gallery() {
   const q = useLocalSearchParams<{ f?: string; form?: string; screen?: string; theme?: string }>();
   // ?theme=dark|paper sets the person's theme for this view (the Design MCP's render); without it the picture follows the system, as the picture tests expect.
@@ -38,7 +53,7 @@ export default function Gallery() {
         {ids.map((id) => (
           <View key={id} nativeID={one ? "fixture" : `fixture-${id}`} style={{ gap: 8 }}>
             {!one ? <Text size="caption" tone="label">{`${id} (${form})`}</Text> : null}
-            {form === "glance" ? <ChatCard screen={FX[id].screens[form]} onOpen={() => {}} /> : <BlockScreen screen={FX[id].screens[form]} />}
+            {FX[id].screens[form]?.component ? <Sample name={String(FX[id].screens[form].component)} /> : form === "glance" ? <ChatCard screen={FX[id].screens[form]} onOpen={() => {}} /> : <BlockScreen screen={FX[id].screens[form]} />}
           </View>
         ))}
       </Page>

@@ -95,7 +95,15 @@ function Stack({ kids, screen, h, wide, gap }: { kids: Node[]; screen: Screen; h
   );
 }
 
+/** Below this width of its own container a screen stacks its rows and splits, whatever the window is: a screen drawn in a narrow place (a pane beside another, a chat card) reads as a phone's. */
+const WIDE_MIN = 560;
+
 export function BlockScreen({ screen, handlers = {}, wide }: { screen: Screen; handlers?: Handlers; wide?: boolean }) {
   const { phone } = useUiTheme();
-  return <View {...ds({ screen: screen.id ?? "screen" })} className="min-w-0"><Tree n={screen.layout} screen={screen} h={handlers} wide={wide ?? !phone} /></View>;
+  const [width, setWidth] = useState(0);
+  return (
+    <View {...ds({ screen: screen.id ?? "screen" })} className="min-w-0" onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w && Math.abs(w - width) > 1) setWidth(w); }}>
+      <Tree n={screen.layout} screen={screen} h={handlers} wide={wide ?? (width ? width >= WIDE_MIN : !phone)} />
+    </View>
+  );
 }
