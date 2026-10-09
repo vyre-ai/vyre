@@ -6115,7 +6115,7 @@ The owner says yes to evals for a model: { model, evals?: [type ids], cap_usd? }
   - `model` string, required
   - `cap_usd` number
   - `evals` list of string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `models.eval-decline`
 
@@ -6123,7 +6123,7 @@ The owner says no to evals for a model: it is not proposed again. A person's own
 
 - Input:
   - `model` string, required
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `models.eval-queue`
 
@@ -6141,7 +6141,7 @@ A runner reports one finished eval: { model, type, score (0 to 1), run? }. It is
   - `score` number, required
   - `type` string, required
   - `run` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `models.evals`
 
@@ -9139,7 +9139,7 @@ Say yes to a draft: it becomes the version in use at its level and the one befor
   - `version` integer, required
   - `ack` string
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `skills.change.apply`
 
@@ -9247,7 +9247,7 @@ Go back to an earlier version of a skill: it is written again as a new approved 
   - `to` integer, required
   - `ack` string
   - `scope` string: personal: you (default); agent: the agent's name; project: its short name; space: leave out
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `space`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `space`, `tailnet`
 
 ### `skills.versions`
 
