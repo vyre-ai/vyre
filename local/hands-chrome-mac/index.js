@@ -772,15 +772,19 @@ function pinnedOrigin() {
   } catch { return null; }
 }
 
-/** The steps a person does in Chrome, in plain words. @param {string} dir @param {string} id @param {string[]} browsers */
+/** The page where a browser lists its extensions. Dia, Arc, Brave and Edge answer to their own scheme. @param {string} browser */
+export const extensionsPage = browser => ({ dia: "dia://extensions", arc: "arc://extensions", brave: "brave://extensions", edge: "edge://extensions" }[browser] || "chrome://extensions");
+
+/** The steps a person does in the browser, in plain words. @param {string} dir @param {string} id @param {string[]} browsers */
 export function guide(dir, id, browsers) {
+  const pages = [...new Set(browsers.map(extensionsPage))];
   return [
     `Vyre's connector is registered for ${browsers.join(", ")}. Two steps remain in the browser:`,
-    "1. Open chrome://extensions and turn on Developer mode (top right).",
+    `1. Open ${pages.join(" (or ")}${pages.length > 1 ? ")" : ""} and turn on Developer mode (top right).`,
     `2. Press Load unpacked and choose this folder: ${dir}`,
     `The extension's id should read ${id}. If it does not, tell Vyre: the connector only talks to that id.`,
     "Then run chrome.status: it should say connected.",
-    "Two bars in Chrome are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
+    "Two bars in the browser are normal and cannot be hidden. On every start, Chrome warns about developer-mode extensions. While Vyre works in a tab, Chrome says the extension started debugging this browser; it goes away when Vyre lets go of the tab.",
     "Esc stops Vyre at once, and it waits for you before doing anything else.",
     "Agents can run a script in a page you are signed in to. Vyre blocks what it can see a script send to a site the page does not already use, and closes a worker it made when the call returns. It cannot hold a script that builds code from text or starts a worker some other way, so an agent you do not trust should not be given a page with your logins in it.",
   ].join("\n");

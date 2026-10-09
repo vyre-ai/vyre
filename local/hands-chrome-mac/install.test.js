@@ -145,3 +145,20 @@ test("Dia and Arc: registered on macOS under their own \"User Data\" folder when
   assert.ok(u.removed.some(x => x.browser === "dia") && u.removed.some(x => x.browser === "arc"));
   assert.equal(fs.existsSync(f), false);
 });
+
+test("Dia on macOS: found by its folder and registered under Dia/User Data, and the steps name dia://extensions", async t => {
+  const { guide, extensionsPage } = await import("./index.js");
+  const r = rig(t);
+  fs.mkdirSync(path.join(r.home, "Library", "Application Support", "Dia", "User Data"), { recursive: true });
+  const out = install({ home: r.home, platform: "darwin", extensionId: ID, hostDir: r.hostDir, vyreHome: path.join(r.home, ".vyre") });
+  assert.deepEqual(out.written.map((/** @type {any} */ w) => w.browser).sort(), ["chrome", "dia"]);
+  const file = path.join(r.home, "Library", "Application Support", "Dia", "User Data", "NativeMessagingHosts", "run.vyre.chrome.json");
+  const m = JSON.parse(fs.readFileSync(file, "utf8"));
+  assert.deepEqual(m.allowed_origins, [`chrome-extension://${ID}/`]);
+  assert.equal(extensionsPage("dia"), "dia://extensions");
+  assert.equal(extensionsPage("chrome"), "chrome://extensions");
+  const g = guide("/x/extension", ID, ["dia"]);
+  assert.match(g, /Open dia:\/\/extensions and turn on Developer mode/);
+  assert.match(g, /Load unpacked/);
+  assert.match(guide("/x", ID, ["chrome", "dia"]), /chrome:\/\/extensions \(or dia:\/\/extensions\)/);
+});

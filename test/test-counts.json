@@ -726,7 +726,7 @@
  "local/hands-chrome-mac/floor-url.test.js": 6,
  "local/hands-chrome-mac/guards.test.js": 12,
  "local/hands-chrome-mac/host.test.js": 8,
- "local/hands-chrome-mac/install.test.js": 10,
+ "local/hands-chrome-mac/install.test.js": 11,
  "local/hands-chrome-mac/learn-switch.test.js": 4,
  "local/hands-chrome-mac/module.test.js": 38,
  "local/hands-chrome-mac/outbound.test.js": 7,
