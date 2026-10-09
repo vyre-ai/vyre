@@ -9,6 +9,7 @@ import { codeLooksRight } from "../../../apps/app/screens/install/first-run.js";
 import { startDaemonServer } from "./server-daemon.mjs";
 import { startInstallerServer } from "./server-installer.mjs";
 import { startMacServer } from "./server-mac.mjs";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -327,7 +328,7 @@ export async function walkUpdate(w) {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
-    await updateSteps({ w: { update }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
+    await updateSteps({ w: { update, out: w.out }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
   } finally {
     try { if (srv) await srv.stop(); } catch { /* gone */ }
   }
@@ -376,10 +377,20 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
   await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
     // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
     let last = "", st = null;
-    for (let i = 0; i < 120 && !st; i++) {
+    const deadline = Date.now() + 10 * 60_000;   // wall clock: ten minutes, however long each try takes
+    for (let i = 0; Date.now() < deadline && !st; i++) {
       await new Promise(r => setTimeout(r, 5000));
       try { const s = await within(20_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
       catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
+      if (i % 6 === 0) console.log(`update: waiting for the new version (${Math.round((Date.now() - (deadline - 10 * 60_000)) / 1000)} s): ${last}`);
+    }
+    if (!st) {
+      // what the host and the box say, so a stall names its step
+      const sh = (/** @type {string} */ c) => { try { return String(spawnSync("sh", ["-c", c], { encoding: "utf8", timeout: 30_000 }).stdout || ""); } catch { return ""; } };
+      const diag = ["== docker ps", sh("docker ps -a 2>&1 | head -20"), "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== update unit", sh("sudo journalctl -u vyre-update.service --no-pager -n 60 2>&1"),
+        "== box log", sh("docker logs --tail 40 vyre-vyre-1 2>&1"), "== version file", sh("cat /srv/vyre/VERSION 2>&1")].join("\n");
+      fs.writeFileSync(path.join(w.out, "update-diag.txt"), diag);
+      console.log(diag);
     }
     assert.ok(st, `the server did not come back on ${u.newVersion} within 10 minutes: ${last}`);
     assert.equal(st.current, u.newVersion, "the version changed");
