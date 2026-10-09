@@ -227,3 +227,34 @@ export const savedLine = (name: string, generated?: string): string => (generate
 const NAME = /^[A-Za-z0-9._-]+$/;
 /** An SSH key's name, or what is wrong with it. */
 export const sshNameError = (name: string): string => (NAME.test(name) ? "" : "A name is letters, digits, dot, dash and underscore, with no spaces. Nothing was sent.");
+
+// ---- Emergency access: a person you trust may ask, and after the wait the items open to them unless you deny it ----
+
+export type EmergencyContact = { person: string; waitDays: number; state: "standby" | "waiting" | "denied" | "released"; requested: number | null; opens: number | null; denied: number | null; released: number | null; items: string };
+
+/** vault.emergency.list: names, the wait and where a request stands. Only names and dates; the items are a sentence or a list of names, never a value. */
+export function pickEmergency(d: unknown): EmergencyContact[] {
+  return arr((d as { contacts?: unknown } | null)?.contacts).filter((c) => str(c.person)).map((c) => {
+    const state = str(c.state);
+    return {
+      person: str(c.person), waitDays: Math.max(1, Math.round((num(c.wait_ms) ?? 7 * 86_400_000) / 86_400_000)),
+      state: (state === "waiting" || state === "denied" || state === "released" ? state : "standby") as EmergencyContact["state"],
+      requested: num(c.requested), opens: num(c.opens), denied: num(c.denied), released: num(c.released),
+      items: Array.isArray(c.items) ? strs(c.items).join(", ") : str(c.items) || "every item except ssh keys and passkeys",
+    };
+  });
+}
+
+const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/** One plain line per contact: what they can do, and where a request stands. */
+export function emergencyLine(c: EmergencyContact): { title: string; sub: string; canDeny: boolean } {
+  const wait = `${c.waitDays} ${c.waitDays === 1 ? "day" : "days"}`;
+  if (c.state === "released") return { title: c.person, sub: `Opened for them${c.released ? ` on ${day(c.released)}` : ""}. Remove them to end it.`, canDeny: false };
+  if (c.state === "waiting") return { title: c.person, sub: `Asked${c.requested ? ` on ${day(c.requested)}` : ""}. It opens${c.opens ? ` on ${day(c.opens)}` : ` in ${wait}`} unless you deny it.`, canDeny: true };
+  if (c.state === "denied") return { title: c.person, sub: `You denied their request${c.denied ? ` on ${day(c.denied)}` : ""}. They may ask again, and wait again.`, canDeny: false };
+  return { title: c.person, sub: `Can ask. ${wait} after they ask, the items open to them unless you deny it.`, canDeny: false };
+}
+
+/** The wait choices the owner may pick: 1 to 30 days, 7 by default. */
+export const EMERGENCY_WAITS: [string, string][] = [["1d", "1 day"], ["3d", "3 days"], ["7d", "7 days"], ["14d", "14 days"], ["30d", "30 days"]];

@@ -27,6 +27,12 @@ function box(o = {}) {
       case "vault.offboard": return { data: { revoked: ["p1", "p2"], rotate: ["Stripe"] } };
       case "vault.devices": return { data: { devices: [{ id: "d1", name: "Chrome", created: NOW - 5 * 86400_000, lastSeen: NOW - 86400_000, sessions: 2 }, { id: "d2", created: NOW - 90 * 86400_000, revoked: NOW - 10 * 86400_000 }, { name: "no id" }] } };
       case "vault.health": return { data: { checked: 5, counts: { weak: 1, reused: 2, old: 0 }, items: [{ name: "A", kind: "login", reasons: ["weak", "reused"], group: "g1" }, { name: "B", kind: "login", reasons: ["reused"], group: "g1" }, { name: "x" }] } };
+      case "vault.emergency.list": return { data: { contacts: [
+        { person: "Dana", wait: "7d", wait_ms: 7 * 86400_000, state: "standby", items: "every item except ssh keys and passkeys", created: 1, refreshed: 2 },
+        { person: "Theo", wait: "3d", wait_ms: 3 * 86400_000, state: "waiting", requested: Date.parse("2026-10-04T00:00:00Z"), opens: Date.parse("2026-10-07T00:00:00Z"), items: ["Gmail", "Bank"] },
+        { person: "Kit", wait: "1d", wait_ms: 86400_000, state: "denied", denied: Date.parse("2026-10-01T00:00:00Z"), items: "x", secret: "never" },
+        { person: "Old", wait: "30d", wait_ms: 30 * 86400_000, state: "released", released: Date.parse("2026-09-01T00:00:00Z"), items: [] }] } };
+      case "vault.emergency.add": case "vault.emergency.deny": case "vault.emergency.remove": case "vault.emergency.refresh": return { data: { ok: true } };
       case "vault.breach.check": return { data: { checked: 4, breached: ["A", 7] } };
       case "vault.history": return { data: { versions: [{ ver: 2, at: NOW - 86400_000, fields: ["password"], by: "cli" }, { ver: 1, at: NOW - 9 * 86400_000, by: "deck" }, { ver: 9 }], passwords: [{ at: NOW - 5 * 86400_000 }, { at: NOW - 40 * 86400_000 }] } };
       case "vault.update": return { data: o.update ?? { generated: "password" } };
@@ -208,4 +214,24 @@ test("an outside agent's ask to see a value: read from vault.pending, and the li
   assert.deepEqual(rows, [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }]);
   assert.equal(revealLine(rows[0]), "Dana's Claude's agent asks to see stripe-live: to debug");
   assert.deepEqual(pickReveals(null), []);
+});
+
+test("emergency access: contacts as names, waits and dates; each state has a plain line, only a waiting request can be denied, and the tool inputs are the choices made", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { emergencyLine, EMERGENCY_WAITS } = await import("./more-model.ts");
+  const b = box();
+  const src = vaultMoreSource(b.call);
+  const list = await src.emergency();
+  assert.deepEqual(list.map((c) => [c.person, c.waitDays, c.state]), [["Dana", 7, "standby"], ["Theo", 3, "waiting"], ["Kit", 1, "denied"], ["Old", 30, "released"]]);
+  assert.ok(!JSON.stringify(list).includes("never"), "a stray field in an answer does not reach the screen");
+  const lines = list.map(emergencyLine);
+  assert.equal(lines[0].sub, "Can ask. 7 days after they ask, the items open to them unless you deny it.");
+  assert.equal(lines[1].sub, "Asked on 2026-10-04. It opens on 2026-10-07 unless you deny it.");
+  assert.equal(lines[2].sub, "You denied their request on 2026-10-01. They may ask again, and wait again.");
+  assert.equal(lines[3].sub, "Opened for them on 2026-09-01. Remove them to end it.");
+  assert.deepEqual(lines.map((l) => l.canDeny), [false, true, false, false]);
+  assert.equal(list[1].items, "Gmail, Bank");
+  await src.emergencyAdd("Dana", "7d"); await src.emergencyDeny("Theo"); await src.emergencyRemove("Kit"); await src.emergencyRefresh();
+  assert.deepEqual(b.seen.slice(1).map((s) => [s.tool, s.input]), [["vault.emergency.add", { person: "Dana", wait: "7d" }], ["vault.emergency.deny", { person: "Theo" }], ["vault.emergency.remove", { person: "Kit" }], ["vault.emergency.refresh", {}]]);
+  assert.deepEqual(EMERGENCY_WAITS.map((w) => w[0]), ["1d", "3d", "7d", "14d", "30d"]);
 });

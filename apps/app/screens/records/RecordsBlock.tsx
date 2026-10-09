@@ -12,7 +12,7 @@ const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar
 
 /**
  * The `records` block (design language, data source: records): every record of one type, as a list, a board, a calendar or a dashboard, drawn from the type's definition. Nothing here knows Contact
- * or Matter. Its sorting, filters and stored views are the type's own (ListView, BoardView, CalendarView and DashboardView), so a screen that holds this block behaves as the records page always did.
+ * or Matter. Its sorting, filters and stored views are the type's own (the table block for the list; BoardView, CalendarView and DashboardView), so a screen that holds this block behaves as the records page always did.
  * With `page` the block draws the page's large title and scroll as well, because on /u/records it is the whole screen.
  */
 export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any>; data?: { records?: { type: string; view?: string } } } }) {

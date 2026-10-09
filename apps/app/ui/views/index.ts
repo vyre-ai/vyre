@@ -1,4 +1,3 @@
-export { ListView } from "./ListView";
 export { BoardView } from "./BoardView";
 export { CalendarView } from "./CalendarView";
 export { DashboardView } from "./DashboardView";
