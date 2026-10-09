@@ -88,7 +88,7 @@ serve "$BOX" 18080
 if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
 else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; { echo "--- vyre status"; vyre status 2>&1 | head -40; echo "--- container logs"; docker logs --tail 80 vyre-vyre-1 2>&1; } >"$OUT/install-diag.log"; tail -120 "$OUT/install-diag.log" >&2; exit 1; fi
 wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
-docker exec vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >/dev/null 2>&1
+docker exec vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >"$OUT/seed.log" 2>&1; cat "$OUT/seed.log" >&2; docker ps --format '{{.Names}} {{.Status}}' >&2
 seen && mem && rec 2-seed ok || { vyre status 2>&1 | head -8 >&2; vyre modules 2>&1 | grep -v running | head -20 >&2; docker logs --tail 40 vyre-vyre-1 2>&1 | grep -iE "planner|memory|not first party|kernel" | head -15 >&2; false; } || rec 2-seed false "seed not readable"
 # 2b where the installer's own first `up` ran compose from: recorded as it is (the installer runs it as the person when they are in the docker
 #    group, so this is the stack folder; root's copies exist only once the updater is installed, which is the next step)
