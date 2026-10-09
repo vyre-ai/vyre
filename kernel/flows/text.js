@@ -340,8 +340,9 @@ export const flowHandlers = Object.freeze({
 /** Fill what the text form leaves out so the stored form is whole: a Code step's hash. @param {any} flow */
 export function normalizeFlow(flow) {
   const f = structuredClone(flow);
-  const walk = (/** @type {any[]} */ steps) => { for (const s of steps || []) { if (s.kind === "fn" && typeof s.source === "string") s.hash = sourceHash(s.source); for (const b of /** @type {string[]} */ (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || [])) if (Array.isArray(s[b])) walk(s[b]); } };
+  const walk = (/** @type {any[]} */ steps) => { for (const s of steps || []) { if (s.kind === "fn" && typeof s.source === "string") s.hash = sourceHash(s.source); for (const b of /** @type {string[]} */ (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || [])) if (Array.isArray(s[b])) walk(s[b]); if (s.on_fail && Array.isArray(s.on_fail.steps)) walk(s.on_fail.steps); } };
   walk(f.steps);
+  walk(f.on_failure);
   return f;
 }
 
@@ -365,7 +366,7 @@ const isFlowLike = v => v && typeof v === "object" && !Array.isArray(v) && v.for
 
 // ---------------------------------------------------------------- Flow: stored to text
 
-const FLOW_ORDER = ["name", "label", "description", "authorship", "caps", "trigger", "steps"];
+const FLOW_ORDER = ["name", "label", "description", "authorship", "caps", "trigger", "concurrency", "lock", "stuck_after_ms", "steps", "on_failure"];
 const TRIGGER_ORDER = TRIGGER_KEY_ORDER;
 const STEP_PROP_ORDER = ["label", "type", "from", "match", "record", "to", "assistant", "action", "resource", "connector", "method", "path", "url", "language", "over", "as", "if", "for_ms", "until", "event", "where", "timeout_ms", "on_timeout", "limit", "sort", "title", "instructions", "form", "input", "inputs", "outputs", "labels", "needs", "set", "query", "headers", "body", "drive", "how", "template", "checker", "output", "await", "max", "then", "else", "steps", "source"];
 
@@ -432,6 +433,10 @@ function printStep(s, indent) {
     if ((k === "then" || k === "else" || k === "steps") && Array.isArray(v)) {
       return v.length ? `${ip}${k}: [\n${v.map(x => printStep(x, indent + 2)).join(",\n")},\n${ip}]` : `${ip}${k}: []`;
     }
+    if (k === "on_fail" && v && Array.isArray(v.steps)) {
+      const inner = "  ".repeat(indent + 2);
+      return `${ip}on_fail: {\n${inner}steps: [\n${v.steps.map((/** @type {any} */ x) => printStep(x, indent + 3)).join(",\n")},\n${inner}],${v.then !== undefined ? `\n${inner}then: ${quote(v.then)},` : ""}\n${ip}}`;
+    }
     if (k === "source" && s.kind === "fn" && typeof v === "string") return `${ip}${k}: ${template(v)}`;
     return `${ip}${k}: ${pv(v, indent + 1, null)}`;
   });
@@ -450,6 +455,7 @@ export function printFlow(flow, o = {}) {
   const head = `import { ${["defineFlow", "step", ...(used.has("expr") ? ["expr"] : [])].join(", ")} } from '${SDK}';\n\n`;
   const keys = FLOW_ORDER.filter(k => f[k] !== undefined);
   const body = keys.map(k => {
+    if (k === "on_failure") return `  on_failure: [\n${f.on_failure.map((/** @type {any} */ s) => printStep(s, 2)).join(",\n")},\n  ]`;
     if (k === "steps") return f.steps.length ? `  steps: [\n${f.steps.map((/** @type {any} */ s) => printStep(s, 2)).join(",\n")},\n  ]` : "  steps: []";
     if (k === "trigger") return `  trigger: ${pv(f.trigger, 1, TRIGGER_ORDER)}`;
     if (k === "caps") return `  caps: ${pv(f.caps, 1, ["action", "resource"])}`;

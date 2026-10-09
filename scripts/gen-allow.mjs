@@ -237,6 +237,12 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.kit.diff": "reads what updating an installed Kit to a version would change: parts added, changed and removed, and the risks; nothing is changed",
   "flows.kit.library": "lists the Kits this build ships before anything is installed: public text, no data",
   "flows.kit.library.get": "reads one shipped Kit in the form the card, diff and propose tools take: public text, no data",
+  "flows.cancel": "cancels one run under the caller's chain: the run stops at its next step boundary, and nothing already done is undone",
+  "flows.control": "reads the Space's Flow control state: the concurrency limits, what is paused, what is queued and why; nothing is changed",
+  "flows.health": "reads how a Flow is doing: runs, failures, handled failures and the slowest steps, with no step data",
+  "flows.timeline": "reads a run as a timeline of its steps, with secrets hidden in what it shows",
+  "flows.diff": "reads what changed between two versions of a Flow; nothing is changed",
+  "flows.describe": "reads a Flow in plain words for a person: when it runs, what it does, what it can touch; nothing is changed",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
 });
 

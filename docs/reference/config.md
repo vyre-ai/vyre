@@ -120,6 +120,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_LENT_AGENT_ARGS` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_LENT_AGENT_DEV` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_MANAGED_CONTEXT` | Not described yet. | `core/switchboard/index.js` |
+| `VYRE_MCP_FEATURES` | Not described yet. | `harness/mcp/server.js` |
+| `VYRE_MCP_LISTING` | Not described yet. | `harness/mcp/server.js` |
+| `VYRE_MCP_REF_TOKENS` | Not described yet. | `harness/mcp/server.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
@@ -139,6 +143,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
+| `VYRE_SEAL_DEV` | Not described yet. | `core/vault/request.js` |
 | `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
