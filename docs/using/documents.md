@@ -2,7 +2,7 @@
 title: Documents and Comms
 summary: Make a document from a Word template and your records, file it on the client, send it for signature from a stage, and deliver the link by email or text, with every send held for your yes.
 audience: users, builders
-owner: documents
+owner: connectors
 status: draft
 ---
 
