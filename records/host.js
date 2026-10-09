@@ -16,6 +16,7 @@ import { createFlows } from "../kernel/flows/index.js";
 import { CORE_TYPES } from "./core-types.js";
 import { toKernelKit } from "./kit-adapter.js";
 import { parseExpr, evalExpr } from "./language/expr.js";
+import { ROLE_IDS } from "../kernel/contracts/index.js";
 
 const RECORD_GRANT_ACTIONS = ["records.*", "records.define", "events.read"];
 
@@ -62,7 +63,7 @@ export function createRecordsHost(o) {
     space,
     types: Object.fromEntries(types),
     actions: { "records.read": { risk: "read" }, "records.create": { risk: "write" }, "records.update": { risk: "write" }, "records.remove": { risk: "write" }, ...(o.extraActions ?? {}) },
-    roles: ["owner", "admin", "manager", "member", "attorney"],
+    roles: [...ROLE_IDS, "attorney"],
     teammates: [], templates: [],
   });
   const flows = createFlows({ kernel, chains: { forFlow }, catalog, clock, ports: o.ports ?? {} });

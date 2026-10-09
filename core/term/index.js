@@ -63,7 +63,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { guard } from "../files/safety.js";
-import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
 import { Pty, size } from "./pty.js";
 import { DtachPty, findDtach, isMaster, socketDir } from "./dtach.js";
 import { Ring } from "./ring.js";
@@ -441,7 +441,7 @@ export default {
         const key = req.headers && req.headers["sec-websocket-key"];
         const upgrade = req.headers && String(req.headers["upgrade"] || "").toLowerCase();
         if (upgrade !== "websocket" || !key) { reject(socket, 400, "Bad Request"); return; }
-        socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
+        socket.write(upgradeHead(key));
         socket.setNoDelay?.(true);
         if (t.idle) { clearTimeout(t.idle); t.idle = null; }
         t.sockets.add(socket);

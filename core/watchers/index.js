@@ -18,6 +18,7 @@ import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
 import { createDefs, MIGRATIONS as DEF_MIGRATIONS } from "./defs.js";
+import { validZone, systemZone } from "../../lib/time/index.js";
 
 /**
  * How often vyred looks for due watchers. Cron is minute-grained, so a tick faster than that
@@ -67,7 +68,11 @@ export default {
     const tool = (/** @type {string} */ name, /** @type {any} */ spec) => ctx.tool(name, defs && SYNCED.has(name) ? { ...spec, run: async (/** @type {any} */ i, /** @type {any} */ m) => { await sync(); const r = await spec.run(i, m); void sync(); return r; } } : spec);
     const rt = rtRef = new Runtime({
       db: ctx.store.db, dir: ctx.paths.watchers, defs,
+      // Schedules run in the Space's time zone: the planner's configured zone, else the server's own.
+      zone: () => { const z = ctx.config && ctx.config.planner && ctx.config.planner.timezone; return validZone(z) ? String(z) : systemZone(); },
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
+      // A watcher that fires at a different time since schedules follow the Space's zone is told once, as a to-do in the planner.
+      notice: text => ctx.call("planner.add", { kind: "todo", title: text.slice(0, 120), body: text }),
       call: ctx.call, fetch: (name, watcher, field) => ctx.vault.fetch(name, { watcher, ...(field ? { field } : {}) }),
       teach: (kind, fact) => ctx.memory.teach(kind, fact),
       ask: async (prompt, o) => {

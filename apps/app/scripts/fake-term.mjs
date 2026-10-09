@@ -2,7 +2,7 @@
 // coloured session (ls, git, a test run) and echoing what is typed. No pty, no shell, nothing real.
 //   node scripts/fake-term.mjs [port]      listens on 127.0.0.1 (default 7391); ws://127.0.0.1:<port>/pty?from=<offset>
 import http from "node:http";
-import { acceptKey, encodeFrame, FrameParser } from "../../../lib/ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../../lib/ws.js";
 
 const C = (n, s) => `\x1b[${n}m${s}\x1b[0m`;
 const prompt = `${C("1;32", "alex@juno")}:${C("1;34", "~/juniper-site")}$ `;
@@ -37,7 +37,7 @@ export function serve(port = 7391) {
     const url = new URL(req.url || "/", "http://x");
     const key = req.headers["sec-websocket-key"];
     if (!key) { socket.destroy(); return; }
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
+    socket.write(upgradeHead(key));
     const text = (m) => socket.write(encodeFrame(Buffer.from(JSON.stringify(m)), 0x1));
     let end = ALL.length, cols = 80, rows = 24, owner = true;
     const from = Number(url.searchParams.get("from") || 0);

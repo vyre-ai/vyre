@@ -20,6 +20,7 @@
 // auto-attach means one browser-level connection reaches every target with a `sessionId`, so a
 // second tab never needs a second socket.
 
+import { scrub as scrubText } from "../../lib/scrub.js";
 const CALL_TIMEOUT = 30_000;
 const CONNECT_TIMEOUT = 10_000;
 
@@ -79,7 +80,7 @@ export class Cdp {
   }
 
   /** Never let the token reach a thrown message: it would otherwise land wherever an error does. */
-  scrub(s) { return this.token ? String(s).split(this.token).join("[token]") : String(s); }
+  scrub(s) { return scrubText(s, [this.token], { marker: "[token]", min: 1 }); }
 
   async _connect() {
     /** @type {Response} */

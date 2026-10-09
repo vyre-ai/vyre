@@ -30,6 +30,7 @@
 import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
+import { isTailnet } from "../../../lib/netguard.js";
 
 export const MAGIC = Buffer.from("WKH1", "latin1");
 export const MAX_HEADER = 4096;
@@ -57,15 +58,7 @@ export function encodeRelayHeader(id) {
 
 /** @typedef {{ via: "direct", nodeKey: string, stableId: string, tags: string[], remoteAddr: string } | { via: "relay", deviceId: string, space: string }} PeerId */
 
-/** True for an address inside the tailnet ranges (100.64.0.0/10, fd7a:115c:a1e0::/48). */
-function tailnetIp(ip) {
-  if (net.isIPv4(ip)) {
-    const [a, b] = ip.split(".").map(Number);
-    return a === 100 && b >= 64 && b <= 127;
-  }
-  if (net.isIPv6(ip)) return /^fd7a:115c:a1e0:/i.test(ip);
-  return false;
-}
+const tailnetIp = isTailnet;
 
 /** @param {string} s ip:port or [ip]:port @returns {{ ip: string, port: number } | null} */
 function splitAddr(s) {

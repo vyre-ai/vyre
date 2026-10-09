@@ -21,8 +21,8 @@
 // What leaves: names, providers, account addresses, capabilities, surfaces, states and which
 // tool to call. Never a value, and never the name of a field that holds one.
 
-import crypto from "node:crypto";
 import { provider as catalog, CAPABILITIES } from "./providers.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** The vault_connections table (vault.js appends it to MIGRATIONS). */
 export const CONNECTIONS_MIGRATION = `CREATE TABLE vault_connections (
@@ -60,7 +60,7 @@ export const DEFAULT_SURFACES = ["capsule", "chat"];
 export const AUTHS = /** @type {const} */ (["oauth", "service-account", "api-key", "password", "bearer", "none"]);
 
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
-const newId = () => "cn_" + crypto.randomBytes(9).toString("base64url");
+const newId = () => newPrefixedId("cn");
 const cut = (s, n) => String(s ?? "").slice(0, n);
 const REF = /^[A-Za-z0-9][A-Za-z0-9._:@+-]{0,199}$/;
 const ITEM = /^[A-Za-z0-9_.-]{1,128}$/;

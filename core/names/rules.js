@@ -4,6 +4,7 @@
 // (a Worker cannot load node:crypto); names/worker/worker.test.js checks the two match.
 
 import crypto from "node:crypto";
+import { base32 } from "../../lib/bytes.js";
 
 export const ZONE_TAG = "vyre-acme-zone";
 
@@ -94,18 +95,7 @@ export function tailnetIp(raw) {
 }
 
 
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-/** RFC 4648 base32, lowercase, no padding. @param {Uint8Array} buf */
-export function base32(buf) {
-  let bits = 0, value = 0, out = "";
-  for (const byte of buf) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) { out += ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; }
-  }
-  if (bits > 0) out += ALPHABET[(value << (5 - bits)) & 31];
-  return out;
-}
+export { base32 };
 
 /** The label under acme.<zone> a route's own-domain challenges go to. @param {string} route */
 export const routeHash = route => base32(crypto.createHash("sha256").update(`${ZONE_TAG}\n${route}`).digest()).slice(0, 26);

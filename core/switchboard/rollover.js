@@ -12,6 +12,7 @@
 
 import { SEED_OPEN, withoutSeed } from "../../lib/seed.js";
 import { WINDOWS, DEFAULT_WINDOW, windowFor } from "../../lib/windows.js";
+import { tokensOfChars } from "../../lib/tokens.js";
 
 /** How rollover behaves unless a setting says otherwise. */
 export const ROLL = Object.freeze({
@@ -47,7 +48,7 @@ export { WINDOWS, DEFAULT_WINDOW, windowFor };
 export function contextOf({ used = 0, window = 0, chars = 0, model = null, provider = null }) {
   const win = window > 0 ? window : windowFor(model, provider);
   if (used > 0) return { used, window: win, share: used / win, source: "reported" };
-  const est = Math.ceil(chars / 4) + ROLL.baseline;
+  const est = tokensOfChars(chars) + ROLL.baseline;
   return { used: est, window: win, share: est / win, source: "estimated" };
 }
 

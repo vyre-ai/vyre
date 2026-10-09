@@ -75,7 +75,7 @@ test("save-key: one call stores a key ready to use, named from the host and labe
   assert.equal(third.body.data.name, "console.anthropic.com-api-key-2");
 });
 
-test("save-key: the kind and field follow what detect.js reads from the value", async t => {
+test("save-key: the kind and field follow what credential-shapes.js reads from the value", async t => {
   const { vault, call, both } = await setup(t);
   const pat = ["ghp", "_", fake(36)].join("");
   const r = await call("save-key", key(pat, { label: "Personal access token", url: "https://github.com/settings/tokens", raisedOn: "https://github.com/settings/tokens" }), both);

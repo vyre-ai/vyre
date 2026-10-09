@@ -21,6 +21,14 @@ export function missingFields(frame, values) {
   return (Array.isArray(frame && frame.fields) ? frame.fields : []).filter((/** @type {any} */ f) => f.required && !String(values[f.name] ?? "").trim()).map((/** @type {any} */ f) => String(f.label || f.name));
 }
 
+/** The e-mail a record holds, as one address: a text field's string, or the first of a list of addresses. Empty when there is none. @param {any} data */
+export function emailOf(data) {
+  const v = data && typeof data === "object" ? data.email : null;
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v)) { const first = v.find((x) => typeof x === "string" && x.trim()); return first ? first.trim() : ""; }
+  return "";
+}
+
 /** The form values to start from: the field's own default when the server gave one (the signer's e-mail from a record), else empty, or its first choice for a required choice. @param {any} frame */
 export function initialValues(frame) {
   return Object.fromEntries((Array.isArray(frame && frame.fields) ? frame.fields : []).map((/** @type {any} */ f) => [f.name, typeof f.default === "string" && f.default ? f.default : f.type === "choice" && Array.isArray(f.choices) && f.choices[0] && f.required ? String(typeof f.choices[0] === "string" ? f.choices[0] : f.choices[0].id ?? f.choices[0].value ?? "") : ""]));

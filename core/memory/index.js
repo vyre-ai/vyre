@@ -9,7 +9,6 @@
 import { Curator } from "./curator.js";
 import { Graph, ago } from "./graph.js";
 import { floorPlan } from "./floor.js";
-import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
@@ -41,6 +40,7 @@ import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
 import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -1474,7 +1474,7 @@ export default {
         const screen = sees && input.screen && typeof input.screen === "object" ? input.screen : null;
         if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn });
         // Streamed: the events carry the id and the step, never the question or the answer.
-        const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
+        const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : newPrefixedId("iq");
         const r = await ask({ question: String(input.question || ""), project_cwds: effectiveCwds, personal: sees, siteOk: siteStore.isPerson(caller), thread, screen, writes: writesIn, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }),
           // The draft goes to the calling connection only (extra.draft, when the caller asked for it): never the events bus.
           ...(typeof extra.draft === "function" ? { draft: t => extra.draft({ id, text: t }) } : {}) });

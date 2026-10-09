@@ -264,7 +264,7 @@ export default {
       run: async (input, meta = {}) => {
         const peer = meta.peer;
         const device = peer && peer.kind === "device" ? nodeOf(meta) : null;
-        const refuse = () => Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
+        const refuse = () => Object.assign(new Error("This device could not sign in. If it lost its session, it signs in again with its own key. If the owner removed it, pair it again from the owner's device."), { code: "denied" });
         if (!device) throw refuse();
         const wr = await ctx.call("wink.device.record", { id: device }).catch(() => null);
         // the enclave key counts only while it still stands on the identity's directory list (a revoked phone's entry no longer does): wink checks it, cached for 10 minutes
@@ -275,6 +275,7 @@ export default {
           if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
+        if (s.replaced) { ctx.log(`presence: ${device} signed in again with its own key; its earlier session (${s.replaced}) is ended`); ctx.events.emit("presence.session-replaced", { device, ended: s.replaced, id: s.id }); }
         ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
         return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
       },
@@ -295,13 +296,15 @@ export default {
     };
     const renewGrant = async (/** @type {string} */ device) => {
       // a phone-approved sign-in (the owner's phone said yes to this device) is granted even when the device holds an older software grant: the session takes the approving proof's strength, once
-      if (people.holds(device)) return;
+      // A pending grant is left alone. A LIVE SESSION is not a reason to refuse a renewal any more (#112): a device that lost its token asks for a challenge and answers it with its own confirmed key, and only that
+      // answer replaces the session it held (people.startPaired); asking costs it nothing.
+      if (people.holdsGrant(device)) return;
       const until = locked.get(device);
       if (until && until > Date.now()) return;
       const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
       const rec = r && r.data;
       if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
-      try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: true, strength: STRENGTHS[0] }); } catch { /* no grant: the device gets the random challenge */ }
+      try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: true, strength: STRENGTHS[0], keepSession: true }); } catch { /* no grant: the device gets the random challenge */ }
     };
     ctx.tool("presence.person.locked", {
       effect: "read",
@@ -330,7 +333,7 @@ export default {
       input: obj({}),
       run: async (_, meta = {}) => {
         const peer = meta.peer;
-        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
+        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("This device could not sign in. If it lost its session, it signs in again with its own key. If the owner removed it, pair it again from the owner's device."), { code: "denied" });
         const device = nodeOf(meta);
         await renewGrant(device);
         return { challenge: people.challengeFor(device) };

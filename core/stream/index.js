@@ -17,6 +17,7 @@ import { serve, serveWS } from "./server.js";
 import { createGroups } from "./group.js";
 import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export { SessionLog, Logs } from "./log.js";
 export { serve, serveSSE, serveWS, HEARTBEAT_MS } from "./server.js";
@@ -184,7 +185,7 @@ export default {
         if (!meta || !meta.peerStream || typeof meta.peerStream.open !== "function") throw Object.assign(new Error("this stream opens only over a paired device's peer wire"), { code: "bad_input" });
         const { chat, session, who, from } = await prepare(i, meta);
         const log = logs.get(session);
-        const id = `st_${crypto.randomBytes(18).toString("base64url")}`;
+        const id = newPrefixedId("st");
         // PS-A: the viewer and chain were decided at open, but access can end while the stream runs (a grant revoked, the person out of the chat, the role changed). So no frame leaves until
         // access has been asked again, AFTER the frame was appended: frames wait in a queue, one re-check serves every frame queued while it ran (so a burst costs one ask, never one each),
         // a refusal ends the stream with `access_ended` and sends nothing more, and the roles the viewer is drawn with are the ones the re-check just read.

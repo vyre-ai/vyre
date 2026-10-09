@@ -1,0 +1,104 @@
+[
+ {
+  "intent": "show the comments on the pull request",
+  "expect": [
+   "github.project.pr.comments"
+  ]
+ },
+ {
+  "intent": "which issues are open on the repository",
+  "expect": [
+   "github.project.issue.list"
+  ]
+ },
+ {
+  "intent": "search my calendar for the board meeting",
+  "expect": [
+   "google.calendar.search"
+  ]
+ },
+ {
+  "intent": "what are my next events across all accounts",
+  "expect": [
+   "google.calendar.next"
+  ]
+ },
+ {
+  "intent": "what have agents written to memory lately",
+  "expect": [
+   "memory.writes"
+  ]
+ },
+ {
+  "intent": "have one of my agents fill a role on a project",
+  "expect": [
+   "team.role.fill"
+  ]
+ },
+ {
+  "intent": "set up a recurring duty for a teammate",
+  "expect": [
+   "team.duties.create"
+  ]
+ },
+ {
+  "intent": "show me the tips Vyre has for me",
+  "expect": [
+   "tips.list"
+  ]
+ },
+ {
+  "intent": "what settings can be changed",
+  "expect": [
+   "settings.schema"
+  ]
+ },
+ {
+  "intent": "download a file from an agent's computer",
+  "expect": [
+   "glass.files.download"
+  ]
+ },
+ {
+  "intent": "make a new folder on the agent's computer",
+  "expect": [
+   "glass.files.mkdir"
+  ]
+ },
+ {
+  "intent": "which models can a session use",
+  "expect": [
+   "sessions.models"
+  ]
+ },
+ {
+  "intent": "which provider accounts are signed in",
+  "expect": [
+   "sessions.accounts.list"
+  ]
+ },
+ {
+  "intent": "how much of the usage limit is left",
+  "expect": [
+   "sessions.limits.get"
+  ]
+ },
+ {
+  "intent": "list the artifacts I made recently",
+  "expect": [
+   "artifacts.list"
+  ]
+ },
+ {
+  "intent": "export a document as one html file",
+  "expect": [
+   "artifacts.export"
+  ]
+ },
+ {
+  "intent": "open a web page in the browser",
+  "expect": [
+   "chrome.open"
+  ]
+ }
+]

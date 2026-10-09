@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { mentionsCredentialPrefix } from "../../lib/credential-shapes.js";
 
 export const BUDGET = 600;
 const DEBOUNCE_MS = 5000;
@@ -19,7 +20,7 @@ const WATCH = /^(memory|onboard|project|projects|agent|agents|system)\./;
 // Blunter than the vault's redactor on purpose: a line that looks like any of these is dropped
 // whole, not masked.
 const UNSAFE = [
-  /(sk-|ghp_|xox[abprs]-|AKIA|-----BEGIN)/,
+  { test: (/** @type {string} */ s) => mentionsCredentialPrefix(s) },   // a key prefix anywhere (lib/credential-shapes.js)
   /[A-Za-z0-9_+/=-]{24,}/,                       // long tokens, keys, hashes
   /[^\s@]+@[^\s@]+\.[a-z]{2,}/i,                   // email addresses
   /\+?\d[\d\s().-]{7,}\d/,                          // phone numbers

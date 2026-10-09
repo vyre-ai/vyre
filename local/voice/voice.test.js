@@ -18,6 +18,8 @@ import { connect, encodeFrame, FrameParser } from "./ws.js";
 import { origin, wav } from "./providers.js";
 import { listener } from "./listen.js";
 import { fakeSpeech, AUDIO, WORDS } from "./fake.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 const HERE = import.meta.dirname;
 const GOOD = "dg-test-key-northwind-0000";

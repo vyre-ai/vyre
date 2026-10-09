@@ -29,6 +29,9 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { sign, verify, canonical } from "./crypto.js";
 import { capValues } from "../link/transport.js";
+import { isLoopbackHost } from "../../lib/netguard.js";
+import { scrub } from "../../lib/scrub.js";
+import { httpFetch } from "../../lib/http.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -38,7 +41,6 @@ const CARD_TAG = "vyre-card-v2";
 const TICKET_TAG = "vyre-ticket-v1";
 const ENVELOPE_TAG = "vyre-relay-v2";
 const ENVELOPE_V = 2;
-const CONCEALED = "<concealed by vyre>";
 const SKEW_MS = 60_000;
 const SEEN_TTL_MS = 120_000;
 
@@ -287,10 +289,7 @@ export function checkEmergency(env, { audience, now = Date.now(), seen }) {
 }
 
 /** 127.0.0.0/8, ::1 and localhost. */
-export function isLoopback(host) {
-  const h = String(host || "").replace(/^\[|\]$/g, "").toLowerCase();
-  return h === "localhost" || h === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
-}
+export function isLoopback(host) { return isLoopbackHost(String(host || "").replace(/^\[|\]$/g, "")); }
 
 /** https, or http to loopback only. A relayed value never crosses a network in clear text. */
 export function secureTarget(url) {
@@ -386,25 +385,6 @@ export function substitute(request, fields, defaultField, { body = false } = {})
   return { request: out, values: [...values] };
 }
 
-/**
- * Replace every occurrence of each value, and of its base64, base64url and URL-encoded forms,
- * with a marker. Values shorter than 4 characters are skipped: scrubbing them would shred text.
- * @param {string} text @param {string[]} values
- */
-export function scrub(text, values) {
-  let out = String(text ?? "");
-  const forms = new Set();
-  for (const v of values || []) {
-    if (typeof v !== "string" || v.length < 4) continue;
-    const b = Buffer.from(v, "utf8");
-    for (const f of [v, b.toString("base64"), b.toString("base64").replace(/=+$/, ""), b.toString("base64url"), encodeURIComponent(v), encodeURIComponent(v).replace(/%20/g, "+")]) {
-      if (f.length >= 4) forms.add(f);
-    }
-  }
-  // Longest first, so a form that contains another is replaced whole.
-  for (const f of [...forms].sort((a, b) => b.length - a.length)) out = out.split(f).join(CONCEALED);
-  return out;
-}
 
 /**
  * Send a request the way a relay must: redirects off, a timeout, and a cap on the response size.
@@ -420,7 +400,7 @@ export async function send(request, { timeoutMs = 30000, maxBytes = 5_000_000 } 
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs);
   try {
-    const res = await fetch(u, { method: (request.method || "GET").toUpperCase(), headers: request.headers, body: request.body ?? undefined, redirect: "manual", signal: ctl.signal });
+    const res = await httpFetch(u, { method: (request.method || "GET").toUpperCase(), headers: request.headers, body: request.body ?? undefined, redirect: "manual", signal: ctl.signal, allow: "any", retries: 0, maxBytes: 32 * 1024 * 1024 });   // the target was checked before it got here (checkTarget); the cap below still truncates
     /** @type {{ "content-type"?: string, location?: string }} */
     const headers = {};
     const ct = res.headers.get("content-type"); if (ct) headers["content-type"] = ct;
@@ -530,7 +510,7 @@ export async function callRelay(relayUrl, env, { timeoutMs = 45000, route = "/v1
   let res;
   const target = new URL(route, relayUrl);
   try {
-    res = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(env), redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    res = await httpFetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(env), redirect: "manual", signal: AbortSignal.timeout(timeoutMs), allow: "any", retries: 0 });   // another person's Vyre: public, a tailnet address or this machine
   } catch (e) {
     const why = e?.name === "TimeoutError" ? `no answer within ${timeoutMs} ms` : (e?.cause?.code || e?.message || "connection failed");
     return { error: { code: "unreachable", message: `the owner's Vyre at ${target.origin} did not answer (${why})` } };
@@ -543,3 +523,5 @@ export async function callRelay(relayUrl, env, { timeoutMs = 45000, route = "/v1
   } catch {}
   return { error: { code: "bad_response", message: `the owner's Vyre answered ${res.status} with something that is not a relay reply` } };
 }
+
+export { scrub };

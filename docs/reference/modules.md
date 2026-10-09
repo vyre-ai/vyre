@@ -33,6 +33,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 24 | 0 | none |
@@ -58,7 +59,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 6 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
@@ -76,6 +77,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 3 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 112 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -94,8 +96,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`views`](#views) | `core/views` | `box`, `local` | 3 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
+| [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
-| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 38 | 0 | cli |
 
@@ -283,6 +286,18 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
 - Shows on: cli
+
+## docs
+
+The docs, found and read from inside Vyre: docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section of it, within a token budget. People get the human docs. A session or an agent also gets the agent docs, which are never offered to a person.
+
+- Folder: `core/docs`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#docs)
+- Emits: no events
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## events
 
@@ -572,7 +587,7 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [21](tools.md#presence), 5 of them only for other modules
-- Emits: [6 events](events.md#presence)
+- Emits: [7 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -773,6 +788,19 @@ The command line's sign-in: `vyre signin` asks the owner's phone to approve, and
 - Shows on: cli
 - Needs daemon: `cliSigninPayload`, `cliSigninCheck`, `cliSessions`, `devStandIn`
 - Needs kernel: `{"actions":[]}`
+
+## skills
+
+The skills a session may use, found by what it is about to do. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, the person's learned ones, a project's, an agent's. What a caller sees is cut by the permission system: it never sees a skill it may not use.
+
+- Folder: `core/skills`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#skills)
+- Emits: no events
+- Shows on: cli
+- Needs tools: `projects.reach`
+- Teaches tips: `[object Object]`
 
 ## spaces
 
@@ -982,6 +1010,17 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## vyre
+
+The live index of Vyre's modules: what each one is for, where it lives, where it runs and whether it is running here now. Read from the architecture map's generated table (which is generated from each module.json) and the daemon's own module list, so it cannot drift from either.
+
+- Folder: `core/vyre-index`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#vyre)
+- Emits: no events
+- Shows on: cli
+
 ## waiting
 
 One list of what waits on the user: session asks, held drafts, ringing reminders and pairing requests.
@@ -999,7 +1038,7 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [20](tools.md#watchers)
-- Emits: [7 events](events.md#watchers)
+- Emits: [8 events](events.md#watchers)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove"],"types":[{"name":"def-watcher","label":"Watcher","icon":"IconEye","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"project","kind":"text","label":"Project"},{"name":"schedule","kind":"text","label":"Runs"},{"name":"hash","kind":"text","label":"Hash"},{"name":"spec","kind":"text","label":"Settings (watcher.json)"},{"name":"code","kind":"text","label":"Code (watch.js)"}]}]}`
 - Needs vault: `per-watcher`

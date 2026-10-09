@@ -3,7 +3,7 @@
 // a sealed class never lands in a row even when a person typed it into a chat. The gateway already gives placeholders for sealed fields; this is
 // the second wall, for free text (transcripts, notes, mail). Normalised forms count: spaces, dashes and case do not hide a value.
 
-import { findSecrets } from "../../../lib/secret-text.js";
+import { findSecrets } from "../../../lib/credential-shapes.js";
 
 /** @type {{ kind: string, re: RegExp }[]} */
 const SHAPES = [

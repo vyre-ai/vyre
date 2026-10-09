@@ -24,6 +24,8 @@ import http from "node:http";
 import { scrub, checkTokenUri } from "../../lib/connectors/auth.js";
 import { SCOPE, SCOPES } from "./api.js";
 import { NAME, EMAIL } from "./accounts.js";
+import { newPrefixedId } from "../../lib/id.js";
+import { httpFetch } from "../../lib/http.js";
 
 export const AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth";
 export const TOKEN_URI = "https://oauth2.googleapis.com/token";
@@ -75,7 +77,7 @@ function page(text) {
 /** @param {ConnectDeps} deps */
 export function connector(deps) {
   const log = deps.log || (() => {});
-  const f = deps.fetch || globalThis.fetch;
+  const f = deps.fetch || httpFetch;
   const expiresMs = deps.expiresMs || EXPIRES_MS;
   /** @type {Map<string, Flow>} */ const flows = new Map();
   /** How each recent sign-in ended, by id and by its state's hash, so a reuse gets a plain answer. */
@@ -259,7 +261,7 @@ export function connector(deps) {
       // Only the secret is a secret; the client ID and the endpoints are in the consent address.
       const kept = [client_secret];
       const p = await listen();
-      const flow = /** @type {Flow} */ ({ id: `gc_${crypto.randomBytes(9).toString("base64url")}`, name, state: random(), verifier: random(),
+      const flow = /** @type {Flow} */ ({ id: newPrefixedId("gc"), name, state: random(), verifier: random(),
         redirect: `http://127.0.0.1:${p}${CALLBACK}`, ...(base ? { base } : {}),
         client: { item: client, client_id, client_secret, token_uri }, values: kept, timer: null });
       kept.push(flow.verifier);

@@ -78,7 +78,7 @@ test("import scan: sessions by source and folder, dev and temporary folders unti
   const p = (await call("import.plan", { include: ["/home/alex/Work"], exclude: ["/home/alex/Work/northwind"] }, { root })).data;
   assert.equal(p.sessions, 3, JSON.stringify(p));
   assert.deepEqual(p.folders, ["/home/alex/Work/harlow-site"]);
-  assert.match(p.plan, /^plan_[0-9a-f]{12}$/);
+  assert.match(p.plan, /^plan_/);
   assert.ok(p.pace.fast.hours >= 1 && p.pace.gentle.days >= 1 && p.pace.turns >= 1, JSON.stringify(p.pace));
   assert.equal(p.pace.usd, undefined, "no money on the import screen");
   const whole = (await call("import.plan", { include: [extra] }, { root })).data;

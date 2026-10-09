@@ -4,6 +4,11 @@
 // it signs, it is not sent, and no message built here repeats it.
 
 import crypto from "node:crypto";
+import { isPrivateNetwork } from "../../../lib/netguard.js";
+import { guardedFetch } from "../../../lib/http.js";
+
+/** The endpoint is the person's own (checkEndpoint below), and an object can be large: every rule but the public-address one, and a 512 MB cap. */
+const s3Fetch = guardedFetch({ allow: "any", maxBytes: 512 * 1024 * 1024 });
 
 const hmac = (/** @type {crypto.BinaryLike | crypto.KeyObject} */ k, /** @type {string} */ d) => crypto.createHmac("sha256", /** @type {any} */ (k)).update(d).digest();
 const hex = (/** @type {string | Buffer} */ d) => crypto.createHash("sha256").update(d).digest("hex");
@@ -40,7 +45,7 @@ export function signRequest(o) {
   };
 }
 
-const PRIVATE_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|[a-z0-9-]+\.local|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d+\.\d+)$/i;
+const privateHost = (/** @type {string} */ h) => /^(localhost|[a-z0-9-]+\.local)$/i.test(h) || isPrivateNetwork(h.replace(/^\[|\]$/g, ""));   // lib/netguard.js decides the addresses
 
 /**
  * Check an endpoint before any secret is signed for it. Plain http is for machines on a private network only.
@@ -51,7 +56,7 @@ export function checkEndpoint(endpoint) {
   try { u = new URL(String(endpoint)); } catch { return { ok: false, reason: "The address is not a web address. It should look like https://s3.example.com." }; }
   if (u.protocol !== "https:" && u.protocol !== "http:") return { ok: false, reason: "The address must start with https://." };
   if (u.username || u.password) return { ok: false, reason: "Leave the name and password out of the address; they go in their own boxes." };
-  if (u.protocol === "http:" && !PRIVATE_HOST.test(u.hostname)) return { ok: false, reason: "That address is not encrypted and is on the internet. Use https://, or an address on your own network." };
+  if (u.protocol === "http:" && !privateHost(u.hostname)) return { ok: false, reason: "That address is not encrypted and is on the internet. Use https://, or an address on your own network." };
   return { ok: true, url: u };
 }
 
@@ -74,7 +79,7 @@ export function whyFailed(status, code) {
 /**
  * @param {{ fetch?: typeof fetch, now?: () => number, timeoutMs?: number }} [o]
  */
-export function createS3({ fetch: f = globalThis.fetch, now = Date.now, timeoutMs = 10_000 } = {}) {
+export function createS3({ fetch: f = s3Fetch, now = Date.now, timeoutMs = 10_000 } = {}) {
   return {
     /**
      * Does this login work on this bucket? One ListObjectsV2 with max-keys 1.

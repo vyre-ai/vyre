@@ -1,0 +1,18 @@
+{
+  "name": "docs",
+  "version": "0.1.0",
+  "description": "The docs, found and read from inside Vyre: docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section of it, within a token budget. People get the human docs. A session or an agent also gets the agent docs, which are never offered to a person.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "reads": ["docs.find", "docs.read"], "tools": [{ "name": "docs.find", "effect": "read" }, { "name": "docs.read", "effect": "read" }] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      { "id": "docs-find", "text": "Ask the docs in plain words: `vyre call docs.find '{\"query\":\"how do I back up the server\"}'` returns the best pages.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.3.1", "command": "vyre call docs.find", "docs": "using/docs-tool.md", "about": "docs" },
+      { "id": "docs-read-section", "text": "Read one section, not a whole page: `docs.read` takes a heading and returns only that part, so it costs less.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.3.1", "docs": "using/docs-tool.md#read-one-section", "about": "docs" },
+      { "id": "docs-map", "text": "New to how Vyre is built? The map is a 30-minute read: kernel, modules, the Gate, the Vault, apps.", "surfaces": ["cli", "chat"], "level": "discovery", "trigger": "idle", "since": "0.3.1", "docs": "architecture/map.md", "about": "docs" }
+    ]
+  }
+}

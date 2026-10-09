@@ -9,6 +9,8 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { build } from "../daemon/build.js";
 import { tempHome } from "../../test/helpers.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 /** A GitHub Releases API on a free port. `list` is read on every request, so a test can change it. */
 async function releasesApi(t, list) {

@@ -24,7 +24,7 @@ async function mk(t) {
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   let clock = 1_800_000_000_000; const sleeps = /** @type {number[]} */ ([]);
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
-  const lookup = async () => [{ address: "203.0.113.10", family: 4 }];
+  const lookup = async () => [{ address: "93.184.216.10", family: 4 }];
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname, method: r.method, body: r.body, at: clock }); return net.script(r); };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });

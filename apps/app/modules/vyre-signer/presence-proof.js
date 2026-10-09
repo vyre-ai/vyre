@@ -3,6 +3,7 @@
 // here, so Node tests it. index.ts adds the Secure Enclave signature and the App Attest assertion around these bytes.
 
 import { sha256 } from "@noble/hashes/sha256";
+import { canonical } from "../../../../kernel/core/canonical.js";
 
 const enc = new TextEncoder();
 const ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
@@ -36,12 +37,8 @@ export function fromB64url(s) {
 /** Standard base64 with padding (the SPKI and the attestation travel this way). @param {Uint8Array} b */
 export const b64 = (b) => b64url(b).replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((3 - (b.length % 3)) % 3);
 
-/** Sorted-key JSON with no whitespace and undefined dropped: kernel/seal/wire.js canonical, byte for byte. @param {any} v @returns {string} */
-export function canonical(v) {
-  if (v === null || typeof v !== "object") return JSON.stringify(v);
-  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-  return `{${Object.keys(v).filter((k) => v[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
-}
+/** Sorted-key JSON, no spaces: the kernel's canonical, imported not copied (kernel/core/canonical.js, which is kernel/seal/wire.js's byte for byte). */
+export { canonical };
 
 /** @param {string | Uint8Array} s */
 export const sha256b64 = (s) => b64url(sha256(typeof s === "string" ? enc.encode(s) : s));

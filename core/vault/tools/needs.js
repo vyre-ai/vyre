@@ -16,15 +16,15 @@
 import { presence, quoted } from "./presence.js";
 import { callerKind } from "../../modules/index.js";
 import { provider as catalog, formFields, checkProviderFields, checkServiceAccount, PROVIDERS } from "../providers.js";
-import { classify } from "../detect.js";
+import { classify } from "../../../lib/credential-shapes.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
-/** Providers whose secret may be any shape, so detect.js's guess says nothing about a mix-up. */
+/** Providers whose secret may be any shape, so credential-shapes.js's guess says nothing about a mix-up. */
 const ANY_SHAPE = new Set(["mcp-bearer", "google-apps-script", "imap-smtp"]);
-/** detect.js's word for a catalog provider's family, where the two differ. */
+/** credential-shapes.js's word for a catalog provider's family, where the two differ. */
 const FAMILY = { "claude-setup-token": "anthropic", "google-oauth": "google", "google-dwd": "google" };
 
 /** A label that names one of a multiple need's items: <module>-<label>. */

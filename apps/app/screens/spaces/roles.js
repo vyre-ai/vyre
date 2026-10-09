@@ -1,20 +1,24 @@
 // @ts-check
 // Roles in a space (DESIGN-spaces-first.md): five fixed names, tied to identity. Pure, so Node tests it.
 
+import { ROLE_IDS, ROLE_RANK, ROLE_LABELS } from "../../../../kernel/contracts/index.js";
+
 /** @typedef {"owner"|"admin"|"manager"|"member"|"temp"} Role */
 
 /** @type {{ id: Role, label: string, line: string }[]} */
-export const ROLES = [
-  { id: "owner", label: "Owner", line: "Everything, including deleting, moving or handing over the space." },
-  { id: "admin", label: "Admin", line: "Members, devices, Customize, connectors and assistants. Cannot delete or move the space." },
-  { id: "manager", label: "Manager", line: "Creates and runs projects, sets teams and tasks. Cannot change types or manage members." },
-  { id: "member", label: "Member", line: "Works on the projects they belong to." },
-  { id: "temp", label: "Temp", line: "Only the projects named, until an end date." },
-];
+const LINES = {
+  owner: "Everything, including deleting, moving or handing over the space.",
+  admin: "Members, devices, Customize, connectors and assistants. Cannot delete or move the space.",
+  manager: "Creates and runs projects, sets teams and tasks. Cannot change types or manage members.",
+  member: "Works on the projects they belong to.",
+  temp: "Only the projects named, until an end date.",
+};
+export const ROLES = ROLE_IDS.map((id) => ({ id, label: ROLE_LABELS[id], line: LINES[id] }));
 
-const RANK = { owner: 4, admin: 3, manager: 2, member: 1, temp: 0 };
+const RANK = ROLE_RANK;
 
-export const roleLabel = (/** @type {Role} */ r) => ROLES.find((x) => x.id === r)?.label ?? r;
+/** The Vyre name of a role; a Kit role has none here, so its own name. */
+export const roleLabel = (/** @type {string} */ r) => (Object.hasOwn(ROLE_LABELS, r) ? /** @type {any} */ (ROLE_LABELS)[r] : r);
 
 /**
  * The roles `actor` may give from the app. An owner can give any but Owner; an admin can give roles below admin; nobody else can change roles.

@@ -11,6 +11,8 @@ export interface AuthorizeInput {
   readonly resource: Urn;
   /** A coarse class of the input (for example the recipient domain), never the input itself. */
   readonly input_class?: string;
+  /** The origin (scheme, host, port) a use of a credential is for; a grant with `where.origins` holds only when this is one of them. */
+  readonly origin?: string;
   /** Evidence the kernel attaches when the call carries a presence proof. Never supplied by a module. */
   readonly presence?: PresenceProof;
 }

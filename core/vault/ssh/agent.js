@@ -12,12 +12,12 @@
 // Adding, removing and locking keys through the socket are refused: keys enter through the
 // vault, never through a socket any local process can write to.
 
-import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { Reader, str, u32, byte } from "./wire.js";
 import { fingerprint, sign, verify } from "./keys.js";
+import { newPrefixedId } from "../../../lib/id.js";
 
 const FAILURE = 5, SUCCESS = 6;
 const REQUEST_IDENTITIES = 11, IDENTITIES_ANSWER = 12, SIGN_REQUEST = 13, SIGN_RESPONSE = 14, EXTENSION = 27;
@@ -176,7 +176,7 @@ export class SshAgent {
     const label = what.kind === "sshsig" ? `sshsig ${what.namespace}` : what.kind;
     if (!(leaseable && lease && lease.expires > this.now())) {
       const summary = summarize({ what, name: id.name, host, forwarded });
-      const reqId = "s_" + crypto.randomBytes(6).toString("base64url");
+      const reqId = newPrefixedId("s");
       let yes = false;
       try { yes = await this.deps.approve({ summary, name: id.name, fingerprint: fp, host, kind: what.kind, id: reqId }); } catch { yes = false; }
       if (!yes) {

@@ -11,6 +11,7 @@ import { isSealedValue, sealedFields } from "../../../lib/sealed.js";
 import { playbooksFor } from "./playbooks.js";
 import { clean } from "./text.js";
 import { recordContext } from "./context.js";
+import { tokens } from "../../../lib/tokens.js";
 export { clean };
 
 export const SITUATION_TOKENS = 400;
@@ -18,7 +19,6 @@ export const SITUATION_TOKENS = 400;
 export const CONTEXT_TOKENS = 1200;
 const TITLE_CAP = 90;
 
-const tokens = (/** @type {string} */ s) => Math.ceil(s.length / 4);
 const actorName = (/** @type {any} */ a) => (a && (a.name || a.id)) || "someone";
 
 /** A field value as one short phrase; a sealed field is its typed placeholder. @param {string} name @param {any} v */

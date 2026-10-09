@@ -17,6 +17,8 @@ export const ACTIONS = Object.freeze([
   { action: "vault.reveal", resource_type: "credential", risk: "admin", label: "Show a secret", gloss: "Shows the value to a person, on their own screen." },
   { action: "vault.share", resource_type: "credential", risk: "outward.share", label: "Share a login or key", gloss: "Lets someone outside the Space use it." },
   { action: "vault.rotate", resource_type: "credential", risk: "admin", label: "Rotate a key", gloss: "Replaces a key at the service that issued it." },
+  { action: "vault.edit", resource_type: "credential", risk: "admin", label: "Change a stored login or key", gloss: "Renames it, changes its notes or its value, or moves it to another vault." },
+  { action: "vault.delete", resource_type: "credential", risk: "admin", label: "Delete a login or key", gloss: "Removes it from the vault for good." },
   { action: "drive.read", resource_type: "file", risk: "read", label: "Read a file", gloss: "Opens a file in a project or a Drive share." },
   { action: "drive.write", resource_type: "file", risk: "write", label: "Change a file", gloss: "Saves or edits a file." },
   { action: "drive.restore", resource_type: "file", risk: "admin", label: "Restore an older file or backup", gloss: "Replaces what is there now with an older version or a whole backup." },
@@ -30,6 +32,32 @@ export const ACTIONS = Object.freeze([
   { action: "seal.export", resource_type: "record", risk: "write", label: "Move a sealed value to another server", gloss: "Carries a sealed value, wrapped so only the new server can open it, when you approve the whole move. The sealing process asks for your own approval." },
   { action: "seal.reveal", resource_type: "record", risk: "admin", label: "Show a sealed value", gloss: "Shows it on your screen only, after Face ID." },
 ]);
+
+/**
+ * The three access levels of the one grant model (team/0.3.1/DESIGN-one-grant.md), each a bundle of the actions above. A level is what a person picks when they share a vault or an item; the kernel stores
+ * the actions. `vault.run` (a value in a program's environment) is in none of them: it is its own explicit grant.
+ *   use      use a credential without seeing it. `vault.call` is still an outward act: whatever the level, it waits for a yes at the Gate.
+ *   reveal   use, and show the value to a person on their own screen (a fresh proof each time).
+ *   manage   reveal, and change who has access and what is in the vault.
+ */
+export const ACCESS_LEVELS = Object.freeze({
+  use: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call"]),
+  reveal: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal"]),
+  manage: Object.freeze(["vault.fill", "vault.totp", "vault.read", "vault.call", "vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate", "grants.create"]),
+});
+/** The actions an assistant (an agent actor, or a chain that holds one) may ever hold: `use` only. reveal and manage are a person's. */
+export const AGENT_ACTIONS = ACCESS_LEVELS.use;
+/** @param {string} level @returns {readonly string[]} the actions of a level, or throws on a name that is not one */
+export function levelActions(level) {
+  if (!Object.hasOwn(ACCESS_LEVELS, level)) throw Object.assign(new Error("an access level is use, reveal or manage"), { code: "bad_input" });
+  return /** @type {any} */ (ACCESS_LEVELS)[level];
+}
+/** The level a set of actions amounts to (the highest one it covers fully), or null. @param {readonly string[]} actions */
+export function levelOf(actions) {
+  const has = new Set(actions);
+  for (const l of ["manage", "reveal", "use"]) if (/** @type {any} */ (ACCESS_LEVELS)[l].every((/** @type {string} */ a) => has.has(a))) return l;
+  return null;
+}
 
 /** fill and totp as themselves, a GET or HEAD API call as a read, any other or unknown method as an outward call, a program's environment as admin. */
 export function credentialAction(kind, method = "GET") {

@@ -17,6 +17,7 @@
 
 import crypto from "node:crypto";
 import http from "node:http";
+import { isTailnet } from "../../lib/netguard.js";
 
 const HOUR = 3_600_000;
 const SESSION = 12 * HOUR;
@@ -38,7 +39,6 @@ const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
  * (web/js/api.js) 403s on every fetch, silently falling back to "missing tool" instead. */
 const assetPath = p => /^\/(css|js|vendor|fonts|fixtures)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg" || p === "/theme.css"
   || /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.test(p);   // the client js/api.js imports (ADR 0029)
-const TAILNET4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**
  * Where the listener binds. On a host, 127.0.0.1. In the box's container the port is published
@@ -142,7 +142,7 @@ export function loopback({ handler, port: wanted = 7300, now = Date.now, log = (
         s.off("error", reject);
         // A name that resolved to the tailnet would open onboarding to every device on it.
         const a = /** @type {any} */ (s.address()).address;
-        if (TAILNET4.test(a) || /^fd7a:115c:a1e0:/i.test(a)) { s.close(); return reject(new Error(`${host} is a tailnet address (${a}); onboarding stays off the tailnet`)); }
+        if (isTailnet(a)) { s.close(); return reject(new Error(`${host} is a tailnet address (${a}); onboarding stays off the tailnet`)); }
         resolve(s);
       });
     });

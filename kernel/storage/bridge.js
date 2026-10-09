@@ -13,8 +13,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
-import https from "node:https";
 import path from "node:path";
+import { userHostFetch } from "../../lib/http.js";
 import { dirBackend } from "./backends.js";
 
 export const WINDOW_MS = 60_000;
@@ -87,14 +87,12 @@ export function serveBridge(bridge, { port = 0, host = "127.0.0.1", maxInflight 
 
 /** The default `send`: the frame over HTTP to a bridge address. Wink supplies its own `send` and the same frame. */
 export function httpSend(endpoint, { timeoutMs = 30_000, maxBytes = MAX_OBJECT } = {}) {
-  const u = new URL(endpoint), lib = u.protocol === "https:" ? https : http;
-  return f => new Promise((resolve, reject) => {
-    const r = lib.request({ method: "POST", hostname: u.hostname, port: u.port || undefined, path: `/${encodeURIComponent(f.key ?? "")}`, timeout: timeoutMs,
-      headers: { "x-vyre-op": f.op, "x-vyre-ts": String(f.ts), "x-vyre-nonce": f.nonce, "x-vyre-sig": f.sig, "content-length": f.body?.length ?? 0 } }, res => {
-      const parts = []; let n = 0; res.on("data", d => { n += d.length; if (n > maxBytes) r.destroy(new Error("too big")); else parts.push(d); }); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(parts) }));
-    });
-    r.on("timeout", () => r.destroy(new Error("timeout"))); r.on("error", reject); r.end(f.body);
-  });
+  const u = new URL(endpoint);
+  return async f => {
+    const res = await userHostFetch(`${u.origin}/${encodeURIComponent(f.key ?? "")}`, { method: "POST", timeoutMs, maxBytes, retries: 0, redirect: "manual", body: f.body?.length ? f.body : undefined,
+      headers: { "x-vyre-op": f.op, "x-vyre-ts": String(f.ts), "x-vyre-nonce": f.nonce, "x-vyre-sig": f.sig, "content-length": String(f.body?.length ?? 0) } });
+    return { status: res.status, body: Buffer.from(await res.arrayBuffer()) };
+  };
 }
 
 /** The pool backend for a bridged drive. @param {{ secret: string, send: (f: any) => Promise<{ status: number, body?: Buffer }>, now?: () => number }} o */

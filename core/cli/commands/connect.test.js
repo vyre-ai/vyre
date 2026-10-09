@@ -17,6 +17,8 @@ import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
 import { startFakeGoogle } from "../../../lib/connectors/testing/fake-google.js";
 import { INSTALL_LINE } from "./mcp.js";
 import { CLIENT_PUT } from "./connect.js";
+import { allowLoopbackForTests } from "../../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");

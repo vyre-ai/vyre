@@ -21,6 +21,7 @@
 
 import crypto from "node:crypto";
 import { checkFixedHeaders } from "../../records/connectors/format.js";
+import { isPublicAddress } from "../../lib/netguard.js";
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const bad = msg => Object.assign(new Error(msg), { code: "bad_input" });
@@ -367,80 +368,10 @@ export function classify(method, pathAndQuery, endpoints) {
 
 // ---- SSRF guard ----
 
-/** A strict dotted quad as a 32-bit number: four parts, each 0 or 1 to 3 digits with no leading zero (so an octal or short form is null, and refused by callers). */
-function v4num(ip) {
-  const p = String(ip).split(".");
-  if (p.length !== 4 || !p.every(x => /^(0|[1-9]\d{0,2})$/.test(x))) return null;
-  const n = p.map(Number);
-  return n.every(x => x <= 255) ? ((n[0] << 24) | (n[1] << 16) | (n[2] << 8) | n[3]) >>> 0 : null;
-}
-const inV4 = (n, base, bits) => { const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0; return (n & mask) === (v4num(base) & mask); };
-
-/** Every IPv4 range that must never be an api-credential's target: loopback, link-local
- * (includes cloud metadata's 169.254.169.254), private, CGNAT (which is also the tailnet range),
- * "this network" and its friends. */
-const V4_BLOCKED = [["0.0.0.0", 8], ["127.0.0.0", 8], ["169.254.0.0", 16], ["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16], ["100.64.0.0", 10], ["192.0.0.0", 24], ["198.18.0.0", 15], ["224.0.0.0", 4], ["240.0.0.0", 4]];
-
-function v4Blocked(ip) { const n = v4num(ip); return n === null ? true : V4_BLOCKED.some(([base, bits]) => inV4(n, base, bits)); }
-
-/**
- * An IPv6 address as 16 bytes, or null when it is not one. Handles "::", an embedded dotted IPv4
- * tail (::ffff:1.2.3.4) and the all-hex forms of the same address (::ffff:102:304), so no notation
- * hides an IPv4 address from the checks. A zone id (fe80::1%eth0) is refused: null.
- * @param {string} ip @returns {number[]|null}
- */
-export function parseV6(ip) {
-  let s = String(ip).toLowerCase();
-  if (s.startsWith("[") && s.endsWith("]")) s = s.slice(1, -1);
-  if (!s.includes(":") || /[^0-9a-f:.]/.test(s)) return null;
-  let tail = [];
-  const dotted = /^(.*:)(\d+\.\d+\.\d+\.\d+)$/.exec(s);
-  if (dotted) {
-    const n = v4num(dotted[2]);
-    if (n === null) return null;
-    tail = [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255];
-    s = dotted[1] + "0:0";
-  }
-  const halves = s.split("::");
-  if (halves.length > 2) return null;
-  const words = part => (part === "" ? [] : part.split(":"));
-  const head = words(halves[0]), rest = halves.length === 2 ? words(halves[1]) : [];
-  if (halves.length === 1 && head.length !== 8) return null;
-  if (halves.length === 2 && head.length + rest.length > 7) return null;
-  const all = halves.length === 2 ? [...head, ...Array(8 - head.length - rest.length).fill("0"), ...rest] : head;
-  if (all.length !== 8 || !all.every(w => /^[0-9a-f]{1,4}$/.test(w))) return null;
-  const bytes = all.flatMap(w => { const v = parseInt(w, 16); return [v >> 8, v & 255]; });
-  if (tail.length) bytes.splice(12, 4, ...tail);
-  return bytes;
-}
-
-/**
- * An IPv6 address that may never be a target: loopback, unspecified, link-local, unique-local and
- * site-local, multicast, documentation, discard and Teredo ranges, AWS's metadata address, and any
- * address that carries an IPv4 one (mapped, compatible, NAT64, 6to4) whose IPv4 is itself blocked.
- */
-function v6Blocked(ip) {
-  const b = parseV6(ip);
-  if (!b) return true;
-  const zero = (from, to) => b.slice(from, to).every(x => x === 0);
-  const v4 = (o) => v4Blocked(`${b[o]}.${b[o + 1]}.${b[o + 2]}.${b[o + 3]}`);
-  if (zero(0, 15) && (b[15] === 0 || b[15] === 1)) return true; // :: and ::1
-  if (zero(0, 10) && b[10] === 255 && b[11] === 255) return v4(12); // ::ffff:a.b.c.d, mapped
-  if (zero(0, 12)) return v4(12); // ::a.b.c.d, the deprecated compatible form
-  if (b[0] === 0 && b[1] === 100 && b[2] === 255 && b[3] === 155 && zero(4, 12)) return v4(12); // 64:ff9b::/96, NAT64
-  if (b[0] === 0x20 && b[1] === 0x02) return v4(2); // 2002::/16, 6to4
-  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0 && b[3] === 0) return true; // 2001::/32, Teredo
-  if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) return true; // 2001:db8::/32, documentation
-  if (b[0] === 0x01 && zero(1, 8)) return true; // 100::/64, discard
-  if (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) return true; // fe80::/10, link-local
-  if (b[0] === 0xfe && (b[1] & 0xc0) === 0xc0) return true; // fec0::/10, site-local
-  if ((b[0] & 0xfe) === 0xfc) return true; // fc00::/7, unique-local (includes AWS's fd00:ec2::254)
-  if (b[0] === 0xff) return true; // ff00::/8, multicast
-  return false;
-}
+// The address deny list is lib/netguard.js (decided on the bytes; one list for the whole repo).
 
 /** Whether a resolved address may never be an api-credential's target, whichever family it is. */
-export function addressBlocked(ip) { return ip.includes(":") ? v6Blocked(ip) : v4Blocked(ip); }
+export function addressBlocked(ip) { return !isPublicAddress(ip); }
 
 /**
  * Whether a host name matches one entry in an allowlist: exact, or one leading "*." wildcard

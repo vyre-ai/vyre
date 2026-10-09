@@ -5,6 +5,7 @@
 
 import crypto from "node:crypto";
 import { WORDS } from "./words.js";
+import { base32 } from "../../lib/bytes.js";
 
 /** Signed by the box's route key, with the route id and the relay's challenge. */
 export const BOX_AUTH_TAG = "vyre-relay-box-v1";
@@ -33,19 +34,7 @@ export const CLOSE = Object.freeze({
   tooBig: 1009,
 });
 
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
-
-/** RFC 4648 base32, lowercase, no padding. */
-export function base32(buf) {
-  let bits = 0, value = 0, out = "";
-  for (const byte of buf) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) { out += ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; }
-  }
-  if (bits > 0) out += ALPHABET[(value << (5 - bits)) & 31];
-  return out;
-}
+export { base32 };
 
 /** The route id: the first 26 base32 characters (130 bits) of sha256 of the Ed25519 route key. */
 export const routeId = routePub => base32(crypto.createHash("sha256").update(routePub).digest()).slice(0, 26);

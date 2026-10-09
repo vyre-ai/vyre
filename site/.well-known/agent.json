@@ -3,7 +3,7 @@
   "name": "Vyre",
   "description": "Vyre is an open-source (Apache 2.0) command center for AI agents that runs on machines you own. One session works across Claude, Codex, Grok and OpenRouter, using your own subscriptions or keys. Agents run on a Linux server (or a Mac that stays on) and keep working when your laptop is closed. You reach them from Vyre Lumen on a Mac (Option-Space), Vyre Lumen on Windows (Alt+Space), and a phone web app paired with Face ID.",
   "url": "https://vyre.run/",
-  "version": "0.2.13",
+  "version": "0.3.0",
   "license": "Apache-2.0",
   "docs": {
     "llms": "https://vyre.run/llms.txt",

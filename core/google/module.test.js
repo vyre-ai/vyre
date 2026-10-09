@@ -17,6 +17,8 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 // "today" and "tomorrow" are this machine's days; pin them so the fake's times land predictably.
 process.env.TZ = "UTC";

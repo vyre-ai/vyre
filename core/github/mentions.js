@@ -1,3 +1,4 @@
+import { httpFetch } from "../../lib/http.js";
 // @ts-check
 // "#" mentions for GitHub (0.2 user feature: one universal tag picker). `search` lists the
 // person's repos, open pull requests and open issues for a query; `resolve` reads one of them as
@@ -13,7 +14,7 @@ const ID = new RegExp(`^(repo:(${FULL})|(pr|issue):(${FULL})#([1-9][0-9]{0,8}))$
 const MAX_TEXT = 6000;
 
 async function get(token, path, accept) {
-  const res = await fetch(`${API}${path}`, { headers: { ...H(token), ...(accept ? { accept } : {}) }, signal: AbortSignal.timeout(15_000) });
+  const res = await httpFetch(`${API}${path}`, { headers: { ...H(token), ...(accept ? { accept } : {}) }, signal: AbortSignal.timeout(15_000) });
   if (res.status === 401) throw err("GitHub sign-in isn't working anymore; reconnect the account", "token_invalid");
   if (!res.ok) throw err(`GitHub said ${res.status}`, res.status === 404 ? "not_found" : "failed");
   return accept && accept.includes("raw") ? res.text() : res.json();

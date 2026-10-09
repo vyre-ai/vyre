@@ -7,8 +7,8 @@
 // Notifications ride on core/push's existing kinds.goal (goal.milestone, goal.done) - nothing new
 // to build there.
 
-import crypto from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const MIGRATIONS = [
   `
@@ -42,7 +42,7 @@ const STATES = ["pending", "active", "done", "cancelled"];
 // already trying to refuse, just not fully.
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const AGENTS = ["mcp", "harness", "module"];
-const newId = () => `g_${crypto.randomBytes(6).toString("base64url")}`;
+const newId = () => newPrefixedId("g");
 const refuse = (message, code) => Object.assign(new Error(message), { code });
 
 const shape = r => r && ({ id: r.id, project: r.project ?? null, thread: r.thread ?? null, goal: r.goal, state: r.state,

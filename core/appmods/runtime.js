@@ -61,7 +61,8 @@ export function dockerRunner(args, opt = {}) {
       const code = err ? (typeof (/** @type {any} */ (err)).code === "number" ? /** @type {number} */ (/** @type {any} */ (err).code) : 1) : 0;
       resolve({ code, stdout: String(stdout || ""), stderr: String(stderr || (err && err.message) || "") });
     });
-    if (child.stdin) child.stdin.on("error", () => {});   // a helper that already exited must not turn a late write into an unhandled error
+    // A command that exits before it reads its input (or never reads it) resets the pipe: that is the command's answer (its exit code), not a crash of this process.
+    if (child.stdin) child.stdin.on("error", () => {});
     if (opt.input !== undefined && child.stdin) child.stdin.end(opt.input);
   });
 }

@@ -20,6 +20,7 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { guardedFetch } from "../../lib/http.js";
 
 const VERSION = (() => {
   try { return JSON.parse(fs.readFileSync(new URL("../../package.json", import.meta.url), "utf8")).version; } catch { return "0.0.0"; }
@@ -393,10 +394,13 @@ async function* sseEvents(body, { totalCap = Infinity, eventCap = MAX_RESPONSE }
 
 // ---- streamable HTTP ----
 
+/** The server address is the person's own (a local or a remote MCP server), so the address rule is theirs; the answer may be an event stream, so it streams with a deadline for the headers only. */
+const streamFetch = guardedFetch({ allow: "any", stream: true, retries: 0 });
+
 /** @param {{url: string}} spec @param {Options & {timeout: number}} opts */
 function httpChannel(spec, opts) {
   const u = checkUrl(spec.url);
-  const f = opts.fetch || fetch;
+  const f = opts.fetch || streamFetch;
   /** @type {string | null} */
   let session = null;
   let initialized = false;
@@ -506,7 +510,7 @@ function httpChannel(spec, opts) {
 /** @param {{url: string}} spec @param {Options & {timeout: number}} opts */
 async function sseChannel(spec, opts) {
   const u = checkUrl(spec.url);
-  const f = opts.fetch || fetch;
+  const f = opts.fetch || streamFetch;
   const pend = pendingMap();
   const stream = new AbortController();
   let next = 1;

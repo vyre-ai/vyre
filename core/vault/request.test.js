@@ -21,7 +21,7 @@ import { register, MAX_RESULT } from "./request.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const fake = label => `fixture-${label}-${crypto.randomBytes(12).toString("hex")}`;
-const PUBLIC = "203.0.113.10";
+const PUBLIC = "93.184.216.10";
 const json = (status, body, headers = {}) => ({ status, headers: { "content-type": "application/json", ...headers }, body: Buffer.from(JSON.stringify(body)) });
 const mail = (to, extra = "") => Buffer.from(`From: alex@harlowlegal.com\r\nTo: ${to}\r\nSubject: hi\r\n${extra}\r\nbody`).toString("base64url");
 
