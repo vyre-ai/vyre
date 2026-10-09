@@ -60,12 +60,6 @@ jobs:
       - if: steps.merge.outputs.noop != '1'
         run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
-      - name: Regenerate generated files
-        if: steps.merge.outputs.noop != '1'
-        run: |
-          node scripts/team/regen.mjs
-          git add -A docs kernel/golden
-          git diff --cached --quiet || git commit -q -m "chore(docs): regenerated after ${{ steps.q.outputs.ref }}"
       - name: Preflight on the merged tree
         if: steps.merge.outputs.noop != '1'
         run: |
@@ -75,6 +69,12 @@ jobs:
           { echo "## Preflight"; echo '```'; tail -60 preflight.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $status
         shell: bash
+      - name: Regenerate generated files
+        if: steps.merge.outputs.noop != '1'
+        run: |
+          node scripts/team/regen.mjs
+          git add -A docs kernel/golden
+          git diff --cached --quiet || git commit -q -m "chore(docs): regenerated after ${{ steps.q.outputs.ref }}"
       - name: Land
         if: steps.merge.outputs.noop != '1'
         run: |
