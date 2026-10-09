@@ -101,4 +101,8 @@ test("with the Mac off the box says it needs the person's Chrome, plainly, and t
   assert.equal(got.light, "red");
   assert.match(got.reason, /needs your Chrome/);
   assert.ok(s.box.registry.deps.events.since(0, { limit: 5000 }).some((/** @type {any} */ e) => e.type === "connectors.site-needs-browser" && e.payload.id === "linkedin"));
+  // and when the Mac comes back, the box says so (a Flow waiting for a Chrome wakes on this)
+  await s.startTailnet();
+  await until(async () => { const m = (await s.boxCall("link.macs")).data; return m.length === 1 && m[0].online && m; });
+  assert.ok(s.box.registry.deps.events.since(0, { limit: 5000 }).some((/** @type {any} */ e) => e.type === "link.mac-online"), "link.mac-online");
 });
