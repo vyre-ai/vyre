@@ -58,7 +58,9 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   await host().flows.store.putSchedule(b.id, Date.now() - 120_000);
   await host().flows.tick();
   const sched = await until(async () => { const r = (await d.registry.call("flows.runs", { id: b.id }, "cli", await ownerMeta())).data; return r.length ? r : null; }, "the scheduled run");
-  const srun = (await d.registry.call("flows.run", { run: sched[0].id }, "cli", await ownerMeta())).data.run;
+  // The run is listed as soon as it starts: wait until it has finished before judging its state (a loaded box needs longer than the tick).
+  const finished = async () => { const r = (await d.registry.call("flows.run", { run: sched[0].id }, "cli", await ownerMeta())).data.run; return r && r.state !== "running" ? r : null; };
+  const srun = await until(finished, "the scheduled run to finish");
   assert.equal(srun.trigger.kind, "time");
   assert.match(String(srun.trigger.source), /^schedule:/, "the run record names the schedule that started it");
   assert.equal(srun.state, "done", JSON.stringify(srun.error));
