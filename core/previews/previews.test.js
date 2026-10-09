@@ -35,7 +35,9 @@ test("a port becomes a preview, opened on its own origin with a one-time ticket;
   asOwner(d, root);
   t.after(() => d.stop());
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
-  const frontPort = (await call("appmods.front", {}, "cli")).data.port;
+  const fp = await call("appmods.front", {}, "module:previews");
+  assert.ok(fp.data, JSON.stringify(fp));
+  const frontPort = fp.data.port;
 
   // an agent's server on a port, opened by the person's own surface
   const port = await freePort();
