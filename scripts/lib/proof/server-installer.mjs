@@ -9,7 +9,8 @@ import { spawn, spawnSync } from "node:child_process";
 
 const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", ...opt });
 
-/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean }} o */
+/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
+ * `release` (the update proof): the server is the OLD release, installed by that release's own installer from a local release site, and its update unit is pointed at the candidate's site (signed by the same throwaway key). */
 export async function startInstallerServer(o) {
   if (!process.env.CI) throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds");
   const script = path.join(o.repo, "scripts", "install-box.sh");
@@ -21,11 +22,20 @@ export async function startInstallerServer(o) {
   const cfg = JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } });
   const seeded = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e C='${cfg}' busybox sh -c 'mkdir -p /home/vyre/.vyre && printf "%s\\n" "$C" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'`);
   if (seeded.status !== 0) throw new Error(`could not seed the box's home: ${seeded.stderr}`);
+  if (o.release) {
+    // The notice the app shows is the box's remembered look at the releases (update.json in its home); the box has no way to read this runner's release site itself (it only fetches over https or from its own loopback), so the look is written
+    // as the daemon writes it, naming the candidate. What happens after the person's click is all real: the request file, the root unit, the signature check, the swap.
+    const seen = JSON.stringify({ checkedAt: Date.now(), latest: o.release.newVersion, channel: "stable", notes: [{ version: o.release.newVersion, notes: "The build under test." }], announced: o.release.newVersion, requestedFor: null, error: null });
+    const w = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e S='${seen}' busybox sh -c 'printf "%s" "$S" >/home/vyre/.vyre/update.json && chown 1000:1000 /home/vyre/.vyre/update.json && chmod 600 /home/vyre/.vyre/update.json'`);
+    if (w.status !== 0) throw new Error(`could not seed the box's update look: ${w.stderr}`);
+  }
   const logFile = path.join(o.dir, "install.log");
   const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir };
   // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
   // not a published release: it packs the checkout and signs it with a throwaway key for this server only (dev_sign), since a build that is not signed by Vyre's release key cannot run its modules.
-  const child = spawn("sh", [script, "--yes", "--from", o.repo], { env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = o.release
+    ? spawn("sh", [path.join(o.release.oldBox, "install-box.sh"), "--yes"], { env: { ...env, VYRE_BOX_URL: o.release.oldUrl, VYRE_BUILD: "tgz", VYRE_DEV_SIGN: "0", VYRE_MODULES_TRIES: "0" }, stdio: ["ignore", "pipe", "pipe"] })
+    : spawn("sh", [script, "--yes", "--from", o.repo], { env, stdio: ["ignore", "pipe", "pipe"] });
   let all = "";
   child.stdout.on("data", d => { all += d; }); child.stderr.on("data", d => { all += d; });
   const exit = await new Promise(res => child.on("close", res));
@@ -35,6 +45,12 @@ export async function startInstallerServer(o) {
     // the line run with no code from the app: what it printed, and whether it started a pairing of its own (a QR, a long code or a typed code)
     sh(`cd ${dir} && docker compose -p vyre down -v --remove-orphans >/dev/null 2>&1`);
     return { output: all, exit };
+  }
+  if (o.release && exit === 0) {
+    // the root unit that acts on the app's request reads the candidate's site and the throwaway key from its own unit file (a systemd drop-in); nothing of the unit's code changes
+    const conf = `[Service]\nEnvironment=VYRE_BOX_URL=${o.release.newUrl}\nEnvironment=VYRE_RELEASES_API=\nEnvironment=VYRE_RELEASE_KEY=${o.release.pub}\nEnvironment=VYRE_UPDATE_MIN_GAP=0\nEnvironment=VYRE_UPDATE_WAIT=300\n`;
+    const d = sh(`sudo mkdir -p /etc/systemd/system/vyre-update.service.d && printf '${conf}' | sudo tee /etc/systemd/system/vyre-update.service.d/proof.conf >/dev/null && sudo systemctl daemon-reload && systemctl is-active vyre-update.path`);
+    fs.appendFileSync(logFile, `\nupdate unit drop-in: ${d.status} ${String(d.stdout || d.stderr).trim()}\n`);
   }
   const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const printed = m ? m[1] : "";
@@ -49,7 +65,7 @@ export async function startInstallerServer(o) {
     /** @param {string} tool @param {any} [input] */
     async operator(tool, input = {}) { const r = exec(tool, input); let j = null; try { j = JSON.parse(r.stdout); } catch { /* plain text */ } if (r.status !== 0) throw new Error(`${tool}: ${(r.stderr || r.stdout).slice(0, 200)}`); return j && j.data !== undefined ? j.data : j; },
     async stop() {
-      const l = sh(`docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do echo "== $f"; tail -n 300 "$f"; done' 2>&1; docker logs --tail 100 vyre-vyre-1 2>&1`); try { fs.writeFileSync(path.join(o.dir, "vyred.log"), String(l.stdout || "")); } catch { /* a courtesy */ }
+      const l = sh(`docker exec -u vyre vyre-vyre-1 sh -c 'echo "== config.json"; cat ~/.vyre/config.json; for f in ~/.vyre/logs/*; do echo "== $f"; tail -n 300 "$f"; done' 2>&1; docker logs --tail 100 vyre-vyre-1 2>&1`); try { fs.writeFileSync(path.join(o.dir, "vyred.log"), String(l.stdout || "")); } catch { /* a courtesy */ }
       sh(`cd ${dir} && docker compose -p vyre down -v --remove-orphans >/dev/null 2>&1`);
     },
   };

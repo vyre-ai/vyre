@@ -6,7 +6,7 @@ name: install-proof
 on:
   workflow_dispatch:
   push:
-    branches: ["work/install-proof"]
+    branches: ["work/install-proof", "work/update-proof"]
     paths: ["scripts/proof-install.mjs", "scripts/lib/proof/**", ".github/workflows/install-proof.yml"]
 permissions:
   contents: read
@@ -32,6 +32,31 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: install-proof-linux, path: proof-out, retention-days: 14 }
+
+  linux-update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, fetch-tags: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      # v0.2.11 (built from its tag the way a release is, signed with a throwaway key) is installed by its own installer; the app pairs with it, then asks for the update through update.apply and the box's own root unit installs this checkout.
+      - name: A real update, asked for from the app
+        run: node scripts/proof-install.mjs --server installer --update --out proof-out
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs --tail 80 vyre-vyre-1 2>&1 || true
+          sudo journalctl -u vyre-update.service --no-pager -n 80 2>&1 || true
+          sudo cat /var/lib/vyre-update/status/status.json 2>&1 || true
+          tail -60 proof-out/update/server/install.log 2>&1 || true
+          tail -80 proof-out/update/server/vyred.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: install-proof-linux-update, path: proof-out, retention-days: 14 }
 
   mac-server:
     runs-on: macos-latest

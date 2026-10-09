@@ -287,3 +287,121 @@ export async function walkTerminal(w) {
     }
   }
 }
+
+/**
+ * The update walk (--update): an app with its own identity pairs a server that is the OLD release (v0.2.12 by default, installed by that release's own installer with the app's install line), then asks for the update from the app. The steps are in updateSteps.
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, ins: Awaited<ReturnType<typeof import("./standins.mjs").startStandins>>, out: string, update: { oldVersion: string, newVersion: string, oldBox: string, oldUrl: string, newUrl: string, pub: string } }} w
+ */
+export async function walkUpdate(w) {
+  const { run, ins, update } = w;
+  const tag = "update";
+  const S = (/** @type {string} */ n) => `${tag}: ${n}`;
+  const dir = path.join(w.out, tag);
+  fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true });
+  const mac = createApp({ label: "Proof Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
+  /** @type {any} */ let reservation = null, flow = null, srv = null;
+  try {
+    await run.step(S("reserve a name and become yourself in the app"), async () => {
+      reservation = await mac.reserve(`walkeru${Math.random().toString(36).slice(2, 7)}`);
+      await mac.becomeYourself({ name: reservation.name, code: reservation.code });
+    });
+    await run.step(S("add a server: the app shows the install line"), async () => {
+      flow = mac.addServer();
+      await flow.begin("plain");
+      assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`));
+    }, { needs: [S("reserve a name and become yourself in the app")] });
+    await run.step(S(`the old release (${update.oldVersion}) installs from the line`), async () => {
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: /** @type {const} */ ("plain"), release: update };
+      srv = await startInstallerServer(a);
+    }, { needs: [S("add a server: the app shows the install line")] });
+    await run.step(S("the app finds the server and the four words match"), async () => {
+      await mac.until(() => flow.state.stage === "found" || flow.state.stage === "stopped", 120_000, "the app to find the server");
+      assert.equal(flow.state.stage, "found", flow.state.error && flow.state.error.message);
+      assert.equal(flow.state.box.words.join(" "), await srv.words());
+    }, { needs: [S(`the old release (${update.oldVersion}) installs from the line`)] });
+    await run.step(S("confirm the words in the app: adopt and pair"), async () => {
+      await flow.confirmWords();
+      assert.equal(flow.state.stage, "done", flow.state.error && flow.state.error.message);
+    }, { needs: [S("the app finds the server and the four words match")] });
+    await run.step(S("the app reaches the server and calls a tool"), async () => {
+      await mac.openSession();
+      assert.ok(await mac.callTool("system.info"), "system.info answered");
+    }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    await updateSteps({ w: { update }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
+  } finally {
+    try { if (srv) await srv.stop(); } catch { /* gone */ }
+  }
+}
+
+/**
+ * The update, from the app. The server was installed from the OLD release (v0.2.11 by default); the app asks for the update the way its Settings button does (update.status, then update.apply over its paired session, no ssh), and the box's own
+ * root unit downloads the candidate, checks its signature, backs up, swaps and restarts. Then the same app, with no new pairing, finds the new version and everything it wrote before.
+ * @param {{ w: any, run: any, S: (n: string) => string, mac: any, srv: () => any, CALL: string }} a
+ */
+/** A call that cannot hang the proof: the box restarts under the app, and a session opened on a dying link may never answer. @param {number} ms @param {() => Promise<any>} fn */
+const within = (ms, fn) => Promise.race([fn(), new Promise((_, no) => setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms))]);
+
+async function updateSteps({ w, run, S, mac, srv, CALL }) {
+  const u = w.update;
+  const U = (/** @type {string} */ n) => S(n);
+  /** @type {any} */ let before = null, notice = null;
+  const sorted = (/** @type {any} */ l) => JSON.stringify((Array.isArray(l) ? l : (l && (l.items || l.entries || l.notes)) || []).map((/** @type {any} */ x) => (typeof x === "string" ? x : JSON.stringify({ name: x.name, kind: x.kind, text: x.text, id: x.id }))).sort());
+  await run.step(U("the server runs the old release and the app shows its notice"), async () => {
+    notice = await mac.callTool("update.status");
+    assert.equal(notice.current, u.oldVersion, `the server runs ${notice.current}, not ${u.oldVersion}`);
+    // what the app's Settings notice needs to show (apps/app/screens/settings/update-model.js showNotice): a newer version out, and an update the server can take from here
+    assert.equal(notice.available, u.newVersion, "the notice names the candidate");
+    assert.equal(notice.canApply, true, "the server takes the request from the app (the host's update unit is installed)");
+    assert.ok(!notice.pending && !(notice.run && notice.run.state === "running"), "no update is running yet");
+    return `${notice.current} -> ${notice.available}`;
+  }, { needs: [CALL] });
+  await run.step(U("record what the vault and records hold before the update"), async () => {
+    // A vault write and a personal record need the owner's phone or a person at a terminal (presence), which a CI app has neither: what is written here is what an app may write alone.
+    let wrote = false;
+    for (let i = 0; i < 40 && !wrote; i++) {
+      try { await mac.callTool("planner.add", { kind: "note", text: "written before the update" }); wrote = true; }
+      catch (e) { if (/presence_required|no_terminal/.test(String(/** @type {Error} */ (e).message))) break; await new Promise(r => setTimeout(r, 10_000)); }
+    }
+    const vault = await mac.callTool("vault.list", {}), plan = await mac.callTool("planner.list", {});
+    if (wrote) assert.match(JSON.stringify(plan), /written before the update/, "the planner lists the note");
+    const info = await mac.callTool("system.info");
+    before = { vault: sorted(vault), plan: sorted(plan), owner: JSON.stringify(mac.pairing.owner), device: JSON.stringify(mac.pairing.device && mac.pairing.device.id || null), info: info && info.version };
+    return `vault ${JSON.parse(before.vault).length} item(s), planner ${JSON.parse(before.plan).length}`;
+  }, { needs: [U("the server runs the old release and the app shows its notice")] });
+  await run.step(U("the app asks for the update (update.apply, the Settings button's call)"), async () => {
+    const r = await mac.callTool("update.apply");
+    assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
+    return "requested";
+  }, { needs: [U("record what the vault and records hold before the update")] });
+  await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
+    // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
+    let last = "", st = null;
+    for (let i = 0; i < 120 && !st; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      try { const s = await within(20_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
+      catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
+    }
+    assert.ok(st, `the server did not come back on ${u.newVersion} within 10 minutes: ${last}`);
+    assert.equal(st.current, u.newVersion, "the version changed");
+    return `${notice.current} -> ${st.current}`;
+  }, { needs: [U("the app asks for the update (update.apply, the Settings button's call)")] });
+  const BACK = U("the host's unit installs the candidate and the server comes back as it");
+  await run.step(U("the notice is gone"), async () => {
+    const st = await mac.callTool("update.status");
+    assert.equal(st.available, null, "no newer version is offered any more");
+    assert.deepEqual(st.notes, [], "no notes are left to show");
+    assert.ok(!st.pending, "no request is waiting");
+    assert.ok(!st.run || st.run.state === "ok", `the host says the run ${st.run && st.run.state}: ${st.run && st.run.message}`);
+    return `current ${st.current}, available null`;
+  }, { needs: [BACK] });
+  await run.step(U("the vault, the records and the app's sign-in are untouched"), async () => {
+    // the same pairing (no code, no words, no new owner) opened this session; the owner and the device are the ones from before
+    assert.equal(JSON.stringify(mac.pairing.owner), before.owner, "the owner is unchanged");
+    const vault = await mac.callTool("vault.list", {}), plan = await mac.callTool("planner.list", {});
+    assert.equal(sorted(vault), before.vault, "the vault lists exactly what it listed before");
+    assert.equal(sorted(plan), before.plan, "the planner lists exactly what it listed before");
+    const info = await mac.callTool("system.info");
+    assert.ok(info, "the signed-in app is still answered");
+    return "vault, planner and sign-in as before";
+  }, { needs: [BACK] });
+}
