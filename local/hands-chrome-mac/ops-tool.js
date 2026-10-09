@@ -7,13 +7,14 @@
 // dispatch() files it.
 
 import crypto from "node:crypto";
+import { KITS, kitFor, teachPlan } from "./extension/shared/sk/siteops/kits/linkedin.js";
 
 const isObj = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
 const DRAFT_TTL_MS = 60 * 60_000;
 const MAX_DRAFTS = 20;
 
 /**
- * @param {{ dispatch: (op: string, args: any, meta: any) => Promise<any>, call: (tool: string, input: any) => Promise<any>, originOf: (u: string) => string, isPerson: (meta: any) => boolean,
+ * @param {{ dispatch: (op: string, args: any, meta: any, o?: { asked?: boolean, connection?: boolean }) => Promise<any>, call: (tool: string, input: any) => Promise<any>, originOf: (u: string) => string, isPerson: (meta: any) => boolean,
  *   denied: (code: string, message: string) => Error, urls: Map<number, string> }} d
  */
 export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls }) {
@@ -34,10 +35,10 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     return { ops: (r && r.origin && Array.isArray(r.origin.ops) ? r.origin.ops : []), rev: r && r.rev ? r.rev : 0 };
   }
 
-  /** A tab on the site: the one asked for, else the person's tab on it, opened if there is none. @param {any} i @param {string} origin @param {any} m */
-  async function tabFor(i, origin, m) {
+  /** A tab on the site: the one asked for, else the person's tab on it, opened if there is none. @param {any} i @param {string} origin @param {any} m @param {{ connection?: boolean }} [o] */
+  async function tabFor(i, origin, m, o = {}) {
     if (Number.isInteger(i.tab)) return i.tab;
-    const r = await dispatch("tabs.use", { url: origin, openIfMissing: true }, m);
+    const r = await dispatch("tabs.use", { url: origin, openIfMissing: true }, m, o);
     const t = isObj(r) && isObj(r.tab) ? r.tab : r;
     if (!t || !Number.isInteger(t.id)) throw denied("no_tab", `no tab on ${origin}: open the site in Chrome first`);
     return t.id;
@@ -59,6 +60,36 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     void cls;
   };
 
+  /**
+   * Call a kept operation by site and name. The one path for the agent's `call` and for the connectors module's `chrome.op.run`: the stored template is always tried first; a drift of a read is
+   * repaired once and the repair kept only after a replay answers; a send or change comes back held (unless `asked`: the person's yes already covers this call).
+   * @param {{ origin: string, name: string, inputs: Record<string, any>, meta: any, tab?: number, heal?: boolean, maxChars?: number, asked?: boolean, check?: boolean, connection?: boolean }} q
+   */
+  async function callStored({ origin, name, inputs, meta: m, tab: tabArg, heal = true, maxChars, asked = false, check = false, connection = false }) {
+    const { ops } = await stored(origin);
+    const entry = ops.find((/** @type {any} */ o) => o.name === name);
+    if (!entry) throw denied("not_found", `no operation ${name.slice(0, 40)} for ${origin}; known: ${ops.map((/** @type {any} */ o) => o.name).join(", ") || "none"}`);
+    const opts = { ...(asked ? { asked: true } : {}), ...(connection ? { connection: true } : {}) };
+    const tab = await tabFor({ tab: tabArg }, origin, m, opts);
+    if (check) return dispatch("ops.check", { tab, op: entry.op }, m, opts);
+    const res = await dispatch("ops.call", { tab, op: entry.op, inputs, ...(maxChars ? { maxChars } : {}) }, m, opts);
+    if (!isObj(res) || res.held) return res;
+    if (res.ok) { await report(origin, entry.name, "ok", "ok"); return { ...res, version: entry.version }; }
+    // Reactive repair, reads only: the stored template is always tried first; only a drift triggers a relearn, and the repair is kept only after a replay answers.
+    if (res.class === "drift" && entry.kind === "read" && heal) {
+      const h = await dispatch("ops.heal", { tab, op: entry.op, inputs }, m, connection ? { connection: true } : {});
+      if (isObj(h) && h.outcome === "healed" && h.operation) {
+        await putOp(origin, { name: entry.name, kind: entry.kind, op: h.operation, outcome: "ok" });
+        const again = await dispatch("ops.call", { tab, op: h.operation, inputs }, m, opts);
+        if (isObj(again) && again.ok) return { ...again, healed: true };
+      }
+      await report(origin, entry.name, "miss", "drift");
+      return { ...res, heal: isObj(h) ? { outcome: h.outcome, reason: h.reason } : undefined, next: "could not repair automatically: teach it again with chrome_op learn" };
+    }
+    if (res.class === "drift") await report(origin, entry.name, "miss", "drift");
+    return res;
+  }
+
   /** @param {any} i @param {any} m */
   async function run(i, m) {
     const action = String(i.action || "");
@@ -72,6 +103,13 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
       return { site: origin, operations: ops, ...(ops.length ? {} : { note: "nothing is kept for this site yet; scout the page, then learn an operation" }) };
     }
 
+    if (action === "kit") {
+      if (!i.site) return { kits: Object.values(KITS).map(k => ({ id: k.id, label: k.label, site: k.origins[0], operations: k.operations.map(o => `${o.name}(${o.inputs.map(x => x.name).join(", ")}) [${o.kind}]`), note: k.note })) };
+      const k = kitFor(String(i.site));
+      if (!k) return { kit: null, why: `no kit is shipped for ${String(i.site).slice(0, 60)}; teach its operations one at a time with learn` };
+      return { kit: k.id, site: k.origins[0], note: k.note, plan: teachPlan(k), method: "For each step: say the operation back as name(inputs) -> fields and wait for a yes; scout; learn with two examples the person chooses; save with a verify input that was not an example." };
+    }
+
     if (action === "scout") {
       const tab = await tabFor(i, siteOf(i), m);
       return dispatch("ops.scout", { tab, examples: isObj(i.examples) ? i.examples : (Array.isArray(i.examples) && isObj(i.examples[0]) ? i.examples[0] : {}), limit: i.limit }, m);
@@ -80,13 +118,13 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     if (action === "learn") {
       const origin = siteOf(i);
       const tab = await tabFor(i, origin, m);
-      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}) }, m);
+      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}), ...(Array.isArray(i.wants) ? { wants: i.wants } : {}) }, m);
       if (!isObj(res) || res.held || !res.ok || !res.operation) return res;
       const id = "d" + crypto.randomBytes(5).toString("hex");
       drafts.set(id, { operation: res.operation, origin, examples: Array.isArray(i.examples) ? i.examples : [], at: now });
       while (drafts.size > MAX_DRAFTS) drafts.delete(/** @type {string} */ (drafts.keys().next().value));
       const readOp = res.operation.kind === "read";
-      return { draft: id, ...summary(res.operation), warnings: res.warnings, next: readOp
+      return { draft: id, ...summary(res.operation), warnings: res.warnings, ...(res.missingFields ? { missingFields: res.missingFields } : {}), ...(Array.isArray(res.operation.response.pick) ? { returns: res.operation.response.pick } : {}), next: readOp
         ? `prove it: call chrome_op save with draft ${id} and verify = an input that was NOT one of your examples; it is kept only if that answers`
         : `a ${res.operation.kind} is kept without being run: call chrome_op save with draft ${id}; every later call waits for the person's yes` };
     }
@@ -115,27 +153,7 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
 
     if (action === "call") {
       const origin = siteOf(i);
-      const { ops } = await stored(origin);
-      const entry = ops.find((/** @type {any} */ o) => o.name === i.name);
-      if (!entry) throw denied("not_found", `no operation ${String(i.name || "").slice(0, 40)} for ${origin}; known: ${ops.map((/** @type {any} */ o) => o.name).join(", ") || "none"}`);
-      const tab = await tabFor(i, origin, m);
-      const inputs = isObj(i.inputs) ? i.inputs : {};
-      let res = await dispatch("ops.call", { tab, op: entry.op, inputs, ...(i.maxChars ? { maxChars: i.maxChars } : {}) }, m);
-      if (!isObj(res) || res.held) return res;
-      if (res.ok) { await report(origin, entry.name, "ok", "ok"); return res; }
-      // Reactive repair, reads only: the stored template is always tried first; only a drift triggers a relearn, and the repair is kept only after a replay answers.
-      if (res.class === "drift" && entry.kind === "read" && i.heal !== false) {
-        const h = await dispatch("ops.heal", { tab, op: entry.op, inputs }, m);
-        if (isObj(h) && h.outcome === "healed" && h.operation) {
-          await putOp(origin, { name: entry.name, kind: entry.kind, op: h.operation, outcome: "ok" });
-          const again = await dispatch("ops.call", { tab, op: h.operation, inputs }, m);
-          if (isObj(again) && again.ok) return { ...again, healed: true };
-        }
-        await report(origin, entry.name, "miss", "drift");
-        return { ...res, heal: isObj(h) ? { outcome: h.outcome, reason: h.reason } : undefined, next: "could not repair automatically: teach it again with chrome_op learn" };
-      }
-      if (res.class === "drift") await report(origin, entry.name, "miss", "drift");
-      return res;
+      return callStored({ origin, name: String(i.name || ""), inputs: isObj(i.inputs) ? i.inputs : {}, meta: m, tab: i.tab, heal: i.heal !== false, maxChars: i.maxChars });
     }
 
     if (action === "heal") {
@@ -178,8 +196,8 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
       return { forgotten: !!(r && r.accepted), name: i.name };
     }
 
-    throw denied("bad_request", "action is one of list, scout, learn, save, call, heal, check, versions, rollback, forget");
+    throw denied("bad_request", "action is one of kit, list, scout, learn, save, call, heal, check, versions, rollback, forget");
   }
 
-  return { run, drafts };
+  return { run, drafts, callStored };
 }

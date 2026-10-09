@@ -182,6 +182,14 @@
         "reach": "modules"
       },
       {
+        "name": "sessions.harness.learn",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.harness.get",
+        "reach": "anyone"
+      },
+      {
         "name": "sessions.routes.get",
         "reach": "anyone"
       },
@@ -947,11 +955,11 @@
       "key": "sessions.rollover_at",
       "group": "sessions",
       "label": "Roll a session over at (percent of its window)",
-      "help": "Between turns, once the window is this full and nothing is running. Vyre rolls at 75 percent whatever is running.",
+      "help": "Between turns, once the window is this full and nothing is running. Vyre rolls at 90 percent whatever is running, and before any message that would pass 92 percent.",
       "type": "int",
       "min": 20,
       "max": 90,
-      "default": 60,
+      "default": 80,
       "levels": [
         "account",
         "project"

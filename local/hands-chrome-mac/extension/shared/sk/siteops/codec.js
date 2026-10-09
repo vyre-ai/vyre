@@ -143,7 +143,7 @@ function encodeLike(value, original, plusIsSpace) {
   const out = encodeURIComponent(value)
     .replace(/%([0-7][0-9A-F])/g, (m, hex) => { const ch = String.fromCharCode(parseInt(hex, 16)); return !"%&=#+ ".includes(ch) && original.includes(ch) ? ch : m; })
     .replace(/[!'()*~]/g, ch => { const pct = `%${ch.charCodeAt(0).toString(16).toUpperCase()}`; return original.toUpperCase().includes(pct) ? pct : ch; });
-  return plusIsSpace && original.includes("+") ? out.replace(/%20/g, "+") : out;
+  return plusIsSpace && original.includes("+") ? out.split("%20").join("+") : out;
 }
 
 /* ------------------------------------------------------------ root layers */

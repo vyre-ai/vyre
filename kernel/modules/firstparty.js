@@ -22,28 +22,12 @@ export function treeHash(dir) {
   return crypto.createHash("sha256").update("vyre-module-tree-v1\n" + JSON.stringify(files)).digest("hex");
 }
 
-/** What a release does when it ships a module: sign its folder's hash. @param {string} dir @param {crypto.KeyObject} releasePrivateKey @returns {string} the signature (base64url), also written to module.sig */
-export function signModule(dir, releasePrivateKey) {
-  const sig = crypto.sign(null, Buffer.from(treeHash(dir)), releasePrivateKey).toString("base64url");
-  fs.writeFileSync(path.join(dir, SIG), sig);
-  return sig;
-}
-
 const semver = (/** @type {string} */ v) => String(v).split(".").map(x => Number.parseInt(x, 10) || 0);
 const atLeast = (/** @type {string} */ v, /** @type {string} */ min) => { const a = semver(v), b = semver(min); for (let i = 0; i < 3; i++) { if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) > (b[i] || 0); } return true; };
 
 /** A public key as a KeyObject: a KeyObject, a PEM, or the base64 SPKI DER the release pins (lib/release-sig.js RELEASE_KEY). @param {crypto.KeyObject | string} k */
 export const keyOf = k => (typeof k !== "string" ? k : k.includes("BEGIN") ? crypto.createPublicKey(k) : crypto.createPublicKey({ key: Buffer.from(k, "base64"), format: "der", type: "spki" }));
 
-/**
- * The release signs the lowest version of each module it still accepts as first party (K-1) and a COUNTER, so an older signed document cannot be shown again
- * (K-2): a device that has accepted counter N refuses any document below N.
- * @param {Record<string, string>} minimums @param {crypto.KeyObject} releasePrivateKey @param {number} counter
- */
-export function signMinimums(minimums, releasePrivateKey, counter = 1) {
-  const body = JSON.stringify({ counter, minimums: Object.fromEntries(Object.entries(minimums).sort()) });
-  return { body, sig: crypto.sign(null, Buffer.from("vyre-module-minimums-v2\n" + body), releasePrivateKey).toString("base64url") };
-}
 /** @param {{ body: string, sig: string }} doc @param {crypto.KeyObject | string} releaseKey @returns {{ counter: number, minimums: Record<string, string> } | null} null when the signature does not verify */
 export function verifyMinimums(doc, releaseKey) {
   try {

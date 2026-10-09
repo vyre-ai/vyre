@@ -29,6 +29,7 @@
     "golden:allow": "node scripts/gen-allow.mjs",
     "tokens": "node scripts/gen-tokens",
     "design:audit": "node scripts/design-audit",
+    "gallery": "node scripts/gen-gallery",
     "docs:shots": "node scripts/docs-shots",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },

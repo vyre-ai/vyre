@@ -312,17 +312,15 @@ test("said: a plain send, post or pay ask lives an hour by default, the recorder
   for (const lookalike of ["module:threads-evil", "module:threadsx"]) assert.ok((await rec({}, lookalike)).error, lookalike);
 });
 
-test("grants: vault.list decides 'granted to that agent' by the agent's project scope alone; an agent named like a granted module sees nothing", async t => {
+test("grants: a model's vault.list shows only what a kernel grant of its own gives it; a module's grant, even by project, is not an agent's", async t => {
   const { reg, cli } = await daemon(t);
   for (const n of ["api-p", "api-m", "api-x"]) await cli("vault.put", { name: n, kind: "api-key", fields: { value: `fixture-key-${n}-0000000000` } });
   await cli("vault.grant", { name: "api-p", module: "planner", project: "harlow" });
   await cli("vault.grant", { name: "api-m", module: "kit" });
   await cli("vault.grant", { name: "api-x", module: "planner", project: "northwind" });
   const list = (agent, meta = {}) => reg("vault.list", {}, `mcp:agent:${agent}`, { agent, ...meta }).then(r => r.data.items.map(i => i.name).sort());
-  assert.deepEqual(await list("kit", { project: "harlow" }), ["api-p"], "its project's grant only, not a grant to a module that shares its name, not another project's");
-  assert.deepEqual(await list("kit"), [], "with no project scope nothing is visible, even an item granted to a module named kit");
-  assert.deepEqual(await list("planner"), [], "an agent named like a granted module sees nothing");
-  assert.deepEqual(await list("juno", { project: "northwind" }), ["api-x"]);
+  for (const [agent, meta] of [["kit", { project: "harlow" }], ["kit", {}], ["planner", {}], ["juno", { project: "northwind" }]]) assert.deepEqual(await list(agent, meta), [], `${agent}: a grant to a module (or a project) is not a grant to an agent`);
+  assert.deepEqual(await reg("vault.list", {}, "mcp", {}).then(r => r.data.items), [], "a model with no agent named is the assistant, and holds no grant either");
   assert.equal((await cli("vault.list")).data.items.length, 3, "the person sees everything");
 });
 

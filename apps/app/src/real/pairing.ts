@@ -7,7 +7,7 @@
 
 import type { PairingSession } from "../api/pairing-session";
 import { macKeyAvailable } from "../identity/mac-key.ts";
-import { shell } from "../shell/shell";
+import { shell } from "../shell/shell.ts";
 // A Mac server's core takes this device's presence key only with a proof from the setup key made for the install line (core-proof.js); other servers ignore the extra fields.
 import { withCoreProof } from "./core-proof.js";
 /** This Mac app's Capsule key as an SPKI, the key its Touch ID presence proofs are signed with (shell.presence), or null where there is none (a phone, a browser, the Windows panel). */

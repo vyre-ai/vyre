@@ -106,7 +106,7 @@
       "memory.retrieve",
       "memory.markers",
       { "name": "memory.space.file", "reach": "anyone", "effect": "write" },
-      { "name": "memory.space.recall", "reach": "anyone", "effect": "read" },
+      { "name": "memory.space.recall", "projectArg": ["project"], "reach": "anyone", "effect": "read" },
       { "name": "memory.space.retire", "reach": "anyone", "effect": "write" },
       { "name": "memory.upgrade.plan", "reach": "modules", "effect": "read" },
       { "name": "memory.upgrade.move", "reach": "modules", "effect": "write" },

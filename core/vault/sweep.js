@@ -16,7 +16,7 @@ import path from "node:path";
 import os from "node:os";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
-import { classify, startsLikeCredential, isKnownShape } from "../../lib/credential-shapes.js";
+import { classify, startsLikeCredential, isKnownShape, hasPrivateKey } from "../../lib/credential-shapes.js";
 import { SKIP_DIRS } from "./envfiles.js";
 
 /**
@@ -78,7 +78,7 @@ export function sweepText(text, values, file) {
     for (const [value, name] of values.slow) {
       if (!seen.has(name) && line.includes(value)) { seen.add(name); out.push({ file, line: n + 1, item: name }); }
     }
-    if (/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/.test(line) && !seen.has("private-key")) out.push({ file, line: n + 1, type: "private-key" });
+    if (hasPrivateKey(line) && !seen.has("private-key")) out.push({ file, line: n + 1, type: "private-key" });
   }
   return out;
 }

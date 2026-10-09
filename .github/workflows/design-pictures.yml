@@ -1,0 +1,66 @@
+# Picture tests: every block and key screen of the gallery, drawn at app, phone and chat width, light and dark, against the reference pictures in design-refs/.
+# A changed picture fails the run and uploads before, after and diff images as an artifact. The screen's owner (for Vyre's own screens: the release lead; major changes go to the product owner) says yes by
+# committing the new pictures (node scripts/design-pictures <out> --update). The references are kept under 10 MB; the run fails over that.
+name: design-pictures
+on:
+  push:
+    branches: ["work/design-language-*"]
+    paths:
+      - "apps/app/ui/**"
+      - "apps/app/screens/shell/ViewHost.tsx"
+      - "apps/app/app/gallery.tsx"
+      - "apps/app/scripts/design-pictures.mjs"
+      - "lib/views/**"
+      - "design-refs/**"
+      - ".github/workflows/design-pictures.yml"
+  pull_request:
+    paths:
+      - "apps/app/ui/**"
+      - "apps/app/screens/shell/ViewHost.tsx"
+      - "apps/app/app/gallery.tsx"
+      - "apps/app/scripts/design-pictures.mjs"
+      - "lib/views/**"
+      - "lib/theme/**"
+      - "design-refs/**"
+      - ".github/workflows/design-pictures.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: design-pictures-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  pictures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # The picture's pixels depend on the browser build and the fonts, so the references are made and checked in one pinned image, never on a person's machine.
+    # To make or refresh them, push a commit whose message contains [pictures-update]; the run writes them and uploads design-refs as an artifact to commit after the owner's yes.
+    container:
+      image: mcr.microsoft.com/playwright:v1.49.1-jammy
+    env:
+      UPDATE: ${{ contains(github.event.head_commit.message, '[pictures-update]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/gen-gallery --check
+      - run: npm ci --omit=dev --ignore-scripts
+      - run: npm ci --ignore-scripts
+        working-directory: apps/app
+      - run: npm i --no-save --prefix "$RUNNER_TEMP/pw" playwright@1.49.1
+      - run: EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web
+        working-directory: apps/app
+      - run: PW_FROM="$RUNNER_TEMP/pw/" node scripts/design-pictures.mjs "$RUNNER_TEMP/pictures" --dist dist $([ "$UPDATE" = "true" ] && echo --update)
+        working-directory: apps/app
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-pictures
+          path: ${{ runner.temp }}/pictures
+          if-no-files-found: ignore
+      - if: always() && env.UPDATE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-refs
+          path: design-refs

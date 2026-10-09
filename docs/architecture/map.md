@@ -215,6 +215,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `bin/` | The `vyre` command's entry file and the git credential helper. |
 | `box/` | The server's Docker image, its compose files and the `vyre` command that runs on the host. |
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
+| `design-refs/` | (not described yet) |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |

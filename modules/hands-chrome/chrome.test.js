@@ -207,7 +207,11 @@ test("hands-chrome: navigates, snapshots, clicks an observable control and sees 
   const s = await boot(t, { port });
   const PAGE = await servePage(t);
 
-  const opened = await s.kit("chrome.open", { url: PAGE });
+  // A model's Chrome reaches the public web only, so a local page is refused to the agent; the person opens it (a Glass takeover) and the agent then works the page
+  const refused = await s.kit("chrome.open", { url: PAGE });
+  assert.equal(refused.error && refused.error.code, "denied", JSON.stringify(refused));
+  assert.match(refused.error.message, /public/);
+  const opened = await s.cli("chrome.open", { agent: "kit", url: PAGE });
   assert.equal(opened.error, undefined, opened.error && opened.error.message);
   // Wait on the page's real condition (its controls are there), not on time: a slow runner can answer
   // the open before the document has finished.
@@ -239,7 +243,7 @@ test("hands-chrome: refuses a consequential control before touching it", { skip:
   const { port } = await launchChrome(t);
   const s = await boot(t, { port });
   const PAGE = await servePage(t);
-  await s.kit("chrome.open", { url: PAGE });
+  await s.cli("chrome.open", { agent: "kit", url: PAGE });
 
   const r = await s.kit("chrome.click", { selector: { role: "button", name: "Send message" } });
   assert.equal(r.error, undefined);
@@ -255,7 +259,7 @@ test("hands-chrome: types into a text field", { skip: !HAVE_CHROME && "no Chrome
   const { port } = await launchChrome(t);
   const s = await boot(t, { port });
   const PAGE = await servePage(t);
-  await s.kit("chrome.open", { url: PAGE });
+  await s.cli("chrome.open", { agent: "kit", url: PAGE });
 
   const typed = await s.kit("chrome.type", { selector: { role: "textbox", name: "say something" }, text: "hello there" });
   assert.equal(typed.error, undefined, typed.error && typed.error.message);
@@ -270,7 +274,7 @@ test("hands-chrome: refuses to act while paused, and while another surface has t
   const { port } = await launchChrome(t);
   const s = await boot(t, { port });
   const PAGE = await servePage(t);
-  await s.kit("chrome.open", { url: PAGE });
+  await s.cli("chrome.open", { agent: "kit", url: PAGE });
 
   await s.cli("computers.pause", { agent: "kit" });
   const paused = await s.kit("chrome.click", { selector: { role: "button", name: "Go" } });
@@ -305,7 +309,7 @@ test("hands-chrome: an agent may only drive its own computer", { skip: !HAVE_CHR
   const PAGE = await servePage(t);
   const r = await s.juno("chrome.snapshot", { agent: "kit" });
   // juno is the assistant: it may name kit's computer.
-  await s.kit("chrome.open", { url: PAGE });
+  await s.cli("chrome.open", { agent: "kit", url: PAGE });
   assert.equal((await s.juno("chrome.snapshot", { agent: "kit" })).error, undefined);
   const r2 = await s.cli("chrome.snapshot", {});
   assert.match(r2.error.message, /agent is required/);
@@ -359,14 +363,15 @@ test("hands-chrome: chrome.acted never stores a query string, and carries the th
   const { port } = await launchChrome(t);
   const s = await boot(t, { port });
   const PAGE = await servePage(t);
-  const r = await s.d.registry.call("chrome.open", { url: `${PAGE}?token=abc123#frag` }, "mcp:agent:kit", { thread: "t-kit-1", call: "toolu_01" });
+  // (the person opens the local page for the agent's computer; the event carries the thread and call of the step all the same)
+  const r = await s.d.registry.call("chrome.open", { agent: "kit", url: `${PAGE}?token=abc123#frag` }, "cli", { thread: "t-kit-1", call: "toolu_01" });
   assert.equal(r.error, undefined, r.error && r.error.message);
   const e = s.events().find(x => x.payload.action === "open");
   assert.ok(e, "an open step");
   assert.equal(e.payload.summary, PAGE);
   assert.ok(!JSON.stringify(e.payload).includes("abc123"), "no query in the event");
   for (const [n, tail] of [[1, `?t="SECRET_Q`], [2, "?q=a SECRET_S"]]) {
-    const again = await s.d.registry.call("chrome.open", { url: `${PAGE}${tail}` }, "mcp:agent:kit", { thread: "t-kit-1", call: `toolu_0${n + 1}` });
+    const again = await s.d.registry.call("chrome.open", { agent: "kit", url: `${PAGE}${tail}` }, "cli", { thread: "t-kit-1", call: `toolu_0${n + 1}` });
     assert.equal(again.error, undefined, again.error && again.error.message);
   }
   const all = JSON.stringify(s.events().map(x => x.payload));

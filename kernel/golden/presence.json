@@ -13,5 +13,40 @@
   ],
   "ruling": "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership",
   "reason": "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership; spaces.host-here changed in 11391dc9d: hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof"
+ },
+ {
+  "tool": "vault.env.scan",
+  "was": "denied",
+  "callers": [
+   "mobile"
+  ],
+  "ruling": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+  "reason": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects; vault.env.scan changed in work/vault-ux-031: the phone app lists the .env files in the person's projects that hold keys: names and counts, never a value"
+ },
+ {
+  "tool": "vault.import",
+  "was": "denied",
+  "callers": [
+   "deck",
+   "capsule",
+   "mobile",
+   "tailnet:owner",
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+  "reason": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects; vault.import changed in work/vault-ux-031: the app imports the export a person picked (its bytes), or the .env files a scan found, into their own Vault; it asks the person's presence on that exact import, and an assistant still cannot pass bytes"
+ },
+ {
+  "tool": "vault.import.preview",
+  "was": "denied",
+  "callers": [
+   "deck",
+   "capsule",
+   "mobile",
+   "tailnet:owner",
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+  "reason": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects; vault.import.preview changed in work/vault-ux-031: the app previews the export a person picked, by name and count only, before it imports; it asks the person's presence"
  }
 ]

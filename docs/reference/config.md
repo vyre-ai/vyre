@@ -78,6 +78,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_APPLE_TEAM_ID` | Not described yet. | `core/daemon/app.js` |
+| `VYRE_APP_URL` | Not described yet. | `harness/mcp/design.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
@@ -133,6 +134,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NPM_BIN` | The `npm` that `vyre update` installs a release with. Tests point it at a fake. | `core/cli/commands/update.js` |
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
+| `VYRE_OPENROUTER_API` | Not described yet. | `core/models/index.js` |
 | `VYRE_OPENROUTER_URL` | Not described yet. | `core/sessions/index.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/up.js`, `core/cli/kit.js` |
 | `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
@@ -142,6 +144,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
+| `VYRE_ROLLOVER_SHEET` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
 | `VYRE_SEAL_DEV` | Not described yet. | `core/vault/request.js` |
 | `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |

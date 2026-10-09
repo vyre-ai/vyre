@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import { CONTRACT, supports, moduleContract } from "./contract.js";
 import { checkCapsuleShows } from "./capsule-view.js";
+import { validateScreen } from "../../lib/views/blocks.js";
 
 /** The module API majors this Vyre loads. */
 export const API_VERSIONS = [1];
@@ -283,6 +284,20 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
       needsTools: new Set(TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") : []),
       firstParty, moduleName: String(m.name),
     }));
+  }
+  // A screen in the design language (`views.<id>.screen`, or a `view:<id>` entry's): only blocks from the catalogue, props from each block's closed list, no colour, size or markup, and data
+  // from the module's own tools (an added module's needs.tools too). The same check the Design MCP runs, so an agent sees the same words.
+  {
+    const ctx = { tools: new Set(toolEntries(m).map(t => t.name)), allowed: firstParty ? new Set() : new Set(TYPES.object(m.needs) && Array.isArray(m.needs.tools) ? m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") : []), firstParty };
+    /** @type {[string, any][]} */
+    const decls = [
+      ...(TYPES.object(m.views) ? Object.entries(m.views).map(([id, v]) => [`views.${id}`, v]) : []),
+      ...(TYPES.object(m.shows) && TYPES.object(m.shows.capsule) ? Object.entries(m.shows.capsule).filter(([k]) => k.startsWith("view:")).map(([k, v]) => [`shows.capsule "${k}"`, v]) : []),
+    ];
+    for (const [at, v] of decls) if (TYPES.object(v) && v.screen !== undefined) {
+      if (Object.keys(v).some(k => ["list", "board", "summary", "form"].includes(k))) out.push(`${at}: a screen replaces list, board, summary and form; use blocks inside it`);
+      for (const p of validateScreen(v.screen, ctx)) out.push(`${at}.screen: ${p}`);
+    }
   }
   // projectArg names the input field(s) holding a project: the registry refuses an agent's call for a project it is not granted.
   for (const e of toolEntries(m)) for (const key of /** @type {const} */ (["projectArg", "cwdArg"])) {

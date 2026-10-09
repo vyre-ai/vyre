@@ -267,7 +267,7 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, onDevice: fn => events.on("link.mac-online", () => fn()), publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
@@ -1562,6 +1562,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
  * EventSource resumes from Last-Event-ID on its own.
  */
 function stream(req, res, url, events, streams) {
+  // A client that went away while the request was being routed (or while the daemon was stopping) has no 'close' left to come: nothing to start, nothing to leak.
+  if (req.destroyed || res.destroyed || res.writableEnded) return;
   const type = url.searchParams.get("type") || "*";
   // since=latest skips the backlog: a surface that renders current state from tools only needs
   // what happens next, and replaying a long log to reach "now" is wasted work.
@@ -1604,6 +1606,7 @@ function stream(req, res, url, events, streams) {
   const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
   // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
   const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
+  beat.unref(); // a heartbeat never keeps the process alive; the stream ends with its connection or with the daemon
   const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
   streams.add(end);
   req.on("close", end);

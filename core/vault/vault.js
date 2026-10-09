@@ -42,7 +42,7 @@ import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
-import { ACCESS_REQUESTS_MIGRATION } from "./access.js";
+import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
@@ -148,6 +148,8 @@ export const MIGRATIONS = [
   RELEASE_BODY_MIGRATION,
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
+  // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
+  CONVERSIONS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -1272,7 +1274,7 @@ export class Vault {
       let cfg;
       try { cfg = JSON.parse(clean.config); } catch { throw new Error("config must be JSON: { auth, hosts, endpoints? }"); }
       const n = normalizeApiCredential(cfg);
-      if (n.auth.type !== "oauth" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
+      if (n.auth.type !== "oauth" && n.auth.type !== "browser" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
       clean.config = JSON.stringify(n);
     }
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
@@ -1532,15 +1534,25 @@ export class Vault {
    * decision 1). Existing logins are opened to compare origin, username and password, so the
    * personal vault must be open. Nothing returned here leaves this class with a value in it.
    */
-  async importPlan({ file, format }) {
-    const p = path.resolve(String(file));
-    const st = fs.statSync(p);
+  async importPlan({ file, format, content, filename }) {
     let token, parsed, envFiles = null;
-    if (st.isDirectory() || (st.isFile() && (format === "env" || (!format && isEnvName(path.basename(p)))))) {
+    // The app sends the bytes of a file the person picked (their computer is not always this box): the same parser, no path, and no .env rewrite (there is no file here to rewrite).
+    const given = content !== undefined && content !== null;
+    const p = given ? "the exported file" : path.resolve(String(file));
+    const st = given ? null : fs.statSync(p);
+    if (given) {
+      if (typeof content !== "string") throw new Error("content is the file's bytes as base64");
+      const bytes = Buffer.from(content, "base64");
+      if (!bytes.length) throw new Error("the file is empty");
+      if (bytes.length > 20 * 1024 * 1024) throw new Error("the file is larger than 20 MB");
+      token = importToken(bytes);
+      parsed = parseImport(bytes, { format, filename: filename ? path.basename(String(filename)) : undefined });
+      if (parsed.error) throw new Error(parsed.error);
+    } else if (st && (st.isDirectory() || (st.isFile() && (format === "env" || (!format && isEnvName(path.basename(p))))))) {
       // A folder is scanned for .env files, and a .env file is read the same way, so both can be
       // rewritten to references afterwards (ADR 0028, decision 1).
       ({ token, parsed, envFiles } = scanEnv(p));
-    } else {
+    } else if (st) {
       if (!st.isFile()) throw new Error(`${p} is not a file or a folder`);
       if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
       const bytes = fs.readFileSync(p);
@@ -1582,8 +1594,8 @@ export class Vault {
   }
 
   /** What an import would do: names and counts, never a value, plus a token bound to the file. */
-  async importPreview({ file, format }, caller) {
-    const { token, parsed, plan, envFiles } = await this.importPlan({ file, format });
+  async importPreview({ file, format, content, filename }, caller) {
+    const { token, parsed, plan, envFiles } = await this.importPlan({ file, format, content, filename });
     const counts = Object.fromEntries(IMPORT_KINDS.map(k => [k, 0]));
     for (const it of parsed.items) if (it.kind in counts) counts[it.kind]++;
     this.audit("import-preview", null, caller, true, `${parsed.format}: ${parsed.items.length} items, ${plan.add.length} new, ${plan.same.length} same, ${plan.conflicts.length} conflicts`);
@@ -1602,9 +1614,9 @@ export class Vault {
    * item as a new version, so history keeps the old password. The file is left as it is; the
    * user deletes it.
    */
-  async import({ file, format, token, conflicts = "skip", rewrite = false }, caller) {
+  async import({ file, format, token, conflicts = "skip", rewrite = false, content, filename }, caller) {
     if (conflicts !== "skip" && conflicts !== "update") throw new Error(`conflicts is "skip" or "update"`);
-    const { p, token: current, parsed, plan, envFiles } = await this.importPlan({ file, format });
+    const { p, token: current, parsed, plan, envFiles } = await this.importPlan({ file, format, content, filename });
     if (rewrite && !envFiles) throw new Error("rewrite is for .env files and folders of them");
     if (token !== undefined && token !== null && !sameToken(String(token), current)) throw new Error("the file changed since the preview; preview it again");
     const from = `import:${parsed.format}`;

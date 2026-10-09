@@ -158,6 +158,14 @@ export const PERSON_ONLY = new Map([
   ["computers.member.rotate", "needs the person's Face ID or presence: who may use a computer"],
   ["computers.resume", "controls the person's own machine"],
   ["computers.tailnet.set", "controls the person's own machine: its network and hand-back"],
+  ["connectors.site.connect", "makes a website Connection from what was learned: the person's own act"],
+  ["connectors.site.sync", "changes which learned operations a website Connection exposes: the person's own act"],
+  ["connectors.site.rollback", "puts a learned operation back to an earlier version: the person's own act"],
+  ["connectors.site.limits.set", "would let an assistant widen its own authority: the pace and caps that protect an account"],
+  ["connectors.site.resume", "the person's go-ahead after a site stopped at a challenge: only they can clear it"],
+  ["link.ops.allow", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["link.ops.revoke", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["link.ops.list", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
   ["connectors.scope", "widens what a connector may reach"],
   ["connectors.declare", "makes a vault credential: the person's own act, with their own key"],
   ["appmods.install", "installing or running third-party code on the server is the owner's act"],
@@ -167,6 +175,11 @@ export const PERSON_ONLY = new Map([
   ["appmods.open", "gives a browser a signed-in session on the app"],
   ["appmods.logs", "an app's logs can carry its users' data"],
   ["views.act", "a view action is the person's click; its outward acts are still held"],
+  ["views.shown", "the chat's own question of what a thread was shown"],
+  ["views.preview", "resolves a proposed screen's data as the person, for the owner's before and after"],
+  ["design.proposals", "the owner's list of proposed screen changes, with what each reads and runs"],
+  ["design.decide", "the yes or no to a proposed screen is the screen owner's alone"],
+  ["design.screen.remove", "removing a space screen is the person's act"],
   ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
   ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
   ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
@@ -314,7 +327,8 @@ export const OPEN = new Set([
   "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
   "previews.operator", "previews.step", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
   "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
-  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
+  "design.catalogue", "design.validate", "design.screens", "design.propose", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
+  "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",

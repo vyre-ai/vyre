@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { groupCode, periodEnd, totpFrame, liveTotp, TOTP_LIVE_MS } from "../core/cli/commands/vault.js";
 import { totp } from "../core/vault/totp.js";
 import { ping } from "../core/daemon/index.js";
@@ -178,7 +178,9 @@ test("vault totp live: from a terminal the next code waits for Enter, since each
 const BREACHED = "fixture-breached-pw";
 
 /** A fetch for vyred that plays api.pwnedpasswords.com: BREACHED is in a breach, nothing else is. */
-const FAKE_FETCH = `import crypto from "node:crypto";
+// The guarded client (lib/http.js) treats a replaced global fetch as a test stand-in only if it was replaced after the client loaded, so the stand-in loads the client first.
+const FAKE_FETCH = `import ${JSON.stringify(pathToFileURL(path.join(HERE, "..", "lib", "http.js")).href)};
+import crypto from "node:crypto";
 const hit = crypto.createHash("sha1").update(${JSON.stringify(BREACHED)}).digest("hex").toUpperCase();
 globalThis.fetch = async url => {
   const u = String(url);
@@ -207,7 +209,7 @@ async function vyred(t, vaultConfig) {
   // regardless of whether the process had actually exited), the exact "deleted a home out from
   // under a still-running vyred" bug tempHome's own stopDaemon was already hardened against.
   t.after(async () => { await stopDaemon(h); fs.rmSync(h, { recursive: true, force: true }); });
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 1200; i++) { // up to 2 minutes: a start takes about 10 s on a loaded machine
     await new Promise(r => setTimeout(r, 100));
     if (await ping(p.socket)) return h;
     if (child.exitCode !== null) break;

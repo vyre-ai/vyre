@@ -28,8 +28,8 @@ import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
-import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
-import { checkAnswer, Nonces, NONCES_FILE } from "./assert.js";
+import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
+import { checkAnswer, checkCall, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
 import * as enclave from "./se/index.js";
@@ -316,6 +316,31 @@ export function macSide(ctx, seam = {}) {
     return write("threads.answer", input);
   }
 
+  // The learned website operations the person let the box run in their Chrome here: [{ site, name }], in a file of their own beside link.json.
+  const opsFile = path.join(ctx.paths.root, "link-ops.json");
+  /** @returns {{ site: string, name: string }[]} */
+  const loadOps = () => { try { const v = JSON.parse(fs.readFileSync(opsFile, "utf8")); return Array.isArray(v) ? v.filter(o => o && typeof o.site === "string" && typeof o.name === "string") : []; } catch { return []; } };
+  /** @param {{ site: string, name: string }[]} list */
+  const saveOps = list => { const tmp = `${opsFile}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 }); fs.renameSync(tmp, opsFile); };
+
+  /**
+   * One learned website operation for the box, run in this Mac's own Chrome. Only an operation the person approved for the box (link.ops.allow); a read runs at once; an outward one only with an
+   * assertion the box signed for exactly this site, operation and inputs (assert.js checkCall). Anything else is refused here, whatever the box says.
+   * @param {any} q the box's request
+   */
+  async function callOp(q) {
+    const input = q.input && typeof q.input === "object" ? q.input : {};
+    const site = String(input.site || ""), name = String(input.name || "");
+    if (!loadOps().some(o => o.site === site && o.name === name)) return { error: { code: "denied", message: `the person has not allowed the box to run ${name.slice(0, 40)} on ${site.slice(0, 80)} here (link.ops.allow)` } };
+    let approved = false;
+    if (input.approved === true) {
+      const c = checkCall({ assertion: q.assertion, call: { site, name, inputs: input.inputs }, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces, now: seam.now ? seam.now() : Date.now() });
+      if (!c.ok) return { error: { code: "denied", message: `the box's outward call was refused: ${c.reason}` } };
+      approved = true;
+    }
+    return ctx.call("chrome.op.call", { site, name, inputs: input.inputs && typeof input.inputs === "object" ? input.inputs : {}, approved });
+  }
+
   /**
    * threads.send for the person at the box: as "link:box", its surface marked as the box's, with
    * the thread followed while it runs and after, if it succeeded.
@@ -370,6 +395,7 @@ export function macSide(ctx, seam = {}) {
           ? (q.as !== "person" ? { error: { code: "denied", message: `${q.tool} is answered through the link only for the person` } }
             : q.tool === "threads.answer" ? await answer(q) : await write(q.tool, input))
           : ALLOW.includes(q.tool) ? await ctx.call(q.tool, input)
+          : CALL.includes(q.tool) ? await callOp(q)
           : { error: { code: "denied", message: `${q.tool} is not answered through the link` } };
         if (!live()) return;
         const sent = await boxCall("link.reply", { key, id: q.id, result: result.error ? { error: result.error } : { data: result.data } }, c, { signal: ac.signal });
@@ -509,6 +535,31 @@ export function macSide(ctx, seam = {}) {
       setTimeout(stop, 10 * 60_000).unref();
       return { url, expires };
     },
+  });
+
+  ctx.tool("link.ops.allow", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Let the paired box run one learned website operation in your Chrome on this Mac: { site, name }. A read then runs when the box asks; an outward one (a message, a post) still needs the person's yes on the box, signed for that exact call. Your own act.",
+    input: { type: "object", properties: { site: { type: "string" }, name: { type: "string" } }, required: ["site", "name"] },
+    run: async ({ site, name }) => {
+      let origin; try { origin = new URL(String(site)).origin; } catch { throw Object.assign(new Error("site is an origin such as https://app.example.com"), { code: "bad_input" }); }
+      if (!/^[a-z][A-Za-z0-9_]{0,63}$/.test(String(name))) throw Object.assign(new Error("name is the learned operation's name, such as searchPeople"), { code: "bad_input" });
+      const list = loadOps();
+      if (!list.some(o => o.site === origin && o.name === name)) { list.push({ site: origin, name: String(name) }); saveOps(list.slice(-200)); }
+      return { allowed: true, site: origin, name: String(name) };
+    },
+  });
+  ctx.tool("link.ops.revoke", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Stop the box from running a learned website operation in your Chrome here: { site, name }.",
+    input: { type: "object", properties: { site: { type: "string" }, name: { type: "string" } }, required: ["site", "name"] },
+    run: async ({ site, name }) => { const list = loadOps(); const next = list.filter(o => !(o.site === String(site) && o.name === String(name))); saveOps(next); return { revoked: next.length !== list.length }; },
+  });
+  ctx.tool("link.ops.list", {
+    effect: "read", callers: ["cli", "local", "capsule", "deck"],
+    description: "The learned website operations the box may run in your Chrome on this Mac: { operations: [{ site, name }] }.",
+    input: { type: "object", properties: {} },
+    run: async () => ({ operations: loadOps() }),
   });
 
   ctx.tool("link.signout", {

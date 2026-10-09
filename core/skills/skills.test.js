@@ -27,11 +27,13 @@ async function world(t) {
   skill(path.join(home, "learned", "agents", "kit", "skills"), "kit-only", "Use when kit reviews code");
   /** @type {Record<string, any>} */ const tools = {};
   const calls = [];
+  /** @type {Record<string, any>} */ const harnesses = {};
   const ctx = {
     paths: { root: home },
     tool: (/** @type {string} */ n, /** @type {any} */ d) => { tools[n] = d; },
     call: async (/** @type {string} */ name, /** @type {any} */ input) => {
       calls.push([name, input]);
+      if (name === "sessions.harness.get") return { data: { harnesses: harnesses[input.provider] ? [{ provider: input.provider, caps: harnesses[input.provider] }] : [] } };
       if (name === "projects.list") return { data: { projects: [{ slug: "harlow", home: folder }, { slug: "secret-case", home: path.join(base, "other") }] } };
       if (name !== "projects.reach") return { error: { code: "no_such_tool" } };
       if (input.person) return { data: { all: true, agent: null } };
@@ -48,7 +50,7 @@ async function world(t) {
     find: (i) => tools["skills.find"].run(i, { caller }),
     get: (i) => tools["skills.get"].run(i, { caller }),
   });
-  return { home, folder, as, calls };
+  return { home, folder, as, calls, harnesses, tools };
 }
 const ids = (/** @type {any} */ r) => r.skills.map((/** @type {any} */ s) => s.id).sort();
 
@@ -113,4 +115,30 @@ test("a malformed name or a huge file is skipped, and a skill with no front matt
   const out = sourcesOf({ pkg: base, home: path.join(base, "home"), person: false, agent: null, account: false, projects: [] });
   assert.deepEqual(out.map((s) => s.id), ["vyre/plain"]);
   assert.equal(out[0].name, "plain");
+});
+
+test("R031-85: with a harness named, a skill that needs what the harness showed it lacks is left out and named with the reason, a degradable one says what it loses, and no named harness hides nothing", async t => {
+  const w = await world(t);
+  const lib = path.join(w.home, "learned", "account", "skills");
+  fs.mkdirSync(path.join(lib, "fan-out"), { recursive: true });
+  fs.writeFileSync(path.join(lib, "fan-out", "SKILL.md"), "---\nname: fan-out\ndescription: Use when splitting a job across helpers\nneeds: [subagents]\n---\n\n# fan-out\n\nUse helpers.\n");
+  fs.mkdirSync(path.join(lib, "fan-out-soft"), { recursive: true });
+  fs.writeFileSync(path.join(lib, "fan-out-soft", "SKILL.md"), "---\nname: fan-out-soft\ndescription: Use when splitting a job across helpers, softly\nneeds: subagents\ndegrade: it does the parts one after another\n---\n\n# soft\n\nOne by one.\n");
+  const list = (i = {}) => w.tools["skills.list"].run(i, { caller: "cli" });
+  const find = (i) => w.tools["skills.find"].run(i, { caller: "cli" });
+  assert.ok(ids(await list()).includes("account/fan-out"), "nothing is hidden without a harness");
+  assert.ok(ids(await list({ harness: "codex" })).includes("account/fan-out"), "a harness no session has started hides nothing");
+  w.harnesses.codex = { subagents: false, skills: true };
+  const r = await list({ harness: "codex" });
+  assert.ok(!ids(r).includes("account/fan-out"));
+  assert.deepEqual(r.hidden, [{ id: "account/fan-out", reason: "needs subagents; codex does not offer subagents" }]);
+  const soft = r.skills.find(s => s.id === "account/fan-out-soft");
+  assert.equal(soft.works, "degraded");
+  assert.match(soft.reason, /codex does not offer subagents; without it: it does the parts one after another/);
+  assert.deepEqual(soft.needs, ["subagents"]);
+  const found = await find({ query: "splitting a job across helpers", harness: "codex" });
+  assert.ok(!found.skills.some(s => s.id === "account/fan-out") && found.skills.some(s => s.id === "account/fan-out-soft"));
+  w.harnesses.claude = { subagents: true };
+  assert.ok(ids(await list({ harness: "claude" })).includes("account/fan-out"), "a harness that showed it has them keeps both");
+  assert.equal((await list({ harness: "claude" })).hidden, undefined);
 });

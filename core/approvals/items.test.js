@@ -34,6 +34,7 @@ test("a card is rebuilt from the owner's list, closes with the outcome the owner
       if (tool === "gate.held") { if (world.broke) throw new Error("down"); return { data: world.held }; }
       if (tool === "threads.asks") return { data: [] };
       if (tool === "flows.attention") return { data: { runs: [] } };
+      if (tool === "models.evals") return { data: { evals: [] } };
       return { error: { code: "unknown_tool" } };
     },
     on: (pattern, fn) => { handlers.set(pattern, fn); return () => handlers.delete(pattern); },
@@ -115,4 +116,19 @@ test("R031-45: a stuck task is one `task` card with its reason, answered by task
   assert.equal(after.items.filter((/** @type {any} */ x) => x.kind === "task").length, 0);
   assert.equal(after.recent.find((/** @type {any} */ x) => x.id === "tasks:t1").outcome, "unblocked");
   await items.stop();
+});
+
+test("R031-87: a new model's pending evals are one `eval` card with a cost from its price (or the cost unknown), answered by models.eval-approve, declined by models.eval-decline; settled ones are not cards", async () => {
+  const { fromEvals } = await import("./items.js");
+  const rows = fromEvals([
+    { model: "codex/gpt-5.5", label: "GPT-5.5", state: "pending", price_known: true, total_usd: 7.5, types: [{ id: "a" }, { id: "b" }], at: 5 },
+    { model: "grok/grok-5", label: "grok-5", state: "pending", price_known: false, total_usd: null, types: [{ id: "a" }], at: 4 },
+    { model: "claude/x", state: "approved", types: [], at: 3 },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail]), [
+    ["models:codex/gpt-5.5", "eval", "New model GPT-5.5: run evals?", "2 evals, about $7.50 in all"],
+    ["models:grok/grok-5", "eval", "New model grok-5: run evals?", "1 evals; the cost is unknown (no price for this model yet)"],
+  ]);
+  assert.deepEqual(rows[0].answer, { tool: "models.eval-approve", input: { model: "codex/gpt-5.5" }, fill: ["evals"] });
+  assert.deepEqual(rows[0].decline, { tool: "models.eval-decline", input: { model: "codex/gpt-5.5" } });
 });

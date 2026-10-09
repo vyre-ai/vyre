@@ -252,6 +252,43 @@ install`, then add it to Claude Code with `claude mcp add`. It writes a trace of
 `~/.vyre-chrome/logs` on your computer only. Its README in `local/hands-chrome-mac/standalone/`
 has the steps.
 
+## A website you are signed in to
+
+Some sites have no API for you: LinkedIn, a practice-management page, a portal. Vyre can learn what
+the site's own page asks of its servers, name it, and call it by name afterwards, as you, without
+driving the page each time. `chrome_op` in Claude Code (or your assistant) does the teaching:
+
+1. Say what you want from the site and with which inputs: `readProfile(slug) -> name, headline,
+   location`. Your assistant says it back and waits for your yes.
+2. It runs the page twice with two different examples and compares the traffic. No model reads the
+   traffic. Then it proves the operation on an input that was not an example before it keeps it.
+3. A send (a message, a connection request) is taught with its request **blocked**, after your yes:
+   nothing is sent while Vyre learns it. Every later call of it waits for your yes and is made once.
+
+Your login never leaves the browser. A call is signed inside the page, by the browser that is
+signed in; Vyre keeps names, shapes and the places a token comes from, never the token, a cookie or
+what you typed. When the site changes, a read is repaired once from the page and kept only after a
+replay answers; each kept version can be rolled back in one step.
+
+Then make the site a Connection: `connectors.site.connect` (your own act). A Flow's "Call a
+service" step, a watcher's poll, a view and your assistant call its operations like any
+Connection's, and anything that is not a read is held for your yes. Where a call runs is the
+cheapest way that works, and the trace says which: a plain fetch for public data, your Chrome on
+this Mac, an assistant's own Chrome on your box (so it works with the Mac off; sign in once through
+its screen view), or your Chrome on a paired Mac that you allowed with `link.ops.allow`. If the
+browser says the login ran out, the Connection's light says to sign in again.
+
+**LinkedIn.** A kit for it exists (`chrome_op kit`), but automating LinkedIn is against LinkedIn's
+terms and can get an account restricted or closed. Use it only on an account you can afford to
+lose, and at your own risk; Vyre does not recommend it. If you do, the strict pace is on by default:
+a read every 20 to 60 seconds, 2 to 5 minutes between sends, 80 reads and 15 sends a day, never at
+night, and **the first security check stops the account** until you clear it in the browser and
+resume it (`connectors.site.resume`). Every one of those numbers is a setting for your account
+(`connectors.site.limits.set`).
+
+It does not solve CAPTCHAs, and a site that challenges your browser needs you once. Respect each
+site's terms: you are responsible for what you ask it to do.
+
 ## Send an email from any account
 
 Every mail account you connect works the same way: a Google account (OAuth or a Workspace

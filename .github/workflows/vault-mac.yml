@@ -37,13 +37,8 @@ jobs:
         shell: bash
         run: |
           fail=0
-          # Files known to hang on a macOS runner without output, run and reported but not failing the
-          # job. Empty now: the five that hung on 30 Sep pass after the merge with stage (each under 15 s).
-          known=""
           files=$(ls core/vault/*.test.js core/vault/**/*.test.js lib/connectors/*.test.js core/mcp/*.test.js core/google/*.test.js core/modules/*.test.js core/cli/commands/*.test.js local/voice/*.test.js test/docs-*.test.js test/hygiene*.test.js 2>/dev/null | sort -u)
           for f in $files; do
-            # a file on test/known-red.json is left out, as the main suite's runner leaves it out (its owner and reason are listed there)
-            if node -e 'process.exit(require("./test/known-red.json")[process.argv[1]] ? 0 : 1)' "$f"; then echo "skip $f (known-red)"; continue; fi
             start=$(date +%s)
             if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
@@ -51,7 +46,7 @@ jobs:
               case "$f" in core/vault/*) grep -E "^\s*(✔|✖|﹣|ℹ (pass|fail|skipped))" /tmp/one.log | sed 's/^/     /';; esac
             else
               echo "FAIL $f ($(( $(date +%s) - start ))s)"; sed -n '/failing tests:/,$p' /tmp/one.log | grep -vE "^\s+at " | head -70
-              case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
+              fail=1
             fi
           done
           exit $fail

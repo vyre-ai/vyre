@@ -28,16 +28,17 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 38 | 16 | none |
-| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 40 | 16 | none |
+| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`design`](#design) | `core/design` | `box`, `local` | 7 | 2 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 43 | 0 | none |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -49,11 +50,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 33 | 22 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
+| [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
@@ -66,14 +68,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 17 | 5 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 39 | 9 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 41 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
@@ -90,12 +92,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 67 | 40 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 69 | 40 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 143 | 50 | capsule, cli, deck |
-| [`views`](#views) | `core/views` | `box`, `local` | 3 | 0 | cli |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 145 | 53 | capsule, cli, deck |
+| [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
@@ -242,7 +244,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [38](tools.md#chrome), 2 of them only for other modules
+- Tools: [40](tools.md#chrome), 4 of them only for other modules
 - Emits: [16 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -252,7 +254,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#chrome), 2 of them only for other modules
+- Tools: [6](tools.md#chrome), 4 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -284,8 +286,8 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [28](tools.md#connectors), 2 of them only for other modules
-- Emits: [10 events](events.md#connectors)
+- Tools: [39](tools.md#connectors), 3 of them only for other modules
+- Emits: [14 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
 
@@ -298,6 +300,17 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Requires: none
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
+- Shows on: cli
+
+## design
+
+The design language's keeper: the block catalogue and a screen checker for anyone who designs (the Engineer, Claude Code, Codex), the space's own screens, and the proposals to change them. An agent proposes a screen; the screen's owner sees it before and after and says yes or no.
+
+- Folder: `core/design`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [7](tools.md#design)
+- Emits: [2 events](events.md#design)
 - Shows on: cli
 
 ## docs
@@ -342,7 +355,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [43](tools.md#flows)
+- Tools: [44](tools.md#flows)
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
@@ -477,8 +490,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [30](tools.md#link), 5 of them only for other modules
-- Emits: [21 events](events.md#link)
+- Tools: [33](tools.md#link), 5 of them only for other modules
+- Emits: [22 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -525,6 +538,17 @@ The # tag: one picker over everything the person may mention, from the modules t
 - Tools: [3](tools.md#mentions), 1 of them only for other modules
 - Emits: no events
 - Shows on: no surface
+
+## models
+
+The model registry: every model Vyre can offer, filled live from each provider's /models (with a key), from what each CLI or subscription login reports, and from OpenRouter's public metadata, with price, capabilities and eval scores; refreshed daily and on demand. A new model proposes its evals as one card; nothing runs without the owner's yes.
+
+- Folder: `core/models`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [9](tools.md#models)
+- Emits: [3 events](events.md#models)
+- Shows on: cli
 
 ## modules
 
@@ -665,7 +689,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [17](tools.md#recall), 1 of them only for other modules
+- Tools: [18](tools.md#recall), 1 of them only for other modules
 - Emits: [5 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -750,7 +774,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [39](tools.md#sessions), 11 of them only for other modules
+- Tools: [41](tools.md#sessions), 12 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -946,7 +970,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [67](tools.md#threads), 22 of them only for other modules
+- Tools: [69](tools.md#threads), 24 of them only for other modules
 - Emits: [40 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
@@ -992,8 +1016,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [143](tools.md#vault), 19 of them only for other modules
-- Emits: [50 events](events.md#vault)
+- Tools: [145](tools.md#vault), 21 of them only for other modules
+- Emits: [53 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1005,7 +1029,7 @@ A module's screens, described and drawn by Vyre: the lists, boards, summaries, d
 - Folder: `core/views`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [3](tools.md#views)
+- Tools: [6](tools.md#views)
 - Emits: no events
 - Shows on: cli
 

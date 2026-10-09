@@ -114,8 +114,8 @@ assistant turn of its exchange, and a hash printed by `git commit` goes to the t
 ## Long sessions: Vyre rolls the window over
 
 An agent's own compaction keeps a summary and loses the lines. Vyre rolls over first. For every session it runs (a chat, a project
-session, an agent's), once a turn has ended and the window is 60% full and nothing is running, Vyre ends the agent's session and starts a fresh
-one in the same folder. The thread, its history and its folder do not change; the transcript says once "Continued in a fresh session".
+session, an agent's), once a turn has ended and the window is 80% full and nothing is running, Vyre ends the agent's session and starts a fresh
+one in the same folder. The thread, its history and its folder do not change; the person sees one continuous thread, with no notice at the seam.
 The person's next message goes to the fresh session with a **seed** in front of it:
 
 - the decisions you made for this project, newest first;
@@ -125,16 +125,16 @@ The person's next message goes to the fresh session with a **seed** in front of 
 
 Every turn the fresh window dropped is still stored, so the agent reads any of it back with `memory_search` and `memory_turn`.
 It works on any agent Vyre runs: Claude, Codex, Grok and the rest. An agent that does not say how full its window is has it counted from
-the characters said, and rolls at the earlier 50%. A conversation with an agent other than Claude is kept under your Vyre home, in Claude Code's
+the characters said, and rolls at the earlier 67%. A conversation with an agent other than Claude is kept under your Vyre home, in Claude Code's
 own layout, so it is searchable like any other session.
 
-It waits for a running tool, subagent or background job for up to 3 turns, rolls at 75% whatever is running, and never rolls twice
+It waits for a running tool, subagent or background job for up to 3 turns, rolls at 90% whatever is running, and before a message that would take the window past 92%, and never rolls twice
 within 10 turns. Two settings (`vyre config`, in the Vyre app under Sessions; each can be set per project) change it:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
 | `sessions.rollover` | on | Off lets the agent compact its own window instead. |
-| `sessions.rollover_at` | 60 | The percent of the window to roll at, from 20 to 90. |
+| `sessions.rollover_at` | 80 | The percent of the window to roll at, from 20 to 90. |
 
 `vyre call threads.roll '{"thread":"<id>"}'` rolls a session now (or `vyre roll --thread <id>`), and `threads.rolls` lists a thread's rollovers.
 A rolled session's earlier windows are separate sessions in search, each readable by `memory_turn`.
@@ -142,7 +142,7 @@ A rolled session's earlier windows are separate sessions in search, each readabl
 ## Continue a long terminal session
 
 A Claude Code session you run in your own terminal is not Vyre's to stop. Vyre tells you instead: once, when the window passes the line
-(60% unless you changed it), the next prompt shows "This session's window is 61% full ..." Then:
+(80% unless you changed it), the next prompt shows "This session's window is 81% full ..." Then:
 
 ```
 /exit

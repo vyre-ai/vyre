@@ -638,7 +638,11 @@ function runAcp(entry, known, o) {
     const model = r.models && r.models.currentModelId || o.model || null;
     ready = true;
     const offered = modelsOf(r);
-    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}) });
+    // What the agent said about itself in `initialize` (R031-85): names and booleans only, for the harness capability store.
+    const harness = { agent: init.agentInfo && typeof init.agentInfo === "object" ? { name: String(init.agentInfo.name || "").slice(0, 60), version: String(init.agentInfo.version || "").slice(0, 40) } : undefined,
+      caps: { loadSession: Boolean(caps.loadSession), image: Boolean(caps.promptCapabilities && caps.promptCapabilities.image), mcpHttp: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.http), mcpSse: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.sse) },
+      auth: methods.map(x => x.id).slice(0, 8) };
+    say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}), harness });
     pump();
   }
   open().catch(e => { err = scrub(String(e && e.message || e)); say({ type: "result", subtype: "error", is_error: true, result: err, total_cost_usd: 0 }); });

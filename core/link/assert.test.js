@@ -151,3 +151,33 @@ test("assert: for a gated ask the Mac needs the box's fresh proof in the asserti
   assert.equal(check(k, sign(k, { presence: "passkey", person: "ps-1" }), { gated: true }).ok, true);
   assert.equal(check(k, sign(k), { gated: false }).ok, true, "an ungated ask needs no proof");
 });
+
+// ---- the box's signed word for a learned website operation (rung "mac") ----
+import { signCall, checkCall } from "./assert.js";
+const CALL = { site: "https://app.example.com", name: "sendMessage", inputs: { recipient: "alan-turing", text: "a fresh note" } };
+const signC = (k, o = {}) => signCall(k.privateKey, { mac: "nMAC", call: CALL, caller: "module:connectors", now: T0, ...o });
+const checkC = (k, assertion, o = {}) => checkCall({ assertion, call: CALL, pinned: k.pinned, self: "nMAC", nonces: new Nonces(), now: T0 + 1000, ...o });
+
+test("assert: an operation call is accepted once, for this Mac, this site, this operation and exactly these inputs", () => {
+  const k = pair();
+  const a = signC(k);
+  const nonces = new Nonces();
+  assert.equal(checkC(k, a, { nonces }).ok, true);
+  assert.match(String(checkC(k, a, { nonces }).reason), /used already/, "once");
+  const refused = (/** @type {any} */ c, /** @type {RegExp} */ re) => assert.match(String(checkC(k, signC(k), { call: c }).reason), re);
+  refused({ ...CALL, inputs: { recipient: "alan-turing", text: "another note" } }, /not the one the box signed/);
+  refused({ ...CALL, name: "searchPeople" }, /not the one the box signed/);
+  refused({ ...CALL, site: "https://other.example.com" }, /not the one the box signed/);
+  assert.match(String(checkC(k, signC(k, { mac: "nOTHER" })).reason), /another Mac/);
+  assert.match(String(checkC(k, signC(k), { now: T0 + TTL + 1 }).reason), /expired/);
+  assert.match(String(checkC(k, signC(k), { now: T0 - 2 * TTL }).reason), /future/);
+  assert.match(String(checkC(pair(), signC(k)).reason), /not signed by the box/, "another key's signature");
+  assert.match(String(checkCall({ assertion: signC(k), call: CALL, pinned: null, self: "nMAC", nonces: new Nonces(), now: T0 + 1 }).reason), /not pinned/);
+  assert.match(String(checkC(k, undefined).reason), /no assertion/);
+});
+
+test("assert: an answer's assertion is not an operation call's, and the other way round", () => {
+  const k = pair();
+  assert.match(String(checkC(k, sign(k)).reason), /not for an operation call/);
+  assert.match(String(check(k, signC(k)).reason), /threads\.answer/);
+});

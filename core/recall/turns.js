@@ -23,6 +23,23 @@ export const MAX_READ_BYTES = 256 * 1024 * 1024;
 export const pointer = (session, seq) => `${session}:${seq}`;
 
 /**
+ * Where in a thread's windows each moment falls (R031-00u): for every time in `ats` (ms), the pointer of the latest turn at or before it, looked for in the windows' sessions (all of them, so the
+ * answer is the window the moment was in). Pure index reads: no model. A moment before any turn points at the first turn of the oldest window; no turns at all gives null.
+ * @param {any} db @param {string[]} windows @param {number[]} ats @returns {(string | null)[]}
+ */
+export function marksOf(db, windows, ats) {
+  /** @type {{ session: string, seq: number, ts: number }[]} */ const rows = [];
+  for (const id of windows) for (const r of /** @type {any[]} */ (db.prepare("SELECT seq, ts FROM recall_turns WHERE session = ? ORDER BY seq").all(id))) { const ts = Number(r.ts) || Date.parse(String(r.ts)) || 0; if (ts) rows.push({ session: id, seq: Number(r.seq), ts }); }
+  rows.sort((a, b) => a.ts - b.ts || a.seq - b.seq);
+  return ats.map((at) => {
+    if (!rows.length) return null;
+    let lo = 0, hi = rows.length - 1, best = 0;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (rows[mid].ts <= at) { best = mid; lo = mid + 1; } else hi = mid - 1; }
+    return pointer(shortId(rows[best].session), rows[best].seq);
+  });
+}
+
+/**
  * Parse a pointer. A session id can hold a "/" (a subagent) but never ":", so the last ":" splits it.
  * @param {string} p @returns {{ session: string, seq: number }|null}
  */

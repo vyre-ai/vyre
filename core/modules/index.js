@@ -1224,7 +1224,9 @@ export class Registry {
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
-        if ((m.name === "capsule" || m.name === "views") && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        // A screen of the space's own (core/design) is its own declaration: the owner said yes to the screen and the tools it names, so the views module may run them as the person who opened it.
+        const spaceScreen = m.name === "views" && opts && opts.space === true && !String(as).startsWith("module:");
+        if ((m.name === "capsule" || m.name === "views") && !spaceScreen && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
@@ -1831,6 +1833,17 @@ export class Registry {
           for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
         }
         for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
+        // A screen in the design language: every block's data tool, its row detail and its actions, and the screen's forms.
+        const sc = e.screen && typeof e.screen === "object" ? e.screen : null;
+        if (sc) {
+          for (const b of Object.values(sc.blocks || {})) {
+            const blk = /** @type {any} */ (b) || {};
+            if (blk.data && toolOf(blk.data)) declared.add(toolOf(blk.data));
+            if (blk.detail && toolOf(blk.detail)) declared.add(toolOf(blk.detail));
+            for (const a of Array.isArray(blk.actions) ? blk.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
+          }
+          for (const f of Object.values(sc.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
+        }
       };
       for (const [key, v] of Object.entries(cap)) {
         if (key.startsWith("results:")) declared.add(key.slice(8));
