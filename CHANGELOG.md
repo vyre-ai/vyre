@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 - fix(presence): a device that lost its session token signs in again with its own confirmed key (#112). Asking for a challenge renews the device's grant without ending the session it holds; answering it with the device's own key replaces that session, the old token is dead at once, and a presence.session-replaced event is logged. Another key, or a removed device, stays refused, and the refusal now says in plain words how to get back (sign in again with its own key; if the owner removed it, pair it again from the owner's device).
 
+- fix(install): the install line works when it is run as root, as it is on a fresh server (a droplet logs in as root). The installer kept VYRE_STORE in its environment, and the root-run `vyre` command refuses any VYRE_ setting it inherits, so it stopped at "VYRE_STORE is set in the environment of a root run" before starting anything. The choice is kept in the installer's own variable and still reaches vyre.env. Found by the live walk on a fresh droplet; the hosted install runs used a non-root user with sudo, which clears the environment.
 - fix(box): `vyre update` run by the person no longer stops at `rm: cannot remove /var/lib/vyre-update/private/release.swapped: Permission denied` (the folder is root's and root's publish_release clears the mark itself).
 
 - fix(box): `box/vyre` is shellcheck-clean again (SC2086 and SC2015 are marked as intended where a split or an `A && B || C` is the point; one pattern is quoted).

@@ -675,3 +675,17 @@ test("install-box.sh v2: Docker is made to start at boot when it is not, so the 
   assert.equal(r2.status, 0, r2.stdout + r2.stderr);
   assert.doesNotMatch(b2.calls(), /systemctl enable/);
 });
+
+// The install line is run as root on most servers (a fresh droplet logs in as root), and the release `vyre` command refuses a root run that inherits any VYRE_ setting (its root_guard):
+// the installer must keep VYRE_STORE and VYRE_CODE out of the environment of every vyre command it runs. The stub `vyre` writes what it inherited into a file.
+const SEES_ENV_WRAPPER = `#!/bin/sh\nprintf '%s|%s\\n' "$VYRE_STORE" "$VYRE_CODE" >>"$WRAP_SAW"\ncase "$*" in "call relay.setup.status") echo '{"data":{"words":"lantern quiet river oak"}}' ;; esac\nexit 0\n`;
+test("install-box.sh v2: VYRE_STORE and VYRE_CODE do not reach the vyre command's environment, and the store choice still reaches vyre.env", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  const saw = path.join(b.base, "saw.log");
+  const r = run({ ...b.env, WRAP_SAW: saw, VYRE_BOX_URL: site(b.base, { extra: { vyre: SEES_ENV_WRAPPER } }), VYRE_CODE: CODE, VYRE_STORE: "sqlite", VYRE_NO_UP: "0" }, ["--yes"]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  const seen = fs.existsSync(saw) ? fs.readFileSync(saw, "utf8").trim().split("\n") : [];
+  assert.ok(seen.length > 0, "the installer ran the vyre command at least once");
+  assert.deepEqual([...new Set(seen)], ["|"], "no run of the vyre command inherited VYRE_STORE or VYRE_CODE");
+  assert.match(fs.readFileSync(path.join(b.dir, "vyre.env"), "utf8"), /^VYRE_STORE=sqlite$/m, "the choice the line carried is in vyre.env");
+});

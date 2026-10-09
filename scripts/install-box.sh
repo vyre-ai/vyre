@@ -754,7 +754,7 @@ write_kernel_env() {
   fi
   chmod 600 "$TMP/vyre.kernel"
   grep -q '^VYRE_KERNEL=' "$TMP/vyre.kernel" || printf 'VYRE_KERNEL=1\n' >>"$TMP/vyre.kernel"
-  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=%s\n' "${VYRE_STORE:-auto}" >>"$TMP/vyre.kernel"
+  grep -q '^VYRE_STORE=' "$TMP/vyre.kernel" || printf 'VYRE_STORE=%s\n' "${STORE_CHOICE:-${VYRE_STORE:-auto}}" >>"$TMP/vyre.kernel"
   put "$TMP/vyre.kernel" "$DIR/vyre.env" 0600
 }
 
@@ -1015,6 +1015,8 @@ main() {
   [ "$UNINSTALL" = 1 ] || hello
   intake_code
   case "${VYRE_STORE:-auto}" in auto|sqlite) ;; *) die "VYRE_STORE is auto (Records) or sqlite (the small built-in store), not ${VYRE_STORE}" ;; esac
+  # kept in our own variable and taken out of the environment: this script runs as root on most servers (a fresh droplet logs in as root), and a root run of the vyre command refuses any VYRE_ setting it inherits (its root_guard)
+  STORE_CHOICE=${VYRE_STORE:-auto}; unset VYRE_STORE
   early_one_install
   [ "$DRY" = 1 ] || mbx_init
   [ "$DRY" = 1 ] && say "dry run: nothing on this server will change"
