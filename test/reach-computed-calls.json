@@ -62,9 +62,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/link/mac.js": {
-   "count": 3,
+   "count": 4,
    "owner": "site-ops",
-   "note": "reviewed (9 Oct): ctx.call(q.tool) for the allowlisted reads, ctx.call(engine) for a Vyre Computer action whose engine is chosen from lib/computer-classes.js after the person's class allowlist, and the chrome.op.call literal; the Mac's own engines keep their floors"
+   "note": "reviewed (10 Oct): ctx.call(q.tool) for the allowlisted reads, ctx.call(engine) for a Vyre Computer action whose engine is chosen from lib/computer-classes.js after the person's class allowlist, and the chrome.op.call / chrome.op.send choice in callOp, each a literal pair"
   },
   "core/mail/index.js": {
    "count": 2,

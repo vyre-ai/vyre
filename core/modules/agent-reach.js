@@ -166,6 +166,8 @@ export const PERSON_ONLY = new Map([
   ["link.ops.allow", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
   ["link.ops.revoke", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
   ["link.ops.list", "needs the person's Face ID or presence: pairing and devices (what the box may run in their Chrome)"],
+  ["vault.tagged", "the person's own view of where a # tag has lent a login: conversation ids and hosts, never a value"],
+  ["vault.untag", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["link.computer.allow", "would let an assistant widen its own authority: what the box may do on this Mac"],
   ["link.computer.revoke", "needs the person's Face ID or presence: pairing and devices (what the box may do on this Mac)"],
   ["link.computer.list", "needs the person's Face ID or presence: pairing and devices (what the box may do on this Mac)"],
