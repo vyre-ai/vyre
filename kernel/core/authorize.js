@@ -72,8 +72,8 @@ export function containsDims(parent, child, since = () => 0, riskOf = () => unde
   for (const pp of parent.resource.where || []) if (!(child.resource.where || []).some((/** @type {any} */ cp) => cp.attr === pp.attr && cp.op === pp.op && sameJson(cp.value, pp.value))) return false;
   if (parent.resource.fields !== undefined && !subsetOf(parent.resource.fields, child.resource.fields)) return false;
   // where it may be used
-  if (!onlyKeys(pc.where, new Set(["nodes", "residency", "surfaces"])) || !onlyKeys(cc.where, new Set(["nodes", "residency", "surfaces"]))) return false;
-  for (const k of ["nodes", "residency", "surfaces"]) if (pc.where && pc.where[k] !== undefined && !subsetOf(pc.where[k], cc.where && cc.where[k])) return false;
+  if (!onlyKeys(pc.where, new Set(["nodes", "residency", "surfaces", "origins"])) || !onlyKeys(cc.where, new Set(["nodes", "residency", "surfaces", "origins"]))) return false;
+  for (const k of ["nodes", "residency", "surfaces", "origins"]) if (pc.where && pc.where[k] !== undefined && !subsetOf(pc.where[k], cc.where && cc.where[k])) return false;
   // when: start no earlier, expiry no later, the schedule unchanged (a schedule is opaque here: only the same one is provably inside itself)
   if (!onlyKeys(pc.when, new Set(["not_before", "expires", "schedule"])) || !onlyKeys(cc.when, new Set(["not_before", "expires", "schedule"]))) return false;
   const pw = pc.when || {}, cw = cc.when || {};
@@ -129,7 +129,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
   const pw = pc.when || {}, cw = cc.when || {};
   /** @type {any} */ const cond = {};
   const where = {};
-  for (const k of ["nodes", "residency", "surfaces"]) {
+  for (const k of ["nodes", "residency", "surfaces", "origins"]) {
     const p = pc.where && pc.where[k], c = cc.where && cc.where[k];
     if (p !== undefined) /** @type {any} */ (where)[k] = Array.isArray(c) ? c.filter((/** @type {any} */ x) => p.includes(x)) : [...p];
     else if (c !== undefined) /** @type {any} */ (where)[k] = c;
@@ -279,7 +279,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true);
+          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true, input.origin);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
@@ -351,11 +351,14 @@ export function createAuthorizer(cfg) {
   }
 
   /** One candidate grant against one hop: coverage, selector, kernel attributes, conditions, narrowing. */
-  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false) {
+  async function evaluate(/** @type {any} */ g, /** @type {any} */ h, /** @type {any} */ ms, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ attrs, /** @type {number} */ now, depth = 0, probe = false, origin = undefined) {
     const subj = g.subject;
     const subjectOk = subj.kind === "actor" ? subj.actor.kind === h.actor.kind && subj.actor.id === h.actor.id && subj.actor.space === h.actor.space
-      : subj.kind === "role" ? Boolean(ms && ms.role === subj.name) : false;
+      : subj.kind === "role" ? Boolean(ms && ms.role === subj.name)
+      : subj.kind === "group" ? Boolean(cfg.groups && cfg.groups.has(subj.id, h.actor, chain)) : false;
     if (!subjectOk) return { ok: false, reason: "no_grant" };
+    // An assistant reaches a team's grant only by association with a person in the team, and by it holds use and nothing that changes who has access or shows a value: no admin, grant or sharing act.
+    if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
     let cov = null;
     for (const p of g.actions) { const c = patternCovers(p, action, since(action), g.action_set_version, riskOf(action)); if (c === "covered") { cov = c; break; } if (c) cov = c; }
     if (cov === null) return { ok: false, reason: "no_grant" };
@@ -383,6 +386,8 @@ export function createAuthorizer(cfg) {
     if (c.where) {
       if (c.where.surfaces && !(h.via && c.where.surfaces.includes(h.via.surface))) return { ok: false, reason: "wrong_node" };
       if (c.where.nodes && !(h.via && c.where.nodes.includes(h.via.node))) return { ok: false, reason: "wrong_node" };
+      // A login lent for one site (team/0.3.1/DESIGN-one-grant.md section 6): the origin the use is for (scheme, host, port) must be one of these, exactly. No origin named is not a match.
+      if (c.where.origins && !(typeof origin === "string" && c.where.origins.includes(origin))) return { ok: false, reason: "wrong_node" };
     }
     if (c.audience && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "service" && !c.audience.includes(x.actor.id))) return { ok: false, reason: "no_grant" };
     /** @type {any[]} */ const obs = [];
@@ -410,7 +415,7 @@ export function createAuthorizer(cfg) {
         const pms = cfg.members.membership ? cfg.members.membership(pa) : undefined;
         if (pms && pms.role === "temp" && (pms.expires === undefined || pms.expires <= now || !(pms.scope || []).some((/** @type {string} */ s) => covers(s, resource)))) return { ok: false, reason: "expired" };
       }
-      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe);
+      const pr = await evaluate({ ...parent, subject: subj }, h, ms, chain, action, resource, attrs, now, depth + 1, probe, origin);
       if (!pr.ok) return pr;
       obs.push(...pr.obligations);
     }

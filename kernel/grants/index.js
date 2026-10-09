@@ -14,6 +14,7 @@ import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
+import { ACCESS_LEVELS } from "../seal/uses.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
 /** The actions the grants calls register with the authorizer. All but `list` are risk `grant`. */
@@ -112,7 +113,11 @@ function checkDraftable(rule, def) {
 
 /** The default assistant's id: the one agent that acts as a delegate of the person it works for (kernel/core/authorize.js). */
 export const DEFAULT_ASSISTANT = "assistant";
+/** What `manage` on a vault is, written once in kernel/seal/uses.js ACCESS_LEVELS; read here so the store makes the owner's grant without importing the seal. */
+const VAULT_MANAGE_ACTIONS = ACCESS_LEVELS.manage;
 const SUBJECT_KINDS = new Set(["actor", "role", "group"]);
+/** The credential acts an assistant never holds, whoever gives them (the levels reveal and manage). */
+const PERSON_ONLY_CREDENTIAL = new Set(["vault.reveal", "vault.edit", "vault.delete", "vault.share", "vault.rotate", "vault.run"]);
 const MAX_DEPTH = 3;
 // A chat's key ring (lib/chat-keys.js) rides in the chat's own events: `chat.created` carries the first, and a `chat.changed` that adds or removes a participant carries the one `addHolders` or
 // `removeHolders` made on a device that holds the key, so the room's version and the ring's epoch change in one event. The kernel keeps wrapped material only (never a key) and checks the shape and
@@ -141,6 +146,8 @@ export function createGrantsStore(cfg) {
   /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
   /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
+  /** @type {Map<string, any>} teams: a name and the people in it; a grant to a team (subject kind group) reaches each of them, and their assistants by association */ const teams = new Map();
+  /** @type {Map<string, any>} named vaults: a name, an owner, whether it is the owner's personal one; who may use what is in it is grants on the vault's URN */ const vaults = new Map();
   /** @type {Map<string, any>} chats: the people (and assistants) in a room, which is the audience a turn in it writes for and the readers of its stream */ const chats = new Map();
   /** @type {Set<(e: { id: string, side: string, member: string, device: string | null, reason: string }) => void>} */ const revokeListeners = new Set();
   const tell = (/** @type {any} */ o, /** @type {string} */ reason, /** @type {any} */ by) => { for (const f of revokeListeners) { try { f({ id: o.id, side: o.side, member: o.member, device: o.device, reason }, by); } catch { /* a listener never blocks a change */ } } };
@@ -213,15 +220,38 @@ export function createGrantsStore(cfg) {
   const roleOf = (/** @type {any} */ a) => (a && a.kind === "person" && memberOk(a) ? memberships.get(a.id).role : null);
   const isAdmin = (/** @type {any} */ a) => { const r = roleOf(a); return r === "owner" || r === "admin"; };
 
+  /**
+   * Is this actor in a team? A person is when the team lists them (and they are still a member of the Space). An assistant is by association: the person it acts for is in the chain, and
+   * that person is in the team. The grant is then the team's, but an assistant's own authority is still cut by its person's (the chain is the intersection of every hop's grants) and by
+   * what an assistant may hold at all (use, never reveal or manage: see evaluate in core/authorize.js).
+   * @param {string} id @param {any} actor @param {any} [chain]
+   */
+  const inTeam = (id, actor, chain) => {
+    // A project's people and assistants are a group too (`project:<id>`), read from the project's own team by the host: "also let this project's members use it" is one grant to it.
+    if (typeof id === "string" && id.startsWith("project:")) {
+      const m = typeof cfg.projectMembers === "function" ? cfg.projectMembers(id.slice(8)) : null;
+      if (!m || !actor) return false;
+      if (actor.kind === "person") return (m.people || []).includes(actor.id) && memberOk(actor);
+      if (actor.kind === "agent") return (m.agents || []).includes(actor.id);
+      return false;
+    }
+    const t = teams.get(id);
+    if (!t || !actor) return false;
+    if (actor.kind === "person") return t.members.includes(actor.id) && memberOk(actor);
+    if (actor.kind === "agent" && chain && Array.isArray(chain.hops)) return chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person" && t.members.includes(x.actor.id) && memberOk(x.actor));
+    return false;
+  };
   const members = Object.freeze({
     has: memberOk,
     membership: (/** @type {any} */ a) => (a && a.kind === "person" ? memberships.get(a.id) : undefined),
   });
   /** What `authorize` asks: active grants for this subject, by actor or by the role the person holds. */
   const provider = Object.freeze({
-    forSubject: (/** @type {any} */ a) => {
+    forSubject: (/** @type {any} */ a, /** @type {any} */ _h, /** @type {any} */ input) => {
       const role = roleOf(a);
-      return [...grants.values()].filter(g => g.status === "active" && ((g.subject.kind === "actor" && sameActor(g.subject.actor, a)) || (g.subject.kind === "role" && role !== null && g.subject.name === role)));
+      const chain = input && input.chain;
+      return [...grants.values()].filter(g => g.status === "active" && ((g.subject.kind === "actor" && sameActor(g.subject.actor, a)) || (g.subject.kind === "role" && role !== null && g.subject.name === role)
+        || (g.subject.kind === "group" && inTeam(g.subject.id, a, chain))));
     },
     get: (/** @type {string} */ id) => grants.get(id),
   });
@@ -236,6 +266,9 @@ export function createGrantsStore(cfg) {
     if (typeof i.source !== "string" || !i.source) throw new KernelError("bad_input", "a grant needs a source");
     // A named action must exist; a pattern is checked at use (it covers only what existed at action_set_version).
     for (const a of i.actions) if (!a.includes("*") && !reg().has(a)) throw new KernelError("bad_input", `${a} is not an action`);
+    // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
+    if (s.kind === "group" && !(teams.has(String(s.id)) || (String(s.id).startsWith("project:") && typeof cfg.projectMembers === "function" && cfg.projectMembers(String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team or a project of this Space");
+    if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
   }
 
   async function gate(/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {any} */ presence) {
@@ -305,7 +338,11 @@ export function createGrantsStore(cfg) {
       validateInput(input);
       const issuer = person(chain);
       // Giving an assistant or a service access (a Project's reach, an agent-reach grant) rides on the person's own authenticated call like adding the actor does; a grant to a person or a role, and a delegation, keep their presence.
-      const d = await gate(chain, grantActionOf(input), urn("grant"), input, o.presence);
+      // A holder of `grants.create` on a resource (a vault's manage) passes it on within that resource: the act is judged against what they hold there, not against the Space's grants. Anyone else
+      // is judged on the Space's grants, so only an owner or an admin gives access, as before.
+      const via = input.parent ? grants.get(input.parent) : undefined;
+      const scope = via && via.status === "active" && Array.isArray(via.actions) && via.actions.includes("grants.create") && !via.resource.prefix.includes("*") ? via.resource.prefix : urn("grant");
+      const d = await gate(chain, grantActionOf(input), scope, input, o.presence);
       const draft = { subject: input.subject, actions: [...input.actions], action_set_version: version, resource: { prefix: input.resource.prefix, ...(input.resource.where ? { where: input.resource.where } : {}), ...(input.resource.fields ? { fields: [...input.resource.fields] } : {}) }, conditions: input.conditions || {}, source: input.source };
       if (input.subject.kind === "role" && input.subject.name === "temp" && !(draft.conditions.when && draft.conditions.when.expires > clock())) throw new KernelError("bad_input", "a temp grant needs an expiry");
       if (input.parent) {
@@ -857,6 +894,98 @@ export function createGrantsStore(cfg) {
       await note(chain, "rule.set", urn("rule", rec.id), { rule: rec }, d.decision);
       return rec;
     },
+    /**
+     * Make a team or change one (team/0.3.1/DESIGN-one-grant.md): a name and the people in it. A grant to a team (subject `{ kind: "group", id }`) reaches each person in it, and their assistants by
+     * association. An owner or an admin does it, on their own session, like any change to who is in the Space. Every member of a team is a member of the Space.
+     * @param {any} chain @param {{ id?: string, name?: string, members?: string[] }} t @param {{ presence?: any }} [o]
+     */
+    async teamSet(chain, t, o = {}) {
+      const issuer = person(chain);
+      if (!t || typeof t !== "object") throw new KernelError("bad_input", "a team needs a name and its people");
+      const prior = t.id !== undefined ? teams.get(String(t.id)) : undefined;
+      if (t.id !== undefined && !prior) throw new KernelError("not_found", "no such team");
+      const d = await gate(chain, "grants.member", urn("team", prior ? prior.id : "new"), { team: t }, o.presence);
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin makes or changes a team");
+      const name = String(t.name !== undefined ? t.name : prior ? prior.name : "").trim();
+      if (!name || name.length > 60) throw new KernelError("bad_input", "a team has a name of up to 60 characters");
+      const list = t.members !== undefined ? t.members : prior ? prior.members : [];
+      if (!Array.isArray(list) || list.length > 200 || list.some((/** @type {any} */ m) => typeof m !== "string" || !memberships.has(m))) throw new KernelError("bad_input", "a team holds up to 200 people, each a member of this Space");
+      if ([...teams.values()].some(x => x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "a team with that name already exists");
+      if (!prior && teams.size >= 200) throw new KernelError("bad_input", "a Space holds up to 200 teams");
+      const rec = freeze({ id: prior ? prior.id : `team_${mintUuid(clock())}`, space: cfg.space, name, members: freeze([...new Set(list)].sort()), by: issuer.id, at: clock() });
+      teams.set(rec.id, rec);
+      await note(chain, "team.set", urn("team", rec.id), { team: rec }, d.decision);
+      return rec;
+    },
+    /** Remove a team. Grants made to it stay on record and reach no one. @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
+    async teamRemove(chain, id, o = {}) {
+      const issuer = person(chain);
+      const d = await gate(chain, "grants.member", urn("team", String(id)), { remove: id }, o.presence);
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes a team");
+      if (!teams.has(String(id))) throw new KernelError("not_found", "no such team");
+      teams.delete(String(id));
+      await note(chain, "team.removed", urn("team", String(id)), { id: String(id), by: issuer.id }, d.decision);
+      return { removed: String(id) };
+    },
+    /** The teams a person may see: a manager and above all of them, anyone else only their own. @param {any} chain */
+    teamList(chain) {
+      const me = reader(chain);
+      const r = roleOf(me);
+      const all = r === "owner" || r === "admin" || r === "manager";
+      return [...teams.values()].filter(t => all || t.members.includes(me.id)).sort((a, b) => (a.name < b.name ? -1 : 1));
+    },
+    /**
+     * Make a named vault, or rename one (team/0.3.1/DESIGN-one-grant.md): a name and an owner. Any member may make one; the maker is its owner and holds `manage` on it, with the right to
+     * pass any of that on. Nobody else sees it until it is shared, and a personal vault (one per person) is not shown to anyone else, an admin included. What is inside is used through grants on
+     * the vault's URN (`vyre://<space>/vault/<id>`), never through a table of its own.
+     * @param {any} chain @param {{ id?: string, name?: string, personal?: boolean }} v
+     */
+    async vaultSet(chain, v) {
+      const me = reader(chain);
+      if (!v || typeof v !== "object") throw new KernelError("bad_input", "a vault needs a name");
+      const prior = v.id !== undefined ? vaults.get(String(v.id)) : undefined;
+      if (v.id !== undefined && !prior) throw new KernelError("not_found", "no such vault");
+      if (prior && prior.owner !== me.id && !(isAdmin(me) && !prior.personal)) throw new KernelError("not_found", "no such vault");
+      const name = String(v.name !== undefined ? v.name : prior ? prior.name : "").trim();
+      if (!name || name.length > 60) throw new KernelError("bad_input", "a vault has a name of up to 60 characters");
+      const owner = prior ? prior.owner : me.id;
+      if ([...vaults.values()].some(x => x.owner === owner && x.name.toLowerCase() === name.toLowerCase() && (!prior || x.id !== prior.id))) throw new KernelError("exists", "you already have a vault with that name");
+      const personal = prior ? prior.personal : v.personal === true;
+      if (!prior && personal && [...vaults.values()].some(x => x.owner === owner && x.personal)) throw new KernelError("exists", "you already have a personal vault");
+      if (!prior && vaults.size >= 1000) throw new KernelError("bad_input", "a Space holds up to 1000 vaults");
+      const rec = freeze({ id: prior ? prior.id : `vault_${mintUuid(clock())}`, space: cfg.space, name, personal, owner, created: prior ? prior.created : clock() });
+      vaults.set(rec.id, rec);
+      await note(chain, "vault.set", urn("vault", rec.id), { vault: rec });
+      if (!prior) {
+        // The maker's `manage`, and the right to hand any of it on (a share is a child of this grant: provably inside it). Made by the kernel as a role's grants are, not by a proof.
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: me }, actions: [...VAULT_MANAGE_ACTIONS], action_set_version: version, resource: { prefix: urn("vault", rec.id) }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { ...me }, source: "vault:create", status: "active", created_at: clock() });
+        grants.set(g.id, g);
+        await note(chain, "grant.created", urn("grant", g.id), { grant: g });
+      }
+      return rec;
+    },
+    /** Remove a vault and take back every grant on it. Its owner (or an admin, for a shared one) does it. @param {any} chain @param {string} id */
+    async vaultRemove(chain, id) {
+      const me = reader(chain);
+      const v = vaults.get(String(id));
+      if (!v || (v.owner !== me.id && !(isAdmin(me) && !v.personal))) throw new KernelError("not_found", "no such vault");
+      vaults.delete(v.id);
+      await note(chain, "vault.removed", urn("vault", v.id), { id: v.id, by: me.id });
+      for (const g of [...grants.values()]) if (g.status === "active" && (g.resource.prefix === urn("vault", v.id) || g.resource.prefix.startsWith(`${urn("vault", v.id)}/`))) {
+        const r = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "the vault was removed" });
+        grants.set(g.id, r);
+        await note(chain, "grant.revoked", urn("grant", g.id), { id: g.id, reason: "the vault was removed" });
+      }
+      return { removed: v.id };
+    },
+    /** The vaults this person may see: their own, and any they hold a grant on (directly or through a team). A personal vault is its owner's alone. @param {any} chain */
+    vaultList(chain) {
+      const me = reader(chain);
+      const mine = provider.forSubject(me, undefined, { chain });
+      return [...vaults.values()].filter(v => v.owner === me.id || (!v.personal && mine.some(g => g.resource.prefix === urn("vault", v.id) || g.resource.prefix.startsWith(`${urn("vault", v.id)}/`)))).sort((a, b) => (a.name < b.name ? -1 : 1));
+    },
+    /** Is this actor in this team (kernel-internal: the authorizer's group check). @param {string} id @param {any} actor @param {any} [chain] */
+    inTeam,
     /** @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
     async ruleRemove(chain, id, o = {}) {
       const issuer = person(chain);
@@ -1090,7 +1219,7 @@ export function createGrantsStore(cfg) {
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
     async snapshot() {
-      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()] };
+      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()], teams: [...teams.values()], vaults: [...vaults.values()] };
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
@@ -1109,7 +1238,7 @@ export function createGrantsStore(cfg) {
     },
     async rebuildFromLog() {
       adopted = null;
-      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear();
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear(); teams.clear(); vaults.clear();
       gseq = 0; gprev = "genesis";
       // Boot reads what it needs, not the whole log: the newest snapshot that verifies is the starting state, and only the grants events written after it are read, by type
       // (an index scan on a durable log). A log with no snapshot reads every grants event once, and the migration below writes one.
@@ -1122,7 +1251,7 @@ export function createGrantsStore(cfg) {
       }
       const since = snap ? snap.e.seq : 0;
       /** @type {any[]} */ const tail = [];
-      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "owner.changed", "owner.adopted"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
+      for (const t of ["grant.*", "member.*", "actor.*", "offer.*", "invite.*", "chat.*", "rule.*", "team.*", "vault.*", "owner.changed", "owner.adopted"]) for (const e of rd({ type: t, since })) if (e.data && typeof e.data === "object") tail.push(e);
       tail.sort((a, b) => a.seq - b.seq);
       const items = tail.map(toItem);
       // 1. Verify the new-style events after the snapshot, in pipelined batches.
@@ -1154,6 +1283,10 @@ export function createGrantsStore(cfg) {
         else if (e.type === "rule.enabled" || e.type === "rule.disabled") { const r = rules.get(d.id); if (r) rules.set(d.id, freeze({ ...structuredClone(r), status: e.type === "rule.enabled" ? "active" : "disabled" })); }
         else if (e.type === "rule.proposed") proposals.set(d.proposal.id, freeze(structuredClone(d.proposal)));
         else if (e.type === "rule.dismissed") proposals.delete(d.id);
+        else if (e.type === "team.set") teams.set(d.team.id, freeze(structuredClone(d.team)));
+        else if (e.type === "team.removed") teams.delete(d.id);
+        else if (e.type === "vault.set") vaults.set(d.vault.id, freeze(structuredClone(d.vault)));
+        else if (e.type === "vault.removed") vaults.delete(d.id);
         else if (e.type === "chat.created") { if (!chats.has(d.chat.id)) chats.set(d.chat.id, freeze(structuredClone(d.chat))); }
         else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY), ...(d.ring ? { ring: structuredClone(d.ring) } : {}) })); }
       };
@@ -1168,6 +1301,8 @@ export function createGrantsStore(cfg) {
         for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
         for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
         for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
+        for (const x of st.teams || []) teams.set(x.id, freeze(structuredClone(x)));
+        for (const x of st.vaults || []) vaults.set(x.id, freeze(structuredClone(x)));
         nextN = /** @type {number} */ (snap.n) + 1; nextPrev = sha256(snap.mac);
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
@@ -1193,7 +1328,7 @@ export function createGrantsStore(cfg) {
   };
 
   /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
-  const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), gseq, gprev });
+  const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), teams: new Map(teams), vaults: new Map(vaults), gseq, gprev });
   const restore = (/** @type {any} */ c) => {
     adopted = c.adopted || null;
     grants.clear(); for (const [k, v] of c.grants) grants.set(k, v);
@@ -1204,6 +1339,8 @@ export function createGrantsStore(cfg) {
     chats.clear(); for (const [k, v] of c.chats) chats.set(k, v);
     rules.clear(); for (const [k, v] of c.rules) rules.set(k, v);
     proposals.clear(); for (const [k, v] of c.proposals) proposals.set(k, v);
+    teams.clear(); for (const [k, v] of c.teams || []) teams.set(k, v);
+    vaults.clear(); for (const [k, v] of c.vaults || []) vaults.set(k, v);
     gseq = c.gseq; gprev = c.gprev;
   };
   // One pattern for every state-changing call (reviewer-2's R4): the calls run one at a time, and a call that fails while writing its sealed event (the sealing process died,
@@ -1231,7 +1368,7 @@ export function createGrantsStore(cfg) {
   }
 
   return Object.freeze({
-    ...api, provider, members, isAdmin, roleOf,
+    ...api, provider, members, groups: Object.freeze({ has: inTeam }), isAdmin, roleOf,
     /** Called once by the gateway, with the authorizer it built from `provider` and `members`. */
     bind(/** @type {{ authorizer: any, registry: () => Map<string, any>, enforce?: (chain: any, d: any) => void }} */ b) { bound = { ...createGate({ authorizer: b.authorizer, log: cfg.log, enforce: b.enforce }), registry: b.registry }; },
   });

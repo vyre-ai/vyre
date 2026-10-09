@@ -11,7 +11,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // 9100 (platform, 0.2.9; signed off by reviewer-3), raised from 9000 for the module bridge (kernel/modules child, supervisor and host: an added module's ctx over a message channel) and the sealed-value moves in gateway/sealing.js; trunk b886baf35 sat just under 9000.
 // 9260 (lead, 6 Oct 2026, at the 0.2.9 integration): the merged release carries the Personal to My Cloud move, per-chat keys on chat folders, the chat-folder guard and the one-yes stack together,
 // each needing kernel authority; the base measured 9251. A ceiling, not a target: 0.3.0 trims it back under 9100 (team/BACKLOG.md).
-const CAP = 9260;
+// 9400 (connect-anything, 9 Oct 2026, for the lead's ruling): step A of the one grant model puts teams, named vaults, the project group and the origin condition in the base, 167 net lines (team/0.3.1/DESIGN-one-grant.md);
+// step B deletes the Vault's own grant tables, which are outside the kernel. If the lead holds the cap, the way down is to drop the project group (about 20 lines) and fold teams and vaults into one record store.
+const CAP = 9400;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

@@ -576,6 +576,7 @@
  "kernel/gateway/memory.test.js": 5,
  "kernel/gateway/sealing.test.js": 9,
  "kernel/grants/grants.test.js": 20,
+ "kernel/grants/one-grant.test.js": 8,
  "kernel/grants/seal-put.test.js": 1,
  "kernel/identity/chain.test.js": 12,
  "kernel/identity/stretch.test.js": 5,
