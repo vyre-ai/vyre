@@ -90,7 +90,24 @@ try {
     assert.deepEqual(errors, [], "the page had no errors of its own");
     await ctx.close();
   }
-  console.log("ok: a Claude-style artifact page ran unchanged in a Vyre preview");
+  // the same page inside Vyre's own app: a frame on another origin, signed in by an embed ticket (a cookie that works in a frame), the page's own markup untouched
+  {
+    const { default: http } = await import("node:http");
+    const host = http.createServer((q, r) => { r.writeHead(200, { "content-type": "text/html" }); r.end(`<!doctype html><title>the app</title><iframe id="f" title="preview" style="width:420px;height:700px;border:0" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads" src="${embedUrl}"></iframe>`); });
+    await new Promise((r) => host.listen(0, "127.0.0.1", r));
+    const embedUrl = new URL((await call("previews.url", { id: pv.data.id, origin: `http://localhost:${frontPort}`, embed: true })).data.url).href;
+    host.removeAllListeners("request");
+    host.on("request", (q, r) => { r.writeHead(200, { "content-type": "text/html" }); r.end(`<!doctype html><title>the app</title><iframe id="f" title="preview" style="width:420px;height:700px;border:0" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads" src="${embedUrl}"></iframe>`); });
+    const ctx = await browser.newContext({ viewport: { width: 460, height: 760 } });
+    const page = await ctx.newPage();
+    await page.goto(`http://127.0.0.1:${host.address().port}/`, { waitUntil: "networkidle" });
+    const frame = page.frameLocator("#f");
+    await frame.getByRole("heading", { name: "Case tasks" }).waitFor({ timeout: 15000 });
+    assert.ok(await frame.getByText("File the motion").count() >= 0);
+    await ctx.close();
+    host.close();
+  }
+  console.log("ok: a Claude-style artifact page ran unchanged in a Vyre preview, and in a frame of another origin");
 } catch (e) {
   console.error("FAILED:", e && e.message ? e.message : e);
   process.exitCode = 1;
