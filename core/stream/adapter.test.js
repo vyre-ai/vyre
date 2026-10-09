@@ -199,3 +199,14 @@ test("adapter: pipe() appends frames through the log with the adapter's turn", (
   assert.equal(fs[0].cur, 2);
   assert.equal(fs[0].corr, "2");
 });
+
+test("adapter: a preview of the chat is one block, patched by the same tool id as its state changes, and carries no address", () => {
+  const a = createAdapter();
+  const first = a.event(ev("thread.preview", { id: "0a1b2c3d", title: "Intake form", state: "starting", mode: "session", access: "me", url: "http://127.0.0.1:5100", port: 5100 }));
+  assert.deepEqual(first.map(s => [s.kind, s.data.tool_id, s.data.result.block, s.data.result.state]), [["tool-finished", "preview:0a1b2c3d", "preview", "starting"]]);
+  assert.ok(!JSON.stringify(first).includes("5100"));
+  const next = a.event(ev("thread.preview", { id: "0a1b2c3d", title: "Intake form", state: "live", mode: "supervised", access: "team" }));
+  assert.equal(next[0].data.tool_id, "preview:0a1b2c3d");
+  assert.equal(next[0].data.result.access, "team");
+  assert.deepEqual(a.event(ev("thread.preview", { id: "not-an-id", title: "x" })), []);
+});
