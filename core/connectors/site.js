@@ -17,12 +17,12 @@ const STATUS_OF = /** @type {Record<string, number>} */ ({ input: 400, auth: 401
 
 /**
  * Said in plain words, per class, for the Connection's light.
- * @param {string} cls @param {string} host @param {string} [reason]
+ * @param {string} cls @param {string} host @param {string} [reason] @param {string} [agent] whose computer holds the login, when it is a box's
  */
-export function lightFor(cls, host, reason) {
+export function lightFor(cls, host, reason, agent = "") {
   switch (cls) {
     case "ok": return { light: "green", words: "connected" };
-    case "auth": return { light: "red", words: `sign in to ${host} again in the browser Vyre uses` };
+    case "auth": return { light: "red", words: `sign in to ${host} again in the browser Vyre uses${agent ? ` (${agent}'s computer: open its screen and sign in once)` : ""}` };
     case "blocked": return { light: "red", words: `${host} is challenging the browser: a person has to clear it once` };
     case "rate": return { light: "red", words: `${host} says to slow down` };
     case "drift": return { light: "red", words: `${host} changed and the operation could not be repaired: teach it again` };
@@ -38,8 +38,9 @@ export function lightFor(cls, host, reason) {
  */
 export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, entries, role = "local" }) {
   /** One rung. Today: this machine's Chrome. @param {string} origin @param {string} name @param {Record<string, any>} inputs @param {boolean} approved @param {boolean} [check] */
-  async function pageRung(origin, name, inputs, approved, check = false) {
-    const r = await call("chrome.op.run", { site: origin, name, inputs, approved, ...(check ? { check: true } : {}) });
+  async function pageRung(origin, name, inputs, approved, check = false, agent = "") {
+    // on a box the same tool runs the operation in an agent's own Chrome (rung "box"): `agent` says whose computer holds the login
+    const r = await call("chrome.op.run", { site: origin, name, inputs, approved, ...(agent ? { agent } : {}), ...(check ? { check: true } : {}) });
     if (r && r.error) {
       const code = String(r.error.code || "");
       if (/no_such_tool|no tool|unavailable|no_extension|no_tab|not connected/i.test(`${code} ${r.error.message}`)) return { class: "no_browser", reason: String(r.error.message || code) };
@@ -62,11 +63,13 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
   }
 
   /** Which rungs this machine can try for an operation, cheapest first: public (no browser, any time), then a browser that holds the login. @param {any} op */
-  function ladder(op) {
+  function ladder(op, agent = "") {
     const allowed = Array.isArray(op && op.rungs) && op.rungs.length ? op.rungs : ["page"];
     /** @type {string[]} */ const out = [];
     if (allowed.includes("public") && op.login === false && readOnly(op) && String(op.request.method).toUpperCase() === "GET") out.push("public");
     if (allowed.includes("page") && role !== "box") out.push("page");
+    // the agent's own Chrome on a box: the login lives in that computer's profile, so it runs with the Mac off
+    if (allowed.includes("box") && role === "box" && agent) out.push("box");
     return out;
   }
 
@@ -85,12 +88,14 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const host = new URL(/** @type {string} */ (decl.base_url)).hostname;
     // the rungs, cheapest that works first; a rung that cannot serve (no browser, not allowed here) hands on to the next, and the event says which one answered
     const entry = entries ? (await entries(/** @type {string} */ (decl.base_url), [op.name]).catch(() => [])).find(e => e.name === op.name) : undefined;
-    const rungs = entry ? ladder(entry.op) : ["page"];
+    /** @type {{ agent?: string }} */ const form = (() => { try { return JSON.parse(row.form || "{}"); } catch { return {}; } })();
+    const agent = typeof form.agent === "string" ? form.agent : "";
+    const rungs = entry ? ladder(entry.op, agent) : ["page"];
     /** @type {any} */ let res = null; let rung = "";
     if (!rungs.length) res = { class: "no_browser", reason: "no browser that holds this login is reachable from this machine" };
     for (const r of rungs) {
       rung = r;
-      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true);
+      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
       // a rung that has no browser to offer, or a public fetch the site refused, is not the answer while another rung remains
       if (res && (res.class === "no_browser" || (r === "public" && !res.ok && (res.class === "auth" || res.class === "blocked")))) continue;
       break;
@@ -98,10 +103,10 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const cls = res && res.ok ? "ok" : String((res && res.class) || "error");
     emit("connectors.site-ran", { id, op: op.name, rung, class: cls });
     if (cls !== "held") {
-      const l = lightFor(cls, host, res && res.reason);
+      const l = lightFor(cls, host, res && res.reason, rung === "box" ? agent : "");
       made.touch(id, l.light, l.words);
       emit("connectors.connection-checked", { id, light: l.light });
-      if (cls === "auth") emit("connectors.site-needs-signin", { id, site: decl.base_url, host });
+      if (cls === "auth") emit("connectors.site-needs-signin", { id, site: decl.base_url, host, rung, ...(rung === "box" && agent ? { agent } : {}) });
     }
     if (cls === "ok") return { status: 200, data: res.data === undefined ? null : res.data };
     log("site operation did not answer", { id, op: op.name, class: cls });
@@ -169,12 +174,12 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
   ctx.tool("connectors.site.connect", {
     effect: "write", callers: people,
     description: "Make a website a Connection from the operations Vyre has learned on it: { site (origin), label, id?, operations? (names; default all), polls? (reads a watcher may poll) }. Flows, watchers and assistants then call those operations like any Connection's, a send waits for your yes, and the login stays in the browser. Your own act: it decides what the Connection can reach.",
-    input: obj({ site: str, label: str, id: str, operations: { type: "array", items: str }, polls: { type: "array", description: "Reads a watcher may poll: [{ name, operation, id (path of an item's own id), items?, title?, at?, args?, every_minutes? }]." } }, ["site", "label"]),
+    input: obj({ site: str, label: str, id: str, agent: { type: "string", description: "On a box: whose computer's Chrome holds the login (it runs the operations 24/7, with the Mac off)." }, operations: { type: "array", items: str }, polls: { type: "array", description: "Reads a watcher may poll: [{ name, operation, id (path of an item's own id), items?, title?, at?, args?, every_minutes? }]." } }, ["site", "label"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       const as = yours(meta, "connect a website");
       const origin = originOf(input.site);
       const entries = pick(await recordOps(call, origin), input.operations);
-      return made.saveSite({ id: input.id, label: String(input.label), origin, entries, ...(Array.isArray(input.polls) ? { polls: input.polls } : {}) }, { as });
+      return made.saveSite({ id: input.id, label: String(input.label), origin, entries, ...(Array.isArray(input.polls) ? { polls: input.polls } : {}), ...(input.agent ? { agent: String(input.agent) } : {}) }, { as });
     },
   });
 
@@ -191,7 +196,7 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
   ctx.tool("connectors.site.sync", {
     effect: "write", callers: people,
     description: "Bring a website Connection up to date with what Vyre has learned on the site: { id, operations? }. New or repaired operations appear; the shapes a Flow is checked against change with them. Your own act.",
-    input: obj({ id: str, operations: { type: "array", items: str } }, ["id"]),
+    input: obj({ id: str, agent: str, operations: { type: "array", items: str } }, ["id"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       const as = yours(meta, "change a website connection");
       const r = made.row(String(input.id));
@@ -199,7 +204,7 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
       const d = JSON.parse(r.declaration);
       if (d.transport !== "site") throw fail(`${r.id} is not a website connection`, "bad_input");
       const entries = pick(await recordOps(call, d.base_url), Array.isArray(input.operations) ? input.operations : Object.values(d.ops).map((/** @type {any} */ o) => o.site && o.site.name).filter(Boolean));
-      return made.saveSite({ id: r.id, label: r.label, origin: d.base_url, entries }, { as, replace: true });
+      return made.saveSite({ id: r.id, label: r.label, origin: d.base_url, entries, ...(input.agent !== undefined ? { agent: String(input.agent) } : {}) }, { as, replace: true });
     },
   });
 

@@ -23,7 +23,7 @@ function rig(/** @type {any} */ o = {}) {
     if (tool === "chrome.op.run") return o.page ? o.page(input) : { data: { ok: true, class: "ok", data: [{ name: "page one" }] } };
     return { error: { code: "no_such_tool", message: tool } };
   };
-  const made = { row: (/** @type {string} */ id) => (id === "linkedin" ? { id, declaration: JSON.stringify(decl) } : null), touch: (/** @type {string} */ id, /** @type {string} */ l, /** @type {string} */ w) => lights.push([id, l, w]) };
+  const made = { row: (/** @type {string} */ id) => (id === "linkedin" ? { id, declaration: JSON.stringify(decl), ...(o.agent ? { form: JSON.stringify({ site: ORIGIN, agent: o.agent }) } : {}) } : null), touch: (/** @type {string} */ id, /** @type {string} */ l, /** @type {string} */ w) => lights.push([id, l, w]) };
   const runner = createSiteRunner({ call, made, emit: (type, p) => events.push([type, p]), entries: async (_o, names) => entries.filter(e => !names || names.includes(e.name)), role: o.role || "local" });
   return { runner, calls, events, lights };
 }
@@ -58,4 +58,22 @@ test("a box has no page rung of its own; with no rung able to serve, the answer 
   assert.ok(out.status >= 400, JSON.stringify(out));
   assert.deepEqual(lightFor("auth", "app.example.com").light, "red");
   assert.match(lightFor("no_browser", "app.example.com").words, /signed-in browser/);
+});
+
+test("on a box the login lives in an agent's own Chrome: that rung runs it with the Mac off, and a login that ran out raises the card for that computer", async () => {
+  const r = rig({ role: "box", agent: "ops" });
+  const out = await r.runner.run(q("search_people"));
+  assert.equal(out.status, 200);
+  assert.deepEqual(r.calls.map(c => c[0]), ["chrome.op.run"]);
+  assert.equal(r.calls[0][1].agent, "ops");
+  assert.equal(r.events.find(e => e[0] === "connectors.site-ran")[1].rung, "box");
+  const walled = rig({ role: "box", agent: "ops", page: () => ({ data: { ok: false, class: "auth", reason: "the browser is on a sign-in page (/login)" } }) });
+  const bad = await walled.runner.run(q("search_people"));
+  assert.equal(bad.status, 401);
+  const card = walled.events.find(e => e[0] === "connectors.site-needs-signin")[1];
+  assert.deepEqual([card.id, card.rung, card.agent], ["linkedin", "box", "ops"]);
+  assert.match(walled.lights.at(-1)[2], /ops's computer: open its screen and sign in once/);
+  const noAgent = rig({ role: "box" });
+  assert.ok((await noAgent.runner.run(q("search_people"))).status >= 400);
+  assert.equal(noAgent.calls.length, 0, "a box with no agent named for the login has no browser rung");
 });

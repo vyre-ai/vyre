@@ -75,7 +75,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   /**
    * Make (or, with `replace`, rewrite) the Connection of a website from the operations its site record holds. A person's act: it widens what the Connection can reach, and the vault asks them to
    * confirm the credential it writes.
-   * @param {{ id?: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[], polls?: any[] }} site @param {{ as: string, replace?: boolean }} o
+   * @param {{ id?: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[], polls?: any[], agent?: string }} site @param {{ as: string, replace?: boolean }} o
    */
   async function saveSite(site, o) {
     const id = site.id ? String(site.id) : String(site.label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
@@ -87,7 +87,9 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     if (!had && o.replace) throw fail(`no connection ${id}`, "not_found");
     if (had && JSON.parse(had.declaration).transport !== "site") throw fail(`${id} is not a website connection`, "bad_input");
     const t = now();
-    const formJson = JSON.stringify({ site: site.origin });
+    // the agent whose computer holds the login (a box's rung) is kept across a sync unless a new one is given
+    const agent = site.agent !== undefined ? site.agent : had && had.form ? (() => { try { return JSON.parse(had.form).agent; } catch { return undefined; } })() : undefined;
+    const formJson = JSON.stringify({ site: site.origin, ...(agent ? { agent } : {}) });
     if (had) db.prepare("UPDATE connectors_made SET label=?, declaration=?, light='unknown', reason=NULL, updated=?, form=? WHERE id=?").run(declaration.label, JSON.stringify(declaration), t, formJson, id);
     else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, form, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id, declaration.label, JSON.stringify(declaration), "", null, "/", "site", o.as, formJson, t, t);
     try { await materialize(row(id), o.as); }

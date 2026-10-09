@@ -24,6 +24,7 @@ import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
+import { runBoxOperation } from "./siteops.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
@@ -150,6 +151,30 @@ export default {
 
     /** screenshot and snapshot only look; the rest drive the page. */
     const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: CALLERS, effect: /^chrome\.(snapshot|screenshot)$/.test(name) ? "read" : "write" });
+
+    // The connectors module's way to a learned website operation in an agent's own Chrome on this box (rung "box"): the Chrome keeps its profile, so the person's login, made once through the
+    // screen view, is there at the next run with the Mac off. Nothing else may call it. A read runs; anything outward only with the yes the kernel already has (`approved`).
+    ctx.tool("chrome.op.run", {
+      internal: true, callers: ["module"],
+      description: "Run one learned operation of a site in an agent's own Chrome on this box, for the connectors module: { agent, site, name, inputs, approved?, check? } -> the operation's answer (ok, class, data, next). Never called directly.",
+      input: obj({ agent: str, site: str, name: str, inputs: { type: "object" }, approved: { type: "boolean" }, check: { type: "boolean" } }, ["agent", "site", "name"]),
+      run: async (i, meta) => {
+        if (!meta || meta.caller !== "module:connectors") throw Object.assign(new Error("only the connectors module runs a site's operation here"), { code: "denied" });
+        const agent = String(i.agent || "");
+        if (!AGENT.test(agent)) throw new Error(`"${agent}" is not an agent name`);
+        let origin = ""; try { origin = new URL(String(i.site)).origin; } catch { throw new Error("site is an origin such as https://app.example.com"); }
+        const got = await ctx.call("memory.site.get", { origin, parts: ["ops"] });
+        const entry = !got.error && got.data && got.data.origin && Array.isArray(got.data.origin.ops) ? got.data.origin.ops.find(o => o.name === i.name) : null;
+        if (!entry) throw Object.assign(new Error(`no operation ${String(i.name).slice(0, 40)} is kept for ${origin}`), { code: "not_found" });
+        await mayAct(agent, "chrome.op.run");
+        const { cdp, sessionId } = await session(agent);
+        const res = await runBoxOperation({ cdp, sessionId, op: entry.op, inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, approved: i.approved === true });
+        act_(meta, agent, "op", res.ok === true, res.ok ? undefined : String(res.reason || res.class), { summary: `${entry.name} on ${bareUrl(origin)}` });
+        // the store's own count: a success raises the trust, a drift counts a miss (never an auth or rate failure: those are not the operation's fault)
+        if (res.ok) await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "ok" }).catch(() => null);
+        else if (res.class === "drift") await ctx.call("memory.site.report", { origin, part: "ops", id: entry.name, outcome: "miss" }).catch(() => null);
+        return { ...res, version: entry.version };
+      } });
 
     tool("chrome.snapshot", "Every actionable control on the agent's current page: role, name, whether it is enabled, and where it sits. No page text beyond a length.",
       obj({ agent: str }), async (i, meta) => {
