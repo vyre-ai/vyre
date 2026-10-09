@@ -30,7 +30,7 @@ export function connectorsOf(flow) {
 
 /**
  * @param {{ id: string, label: string, status: string, paused?: { reason?: string, since?: number } | null, runs: any[], now: number, nextAt?: number | null, tz?: string,
- *   lights?: Record<string, string>, connectors?: string[], control?: { mode: string, reason?: string }, held?: number }} i
+ *   lights?: Record<string, string>, connectors?: string[], control?: { mode: string, reason?: string }, held?: number, testFailing?: string }} i
  * @returns {{ id: string, label: string, level: 'green'|'amber'|'red'|'grey', line: string, last: { run: string, state: string, at: number } | null, week: { ok: number, failed: number, total: number }, next: number | null, attention: number, held: number, red_connections: string[] }}
  */
 export function healthOf(i) {
@@ -49,6 +49,7 @@ export function healthOf(i) {
   else if (i.status === "paused") { pieces.push(`Paused${i.paused && i.paused.reason ? `: ${i.paused.reason}` : ""}${held ? `; ${held} held` : ""}`); raise("amber"); }
   else if (i.status !== "active") { pieces.push(i.status === "disabled" ? "Switched off" : "Not approved yet"); raise("grey"); }
   if (redConns.length) { pieces.unshift(`Red: ${redConns.map(c => c.replace(/^conn-/, "")).join(", ")} ${redConns.length === 1 ? "is" : "are"} down${held || attention ? "" : ""}`); raise("red"); }
+  if (i.testFailing) { pieces.unshift(`Red: a saved test fails (${i.testFailing})`); raise("red"); }
   if (last) pieces.push(`Last run ${ago(i.now - last.started_at)}${last.state === "failed" ? ", failed" : last.state === "waiting" ? ", waiting" : last.state === "queued" ? ", held" : ""}`);
   else pieces.push("Never run");
   if (ended.length) { pieces.push(`${ok} of ${ended.length} ok this week`); if (failed) raise(failed * 2 >= ended.length ? "red" : "amber"); }

@@ -25,7 +25,8 @@ import { newPrefixedId } from "../../lib/id.js";
  *   queued?: { reason: 'concurrency'|'box_limit'|'lock'|'paused'|'draining'|'flow_paused', since: number, seq?: number }, lock_key?: string,
  *   attention?: { kind: 'failed'|'stuck'|'stale'|'verify'|'paused', step?: string, code?: string, message: string, since: number },
  *   failing?: { step: string, code: string, message: string }, failing_done?: boolean, failing_error?: { code: string, message: string }, cancelled?: { by: string|null, at: number, reason?: string },
- *   waiting?: { step: string, kind: 'task'|'time'|'event', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
+ *   gate?: { key: string, urn: string, type: string, record: string, stage: string, next: string | null, owner: string | null, tasks: { id: string, title: string, required: boolean }[] },  a stage gate (s1): a run with no stored Flow
+ *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
  *   error?: { step: string, code: string, message: string },
  *   approver: ActorRef, dry?: boolean,
  * }} Run

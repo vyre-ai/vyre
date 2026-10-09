@@ -94,7 +94,7 @@ export const msToOffset = (/** @type {number} */ ms) => (ms % UNITS.w === 0 ? `$
 
 /** @param {any} t task input: the kernel's TaskTemplateDef, with dependsOn and dueOffset for the two snake_case names */
 function defineTask(t) {
-  onlyKeys(t, ["title", "doer", "checker", "how", "output", "template", "dependsOn", "dueOffset", "required"], "defineTask");
+  onlyKeys(t, ["title", "doer", "checker", "how", "output", "template", "dependsOn", "dueOffset", "required", "brief", "checklist", "credentials"], "defineTask");
   const out = { title: str(t.title, "defineTask.title", { max: 200 }), doer: str(t.doer, "defineTask.doer", { max: 100 }), checker: t.checker === undefined ? undefined : str(t.checker, "defineTask.checker", { max: 100 }), output: t.output, how: t.how, template: t.template === undefined ? undefined : name(t.template, "defineTask.template"), depends_on: t.dependsOn === undefined ? undefined : strList(t.dependsOn, "defineTask.dependsOn", 50), due_offset_ms: /** @type {number | undefined} */ (undefined), required: t.required };
   const who = /^(teammate|role|person|assistant|actor):[a-z][a-z0-9_.-]*$/;
   if (!who.test(out.doer) && out.doer !== "creator" && out.doer !== "owner") bad("defineTask.doer", 'A doer looks like "teammate:research", "role:attorney", "person:alex", "creator" or "owner"');
@@ -107,7 +107,14 @@ function defineTask(t) {
   out.output = ordered(out.output, ["kind", "target"]);
   if (t.dueOffset !== undefined) { if (typeof t.dueOffset !== "string" || !/^\d+[hdw]$/.test(t.dueOffset)) bad("defineTask.dueOffset", 'A due offset looks like "2d", "48h" or "1w"'); out.due_offset_ms = offsetToMs(t.dueOffset); }
   if (out.required !== undefined) bool(out.required, "defineTask.required");
-  return { $: "task", ...ordered(out, ["title", "doer", "checker", "output", "how", "template", "depends_on", "due_offset_ms", "required"]) };
+  // A brief, a checklist and the Connections the doer may use (Flows s2). The shape is checked here; the checks themselves are checked against the Space when the Kit is installed (kernel/flows/checklist.js).
+  if (t.brief !== undefined) out.brief = str(t.brief, "defineTask.brief", { max: 2000 });
+  if (t.checklist !== undefined) {
+    if (!Array.isArray(t.checklist) || !t.checklist.length || t.checklist.length > 10) bad("defineTask.checklist", "A checklist is 1 to 10 items");
+    out.checklist = t.checklist.map((/** @type {any} */ it, /** @type {number} */ i) => { onlyKeys(it, ["say", "check"], `defineTask.checklist[${i}]`); if (!it.check || typeof it.check !== "object" || Array.isArray(it.check)) bad(`defineTask.checklist[${i}].check`, "A check is an object"); return ordered({ say: str(it.say, `defineTask.checklist[${i}].say`, { max: 160 }), check: it.check }, ["say", "check"]); });
+  }
+  if (t.credentials !== undefined) out.credentials = strList(t.credentials, "defineTask.credentials", 10);
+  return { $: "task", ...ordered(out, ["title", "doer", "checker", "output", "how", "template", "depends_on", "due_offset_ms", "required", "brief", "checklist", "credentials"]) };
 }
 
 /** One list of stages (the default set or a stage set): names, or `{ name, owner, tasks, enter_if }`. @param {any[]} stages @param {string} where */

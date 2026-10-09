@@ -68,3 +68,18 @@ test("t2: a Flow with no cases approves as before", async () => {
   const w = await world({});
   await install(w, flowOf([matter("m", "trigger.name")]));
 });
+
+test("t2: the active version keeps running when a case fails later, and its health line turns red", async () => {
+  const w = await world({});
+  const f = toolsOf(w);
+  const v = await install(w, flowOf([matter("m", "trigger.name")]));
+  await f.tools["flows.test.save"](chainOf(), { id: v.id, name: "one", event: { type: "payment.received", data: { name: "J" } }, expect: { writes: { matter: 1 } } });
+  assert.doesNotMatch((await w.runner.health(v.id)).line, /saved test fails/);
+  await f.tools["flows.test.save"](chainOf(), { id: v.id, name: "two", event: { type: "payment.received", data: { name: "J" } }, expect: { writes: { matter: 5 } } });
+  w.clock.t += 61_000;
+  const h = await w.runner.health(v.id);
+  assert.equal(h.level, "red");
+  assert.match(h.line, /^Red: a saved test fails \(two\)/);
+  w.kernel.inbound("payment.received", { name: "K" }); await settle(w);
+  assert.equal((await w.runner.listRuns())[0].state, "done", "the active version keeps running");
+});

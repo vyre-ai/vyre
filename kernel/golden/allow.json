@@ -388,6 +388,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; proposes a Kit for approval, and installing waits for a person; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.kit.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; walks a Kit on a sample or a record the caller can read, with every action stubbed: nothing is stored, sent or emitted; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Flows of a Space; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },

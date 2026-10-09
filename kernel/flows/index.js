@@ -9,6 +9,7 @@
 //   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
 import { diffFlows } from "./diff.js";
+import { testKit } from "./kit-test.js";
 import { cheatsheet } from "./cheatsheet.js";
 import { applyPatch, PatchError } from "./patch.js";
 import { normalizeFlow } from "./text.js";
@@ -69,8 +70,9 @@ export function createFlows(o) {
   const store = o.store || new MemoryFlowStore();
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits, policy: o.policy, settings: o.settings });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
-  const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit }) : null;
+  const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin }) : null;
   const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
+  /** The stages module this Space runs: made here, or attached by the host that makes it. @type {any} */ let stagesRef = stages;
   const cat = async () => o.catalog();
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {
     const v = version !== undefined ? await store.getVersion(id, version) : (await store.active(id)) || (await latest(id));
@@ -247,6 +249,19 @@ export function createFlows(o) {
     "flows.cancel": async (chain, i) => { const who = personOf(chain); need(i, "run", "the run's id (flows.runs)"); return runner.cancel(i.run, { by: who.id, reason: i.reason }); },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
     "kits.diff": async (chain, i) => kits.diff(i.kit),
+    // Try a Kit's template on a sample, or on a real record read-only, with nothing sent (s3).
+    "kits.test": async (chain, i) => {
+      const approver = personOf({ hops: [chain.hops[0]] });
+      /** @type {any} */ let record;
+      if (i.record) {
+        const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(i.record));
+        if (!m) throw Object.assign(new Error("record is the record's address, like vyre://space/matter/ID"), { code: "bad_input" });
+        const row = await o.kernel.records.get(chain, m[1], m[2]).catch(() => null);
+        if (!row) throw Object.assign(new Error("no such record, or you may not read it"), { code: "not_found" });
+        record = { type: m[1], id: m[2], data: row.data };
+      }
+      return testKit({ kit: i.kit, cat: await cat(), runner, approver, sample: i.sample, record });
+    },
     // A person, or an assistant acting for them: the person is the approver and the task asks them. An assistant never installs: the install runs only after the approver says yes.
     "kits.propose": async (chain, i) => { const who = proposerOf(chain); if (!who) throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" }); return kits.propose(i.kit, who, chain); },
     // A draft is checked and practice-run before a person is asked (e5): it compiles, its saved test cases pass, and the last week of events is replayed through it with every action stubbed.
@@ -273,21 +288,29 @@ export function createFlows(o) {
       const r = await proposals.propose(chain, { ...i, note: `${line} ${i.note || ""}`.trim().slice(0, 500) });
       return { ...r, checked: line };
     },
+    // Move a record on before its stage's tasks are done: the stage's owner or an admin, with a reason, on the gate's ledger (s1).
+    "flows.advance": async (chain, i) => {
+      const who = personOf(chain);
+      if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
+      return stagesRef.advance(need(i, "run", "the stage gate's run id (flows.runs, or a record's stage)"), who, need(i, "reason", "why it moves on early"));
+    },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
   };
 
   return {
     runner, kits, stages, store, tools,
+    /** The host makes the stages module itself and hands it over, so flows.advance, the tick and a restart reach it. @param {any} s */
+    attachStages: s => { stagesRef = s; },
     /** One subscription feeds triggers, waits and Kit approvals. @param {any} env */
     onEvent: async env => { await runner.onEvent(env); await kits.onEvent(env); if (proposals) await proposals.onEvent(env); if (stages) await stages.onEvent(env); },
-    tick: () => runner.tick(),
+    tick: async () => { const r = await runner.tick(); if (stagesRef && stagesRef.tick) await stagesRef.tick(); return r; },
     /** A watcher found something new (see watcher-bridge.js): starts the Flows armed on it, once per item. */
     watcherItem: w => runner.watcherItem(w),
     /** An inbound call at a web trigger's path (an app module's webhook, a form): the host has authenticated it and labelled its trust. See runner.handleWeb. */
     handleWeb: (path, req) => runner.handleWeb(path, req),
     nextWake: () => runner.nextWake(),
-    recover: () => runner.recover(),
+    recover: async () => { await runner.recover(); if (stagesRef && stagesRef.resume) await stagesRef.resume(); },
     text: printFlow,
   };
 }

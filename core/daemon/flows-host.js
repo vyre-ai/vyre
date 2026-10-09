@@ -179,9 +179,10 @@ export function createFlowsHost(o) {
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
     const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
-    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
+    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
+    flows.attachStages(stages);
     // One subscription feeds triggers, waits, Kit approvals and stages.
     k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
