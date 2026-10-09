@@ -37,6 +37,7 @@
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
 
+import { exportBundle, enrol as enrolBundle, enrolled as bundleEnrolled } from "../../lib/space-bundle.js";
 import crypto from "node:crypto";
 import { devKindSwitch } from "../../lib/release-build.js";
 import * as config from "../config/index.js";
@@ -655,6 +656,26 @@ export default {
       try { const st = identity.status(); if (st.exists && !st.pending) await P.sync({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), binds: [] }); } catch (e) { ctx.log.warn(`presence sync was not sent: ${/** @type {Error} */ (e).message}`); }
     };
     const needPresence = () => { const P = presenceOf(); if (!P) throw refuse("This computer has no sealing process running, so there is no presence to recover.", "unavailable"); return P; };
+    // ---- The Space bundle (R031-83, lib/space-bundle.js): enrol once with the recovery code, then the export runs unattended into the home, where a backup carries it ----
+    const bundleK = ctx.kernel && ctx.kernel.bundle ? ctx.kernel.bundle : null;
+    const bundleId = () => ({ space: String(ctx.kernel.space), owner: String(ctx.kernel.owner) });
+    let bundleLast = 0;
+    const exportNow = async () => { const r = await exportBundle({ root: ctx.paths.root, id: bundleId(), k: /** @type {any} */ (bundleK) }); bundleLast = Date.now(); return r; };
+    tool("spaces.bundle.enrol", "Give your recovery code ONCE so this Space can be backed up with its members, grants and sealed values, and brought back on a fresh box with the same code. Nothing is stored in the clear: the code only wraps a key the Space keeps sealed.",
+      obj({ code: str, password: str }, ["code"]), async (i) => {
+        if (!bundleK) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" });
+        await enrolBundle(bundleK, String(ctx.kernel.space), String(i.code), String(i.password || ""));
+        return { enrolled: true, ...(await exportNow()) };
+      }, { effect: "write", reach: "person" });
+    tool("spaces.bundle.export", "Write the Space bundle now (it also runs by itself, hourly). A backup of this box carries the file.", obj({}), async () => {
+      if (!bundleK) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" });
+      return exportNow();
+    }, { effect: "write", reach: "person" });
+    tool("spaces.bundle.status", "Whether the Space bundle is set up (the recovery code was given) and when it was last written.", obj({}), async () => ({ available: Boolean(bundleK), enrolled: bundleK ? await bundleEnrolled(bundleK) : false, last: bundleLast || null }), { effect: "read", reach: "person" });
+    // unattended: at start and every hour once enrolled, so a scheduled backup always carries a fresh bundle
+    const bundleTick = () => { if (bundleK) void bundleEnrolled(bundleK).then(on => (on ? exportNow() : null)).catch((e) => ctx.log.warn(`space bundle not written: ${e.message}`)); };
+    const bundleFirst = setTimeout(bundleTick, 5000), bundleTimer = setInterval(bundleTick, 3_600_000);
+    bundleFirst.unref?.(); bundleTimer.unref?.();
     tool("spaces.presence.begin", "On a new device that has lost every presence key: ask the sealing process for the one-time token the recovery needs, for the key this device just made (its id and public key).",
       obj({ key_id: str, spki: str }, ["key_id", "spki"]), async (i, meta) => {
         const P = needPresence(), st = me();
@@ -2509,7 +2530,7 @@ export default {
         }
       } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     })();
-    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); clearTimeout(agreeFirst); clearInterval(agreeTimer); } };
+    return { async stop() { clearInterval(timer); clearTimeout(first); clearTimeout(bundleFirst); clearInterval(bundleTimer); clearInterval(syncTimer); clearTimeout(agreeFirst); clearInterval(agreeTimer); } };
   },
 };
 

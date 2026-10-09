@@ -143,13 +143,15 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PREVIEW_THUMBS` | Not described yet. | `core/previews/index.js` |
 | `VYRE_PUBLISH_DOCKER` | Not described yet. | `core/publish/index.js` |
+| `VYRE_RECOVERY_CODE` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_ROLLOVER_SHEET` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
-| `VYRE_SEAL_DEV` | Not described yet. | `core/vault/request.js` |
-| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
+| `VYRE_SEAL_DEV` | Not described yet. | `core/cli/commands/up.js`, `core/vault/request.js` |
+| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/cli/commands/up.js`, `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
+| `VYRE_SEAL_UNATTESTED` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |
