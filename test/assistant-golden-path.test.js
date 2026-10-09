@@ -1,7 +1,7 @@
 // @ts-check
 // The assistant's golden path on ONE real daemon with the fake provider, so the class "the registry default refuses a proven assistant" is found by a test and not one tool at a time. A proven assistant
 // (its own session: the thread socket stamps its caller and kernel session) acting for its person inside its own grants must reach what it needs; the SAME call from a bare session, from another agent
-// without the grant, and for a wider scope must be refused. Each step is one row: who calls, what, what must happen. A row that fails today is `todo` with the reason, so it is tracked, shown in the
+// without the grant, and for a wider scope must be refused. Each step is one row: who calls, what, what must happen. A row that fails is a red test, shown in the
 // run and never silently green. Run: node --test test/assistant-golden-path.test.js on a test box.
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
@@ -33,7 +33,13 @@ async function world(t) {
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli") => d.registry.call(tool, input, caller);
-  for (const [name, kind] of [["juno", "assistant"], ["kit", "agent"]]) assert.ok(!(await call("agents.create", { name, kind })).error, `${name} created`);
+  // The project the assistant is granted: its home is the work folder, a teammate "design" is in it (so team.ask and threads.start have somewhere to go). kit is granted nothing.
+  const project = (await call("projects.create", { name: "Harlow Legal", home: work })).data;
+  const record = (await until(async () => { const r = await call("work.project.ref", { project: project.slug }); return r.error ? null : r.data; }, "the Project record")).id;
+  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant", projects: [project.slug] })).error, "juno created");
+  assert.ok(!(await call("agents.create", { name: "kit", kind: "agent" })).error, "kit created");
+  const added = await call("team.add", { project: record, role: "design", brief: "visual design" });
+  assert.ok(!added.error, "a teammate in the project: " + JSON.stringify(added.error));
   const owner = d.kernel.id.owner, space = d.kernel.id.space;
   const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const ask = async (/** @type {string} */ title) => d.kernel.gateway.ask.request(person, { title, output: { kind: "decision" }, source: "manual", doer: { kind: "agent", id: "assistant", space }, checker: { kind: "person", id: owner, space } });
@@ -70,7 +76,7 @@ async function world(t) {
     }, `plain ${tool} answered`, 30_000);
     return answer;
   }
-  return { d, call, person, owner, space, ask, viaSession, viaPlainSession, work };
+  return { d, call, person, owner, space, ask, viaSession, viaPlainSession, work, record };
 }
 const refused = (/** @type {any} */ r) => Boolean(r && r.error);
 
@@ -101,37 +107,30 @@ test("the proven assistant takes and submits a task it is the doer of; another a
   assert.equal(after.state, "needs_check", "the assistant never approves its own task (answer: " + JSON.stringify(dec).slice(0, 200) + ")");
 });
 
-/** The remaining steps of the golden path. Each is `todo` until it passes on a real daemon; the reason says what refused it. */
+/** The steps of the golden path, each on a real daemon. */
 const STEPS = [
   { name: "reads what it is granted (tasks.list, memory.facts)", tool: "tasks.list", input: {}, agent: "juno", ok: true },
   { name: "another agent without the grant sees none of the assistant's tasks", tool: "tasks.list", input: {}, agent: "kit", ok: true, empty: "tasks" },
   { name: "writes a memory line the person must settle (memory.heard)", tool: "memory.heard", input: { action: "add", subject: "accountant", rel: "is", object: "Dana Reyes" }, agent: "juno", ok: true },
   { name: "proposes a lesson (learn.add makes a PROPOSED one)", tool: "learn.add", input: { text: "never use em dashes" }, agent: "juno", ok: true },
-  { name: "asks a teammate (team.ask)", tool: "team.ask", input: { to: "design", text: "hello" }, agent: "juno", ok: true },
+  { name: "asks a teammate (team.ask)", tool: "team.ask", input: { to: "design", text: "hello", project: "PROJECT" }, agent: "juno", ok: true },
   { name: "asks an agent (agents.ask kit)", tool: "agents.ask", input: { agent: "kit", text: "hello", wait: false }, agent: "juno", ok: true },
   { name: "kit (no grant) cannot ask the assistant", tool: "agents.ask", input: { agent: "juno", text: "hello", wait: false }, agent: "kit", ok: false },
   { name: "starts a session inside its grant (threads.start)", tool: "threads.start", input: { cwd: "WORK", prompt: "hello", surface: "deck" }, agent: "juno", ok: true },
   { name: "kit cannot start a session in a folder it has no project for", tool: "threads.start", input: { cwd: "WORK", prompt: "hello", surface: "deck" }, agent: "kit", ok: false },
   { name: "proposes a Kit (flows.kit.propose)", tool: "flows.kit.propose", input: { kit: "starter" }, agent: "juno", ok: true },
 ];
-const KNOWN_REFUSED = new Set(); // step names that fail today, with the reason after the first run: filled below by the run
-/** Steps that fail on the trunk today, with why (found by the first run, 5 Oct): each is the registry default refusing a proven assistant, or an input this row has not got right yet. Remove the entry when it passes. */
-const TODO = {
-  "asks an agent (agents.ask kit)": "agents.ask is not available to mcp callers: the registry default refuses the assistant's own session (sessions declares it)",
-  "starts a session inside its grant (threads.start)": "threads.start is not available to mcp callers: same cause (sessions declares it)",
-  "asks a teammate (team.ask)": "team.ask answers bad_input 'this session is not in a project': the row needs a project and a teammate set up",
-};
+
 for (const step of STEPS) {
-  test(`golden path: ${step.name}`, { timeout: 90_000, ...(TODO[step.name] ? { todo: TODO[step.name] } : {}) }, async t => {
+  test(`golden path: ${step.name}`, { timeout: 90_000 }, async t => {
     const w = await world(t);
-    const input = JSON.parse(JSON.stringify(step.input).replace("WORK", w.work));
+    const input = JSON.parse(JSON.stringify(step.input).replace("WORK", w.work).replace("PROJECT", w.record));
     const r = await w.viaSession(step.agent, step.tool, input);
     if (step.empty) { assert.ok(!refused(r) && Array.isArray(r.data && r.data[step.empty]) && r.data[step.empty].length === 0, `${step.agent} ${step.tool} must see nothing: ${JSON.stringify(r).slice(0, 200)}`); return; }
     if (step.ok) assert.ok(!refused(r), `${step.agent} ${step.tool}: ${JSON.stringify(r).slice(0, 300)}`);
     else assert.ok(refused(r), `${step.agent} ${step.tool} must be refused: ${JSON.stringify(r).slice(0, 300)}`);
   });
 }
-void KNOWN_REFUSED;
 
 // Found by the first run (5 Oct) and fixed with R031-94: only the person's pinned assistant chat acts as the assistant (lib/kernel-session.js `pinned`); a bare session is a plain session.
 test("a plain session (no agent named) cannot move the assistant's task", { timeout: 150_000 }, async t => {
