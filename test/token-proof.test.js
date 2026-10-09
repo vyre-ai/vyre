@@ -89,7 +89,14 @@ test("the tee in front of claude passes standard input and output through and ke
   const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-claude.mjs"), "-p", "x"], { input: "hello\n", env: { ...process.env, TOKEN_PROOF_REAL_CLAUDE: real, TOKEN_PROOF_TEE: tee }, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, "got:hello\nargs:-p x\n");
-  assert.equal(fs.readFileSync(tee, "utf8"), r.stdout);
+  // one copy file per claude process, never one shared file: a second session or a second proof cannot interleave its lines
+  const parts = fs.readdirSync(dir).filter((f) => f.startsWith("tee.jsonl.") && f.endsWith(".part"));
+  assert.equal(parts.length, 1);
+  assert.equal(fs.readFileSync(path.join(dir, parts[0]), "utf8"), r.stdout);
+  assert.ok(!fs.existsSync(tee), "nothing is written to the shared name");
+  const again = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-claude.mjs"), "-p", "y"], { input: "hello\n", env: { ...process.env, TOKEN_PROOF_REAL_CLAUDE: real, TOKEN_PROOF_TEE: tee }, encoding: "utf8" });
+  assert.equal(again.status, 0);
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith(".part")).length, 2, "a second process makes its own file");
 });
 
 test("only the token proof's own world sets the development network seam of the vault", () => {
