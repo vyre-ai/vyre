@@ -27,7 +27,7 @@ export function lightFor(cls, host, reason, agent = "") {
     case "blocked": return { light: "red", words: `${host} is challenging the browser: a person has to clear it once` };
     case "rate": return { light: "red", words: `${host} says to slow down` };
     case "drift": return { light: "red", words: `${host} changed and the operation could not be repaired: teach it again` };
-    case "no_browser": return reason && /^needs your Chrome/.test(reason) ? { light: "red", words: reason } : { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre for Chrome${host ? ` and sign in to ${host}` : ""}` };
+    case "no_browser": return reason && /^needs your Chrome/.test(reason) ? { light: "red", words: reason } : { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre Computer${host ? ` and sign in to ${host}` : ""}` };
     default: return { light: "red", words: `the last call did not work${reason ? `: ${String(reason).slice(0, 120)}` : ""}` };
   }
 }

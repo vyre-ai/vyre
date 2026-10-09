@@ -89,7 +89,7 @@ export function start(chrome, opts = {}) {
         const bad = !conn.connectedAt || conn.failingSince != null ? failingFor >= BADGE_AFTER_MS : false;
         if (bad || !presence.active()) chrome.action.setBadgeText({ text: bad ? "!" : "" });
         if (bad && chrome.action.setBadgeBackgroundColor) chrome.action.setBadgeBackgroundColor({ color: "#c0392b" });
-        if (chrome.action.setTitle) chrome.action.setTitle({ title: `Vyre for Chrome: ${explain(conn, now()).headline}` });
+        if (chrome.action.setTitle) chrome.action.setTitle({ title: `Vyre Computer: ${explain(conn, now()).headline}` });
       }
     } catch { /* no action API in this browser */ }
   };

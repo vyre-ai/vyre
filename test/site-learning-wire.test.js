@@ -1,5 +1,5 @@
 // @ts-check
-// Site learning is ON by default, so the device's wire and the box's store must agree end to end: what Vyre for Chrome's
+// Site learning is ON by default, so the device's wire and the box's store must agree end to end: what Vyre Computer's
 // sitecache sends in a site.put is what lib/site-knowledge.js (the box's memory.site.put) keeps, with the evidence fields
 // (container, siblings, nameVisits, identifierVisits) in the shapes both sides read, and a canary never survives either side.
 import "../scripts/mac-test-guard.mjs";

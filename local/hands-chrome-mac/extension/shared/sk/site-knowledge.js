@@ -1,8 +1,8 @@
 // GENERATED from lib/site-knowledge.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
 // @ts-check
-// site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
+// site-knowledge: what Vyre Computer learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the
-// extension, standalone Vyre for Chrome and core/memory use the same code and a record means the
+// extension, standalone Vyre Computer and core/memory use the same code and a record means the
 // same thing in each.
 //
 // Two rules hold everything else:
