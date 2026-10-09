@@ -353,6 +353,10 @@
    "class": "held",
    "why": "held for the person's own words in the conversation"
   },
+  "models.refresh": {
+   "class": "own",
+   "why": "it looks at the provider lists and OpenRouter's public data (reads, at most once a minute) and writes only the registry; it spends nothing and starts no eval"
+  },
   "sidebar.edit": {
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant arranges the person's own layer, which the person can undo"

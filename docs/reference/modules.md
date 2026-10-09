@@ -53,6 +53,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
+| [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
@@ -71,7 +72,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 39 | 9 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 41 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sidebar`](#sidebar) | `core/sidebar` | `box`, `local` | 7 | 1 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
@@ -88,7 +89,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 67 | 40 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 68 | 40 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
@@ -513,6 +514,17 @@ The # tag: one picker over everything the person may mention, from the modules t
 - Emits: no events
 - Shows on: no surface
 
+## models
+
+The model registry: every model Vyre can offer, filled live from each provider's /models (with a key), from what each CLI or subscription login reports, and from OpenRouter's public metadata, with price, capabilities and eval scores; refreshed daily and on demand. A new model proposes its evals as one card; nothing runs without the owner's yes.
+
+- Folder: `core/models`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [9](tools.md#models)
+- Emits: [3 events](events.md#models)
+- Shows on: cli
+
 ## modules
 
 The owner's reset of the accepted first-party module list, for a deliberate downgrade (rollback to an older release): one presence-gated tool over the kernel's own reset.
@@ -725,7 +737,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [39](tools.md#sessions), 11 of them only for other modules
+- Tools: [41](tools.md#sessions), 12 of them only for other modules
 - Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -921,7 +933,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [67](tools.md#threads), 22 of them only for other modules
+- Tools: [68](tools.md#threads), 23 of them only for other modules
 - Emits: [40 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
