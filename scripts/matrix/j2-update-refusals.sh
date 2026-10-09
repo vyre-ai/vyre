@@ -80,7 +80,7 @@ V0=$(tr -d ' \r\n' <"$BOX/VERSION")
 # 1 install the candidate, fill it
 serve "$BOX" 18080
 if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
-else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
+else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; { echo "--- vyre status"; vyre status 2>&1 | head -40; echo "--- container logs"; docker logs --tail 80 vyre-vyre-1 2>&1; } >"$OUT/install-diag.log"; tail -120 "$OUT/install-diag.log" >&2; exit 1; fi
 wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
 vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
 vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
