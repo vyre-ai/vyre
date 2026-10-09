@@ -663,7 +663,7 @@ export default {
       return runs.length ? evidenceOf(runs) : null;
     };
     /** A learn skill proposal, also drafted into the skills library for the person's one approval (core/learn/to-library.js). */
-    const proposeSkill = (/** @type {any} */ c, /** @type {any} */ o) => { const sk = skills.propose(c, o); void toLibrary((tool, input) => ctx.call(tool, input), sk, ctx.log); return sk; };
+    const proposeSkill = (/** @type {any} */ c, /** @type {any} */ o) => { const sk = skills.propose(c, o); void toLibrary((input) => ctx.call("skills.draft.learned", input), sk, ctx.log); return sk; };
     const skillCandidates = async () => {
       const c = skills.candidates({ min: 3 })[0];
       if (!c) return;

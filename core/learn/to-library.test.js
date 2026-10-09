@@ -13,7 +13,7 @@ test("an account-wide procedure is drafted with no project; a project's names it
 
 test("toLibrary drafts through skills.draft.learned, and a failure or an absent library never throws", async () => {
   /** @type {any[]} */ const seen = [];
-  assert.equal(await toLibrary(async (t, i) => { seen.push([t, i]); return { data: { state: "draft" } }; }, SK), true);
+  assert.equal(await toLibrary(async (i) => { seen.push(["skills.draft.learned", i]); return { data: { state: "draft" } }; }, SK), true);
   assert.deepEqual(seen, [["skills.draft.learned", { name: "ship-it", body: SK.body }]]);
   /** @type {string[]} */ const logs = [];
   assert.equal(await toLibrary(async () => ({ error: { message: "the kernel is not wired" } }), SK, m => logs.push(m)), false);

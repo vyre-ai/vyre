@@ -11,7 +11,7 @@ import path from "node:path";
 import http from "node:http";
 import { execFileSync } from "node:child_process";
 import { start } from "../core/daemon/index.js";
-import { hookSeams } from "../core/skills/index.js";
+import { hookSeams } from "../core/watchers/index.js";
 import { getWall } from "../lib/sandbox/index.js";
 import { tempHome } from "./helpers.js";
 import { canonical } from "../kernel/core/canonical.js";
