@@ -84,6 +84,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_CHECK_VIEWS` | Not described yet. | `core/cli/view.js` |
+| `VYRE_CHROME` | Not described yet. | `core/previews/thumb.js` |
 | `VYRE_CHROME_HOST_DIR` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs`, `local/hands-chrome-mac/standalone/doctor.js` |
 | `VYRE_CHROME_NO_COPY` | Not described yet. | `local/hands-chrome-mac/standalone/cli.mjs` |
 | `VYRE_CHROME_TEST_NOFETCH` | Not described yet. | `local/hands-chrome-mac/index.js`, `local/hands-chrome-mac/standalone/harness/frames-suite.mjs` |
@@ -140,14 +141,17 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
 | `VYRE_OVERLAY_BIN` | Not described yet. | `local/hands-mac/index.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
+| `VYRE_PREVIEW_THUMBS` | Not described yet. | `core/previews/index.js` |
 | `VYRE_PUBLISH_DOCKER` | Not described yet. | `core/publish/index.js` |
+| `VYRE_RECOVERY_CODE` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
 | `VYRE_ROLLOVER_SHEET` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
-| `VYRE_SEAL_DEV` | Not described yet. | `core/vault/request.js` |
-| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
+| `VYRE_SEAL_DEV` | Not described yet. | `core/cli/commands/up.js`, `core/vault/request.js` |
+| `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/cli/commands/up.js`, `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |
+| `VYRE_SEAL_UNATTESTED` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js`, `core/spawner/main.js` |
 | `VYRE_SESSIONS_SDK_INSTALL` | Not described yet. | `core/sessions/sdk.js` |
 | `VYRE_SESSIONS_THREAD_SOCKET` | Not described yet. | `core/sessions/config.js` |

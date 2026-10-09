@@ -153,6 +153,34 @@ export class Sealer {
     need(body && typeof body.class === "string" && typeof body.value === "string", "bad_input");
     return this.put({ ctx, record: r.record, field: r.field, class: body.class, value: body.value });
   }
+  /**
+   * R031-83, a Space bundle's sealed values. `space.dump`: every sealed value of one Space opened here and sealed again under the bundle key the kernel passes (AES-256-GCM, its meta as the associated
+   * data), so a bundle carries the values and never this process's master or any key derived from it. `space.restore`: onto a fresh process (a Space with no values here), each is opened with the same bundle key and written under THIS
+   * process's own keys, with the same ref (so no record is rewritten) and its blind index made again under the new master. Both are the kernel's own calls on its own pipe, as `pool.key` is.
+   */
+  spaceDump(r) {
+    need(/^spc_[a-z0-9]{8,40}$/.test(r.space) && typeof r.bk === "string" && Buffer.from(r.bk, "base64").length === 32, "bad_input");
+    const bk = Buffer.from(r.bk, "base64"), items = [];
+    for (const m of this.store.metas("values", r.space)) {
+      const v = this.store.read("values", m.ref, r.space); if (!v) continue;
+      const iv = crypto.randomBytes(12), c = crypto.createCipheriv("aes-256-gcm", bk, iv); c.setAAD(Buffer.from(`vyre:space-bundle:v1:${m.ref}:${r.space}`));
+      const ct = Buffer.concat([c.update(v.plaintext, "utf8"), c.final()]);
+      items.push({ meta: v.meta, iv: iv.toString("base64"), ct: ct.toString("base64"), tag: c.getAuthTag().toString("base64") });
+    }
+    return { items };
+  }
+  spaceRestore(r) {
+    need(/^spc_[a-z0-9]{8,40}$/.test(r.space) && typeof r.bk === "string" && Buffer.from(r.bk, "base64").length === 32 && Array.isArray(r.items) && r.items.length <= 100_000, "bad_input");
+    need(this.store.metas("values", r.space).length === 0, "not_empty");
+    const bk = Buffer.from(r.bk, "base64"); let n = 0;
+    for (const it of r.items) {
+      need(it && it.meta && it.meta.space === r.space && typeof it.meta.ref === "string" && /^seal_[a-z0-9]{20,40}$/.test(it.meta.ref) && CLASSES[it.meta.class], "bad_input");
+      let plaintext;
+      try { const d = crypto.createDecipheriv("aes-256-gcm", bk, Buffer.from(it.iv, "base64")); d.setAAD(Buffer.from(`vyre:space-bundle:v1:${it.meta.ref}:${r.space}`)); d.setAuthTag(Buffer.from(it.tag, "base64")); plaintext = Buffer.concat([d.update(Buffer.from(it.ct, "base64")), d.final()]).toString("utf8"); } catch { throw err("bad_input"); }
+      this.store.write("values", { ...it.meta, blind: this.store.blind(r.space, it.meta.field, it.meta.class, compact(plaintext)) }, plaintext); n++;
+    }
+    return { restored: n };
+  }
   open(ctx, ref) { const v = this.store.read("values", ref, ctx.space); need(v, "not_found"); return v; }
 
   /** Merge sealed slots into a template body. The merged text is a sealed derivative; the caller learns only that it happened. */
@@ -353,6 +381,8 @@ export class Sealer {
       }
       case "kernel.mac": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000, "bad_input"); return { mac: this.store.kernelMac(req.purpose, req.data) }; }
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
+      case "space.dump": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceDump(req); }
+      case "space.restore": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceRestore(req); }
       case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
       // Service credentials the kernel's own modules hold (a Space's Twenty API key): sealed here instead of in a 0600 file any same-uid process can read, read back at the
       // point of use over the kernel's own channel. A name is `<module>.<space>.<what>`; a call that says a model started it is refused; nothing is ever returned by another op.

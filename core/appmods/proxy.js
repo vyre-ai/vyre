@@ -7,6 +7,7 @@
 //   - The app's own sign-in is done here with the credentials the install kept in the Vault; the app's cookies live in the proxy and never reach a browser.
 //   - Nothing but the app's origin is ever fetched, and the app's `Location` redirects to its own address are put back on this origin.
 import http from "node:http";
+import net from "node:net";
 import crypto from "node:crypto";
 import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS, SIGNED, checkLink, EXPIRED_HTML, filePaths } from "./signing.js";
 
@@ -53,15 +54,36 @@ export function keepCookies(jar, setCookie) {
 }
 export const cookieHeader = (/** @type {Map<string, string>} */ jar) => [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
 
-/** One-time tickets and the sessions they are traded for. In memory: a restart means opening the app again from Vyre. @param {{ now?: () => number }} [o] */
+/**
+ * What a preview's page is told about who is looking: `<base64url json {w, r, t}>.<hmac>`, made here with a key the previews module gave for that preview and checked there with the same key. A local process that
+ * reaches the preview's loopback address cannot forge it. @param {string} key @param {{ w: string, r: string }} who @param {number} [at]
+ */
+export function viewerHeader(key, who, at = Date.now()) {
+  const body = Buffer.from(JSON.stringify({ w: who.w, r: who.r, t: at })).toString("base64url");
+  return `${body}.${crypto.createHmac("sha256", key).update(body).digest("base64url")}`;
+}
+
+/** One-time tickets and the sessions they are traded for. Tickets live a minute in memory; a session (8 hours) is also kept in the store when there is one, so a restart or an update does not sign anyone out. @param {{ now?: () => number, store?: any }} [o] */
 export function createTickets(o = {}) {
   const now = o.now || Date.now;
-  /** @type {Map<string, { name: string, host: string, next: string, exp: number }>} */ const tickets = new Map();
-  /** @type {Map<string, { name: string, host: string, exp: number }>} */ const sessions = new Map();
-  const sweep = () => { const t = now(); for (const [k, v] of tickets) if (v.exp < t) tickets.delete(k); for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k); };
+  /** Signed-in sessions survive a restart when a store is given: kept by the hash of the cookie, never the cookie itself. @type {{ put: (h: string, r: any) => void, get: (h: string) => any, dropName: (n: string) => void, sweep: (t: number) => void } | undefined} */
+  const store = o.store;
+  const hash = (/** @type {string} */ sid) => crypto.createHash("sha256").update(String(sid)).digest("hex");
+  /** @type {Map<string, { name: string, host: string, next: string, exp: number, who: { w: string, r: string } | null, embed: boolean }>} */ const tickets = new Map();
+  /** @type {Map<string, { name: string, host: string, exp: number, who: { w: string, r: string } | null }>} */ const sessions = new Map();
+  const sweep = () => { const t = now(); for (const [k, v] of tickets) if (v.exp < t) tickets.delete(k); for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k); if (store) store.sweep(t); };
+  /** A live session by its cookie: in memory, else from the store (after a restart). @param {string | undefined} sid */
+  const load = sid => {
+    if (!sid) return null;
+    const m = sessions.get(sid);
+    if (m) return m;
+    const r = store ? store.get(hash(sid)) : null;
+    if (r && r.exp > now()) { sessions.set(sid, r); return r; }
+    return null;
+  };
   return {
-    /** A ticket for this app at this exact host; good once, for a minute. @param {string} name @param {string} host @param {string} next */
-    issue(name, host, next) { sweep(); const t = crypto.randomBytes(24).toString("base64url"); tickets.set(t, { name, host, next, exp: now() + TICKET_MS }); return t; },
+    /** A ticket for this app at this exact host; good once, for a minute. `who` is the person it was made for (their id and their role), which a preview's page is told on every request. @param {string} name @param {string} host @param {string} next @param {{ w: string, r: string } | null} [who] @param {boolean} [embed] the address is for a frame inside Vyre's own app: its cookie must work in a frame */
+    issue(name, host, next, who = null, embed = false) { sweep(); const t = crypto.randomBytes(24).toString("base64url"); tickets.set(t, { name, host, next, exp: now() + TICKET_MS, who, embed }); return t; },
     /** Trade a ticket for a session id, once, only at the host it was made for. @param {string} t @param {string} host */
     trade(t, host) {
       sweep();
@@ -69,12 +91,15 @@ export function createTickets(o = {}) {
       tickets.delete(String(t));
       if (!v || v.host !== host) return null;
       const sid = crypto.randomBytes(32).toString("base64url");
-      sessions.set(sid, { name: v.name, host, exp: now() + SESSION_MS });
-      return { sid, next: v.next, maxAge: Math.floor(SESSION_MS / 1000) };
+      sessions.set(sid, { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
+      if (store) store.put(hash(sid), { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
+      return { sid, next: v.next, maxAge: Math.floor(SESSION_MS / 1000), embed: v.embed };
     },
     /** @param {string | undefined} sid @param {string} name @param {string} host */
-    valid(sid, name, host) { const v = sid ? sessions.get(sid) : null; return Boolean(v && v.name === name && v.host === host && v.exp > now()); },
-    drop(/** @type {string} */ name) { for (const [k, v] of sessions) if (v.name === name) sessions.delete(k); for (const [k, v] of tickets) if (v.name === name) tickets.delete(k); },
+    valid(sid, name, host) { const v = load(sid); return Boolean(v && v.name === name && v.host === host && v.exp > now()); },
+    /** Who a live session is for, or null. @param {string | undefined} sid */
+    whoOf(sid) { const v = load(sid); return v && v.exp > now() ? v.who : null; },
+    drop(/** @type {string} */ name) { for (const [k, v] of sessions) if (v.name === name) sessions.delete(k); for (const [k, v] of tickets) if (v.name === name) tickets.delete(k); if (store) store.dropName(name); },
   };
 }
 
@@ -92,7 +117,7 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
+ * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
@@ -130,7 +155,7 @@ export function createHostProxy(o) {
     return /** @type {Promise<boolean>} */ (signing.get(name));
   }
 
-  return async function serve(req, res, { url }) {
+  async function serve(req, res, { url }) {
     const host = String(req.headers.host || "").toLowerCase();
     const mh = moduleHost(host);
     if (!mh) return false;
@@ -144,7 +169,7 @@ export function createHostProxy(o) {
       if (req.method !== "GET") return plain(404, "not found");
       const got = o.tickets.trade(url.searchParams.get("t") || "", host);
       if (!got) return plain(404, "not found");
-      res.writeHead(302, { location: got.next || "/", "set-cookie": `${COOKIE}=${got.sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${got.maxAge}${secure ? "; Secure" : ""}`, "cache-control": "no-store" });
+      res.writeHead(302, { location: got.next || "/", "set-cookie": `${COOKIE}=${got.sid}; Path=/; HttpOnly; ${got.embed ? "SameSite=None; Secure; Partitioned" : `SameSite=Lax${secure ? "; Secure" : ""}`}; Max-Age=${got.maxAge}`, "cache-control": "no-store" });
       res.end();
       return true;
     }
@@ -206,8 +231,13 @@ export function createHostProxy(o) {
           if (c) h.cookie = c;
           h["accept-encoding"] = "identity";
         } else if (jar && jar.size) h.cookie = cookieHeader(jar);
+        // A preview is a whole app of its own on its own origin: its cookies are its own, so they go through (never Vyre's session cookie, which is only this proxy's).
+        if (app.passCookies) { const mine = String(req.headers.cookie || "").split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) h.cookie = mine; else delete h.cookie; }
         if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > (stranger ? PUBLIC_BODY : MAX_BODY)) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
         if (req.headers["transfer-encoding"]) h["transfer-encoding"] = String(req.headers["transfer-encoding"]);
+        // A preview's own dev server answers only to its own address (Vite's allowed hosts, a framework's host check): it is sent that, and told the host the person is on.
+        if (app.viewerKey) { const w = o.tickets.whoOf(sid ? sid[1] : undefined); if (w) h["x-vyre-viewer"] = viewerHeader(app.viewerKey, w); else delete h["x-vyre-viewer"]; }
+        if (app.rewriteHost) { const u = new URL(app.origin); h["x-forwarded-host"] = host; h["x-forwarded-proto"] = secure ? "https" : "http"; h.host = u.host; delete h.origin; delete h.referer; }
         const r = await upstream(app.origin, String(req.method), url.pathname + url.search, h, { body: ["GET", "HEAD"].includes(String(req.method)) ? null : req });
         // The app lost our session (it restarted, it expired): sign in again, once, and repeat a request that has no body to repeat.
         if (!retry && !stranger && app.login && jars.has(mh.name) && String(r.headers.location || "").includes(app.login.path) && ["GET", "HEAD"].includes(String(req.method))) { await readAll(r).catch(() => {}); jars.delete(mh.name); if (!(await ensure(mh.name, app, true))) throw Object.assign(new Error("sign in"), { code: "login" }); return once(true); }
@@ -215,7 +245,7 @@ export function createHostProxy(o) {
       };
       const r = await once(false);
       /** @type {Record<string, string | string[]>} */ const out = {};
-      for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || k === "set-cookie" || v === undefined) continue; out[k] = /** @type {any} */ (v); }
+      for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
       if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
       if (stranger) {
         // the signer's cookies go back to the signer, not into the install's jar
@@ -238,6 +268,8 @@ export function createHostProxy(o) {
       const jar = jars.get(mh.name) || new Map();
       keepCookies(jar, r.headers["set-cookie"]);
       if (app.login) jars.set(mh.name, jar);
+      // A preview is the owner's own, shown in Vyre's own app: the page's own wish not to be framed does not apply to Vyre, so the headers that say it are dropped (only for a preview).
+      if (app.allowEmbed) { delete out["x-frame-options"]; if (typeof out["content-security-policy"] === "string") out["content-security-policy"] = out["content-security-policy"].replace(/(^|;)\s*frame-ancestors[^;]*/gi, "$1").replace(/^\s*;\s*/, ""); }
       res.writeHead(r.statusCode || 502, out);
       if (req.method === "HEAD") { r.resume(); res.end(); } else r.pipe(res);
       return true;
@@ -247,5 +279,45 @@ export function createHostProxy(o) {
       if (res.headersSent) { res.destroy(); return true; }
       return plain(err && err.code === "too_big" ? 413 : 502, err && err.code === "too_big" ? "too big" : "The app is not answering. It may still be starting.");
     }
+  }
+
+  /**
+   * A WebSocket (a dev server's hot reload, a live app's channel) on an app's own origin: the same checks as a request (the host names a running app, the session cookie is this host's), then the bytes
+   * are tunnelled to the app's own address. Anything else is closed with a plain 404.
+   * @param {http.IncomingMessage} req @param {import("node:net").Socket} socket @param {Buffer} head
+   * @returns {Promise<boolean>} true when it was an app host (answered or tunnelled)
+   */
+  serve.upgrade = async (req, socket, head) => {
+    const host = String(req.headers.host || "").toLowerCase();
+    const mh = moduleHost(host);
+    if (!mh) return false;
+    const app = await o.app(mh.name);
+    if (!app) return false;
+    const refuse = () => { socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\ncontent-length: 0\r\n\r\n"); return true; };
+    const sid = /(?:^|;\s*)vyre_app=([A-Za-z0-9_-]+)/.exec(String(req.headers.cookie || ""));
+    if (!o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return refuse();
+    const u = new URL(app.origin);
+    const up = net.connect({ host: u.hostname, port: Number(u.port) || 80 });
+    up.on("error", () => socket.destroy());
+    socket.on("error", () => up.destroy());
+    up.on("connect", () => {
+      /** @type {string[]} */ const lines = [`${req.method} ${req.url} HTTP/1.1`];
+      for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) {
+        const k = req.rawHeaders[i], v = req.rawHeaders[i + 1], low = k.toLowerCase();
+        if (low === "authorization") continue;
+        if (low === "cookie") { if (!app.passCookies) continue; const mine = v.split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) lines.push(`Cookie: ${mine}`); continue; } // the person's Vyre session never travels to the app
+        if (low === "host" && app.rewriteHost) { lines.push(`Host: ${u.host}`); lines.push(`X-Forwarded-Host: ${host}`); continue; }
+        if ((low === "origin" || low === "referer") && app.rewriteHost) continue;
+        if (low.startsWith("x-vyre-")) continue; // only the proxy tells a page who is looking
+        lines.push(`${k}: ${v}`);
+      }
+      const wsWho = app.viewerKey ? o.tickets.whoOf(sid ? sid[1] : undefined) : null;
+      if (wsWho && app.viewerKey) lines.push(`X-Vyre-Viewer: ${viewerHeader(app.viewerKey, wsWho)}`);
+      up.write(lines.join("\r\n") + "\r\n\r\n");
+      if (head && head.length) up.write(head);
+      up.pipe(socket); socket.pipe(up);
+    });
+    return true;
   };
+  return serve;
 }

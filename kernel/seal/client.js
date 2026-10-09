@@ -108,6 +108,9 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     },
     /** The storage pool's key for one owner (a person or Space id), derived from the home's master for that purpose only; the pool encrypts chunks with it in the home's process. */
     poolKey: i => call("pool.key", { owner: i.owner }).then(r => Buffer.from(r.key, "base64")),
+    /** R031-83: a Space's sealed values sealed under a bundle key (`dump`), and put back under this process's own keys on a fresh one (`restore`). */
+    spaceDump: i => call("space.dump", { space: i.space, bk: Buffer.from(i.bk).toString("base64") }),
+    spaceRestore: i => call("space.restore", { space: i.space, bk: Buffer.from(i.bk).toString("base64"), items: i.items }),
     /** Service credentials the kernel's own modules hold (a Space's Twenty API key), sealed here instead of in a 0600 file: `put` (also how a rotation lands), `get` at the point of use, `delete`, `list` (names only). `adopt` moves an existing file in once and shreds it. */
     service: {
       put: i => call("service.put", { name: i.name, value: i.value }),

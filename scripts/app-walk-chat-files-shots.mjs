@@ -44,9 +44,27 @@ await drive.put(ownerChain, `${dir}/Existing trust.pdf`, enc("%PDF-1.4\n1 0 obj<
 await drive.put(ownerChain, `${made}/Document checklist.md`, enc("# Missing documents\n- Deed to the Raleigh house\n- Latest brokerage statement\n- Prior will, if any"));
 await drive.put(ownerChain, `${made}/Family tree.png`, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
 await call("work.file.share", { path: `${made}/Document checklist.md` });
-const proj = await call("work.project.create", { name: "Rivera Family Trust" });
+// a project with a history: started from the estate-plan template (its stage), tasks, mail and texts logged on it, a file shared, a chat about it
+for (const name of ["research", "drafting"]) {
+  await call("agents.create", { name, kind: "agent", projects: [], instructions: name === "research" ? "Finds and reads the documents." : "Drafts the trust and the will." });
+  const actor = { kind: "agent", id: name, space: d.kernel.id.space };
+  await d.kernel.gateway.grants.addActor(ownerChain, actor, { presence: proof("grants.role", { actor }, `vyre://${d.kernel.id.space}/member/${name}`) });
+}
+const lib = await call("work.template.install", { id: "law-firm/estate-plan" });
+await call("work.template.golive", { template: lib.template, version: lib.version });
+const proj = await call("work.start-project", { template: lib.template, name: "Rivera Family Trust", repo: "" });
+const about = { urn: proj.project };
+const day = 86400000, ago = (n) => new Date(Date.now() - n * day).toISOString();
+const mk = (type, data) => d.kernel.gateway.records.create(ownerChain, type, data);
+await mk("communication", { kind: "email", direction: "outbound", at: ago(6), subject: "Engagement letter for the Rivera trust", to: "dana.whitfield@example.com", record: about });
+await mk("communication", { kind: "email", direction: "inbound", at: ago(4), subject: "Signed engagement letter", from: "dana.whitfield@example.com", record: about });
+await mk("communication", { kind: "text", direction: "outbound", at: ago(2), subject: "Your documents are ready to review", to: "+1 919 555 0142", record: about });
+await mk("communication", { kind: "call", direction: "inbound", at: ago(1), subject: "Dana asked about the deed", from: "Dana Whitfield", record: about });
+await mk("task", { title: "Collect the Raleigh deed", status: "done", record: about }).catch(() => null);
+
 await call("work.chat.link", { chat: chat.id, record: proj.project, shared: true });
 const project = proj.slug;
+void project;
 // ---- the app in front of it
 const SOCKET = paths(root).socket;
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
@@ -100,11 +118,13 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await pg.getByText("Client intake notes.txt", { exact: false }).first().click().catch(() => {});
   await shot("files-private-preview");
   // the project's Timeline tab and "Chat about this" on the new-chat screen: one shot each, desktop only
-  if (label === "1440") {
+  {
     await pg.goto(`${BASE}/u/project/${String(proj.project).split("/").pop()}`, { waitUntil: "domcontentloaded" });
     await pg.waitForTimeout(3000);
     await pg.getByText("Timeline", { exact: true }).first().click().catch((e) => console.log("no Timeline tab:", e.message.slice(0, 80)));
     await shot("project-timeline");
+  }
+  if (label === "1440") {
     await pg.goto(`${BASE}/u/chats/new?about=${encodeURIComponent(proj.project)}&name=${encodeURIComponent("Rivera Family Trust")}`, { waitUntil: "domcontentloaded" });
     await shot("chat-about-this");
   }

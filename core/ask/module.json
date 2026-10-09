@@ -1,0 +1,19 @@
+{
+  "name": "ask",
+  "version": "0.1.0",
+  "description": "One card for every question: several clarifications an agent needs, asked together, each with choices and room to type your own, answered once.",
+  "roles": ["box"],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "ask.many", "effect": "write", "reach": "anyone" },
+      { "name": "ask.get", "effect": "read", "reach": "anyone" },
+      { "name": "ask.answer", "effect": "write", "reach": "person" },
+      { "name": "ask.cancel", "effect": "write", "reach": "person" }
+    ]
+  },
+  "watches": { "emits": ["thread.questions", "ask.answered-many"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

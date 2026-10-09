@@ -60,6 +60,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: publishes an artifact)"
  },
  {
+  "tool": "ask.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state and answers of a question card the agent made"
+ },
+ {
+  "tool": "ask.many",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes"
+ },
+ {
   "tool": "brand.draft",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns a web page the caller fetched into a draft brand profile; it keeps nothing and sends nothing"
  },
@@ -714,6 +722,38 @@
  {
   "tool": "presence.remove",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; presence.remove opened to a model or a module in 235da322d (4 Oct 2026); the body decides: a presence proof is required (HUMAN_ONLY); module callers need the tool"
+ },
+ {
+  "tool": "previews.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one preview by title and state, never an address or ticket"
+ },
+ {
+  "tool": "previews.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the previews of a chat or project by title and state, never an address or ticket"
+ },
+ {
+  "tool": "previews.open",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for"
+ },
+ {
+  "tool": "previews.operator",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it"
+ },
+ {
+  "tool": "previews.run-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state of a run the agent started and what the person typed when it was stuck"
+ },
+ {
+  "tool": "previews.signin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page"
+ },
+ {
+  "tool": "previews.signin-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether the person finished a sign-in the agent asked for"
+ },
+ {
+  "tool": "previews.step",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): words for the status line of the agent's own card"
  },
  {
   "tool": "projects.access.pending",

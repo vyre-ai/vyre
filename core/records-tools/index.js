@@ -60,7 +60,7 @@ export default {
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
     // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, installed Kits and the proposals waiting for a yes, Kit roles and views, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
-    const SYSTEM_TYPES = new Set(["goal", "memory_fact", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run", "kit-install", "kit-proposal"]);
+    const SYSTEM_TYPES = new Set(["goal", "memory_fact", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run", "kit-install", "kit-proposal", "preview_doc"]);
     const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-") || n.startsWith("kit-");
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];

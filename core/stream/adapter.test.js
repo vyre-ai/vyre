@@ -199,3 +199,24 @@ test("adapter: pipe() appends frames through the log with the adapter's turn", (
   assert.equal(fs[0].cur, 2);
   assert.equal(fs[0].corr, "2");
 });
+
+test("adapter: a preview of the chat is one block, patched by the same tool id as its state changes, and carries no address", () => {
+  const a = createAdapter();
+  const first = a.event(ev("thread.preview", { id: "0a1b2c3d", title: "Intake form", state: "starting", mode: "session", access: "me", url: "http://127.0.0.1:5100", port: 5100 }));
+  assert.deepEqual(first.map(s => [s.kind, s.data.tool_id, s.data.result.block, s.data.result.state]), [["tool-finished", "preview:0a1b2c3d", "preview", "starting"]]);
+  assert.ok(!JSON.stringify(first).includes("5100"));
+  const next = a.event(ev("thread.preview", { id: "0a1b2c3d", title: "Intake form", state: "live", mode: "supervised", access: "team" }));
+  assert.equal(next[0].data.tool_id, "preview:0a1b2c3d");
+  assert.equal(next[0].data.result.access, "team");
+  assert.deepEqual(a.event(ev("thread.preview", { id: "not-an-id", title: "x" })), []);
+});
+
+test("adapter: a computer's operator card and a sign-in become blocks patched by their own ids, with words only", () => {
+  const a = createAdapter();
+  const op = a.event(ev("thread.operator", { run: "0a1b2c3d4e5f", computer: "kit", title: "Kit's computer", state: "working", line: "Reading the list", steps: [{ line: "Opening the site", state: "done" }], password: "never" }));
+  assert.deepEqual(op.map(s => [s.kind, s.data.tool_id, s.data.result.block, s.data.result.line]), [["tool-finished", "op:0a1b2c3d4e5f", "operator", "Reading the list"]]);
+  assert.ok(!JSON.stringify(op).includes("never"));
+  const si = a.event(ev("thread.signin", { id: "1b2c3d4e5f60", computer: "kit", site: "GoHighLevel", why: "to read the workflow", state: "waiting" }));
+  assert.deepEqual(si.map(s => [s.data.tool_id, s.data.result.block, s.data.result.site]), [["signin:1b2c3d4e5f60", "signin", "GoHighLevel"]]);
+  assert.deepEqual(a.event(ev("thread.operator", { run: "bad" })), []);
+});

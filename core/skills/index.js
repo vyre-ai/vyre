@@ -27,7 +27,6 @@ import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
-import { runOnce } from "../watchers/run.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -37,7 +36,6 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 /** Test seam: the Vyre package root (where harness/skills is) per home. @type {Map<string, { pkg: string }>} */
 export const seams = new Map();
 /** Test seam: the script wall a plugin hook runs behind, per home (production finds one itself, and a hook does not run where there is none). @type {Map<string, { findWall?: () => Promise<any>, wall?: any, netOptions?: any }>} */
-export const hookSeams = new Map();
 
 /** The skill folders under a skills directory, as parsed SKILL.md files. @param {string} dir @param {{ level: string, scope: string | null }} where */
 function readDir(dir, where) {
@@ -279,13 +277,9 @@ export default {
         if (!item) throw err("not_found", `no approved plugin ${String(i.plugin).slice(0, 60)}`);
         const hook = (JSON.parse(String(item.body)).hooks || []).find((/** @type {any} */ h) => h.id === i.hook);
         if (!hook) throw err("not_found", `${i.plugin} has no hook ${String(i.hook).slice(0, 60)}`);
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-hook-"));
-        try {
-          fs.writeFileSync(path.join(dir, "watch.js"), hook.script);
-          const seam = hookSeams.get(home) || {};
-          const r = await runOnce({ dir, needs: [], since: null, hook: i.payload || null, timeoutMs: 8000, fetch: async () => { throw new Error("a hook handles no credentials"); }, hosts: hook.network || [], ...(seam.wall !== undefined ? { wall: seam.wall } : {}), ...(seam.findWall ? { findWall: seam.findWall } : {}), ...(seam.netOptions ? { netOptions: seam.netOptions } : {}) });
-          return { ok: !r.error, ...(r.error ? { error: r.error } : {}), result: r.items[0] || null, logs: r.logs.slice(0, 20), declared: hook.network || [] };
-        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+        const r = await ctx.call("watchers.hook.run", { script: hook.script, payload: i.payload || null, hosts: hook.network || [] });
+        if (r && r.error) throw err(r.error.code || "unavailable", r.error.message || "the hook could not run");
+        return { ...r.data, declared: hook.network || [] };
       } });
     return { async stop() {} };
   },

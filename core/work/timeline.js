@@ -12,11 +12,32 @@ const titleOf = r => { const d = (r && r.data) || {}; for (const k of TITLE_KEYS
 const aboutOf = r => (r && r.data && r.data.about && r.data.about.urn) || null;
 const URN = /^vyre:\/\/[^/]+\/[a-z0-9][a-z0-9-]*\/[0-9a-f-]{36}$/;
 
+  /** The kind a timeline entry is drawn as (its icon), by the record type. @param {string} type @param {any} d */
+const kindOf = (type, d) => (type === "communication" ? (d.kind === "text" ? "text" : d.kind === "call" ? "call" : d.kind === "meeting" ? "meeting" : "email") : type === "task" ? "task" : type === "team-member" ? "person" : type === "chat-record" ? "chat" : type === "file-share" ? "file" : type === "flow-run" ? "flow" : /document|letter|contract|agreement/.test(type) ? "document" : "record");
+const dateOf = (/** @type {any} */ v) => { const n = typeof v === "number" ? v : Date.parse(String(v || "")); return Number.isFinite(n) ? n : 0; };
+const cap = (/** @type {string} */ x) => (x ? x[0].toUpperCase() + x.slice(1) : x);
+/** One plain line for a row, in the partner's words: what happened and to what. @param {string} type @param {any} d the record's data @param {string} title */
+export function lineOf(type, d, title) {
+  if (type === "communication") {
+    const what = d.kind === "text" ? "Text" : d.kind === "call" ? "Call" : d.kind === "meeting" ? "Meeting" : d.kind === "letter" ? "Letter" : "Email";
+    const subj = String(d.subject || d.excerpt || "").trim().slice(0, 120);
+    const who = String((d.direction === "inbound" ? d.from : d.to) || "").split(",")[0].trim();
+    const way = d.direction === "inbound" ? "received" : d.direction === "internal" ? "noted" : "sent";
+    return `${what} ${way}${who ? (d.direction === "inbound" ? ` from ${who}` : ` to ${who}`) : ""}${subj ? `: ${subj}` : ""}`;
+  }
+  if (type === "task") return d.status === "done" ? `Task done: ${title}` : d.status === "skipped" ? `Task skipped: ${title}` : d.status === "stuck" ? `Task stuck: ${title}` : `Task: ${title}`;
+  if (type === "chat-record") return `Chat: ${title}`;
+  if (type === "team-member") return `${title} joined the team${d.role ? ` as ${d.role}` : ""}`;
+  const state = String(d.status || d.state || "").toLowerCase();
+  if (/signed|completed|filed|sent|approved/.test(state)) return `${title} ${state}`;
+  return state && !/^(draft|active|open)$/.test(state) ? `${title} (${state})` : title;
+}
+
 /**
  * @param {{ kernelOf: () => any, hub: () => any, inChat: (chain: any, chat: string) => boolean, me: (chain: any) => string }} o
  */
 export function createTimeline({ kernelOf, hub, inChat, me }) {
-  /** The rows that link to a record, as timeline entries. A chat the caller is not in shows only when it is shared, by its title. @param {any} chain @param {string} urn @param {number} limit */
+  /** Everything that links to a record as one story, newest first: the rows that link to it, the stages it moved through and, for a project, the files shared from its chats. A chat the caller is not in shows only when it is shared, by its title. @param {any} chain @param {string} urn @param {number} limit */
   async function entries(chain, urn, limit) {
     const k = kernelOf();
     const { rows, truncated } = await k.records.linked(chain, urn, { limit });
@@ -27,16 +48,33 @@ export function createTimeline({ kernelOf, hub, inChat, me }) {
       const key = `${x.type}/${r.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      const d = r.data || {};
+      const at = x.type === "communication" ? dateOf(d.at) || Number(r.updated_at || 0) : Number(r.updated_at || 0);
       if (x.type === "chat-record") {
-        const mine = inChat(chain, String(r.data.chat || ""));
-        if (!mine && r.data.shared !== true) continue;
-        out.push({ type: "chat", id: r.id, urn: r.urn, title: titleOf(r), at: Number(r.updated_at || 0), mine, shared: r.data.shared === true, field: x.field, ...(mine ? { chat: String(r.data.chat) } : {}) });
+        const mine = inChat(chain, String(d.chat || ""));
+        if (!mine && d.shared !== true) continue;
+        out.push({ type: "chat", kind: "chat", id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, mine, shared: d.shared === true, field: x.field, ...(mine ? { chat: String(d.chat) } : {}) });
         continue;
       }
-      out.push({ type: x.type, id: r.id, urn: r.urn, title: titleOf(r), at: Number(r.updated_at || 0), field: x.field });
+      out.push({ type: x.type, kind: kindOf(x.type, d), id: r.id, urn: r.urn, title: titleOf(r), line: lineOf(x.type, d, titleOf(r)), at, field: x.field });
     }
+    // the stages a project moved through: a stage's first task is made when the project enters it, so the earliest task of each stage dates the move (the stage engine keeps no history of its own)
+    const entered = new Map();
+    for (const x of rows) if (x.type === "task" && x.record.data && x.record.data.stage) { const st = String(x.record.data.stage), t = Number(x.record.created_at || x.record.updated_at || 0); if (!entered.has(st) || t < entered.get(st)) entered.set(st, t); }
+    for (const [st, t] of entered) out.push({ type: "stage", kind: "stage", id: `stage:${st}`, urn, title: st, line: `Entered the ${st} stage`, at: t });
+    // files shared with the project from its chats: the share records whose path is under the project's folder
+    try {
+      const proj = urn.split("/")[3] === "project" ? await k.records.get(chain, "project", urn.split("/")[4]) : null;
+      const root = proj && proj.data && proj.data.drive_path ? String(proj.data.drive_path) : "";
+      if (root) {
+        for (const r of (await k.records.query(chain, "file-share", { page: { limit: 200 } })).rows || []) {
+          const path = String(r.data.path || "");
+          if (path.startsWith(`${root}/`)) out.push({ type: "file-share", kind: "file", id: r.id, urn: r.urn, title: path.split("/").pop() || path, line: `File shared: ${path.split("/").pop() || path}`, at: Number(r.updated_at || 0) });
+        }
+      }
+    } catch { /* no shares to show */ }
     out.sort((a, b) => b.at - a.at);
-    return { entries: out, truncated: Boolean(truncated) };
+    return { entries: out.slice(0, limit), truncated: Boolean(truncated) };
   }
 
   /** @param {any} chain @param {{ record?: string, project?: string, limit?: number }} i */

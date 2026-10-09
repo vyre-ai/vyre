@@ -49,4 +49,11 @@ test("a record's timeline shows a linked chat only to its people until they shar
   const off = await call(bob, "work.chat.link", { chat: chat.id, record: null });
   assert.equal(off.data && off.data.about, null);
   assert.deepEqual(await titles(bob), [], "unlinked");
+  // the story reads in plain lines, with the kind that picks its icon
+  await d.kernel.gateway.records.create(ownerChain, "communication", { kind: "email", direction: "outbound", at: new Date().toISOString(), subject: "Engagement letter", to: "dana@example.com", record: { urn: client.urn } });
+  await d.kernel.gateway.records.create(ownerChain, "task", { title: "Collect the signed letter", status: "done", record: { urn: client.urn } }).catch(() => null);
+  const story = (await call(ownerChain, "work.timeline", { record: client.urn })).data.entries;
+  const mail = story.find((/** @type {any} */ e) => e.kind === "email");
+  assert.equal(mail && mail.line, "Email sent to dana@example.com: Engagement letter");
+  assert.ok(story.every((/** @type {any} */ e) => typeof e.line === "string" && e.line && typeof e.at === "number"), "every entry has a plain line and a time");
 });

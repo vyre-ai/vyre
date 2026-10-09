@@ -21,6 +21,7 @@
       { "name": "artifacts.delete", "summary": "delete an artifact, with 30 days to undo", "reach": "anyone", "effect": "write" },
       { "name": "artifacts.undelete", "summary": "bring back a deleted artifact", "reach": "anyone", "effect": "write" },
       { "name": "artifacts.export", "summary": "an artifact as one file to download", "reach": "anyone", "effect": "read" },
+      { "name": "artifacts.render-page", "reach": "modules" },
       { "name": "artifacts.share", "summary": "make a public link to an artifact", "reach": "anyone", "effect": "write", "outward": "post" },
       { "name": "artifacts.unshare", "summary": "stop a public link", "reach": "anyone", "effect": "write" },
       { "name": "artifacts.public.status", "summary": "whether public links are on", "reach": "anyone", "effect": "read" },

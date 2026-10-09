@@ -23,7 +23,7 @@ import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, htmlWithBuild } from "./build.js";
-import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
+import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
@@ -1544,14 +1544,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       res.writeHead(301, { location: to, "cache-control": "no-cache" });
       return res.end();
     }
-    return serveApp(res, url.pathname);
+    return serveApp(res, url.pathname, { csp: cspFor(req.headers.host, cfg.appmods?.base) });
   }
   // The pre-app pages live in web/ (plain pages the app signs in through), in both modes; a file web/ does not hold falls through.
   if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
   // config app.root: the app answers every other page address from an export built for the root (npm run export:web:root). An export built for /app/ (or none) cannot serve at /, so that is 404 no_app: no other web app answers.
   if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname)) {
     if (appBase(APP_DIST) !== "") return send(res, 404, { error: { code: "no_app", message: "the app on this machine was built for /app/ or not built; build it for the root with npm run export:web:root" } });
-    return serveApp(res, url.pathname);
+    return serveApp(res, url.pathname, { csp: cspFor(req.headers.host, cfg.appmods?.base) });
   }
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

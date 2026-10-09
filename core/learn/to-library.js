@@ -9,10 +9,10 @@ export function libraryInput(s) {
   return { name: String(s.name), body: String(s.body), ...(project ? { project } : {}) };
 }
 
-/** @param {(tool: string, input: any) => Promise<any>} call @param {{ name: string, body: string, scope?: any }} s @param {(m: string) => void} [log] @returns {Promise<boolean>} whether the draft was made */
+/** @param {(input: any) => Promise<any>} call the draft call (skills.draft.learned), made by the caller with the tool named in plain sight @param {{ name: string, body: string, scope?: any }} s @param {(m: string) => void} [log] @returns {Promise<boolean>} whether the draft was made */
 export async function toLibrary(call, s, log = () => {}) {
   try {
-    const r = await call("skills.draft.learned", libraryInput(s));
+    const r = await call(libraryInput(s));
     if (r && r.error) { log(`skill ${s.name} not drafted into the library: ${r.error.message}`); return false; }
     return true;
   } catch (e) { log(`skill ${s.name} not drafted into the library: ${/** @type {Error} */ (e).message}`); return false; }

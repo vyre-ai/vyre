@@ -38,7 +38,7 @@ export const STUBS = Object.freeze(["hidden"]);
 export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
-export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "text", "field-ref", "field"]);
+export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "preview", "questions", "operator", "signin", "text", "field-ref", "field"]);
 export const HANDOFF_STATES = Object.freeze(["queued", "running", "done", "failed", "cancelled"]);
 export const STATES = Object.freeze(["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"]);
 
@@ -117,6 +117,13 @@ export function validBlock(b) {
     // A cited field: which record and which field, never its value (the server draws it per viewer into a `field` block).
     case "field-ref": return isStr(o.record) && o.record.length > 0 && o.record.length <= 400 && isStr(o.field) && o.field.length > 0 && o.field.length <= 120 && Object.keys(o).every(k => ["block", "record", "field", "label"].includes(k)) && (o.label === undefined || isStr(o.label));
     case "field": return isStr(o.label);
+    // A live preview: its id and title and state. Never an address or a ticket: the card asks for one when the person opens it.
+    case "preview": return isStr(o.id) && /^[0-9a-f]{8}$/.test(o.id) && isStr(o.title) && o.title.length <= 120;
+    // One card of several questions: its id and the questions (each with its own words and choices); a person's answers ride on it once given.
+    case "questions": return isStr(o.id) && /^[0-9a-f]{12}$/.test(o.id) && Array.isArray(o.questions) && o.questions.length >= 1 && o.questions.length <= 6;
+    // A computer's live screen with what it is doing now; and a sign-in waiting for the person. Ids and words only: the screen itself is Glass's, asked for by the card.
+    case "operator": return isStr(o.run) && /^[0-9a-f]{12}$/.test(o.run) && isStr(o.computer) && o.computer.length > 0 && o.computer.length <= 64;
+    case "signin": return isStr(o.id) && /^[0-9a-f]{12}$/.test(o.id) && isStr(o.computer) && isStr(o.site);
     default: return true;
   }
 }

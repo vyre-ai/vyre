@@ -247,6 +247,9 @@ export const PERSON_ONLY = new Map([
   ["spaces.compute.accept", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.compute.allow", "needs the person's Face ID or presence: grants, roles and offers"],
   ["spaces.create", "needs the person's Face ID or presence: makes a Space and its root key"],
+  ["spaces.bundle.enrol", "the owner gives their recovery code: a code is the person's own secret, never a model's"],
+  ["spaces.bundle.export", "writes the Space bundle, which holds every sealed value of the Space under the owner's key: the owner's own act"],
+  ["spaces.bundle.status", "tells whether the Space bundle is set up: the owner's own view"],
   ["spaces.identity.alias", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.identity.alias.add", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.identity.code.replace", "needs the person's Face ID or presence: identity list and recovery changes"],
@@ -332,6 +335,10 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
+  "previews.operator", "previews.step", "previews.run-get", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
+  "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
+
   "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
   "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
