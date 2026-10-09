@@ -22,8 +22,9 @@ fs.chmodSync(FAKE, 0o755);
 
 /** A box (harlow-box) and a Mac (alex-mac) with the Switchboard's fake claude, the Mac holding its request. */
 async function world(t, opts = {}) {
-  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   process.env.VYRE_CLAUDE_BIN = FAKE;
+  process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // the sandbox check reaches the provider over the internet; these cases are about the link, not the sandbox
   delete process.env.FAKE_CLAUDE_LOG;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const s = await pair(t, { macTranscripts: [], boxName: "harlow-box", macHost: "alex-mac", ...opts });
@@ -59,6 +60,42 @@ const got = (s, thread, type) => s.heard.filter(e => e.thread === thread && e.ty
 const macSends = s => s.ran.filter(r => r.tool === "threads.send");
 const inbox = d => /** @type {any[]} */ (d.registry.deps.db.prepare("SELECT * FROM threads_inbox").all());
 const macKey = s => JSON.parse(fs.readFileSync(path.join(s.macRoot, "link.json"), "utf8")).key;
+
+test("federation send: the person on the box types into a free Mac session; the answer and the reply come back labelled with the Mac", async t => {
+  const s = await world(t);
+  const free = terminalSession(s.transcripts, s.macWork);
+  const r = await s.boxCall("threads.send", { thread: free.id, text: "add a phone field", surface: "deck" }, "deck");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.deepEqual(r.data, { sent: true, thread: free.id, source: "mac", machine: "alex-mac" });
+
+  // It ran on the Mac as the box, with the surface marked as the box's, and the Mac holds the lease for it.
+  const [ran] = macSends(s);
+  assert.deepEqual([ran.caller, ran.input.surface, ran.input.thread, ran.input.text], ["link:box", "box:deck", free.id, "add a phone field"]);
+  assert.equal((await s.macCall("threads.get", { thread: free.id })).data.thread.holder, "box:deck");
+
+  // The Mac's events for it arrive on the box's bus with the thread id, labelled with the Mac.
+  const sent = await until(() => got(s, free.id, "thread.sent")[0]);
+  assert.deepEqual([sent.payload.text, sent.payload.surface, sent.payload.source, sent.payload.machine, sent.project], ["add a phone field", "box:deck", "mac", "alex-mac", null]);
+  const reply = await until(() => got(s, free.id, "thread.text").find(e => e.payload.done));
+  assert.deepEqual([reply.payload.text, reply.payload.source, reply.payload.machine], ["echo: add a phone field", "mac", "alex-mac"]);
+  const fin = await until(() => got(s, free.id, "thread.finished")[0]);
+  assert.deepEqual([fin.payload.source, fin.payload.machine, fin.source], ["mac", "alex-mac", "link"]);
+  assert.equal(s.box.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM threads_runs").get().n, 0, "the box keeps no record of the Mac's thread");
+
+  // The follow ends at thread.finished: the Mac's later words in that thread stay on the Mac.
+  await until(async () => (await s.macCall("link.status")).data.following === 0);
+  const before = got(s, free.id, "thread.text").length;
+  assert.ok(!(await s.macCall("threads.notice", { thread: free.id, text: "Northwind's form is saved." }, "module:work")).error);
+  await wait(700);
+  assert.equal(got(s, free.id, "thread.text").length, before, "nothing more is forwarded after the answer finished");
+
+  // machine names the Mac; a name no Mac has reaches none, and the box answers as usual.
+  const again = await s.boxCall("threads.send", { thread: free.id, text: "and a note", machine: "alex-mac" }, "deck");
+  assert.equal(again.data.source, "mac", JSON.stringify(again));
+  const none = await s.boxCall("threads.send", { thread: free.id, text: "hi", machine: "kit-mac" }, "deck");
+  assert.match(none.error.message, /^no thread/);
+  assert.equal(macSends(s).length, 2);
+});
 
 test("federation send: a Mac session busy in a terminal queues the person's words, and the hand-over and the answer reach the box", async t => {
   const s = await world(t);

@@ -1245,7 +1245,9 @@ export class Registry {
         // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
         // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
         const viewFor = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
-        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
+        // the link on a Mac types or answers for the person at its paired box as `link:box` AFTER checking the box (the pinned key's assertion, the pinned channel): the Mac's own chat gate then judges that call as the Mac's owner
+        const boxPerson = m.name === "link" && String(as) === "link:box" && typeof this.deps.linkBoxFacts === "function" ? { kernelFacts: this.deps.linkBoxFacts() } : {};
+        return this.call(tool, input, String(as), { ...boxPerson, ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
