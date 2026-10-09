@@ -119,7 +119,7 @@ async function hubCall(name, args) {
   const d = r.data;
   if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
   if (d && Array.isArray(d.content)) return d;
-  return { content: [{ type: "text", text: typeof d === "string" ? d : JSON.stringify(d, null, 2) }] };
+  return { content: [{ type: "text", text: typeof d === "string" ? d : JSON.stringify(d) }] };
 }
 
 /** @param {any} msg */
@@ -156,7 +156,7 @@ async function handle(msg) {
       const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
         ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
-      return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
+      return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
     }
     default:
       if (id === undefined) return undefined;           // a notification: no reply
