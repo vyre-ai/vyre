@@ -154,6 +154,10 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.deepEqual(seen[1].input, { via: "email", to: "dana@harlow.test", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123", why: "signing request" });
   assert.equal(out.submission, 4411); assert.equal(out.slug, "abc123"); assert.equal(out.sent.held, "gi_1");
   assert.deepEqual(r.emitted, [{ type: "documents.sent", payload: { submission: 4411, template_id: 12 } }], "the timeline hears of it, without the signer's code");
+  seen.length = 0;
+  await r.run("documents.send", { template_id: 12, email: "dana@harlow.test", note: "Dana, here is the engagement letter we discussed." });
+  assert.equal(seen[1].input.body, "Dana, here is the engagement letter we discussed.\n\nYour document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123", "a note goes first, the link after");
+  assert.equal((await code(r.run("documents.send", { template_id: 12, email: "dana@harlow.test", note: "x".repeat(1001) }))).code, "bad_input");
   assert.equal((await code(r.run("documents.send", { template_id: 12, email: " " }))).code, "bad_input");
   const none = rig({ chain: null });
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");

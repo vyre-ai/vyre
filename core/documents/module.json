@@ -109,7 +109,8 @@
           "template_id": "number",
           "email": "string",
           "signer": "string",
-          "subject": "string"
+          "subject": "string",
+          "note": "string"
         },
         "outputs": {
           "submission": "number",

@@ -122,14 +122,17 @@ export function registerDocuments(ctx) {
   const address = (/** @type {any} */ i) => { const e = String(i.email || "").trim(); if (!e) throw refuse("email is the signer's address, such as dana@example.com", "bad_input"); return e; };
 
   ctx.tool("documents.send", {
-    description: "Send a document for signature: { template_id, email, signer?, subject? }. Makes the signing request and emails the signer their link; one yes covers both.",
-    input: obj({ space: str, template_id: { type: "integer" }, email: str, signer: str, subject: str }, ["template_id", "email"]),
+    description: "Send a document for signature: { template_id, email, signer?, subject?, note? }. Makes the signing request and emails the signer their link; one yes.",
+    input: obj({ space: str, template_id: { type: "integer" }, email: str, signer: str, subject: str, note: str }, ["template_id", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await door.open(i || {}, meta);
       const email = address(i);
+      const text = String(i.note || "").trim();
+      if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");
+      const note = text ? `${text}\n\n` : "";
       const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) });
-      const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `Your document is ready to sign: ${asked.url}`, why: "signing request" });
+      const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
       return { ...asked, sent };
     },
