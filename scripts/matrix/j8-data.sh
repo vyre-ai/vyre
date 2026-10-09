@@ -18,7 +18,7 @@ install() { VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tg
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 # The made-up world is one planner note on the built-in store (personal memory needs a person's chain, which `vyre call` on a bare box has not, so it is not part of the world here).
 seed() { vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed.log" 2>&1; }
-has_data() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
+has_data() { for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && return 0; sleep 4; done; return 1; }
 vols() { docker volume ls -q --filter label=run.vyre=1; }
 leftovers() { # what a complete uninstall must not leave
   { docker ps -aq --filter label=com.docker.compose.project=vyre | sed 's/^/container /'

@@ -25,7 +25,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: The candidate
         run: |
-          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+          node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="8.0.0-rc.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
           # The throwaway key is pinned in this runner's checkout and signs the candidate, so its modules boot.
           node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
           VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
