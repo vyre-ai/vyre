@@ -24,6 +24,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 12 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
+| [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
@@ -60,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
-| [`previews`](#previews) | `core/previews` | `box` | 11 | 3 | cli |
+| [`previews`](#previews) | `core/previews` | `box` | 11 | 4 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
@@ -188,6 +189,17 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
 - Needs tools: `threads.get`, `agents.list`
+
+## ask
+
+One card for every question: several clarifications an agent needs, asked together, each with choices and room to type your own, answered once.
+
+- Folder: `core/ask`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [4](tools.md#ask)
+- Emits: [2 events](events.md#ask)
+- Shows on: cli
 
 ## assistant
 
@@ -600,7 +612,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Runs on: `box`
 - Requires: none
 - Tools: [11](tools.md#previews), 1 of them only for other modules
-- Emits: [3 events](events.md#previews)
+- Emits: [4 events](events.md#previews)
 - Shows on: cli
 
 ## projects

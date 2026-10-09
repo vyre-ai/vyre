@@ -32,6 +32,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: publishes an artifact)"
  },
  {
+  "tool": "ask.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state and answers of a question card the agent made"
+ },
+ {
+  "tool": "ask.many",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes"
+ },
+ {
   "tool": "bridges.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one share the person's Space is part of; the bridges module takes the person from the verified caller"
  },
