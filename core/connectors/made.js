@@ -6,15 +6,15 @@
 import { defineConnector, appHost } from "../../records/connectors/format.js";
 import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
 import { newPrefixedId } from "../../lib/id.js";
-import { siteDeclaration, siteConfig, pollsOf } from "../../records/connectors/site.js";
+import { siteDeclaration, siteConfig, pollsOf, siteCardOf } from "../../records/connectors/site.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
 /**
  * @param {{ db: any, call: (tool: string, input: any, opts?: any) => Promise<any>, now?: () => number, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void,
- *   siteCheck?: (id: string) => Promise<{ light: "green" | "red", words: string }> }} deps
+ *   siteCheck?: (id: string) => Promise<{ light: "green" | "red", words: string }>, siteEntries?: (origin: string, names?: string[]) => Promise<{ name: string, kind: string, op: any }[]> }} deps
  */
-export function madeConnections({ db, call, now = Date.now, emit = () => {}, log = () => {}, siteCheck }) {
+export function madeConnections({ db, call, now = Date.now, emit = () => {}, log = () => {}, siteCheck, siteEntries }) {
   const fail = (/** @type {string} */ msg, /** @type {string} */ code) => Object.assign(new Error(msg), { code });
   const data = (/** @type {any} */ r) => { if (r.error) throw fail(r.error.message, r.error.code || "failed"); return r.data; };
   const row = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM connectors_made WHERE id = ?").get(id));
@@ -167,15 +167,37 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       emit("connectors.connection-proposed", { proposal: id, label: made.declaration.label });
       return { proposal: id, card: cardOf(made, clean.credential.item) };
     },
-    proposals: () => /** @type {any[]} */ (db.prepare("SELECT * FROM connectors_proposals ORDER BY created DESC").all()).map(r => {
+    /** An assistant's proposal for a website Connection from what is learned on the site. Nothing is made; the person approves it from their own screen, which is the person-only create. */
+    proposeSite: async (/** @type {any} */ form, /** @type {string} */ by, /** @type {string} */ why) => {
+      if (!siteEntries) throw fail("no site record is wired here", "unavailable");
+      const origin = String(form && form.site || "");
+      const entries = await siteEntries(origin, Array.isArray(form.operations) ? form.operations : undefined);
+      const label = String(form.label || "").trim();
+      if (!label) throw fail("label: a short name", "bad_input");
+      siteDeclaration({ id: form.id ? String(form.id) : label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40), label, origin, entries, ...(Array.isArray(form.polls) ? { polls: form.polls } : {}) });
+      const clean = { site: origin, label, ...(form.id ? { id: String(form.id) } : {}), ...(Array.isArray(form.operations) ? { operations: form.operations.map(String) } : {}), ...(Array.isArray(form.polls) ? { polls: form.polls } : {}) };
+      const id = newPrefixedId("prop");
+      db.prepare("DELETE FROM connectors_proposals WHERE json_extract(form, '$.label') = ? AND proposed_by = ?").run(label, by);
+      db.prepare("INSERT INTO connectors_proposals (id, form, proposed_by, why, created) VALUES (?,?,?,?,?)").run(id, JSON.stringify(clean), by, why ? String(why).slice(0, 300) : null, now());
+      emit("connectors.connection-proposed", { proposal: id, label });
+      return { proposal: id, card: siteCardOf({ label, origin, entries }) };
+    },
+    proposals: async () => Promise.all(/** @type {any[]} */ (db.prepare("SELECT * FROM connectors_proposals ORDER BY created DESC").all()).map(async r => {
       const form = JSON.parse(r.form);
+      if (form.site) {
+        const entries = siteEntries ? await siteEntries(form.site, form.operations).catch(() => []) : [];
+        return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form, card: siteCardOf({ label: form.label, origin: form.site, entries }) };
+      }
       return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form, card: cardOf(fromForm(form), form.credential.item) };
-    }),
+    })),
     /** The person's yes: the same create as the form's, as that person. */
     approve: async (/** @type {string} */ proposal, /** @type {string} */ as) => {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM connectors_proposals WHERE id = ?").get(proposal));
       if (!r) throw fail(`no proposal ${String(proposal).slice(0, 40)}`, "not_found");
-      const out = await save(JSON.parse(r.form), { as, origin: "assistant" });
+      const form = JSON.parse(r.form);
+      const out = form.site
+        ? await saveSite({ ...(form.id ? { id: form.id } : {}), label: form.label, origin: form.site, entries: await /** @type {any} */ (siteEntries)(form.site, form.operations), ...(form.polls ? { polls: form.polls } : {}) }, { as })
+        : await save(form, { as, origin: "assistant" });
       db.prepare("DELETE FROM connectors_proposals WHERE id = ?").run(proposal);
       return out;
     },

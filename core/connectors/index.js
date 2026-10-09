@@ -18,7 +18,7 @@ import { catalogFrom } from "../../lib/connector-presets/index.js";
 import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
-import { createSiteRunner, registerSiteTools } from "./site.js";
+import { createSiteRunner, registerSiteTools, siteEntriesFrom } from "./site.js";
 import { isPerson } from "../../lib/caller.js";
 import { credentialName } from "../../records/connectors/connection.js";
 import { importSpec } from "../../records/connectors/import-spec.js";
@@ -215,7 +215,7 @@ export default {
     // Connections a person made from any app's API (records/connectors/connection.js, made.js): a row, a derived vault credential and a check. Making, changing, rebuilding and deleting one are
     // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
     /** @type {ReturnType<typeof createSiteRunner>} */ let siteRunner;
-    const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), siteCheck: id => siteRunner.check(id) });
+    const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), siteCheck: id => siteRunner.check(id), siteEntries: siteEntriesFrom((tool, input) => ctx.call(tool, input)) });
     siteRunner = createSiteRunner({ call: (tool, input, opts) => ctx.call(tool, input, opts), made, emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x) });
     const yours = (/** @type {any} */ meta, /** @type {string} */ what) => {
       const who = String(meta && meta.caller || "");
@@ -302,7 +302,7 @@ export default {
       effect: "read", callers: PEOPLE,
       description: "The Connections an assistant proposed that the person has not yet approved or declined: { proposals: [{ proposal, by, form, card }] }, the card being the plain words the person is asked.",
       input: obj({}),
-      run: () => ({ proposals: made.proposals() }),
+      run: async () => ({ proposals: await made.proposals() }),
     });
     ctx.tool("connectors.connection.approve", {
       effect: "write", callers: PEOPLE,

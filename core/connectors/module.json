@@ -40,6 +40,7 @@
       "connectors.mention.resolve",
       "connectors.persist",
       { "name": "connectors.site.connect", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.propose", "reach": "anyone", "effect": "write" },
       { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
       { "name": "connectors.site.operations", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.list", "reach": "anyone", "effect": "read" },

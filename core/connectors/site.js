@@ -98,6 +98,22 @@ async function recordOps(call, origin) {
 }
 
 /**
+ * The learned operations of a site as { name, kind, op } entries, all or the named ones; refuses a name the site does not hold and a site that holds none.
+ * @param {(tool: string, input: any) => Promise<any>} call @returns {(origin: string, names?: string[]) => Promise<{ name: string, kind: string, op: any }[]>}
+ */
+export function siteEntriesFrom(call) {
+  return async (origin, names) => {
+    const ops = await recordOps(call, origin);
+    const chosen = Array.isArray(names) && names.length ? ops.filter(o => names.includes(o.name)) : ops;
+    const missing = Array.isArray(names) ? names.filter(n => !ops.some(o => o.name === n)) : [];
+    const fail = (/** @type {string} */ m, /** @type {string} */ c) => Object.assign(new Error(m), { code: c });
+    if (missing.length) throw fail(`no kept operation ${missing.map(m => String(m).slice(0, 40)).join(", ")}; the site has ${ops.map(o => o.name).join(", ") || "none"}`, "not_found");
+    if (!chosen.length) throw fail("nothing has been taught for this site yet: teach an operation with chrome_op learn, then connect it", "not_found");
+    return chosen.map(o => ({ name: o.name, kind: o.kind, op: o.op }));
+  };
+}
+
+/**
  * The tools of a site Connection. Connecting and syncing widen what a Connection reaches, so they are the person's own acts; the list is open to readers; `run` is the vault's alone.
  * @param {any} ctx @param {{ made: any, runner: ReturnType<typeof createSiteRunner>, yours: (meta: any, what: string) => string, fail: (m: string, c?: string) => Error, obj: Function, str: any, people: string[], readers: string[] }} d
  */
@@ -122,6 +138,16 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
       const origin = originOf(input.site);
       const entries = pick(await recordOps(call, origin), input.operations);
       return made.saveSite({ id: input.id, label: String(input.label), origin, entries, ...(Array.isArray(input.polls) ? { polls: input.polls } : {}) }, { as });
+    },
+  });
+
+  ctx.tool("connectors.site.propose", {
+    effect: "write", callers: [...people, "module", "mcp", "harness"],
+    description: "Propose a website Connection from what Vyre has learned on the site: { site, label, id?, operations?, polls?, why? } -> { proposal, card }. Nothing is made and nothing is run; the person sees the card in plain words and approves it from their own screen (connectors.connection.approve).",
+    input: obj({ site: str, label: str, id: str, operations: { type: "array", items: str }, polls: { type: "array" }, why: str }, ["site", "label"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      const origin = originOf(input.site);
+      return made.proposeSite({ ...input, site: origin }, String(meta && meta.caller || "").slice(0, 80), input.why ? String(input.why) : undefined);
     },
   });
 

@@ -76,3 +76,22 @@ export function operationOf(d, r) {
 
 /** Whether a kind leaves the machine (what the Gate holds). @param {string} kind */
 export const isOutwardKind = kind => kindsOutward().includes(kind);
+
+/**
+ * The plain-words card for a proposed website Connection: what it would reach and what each operation may do. Built from the learned operations, never from the proposer's own words.
+ * @param {{ label: string, origin: string, entries: { name: string, kind: string, op: any }[] }} p
+ */
+export function siteCardOf({ label, origin, entries }) {
+  const host = new URL(origin).hostname;
+  const kindWords = /** @type {Record<string, string>} */ ({ read: "reads", draft: "prepares a draft on", change: "changes things on", send: "sends from", spend: "spends money on", delete: "deletes on" });
+  return {
+    title: `Connect ${label}?`,
+    reaches: host,
+    lines: [
+      `It can reach ${host} and nothing else, through your own signed-in browser.`,
+      "Your login stays in the browser: Vyre never holds it.",
+      "Any call that is not a plain read waits for your yes.",
+      ...entries.map(e => `${e.name}(${e.op.params.map((/** @type {any} */ p) => p.name).join(", ")}): ${kindWords[e.kind] || e.kind} ${host}`),
+    ],
+  };
+}

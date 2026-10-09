@@ -140,3 +140,20 @@ test("the Capsule's Websites and Website operations views list the Connections a
   const back = await w.cli("connectors.site.rollback", { row: "linkedin:searchPeople" });
   assert.deepEqual(back.data, { rolledBack: true, name: "searchPeople", version: 3 }, JSON.stringify(back));
 });
+
+test("an assistant proposes a website Connection; nothing is made until the person reads the card and says yes", async t => {
+  const w = await world(t);
+  const prop = await w.model("connectors.site.propose", { site: ORIGIN, label: "LinkedIn", why: "to read profiles for the intake Flow" });
+  assert.ok(prop.data && prop.data.proposal, JSON.stringify(prop));
+  assert.equal(prop.data.card.title, "Connect LinkedIn?");
+  assert.ok(prop.data.card.lines.some((/** @type {string} */ l) => /sendMessage\(recipient, text\): sends from app\.example\.com/.test(l)), prop.data.card.lines.join("\n"));
+  assert.ok(prop.data.card.lines.some((/** @type {string} */ l) => /login stays in the browser/.test(l)));
+  assert.equal((await w.model("connectors.connection.list")).data.connections.length, 0, "proposing made nothing");
+  assert.equal((await w.model("connectors.connection.proposals")).error?.code, "denied");
+  assert.equal((await w.model("connectors.connection.approve", { proposal: prop.data.proposal })).error?.code, "denied");
+  const mine = (await w.cli("connectors.connection.proposals")).data.proposals;
+  assert.equal(mine.length, 1); assert.equal(mine[0].form.site, ORIGIN);
+  assert.deepEqual((await w.cli("connectors.connection.approve", { proposal: prop.data.proposal })).data, { id: "linkedin", credential: "conn-linkedin", operations: 2 });
+  assert.equal((await w.model("connectors.connection.list")).data.connections[0].transport, "site");
+  assert.equal((await w.model("connectors.site.propose", { site: "https://nothing-taught.example.com", label: "Empty" })).error?.code, "not_found");
+});
