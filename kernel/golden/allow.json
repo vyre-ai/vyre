@@ -292,6 +292,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.cancel",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; cancels one run under the caller's chain: the run stops at its next step boundary, and nothing already done is undone; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.card",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; the approval card for a Flow version, a read; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -304,8 +308,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; checks text as a Flow without storing it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.control",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Space's Flow control state: the concurrency limits, what is paused, what is queued and why; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.define",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; writes a Flow as text or stored form, and nothing runs until a person approves it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.describe",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads a Flow in plain words for a person: when it runs, what it does, what it can touch; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.diff",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads what changed between two versions of a Flow; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.get",
@@ -314,6 +330,10 @@
  {
   "tool": "flows.graph",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads a Flow as a graph for the canvas; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.health",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads how a Flow is doing: runs, failures, handled failures and the slowest steps, with no step data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.kit.card",
@@ -366,6 +386,10 @@
  {
   "tool": "flows.start",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.timeline",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads a run as a timeline of its steps, with secrets hidden in what it shows; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "github.accounts",
