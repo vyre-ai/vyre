@@ -97,6 +97,14 @@
    "class": "held",
    "why": "only a proposal for the person to approve: nothing is made and nothing is called until the person says yes from their own screen"
   },
+  "design.css.propose": {
+   "class": "held",
+   "why": "only a proposal for the owner to approve before and after: nothing is drawn until they say yes, and only the Engineer's verified agent claim or a person may file it (a plain session is refused inside the tool)"
+  },
+  "design.propose": {
+   "class": "held",
+   "why": "only a proposal for the owner to approve before and after: nothing changes on any screen until they say yes, and it lists every tool the screen reads and every button runs"
+  },
   "files.fetch": {
    "class": "review",
    "why": "brings a box file to the Mac: files owner to confirm a plain session may not name any path"

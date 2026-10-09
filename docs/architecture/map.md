@@ -215,6 +215,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `bin/` | The `vyre` command's entry file and the git credential helper. |
 | `box/` | The server's Docker image, its compose files and the `vyre` command that runs on the host. |
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
+| `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
 | `examples/` | Example modules to copy from. |
 | `harness/` | The Claude Code plugin: hooks, the MCP server, skills, commands, the status line. |
@@ -227,9 +228,7 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `packaging/` | Packaging for cloud images. |
 | `records/` | The records language, Kits (starter sets of types and Flows) and connector declarations. |
 | `relay/` | The relay that lets a paired device reach a server that has no open port: server, client library, web pages. |
-| `release/` | Release data: the oldest version a release may update from, release notes. |
 | `scripts/` | Installers, the docs build, the test and walk harnesses, evals. |
-| `site/` | The public website at vyre.run. |
 | `spec/` | The deep-link specification for the apps. |
 | `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
 | `test/` | Tests that cross folders: boundaries, docs, installers, releases. |
@@ -343,7 +342,9 @@ What the surfaces draw, and what keeps them informed.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `appearance` | `core/appearance/` | box and local | The theme, the colour scheme and the design tokens as settings. |
+| `brand` | `core/brand/` | box and local | The space's brand profile (logo, colours, fonts, names, letterhead), the default for what the space makes. |
 | `commands` | `core/commands/` | box and local | Every command-line verb the running modules declare, as one list. |
+| `design` | `core/design/` | box and local | The design language's keeper: the block catalogue, the space's own screens, proposals to change them, and guarded custom CSS. |
 | `docs` | `core/docs/` | box and local | Find and read the docs from inside Vyre: docs.find and docs.read, with the agent docs offered only to agents. |
 | `mentions` | `core/mentions/` | box and local | The # tag: one picker over everything a person may mention. |
 | `push` | `core/push/` | box and local | Notifications to a phone or laptop for the moments the person asked about. |
