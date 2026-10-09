@@ -52,9 +52,28 @@ test("C. one grant model: the vault, publish, wink and bridges grants are kernel
   assert.deepEqual(second, [], "a second grant model is still defined here");
 });
 
-test("D. one approval path: gate.held, vault.pending and threads.asks are cards in core/approvals, not stores of their own", { todo: "owner: session-transfer (INVENTORY.md 00c, D, one-yes step C); remove this todo when they are cards" }, () => {
-  const own = [
-    ["core/gate/index.js", /ctx\.tool\("gate\.held"/], ["core/vault/index.js", /tool\("vault\.pending"/], ["core/switchboard/index.js", /tool\("threads\.answer"/],
-  ].filter(([f, re]) => /** @type {RegExp} */ (re).test(fs.readFileSync(path.join(ROOT, /** @type {string} */ (f)), "utf8"))).map(([f]) => f);
-  assert.deepEqual(own, [], "a separate approval store is still defined here");
+test("D. one approval path: what waits on the person is ONE list (approvals.items); the three owner lists are read only by their owners and the named readers below, and the list may only shrink", () => {
+  // Each reader is here with why it reads an owner's list. A new reader of gate.held, vault.pending or threads.asks must use approvals.items (cards carry title, detail, source and the tool that answers),
+  // or be added here with a reason. When session-transfer's #114 or a surface migration removes one, delete its line: the test fails if a listed file no longer reads a list.
+  /** @type {Record<string, string>} */
+  const READERS = {
+    "core/approvals/items.js": "the one list: mirrors the three owners",
+    "core/gate/gate.js": "owner: the Gate", "core/gate/index.js": "owner: the Gate",
+    "core/vault/index.js": "owner: the vault (vault.pending)",
+    "core/switchboard/index.js": "owner: threads.asks, and the held drafts of one thread for a rollover seed",
+    "core/push/index.js": "maps the owners' own events to a push; reads no list",
+    "core/link/allow.js": "the Mac link's allowlist of tool names", "core/link/mac.js": "relays a Mac's asks; session-transfer's #114",
+    "core/cli/commands/gate.js": "detail screen: vyre gate show/approve (the draft in full)", "core/cli/commands/threads.js": "detail screen: vyre threads answer", "core/cli/commands/vault.js": "detail screen: vyre vault pending/approve",
+    "core/cli/commands/needs.js": "vyre needs: still builds its rows from the two owner lists (thread names, question counts); migrates when cards carry them",
+    "core/cli/screen/live.js": "the terminal live screen: same",
+    "core/statusline/index.js": "fallback only, for a vyred without waiting.count",
+    "core/mail/index.js": "mail finds its own held sends",
+    "local/apps/adapters/slack.js": "finds the one queued send for a call (gate.get on the match)",
+    "apps/app/src/state/live.ts": "the app's Now list: the draft and the question in full; migrates with #114", "apps/app/src/state/needs-model.ts": "same",
+    "apps/app/screens/vault/more-source.ts": "the vault screen's own pending list",
+  };
+  const re = /["'](?:gate\.held|vault\.pending|threads\.asks)["']/;
+  const reads = sources(["core", "lib", "kernel", "apps/app/screens", "apps/app/src", "harness", "local/apps"]).filter((f) => code(f).some(({ l }) => re.test(l)));
+  assert.deepEqual(reads.filter((f) => !(f in READERS)), [], "a new reader of an owner's waiting list: read approvals.items instead, or add the file to READERS with the reason");
+  assert.deepEqual(Object.keys(READERS).filter((f) => !reads.includes(f)), [], "listed here but no longer reads an owner list: delete its line from READERS");
 });
