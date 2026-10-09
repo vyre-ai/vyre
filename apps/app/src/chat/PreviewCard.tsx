@@ -8,7 +8,7 @@ import { Image } from "react-native";
 import { openPreview } from "./previewPane";
 import { usePreviewThumb } from "./usePreviewThumb";
 import { tool } from "../real/box";
-import { previewActions, previewWord, shareWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
+import { previewActions, previewWord, shareWord, lifeWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
@@ -53,7 +53,7 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
           <Text strong numberOfLines={2} style={{ flex: 1, minWidth: 0 }}>{b.title}</Text>
           <Chip tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "plain"}>{word}</Chip>
         </View>
-        <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the assistant to start it again." : `${shareWord(b.access)}${b.mode === "session" && b.state === "live" ? " · lasts as long as the server does" : ""}`}</Text>
+        <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the assistant to start it again." : `${shareWord(b.access)}${lifeWord(b.mode, b.state) ? ` · ${lifeWord(b.mode, b.state)}` : ""}`}</Text>
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           {a.open ? <Button kind="primary" size="sm" icon="external" label="Open" disabled={busy} onPress={open} />

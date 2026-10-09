@@ -22,3 +22,10 @@ test("a preview block keeps its id and title and never an address", () => {
   assert.ok(!JSON.stringify(b).includes("5100") && !JSON.stringify(b).includes("http"));
   assert.equal(normalizeBlock({ block: "preview", id: "nope", title: "x" }).block, "text", "a malformed id degrades to text");
 });
+
+test("lifeWord: the agent's own server ends with the chat; a kept one keeps running", async () => {
+  const { lifeWord } = await import("./preview-model.js");
+  assert.equal(lifeWord("session", "live"), "Ends with this chat");
+  assert.equal(lifeWord("supervised", "live"), "Keeps running");
+  assert.equal(lifeWord("session", "stopped"), "");
+});

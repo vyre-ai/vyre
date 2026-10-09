@@ -234,7 +234,7 @@ export default {
         if (wantsCommandRun) await runSupervised(row(id));
         else setState(id, (await answers(i.port)) ? "live" : "starting");
         void byModel;
-        return { id, state: row(id).state, preview: view(row(id)), message: `${title} is a preview now: a card is in the chat, and the person opens it from there. ${Number.isInteger(i.port) ? "It lasts as long as your server does." : ""}`.trim() };
+        return { id, state: row(id).state, preview: view(row(id)), message: `${title} is a preview now: a card is in the chat, and the person opens it from there. ${Number.isInteger(i.port) ? "It ends with this chat; the person can tap Keep it running on the card to have Vyre look after it." : ""}`.trim() };
       },
     });
 
