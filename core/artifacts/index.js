@@ -28,7 +28,7 @@ import { spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import { isPerson, agentName } from "../../lib/caller.js";
 import { isProjectId } from "../../lib/project-id.js";
-import { findSecrets } from "../../lib/secret-text.js";
+import { findSecrets } from "../../lib/credential-shapes.js";
 import { openStore } from "./store.js";
 import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders, titleOf, withMetaCsp } from "./render.js";
 import { MEDIA, MAX_MEDIA, mediaFormatOf, isMediaFormat, parseRange } from "./media.js";

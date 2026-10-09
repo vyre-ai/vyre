@@ -7,17 +7,10 @@
 // quarantined whole (core/link/box.js), for the person to look at, never silently dropped and
 // never partly indexed.
 
-/** Known secret token shapes, checked against the file's raw text. Labels only are ever reported. */
-const PATTERNS = [
-  ["anthropic key", /\bsk-ant-[A-Za-z0-9_-]{20,}/],
-  ["openai key", /\bsk-[A-Za-z0-9]{20,}/],
-  ["github token", /\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/],
-  ["slack token", /\bxox[baprs]-[A-Za-z0-9-]{10,}/],
-  ["aws access key", /\bAKIA[0-9A-Z]{16}\b/],
-  ["google api key", /\bAIza[0-9A-Za-z_-]{35}\b/],
-  ["private key", /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/],
-  ["stripe key", /\bsk_live_[A-Za-z0-9]{20,}/],
-];
+import { finders } from "../../lib/credential-shapes.js";
+
+/** Known secret token shapes (lib/credential-shapes.js), checked against the file's raw text. Labels only are ever reported. */
+const PATTERNS = finders("ingest").map(f => /** @type {[string, RegExp]} */ ([f.name.toLowerCase(), f.re]));
 
 /**
  * Scan text for known secret shapes. Bounded: stops at MAX_FOUND matches and MAX_BYTES read, so

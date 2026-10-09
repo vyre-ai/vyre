@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import * as transcripts from "../transcripts/index.js";
-import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/secret-shapes.js";
+import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/credential-shapes.js";
 import { chunks, encode } from "./embed.js";
 import { scrubText } from "./sealed.js";
 
@@ -46,7 +46,7 @@ function defaultAccountsHome() {
  * @typedef {{ sessions: number, added: number, appended: number, reindexed: number, skipped: number, failed: number, turns: number, ms: number }} Stats
  */
 
-// The redaction rules are shared (lib/secret-shapes.js): this file applies them to every turn it indexes.
+// The redaction rules are shared (lib/credential-shapes.js): this file applies them to every turn it indexes.
 export { REDACTIONS, REDACT_VERSION, redact, redactLinks };
 
 export class Indexer {

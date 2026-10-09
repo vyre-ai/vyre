@@ -4,8 +4,8 @@
 // Pure data and small helpers. Each provider says which item kinds hold its credential, how a
 // person gives it (`field`: typed or pasted; `file`: a dropped JSON file; `oauth`: a sign-in flow
 // another module runs), the fields to ask for, what it can do, and where a person gets the key.
-// Names match detect.js's provider words where they exist. Patterns are loose shape checks, so a
-// key pasted into the wrong box is caught; detect.js still decides what a value looks like.
+// Names match credential-shapes.js's provider words where they exist. Patterns are loose shape checks, so a
+// key pasted into the wrong box is caught; credential-shapes.js still decides what a value looks like.
 // Nothing here ever holds, prints or returns a value.
 
 /** What a connection can do (ADR 0028, decision 9b). Fixed words only. */

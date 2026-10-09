@@ -13,6 +13,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { finders } from "../../lib/credential-shapes.js";
 import { gitAsync, gitRead, gitWithAskpass } from "../../lib/git-safe.js";
 
 const fail = (msg, code = "bad_input") => Object.assign(new Error(msg), { code });
@@ -432,10 +433,8 @@ export async function defaultBranchOf(repoDir) {
 // values by hash (the reviewer's own suggestion), once vault exposes that; this file doesn't
 // invent an API vault hasn't shipped.
 const SECRET_PATTERNS = [
-  { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
-  { name: "GitHub token", re: /\b(?:ghp|gho|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}\b/ },
-  { name: "Slack token", re: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
-  { name: "private key block", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA |ENCRYPTED |)PRIVATE KEY-----/ },
+  // The vendor shapes are lib/credential-shapes.js ("push"), the private key header among them.
+  ...finders("push").map(f => ({ name: f.name === "private key" ? "private key block" : f.name, re: f.re })),
   { name: "a secret-looking assignment", re: /\b(?:SECRET|API_KEY|ACCESS_KEY|ACCESS_TOKEN|PASSWORD|PRIVATE_KEY)\s*[:=]\s*["']?[A-Za-z0-9/+_.-]{16,}["']?/i },
 ];
 

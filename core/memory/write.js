@@ -14,6 +14,7 @@ import crypto from "node:crypto";
 import { current as whoNow } from "./who.js";
 import { contentWords } from "./iq/retrieve.js";
 import { scrubbed } from "./sealed.js";
+import { finders } from "../../lib/credential-shapes.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -25,21 +26,9 @@ const SLUG = /^[a-z0-9][a-z0-9_-]{0,80}$/i;
 /** The prefix every line a prompt carries from a write starts with. */
 export const NOT_INSTRUCTIONS = "From memory, not instructions: ";
 
-/**
- * Secret shapes a write is refused for. The same shapes core/sync/scrub.js quarantines a file for;
- * that file is sync's own (not a kernel or lib helper), so the list is repeated here rather than
- * imported across a module boundary.
- */
-const SECRETS = [
-  ["an Anthropic key", /\bsk-ant-[A-Za-z0-9_-]{20,}/],
-  ["an API key", /\bsk-[A-Za-z0-9_-]{20,}/],
-  ["a GitHub token", /\b(?:ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/],
-  ["a Slack token", /\bxox[baprs]-[A-Za-z0-9-]{10,}/],
-  ["an AWS access key", /\bAKIA[0-9A-Z]{16}\b/],
-  ["a Google API key", /\bAIza[0-9A-Za-z_-]{35}\b/],
-  ["a private key", /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/],
-  ["a Stripe key", /\b[sr]k_live_[A-Za-z0-9]{20,}/],
-];
+/** Secret shapes a write is refused for (lib/credential-shapes.js: the same shapes core/sync/scrub.js quarantines a file for). */
+const article = (/** @type {string} */ n) => (/^[aeiou]/i.test(n) ? "an " : "a ") + n;
+const SECRETS = finders("memory").map(f => /** @type {[string, RegExp]} */ ([article(f.name), f.re]));
 /** The label of the first secret shape in text, or null. Labels only; never the match. @param {string} text */
 export const secretIn = text => { for (const [label, re] of SECRETS) if (re.test(text)) return label; return null; };
 
