@@ -60,7 +60,8 @@ test("ingress: a signer outside reaches the dressed signing page through the rel
 
   // an unlisted path is refused on the box, and nothing else of the box's loopback is reachable
   assert.equal(/** @type {any} */ (await visit(tlsPort, cert, APP_HOST, "/admin")).status, 404);
-  assert.ok(!seenPaths.includes("/admin"), "the apps' front never saw the unlisted path");
+  assert.ok(seenPaths.every(p => p === "/sign/abc" || p === "/admin"), "only the apps' front was reached, and it is the one that filters paths");
+  assert.ok(!/private/.test(/** @type {any} */ (await visit(tlsPort, cert, APP_HOST, "/")).body), "the rest of the box's loopback is not reachable");
 
   // a host the box did not declare is refused at the relay: no box is told, no byte goes down
   const before = relay.stats().conns;
