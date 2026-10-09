@@ -17,7 +17,7 @@ const REAL: Io = { source: vaultImport, pick: pickFile };
 
 export default function ImportPage({ reload, io = REAL }: { reload: () => void; io?: Io }) {
   return (
-    <View className="w-full gap-s4 self-center" style={{ maxWidth: 720 }}>
+    <View className="w-full gap-s4 self-start" style={{ maxWidth: 720 }}>
       <FromApp reload={reload} io={io} />
       <FromProjects reload={reload} io={io} />
     </View>

@@ -28,7 +28,7 @@ const browser = await chromium.launch();
 try {
   for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["light", "dark"]) {
     if (only && only !== `${w}:${theme}`) continue;
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, deviceScaleFactor: 1.5 });
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, deviceScaleFactor: w > 600 ? 1 : 1.5 });
     const page = await ctx.newPage(); page.setDefaultTimeout(150000);
     const errors = [];
     page.on("pageerror", e => errors.push(String(e)));
@@ -48,7 +48,7 @@ try {
     await page.getByRole("button", { name: /^Move \d+ keys/ }).click(); await shot("projects-2-done");
     await page.goto(base + "?part=chat", { waitUntil: "networkidle" }); await shot("chat-tags");
     // the real chat screen on the sample world, with a message whose key was secured
-    await page.goto(base.replace("shots-vault", "chat-demo") + "?at=4200&hold=1", { waitUntil: "networkidle" });
+    await page.goto(base.replace("shots-vault", "chat-demo") + "?at=90000", { waitUntil: "networkidle" });
     await page.waitForTimeout(1200);
     await page.evaluate(() => /** @type {any} */ (window).__chat.send("Deploy the intake site with vault://anthropic-key and tell me when it is live."));
     await page.waitForTimeout(800);

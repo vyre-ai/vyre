@@ -24,7 +24,7 @@ export const SOURCES: Source[] = [
   { id: "1password", mark: "1P", name: "1Password", how: "File, then Export, then choose 1PUX or CSV.", accept: ".1pux,.csv,.zip" },
   { id: "bitwarden", mark: "Bw", name: "Bitwarden", how: "Tools, then Export vault. Choose .json or .csv, not the encrypted file.", accept: ".json,.csv" },
   { id: "lastpass", mark: "LP", name: "LastPass", how: "Advanced Options, then Export. It saves a .csv.", accept: CSV },
-  { id: "dashlane", mark: "Dl", name: "Dashlane", how: "File, then Export, then Credentials. Choose CSV or the zip.", accept: ".csv,.zip,.dash" },
+  { id: "dashlane", mark: "Da", name: "Dashlane", how: "File, then Export, then Credentials. Choose CSV or the zip.", accept: ".csv,.zip,.dash" },
   { id: "keeper", mark: "K", name: "Keeper", how: "Settings, then Export. Choose CSV or JSON.", accept: ".csv,.json" },
   { id: "nordpass", mark: "N", name: "NordPass", how: "Settings, then Export items. It saves a .csv.", accept: CSV },
   { id: "proton", mark: "Pr", name: "Proton Pass", how: "Settings, then Export. Choose zip or CSV, and leave PGP encryption off.", accept: ".zip,.csv,.json" },
