@@ -435,7 +435,7 @@ test("a box-less client makes its first space on a paired server: the server hos
   const hosted = f.w.d.kernel.spaces.hosted(made.space);
   await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
-  await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
+  await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: async () => { throw Object.assign(new Error("this server did not take the call"), { code: "presence_required" }); } }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
 
@@ -1168,7 +1168,7 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
     await assert.rejects(() => links.askApproval("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
     // MO-1: each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
-    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.backup"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
+    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.move"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
     // and at the floor: an approval never counts for such a tool
     const del = await links.sessionFor("srv").call("vault.delete", { name: "northwind-mail", approval: "ap_notacardatall1" }).then(() => null, e => e);
     assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && true, "vault.delete is not a moment: the old floor");

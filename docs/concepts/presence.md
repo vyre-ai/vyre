@@ -10,7 +10,7 @@ status: stable
 
 Some actions are yours alone. Claude Code runs as your Unix user, so anything it runs can reach vyred's socket and claim to be the CLI. A caller label proves nothing, so Vyre asks two questions in one place (`lib/one-yes.js`): is this call **you** (a verified person surface, never a model, an agent, a module or a guest), and for three moments, is there a fresh **yes** from one of your real devices.
 
-## The three moments
+## Which tools need it
 
 A yes is asked for exactly these, and for nothing else:
 
@@ -20,7 +20,7 @@ A yes is asked for exactly these, and for nothing else:
 
 Every other tool that used to ask for a proof (about ninety of them) now needs only that the call is you: a signed-in person session or one of your own surfaces. No proof, no header. Your own actions on your own screens, such as answering Claude's questions, ask nothing (`PERSON_ONLY`).
 
-## What a refusal says
+## What a presence tool does
 
 A moment tool called without a yes answers 403:
 
@@ -32,12 +32,12 @@ A moment tool called without a yes answers 403:
 
 `request` is exactly what must be approved: the tool and the plain fields of its input (a call with a long or nested input, such as an import, is bound by a digest of the whole input, so one yes covers exactly that call). `sign` is the bytes a device key signs for a direct yes.
 
-## How you give the yes
+## How each surface proves it
 
 | Form | Where | What happens |
 |---|---|---|
 | A card | every client | `approvals.ask { moment, request }` makes a card; your phone shows it and signs it; the client calls again with `x-vyre-approval: <id>`. A card is single use and bound to the exact call and the asking device. |
-| Touch ID or a terminal code | the Mac or a computer of your own | `approvals.local-yes { id }` shows the system dialog (or writes a code to your login terminal that you type back). The CLI, the Capsule and the Deck do this first. A server with no screen of its own leaves the card for your phone. |
+| Touch ID or a terminal code | the Mac or a computer of your own | `approvals.local-yes { id }` shows the system dialog (or writes a code to your login terminal that you type back). The CLI, the Capsule and the Vyre app do this first. A server with no screen of its own leaves the card for your phone. |
 | A signed yes | a device holding a key enrolled with the sealing process | the device signs `sign` and sends it as `x-vyre-yes`. Single use. A software key counts only on a development build. |
 
 A yes for `vault.reveal`, `vault.copy` or `vault.totp` may ask to be **reused for five minutes** by that device. During the window the same device calls those three tools with no proof; nothing else is covered, no agent ever is, and a restart ends it. There are no 30-minute sessions and no terminal window any more.

@@ -169,23 +169,6 @@ export default {
         return { id, line, group };
       },
     });
-    ctx.tool("approvals.admit", {
-      internal: true,
-      description: "The registry's own: a 0.3.0 client's old presence header was verified at the edge; admit it as a card already approved, bound to this exact call and device, so the call goes through yes() like every other. Deleted in 0.3.2.",
-      input: obj({ moment: { type: "string" }, op: { type: "string" }, fields: { type: "object" }, device: { type: "string" } }, ["moment", "op", "fields", "device"]),
-      callers: ["module"],
-      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry admits a card", "denied");
-        sweep();
-        const moment = String(input.moment);
-        const request = cardRequest(moment, { op: input.op, fields: input.fields });
-        if (!request) throw refuse("that request does not fit this kind of card", "bad_input");
-        const sg = signOf(moment, request), space = String((ctx.kernel && ctx.kernel.space) || "");
-        const id = `ap_${newId()}`;
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash: payloadHash(sg.op, space, sg.fields), from: String(input.device), device: String(input.device), at: now(), state: "approved", verified: true, moment, request, line: "" });
-        return { id };
-      },
-    });
     ctx.tool("approvals.local-yes", {
       description: "Give the yes for a card you asked for yourself, here: Touch ID on a Mac, or the code Vyre writes to your own terminal. { id } starts it and answers { answered: \"approved\" }, or { need: \"code\", challenge } when a code was written to `tty` (give it back as { id, challenge, code }). Only the surface that asked can confirm its own card, and only on this computer; a server with no screen of its own asks your phone instead.",
       input: obj({ id: { type: "string" }, tty: { type: "string" }, challenge: { type: "string" }, code: { type: "string" } }, ["id"]),

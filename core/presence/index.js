@@ -204,7 +204,7 @@ export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code"
  * when no vault password comes with it (Touch ID): the password is the proof, so a Mac with no
  * Touch ID reader is asked once, not for the Mac login and then the vault password.
  */
-export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
+export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock", "vault.delete"]);
 
 export { isYou, yes, configureYes, yesReason, signOf, momentOf, plainFieldsOf, opFitsMoment, lineOfOp, MOMENT_OPS, MOMENTS, YES_REASONS } from "../../lib/one-yes.js";
 export const MIGRATIONS = [`

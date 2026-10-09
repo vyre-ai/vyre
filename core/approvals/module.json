@@ -27,10 +27,6 @@
         "reach": "modules"
       },
       {
-        "name": "approvals.admit", "effect": "write",
-        "reach": "modules"
-      },
-      {
         "name": "approvals.local-yes", "effect": "write",
         "reach": "person"
       },

@@ -244,7 +244,7 @@ export default {
         if (r && String(r.vault).startsWith("shared:") && slash > 0) return vault.shared.deleteItem({ vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         return vault.remove(input, caller);
       },
-      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
+      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`, { when: ({ name }) => { const r = vault.row(name); return Boolean(r && r.vault !== "personal"); } }));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },

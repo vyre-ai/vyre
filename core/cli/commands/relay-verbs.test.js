@@ -147,16 +147,18 @@ test("relay cli verbs: with the real verifier and no terminal, a change is refus
   // On a Mac a terminal could offer Touch ID, which a test must never raise: Linux only.
   if (process.platform !== "linux") return t.skip("the refusal is checked on Linux, where the child has no terminal");
   const { root } = await world(t, { presence: null });
-  for (const args of [["relay", "on"], ["relay", "off"], ["relay", "unpin"]]) {
+  // relay on and unpin add a route or change what reaches this server: they take your yes. relay off takes access away and asks nothing of the person.
+  for (const args of [["relay", "on"], ["relay", "unpin"]]) {
     const r = await run(root, args);
     assert.equal(r.code, 3, `${args.join(" ")}: ${r.out}`);
     assert.match(r.out, /terminal/);
     assert.match(r.out, /next: run it in your own terminal/);
   }
-  const j = await run(root, ["relay", "off", "--json"]);
+  const j = await run(root, ["relay", "unpin", "--json"]);
   assert.equal(j.code, 3);
   assert.equal(JSON.parse(j.stdout).error.code, "no_terminal");
-  assert.equal(JSON.parse((await run(root, ["relay", "status", "--json"])).stdout).enabled, false, "nothing changed");
+  assert.equal((await run(root, ["relay", "off"])).code, 0, "turning the relay off asks no yes");
+  assert.equal(JSON.parse((await run(root, ["relay", "status", "--json"])).stdout).enabled, false, "nothing was turned on");
 });
 
 test("relay cli verbs: vyre commands lists every verb run() handles", async t => {

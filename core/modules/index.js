@@ -28,7 +28,7 @@ import { isPerson, deviceIdOf, yesDeviceOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
-import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS } from "../../lib/one-yes.js";
+import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
@@ -1819,11 +1819,8 @@ export class Registry {
     if (proof && proof.method !== "yes" && presence && dev) {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods, moment } };
-      const adm = this.tools.get("approvals.admit");
-      if (!adm) return refuse(`${tool} could not take that proof: this server has no approvals queue`);
       if (!this.legacySaid.has(v.method)) { this.legacySaid.add(v.method); this.deps.log?.(`presence: a client sent the old x-vyre-presence header (${v.method}); it is turned into a yes at the edge and will stop working in 0.3.2`); }
-      let id;
-      try { id = (await adm.run({ moment, op: tool, fields: plain, device: dev }, { caller: "module:registry" })).id; } catch (e) { return refuse(String(/** @type {Error} */ (e).message || e)); }
+      const id = admitCard({ moment, op: tool, fields: plain, device: dev });
       const r = await yes(moment, { op: tool, fields: plain, device: dev }, { card: id });
       if (r.ok) return { presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }
