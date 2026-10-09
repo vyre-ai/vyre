@@ -80,6 +80,7 @@ jobs:
         run: |
           git push origin "HEAD:$TARGET"
           echo "Landed ${{ steps.q.outputs.ref }} on $TARGET at $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      # Landed or not, the queue branch goes: the run's summary keeps the reason, and the item name can be queued again.
       - name: Remove the queue branch
-        if: success()
+        if: always()
         run: git push -q origin --delete "${{ steps.q.outputs.ref }}" || true
