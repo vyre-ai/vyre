@@ -22,6 +22,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { PRIVATE_KEY_HEAD } from "../../lib/credential-shapes.js";
 
 export const NOT_AVAILABLE = "not available";
 
@@ -43,7 +44,7 @@ const SECRET = [/^id_rsa/i, /^id_ed25519/i, /^id_ecdsa/i, /\.p12$/i, /\.pfx$/i, 
 const SECRET_FILE = [/\.pem$/i, /\.key$/i];
 
 /** A private key, whatever the file is called: PEM, OpenSSH and PuTTY all say so in their first line. */
-const KEY_HEAD = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|PuTTY-User-Key-File-/;
+const KEY_HEAD = PRIVATE_KEY_HEAD;
 
 /** Does this regular file look like a key, by its name or by its first bytes? */
 export function looksLikeKey(file, names = [path.basename(file)]) {

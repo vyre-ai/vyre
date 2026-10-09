@@ -13,6 +13,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { isPerson, onTailnet } from "../../lib/caller.js";
+import { anthropicKind } from "../../lib/credential-shapes.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
@@ -23,8 +24,6 @@ const PHASES = ["idle", "dns", "certificate", "serving"];
 const ROWS = ["reserve", "dns", "cert"];
 const MAC_DOWNLOAD = "https://vyre.run/download/mac";
 const CLAUDE_INSTALL = "npm install -g @anthropic-ai/claude-code";
-// Prefixes only; a real value never appears in code, logs or events.
-const PREFIX = { subscription: "sk-ant-oat", "api-key": "sk-ant-api" };
 const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-api-key" };
 const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
@@ -409,7 +408,7 @@ export default {
         token ??= key;
         if (kind) {
           const t = String(token || "").trim();
-          if (!t.startsWith(PREFIX[kind]) || t.length < 40 || /\s/.test(t)) {
+          if (anthropicKind(t) !== kind || t.length < 40) {
             throw new Error(kind === "subscription" ? "that does not look like a token from `claude setup-token`" : "that does not look like an Anthropic API key");
           }
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t });
