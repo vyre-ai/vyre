@@ -40,10 +40,13 @@ const rec = ((await d.kernel.gateway.records.query(ownerChain, "chat-record", { 
 const drive = d.kernel.gateway.drive, enc = (s) => new TextEncoder().encode(s);
 const dir = `${rec.data.drive}/chat/${chat.id}`, made = `${rec.data.drive}/made/${chat.id}`;
 await drive.put(ownerChain, `${dir}/Client intake notes.txt`, enc("Rivera, Maria. Widowed 2019. Two children. House in Raleigh, one brokerage account.\nWants a revocable trust and pour-over will.\nBeneficiaries: Ana and Luis, equal shares."));
-await drive.put(ownerChain, `${dir}/Existing trust.pdf`, enc("%PDF stand-in"));
+await drive.put(ownerChain, `${dir}/Existing trust.pdf`, enc("%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 160]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>endobj\n4 0 obj<</Length 60>>stream\nBT /F1 18 Tf 24 90 Td (Rivera Family Trust, 2019) Tj ET\nendstream endobj\n5 0 obj<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>endobj\ntrailer<</Root 1 0 R/Size 6>>\n%%EOF"));
 await drive.put(ownerChain, `${made}/Document checklist.md`, enc("# Missing documents\n- Deed to the Raleigh house\n- Latest brokerage statement\n- Prior will, if any"));
 await drive.put(ownerChain, `${made}/Family tree.png`, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==", "base64"));
 await call("work.file.share", { path: `${made}/Document checklist.md` });
+const proj = await call("work.project.create", { name: "Rivera Family Trust" });
+await call("work.chat.link", { chat: chat.id, record: proj.project, shared: true });
+const project = proj.slug;
 // ---- the app in front of it
 const SOCKET = paths(root).socket;
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
@@ -84,6 +87,7 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   const shot = async (name) => { await pg.waitForTimeout(2500); const text = (await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200); console.log(`${name}-${label}-${scheme}:`, text); await pg.screenshot({ path: path.join(OUT, `${name}-${label}-${scheme}.png`) }); };
   await pg.goto(`${BASE}/u/chats`, { waitUntil: "domcontentloaded" });
   await pg.waitForTimeout(3500);
+  await pg.screenshot({ path: path.join(OUT, `debug-list-${label}-${scheme}.png`) });
   await pg.getByText("Personal", { exact: true }).first().click().catch((e) => console.log("no chat row:", e.message.slice(0, 80)));
   await pg.waitForTimeout(2500);
   await pg.getByLabel("Chat tools").first().click().catch((e) => console.log("no tools button:", e.message));
@@ -95,6 +99,15 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await shot("files-image-preview");
   await pg.getByText("Client intake notes.txt", { exact: false }).first().click().catch(() => {});
   await shot("files-private-preview");
+  // the project's Timeline tab and "Chat about this" on the new-chat screen: one shot each, desktop only
+  if (label === "1440") {
+    await pg.goto(`${BASE}/u/project/${String(proj.project).split("/").pop()}`, { waitUntil: "domcontentloaded" });
+    await pg.waitForTimeout(3000);
+    await pg.getByText("Timeline", { exact: true }).first().click().catch((e) => console.log("no Timeline tab:", e.message.slice(0, 80)));
+    await shot("project-timeline");
+    await pg.goto(`${BASE}/u/chats/new?about=${encodeURIComponent(proj.project)}&name=${encodeURIComponent("Rivera Family Trust")}`, { waitUntil: "domcontentloaded" });
+    await shot("chat-about-this");
+  }
   await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(0);

@@ -3,14 +3,17 @@
 
 /** @typedef {{ path: string, name: string, kind: "received" | "made", size: number, at: number, shared: boolean }} ChatFile */
 
-const IMAGE = /\.(png|jpe?g|gif|webp)$/i, TEXT = /\.(txt|md|markdown|json|csv|log|ya?ml|xml|html?)$/i;
-/** How a file previews: an image, text the panel can read, or neither. @param {string} name @returns {"image" | "text" | "other"} */
-export const previewKind = name => (IMAGE.test(name) ? "image" : TEXT.test(name) ? "text" : "other");
+const IMAGE = /\.(png|jpe?g|gif|webp)$/i, TEXT = /\.(txt|md|markdown|json|csv|log|ya?ml|xml|html?)$/i, PDF = /\.pdf$/i;
+/** How a file previews: an image, a PDF, text the panel can read, or none of them. @param {string} name @returns {"image" | "pdf" | "text" | "other"} */
+export const previewKind = name => (IMAGE.test(name) ? "image" : PDF.test(name) ? "pdf" : TEXT.test(name) ? "text" : "other");
+
+/** The mark a row carries, by what the file is: a picture, a PDF, text, or any other document. @param {string} name @returns {"camera" | "file" | "list" | "clip"} */
+export const fileIcon = name => ({ image: /** @type {const} */ ("camera"), pdf: /** @type {const} */ ("file"), text: /** @type {const} */ ("list"), other: /** @type {const} */ ("clip") })[previewKind(name)];
 
 /** The most a text preview reads. */
 export const TEXT_LIMIT = 262144;
-/** Can the panel show this file here? Text and images up to a size, nothing else. @param {ChatFile} f */
-export const canPreview = f => { const k = previewKind(f.name); return k === "image" ? f.size <= 4 * 1024 * 1024 : k === "text" && f.size <= TEXT_LIMIT; };
+/** Can the panel show this file here? Text, images and PDFs up to a size, nothing else. @param {ChatFile} f */
+export const canPreview = f => { const k = previewKind(f.name); return k === "image" ? f.size <= 4 * 1024 * 1024 : k === "pdf" ? f.size <= 8 * 1024 * 1024 : k === "text" && f.size <= TEXT_LIMIT; };
 
 /** Made here and received, each by name; a file in a folder shows its folder in its name. @param {ChatFile[]} files */
 export function groupFiles(files) {

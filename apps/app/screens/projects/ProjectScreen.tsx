@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, Text, projectHeader, useProject, useTaskActions } from "@vyre/ui";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
-import { LABEL, firstTab, panesAt, tabsFor, type PaneId } from "./panes";
+import { LABEL, WIDE, firstTab, panesAt, tabsFor, type PaneId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
 
 /** /u/project/:id: a record of a type that holds work, as a project: stages made of tasks, the team, linked records, chats and files. */
@@ -42,7 +42,10 @@ export default function ProjectScreen() {
           : (
             <>
               <View className="flex-row"><Button kind="ghost" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f?.row as { urn?: string } | undefined)?.urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /></View>
-              {shown.length === 1 || tab === "team" || tab === "timeline" ? <Segmented label="Project" value={tab} onChange={setTab} options={tabsFor(data)} /> : null}
+              {width >= WIDE
+                // wide: the panes sit side by side as the Overview; the Timeline and the Team are one tap away
+                ? <Segmented label="Project" value={picked ?? "overview"} onChange={(v: string) => setTab(v === "overview" ? null : (v as PaneId))} options={[["overview", "Overview"], ...tabsFor(data).filter(([p]) => p === "timeline" || p === "team")]} />
+                : <Segmented label="Project" value={tab} onChange={setTab} options={tabsFor(data)} />}
               {shown.length > 1 && tab !== "team" && tab !== "timeline" ? (
                 <View className="flex-row items-start gap-s4">{shown.map((p) => (<View key={p} className="min-w-0 flex-1 gap-s3"><Text size="caption" strong tone="label">{LABEL[p]}</Text>{pane(p)}</View>))}</View>
               ) : pane(tab)}

@@ -31,6 +31,7 @@ import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
 import { LinkSuggestion } from "../../screens/chat-tools/LinkSuggestion";
+import { FilesPane } from "../../screens/chat-tools/FilesPane";
 import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
@@ -110,6 +111,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
+  const [filesOpen, setFilesOpen] = useState(false);
   // the person's latest message, for "Link this chat to Northwind?"
   const lastUserText = useMemo(() => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].kind === "user") return String(store.item(rows[i].key)?.text ?? ""); return ""; }, [rows, store]);
   // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
@@ -268,7 +271,7 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
@@ -289,6 +292,8 @@ export function ChatScreen(p: ChatScreenProps) {
 
       {p.belowHeader}
 
+      <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
+      <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
       {findOpen ? (
         <View accessibilityLabel="Find in this conversation" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: phone ? 12 : 20, borderBottomWidth: 1, borderBottomColor: color.edge, backgroundColor: color["surface-2"] }}>
           <Icon name="search" tone="label" />
@@ -408,6 +413,9 @@ export function ChatScreen(p: ChatScreenProps) {
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}
         />
+      </View>
+      </View>
+      {filesOpen && !phone ? <FilesPane chat={p.sessionId} onClose={() => setFilesOpen(false)} /> : null}
       </View>
     </View>
   );

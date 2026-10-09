@@ -9,7 +9,8 @@ import { EFFORTS, contextLines, effortLabel, mentionText, modeLabel, modesOf, ta
 
 export type ChatToolsProps = {
   open: boolean; onClose: () => void;
-  thread: string; /** The chat id, for its Files panel. */ chat?: string | null; project?: string | null; session?: string | null; cwd?: string | null;
+  thread: string; /** The chat id, for its Files panel. */ chat?: string | null;
+  /** On a wide window the Files panel is a pane beside the chat, not a page of this sheet: this opens it. */ onOpenFiles?: () => void; project?: string | null; session?: string | null; cwd?: string | null;
   /** What the chat knows now: its mode (and the modes it offers), thinking and effort. */
   state?: { mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null };
   /** Messages waiting for the turn to end; "Send now" steers with one. */
@@ -22,7 +23,7 @@ export type ChatToolsProps = {
 };
 type Page = "main" | "files" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "mention";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
-const TITLES: Record<Page, string> = { main: "In this chat", files: "Files in this chat", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript", back: "Go back", mention: "Mention someone" };
+const TITLES: Record<Page, string> = { main: "In this chat", files: "Files", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript", back: "Go back", mention: "Mention someone" };
 
 export function ChatToolsSheet(p: ChatToolsProps) {
   const [page, setPage] = useState<Page>("main");
@@ -79,7 +80,7 @@ export function ChatToolsSheet(p: ChatToolsProps) {
             <Divider />
             <Row dense title="Context used" sub="What Vyre can see from this chat" chevron onPress={() => go("context")} />
             <Divider />
-            {p.chat ? <><Row dense title="Files" sub="What this chat made or received, and what is shared with the project" chevron onPress={() => go("files")} /><Divider /></> : null}
+            {p.chat ? <><Row dense title="Files" sub="What this chat made or received, and what is shared with the project" chevron onPress={() => (p.onOpenFiles ? (p.onClose(), p.onOpenFiles()) : go("files"))} /><Divider /></> : null}
             <Row dense title="Transcript and recall" chevron onPress={() => go("transcript")} />
             {p.project && p.session ? <><Divider /><Row dense title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => go("back")} /></> : null}
           </View>

@@ -2,15 +2,18 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { canPreview, groupFiles, previewKind, shareAction, shareLine, sizeLine, summary } from "./files-model.js";
+import { canPreview, fileIcon, groupFiles, previewKind, shareAction, shareLine, sizeLine, summary } from "./files-model.js";
 
 const f = (/** @type {string} */ name, /** @type {any} */ o = {}) => ({ path: `Projects/p/chat/c/${name}`, name, kind: "received", size: 10, at: 0, shared: false, ...o });
 
 test("a file previews by its name, and only small text and images", () => {
-  assert.deepEqual(["a.PNG", "n.md", "d.pdf", "x"].map(previewKind), ["image", "text", "other", "other"]);
+  assert.deepEqual(["a.PNG", "n.md", "d.pdf", "x"].map(previewKind), ["image", "text", "pdf", "other"]);
+  assert.deepEqual(["a.png", "n.md", "d.PDF", "x.docx"].map(fileIcon), ["camera", "list", "file", "clip"], "a mark per kind of file");
   assert.equal(canPreview(f("a.txt")), true);
   assert.equal(canPreview(f("a.txt", { size: 300000 })), false);
-  assert.equal(canPreview(f("a.pdf")), false);
+  assert.equal(canPreview(f("a.pdf")), true, "a PDF renders");
+  assert.equal(canPreview(f("a.pdf", { size: 9 * 1024 * 1024 })), false);
+  assert.equal(canPreview(f("a.docx")), false);
   assert.equal(canPreview(f("a.png", { size: 5 * 1024 * 1024 })), false);
 });
 
