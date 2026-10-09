@@ -26,7 +26,7 @@ test("app helper: the catalog is recorded at install, field by field, from the i
   const f = line.split(" ");
   assert.equal(f.length, 13, line);
   assert.deepEqual(f.slice(0, 1).concat(f.slice(2, 7)), ["documents", "3000", "1536", "1.5", "512", "43001"]);
-  assert.match(f[1], /^documents\/documents:[0-9.]+@sha256:[0-9a-f]{64}$/);
+  assert.match(f[1], /^docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}$/);
   assert.deepEqual(f.slice(7), ["docuseal-bootstrap.rb", "bin/rails+runner", "api_token+login_password", "/", "200+302", "120"]);
   assert.ok(!(fs.existsSync(path.join(r.F, "pulled")) && read(path.join(r.F, "pulled")).includes("documents")), "recording the catalog pulls no app image: a server that never installs an app does not carry one");
   assert.equal(fs.statSync(path.join(r.priv, "app-modules")).mode & 0o777, 0o600);
@@ -125,7 +125,7 @@ test("app helper: app-up makes root's keys and compose, joins and walls BEFORE t
   assert.match(read(path.join(d, "secrets.env")), /^SECRET_KEY_BASE=[0-9a-f]{64}\n$/);
   const compose = read(path.join(d, "compose.yml"));
   assert.ok(!/privileged|ports:|network_mode|cap_add|env_file|unless-stopped/.test(compose));
-  assert.match(compose, /^    image: documents\/documents:[0-9.]+@sha256:[0-9a-f]{64}$/m);
+  assert.match(compose, /^    image: docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}$/m);
   assert.match(compose, /^    restart: "no"$/m, "an app never starts by itself");
   assert.match(compose, /^      SECRET_KEY_BASE: \$\{SECRET_KEY_BASE\}$/m);
   assert.match(compose, /^  net:\n    internal: true$/m);
@@ -145,7 +145,7 @@ test("app helper: app-up makes root's keys and compose, joins and walls BEFORE t
   const calls = r.calls();
   const at = (/** @type {RegExp} */ re) => { const m = re.exec(calls); assert.ok(m, `${re} in ${calls}`); return m.index; };
   assert.match(read(path.join(r.F, "pulled")), /docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}/, "the pinned digest is pulled at app-up");
-  const order = [/pull -q documents/, /compose .* create/, /network connect --alias vyre-daemon vyre-app-documents_net vyre-vyre-1/, /-I OUTPUT 1 .*vyre-app:documents/, /-I INPUT 1 .*-j DROP/, /compose .* up -d/, /--entrypoint node .*fetch\(/, /setpriv --reuid=2000/, /require\("net"\)/, /exec -i --env-file/];
+  const order = [/pull -q docuseal/, /compose .* create/, /network connect --alias vyre-daemon vyre-app-documents_net vyre-vyre-1/, /-I OUTPUT 1 .*vyre-app:documents/, /-I INPUT 1 .*-j DROP/, /compose .* up -d/, /--entrypoint node .*fetch\(/, /setpriv --reuid=2000/, /require\("net"\)/, /exec -i --env-file/];
   const pos = order.map(at);
   assert.deepEqual([...pos].sort((x, y) => x - y), pos, "the order holds");
   // the inbound proof: every port but the hook port was tried and timed out; the hook port was tried too
@@ -248,8 +248,8 @@ test("app helper: the generated compose is linted against the recorded line; eac
     "host networking": ["    init: true\n", "    init: true\n    network_mode: host\n"],
     "an env_file": ["    init: true\n", "    init: true\n    env_file: /etc/shadow\n"],
     "a restart policy": ['    restart: "no"\n', "    restart: unless-stopped\n"],
-    "another image": [/image: documents\/documents:[^\n]*/, "image: evil/evil@sha256:" + "f".repeat(64)],
-    "the image by tag": [/image: documents\/documents:[^\n]*/, "image: docuseal/docuseal:latest"],
+    "another image": [/image: docuseal\/docuseal:[^\n]*/, "image: evil/evil@sha256:" + "f".repeat(64)],
+    "the image by tag": [/image: docuseal\/docuseal:[^\n]*/, "image: docuseal/docuseal:latest"],
     "a bigger memory limit": ["mem_limit: 1536m", "mem_limit: 9000m"],
     "more cpus": ["cpus: 1.5", "cpus: 8"],
     "more pids": ["pids_limit: 512", "pids_limit: 5000"],
@@ -437,7 +437,7 @@ test("app helper: `vyre admin purge-app` is an admin act (a terminal, a typed wo
   assert.deepEqual(r.appFw(), [], "both chains' rules are gone");
   assert.ok(!fs.existsSync(dir), "root's folder for the app is gone");
   assert.match(r.calls(), /compose .* down -v --remove-orphans/);
-  assert.match(r.calls(), /image rm documents\/documents:[0-9.]+@sha256:[0-9a-f]{64}/, "the app's image goes with it");
+  assert.match(r.calls(), /image rm docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}/, "the app's image goes with it");
   assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:documents"));
   assert.match(read(path.join(r.priv, "log")), /admin purge-app documents/);
 });
@@ -464,7 +464,7 @@ test("app helper: purge-app keeps an image another app that still has a folder h
   assert.ok(!/image rm/.test(r.calls()), "documents-two still runs that digest");
   a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents-two"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app documents-two\n"));
   assert.equal(a.code, 0, a.out);
-  assert.match(r.calls(), /image rm documents\/documents/, "the last one takes it");
+  assert.match(r.calls(), /image rm docuseal\/docuseal/, "the last one takes it");
 });
 
 test("app helper: APP_URL is the public address (https://<module>.<name>.vyre.run:<port>) when the box has a name on vyre.run, read through the vyre container but kept only if it has that shape; otherwise the internal one", opts, async t => {

@@ -49,12 +49,12 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
   if (sub === "down") { fs.rmSync(F + "/app-running-" + m, { force: true }); fs.rmSync(F + "/app-net-" + m, { force: true }); process.exit(0); }
   process.exit(0);
 }
-if (a[0] === "pull" && a[a.length - 1].includes("documents")) {
+if (a[0] === "pull" && a[a.length - 1].includes("docuseal/docuseal")) {
   if (has("pull-fails-app")) { process.stderr.write("pull access denied\\n"); process.exit(1); }
   fs.appendFileSync(F + "/pulled", a[a.length - 1] + "\\n"); fs.writeFileSync(F + "/app-image-have", "1"); process.exit(0);
 }
 // the app's image is on this machine only after a pull (or when a test says it already is)
-if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("documents")) process.exit(has("app-image-have") ? 0 : 1);
+if (a[0] === "image" && a[1] === "inspect" && a[a.length - 1].includes("docuseal/docuseal")) process.exit(has("app-image-have") ? 0 : 1);
 if (a[0] === "exec" && a.includes("node") && a.some(x => x.includes("config.json"))) { if (has("public")) out(rd("public")); process.exit(0); }
 if (a[0] === "exec") {
   const ei = a.indexOf("--env-file");
