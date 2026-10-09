@@ -109,3 +109,21 @@ test("sealed chat folders: a project member who is not in the chat opens a share
   assert.ok(!disk.includes("shared.txt") && !disk.includes("for the project"), "no name or content in the project's share index");
   assert.ok([...raw.files.keys()].some(k => k === "Projects/p1/.shared"), "the project's sealed index exists");
 });
+
+test("sealed chat folders: a share taken back while the chat is locked stops opening at once, and the first participant to unlock it does the rotation that was owed", async () => {
+  const { k, D, bob, dan, dir, held, chat, raw, share } = await rig();
+  const ring = held.get(chat.id);
+  await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
+  const sh = await share(bob, `${dir}/shared.txt`);
+  assert.equal(dec(await D.get(dan, `${dir}/shared.txt`)), "for the project");
+  const versions = () => Math.max(...[...raw.files.entries()].filter(([p]) => p.startsWith(`${dir}/`) && !p.endsWith("/.names") && !p.endsWith("names")).map(([, v]) => v.length));
+  assert.equal(versions(), 1);
+  held.delete(chat.id);   // nobody holds the chat's key now
+  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused at once, though the key could not be rotated");
+  assert.equal(versions(), 1, "the rotation is owed, not done");
+  held.set(chat.id, ring);   // a participant unlocks the chat
+  assert.equal(dec(await D.get(bob, `${dir}/shared.txt`)), "for the project", "the participant still reads it");
+  assert.equal(versions(), 2, "and the first access did the rotation");
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" });
+});
