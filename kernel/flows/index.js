@@ -353,6 +353,15 @@ export function createFlows(o) {
     },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
+    // The vault asks, before it lends a Connection to a task's doer, which approved Kit version the task is from and which Connections that version names for it (vault.connections.lend).
+    "kits.credentials": async (chain, i) => {
+      const task = need(i, "task", "the task id");
+      const ent = stagesRef ? stagesRef.entries().find((/** @type {any} */ e) => e.tasks.some((/** @type {any} */ t) => t.id === task)) : null;
+      const t = ent && ent.tasks.find((/** @type {any} */ x) => x.id === task);
+      const hit = ent && t ? await kits.credentialsFor({ type: ent.type, stage: ent.stage, title: t.title }) : null;
+      if (!hit) throw Object.assign(new Error("no approved Kit version names credentials for that task"), { code: "not_found" });
+      return hit;
+    },
   };
 
   return {
