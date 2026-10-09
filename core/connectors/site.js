@@ -87,7 +87,8 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const entry = entries ? (await entries(/** @type {string} */ (decl.base_url), [op.name]).catch(() => [])).find(e => e.name === op.name) : undefined;
     const rungs = entry ? ladder(entry.op) : ["page"];
     /** @type {any} */ let res = null; let rung = "";
-    for (const r of rungs.length ? rungs : ["page"]) {
+    if (!rungs.length) res = { class: "no_browser", reason: "no browser that holds this login is reachable from this machine" };
+    for (const r of rungs) {
       rung = r;
       res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true);
       // a rung that has no browser to offer, or a public fetch the site refused, is not the answer while another rung remains
