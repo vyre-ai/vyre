@@ -25,7 +25,8 @@ import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 import { ALIASES } from "./memory-tools.js";
-import { mcpName, catalogOf, listing, indexOf, find, featuresOf } from "./core-tools.js";
+import { mcpName, catalogOf, listing, indexOf, find, featuresOf, shapeFind } from "./core-tools.js";
+import { createLearner } from "../../lib/tools-learn.js";
 import { createStore, costOf } from "../../lib/results-store.js";
 import * as batch from "../../lib/batch.js";
 
@@ -97,6 +98,12 @@ const FEATURES = featuresOf(process.env.VYRE_MCP_FEATURES);
 const REF_OFF = process.env.VYRE_MCP_REF_TOKENS === "0" || !FEATURES.ref;
 /** Reads whose whole text is the answer (and which already cap themselves): a handle would only add a turn. */
 const WHOLE = new Set(["docs.read", "skills.get", "memory.turn", "work.chat.span", "artifacts.get", "recall.thread", "files.preview", "glass.files.preview"]);
+/** What tools_find has learned on this machine from the calls that followed it (lib/tools-learn.js); it lives in this home, mode 0600, word stems and tool names only. */
+const learner = createLearner({ keep: (stem) => Boolean(index && index.df.has(stem)), file: (() => { try { return path.join(home(), "tools-learned.json"); } catch { return null; } })() });
+/** The last tools_find in this session: its ask and the tools it showed, so the next call that follows one of them teaches the pairing. @type {{ query: string, shown: Set<string>, at: number } | null} */
+let lastFind = null;
+/** @param {string} name the MCP name of a tool just called */
+function followed(name) { if (lastFind && Date.now() - lastFind.at < 10 * 60_000 && lastFind.shown.has(name)) { learner.note(lastFind.query, name); lastFind = null; } }
 const owner = () => { const k = sessionKey(); return `${ident().caller}|${k && k.id ? k.id : ""}`; };
 
 /** What the caller may use, by the name it is called with: { name, tool?, alias?, hub?, description, input }. The listing is the core of it; tools_find and tools_call reach all of it. */
@@ -162,6 +169,7 @@ async function invoke(asked, args, params, timeoutMs) {
   const sent = via ? via.tool : tool;
   const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: timeoutMs ?? (tool === "agents.ask" ? 600_000 : 120_000),
     ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
+  if (!r.error) followed(asked);
   return { r, tool: sent };
 }
 
@@ -239,8 +247,9 @@ async function handle(msg) {
       if (asked === "tools_find") {
         const q = String(params?.arguments?.query || "").trim();
         if (!q) return { content: [{ type: "text", text: "bad_input: query is required" }], isError: true };
-        const found = find(/** @type {any} */ (index), q, Math.min(10, Math.max(1, Number(params?.arguments?.limit) || 3)));
-        const data = { tools: found.map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } })) };
+        const found = find(/** @type {any} */ (index), q, Math.min(10, Math.max(1, Number(params?.arguments?.limit) || 5)), learner.boosts(q));
+        lastFind = { query: q, shown: new Set(found.map((f) => f.name)), at: Date.now() };
+        const data = shapeFind(found, (n) => { const c = catalog.find((x) => x.name === n); return c ? c.input : null; });
         return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
       }
       if (asked === "tools_run" && FEATURES.run) return toolsRun(params?.arguments || {}, params);

@@ -47,7 +47,7 @@ export function catalogOf(offered) {
 export const META_TOOLS = [
   {
     name: "tools_find",
-    description: "Find the Vyre tool for what you are about to do. Describe it in plain words (\"remind me at 6\", \"search my inbox\"): you get the best three, each with a ready example call. Only tools you may use are found. Run one with tools_call.",
+    description: "Find the Vyre tool for what you are about to do. Describe it in plain words (\"remind me at 6\", \"search my inbox\"): you get the best three, each with a ready example call, and two more in brief. Only tools you may use are found. Run one with tools_call.",
     inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string", maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
   },
   {
@@ -96,6 +96,20 @@ export function indexOf(catalog) {
 }
 
 /** The best tools for an intent, named as they are called. @param {ReturnType<typeof indexOf>} index @param {string} query @param {number} [limit] */
-export function find(index, query, limit = 3) {
-  return findTools(index, query, { limit });
+export function find(index, query, limit = 3, boost = undefined) {
+  return findTools(index, query, { limit, boost });
+}
+
+/** A weak answer: nothing found, a low top score, or the top two nearly tied. The numbers come from the held-out sets (about half of such answers are wrong). @param {{ score: number }[]} found */
+export const weak = (found) => !found.length || found[0].score < 25 || (found.length > 1 && found[0].score / found[1].score < 1.1);
+
+/**
+ * What tools_find sends back: the best three in full, with a ready call each, then the next ones compactly (name, a short description, the arguments they need), so a near miss is still on the
+ * page. A weak answer also points at vyre_core, the map of modules, so the model can browse instead of guessing again.
+ * @param {ReturnType<typeof find>} found @param {(name: string) => any} [inputOf] the input schema of a tool, for the compact entries
+ */
+export function shapeFind(found, inputOf = () => null) {
+  const full = found.slice(0, 3).map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } }));
+  const more = found.slice(3).map((f) => { const inp = inputOf(f.name); const need = inp && Array.isArray(inp.required) ? inp.required.slice(0, 6) : []; return { name: f.name, description: f.description.slice(0, 80), ...(need.length ? { needs: need } : {}) }; });
+  return { tools: full, ...(more.length ? { also: more } : {}), ...(weak(found) ? { browse: "Not sure these fit? Call vyre_core for the map of Vyre's modules, then tools_find again with a module's name." } : {}) };
 }
