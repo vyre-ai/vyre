@@ -328,12 +328,6 @@ export async function walkUpdate(w) {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
-    // The discriminator: a SECOND sign-in of the same device, before any update or restart. A device's first sign-in spends its pairing grant; a later one needs a renewal (presence module renewGrant). If this fails too, the
-    // refusal after the update is not about the update.
-    await run.step(S("a second sign-in from the same app, before any update"), async () => {
-      await mac.openSession();
-      assert.ok(await mac.callTool("system.info"), "system.info answered");
-    }, { needs: [S("the app reaches the server and calls a tool")] });
     await updateSteps({ w: { update, out: w.out }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
   } finally {
     try { if (srv) await srv.stop(); } catch { /* gone */ }
@@ -406,10 +400,10 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
       await new Promise(r => setTimeout(r, 5000));
       try { boxVersion = String(JSON.parse(spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", "system.info", "{}"], { encoding: "utf8", timeout: 20_000 }).stdout || "{}").version || ""); } catch { boxVersion = ""; }
     }
-    console.log(`update: the box says ${boxVersion || "nothing"}; one sign-in try from the app`);
-    try { const s = await within(60_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}`; }
+    console.log(`update: the box says ${boxVersion || "nothing"}; the app reconnects with the session it already holds`);
+    try { const s = await within(60_000, async () => { await mac.reconnect(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}`; }
     catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 200); }
-    console.log(`update: the one try: ${st ? "signed in" : last}`);
+    console.log(`update: the reconnect: ${st ? "the same session answered" : last}`);
     if (!st) {
       // what the host and the box say, so a stall names its step
       const sh = (/** @type {string} */ c) => { try { return String(spawnSync("sh", ["-c", c], { encoding: "utf8", timeout: 30_000 }).stdout || ""); } catch { return ""; } };

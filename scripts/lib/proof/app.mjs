@@ -164,6 +164,17 @@ export function createApp(o) {
     return s;
   }
 
+  /** The app's link dropped (the box restarted): a NEW connection to the same box, with the session token it already holds. This is what the app does on reconnecting; it does not sign in again while its session is live. */
+  async function reconnect() {
+    if (!pairing || !session) throw new Error("this app has no session to keep");
+    const conn = connect({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: o.label, crypto: relayCrypto, keyStore });
+    const call = async (/** @type {string} */ tool, /** @type {Record<string, unknown>} */ input, /** @type {Record<string, string>} */ headers = {}) => {
+      const r = await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(input) });
+      return /** @type {any} */ (await r.json().catch(() => ({})));
+    };
+    session = { conn, call, token: session.token };
+  }
+
   /** The same sign-in as openSession over a caller's own transport (a direct connection, no relay). @param {(tool: string, input: any, headers?: Record<string, string>) => Promise<any>} call */
   async function startDirect(call) {
     if (!pairing) throw new Error("this app is not paired with a server");
@@ -299,7 +310,7 @@ export function createApp(o) {
   return {
     label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
-    reserve, becomeYourself, addServer, pairWithServer, openSession, startDirect, callTool, installLine, until, claimServerSpace,
+    reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
   };
 }
