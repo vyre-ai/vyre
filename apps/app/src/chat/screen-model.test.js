@@ -23,3 +23,18 @@ test("operator and sign-in blocks keep words and ids; a malformed one degrades t
   assert.deepEqual(s, { block: "signin", id: "0a1b2c3d4e5f", computer: "kit", site: "GoHighLevel", why: "", state: "waiting" });
   assert.equal(normalizeBlock({ block: "signin", id: "0a1b2c3d4e5f", computer: "kit" }).block, "text");
 });
+
+test("the vault's logins for a site: bound to that host or its parent, exact first, never another kind", async () => {
+  const { loginsFor, stillWord } = await import("./screen-model.js");
+  const items = [
+    { name: "GHL agency", kind: "login", hosts: ["https://app.gohighlevel.test"] },
+    { name: "GHL parent", kind: "login", hosts: ["gohighlevel.test"] },
+    { name: "Other site", kind: "login", hosts: ["https://example.test"] },
+    { name: "An API key", kind: "api-key", hosts: ["https://app.gohighlevel.test"] },
+    { name: "No host", kind: "login" },
+  ];
+  assert.deepEqual(loginsFor(items, "app.gohighlevel.test"), [{ name: "GHL agency", origin: "https://app.gohighlevel.test", exact: true }, { name: "GHL parent", origin: "https://gohighlevel.test", exact: false }]);
+  assert.deepEqual(loginsFor(items, "example.test").map((x) => x.name), ["Other site"]);
+  assert.deepEqual(loginsFor([], "x.test"), []);
+  assert.equal(stillWord("mac"), "The picture stays on your Mac.");
+});
