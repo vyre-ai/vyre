@@ -99,3 +99,16 @@ test("an added item is checked before the box is asked, and sent as vault.put wi
   assert.match(m.putRefusal("presence_required", ""), /Approve on this device/);
   assert.match(m.putRefusal("wrong_passphrase", ""), /not right/);
 });
+
+import { searchItems } from "./real-model.ts";
+test("search: every word must match the name, the note, the site or the kind; names first; across tabs; never a value", { skip: !Boolean(process.features.typescript) }, () => {
+  const row = (name, kind, description = "", hosts = []) => ({ name, kind, description, fields: ["password"], hosts, rotate: false, updated: 1, vault: "personal", grants: [] });
+  const rows = [row("Juniper Drive", "login", "Studio file share", ["drive.juniper.example"]), row("Stripe key", "api-key", "Billing", ["api.stripe.com"]), row("Corporate card", "card"), row("Drive backup", "secret", "Nightly")];
+  assert.deepEqual(searchItems(rows, "drive").map((i) => i.name), ["Drive backup", "Juniper Drive"], "names that match come first");
+  assert.deepEqual(searchItems(rows, "stripe billing").map((i) => i.name), ["Stripe key"]);
+  assert.deepEqual(searchItems(rows, "card").map((i) => i.name), ["Corporate card"], "the kind is searched");
+  assert.deepEqual(searchItems(rows, "api key").map((i) => i.name), ["Stripe key"]);
+  assert.deepEqual(searchItems(rows, "   "), []);
+  assert.deepEqual(searchItems(rows, "zzz"), []);
+  assert.ok(searchItems(rows, "password").length === 0, "a field name is not searched");
+});
