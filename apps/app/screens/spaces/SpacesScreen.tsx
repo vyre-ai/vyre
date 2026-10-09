@@ -1,3 +1,4 @@
+import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 import { useEffect, useState } from "react";
 import { ZoneSection } from "./ZoneSection";
 import { MyCloudCard } from "../settings/MyCloudCard";
@@ -17,7 +18,6 @@ import { writeProgress } from "../../src/state/setup-progress";
 import { EXTENSIONS, ROLES, TEMP_ENDS, endDate as endDateOf, assignable, canManage, ownerMoveLine, roleLabel, type Role } from "./roles.js";
 
 const TEAM = MOCK ? loadTeammates() : [];
-const ROLE_IDS = ["owner", "admin", "manager", "member", "temp"];
 
 type Sheetv = null | { kind: "role"; id: string; role: Role; scope: string; days: string } | { kind: "extend"; id: string } | { kind: "temp"; name: string; scope: string; days: string };
 

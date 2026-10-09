@@ -2,7 +2,7 @@
 // keyfind tests: which values a page shows count as an API key. Table driven: a true positive per
 // provider, and the false positives the design names (a UUID, a git sha, a base64 image, a
 // placeholder). Every fake key is built at run time from a seeded generator, so no key-shaped
-// literal sits in the source and none is a real credential. Parity with core/vault/detect.js is
+// literal sits in the source and none is a real credential. Parity with lib/credential-shapes.js is
 // checked for every shape, so the page and the box agree on what a key is.
 
 import "../../scripts/mac-test-guard.mjs";
@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { fileURLToPath } from "node:url";
-import { classify } from "../../core/vault/detect.js";
+import { classify } from "../../lib/credential-shapes.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ALNUM = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -73,7 +73,7 @@ const POSITIVES = /** @type {Array<[string, string]>} */ ([
   ["supabase", join("sb", "_secret_", fake(30))],
 ]);
 
-test("a provider prefix is enough on its own, with the provider named, and detect.js agrees", () => {
+test("a provider prefix is enough on its own, with the provider named, and credential-shapes.js agrees", () => {
   for (const [provider, value] of POSITIVES) {
     const c = plain(K.candidate({ value }));
     assert.ok(c, `${provider}: not recognised`);
@@ -81,8 +81,8 @@ test("a provider prefix is enough on its own, with the provider named, and detec
     assert.equal(c.generic, false);
     assert.equal(c.value, value);
     const seen = classify("", value);
-    assert.equal(seen.secret, true, `${provider}: detect.js does not call it a secret`);
-    assert.equal(seen.provider, provider, `${provider}: detect.js names another provider`);
+    assert.equal(seen.secret, true, `${provider}: credential-shapes.js does not call it a secret`);
+    assert.equal(seen.provider, provider, `${provider}: credential-shapes.js names another provider`);
   }
   assert.equal(plain(K.shape(join("sk", "_live_", fake(28)))).mode, "live");
   assert.equal(plain(K.shape(join("sk", "_test_", fake(28)))).mode, "test");

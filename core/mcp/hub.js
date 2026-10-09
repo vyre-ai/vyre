@@ -24,6 +24,8 @@
 import crypto from "node:crypto";
 import { McpError } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
+import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
+import { startsLikeCredential } from "../../lib/credential-shapes.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcp_servers (
@@ -186,7 +188,7 @@ export function aggregate(server, tools) {
 export function looksSecret(v) {
   const s = String(v ?? "");
   if (/^(bearer|basic|token)\s+\S{8,}/i.test(s)) return true;
-  if (/^(ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|sk-|sk_live_|sk_test_|rk_live_|pk_live_|xox[abprs]-|xapp-|AKIA|ASIA|AIza|ya29\.|lin_api_|ntn_|secret_|shpat_|SG\.)/.test(s)) return true;
+  if (startsLikeCredential(s)) return true;
   if (/^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./.test(s)) return true;
   if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(s)) return true;
   if (s.length >= 24 && !/[\s/\\]/.test(s) && /[a-z]/.test(s) && /[A-Z0-9]/.test(s) && /[0-9]/.test(s) && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) return true;
@@ -207,9 +209,7 @@ const strList = v => Array.isArray(v) && v.every(x => typeof x === "string" && x
  */
 function httpAllowed(u, extra) {
   const h = u.hostname.replace(/^\[|\]$/g, "");
-  if (["localhost", "127.0.0.1", "::1"].includes(h) || /^127\./.test(h)) return true;
-  const m = /^100\.(\d+)\.\d+\.\d+$/.exec(h);
-  if (m && Number(m[1]) >= 64 && Number(m[1]) <= 127) return true;
+  if (isLoopbackHost(h) || isTailnet(h)) return true;
   return extra.some(x => { try { return new URL(x).origin === u.origin; } catch { return false; } });
 }
 

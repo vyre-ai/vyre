@@ -252,18 +252,25 @@ export class PersonSessions {
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live
    * paired session is replaced, never stacked.
-   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean, strength?: string|null }} o
+   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean, strength?: string|null, keepSession?: boolean }} o
    */
-  grant({ device, keyId, deviceKey, software = false, strength = null }) {
+  grant({ device, keyId, deviceKey, software = false, strength = null, keepSession = false }) {
     if (!device || !keyId || !jwkOk(deviceKey)) throw Object.assign(new Error("a grant needs the device, the confirming key and the device's public key"), { code: "bad_input" });
     const now = this.now();
     this.prune();
-    // Replace, never stack: whatever this device held before ends now.
-    this.endDevice(device);
+    // Replace, never stack: whatever this device held before ends now. A RENEWAL (keepSession) replaces only the pending grant: a live session ends only when the device has answered this grant with its own key (startPaired),
+    // so asking for a challenge never costs the device the session it holds.
+    if (keepSession) this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ?").run(String(device)); else this.endDevice(device);
     const challenge = b64url(24);
     this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries, strength) VALUES (?,?,?,?,?,?,?,0,?)")
       .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL, strength ? String(strength).slice(0, 40) : null);
     return { expires: now + GRANT_TTL, challenge };
+  }
+
+  /** Whether a device has a pairing grant waiting for its answer. @param {string} device */
+  holdsGrant(device) {
+    this.prune();
+    return Boolean(this.db.prepare("SELECT 1 FROM presence_pair_grants WHERE device = ?").get(String(device || "")));
   }
 
   /** Whether a device holds a pairing grant or a live paired session now: a renewal never replaces either. @param {string} device */
@@ -292,7 +299,7 @@ export class PersonSessions {
    * that key. A signed start from an earlier grant for the same device is worth nothing. One refusal
    * for no grant, an expired one, a used one and a wrong key; three wrong attempts delete it.
    * @param {{ device: string, sig: string, label?: string|null, esig?: string|null, enclaveKey?: string|null }} o  `esig`: the same message signed by the identity entry's enclave key (`enclaveKey`, the uncompressed P-256 point the server verified at pairing): when it verifies, this session is `enclave, unattested`; otherwise the grant's strength (software unless the owner's phone approved this sign-in) stands
-   * @returns {{ id: string, token: string, expires: number } | { refused: true, deleted?: boolean }}
+   * @returns {{ id: string, token: string, expires: number, replaced?: number } | { refused: true, deleted?: boolean }}
    */
   startPaired({ device, sig, label = null, esig = null, enclaveKey = null }) {
     const now = this.now();
@@ -323,15 +330,17 @@ export class PersonSessions {
       } catch { /* not an enclave signature: software */ }
     }
     // One use: the row goes and the session exists together, or neither.
-    let s;
+    let s, replaced = 0;
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
+      // A device that proved its own confirmed key REPLACES the session it still held (it lost the token, or its link dropped and it signed in anew): the old token is dead from here, and the caller says so.
+      replaced = this.endSessions(row.device);
       s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: strength === "software", strength });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
-    return { id: s.id, token: s.token, expires: s.expires };
+    return { id: s.id, token: s.token, expires: s.expires, ...(replaced ? { replaced } : {}) };
   }
 
   /**
@@ -363,6 +372,13 @@ export class PersonSessions {
    * @param {string} [device]
    */
   endDevice(device) {
+    const ended = this.endSessions(device);
+    const g = device ? this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ?").run(String(device)) : this.db.prepare("DELETE FROM presence_pair_grants").run();
+    return ended + Number(g.changes);
+  }
+
+  /** End the live paired sessions of a device (every device when none is named); a holder of the old secret is told it was removed. @param {string} [device] @returns {number} */
+  endSessions(device) {
     const now = this.now();
     const rows = /** @type {any[]} */ (device
       ? this.db.prepare("SELECT id, hash FROM presence_people WHERE node = ? AND paired = 1").all(String(device))
@@ -371,8 +387,7 @@ export class PersonSessions {
       this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, NULL, ?)").run(r.id, r.hash, now);
       this.db.prepare("DELETE FROM presence_people WHERE id = ?").run(r.id);
     }
-    const g = device ? this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ?").run(String(device)) : this.db.prepare("DELETE FROM presence_pair_grants").run();
-    return rows.length + Number(g.changes);
+    return rows.length;
   }
 
   /** Every live session, never a secret or a key. */

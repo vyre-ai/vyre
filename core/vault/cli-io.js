@@ -11,8 +11,9 @@
 
 import readline from "node:readline";
 import { Transform } from "node:stream";
+import { CONCEALED } from "../../lib/scrub.js";
 
-export const CONCEALED = "<concealed by vyre>";
+export { CONCEALED };
 
 /**
  * Ask for a secret. On a terminal: raw mode, nothing echoed (not even asterisks), backspace

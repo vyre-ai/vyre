@@ -46,6 +46,7 @@ import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
 import { gate } from "./prove.js";
 import { reprompt } from "./session.js";
+import { httpFetch } from "../../lib/http.js";
 
 const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
@@ -473,7 +474,7 @@ export default {
       : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
         // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to
         // ask, so config is the person's standing answer (ADR 0028).
-        breach: { enabled: opts.breach === "ask", fetch: globalThis.fetch },
+        breach: { enabled: opts.breach === "ask", fetch: httpFetch },
         connections: conns.connections });
 
     return {

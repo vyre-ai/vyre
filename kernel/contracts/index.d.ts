@@ -55,4 +55,7 @@ export const CONTRACTS_VERSION: string;
 
 /** Strongest first. */
 export const ROLE_IDS: readonly RoleId[];
+/** Owner 4 down to temp 0. */
+export const ROLE_RANK: Readonly<Record<RoleId, number>>;
+export const ROLE_LABELS: Readonly<Record<RoleId, string>>;
 export const ROLE_BUNDLES: Readonly<Record<RoleId, RoleBundle>>;

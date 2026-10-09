@@ -28,7 +28,7 @@ async function mk(t, files = undefined, again = null) {
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname, method: r.method, headers: r.headers }); return json(200, { ok: true }); };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "no gate" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport, now: () => 1_800_000_000_000, ...(files ? { files } : {}) } });
+  register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "no gate" } }), said, deps: { lookup: async () => [{ address: "93.184.216.10", family: 4 }], transport, now: () => 1_800_000_000_000, ...(files ? { files } : {}) } });
   const run = (n, i, caller = "module:leases") => tools.get(n).run(i, { caller });
   return { v, net, run, db, home };
 }

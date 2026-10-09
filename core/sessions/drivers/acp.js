@@ -42,6 +42,7 @@ import { execFileSync } from "node:child_process";
 import { spawnSession, killGroup } from "../spawn.js";
 import { redact } from "../../transcripts/sanitize.js";
 import { within } from "../../../lib/within.js";
+import { scrub as scrubText } from "../../../lib/scrub.js";
 
 /** How long a turn waits for memory before it goes without. */
 const MEMORY_MS = 3000;
@@ -245,8 +246,7 @@ function runAcp(entry, known, o) {
   /** Anything that leaves for a person or a transcript (an error, the agent's stderr tail) is stripped of credential shapes and of this run's own secret values. */
   const scrub = t => {
     let out = redact(String(t ?? "")).text;
-    for (const n of secretEnv) { const v = o.env && o.env[n]; if (typeof v === "string" && v.length >= 6) out = out.split(v).join("[secret]"); }
-    return out;
+    return scrubText(out, [...secretEnv].map(n => o.env && o.env[n]), { marker: "[secret]", min: 6 });
   };
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };

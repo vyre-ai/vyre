@@ -35,7 +35,7 @@ async function mk(t, fakes) {
   };
   const tools = new Map(), tool = (n, c, d, i, run) => tools.set(n, { run }), internal = (n, d, i, run) => tools.set(n, { run });
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call: async tool => (tool === "gate.offer" ? { data: {} } : tool === "gate.request" ? { data: { id: "task_1", state: "held", message: "waiting for a person" } } : { error: { code: "no_such_tool", message: "no such tool" } }), said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport, now: () => 1_800_000_000_000 } });
+  register({ vault: v, tool, internal, call: async tool => (tool === "gate.offer" ? { data: {} } : tool === "gate.request" ? { data: { id: "task_1", state: "held", message: "waiting for a person" } } : { error: { code: "no_such_tool", message: "no such tool" } }), said, deps: { lookup: async () => [{ address: "93.184.216.10", family: 4 }], transport, now: () => 1_800_000_000_000 } });
   const run = (n, i, caller = "module:leases") => tools.get(n).run(i, { caller });
   return { v, net, run, db };
 }

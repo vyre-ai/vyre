@@ -18,6 +18,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { build } from "../daemon/build.js";
 import * as R from "../../lib/releases.js";
+import { httpFetch } from "../../lib/http.js";
 
 const DAY = 24 * 3600_000;
 const FIRST_LOOK_MS = 2 * 60_000;
@@ -60,7 +61,7 @@ export default {
     async function look() {
       const current = build().version, ch = channel();
       try {
-        const r = await fetch(R.safeUrl(`${api()}/repos/${repo()}/releases?per_page=100`), { headers: { accept: "application/vnd.github+json", "user-agent": "vyre-update" }, signal: AbortSignal.timeout(30_000) });
+        const r = await httpFetch(R.safeUrl(`${api()}/repos/${repo()}/releases?per_page=100`), { headers: { accept: "application/vnd.github+json", "user-agent": "vyre-update" }, signal: AbortSignal.timeout(30_000) });
         if (!r.ok) throw new Error(`${r.status} from the releases`);
         const list = R.releases(await r.json());
         const top = R.pick(list, ch);

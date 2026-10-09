@@ -20,6 +20,8 @@
 import dgram from "node:dgram";
 import fs from "node:fs";
 import os from "node:os";
+import net from "node:net";
+import { isPublicAddress } from "../../lib/netguard.js";
 
 const SSDP_ADDR = "239.255.255.250", SSDP_PORT = 1900;
 const ST = ["urn:schemas-upnp-org:device:InternetGatewayDevice:1", "urn:schemas-upnp-org:device:InternetGatewayDevice:2"];
@@ -30,20 +32,8 @@ const DESCRIPTION = "Vyre";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const within = (/** @type {Promise<any>} */ p, /** @type {number} */ ms, /** @type {string} */ what) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(Object.assign(new Error(`${what} did not answer in ${ms} ms`), { code: "timeout" })), ms); })]).finally(() => clearTimeout(t)); };
 
-/** A public IPv4: not private, loopback, link-local, carrier-grade (100.64.0.0/10), multicast or reserved. @param {string} ip */
-export function isPublicV4(ip) {
-  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(String(ip));
-  if (!m) return false;
-  const [a, b] = [Number(m[1]), Number(m[2])];
-  if ([a, b, Number(m[3]), Number(m[4])].some(n => n > 255)) return false;
-  if (a === 0 || a === 10 || a === 127 || a >= 224) return false;
-  if (a === 100 && b >= 64 && b <= 127) return false;
-  if (a === 169 && b === 254) return false;
-  if (a === 172 && b >= 16 && b <= 31) return false;
-  if (a === 192 && (b === 168 || (b === 0 && Number(m[3]) === 0))) return false;
-  if (a === 198 && (b === 18 || b === 19)) return false;
-  return true;
-}
+/** A public IPv4 (lib/netguard.js decides: not private, loopback, link-local, carrier-grade, multicast, documentation or reserved). @param {string} ip */
+export function isPublicV4(ip) { return net.isIPv4(String(ip)) && isPublicAddress(String(ip), []); }
 
 /** A global unicast IPv6 (2000::/3), not a temporary privacy address when a stable one exists. @param {string} ip */
 export function isGlobalV6(ip) { return /^[23][0-9a-f]{3}:/i.test(String(ip).split("%")[0]); }

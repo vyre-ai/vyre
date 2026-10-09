@@ -14,6 +14,8 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import { connector, CONSENT_SCOPES } from "./connect.js";
 import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 const ME = "alex@example.com";
 

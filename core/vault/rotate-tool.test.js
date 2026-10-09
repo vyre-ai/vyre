@@ -9,6 +9,8 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import http from "node:http";
 import { recorded } from "./testing.js";
+import { allowLoopbackForTests } from "../../lib/http.js";
+allowLoopbackForTests();   // this file runs its fakes on loopback
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 

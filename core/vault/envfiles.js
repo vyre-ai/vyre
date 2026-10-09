@@ -3,7 +3,7 @@
 //
 // One .env file becomes one `env-set` item, named after where it lives (harlow-intake/.env is
 // `harlow-intake.env`, apps/web/.env.local under it is `harlow-intake-apps-web.env.local`). Only
-// the variables detect.js calls secret go in; plain config (PORT, NODE_ENV, a public URL) stays in
+// the variables credential-shapes.js calls secret go in; plain config (PORT, NODE_ENV, a public URL) stays in
 // the file, because moving it would make the file unreadable for no gain (ADR 0028, decision 1).
 //
 // The rewrite replaces each imported line with `KEY=vault://item/KEY` and leaves every other line,
@@ -16,7 +16,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { gitSync } from "../../lib/git-safe.js";
-import { classify } from "./detect.js";
+import { classify } from "../../lib/credential-shapes.js";
 import { isRef, templateRefs } from "./refs.js";
 
 /**

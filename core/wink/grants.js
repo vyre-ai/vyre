@@ -4,17 +4,13 @@
 // takes over device grants, they move to it; today the kernel's grants store takes chains and other actions (its `create(chain, input)`), not this module's `create(input, issuer)`, so these grants live in one table of this box's store with exactly the contract's fields, so nothing changes when the kernel arrives.
 
 import crypto from "node:crypto";
+import { base32 as libBase32 } from "../../lib/bytes.js";
 
-const B32 = "abcdefghijklmnopqrstuvwxyz234567";
 /** A time-prefixed id: 48 bits of the time in hex, then 12 random bytes. @param {string} prefix @param {number} t */
 export const timeId = (prefix, t) => `${prefix}${t.toString(16).padStart(12, "0")}-${crypto.randomBytes(12).toString("hex")}`;
 const sha = (/** @type {string} */ s) => crypto.createHash("sha256").update(s).digest();
 /** base32 (lowercase, no padding) of bytes, first n characters. @param {Uint8Array} b @param {number} n */
-export function base32(b, n) {
-  let bits = 0, v = 0, out = "";
-  for (const x of b) { v = (v << 8) | x; bits += 8; while (bits >= 5) { out += B32[(v >>> (bits - 5)) & 31]; bits -= 5; } }
-  return out.slice(0, n);
-}
+export const base32 = (b, n) => libBase32(b).slice(0, n);
 /** `spc_` plus the first 12 base32 characters of the SHA-256 of the box's route id: a stand-in for the box key until the kernel mints it. @param {string} routeId */
 export const spaceIdOf = routeId => `spc_${base32(sha(`space\n${routeId}`), 12)}`;
 

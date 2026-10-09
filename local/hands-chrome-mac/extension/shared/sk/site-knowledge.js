@@ -1,4 +1,4 @@
-// VENDORED from work/iq-rungs (lib/site-knowledge.js, lib/secret-shapes.js, core/vault/detect.js) at d5b980cb (work/iq-rungs), import path adjusted. Do not edit here: change it upstream and re-copy (see VERSION).
+// GENERATED from lib/site-knowledge.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
 // @ts-check
 // site-knowledge: what Vyre for Chrome learns about a website, as a record that holds structure and
 // never a value (team/0.2/chrome-learning-plan.md). PURE: no fs, no vyred, no chrome.* API, so the
@@ -7,7 +7,7 @@
 //
 // Two rules hold everything else:
 //   1. Allowlist. Only the fields below survive, with types and length limits; anything else is
-//      dropped. A string that looks like a credential, a pairing code or a key (lib/secret-shapes.js,
+//      dropped. A string that looks like a credential, a pairing code or a key (lib/credential-shapes.js,
 //      the recall redaction and the Vault's named shapes) or carries an email makes the WHOLE patch
 //      refused (fail closed); the refusal names the field and never the text.
 //   0. Who builds a patch: only the extension's own observation code and the shipped-file loader. `nameVisits`
@@ -18,7 +18,7 @@
 //      without an email, phone or long number in it. Otherwise the control is found by identifier or
 //      by structure (role, container, nth). Chrome supplies the evidence; this code decides.
 
-import { redact } from "./secret-shapes.js";
+import { redact } from "./credential-shapes.js";
 
 export const SITE_V = 1;
 

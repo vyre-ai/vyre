@@ -20,7 +20,7 @@ async function fakeIgd(cfg = {}) {
       calls.push({ action, body: b });
       const err = cfg.errors && cfg.errors[action];
       if (err) { const [code, ...rest] = err.split(":"); res.writeHead(500); res.end(`<e><errorCode>${code}</errorCode><errorDescription>${rest.join(":") || "x"}</errorDescription></e>`); return; }
-      res.end(action === "GetExternalIPAddress" ? `<r><NewExternalIPAddress>${cfg.external ?? "203.0.113.9"}</NewExternalIPAddress></r>` : "<r/>");
+      res.end(action === "GetExternalIPAddress" ? `<r><NewExternalIPAddress>${cfg.external ?? "93.184.216.9"}</NewExternalIPAddress></r>` : "<r/>");
     });
   });
   await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
@@ -39,7 +39,7 @@ async function fakePmp(cfg = {}) {
   udp.on("message", (m, rinfo) => {
     seen.push(m);
     const op = m[1];
-    if (op === 0) { const a = Buffer.alloc(12); a.writeUInt8(128, 1); a.writeUInt16BE(0, 2); (cfg.external || [198, 51, 100, 7]).forEach((x, i) => { a[8 + i] = x; }); udp.send(a, rinfo.port, rinfo.address); return; }
+    if (op === 0) { const a = Buffer.alloc(12); a.writeUInt8(128, 1); a.writeUInt16BE(0, 2); (cfg.external || [93, 184, 216, 7]).forEach((x, i) => { a[8 + i] = x; }); udp.send(a, rinfo.port, rinfo.address); return; }
     const a = Buffer.alloc(16); a.writeUInt8(128 + op, 1); a.writeUInt16BE(cfg.refuse ? 2 : 0, 2); a.writeUInt16BE(m.readUInt16BE(4), 8); a.writeUInt16BE(cfg.mapExternal ?? m.readUInt16BE(6), 10); a.writeUInt32BE(m.readUInt32BE(8) || 0, 12);
     udp.send(a, rinfo.port, rinfo.address);
   });
@@ -48,7 +48,7 @@ async function fakePmp(cfg = {}) {
 
 test("addresses: what counts as public, global IPv6, the machine's own addresses, the gateway", () => {
   for (const ip of ["10.0.0.1", "192.168.1.1", "172.16.0.1", "127.0.0.1", "100.64.0.1", "100.127.255.1", "169.254.1.1", "224.0.0.1", "0.0.0.0", "198.18.0.1", "999.1.1.1", "nope"]) assert.equal(isPublicV4(ip), false, ip);
-  for (const ip of ["203.0.113.9", "8.8.8.8", "100.63.0.1", "172.32.0.1"]) assert.equal(isPublicV4(ip), true, ip);
+  for (const ip of ["93.184.216.9", "8.8.8.8", "100.63.0.1", "172.32.0.1"]) assert.equal(isPublicV4(ip), true, ip);
   assert.equal(isGlobalV6("2a01:4f8:1::7"), true);
   assert.equal(isGlobalV6("fe80::1"), false);
   assert.equal(isGlobalV6("fd00::1"), false);
@@ -78,10 +78,10 @@ test("UPnP: the port is mapped, proven from outside, called direct, and deleted 
   const r = createReach({ ports: [{ port: 8443, proto: "tcp" }], interfaces: LAN, ssdp: igd.ssdp, gateway: () => null, timeoutMs: 800, verify: async c => { checks.push(c); return true; } });
   const s = await r.start();
   assert.equal(s.state, "direct");
-  assert.deepEqual(s.public, { v4: "203.0.113.9", v6: null, via: "upnp" });
+  assert.deepEqual(s.public, { v4: "93.184.216.9", v6: null, via: "upnp" });
   assert.equal(s.mapped.length, 1);
   assert.equal(s.mapped[0].verified, true);
-  assert.deepEqual(checks[0], { addr: "203.0.113.9", port: 8443, proto: "tcp", via: "upnp" });
+  assert.deepEqual(checks[0], { addr: "93.184.216.9", port: 8443, proto: "tcp", via: "upnp" });
   const add = igd.calls.find(c => c.action === "AddPortMapping");
   assert.ok(add && /<NewInternalClient>192\.168\.1\.20</.test(add.body) && /<NewProtocol>TCP</.test(add.body) && /<NewLeaseDuration>3600</.test(add.body));
   await r.stop();
@@ -131,7 +131,7 @@ test("NAT-PMP: asks the gateway for the address and the port, proves it, and rel
   const r = createReach({ ports: [{ port: 8443, proto: "tcp" }], interfaces: LAN, ssdp: igd.ssdp, gateway: () => "127.0.0.1", pmpPort: pmp.port, timeoutMs: 400, verify: async () => true });
   const s = await r.start();
   assert.equal(s.state, "direct");
-  assert.deepEqual(s.public, { v4: "198.51.100.7", v6: null, via: "natpmp" });
+  assert.deepEqual(s.public, { v4: "93.184.216.7", v6: null, via: "natpmp" });
   assert.equal(s.mapped[0].via, "natpmp");
   const map = pmp.seen.find(m => m[1] === 2);
   assert.ok(map && map.readUInt16BE(4) === 8443 && map.readUInt32BE(8) === 3600);

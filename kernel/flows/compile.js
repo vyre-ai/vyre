@@ -4,7 +4,7 @@
 // and an effects summary says what the Flow reads, writes, sends and runs, for the approval card and for the simulation.
 
 import { opFor } from "./safe-write.js";
-import { nextCronZoned } from "./zone.js";
+import { parseCron as parseCronShared, nextCron } from "../../lib/cron.js";
 import { triggerScopeNames } from "./triggers.js";
 import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
@@ -283,57 +283,10 @@ export function compileFlow(flow, cat) {
  * }} Effects
  */
 
-// ---- cron (five fields, UTC, no names) ----
+// ---- cron: lib/cron.js, shared with the watchers ----
 
-const RANGES = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
-
-/** @param {string} field @param {number} lo @param {number} hi @returns {Set<number>|null} */
-function cronField(field, lo, hi) {
-  const out = new Set();
-  for (const part of field.split(",")) {
-    const m = /^(\*|\d+(?:-\d+)?)(?:\/(\d+))?$/.exec(part);
-    if (!m) return null;
-    const step = m[2] ? Number(m[2]) : 1;
-    if (step < 1) return null;
-    let a = lo, b = hi;
-    if (m[1] !== "*") { const [x, y] = m[1].split("-").map(Number); a = x; b = y === undefined ? (m[2] ? hi : x) : y; }
-    if (a < lo || b > hi || a > b) return null;
-    for (let v = a; v <= b; v += step) out.add(v);
-  }
-  return out;
-}
-
-/** @param {string} src @returns {{ ok: true, sets: Set<number>[] } | { ok: false, message: string }} */
-export function parseCron(src) {
-  const f = String(src).trim().split(/\s+/);
-  if (f.length !== 5) return { ok: false, message: "cron has five fields: minute hour day month weekday" };
-  const sets = f.map((x, i) => cronField(x, RANGES[i][0], RANGES[i][1]));
-  if (sets.some(s => !s || !s.size)) return { ok: false, message: "a cron field is out of range or malformed" };
-  return { ok: true, sets: /** @type {Set<number>[]} */ (sets) };
-}
-
-/**
- * The first time strictly after `after` (ms) that a cron expression matches, in UTC or, with `tz`, in that IANA zone (the Space's; kernel/flows/zone.js says what a daylight-saving
- * gap or overlap means). Looks at most four years ahead.
- * @param {string} src @param {number} after @param {string} [tz] @returns {number|null}
- */
-export function nextCron(src, after, tz) {
-  const c = parseCron(src);
-  if (!c.ok) return null;
-  const [mi, ho, dom, mo, dow] = c.sets;
-  const domStar = String(src).trim().split(/\s+/)[2] === "*", dowStar = String(src).trim().split(/\s+/)[4] === "*";
-  if (tz && tz !== "UTC") return nextCronZoned(c.sets, domStar, dowStar, after, tz);
-  const d = new Date(Math.floor(after / 60_000) * 60_000 + 60_000);
-  const end = after + 4 * 366 * 86_400_000;
-  while (d.getTime() <= end) {
-    if (!mo.has(d.getUTCMonth() + 1)) { d.setUTCMonth(d.getUTCMonth() + 1, 1); d.setUTCHours(0, 0, 0, 0); continue; }
-    const dayOk = domStar && dowStar ? true : domStar ? dow.has(d.getUTCDay()) : dowStar ? dom.has(d.getUTCDate()) : dom.has(d.getUTCDate()) || dow.has(d.getUTCDay());
-    if (!dayOk) { d.setUTCDate(d.getUTCDate() + 1); d.setUTCHours(0, 0, 0, 0); continue; }
-    if (!ho.has(d.getUTCHours())) { d.setUTCHours(d.getUTCHours() + 1, 0, 0, 0); continue; }
-    if (!mi.has(d.getUTCMinutes())) { d.setUTCMinutes(d.getUTCMinutes() + 1, 0, 0); continue; }
-    return d.getTime();
-  }
-  return null;
-}
+/** @param {string} src @returns {{ ok: true, sets: Set<number>[], domStar: boolean, dowStar: boolean, text: string } | { ok: false, message: string }} */
+export const parseCron = src => parseCronShared(src);
+export { nextCron };
 
 export { canonical };

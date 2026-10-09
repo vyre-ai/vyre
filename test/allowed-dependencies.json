@@ -1,0 +1,153 @@
+{
+ "_note": "Every dependency in every manifest, with the one line that says why no existing one serves. test/dependency-guard.test.js fails on a dependency that is not here; read ALLOWED-NEW.md before adding one.",
+ "manifests": {
+  "package.json": {
+   "@noble/ciphers": "AES-GCM for the one sealing format (lib/databox.js) that runs unchanged on the server, the phone and the browser; node:crypto cannot run on the phone",
+   "@noble/curves": "P-256 and X25519 key agreement in files shared with the phone (lib/keywrap.js, relay/client); node:crypto cannot run on the phone",
+   "@noble/hashes": "sha256, hmac, hkdf in files shared with the phone and browser (databox, keywrap, kernel canonical JSON)",
+   "yaml": "reads a YAML API description for the connector import; nothing else parses YAML (loaded only then, records/connectors/import-spec.js)"
+  },
+  "tools/wrangler/package.json": {
+   "wrangler": "deploys and runs the two Cloudflare Workers (names, relay) from a lockfile; the only Workers tool"
+  },
+  "apps/app/package.json": {
+   "@dnd-kit/core": "drag between board columns on the web build; the phone uses gesture-handler (revisit with a native board)",
+   "@noble/ciphers": "pinned equal to the root: metro cannot see the root node_modules",
+   "@noble/curves": "pinned equal to the root: metro cannot see the root node_modules",
+   "@noble/hashes": "pinned equal to the root: metro cannot see the root node_modules",
+   "@rn-primitives/dialog": "accessible dialog primitive",
+   "@rn-primitives/dropdown-menu": "accessible menu primitive",
+   "@rn-primitives/portal": "portal the dialog and menu need",
+   "@rn-primitives/slot": "asChild composition for the primitives",
+   "@rn-primitives/switch": "accessible switch primitive",
+   "@rn-primitives/tabs": "accessible tabs primitive",
+   "@tanstack/react-table": "headless table logic for the data views",
+   "class-variance-authority": "variant classes for components",
+   "clsx": "conditional class names",
+   "tailwind-merge": "resolves conflicting tailwind classes",
+   "tailwindcss": "the design tokens and classes nativewind compiles",
+   "nativewind": "tailwind classes on React Native and web",
+   "expo": "the app runtime and build",
+   "expo-asset": "expo peer: bundled assets",
+   "expo-camera": "scan a pairing QR on iOS (Android uses modules/vyre-scan)",
+   "expo-clipboard": "copy and paste",
+   "expo-constants": "expo peer: app config",
+   "expo-font": "expo peer: fonts",
+   "expo-haptics": "touch feedback",
+   "expo-linking": "deep links for pairing",
+   "expo-local-authentication": "Face ID and fingerprint for the one yes",
+   "expo-router": "file-based navigation",
+   "expo-secure-store": "keeps keys in the Keychain and Keystore",
+   "expo-splash-screen": "expo peer: launch screen",
+   "expo-status-bar": "status bar",
+   "expo-system-ui": "expo peer: system colours",
+   "expo-web-browser": "the system authentication browser for sign-in",
+   "react": "the UI library the whole app is written in",
+   "react-dom": "UI on the web build",
+   "react-native": "UI on the phone",
+   "react-native-web": "React Native on the web build",
+   "react-native-css-interop": "nativewind peer",
+   "react-native-gesture-handler": "gestures and drag",
+   "react-native-reanimated": "animation",
+   "react-native-safe-area-context": "safe areas",
+   "react-native-screens": "native screens for the router",
+   "react-native-svg": "icons and charts",
+   "react-native-webview": "the terminal and the Wink scan page on the phone (the web build uses an iframe)",
+   "react-native-worklets": "reanimated peer",
+   "zustand": "UI state stores (the data mirror is apps/app/src/store-core)",
+   "@types/react": "type definitions for the TypeScript checks",
+   "babel-preset-expo": "the Babel preset the Expo build needs",
+   "typescript": "the type checker for the app's .ts and .tsx files"
+  },
+  "ci:workflows": {
+   "playwright": "drives the app and the screenshots in CI; installed per run with no lockfile, so it is listed here",
+   "@puppeteer/browsers": "downloads a pinned Chrome for the browser checks (it is a downloader, not a driver)",
+   "sharp": "resizes screenshots for the docs",
+   "@anthropic-ai/claude-code": "the provider CLI the proofs run against",
+   "@openai/codex": "the provider CLI the proofs run against",
+   "@agentclientprotocol/codex-acp": "Codex's ACP adapter for the proofs",
+   "@zed-industries/codex-acp": "the adapter's former name, tried when the new one is missing",
+   "@anthropic-ai/claude-agent-sdk": "the SDK the sessions proof compares against",
+   "@openai/codex-linux-x64": "the platform binary Codex ships separately; the wire proof installs it beside the CLI"
+  },
+  "box/Dockerfile": {
+   "@anthropic-ai/claude-code": "a provider CLI in the box image (pinned by CLAUDE_CODE_VERSION)",
+   "@openai/codex": "a provider CLI in the box image (pinned)",
+   "@agentclientprotocol/codex-acp": "Codex's ACP adapter (pinned)",
+   "image:golang:1.27-bookworm": "builds the Go Wink forwarder (pinned by digest)",
+   "image:node:22-bookworm-slim": "the daemon's runtime (pinned by digest)"
+  },
+  "relay/Dockerfile": {
+   "image:node:22-bookworm-slim": "the relay's runtime (pinned by digest)"
+  },
+  "core/computers/image/Dockerfile": {
+   "image:debian:bookworm-slim": "the computers image base (pinned by digest)"
+  },
+  "wink/forwarder/go.mod": {
+   "tailscale.com": "the userspace WireGuard node library under the built-in network (Wink); the only network library"
+  },
+  "local/capsule/native-win/Cargo.toml": {
+   "url": "parses deep links",
+   "ed25519-dalek": "signs for the Windows capsule; shares test vectors with the JS",
+   "sha2": "hashes; shared vectors",
+   "base64": "encodes bytes in the Windows capsule",
+   "x25519-dalek": "key agreement; shared vectors",
+   "serde_json": "JSON for the Windows app and capsule"
+  },
+  "local/capsule/native-win/app/Cargo.toml": {
+   "tauri-build": "the Tauri build step",
+   "tauri": "the Windows app shell",
+   "tauri-plugin-global-shortcut": "the capsule hotkey",
+   "tauri-plugin-notification": "operating-system notifications for the Windows capsule",
+   "tauri-plugin-opener": "opens links",
+   "tauri-plugin-deep-link": "vyre:// links",
+   "tauri-plugin-single-instance": "one app at a time",
+   "base64": "encodes bytes in the Windows capsule",
+   "rand": "random bytes",
+   "sha2": "hashing, held to the JS by shared test vectors",
+   "windows-sys": "Windows keystore and window calls",
+   "serde": "JSON for the Windows app",
+   "serde_json": "JSON for the Windows app and capsule",
+   "url": "parses deep links in the Windows capsule",
+   "ureq": "the app's few HTTP calls",
+   "vyre-capsule-win": "the shared Windows crate in this repo"
+  },
+  "core/daemon/native-win/Cargo.toml": {
+   "windows": "the Windows service and keystore calls"
+  },
+  "apps/app/modules/vault-android/android/build.gradle": {
+   "androidx.biometric:biometric": "fingerprint prompt for the one yes",
+   "androidx.fragment:fragment-ktx": "hosts the prompt",
+   "androidx.security:security-crypto": "keystore-backed storage",
+   "androidx.autofill:autofill": "fills passwords",
+   "androidx.annotation:annotation": "annotations",
+   "androidx.credentials:credentials": "passkeys"
+  },
+  "modules/vault-android/android/build.gradle": {
+   "androidx.biometric:biometric": "fingerprint prompt for the one yes",
+   "androidx.fragment:fragment-ktx": "hosts the prompt",
+   "androidx.security:security-crypto": "keystore-backed storage",
+   "androidx.autofill:autofill": "fills passwords",
+   "androidx.annotation:annotation": "annotations",
+   "androidx.credentials:credentials": "passkeys"
+  },
+  "apps/app/modules/vyre-notify/android/build.gradle": {
+   "androidx.core:core-ktx": "notification and scan helpers"
+  },
+  "apps/app/modules/vyre-scan/android/build.gradle": {
+   "androidx.camera:camera-core": "scan a QR with CameraX",
+   "androidx.camera:camera-camera2": "scan a QR with CameraX",
+   "androidx.camera:camera-lifecycle": "scan a QR with CameraX",
+   "androidx.camera:camera-view": "scan a QR with CameraX",
+   "com.google.zxing:core": "decodes the QR (CameraX does not)",
+   "androidx.core:core-ktx": "notification and scan helpers"
+  },
+  "apps/app/modules/vyre-signer/android/build.gradle": {
+   "androidx.biometric:biometric": "fingerprint prompt for the one yes"
+  }
+ },
+ "undeclaredImports": {
+  "puppeteer": "drives Chrome inside the pinned puppeteer image for the app-module probe (core/appmods/browser-probe.cjs); Playwright is the test driver, so this is one to retire",
+  "@huggingface/transformers": "the local embedding model recall downloads on first use (core/recall/embed.js, pinned RANGE); optional"
+ }
+}

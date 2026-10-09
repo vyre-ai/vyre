@@ -14,7 +14,7 @@
 // neither ask, nor read the status, nor use a copied secret. A process that is not under a claude but is in the owner's login (their own shell) is the person's own and may use it, as before. A process
 // that left the login (setsid, a daemon) gets no login key. Same uid does not help: the key is a property of the process tree, not of the file or the user.
 
-import { randomBytes } from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 
 const ASK_MS = 5 * 60_000;
 /** One new ask per this long, so a terminal cannot nag the owner's phone. */
@@ -57,7 +57,7 @@ export default {
         const a = live();
         if (a && a.state === "waiting" && a.key === key) return { id: a.id, expires_in_s: card(a).expires_in_s };
         if (now() - lastAskAt < NEW_ASK_MS) throw refuse("a sign-in was asked for a moment ago: wait a little before asking again", "rate_limited");
-        ask = { id: `si_${randomBytes(9).toString("base64url")}`, key, at: now(), state: "waiting", from: meta && meta.terminal && typeof meta.terminal === "object" && typeof meta.terminal.from === "string" ? meta.terminal.from : null };
+        ask = { id: newPrefixedId("si"), key, at: now(), state: "waiting", from: meta && meta.terminal && typeof meta.terminal === "object" && typeof meta.terminal.from === "string" ? meta.terminal.from : null };
         lastAskAt = now();
         return { id: ask.id, expires_in_s: ASK_MS / 1000 };
       },

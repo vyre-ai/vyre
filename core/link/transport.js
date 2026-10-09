@@ -14,11 +14,7 @@ import fs from "node:fs";
 import net from "node:net";
 import tls from "node:tls";
 import { execFile } from "node:child_process";
-
-const V4 = new net.BlockList();
-V4.addSubnet("100.64.0.0", 10, "ipv4");
-const V6 = new net.BlockList();
-V6.addSubnet("fd7a:115c:a1e0::", 48, "ipv6");
+import { isTailnet } from "../../lib/netguard.js";
 
 /** An IPv4-mapped IPv6 address is the IPv4 address. */
 export const normalize = ip => {
@@ -27,10 +23,7 @@ export const normalize = ip => {
 };
 
 /** Is this a Tailscale address? */
-export function isTailnet(ip) {
-  const a = normalize(ip);
-  return net.isIPv4(a) ? V4.check(a, "ipv4") : net.isIPv6(a) ? V6.check(a, "ipv6") : false;
-}
+export { isTailnet };
 
 export const REAL_APP = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
 

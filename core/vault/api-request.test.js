@@ -89,9 +89,9 @@ test("addressBlocked: private, loopback, link-local/metadata, CGNAT/tailnet and 
 });
 
 test("checkTarget: https only, an allowed host, every resolved address checked, and the addresses are handed back for pinning", async () => {
-  const lookup = async host => (host === "api.example.com" ? [{ address: "203.0.113.9", family: 4 }] : []);
+  const lookup = async host => (host === "api.example.com" ? [{ address: "93.184.216.9", family: 4 }] : []);
   const out = await checkTarget("https://api.example.com/v1/x", ["api.example.com"], { lookup });
-  assert.deepEqual(out.addresses, ["203.0.113.9"]);
+  assert.deepEqual(out.addresses, ["93.184.216.9"]);
   assert.equal(out.url.pathname, "/v1/x");
 
   await assert.rejects(checkTarget("http://api.example.com/v1/x", ["api.example.com"], { lookup }), /https/);
@@ -99,7 +99,7 @@ test("checkTarget: https only, an allowed host, every resolved address checked, 
   await assert.rejects(checkTarget("https://not-allowed.example.com/x", ["api.example.com"], { lookup }), /not on this credential/);
 
   // One good address and one bad one: the bad one refuses the whole request, not just half of it.
-  const mixedLookup = async () => [{ address: "203.0.113.9", family: 4 }, { address: "169.254.169.254", family: 4 }];
+  const mixedLookup = async () => [{ address: "93.184.216.9", family: 4 }, { address: "169.254.169.254", family: 4 }];
   await assert.rejects(checkTarget("https://api.example.com/x", ["api.example.com"], { lookup: mixedLookup }), /private, loopback, link-local or metadata/);
 });
 

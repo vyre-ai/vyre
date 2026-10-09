@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { gitAsync } from "../../lib/git-safe.js";
 
-const ID = /^a_[A-Za-z0-9_-]{6,32}$/;
+const ID = /^a_[A-Za-z0-9_-]{6,64}$/;   // old ids are 12 characters, new ones a time-ordered uuid (lib/id.js)
 const PROJECT = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const FILE = /^[a-z][a-z0-9-]{0,23}\.[a-z0-9]{1,8}$/;
 const SHA = /^[0-9a-f]{40}$/;

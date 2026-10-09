@@ -25,7 +25,7 @@ export type Subject =
   | { readonly kind: 'group'; readonly id: string };
 
 export interface GrantConditions {
-  readonly where?: { readonly nodes?: readonly string[]; readonly residency?: readonly string[]; readonly surfaces?: readonly Surface[] };
+  readonly where?: { readonly nodes?: readonly string[]; readonly residency?: readonly string[]; readonly surfaces?: readonly Surface[]; /** Exact origins (scheme, host, port) a login lent for a site may be used at. */ readonly origins?: readonly string[] };
   readonly when?: { readonly not_before?: Ms; readonly expires: Ms; readonly schedule?: string };
   readonly how?: { readonly presence?: 'none' | 'session' | 'fresh'; readonly approval?: { readonly by: 'owner' | `role:${string}` | string; readonly once?: boolean } };
   readonly budget?: { readonly meter: string; readonly limit: number };

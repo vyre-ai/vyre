@@ -24,6 +24,7 @@ import { canonical } from "./crypto.js";
 import { CONSONANTS, VOWELS } from "./generate.js";
 import * as relay from "./relay.js";
 import { callerKind } from "../modules/index.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const SHARE_MIGRATIONS = [
   // People are pinned by card; passes may narrow methods and paths; items may allow the body;
@@ -262,7 +263,7 @@ export class Share {
 
   /** @param {"person"|"accept"} kind @param {string} subject @param {string} payload @param {string} caller */
   request(kind, subject, payload, caller, extra = {}) {
-    const id = "s_" + crypto.randomBytes(9).toString("base64url");
+    const id = newPrefixedId("s");
     this.db.prepare("INSERT INTO vault_share_requests (id, kind, subject, payload, by, at) VALUES (?,?,?,?,?,?)").run(id, kind, subject, payload, String(caller), now());
     this.vault.audit(kind === "person" ? "person-requested" : "pass-accept-requested", null, caller, true, `${id}: ${subject}`);
     this.vault.emit(kind === "person" ? "person.requested" : "pass.accept-requested", { id, [kind === "person" ? "name" : "owner"]: subject, ...extra });

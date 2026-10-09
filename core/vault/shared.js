@@ -33,6 +33,7 @@ import { canonical, sign, verify, sealFor, openFrom, keyObject, newVaultKey, sea
 import { writeSealed, removeSealed } from "./store.js";
 import { fingerprint } from "./share.js";
 import * as relay from "./relay.js";
+import { newId as newUuid } from "../../lib/id.js";
 
 export const SHARED_MIGRATIONS = [
   `CREATE TABLE vault_shared (
@@ -52,7 +53,7 @@ export const SHARED_MIGRATIONS = [
    );`,
 ];
 
-export const ROLES = ["owner", "admin", "member", "read-only"];
+export const VAULT_MEMBER_ROLES = ["owner", "admin", "member", "read-only"];
 const WRITE = new Set(["owner", "admin", "member"]);
 const ADMIN = new Set(["owner", "admin"]);
 const MANIFEST_TAG = "vyre-manifest-v1", RECORD_TAG = "vyre-record-v1", RECEIPT_TAG = "vyre-receipt-v1", INVITE_TAG = "vyre-invite-v1";
@@ -61,7 +62,7 @@ const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ITEM_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 const now = () => Date.now();
-const newId = () => crypto.randomBytes(9).toString("base64url");
+const newId = () => newUuid();
 const hash = v => crypto.createHash("sha256").update(canonical(v)).digest("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 export const classOf = id => `shared:${id}`;
@@ -80,7 +81,7 @@ function checkMembers(m) {
   if (!Array.isArray(m.members) || !m.members.length) throw new Error("a manifest needs members");
   const signs = new Set();
   for (const x of m.members) {
-    if (!x || typeof x.name !== "string" || typeof x.sign !== "string" || typeof x.box !== "string" || !ROLES.includes(x.role)) throw new Error("a manifest member is malformed");
+    if (!x || typeof x.name !== "string" || typeof x.sign !== "string" || typeof x.box !== "string" || !VAULT_MEMBER_ROLES.includes(x.role)) throw new Error("a manifest member is malformed");
     if (signs.has(x.sign)) throw new Error("a manifest lists one key twice");
     signs.add(x.sign);
   }

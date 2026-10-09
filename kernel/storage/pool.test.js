@@ -229,7 +229,7 @@ test("review S-4, S-5, S-6, S-8, S-10: the bridge server survives a bad escape, 
   assert.equal((await httpSend(url)(f)).status, 200); assert.equal((await httpSend(url)(f)).status, 409, "a captured frame cannot be replayed");
   // A reply bigger than the cap is cut, and capacity is held under concurrent writes.
   const huge = http.createServer((q, r) => { r.writeHead(200); r.end(Buffer.alloc(9 * MB)); }); await new Promise(r => huge.listen(0, "127.0.0.1", r)); t.after(() => huge.close());
-  await assert.rejects(bridgeBackend({ secret, send: httpSend(`http://127.0.0.1:${huge.address().port}`) }).get("c/x"), /too big/);
+  await assert.rejects(bridgeBackend({ secret, send: httpSend(`http://127.0.0.1:${huge.address().port}`) }).get("c/x"), /byte limit/);
   const results = await Promise.allSettled([1, 2, 3].map(i => be.put("c/cap" + i, rand(MB)))); assert.ok(results.filter(r => r.status === "fulfilled").length <= 2 && br.used <= 2 * MB + 10, "two MB of room, no over-commit");
 });
 

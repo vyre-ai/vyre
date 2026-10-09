@@ -4,8 +4,8 @@
 // Pure data and small helpers. Each provider says which item kinds hold its credential, how a
 // person gives it (`field`: typed or pasted; `file`: a dropped JSON file; `oauth`: a sign-in flow
 // another module runs), the fields to ask for, what it can do, and where a person gets the key.
-// Names match detect.js's provider words where they exist. Patterns are loose shape checks, so a
-// key pasted into the wrong box is caught; detect.js still decides what a value looks like.
+// Names match credential-shapes.js's provider words where they exist. Patterns are loose shape checks, so a
+// key pasted into the wrong box is caught; credential-shapes.js still decides what a value looks like.
 // Nothing here ever holds, prints or returns a value.
 
 /** What a connection can do (ADR 0028, decision 9b). Fixed words only. */
@@ -17,6 +17,8 @@ export const CAPABILITIES = /** @type {const} */ (["send_mail", "read_mail", "ca
  *   capabilities: string[], pick?: boolean, help: string|null, next?: { tool: string, input?: Record<string, string> } }} Provider
  */
 
+import { valuePattern } from "../../lib/credential-shapes.js";
+
 const key = (label, pattern) => ({ name: "value", label, secret: true, ...(pattern ? { pattern } : {}) });
 
 /** @type {Provider[]} */
@@ -27,13 +29,13 @@ const LIST = [
     capabilities: ["llm", "speech"], help: "https://platform.openai.com/api-keys" },
   { name: "elevenlabs", label: "ElevenLabs", kinds: ["api-key"], how: "field", fields: [key("API key")],
     capabilities: ["speech"], help: "https://elevenlabs.io/app/settings/api-keys" },
-  { name: "anthropic", label: "Anthropic", kinds: ["api-key"], how: "field", fields: [key("API key", "^sk-ant-[A-Za-z0-9_-]{20,}$")],
+  { name: "anthropic", label: "Anthropic", kinds: ["api-key"], how: "field", fields: [key("API key", valuePattern("anthropic"))],
     capabilities: ["llm"], help: "https://console.anthropic.com/settings/keys" },
   { name: "claude-setup-token", label: "Claude setup token", kinds: ["oauth"], how: "field",
-    fields: [{ name: "token", label: "Token from claude setup-token", secret: true, pattern: "^sk-ant-oat[A-Za-z0-9_-]{20,}$" }],
+    fields: [{ name: "token", label: "Token from claude setup-token", secret: true, pattern: valuePattern("anthropic-oat") }],
     capabilities: ["llm"], help: "https://docs.anthropic.com/en/docs/claude-code/cli-reference" },
   { name: "github", label: "GitHub (paste a token)", kinds: ["pat"], how: "field",
-    fields: [{ name: "token", label: "Personal access token", secret: true, pattern: "^(ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})$" }],
+    fields: [{ name: "token", label: "Personal access token", secret: true, pattern: valuePattern("github", "github-2") }],
     capabilities: ["files", "other"], help: "https://github.com/settings/tokens" },
   { name: "github-oauth", label: "GitHub (sign in)", kinds: ["pat"], how: "oauth", fields: [],
     capabilities: ["files", "other"], help: "https://github.com/settings/connections/applications", next: { tool: "github.connect", input: { name: "" } } },

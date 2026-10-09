@@ -6,6 +6,7 @@
 // Tasks are here as a record type (team/0.3/DESIGN-tasks-records.md): what a person reads, edits, links or reports on is a field of the task record; who may act and what the approvals
 // depend on stay kernel state keyed by the same id. Goals, Flows, runs, grants and the log live in the kernel store.
 
+import { ROLE_IDS } from "../kernel/contracts/index.js";
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
 const choice = (/** @type {string} */ name, /** @type {string} */ label, /** @type {string[]} */ options, /** @type {object} */ more = {}) => ({ name, kind: "choice", label, options, ...more });
 const f = (/** @type {string} */ kind, /** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind, label, ...more });
@@ -184,7 +185,7 @@ export const TASK = {
     text("list", "List"),
     text("tags", "Tags"),
     // the planner's own bookkeeping, hidden from every role (the contract's own hiding); only the kernel service reads it
-    text("planner", "Planner (engine bookkeeping)", { hidden_from: ["owner", "admin", "manager", "member", "temp"] }),
+    text("planner", "Planner (engine bookkeeping)", { hidden_from: [...ROLE_IDS] }),
     f("boolean", "pinned", "Pinned"),
     text("tz", "Time zone"),
     f("boolean", "floating", "Same wall time in every zone"),

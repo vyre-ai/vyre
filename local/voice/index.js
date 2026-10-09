@@ -21,6 +21,7 @@ import { MIC_BIN } from "./talk.js";
 import { spoken } from "./spoken.js";
 import { route, doorMessage } from "../../lib/door-bridge.js";
 import { DEFAULTS, PROVIDERS, VoiceError, origin, reachable, settings, speak } from "./providers.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** A spoken reply is a sentence or two, not a document. */
 const MAX_SPEAK = 2000;
@@ -52,7 +53,7 @@ export default {
       if ("direct" in via) return text;
       if ("refused" in via) throw new VoiceError("no_door", "spoken replies go through Vyre's inference door and none is connected, so nothing was sent");
       if (typeof via.door.sanitize !== "function") throw new VoiceError("no_door", "the inference door cannot check text for speech, so nothing was sent");
-      try { return await via.door.sanitize({ chain: ctx.chainFor ? ctx.chainFor(meta) : meta && meta.chain, session: `voice_${crypto.randomBytes(6).toString("hex")}`, text, purpose: "other" }); }
+      try { return await via.door.sanitize({ chain: ctx.chainFor ? ctx.chainFor(meta) : meta && meta.chain, session: newPrefixedId("voice"), text, purpose: "other" }); }
       catch (e) { throw new VoiceError("refused", doorMessage(e) || "Vyre could not check this text before speaking it"); }
     };
 

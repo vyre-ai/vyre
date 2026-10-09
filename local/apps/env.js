@@ -19,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile as childExecFile } from "node:child_process";
 import { dialogsAllowed, NO_DIALOG } from "../../core/config/dialogs.js";
+import { httpFetch } from "../../lib/http.js";
 
 /** An error with a code a caller can act on: setup, no_dialog, not_mac, not_found, sends, not_sends, gated, bad_input, failed. */
 export class AppsError extends Error {
@@ -184,7 +185,7 @@ export function makeEnv({ config = {}, call = async () => ({ error: { code: "no_
     exec, osa, shortcuts, open, openFile, platform, call, config,
     /** Refuse now, before any file is written, when the steps after would be refused. */
     ready: (/** @type {string} */ what) => guard(what),
-    fetch: typeof config.fetch === "function" ? config.fetch : (/** @type {any[]} */ ...a) => globalThis.fetch(.../** @type {[any, any]} */ (a)),
+    fetch: typeof config.fetch === "function" ? config.fetch : (/** @type {any[]} */ ...a) => httpFetch(.../** @type {[any, any]} */ (a)),
     now: typeof config.now === "function" ? config.now : Date.now,
     timeZone: config.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
   };

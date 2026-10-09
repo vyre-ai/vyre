@@ -3,9 +3,9 @@
 // its light) and nothing else is the truth: the vault credential `conn-<id>` is derived from the row and written only by `materialize`. The vault lets an api-credential be written only from a
 // person's own surface, so a row is made, changed and rebuilt in a person's act; a credential found changed behind the row's back shows as out of step until that act rebuilds it.
 
-import crypto from "node:crypto";
 import { defineConnector, appHost } from "../../records/connectors/format.js";
 import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
@@ -111,7 +111,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       const item = (await items()).get(clean.credential.item);
       if (!item) throw fail(`the Vault has no item named ${String(clean.credential.item).slice(0, 60)}: ask the person to save the key there first, then propose the connection`, "not_found");
       if (item.kind === "api-credential") throw fail(`${clean.credential.item} is itself an api credential, which never hands out a key`, "bad_input");
-      const id = `prop_${crypto.randomBytes(5).toString("base64url")}`;
+      const id = newPrefixedId("prop");
       db.prepare("DELETE FROM connectors_proposals WHERE json_extract(form, '$.label') = ? AND proposed_by = ?").run(String(clean.label), by);
       db.prepare("INSERT INTO connectors_proposals (id, form, proposed_by, why, created) VALUES (?,?,?,?,?)").run(id, JSON.stringify(clean), by, why ? String(why).slice(0, 300) : null, now());
       emit("connectors.connection-proposed", { proposal: id, label: made.declaration.label });

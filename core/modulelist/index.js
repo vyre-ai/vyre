@@ -1,5 +1,5 @@
 // @ts-check
-import { randomBytes } from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 // modules: the owner's reset of the accepted first-party module list (kernel/home.js resetModulesList). A rollback to an older release is below the counter the home already accepted, so the
 // older build's list is refused until the owner says so, once, with their presence. This module only carries that act: the kernel checks that the chain is exactly the owner (never a
 // delegated, viewer or room chain), checks the presence proof over the counter it forgets, and writes the one `kernel.modules-list-reset` event. Nothing here decides.
@@ -56,7 +56,7 @@ export default {
         if (!payload()) throw refuse(WHY.no_signed_list, "unavailable");
         if (live() && ask && ask.state === "waiting") return { id: ask.id, expires_in_s: card(ask).expires_in_s };
         if (now() - lastAskAt < NEW_ASK_MS) throw refuse("a rollback was asked for a moment ago: wait a few minutes before asking again", "rate_limited");
-        const askId = `rr_${randomBytes(9).toString("base64url")}`;
+        const askId = newPrefixedId("rr");
         lastAskAt = now();
         ask = { id: askId, payload: payload(askId), at: now(), state: "waiting" };
         return { id: ask.id, expires_in_s: ASK_MS / 1000 };

@@ -8,7 +8,7 @@
 //
 // What is kept: the person's own typed turns, teammate messages and the assistant's text. What is dropped before anything else:
 // meta messages (CLAUDE.md and memory injected at the start of every session), <system-reminder> blocks, tool results, tool inputs
-// and thinking. Then the scrub, per turn: recall's redaction (lib/secret-shapes.js, the vault's shapes), emails, IPv4 addresses and
+// and thinking. Then the scrub, per turn: recall's redaction (lib/credential-shapes.js, the vault's shapes), emails, IPv4 addresses and
 // home paths. Then the client filter: a session that names a client or a person's private matter more than twice is dropped whole,
 // and a passing mention is replaced by [client]. When unsure the session is dropped (the deny file is deliberately wide: it is the caller's, one pattern a line, never committed).
 // Output: corpus.json (sessions with turns), sessions-used.txt (id, date, size, a scrubbed first line) and stats.json.
@@ -17,7 +17,7 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
-import { redact } from "../lib/secret-shapes.js";
+import { redact } from "../lib/credential-shapes.js";
 
 /**
  * The clients, their people and private matters to keep out, one regular expression alternative per line of a file the caller holds (never

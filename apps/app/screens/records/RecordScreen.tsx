@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Appear, Button, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
 import { tool } from "../../src/real/box";
+import { emailOf } from "../shell/module-view.js";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
@@ -25,7 +26,7 @@ export function RecordScreen({ id }: { id: string }) {
     tool<{ commands: { module: string; id: string }[] }>("views.list", {}).then((r) => { if (live) setCanSend(r.commands.some((c) => c.module === "appmods" && c.id === "documents-send")); }).catch(() => { if (live) setCanSend(false); });
     return () => { live = false; };
   }, [isContact]);
-  const email = typeof rec?.data?.email === "string" ? rec.data.email : "";
+  const email = emailOf(rec?.data);
   const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
   if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
