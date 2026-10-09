@@ -25,7 +25,9 @@ import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 import { ALIASES } from "./memory-tools.js";
-import { mcpName, catalogOf, listing, indexOf, find } from "./core-tools.js";
+import { mcpName, catalogOf, listing, indexOf, find, featuresOf } from "./core-tools.js";
+import { createStore, costOf } from "../../lib/results-store.js";
+import * as batch from "../../lib/batch.js";
 
 const PROTOCOL = "2025-06-18";
 /**
@@ -85,6 +87,18 @@ function scoped(tool, input) {
  */
 const sessionKey = () => (AGENT ? null : readKey(paths(home()).sessions, process.ppid));
 
+/**
+ * Results by reference (R031-00p): a result over about 2,000 tokens stays here, in this process's memory (a restart drops it), and the model gets a handle and a summary. It is bound to who
+ * made the call, so even a changed identity in the same process (a plugin grant arriving) cannot read what another's was. MCP clients ask for this by being MCP; the CLI and the app do not.
+ * VYRE_MCP_REF_TOKENS=0 turns it off; any other number moves the threshold.
+ */
+const store = createStore({ threshold: process.env.VYRE_MCP_REF_TOKENS !== undefined && Number.isFinite(Number(process.env.VYRE_MCP_REF_TOKENS)) ? Number(process.env.VYRE_MCP_REF_TOKENS) : undefined });
+const FEATURES = featuresOf(process.env.VYRE_MCP_FEATURES);
+const REF_OFF = process.env.VYRE_MCP_REF_TOKENS === "0" || !FEATURES.ref;
+/** Reads whose whole text is the answer (and which already cap themselves): a handle would only add a turn. */
+const WHOLE = new Set(["docs.read", "skills.get", "memory.turn", "work.chat.span", "artifacts.get", "recall.thread", "files.preview", "glass.files.preview"]);
+const owner = () => { const k = sessionKey(); return `${ident().caller}|${k && k.id ? k.id : ""}`; };
+
 /** What the caller may use, by the name it is called with: { name, tool?, alias?, hub?, description, input }. The listing is the core of it; tools_find and tools_call reach all of it. */
 let catalog = [];
 /** @type {ReturnType<typeof indexOf> | null} */
@@ -112,7 +126,7 @@ async function tools() {
   names = next;
   catalog = cat;
   index = indexOf(cat);
-  return listing(cat, process.env.VYRE_MCP_LISTING);
+  return listing(cat, process.env.VYRE_MCP_LISTING, process.env.VYRE_MCP_FEATURES);
 }
 
 /** A hub call: the server's own MCP result as it is, or a held call said plainly. @param {string} name @param {any} args */
@@ -126,14 +140,16 @@ async function hubCall(name, args) {
 }
 
 /**
- * Run one tool by the name it is called with: a hub tool goes to the hub, anything else to vyred under the caller's own identity.
- * @param {string} asked @param {any} args @param {any} params the MCP request's params, for its _meta
+ * Make one call by the name it is called with, exactly as the agent's own call: a hub tool goes to the hub, anything else to vyred under the caller's own identity. Returns vyred's reply,
+ * { data } or { error }, and the module tool's name it ran. Used by a direct call, by tools_call and by every step of tools_run, so a step is judged by the same door as a call alone.
+ * @param {string} asked @param {any} args @param {any} params the MCP request's params, for its _meta @param {number} [timeoutMs]
+ * @returns {Promise<{ r: { data?: any, error?: { code: string, message: string } }, tool: string, hub?: boolean }>}
  */
-async function runTool(asked, args, params) {
+async function invoke(asked, args, params, timeoutMs) {
   const hit = names.get(asked);
   // A hub name this session has not listed yet (a server added since) still goes to the hub,
   // which checks scope itself; a module tool's name never has "__".
-  if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return hubCall(asked, args);
+  if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return { r: await call("mcp.call", { name: asked, arguments: args }, { ...ident(), session: sessionKey(), timeout: timeoutMs ?? 120_000 }), tool: asked, hub: true };
   const tool = hit && "tool" in hit ? hit.tool : asked;
   const alias = hit && "alias" in hit ? ALIASES[String(hit.alias)] : null;
   // agents.ask waits for a whole turn of another session, which can take minutes.
@@ -144,10 +160,64 @@ async function runTool(asked, args, params) {
   const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
   const via = alias && alias.route && alias.route.when(args, process.env) ? alias.route : null;
   const sent = via ? via.tool : tool;
-  const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+  const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: timeoutMs ?? (tool === "agents.ask" ? 600_000 : 120_000),
     ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
+  return { r, tool: sent };
+}
+
+/** The MCP reply for a result: small as it is, large as a handle and a summary. @param {string} text @param {any} data */
+const reply = (text, data) => ({ content: [{ type: "text", text }], structuredContent: data && typeof data === "object" && !Array.isArray(data) ? data : undefined });
+/** A model-facing result for a tool's data: by value, or by reference past the threshold. @param {any} data @param {string} [tool] @param {boolean} [always] */
+function present(data, tool = "", always = false) {
+  if (REF_OFF && !always) return typeof data === "string" ? reply(data, undefined) : reply(JSON.stringify(data), data);
+  const s = (tool && WHOLE.has(tool) && !always) ? { value: data } : store.shape(owner(), data, { always });
+  if ("ref" in s && s.ref) { const body = { handle: s.ref.handle, tokens: s.ref.tokens, expires_in: s.ref.expires_in, summary: s.ref.summary, read: "results_read { handle, select?, offset?, limit? }" }; return reply(JSON.stringify(body), body); }
+  return typeof data === "string" ? reply(data, undefined) : reply(JSON.stringify(data), data);
+}
+
+/**
+ * Run one tool for the model.
+ * @param {string} asked @param {any} args @param {any} params
+ */
+async function runTool(asked, args, params) {
+  const { r, tool, hub } = await invoke(asked, args, params);
+  if (hub) {
+    if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+    const d = r.data;
+    if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
+    if (d && Array.isArray(d.content)) return d;
+    return { content: [{ type: "text", text: typeof d === "string" ? d : JSON.stringify(d) }] };
+  }
   if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
-  return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
+  return present(r.data, tool);
+}
+
+/** results_read, and the early drop. @param {any} a */
+function resultsRead(a) {
+  const r = store.read(owner(), a || {});
+  if ("error" in r) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+  return reply(JSON.stringify(r.data), r.data);
+}
+
+let sandbox = null;
+/** The Flows Code step's sandbox, made the first time a script needs it. Unavailable where the machine cannot prove an OS sandbox. */
+async function fnSandbox() { if (!sandbox) sandbox = (await import("../../kernel/flows/code-sandbox.js")).createCodeSandbox(); return sandbox; }
+
+/** tools_run: a script of steps, one answer. @param {any} args @param {any} params */
+async function toolsRun(args, params) {
+  const resolveName = (/** @type {string} */ want) => (names.has(want) ? want : names.has(mcpName(want)) ? mcpName(want) : want.includes("__") ? want : "");
+  const problems = batch.check(args, { known: (want) => resolveName(want) || null });
+  if (problems.length) return { content: [{ type: "text", text: `bad_input: ${problems.slice(0, 8).join("; ")}` }], isError: true };
+  const out = await batch.run(args, {
+    call: async (want, input, o) => (await invoke(resolveName(want), input, params, o.timeoutMs)).r,
+    fn: async (req) => (await fnSandbox())(req),
+  });
+  const answer = { status: out.status, ran: out.ran, ...(out.skipped.length ? { skipped: out.skipped } : {}), ...(out.stopped ? { stopped: out.stopped } : {}),
+    ...(out.ret !== undefined ? { result: out.ret } : { steps: { ...out.steps } }) };
+  // Every part of the answer that is large goes by reference, one handle for the part, so the model reads what it needs.
+  if (answer.steps && !REF_OFF) for (const [id, v] of Object.entries(answer.steps)) { const s = store.shape(owner(), v); if ("ref" in s && s.ref) /** @type {any} */ (answer.steps)[id] = { handle: s.ref.handle, tokens: s.ref.tokens, summary: s.ref.summary }; }
+  if ("result" in answer && costOf(answer.result) > 2000 && !REF_OFF) { const s = store.shape(owner(), answer.result); if ("ref" in s && s.ref) /** @type {any} */ (answer).result = { handle: s.ref.handle, tokens: s.ref.tokens, summary: s.ref.summary }; }
+  return reply(JSON.stringify(answer), answer);
 }
 
 /** @param {any} msg */
@@ -156,7 +226,7 @@ async function handle(msg) {
   switch (method) {
     case "initialize":
       return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
-        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Only a short core is listed. Every other tool you may use is reached in two steps: tools_find with what you are about to do (it returns the best three with a ready call), then tools_call with the name. A tool you were told to run with tools_call is not missing. Facts from memory come with their source; say where a fact came from when you use one. " +
+        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Only a short core is listed. Every other tool you may use is reached in two steps: tools_find with what you are about to do (it returns the best three with a ready call), then tools_call with the name. A tool you were told to run with tools_call is not missing. When several calls depend on each other, send them in one tools_run (later steps read earlier results by expression); a large result comes back as a handle and a summary, and results_read gets the part you need. Facts from memory come with their source; say where a fact came from when you use one. " +
           "When the user asks what you know about them or their work, ask memory_ask, when it is offered, before saying you do not know. " +
           "A memory_search result names a session and a turn; memory_turn reads the turns around it word for word, so quote a past turn from there, not from a summary. " +
           "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +
@@ -173,8 +243,11 @@ async function handle(msg) {
         const data = { tools: found.map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } })) };
         return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
       }
+      if (asked === "tools_run" && FEATURES.run) return toolsRun(params?.arguments || {}, params);
+      if (asked === "results_read" && FEATURES.ref) return resultsRead(params?.arguments);
       if (asked === "tools_call") {
         const want = String(params?.arguments?.tool || "");
+        if (/^results[._]drop$/.test(want)) { const ok = store.drop(owner(), params?.arguments?.arguments?.handle); return reply(JSON.stringify({ dropped: ok }), { dropped: ok }); }
         const target = names.has(want) ? want : names.has(mcpName(want)) ? mcpName(want) : "";
         if (!target || target === "tools_call") return { content: [{ type: "text", text: `not_found: no tool "${want.slice(0, 80)}" that you may use. tools_find finds the one you need.` }], isError: true };
         return runTool(target, params?.arguments?.arguments || {}, params);

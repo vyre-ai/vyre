@@ -20,7 +20,7 @@ process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL = "1"; process.env.VYRE
 const { start } = await import("../core/daemon/index.js");
 const { present, asOwner } = await import("../test/helpers.js");
 const { FAKE } = await import("../core/sessions/testing/boot.js");
-const { TASKS, parseStream, passed, summarize } = await import("./lib/token-proof.js");
+const { TASKS, ARM_ENV, parseStream, passed, summarize } = await import("./lib/token-proof.js");
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "check";
@@ -96,6 +96,23 @@ await seeded("record: client Dana Whitfield, probate", async () => {
   return JSON.stringify(r).slice(0, 80);
 });
 
+
+await seeded("records: matters for Dana (two Open, one Closed), 214 more clients with one matter each (162 Open and 55 Closed in all)", async () => {
+  await must("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "stage", kind: "text", label: "Stage" }, { name: "client_name", kind: "text", label: "Client" }] }] } });
+  for (const [title, stage] of [["Estate of Whitfield", "Open"], ["Trust amendment", "Open"], ["Deed transfer", "Closed"]]) await must("records.create", { type: "matter", data: { title, stage, client_name: "Dana Whitfield" } });
+  const first = ["Aaron", "Beth", "Carl", "Dina", "Evan", "Fay", "Glen", "Hope", "Ivan", "Jade", "Kurt", "Lena", "Milo", "Nora"];
+  const last = ["Abbott", "Acosta", "Adair", "Baird", "Burke", "Cole", "Dunn", "Eaton", "Frost", "Gould", "Hale", "Ibarra", "Joyce", "Keane", "Lowe", "Marsh"];
+  let n = 0;
+  for (const f of first) for (const l of last) {
+    if (n >= 214) break;
+    const name = `${f} ${l}`;
+    await must("records.create", { type: "client", data: { name, case_type: n % 4 === 0 ? "probate" : "family" } });
+    await must("records.create", { type: "matter", data: { title: `${l} file ${n}`, stage: n % 4 === 0 ? "Closed" : "Open", client_name: name } });
+    n++;
+  }
+  return `${n} clients and matters`;
+});
+
 /** @type {any} */ let flowId = null;
 await seeded("flow: intake-welcome, approved", async () => {
   const flow = { format: 1, name: "intake_welcome", label: "intake-welcome", authorship: "human", trigger: { on: "manual" },
@@ -129,11 +146,7 @@ if (cmd === "run") {
   if (process.env.VYRE_PROOF_PAID !== "yes") { console.error("refused: a paid round needs VYRE_PROOF_PAID=yes (the product owner's go)"); await d.stop(); process.exit(2); }
   const cap = Number(flag("max-usd"));
   if (!(cap > 0)) { console.error("refused: --max-usd is required"); await d.stop(); process.exit(2); }
-  const ARMS = {
-    old: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "false" },
-    "old-search": { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "true" },
-    core: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false" },
-  };
+  const ARMS = Object.fromEntries(Object.entries(ARM_ENV).map(([k, v]) => [k, v.env]));
   const arms = flag("arms", "old,core").split(",").filter((a) => a in ARMS), reps = Number(flag("reps", "1")), only = flag("only") ? flag("only").split(",") : null;
   const standIn = args.includes("--stand-in");
   const out = flag("out", fs.mkdtempSync(`${home}-proof-`)); fs.mkdirSync(out, { recursive: true });
@@ -144,6 +157,7 @@ if (cmd === "run") {
     await call("agents.stop", { agent: "juno" });                        // a fresh thread for every run: nothing carries over
     Object.assign(process.env, /** @type {any} */ (ARMS)[arm]);
     if (!process.env.VYRE_MCP_LISTING) delete process.env.VYRE_MCP_LISTING;
+    if (!process.env.VYRE_MCP_FEATURES) process.env.VYRE_MCP_FEATURES = "";
     const tee = path.join(out, `${rep}-${task.id}-${arm}.jsonl`);
     process.env.TOKEN_PROOF_TEE = tee;
     const t0 = Date.now();
@@ -168,6 +182,9 @@ const PROBES = [
   ["flow", "flows.start", { id: () => flowId, input: { name: "Test Client" } }, /run_|"run"|started|status/i],
   ["vault", "vault.request", { credential: "acme", method: "GET", url: "https://api.acme-proof.test/v1/status" }, /"status":\s*200|ok/],
   ["connection", "vault.request", { credential: "conn-acme-crm", method: "GET", url: "https://api.acme-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
+  ["chain", "work.call", { tool: "matters.find", input: { where: { client_name: "Dana Whitfield" } } }, /Deed transfer/],
+  ["biglist", "work.call", { tool: "clients.find", input: {} }, /Aaron Abbott/],
+  ["both", "work.call", { tool: "matters.find", input: {} }, /Deed transfer|Abbott file/],
   ["doc", "docs.find", { query: "pair a phone" }, /\.md/],
   ["skill", "skills.find", { query: "keep a password out of a file" }, /vyre\//],
   ["teammate", "team.ask", { to: "backend", project: () => projectRecord, text: "Please look at the signup error and tell me what you find.", wait: false }, /queued|request|accepted|asleep|"id"/i],
@@ -180,7 +197,7 @@ let proven = 0;
 for (const [id, tool, input, want] of PROBES) {
   let text = ""; try { text = JSON.stringify(await viaSession("juno", tool, Object.fromEntries(Object.entries(/** @type {any} */ (input)).map(([k, v]) => [k, typeof v === "function" ? v() : v])))); } catch (e) { text = `error ${/** @type {Error} */ (e).message}`; }
   const ok = !/"error":/.test(text.slice(0, 40)) && want.test(text); proven += ok ? 1 : 0;
-  console.log(`probe ${ok ? "ok  " : "FAIL"} ${String(id).padEnd(10)} ${tool}: ${text.slice(0, 150)}`);
+  console.log(`probe ${ok ? "ok  " : "FAIL"} ${String(id).padEnd(10)} ${tool}: ${text.slice(0, 150)}  [${text.length} chars, ${Math.ceil(text.length / 4)} tokens, ${(text.match(/"version":/g) || []).length} records]`);
 }
 console.log(`probes: ${proven} of ${PROBES.length}; the tasks not yet probed: ${TASKS.map((t) => t.id).filter((id) => !PROBES.some((p) => p[0] === id)).join(", ")}`);
 await d.stop();

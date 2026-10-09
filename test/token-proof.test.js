@@ -10,7 +10,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { devNet, withDevNet } from "../core/vault/request.js";
-import { TASKS, toolOf, used, passed, parseStream, summarize, estimate } from "../scripts/lib/token-proof.js";
+import { TASKS, ARM_ENV, toolOf, used, passed, parseStream, summarize, estimate } from "../scripts/lib/token-proof.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const stream = (/** @type {any[]} */ evs) => evs.map((e) => JSON.stringify(e)).join("\n");
@@ -21,10 +21,25 @@ const sample = (/** @type {string} */ tool, /** @type {any} */ input, /** @type 
   { type: "result", result: text, is_error: false, num_turns: 2, duration_ms: 1500, total_cost_usd: usd, usage: { input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 5000, cache_creation_input_tokens: 2000 } },
 ]);
 
-test("there are ten tasks, each with a fixed prompt, a tool to look for and a named world", () => {
-  assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill"]);
+test("there are thirteen tasks, each with a fixed prompt, a tool to look for and a named world; the first ten are the control, the last three need batching", () => {
+  assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill", "chain", "biglist", "both"]);
   for (const t of TASKS) assert.ok(t.prompt.length > 20 && t.tools.length && t.seed, t.id);
-  assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 10);
+  assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 13);
+  assert.deepEqual(TASKS.filter((t) => t.batch).map((t) => t.id), ["chain", "biglist", "both"]);
+});
+
+test("the arms differ in nothing but the listing and the batching features, and a tools_run counts as the calls its steps make", () => {
+  assert.deepEqual(Object.keys(ARM_ENV), ["old", "old-search", "core", "core-run", "core-ref", "core-both"]);
+  const strip = (/** @type {string} */ k) => { const { VYRE_MCP_FEATURES, ...rest } = ARM_ENV[k].env; return JSON.stringify(rest); };
+  assert.equal(strip("core"), strip("core-run"));
+  assert.equal(strip("core"), strip("core-ref"));
+  assert.equal(strip("core"), strip("core-both"));
+  assert.deepEqual(["core", "core-run", "core-ref", "core-both"].map((k) => ARM_ENV[k].env.VYRE_MCP_FEATURES), ["none", "run", "ref", ""]);
+  const chain = /** @type {any} */ (TASKS.find((t) => t.id === "chain"));
+  const batch = { name: "mcp__vyre__tools_run", input: { steps: [{ id: "a", call: "work.call", input: {} }, { id: "b", call: "work.call", input: {} }] }, ok: true };
+  assert.equal(passed(chain, { calls: [batch], text: "two are open" }), true);
+  assert.equal(passed(chain, { calls: [{ ...batch, ok: false }], text: "two are open" }), false, "a batch that errored ran nothing");
+  assert.equal(passed(chain, { calls: [{ name: "mcp__vyre__tools_run", input: {}, ok: true }], text: "two" }), false);
 });
 
 test("a tool call is read through tools_call and the MCP prefix; a check needs the call to have succeeded", () => {
@@ -53,7 +68,7 @@ test("the summary adds up per arm, and the estimate prices the core arm below th
   const s = summarize([row("old", true), row("old", false), row("core", true)]);
   assert.deepEqual(s.map((a) => [a.arm, a.runs, a.pass, a.tokensIn]), [["old", 2, 1, 220], ["core", 1, 1, 110]]);
   const e = estimate({ arms: [{ name: "old", listing: 81500, turns: 3 }, { name: "core", listing: 4300, turns: 5 }], reps: 3 });
-  assert.equal(e.arms[0].runs, 30);
+  assert.equal(e.arms[0].runs, 39);
   assert.ok(e.arms[1].usd < e.arms[0].usd && e.totalUsd > 0);
 });
 

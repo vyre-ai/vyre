@@ -10,11 +10,27 @@ export function toolOf(name, input) {
   return real.replace(/\./g, "_");
 }
 
+/**
+ * The calls a run really made: a tools_run is its steps (each call step named by the tool it runs, as tools_call is unwrapped), so a task that wants a tool is satisfied by a batch that ran it.
+ * A tools_run that errored, or was held or refused as a whole, counts as nothing; a script that stopped at a step counts the steps that ran.
+ * @param {{ name: string, input?: any, ok?: boolean }[]} calls
+ */
+export function expand(calls) {
+  /** @type {{ name: string, input?: any, ok?: boolean }[]} */ const out = [];
+  for (const c of calls) {
+    const bare = String(c.name).replace(/^mcp__.*?__/, "");
+    if (bare !== "tools_run") { out.push(c); continue; }
+    const steps = c.input && Array.isArray(c.input.steps) ? c.input.steps : [];
+    for (const st of steps) if (st && typeof st.call === "string") out.push({ name: st.call, input: st.input, ok: c.ok });
+  }
+  return out;
+}
+
 /** @param {{ name: string, input?: any, ok?: boolean }[]} calls @param {string[]} names dotted or underscored @returns {boolean} some call to one of them returned without an error */
-export const used = (calls, names) => calls.some((c) => c.ok !== false && names.map((n) => n.replace(/\./g, "_")).includes(toolOf(c.name, c.input)));
+export const used = (calls, names) => expand(calls).some((c) => c.ok !== false && names.map((n) => n.replace(/\./g, "_")).includes(toolOf(c.name, c.input)));
 
 /** The world the tasks run in is seeded on the box before a round (scripts/token-proof.mjs seed): `seed` names what each task needs there. */
-/** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, tools: string[], answer?: RegExp, seed: string }[]} */
+/** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, batch?: boolean, tools: string[], answer?: RegExp, seed: string }[]} */
 export const TASKS = [
   { id: "recall", standIn: "tooluse mcp__plugin_vyre_vyre__memory_search", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
   { id: "todo", standIn: "tooluse mcp__plugin_vyre_vyre__planner_add", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
@@ -26,7 +42,25 @@ export const TASKS = [
   { id: "teammate", standIn: "tooluse mcp__plugin_vyre_vyre__team_ask", prompt: "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.", tools: ["team.ask", "agents.ask"], seed: "a project with a backend teammate" },
   { id: "doc", standIn: "tooluse mcp__plugin_vyre_vyre__docs_find", prompt: "Using Vyre, find the docs page that explains how to pair a phone and give me its path.", tools: ["docs.find"], answer: /\.md/, seed: "none (the docs ship with Vyre)" },
   { id: "skill", standIn: "tooluse mcp__plugin_vyre_vyre__skills_find", prompt: "Using Vyre, find the skill that helps keep a password out of a file and give me its id.", tools: ["skills.find", "skills.list"], answer: /vyre\/|use-the-vault/i, seed: "none (Vyre's own skills ship with it)" },
+  // The three tasks that need R031-00o (many steps in one call) and R031-00p (results by reference). They are not part of the first ten, so the first ten are the control.
+  { id: "chain", batch: true, prompt: "In Vyre, find the client Dana Whitfield, look up her matters, and tell me how many of them are still open (not Closed).", tools: ["work.call", "records.list"], answer: /\b(2|two)\b/i, seed: "Dana Whitfield with three matters: two Open, one Closed" },
+  { id: "biglist", batch: true, prompt: "In Vyre, list all the clients and tell me the names of the three that come first alphabetically.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*Aaron Abbott)(?=[\s\S]*Aaron Acosta)(?=[\s\S]*Aaron Adair)/, seed: "215 clients; the first three alphabetically are Aaron Abbott, Aaron Acosta, Aaron Adair" },
+  { id: "both", batch: true, prompt: "In Vyre, look at every matter: how many are Open and how many Closed? Then give me the title of Dana Whitfield's Closed matter.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*\b162\b)(?=[\s\S]*\b55\b)(?=[\s\S]*Deed transfer)/i, seed: "217 matters: 162 Open and 55 Closed; Dana's Closed matter is Deed transfer" },
 ];
+
+/**
+ * The listing and the features each arm of the proof runs with. Arms differ in nothing else: `core` is the small listing with tools_find and tools_call only (what 0.3.1 had before batching);
+ * `core-run` adds tools_run; `core-ref` adds results by reference (results_read and handles); `core-both` adds both. `old` and `old-search` list every tool, as before.
+ * @type {Record<string, { env: Record<string, string> }>}
+ */
+export const ARM_ENV = {
+  old: { env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "none" } },
+  "old-search": { env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "true", VYRE_MCP_FEATURES: "none" } },
+  core: { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "none" } },
+  "core-run": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run" } },
+  "core-ref": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "ref" } },
+  "core-both": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "" } },
+};
 
 /** Did a run pass: the right tool was called and returned without an error, and the answer holds the seeded fact where the task has one. @param {typeof TASKS[number]} task @param {{ calls: { name: string, input?: any, ok?: boolean }[], text: string }} run */
 export const passed = (task, run) => used(run.calls, task.tools) && (!task.answer || task.answer.test(run.text));

@@ -27,8 +27,8 @@ export const CORE = [
   "vyre_core",
 ];
 
-/** The two tools the server answers itself. They are listed beside the core. */
-export const META = ["tools_find", "tools_call"];
+/** The four tools the server answers itself (find, run many in one call, read a result by handle, call one by name). They are listed beside the core. */
+export const META = ["tools_find", "tools_run", "results_read", "tools_call"];
 
 /**
  * Every tool a caller may use, by the name it is called with: a module tool under its own name, the memory tools under theirs (their raw twins are not offered beside them).
@@ -51,6 +51,16 @@ export const META_TOOLS = [
     inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string", maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
   },
   {
+    name: "tools_run",
+    description: "Run up to 20 tool calls in one go and get one answer. steps: [{id, call, input, when?} or {id, fn: \"JS body returning an object\", inputs?}]. A value {expr:\"steps.<id>.rows[0].id\"} reads an earlier result; return:{name:{expr}} shapes the answer. Each step is judged as if you called it alone; it stops at a held, refused or failed step and says where.",
+    inputSchema: { type: "object", required: ["steps"], properties: { steps: { type: "array", maxItems: 20, items: { type: "object" } }, return: { type: "object" } } },
+  },
+  {
+    name: "results_read",
+    description: "Read part of a big result you were given a handle for: { handle, select?, offset?, limit? }. select is a path (rows[0].name); a list pages with offset and limit. Drop one early with tools_call results_drop.",
+    inputSchema: { type: "object", required: ["handle"], properties: { handle: { type: "string", maxLength: 80 }, select: { type: "string", maxLength: 200 }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+  },
+  {
     name: "tools_call",
     description: "Run any Vyre tool you may use, by the name tools_find gave: { tool, arguments }. Held and approval rules are the same as calling it directly.",
     inputSchema: { type: "object", required: ["tool"], properties: { tool: { type: "string", maxLength: 100 }, arguments: { type: "object" } } },
@@ -58,15 +68,23 @@ export const META_TOOLS = [
 ];
 
 /**
- * The MCP listing: the core that this caller has, then the two meta tools. With `mode` "all" (VYRE_MCP_LISTING=all) every tool is listed, as before 0.3.1: only the token proof
- * (scripts/token-proof.mjs) sets it, to measure the old listing against the new one.
- * @param {ReturnType<typeof catalogOf>} catalog @param {string} [mode]
+ * Which of the two batching features a session has: "" both, "run" (tools_run), "ref" (results by reference), "none". Only the token proof sets VYRE_MCP_FEATURES, to measure each feature by itself;
+ * a session without it has both.
+ * @param {string} [v]
  */
-export function listing(catalog, mode = "") {
+export const featuresOf = (v = "") => ({ run: v === "" || v === "run", ref: v === "" || v === "ref" });
+
+/**
+ * The MCP listing: the core that this caller has, then the meta tools. With `mode` "all" (VYRE_MCP_LISTING=all) every tool is listed, as before 0.3.1: only the token proof
+ * (scripts/token-proof.mjs) sets it, to measure the old listing against the new one.
+ * @param {ReturnType<typeof catalogOf>} catalog @param {string} [mode] @param {string} [features]
+ */
+export function listing(catalog, mode = "", features = "") {
   if (mode === "all") return catalog.map((c) => ({ name: c.name, description: c.description, inputSchema: c.input }));
   const by = new Map(catalog.map((c) => [c.name, c]));
   const core = CORE.filter((n) => by.has(n)).map((n) => { const c = /** @type {any} */ (by.get(n)); return { name: c.name, description: c.description, inputSchema: c.input }; });
-  return [...core, ...META_TOOLS];
+  const f = featuresOf(features);
+  return [...core, ...META_TOOLS.filter((t) => (t.name === "tools_run" ? f.run : t.name === "results_read" ? f.ref : true))];
 }
 
 /** The search index over a catalog (and any hub tools handed in the same shape). @param {{ name: string, tool?: string, description: string, input: any }[]} catalog */

@@ -8,7 +8,7 @@
 //                                                     real claude, once per arm. The proof runs as a Vyre-started agent, the way agents really use Vyre: the person's own Claude Code session
 //                                                     attaches as the plugin agent and is offered only memory and recall, so it would show nothing.
 //
-// Arms: `old` lists every tool (VYRE_MCP_LISTING=all, Claude Code's own tool search off, so the whole listing is in the prompt); `old-search` lists every tool and leaves Claude Code's
+// Arms: `core-run`, `core-ref` and `core-both` are `core` plus tools_run, plus results by reference (results_read), plus both (VYRE_MCP_FEATURES); they differ from `core` in nothing else, and the three batching tasks (chain, biglist, both) are where they should win while the first ten tasks, run on every arm, must not get worse. `old` lists every tool (VYRE_MCP_LISTING=all, Claude Code's own tool search off, so the whole listing is in the prompt); `old-search` lists every tool and leaves Claude Code's
 // own tool search forced on (ENABLE_TOOL_SEARCH=true; it defers a long MCP list by itself); `core` is the new listing with tools_find and tools_call. Each run records input, output and cache tokens, time, turns, the
 // tool calls made (tools_call unwrapped to the tool it ran) and pass or fail. The paid round runs only with VYRE_PROOF_PAID=yes in the environment AND --max-usd: it stops before the next run
 // once Claude Code's own reported cost reaches the cap. It uses whatever ANTHROPIC_* auth the shell has; nothing is printed of it. Run it on the test box, never on a person's Mac.
@@ -17,7 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { TASKS, parseStream, passed, summarize, estimate, PRICES } from "./lib/token-proof.js";
+import { TASKS, ARM_ENV, parseStream, passed, summarize, estimate, PRICES } from "./lib/token-proof.js";
 import { tokens } from "../lib/tokens.js";
 import { listing } from "../harness/mcp/core-tools.js";
 import { broadCatalog } from "../test/tools-universe.js";
@@ -27,11 +27,7 @@ const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "estimate";
 const flag = (/** @type {string} */ n, /** @type {string} */ d = "") => { const i = args.indexOf(`--${n}`); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const ARMS = {
-  old: { listing: "all", env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "false" } },
-  "old-search": { listing: "all", env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "true" } },
-  core: { listing: "core", env: { ENABLE_TOOL_SEARCH: "false" } },
-};
+const ARMS = ARM_ENV;
 
 /** The tools a Vyre agent is offered, from a real in-process daemon when this machine may start one (a test box); otherwise an estimate from the manifests, which counts about twice as many. */
 async function catalogNow() {
@@ -50,15 +46,15 @@ async function catalogNow() {
 
 async function dry() {
   const { exact, cat } = await catalogNow();
-  const size = (/** @type {string} */ mode) => tokens(JSON.stringify(listing(cat, mode)));
-  const sizes = { all: size("all"), core: size("") };
-  console.log(`${exact ? "" : "(An estimate from the manifests: this machine cannot start a daemon, and the estimate counts about twice as many tools. Run it on the test box for the exact numbers.)\n"}Listing: ${cat.length} tools an agent may use; all listed = ${sizes.all} tokens, core + tools_find/tools_call = ${sizes.core} tokens.\n`);
+  const size = (/** @type {string} */ mode, /** @type {string} */ features = "none") => tokens(JSON.stringify(listing(cat, mode, features)));
+  const sizes = { all: size("all"), core: size(""), run: size("", "run"), ref: size("", "ref"), both: size("", "") };
+  console.log(`${exact ? "" : "(An estimate from the manifests: this machine cannot start a daemon, and the estimate counts about twice as many tools. Run it on the test box for the exact numbers.)\n"}Listing: ${cat.length} tools an agent may use; all listed = ${sizes.all} tokens, core + tools_find/tools_call = ${sizes.core} tokens, core-run = ${sizes.run}, core-ref = ${sizes.ref}, core-both = ${sizes.both}.\n`);
   console.log("Tasks (fixed prompts; pass = the right tool ran without an error, and the seeded fact is in the answer where there is one):");
   for (const t of TASKS) console.log(`  ${t.id.padEnd(10)} ${t.prompt}\n  ${" ".repeat(10)} tool: ${t.tools.join(" | ")}; world: ${t.seed}`);
   const reps = Number(flag("reps", "3"));
   for (const shared of [false, true]) {
-    const e = estimate({ arms: [{ name: "old", listing: sizes.all, turns: 3 }, { name: "core", listing: sizes.core, turns: 5 }], reps, shared, prices: PRICES });
-    console.log(`\nDry estimate, ${reps} reps, ${TASKS.length} tasks, two arms, ${shared ? "prefix cached across runs" : "no cache shared between runs"}: $${e.totalUsd}`);
+    const e = estimate({ arms: [{ name: "old", listing: sizes.all, turns: 3 }, { name: "core", listing: sizes.core, turns: 5 }, { name: "core-both", listing: sizes.both, turns: 5 }], reps, shared, prices: PRICES });
+    console.log(`\nDry estimate, ${reps} reps, ${TASKS.length} tasks, three arms, ${shared ? "prefix cached across runs" : "no cache shared between runs"}: $${e.totalUsd}`);
     for (const a of e.arms) console.log(`  ${a.arm.padEnd(5)} ${a.runs} runs, ${a.turnsPerRun} turns each, ${a.tokensInPerRun} tokens in and ${a.tokensOutPerRun} out per run, $${a.usdPerRun} per run, $${a.usd} in all`);
   }
   console.log(`\nAssumptions: Claude Code's own prompt ~14,000 tokens; old arm 3 turns, core arm 5 (find, call, answer); ~900 tokens per tool result; prices per million tokens ${JSON.stringify(PRICES)} (check before a paid run).`);
