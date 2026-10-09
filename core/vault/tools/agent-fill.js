@@ -13,12 +13,20 @@ const str = { type: "string" };
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
 export function register({ ctx, vault, said, tool }) {
-  tool("vault.agent.fill", ["mcp", "harness"], "Sign in on your own computer with a login lent to you (a # tag the person typed in this conversation, or vault.agent.grant). You never see the login: it is typed into the page for you. Returns which fields were filled, the origin and whether the page moved on.",
-    obj({ item: str, origin: str }, ["item"]), async (input, meta = {}) => {
-      if (!["mcp", "harness"].includes(callerKind(meta.caller))) throw Object.assign(new Error("only an agent signs itself in"), { code: "denied" });
-      const agent = agentClaim(String(meta.caller || ""));
+  tool("vault.agent.fill", ["mcp", "harness", "module"], "Sign in on your own computer with a login lent to you (a # tag the person typed in this conversation, or vault.agent.grant). You never see the login: it is typed into the page for you. Returns which fields were filled, the origin and whether the page moved on.",
+    obj({ item: str, origin: str, agent: str, thread: str, lineage: { type: "array", items: str } }, ["item"]), async (input, meta = {}) => {
+      const kind = callerKind(meta.caller);
+      let agent, thread, lineage;
+      if (kind === "module") {
+        // Only Vyre Computer signs an agent in for it, and it names the agent and conversation the registry vouched for on the model's own call.
+        if (String(meta.caller) !== "module:computer") throw Object.assign(new Error("only Vyre Computer signs an agent in for it"), { code: "denied" });
+        agent = String(input.agent || ""); thread = input.thread; lineage = input.lineage;
+      } else {
+        agent = agentClaim(String(meta.caller || ""));
+        thread = /** @type {any} */ (meta).thread; lineage = /** @type {any} */ (meta).lineage;
+      }
       if (!agent || agent === "(unnamed)") throw Object.assign(new Error("a session that names no agent has no computer to sign in on"), { code: "denied" });
-      return agentFill({ vault, said, call: (n, i) => ctx.call(n, i), log: ctx.log }, { agent, item: input.item, origin: input.origin, thread: /** @type {any} */ (meta).thread, lineage: /** @type {any} */ (meta).lineage });
+      return agentFill({ vault, said, call: (n, i) => ctx.call(n, i), log: ctx.log }, { agent, item: input.item, origin: input.origin, thread, lineage });
     });
 
   // The person sees where a tag has lent a login, and takes it back at once. Names and hosts only.

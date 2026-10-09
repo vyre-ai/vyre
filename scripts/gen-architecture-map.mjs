@@ -137,6 +137,7 @@ export const MODULES = {
   "core/sessions": ["sessions", "How the sessions Vyre starts run: drivers, status and system prompts."],
   "core/settings": ["ui", "One way to read and change every setting, at any level."],
   "core/sidebar": ["ui", "The sidebar each person arranges: built-in places, module screens, saved views."],
+  "core/computer": ["outside", "Vyre Computer: one front door over the cloud computer, your Macs and the screen engines; computers by name, interface first, screen last."],
   "core/sight": ["outside", "One screen service for the Mac and every agent's computer: what is on it, what was just done."],
   "core/signin": ["identity", "`vyre signin`: the owner's phone approves a terminal."],
   "core/vyre-index": ["ui", "The live index of Vyre's modules for an agent with only the small tool core: vyre.core, from the map's table and the daemon's module list."],
