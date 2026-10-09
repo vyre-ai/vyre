@@ -196,7 +196,7 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
+      obj({ filter: str, kind: str, host: str }), (input, { caller, project, agentKind }) => {
         const r = cli.list(vault.list(input), input);
         // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
         // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
@@ -204,6 +204,9 @@ export default {
         // equals a grant's project. An agent with no project sees nothing.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
         if (!who || !r || !Array.isArray(r.items)) return r;
+        // The person's own assistant keeps its reach through vault.request (api-request: the assistant is not asked for a scope), so it is shown the credentials it can call: the name, kind,
+        // description and hosts of each api-credential, never a value and never another kind of item. Without this it reads an empty vault and gives up on a credential it may use.
+        if (agentKind === "assistant") return { ...r, items: r.items.filter(i => i.kind === "api-credential").map(i => ({ name: i.name, kind: i.kind, ...(i.description ? { description: i.description } : {}), ...(i.hosts ? { hosts: i.hosts } : {}) })) };
         const mine = g => Boolean(project) && g.project === project;
         return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
       });

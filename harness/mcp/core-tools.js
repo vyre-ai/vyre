@@ -57,8 +57,8 @@ export const META_TOOLS = [
   },
   {
     name: "results_read",
-    description: "Read part of a big result you were given a handle for: { handle, select?, offset?, limit? }. select is a path (rows[0].name); a list pages with offset and limit. Drop one early with tools_call results_drop.",
-    inputSchema: { type: "object", required: ["handle"], properties: { handle: { type: "string", maxLength: 80 }, select: { type: "string", maxLength: 200 }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+    description: "Read part of a big result you were given a handle for: { handle, select?, where?, sort?, fields?, offset?, limit? }. select is a path (result.records); on a list, where {\"data.stage\":\"Open\"}, sort (\"data.name\", \"-\" for descending) and fields [\"data.name\"] narrow it first, so one read can be all you need. Drop one with tools_call results_drop.",
+    inputSchema: { type: "object", required: ["handle"], properties: { handle: { type: "string", maxLength: 80 }, select: { type: "string", maxLength: 200 }, where: { type: "object" }, sort: { type: "string", maxLength: 100 }, fields: { type: "array", maxItems: 20, items: { type: "string" } }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
   },
   {
     name: "tools_call",

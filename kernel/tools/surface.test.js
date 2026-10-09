@@ -117,3 +117,19 @@ test("T-1 and T-2: a duplicate tool name is dropped, and the schema names only t
   assert.match(find.schema.properties.where.description, /Fields: title\./);
   assert.ok(!/stage/.test(find.schema.properties.where.description));
 });
+
+test("a find says when there is more and how to get it, says when a limit was cut, and takes a sort for the first few", async () => {
+  const r = await rig();
+  const p = person(OWNER);
+  for (const title of ["delta", "alpha", "charlie", "bravo"]) await r.kernel.records.create(p, "matter", { title });
+  const two = await r.surface.call(p, "matters.find", { limit: 2 });
+  assert.equal(two.records.length, 2);
+  assert.equal(two.more, true);
+  assert.equal(typeof two.next_cursor, "string");
+  const rest = await r.surface.call(p, "matters.find", { limit: 2, cursor: two.next_cursor });
+  assert.equal(rest.records.length, 2);
+  assert.equal(rest.more, undefined);
+  const first = await r.surface.call(p, "matters.find", { limit: 1, sort: [{ field: "title", dir: "asc" }] });
+  assert.equal(first.records[0].data.title, "alpha");
+  assert.equal((await r.surface.call(p, "matters.find", { limit: 500 })).capped_at, 50);
+});

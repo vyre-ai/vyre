@@ -130,7 +130,7 @@ await seeded("flow: intake-welcome, approved", async () => {
 });
 
 await seeded("vault: the stored Acme API key (an api-credential)", async () => {
-  await must("vault.put", { name: "acme", kind: "api-credential", description: "Acme API key (GET /v1/status, /v1/customers)", hosts: ["api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
+  await must("vault.put", { name: "acme", kind: "api-credential", description: "Acme API key (GET /v1/status, /v1/customers)", hosts: ["https://api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
 });
 await seeded("connection: Orbit CRM (label, host, key item, check)", async () => {
   await must("vault.put", { name: "orbit-crm-key", kind: "secret", description: "the key of the Orbit CRM connection", fields: { value: KEY } });
@@ -224,6 +224,13 @@ async function verifyRepeat(/** @type {string} */ text) {
   return mine.length === 1 && text.includes(mine[0].id) && /\b(1|one)\b/i.test(text);
 }
 
+/** Every todo gone, so a run is judged on what it made and nothing an earlier arm left (planner.delete takes `item`; a wrong name was ignored once and the second arm of every pair failed its check). Returns how many are left. */
+async function clearTodos() {
+  const items = async () => { const l = await call("planner.list", { state: "all", limit: 500 }); return (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : []); };
+  for (const it of await items()) await call("planner.delete", { item: it.id });
+  return (await items()).length;
+}
+
 /** The long task passes when the answer holds the real ids of the two todos it names, and the count. */
 async function verifyLong(/** @type {string} */ text) {
   const l = await call("planner.list", { state: "all", limit: 500 });
@@ -267,7 +274,7 @@ if (cmd === "run") {
     }
     const skillMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_SKILL;
     if (skillMode) { removeLearned(); if (skillMode === "on") installRepeatSkill(); }
-    if (task.verify === "long" || task.verify === "repeat") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
+    if (task.verify === "long" || task.verify === "repeat") await clearTodos();
     Object.assign(process.env, /** @type {any} */ (ARMS)[arm]);
     if (!process.env.VYRE_MCP_LISTING) delete process.env.VYRE_MCP_LISTING;
     if (!process.env.VYRE_MCP_FEATURES) process.env.VYRE_MCP_FEATURES = "";
@@ -280,7 +287,7 @@ if (cmd === "run") {
     const stream = readRun(tee);
     const run = parseStream(stream);
     const extra = task.verify === "long" ? await verifyLong(run.text) : task.verify === "repeat" ? await verifyRepeat(run.text) : true;
-    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(stream), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(stream) && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(stream), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(stream) && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, processes: (stream.match(/"subtype":"init"/g) || []).length, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
@@ -298,6 +305,7 @@ const PROBES = [
   ["record", "work.call", { tool: "clients.find", input: { where: { name: "Dana Whitfield" } } }, /probate/],
   ["flow", "flows.start", { id: () => flowId, input: { name: "Test Client" } }, /run_|"run"|started|status/i],
   ["vault", "vault.request", { credential: "acme", method: "GET", url: "https://api.acme-proof.test/v1/status" }, /"status":\s*200|ok/],
+  ["vault", "vault.list", {}, /"name":"acme"/],
   ["connection", "vault.request", { credential: "conn-orbit-crm", method: "GET", url: "https://api.orbit-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
   ["chain", "work.call", { tool: "matters.find", input: { where: { client_name: "Dana Whitfield" } } }, /Deed transfer/],
   ["biglist", "work.call", { tool: "clients.find", input: {} }, /Aaron Abbott/],
@@ -315,6 +323,12 @@ for (const [id, tool, input, want] of PROBES) {
   let text = ""; try { text = JSON.stringify(await viaSession("juno", tool, Object.fromEntries(Object.entries(/** @type {any} */ (input)).map(([k, v]) => [k, typeof v === "function" ? v() : v])))); } catch (e) { text = `error ${/** @type {Error} */ (e).message}`; }
   const ok = !/"error":/.test(text.slice(0, 40)) && want.test(text); proven += ok ? 1 : 0;
   console.log(`probe ${ok ? "ok  " : "FAIL"} ${String(id).padEnd(10)} ${tool}: ${text.slice(0, 150)}  [${text.length} chars, ${Math.ceil(text.length / 4)} tokens, ${(text.match(/"version":/g) || []).length} records]`);
+}
+{
+  await call("planner.add", { kind: "todo", title: "Call Test Person" });
+  const left = await clearTodos();
+  console.log(`${left === 0 ? "probe ok  " : "probe FAIL"} cleanup    the todos a run made are all gone between arms (${left} left)`);
+  if (left !== 0) proven--;
 }
 console.log(`probes: ${proven} of ${PROBES.length}; the tasks not yet probed: ${TASKS.map((t) => t.id).filter((id) => !PROBES.some((p) => p[0] === id)).join(", ")}`);
 await d.stop();
