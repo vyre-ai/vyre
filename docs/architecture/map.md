@@ -228,7 +228,9 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | `packaging/` | Packaging for cloud images. |
 | `records/` | The records language, Kits (starter sets of types and Flows) and connector declarations. |
 | `relay/` | The relay that lets a paired device reach a server that has no open port: server, client library, web pages. |
+| `release/` | Release data: the oldest version a release may update from, release notes. |
 | `scripts/` | Installers, the docs build, the test and walk harnesses, evals. |
+| `site/` | The public website at vyre.run. |
 | `spec/` | The deep-link specification for the apps. |
 | `stores/` | Record stores behind the kernel's store interface; today the Twenty store. |
 | `test/` | Tests that cross folders: boundaries, docs, installers, releases. |
