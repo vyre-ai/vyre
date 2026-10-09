@@ -332,6 +332,19 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
+  ["ask.answer", "answers a question card in the person's own words: an assistant answering would decide for the person"],
+  ["ask.cancel", "puts a question card away: the person's own act, the agent is told it was cancelled"],
+  ["previews.keep", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only (assistant management: BACKLOG 0.3.2)"],
+  ["previews.restart", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.stop", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.remove", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.log", "the process log of a preview, for its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.share", "opens a preview to a project or the whole Space, as its maker or an admin from the person's own session: the person's own act"],
+  ["previews.url", "makes the one-time ticket that opens a preview in the person's own browser: the person's own act"],
+  ["previews.signin-done", "says the person has signed in on a computer: their own hands on their own keyboard"],
+  ["previews.reply", "the person's typed answer to a stuck run: their own words"],
+  ["previews.frame", "the person's own view of a computer's live screen"],
+  ["previews.thumb", "the picture on a preview card, drawn for the person's own screen"],
 ]);
 
 /** @type {ReadonlySet<string>} */

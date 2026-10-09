@@ -4,13 +4,13 @@
 // the agent then files it at the Gate as any send, and that is the person's one yes. Answers are not proofs and cover nothing; they only say what the person meant.
 // Pending asks live in memory (a restart ends the wait: the agent asks again); the card is the chat's own frame (thread.questions).
 import crypto from "node:crypto";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, PERSON_SURFACES } from "../../lib/caller.js";
 import { cleanQuestions, checkAnswers, answerLines } from "./model.js";
 
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const PERSON = ["cli", "local", "deck", "capsule", "tailnet", "device", "mobile"];
+const PERSON = [...PERSON_SURFACES, "tailnet", "device"];
 const TTL_MS = 30 * 60_000, MAX_WAIT_MS = 55_000, MAX_OPEN = 20;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -32,7 +32,7 @@ export default {
     });
 
     ctx.tool("ask.many", {
-      description: "Ask the person several things at once, as ONE card in this chat: { title?, questions: [{ id?, prompt, choices: [label or { label, detail }], allowText?, optional? }], wait_ms? }. Each question has choices and room for the person to type or say their own. Use it whenever more than one thing is unclear, instead of asking one at a time. Waits up to wait_ms (at most 55 s) for the answers; if they have not come, answers { id, state: \"waiting\" } and you call ask.get { id, wait_ms } to wait again. Answers { id, state: \"answered\", answers, lines }. The answers decide nothing by themselves: when you then send or change something, it still waits for the person's yes.",
+      description: "Ask the person several things at once as ONE card: title and questions (prompt, choices, allowText). Returns answers, or an id to poll with ask.get.",
       input: obj({ title: str, questions: { type: "array" }, wait_ms: { type: "integer" }, thread: str }, ["questions"]),
       callers: [...PERSON, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

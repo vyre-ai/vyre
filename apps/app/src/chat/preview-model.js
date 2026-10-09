@@ -29,5 +29,5 @@ export function previewActions(p) {
   };
 }
 
-/** What the card says about how long the preview lives: the agent's own server ends with the chat; one Vyre looks after keeps running. */
+/** What the card says about how long the preview lives: the agent's own server ends with the chat; one Vyre looks after keeps running. @param {string} mode @param {string} state */
 export const lifeWord = (mode, state) => (state === "live" || state === "starting") ? (mode === "session" ? "Ends with this chat" : "Keeps running") : "";
