@@ -64,7 +64,7 @@ export function createTickets(o = {}) {
   /** Signed-in sessions survive a restart when a store is given: kept by the hash of the cookie, never the cookie itself. @type {{ put: (h: string, r: any) => void, get: (h: string) => any, dropName: (n: string) => void, sweep: (t: number) => void } | undefined} */
   const store = o.store;
   const hash = (/** @type {string} */ sid) => crypto.createHash("sha256").update(String(sid)).digest("hex");
-  /** @type {Map<string, { name: string, host: string, next: string, exp: number, who: { w: string, r: string } | null }>} */ const tickets = new Map();
+  /** @type {Map<string, { name: string, host: string, next: string, exp: number, who: { w: string, r: string } | null, embed: boolean }>} */ const tickets = new Map();
   /** @type {Map<string, { name: string, host: string, exp: number, who: { w: string, r: string } | null }>} */ const sessions = new Map();
   const sweep = () => { const t = now(); for (const [k, v] of tickets) if (v.exp < t) tickets.delete(k); for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k); if (store) store.sweep(t); };
   /** A live session by its cookie: in memory, else from the store (after a restart). @param {string | undefined} sid */
@@ -77,8 +77,8 @@ export function createTickets(o = {}) {
     return null;
   };
   return {
-    /** A ticket for this app at this exact host; good once, for a minute. `who` is the person it was made for (their id and their role), which a preview's page is told on every request. @param {string} name @param {string} host @param {string} next @param {{ w: string, r: string } | null} [who] */
-    issue(name, host, next, who = null) { sweep(); const t = crypto.randomBytes(24).toString("base64url"); tickets.set(t, { name, host, next, exp: now() + TICKET_MS, who }); return t; },
+    /** A ticket for this app at this exact host; good once, for a minute. `who` is the person it was made for (their id and their role), which a preview's page is told on every request. @param {string} name @param {string} host @param {string} next @param {{ w: string, r: string } | null} [who] @param {boolean} [embed] the address is for a frame inside Vyre's own app: its cookie must work in a frame */
+    issue(name, host, next, who = null, embed = false) { sweep(); const t = crypto.randomBytes(24).toString("base64url"); tickets.set(t, { name, host, next, exp: now() + TICKET_MS, who, embed }); return t; },
     /** Trade a ticket for a session id, once, only at the host it was made for. @param {string} t @param {string} host */
     trade(t, host) {
       sweep();
@@ -88,7 +88,7 @@ export function createTickets(o = {}) {
       const sid = crypto.randomBytes(32).toString("base64url");
       sessions.set(sid, { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
       if (store) store.put(hash(sid), { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
-      return { sid, next: v.next, maxAge: Math.floor(SESSION_MS / 1000) };
+      return { sid, next: v.next, maxAge: Math.floor(SESSION_MS / 1000), embed: v.embed };
     },
     /** @param {string | undefined} sid @param {string} name @param {string} host */
     valid(sid, name, host) { const v = load(sid); return Boolean(v && v.name === name && v.host === host && v.exp > now()); },
@@ -112,7 +112,7 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, viewerKey?: string, credentials: () => Promise<Record<string, string>> }>,
+ * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, credentials: () => Promise<Record<string, string>> }>,
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
@@ -164,7 +164,7 @@ export function createHostProxy(o) {
       if (req.method !== "GET") return plain(404, "not found");
       const got = o.tickets.trade(url.searchParams.get("t") || "", host);
       if (!got) return plain(404, "not found");
-      res.writeHead(302, { location: got.next || "/", "set-cookie": `${COOKIE}=${got.sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${got.maxAge}${secure ? "; Secure" : ""}`, "cache-control": "no-store" });
+      res.writeHead(302, { location: got.next || "/", "set-cookie": `${COOKIE}=${got.sid}; Path=/; HttpOnly; ${got.embed ? "SameSite=None; Secure; Partitioned" : `SameSite=Lax${secure ? "; Secure" : ""}`}; Max-Age=${got.maxAge}`, "cache-control": "no-store" });
       res.end();
       return true;
     }
@@ -199,6 +199,8 @@ export function createHostProxy(o) {
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
       if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
+      // A preview is the owner's own, shown in Vyre's own app: the page's own wish not to be framed does not apply to Vyre, so the headers that say it are dropped (only for a preview).
+      if (app.allowEmbed) { delete out["x-frame-options"]; if (typeof out["content-security-policy"] === "string") out["content-security-policy"] = out["content-security-policy"].replace(/(^|;)\s*frame-ancestors[^;]*/gi, "$1").replace(/^\s*;\s*/, ""); }
       res.writeHead(r.statusCode || 502, out);
       if (req.method === "HEAD") { r.resume(); res.end(); } else r.pipe(res);
       return true;

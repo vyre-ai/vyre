@@ -291,3 +291,14 @@ test("app at /app/ is unchanged by the root support: a worker with BASE /app", t
   assert.equal(appBase(dir), "/app", "no base in precache.json means /app");
   assert.match(appWorker({ dir }), /const BASE = "\/app";/);
 });
+
+test("cspFor: the app may frame this box's own preview addresses and nothing else; a host that is not a plain name changes nothing", async () => {
+  const { cspFor, CSP } = await import("./app.js");
+  const c = cspFor("harlow.vyre.run:8443");
+  assert.match(c, /frame-src 'self' https:\/\/\*\.harlow\.vyre\.run http:\/\/\*\.localhost:\*; frame-ancestors 'none'/);
+  assert.ok(c.startsWith("default-src 'self'"), "the rest of the policy is the same");
+  assert.match(cspFor("a.vyre.run", "b.vyre.run"), /https:\/\/\*\.a\.vyre\.run https:\/\/\*\.b\.vyre\.run/);
+  assert.ok(!/evil/.test(cspFor("x.example; script-src *")), "an odd host is left out");
+  assert.ok(cspFor(undefined).includes("frame-ancestors 'none'") && cspFor(undefined).includes("default-src 'self'"));
+  void CSP;
+});

@@ -232,13 +232,13 @@ export default {
     });
 
     ctx.tool("previews.url", {
-      description: "The address to open a preview at: { url }, on its own origin, with a one-time sign-in that is good for a minute. A person who may open it, at their own surface.",
-      input: obj({ id: str, origin: str }, ["id"]), callers: PERSON_ONLY,
+      description: "The address to open a preview at: { url }, on its own origin, with a one-time sign-in that is good for a minute. embed: true is for a frame inside Vyre's own app (its sign-in works in a frame). A person who may open it, at their own surface.",
+      input: obj({ id: str, origin: str, embed: { type: "boolean" } }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
         if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
         if (r.state === "stopped" || r.state === "crashed") throw refuse(r.state === "stopped" ? "it is stopped: restart it first" : "it is not running: restart it, or look at its log", "unavailable");
-        const t = await ctx.call("appmods.ticket", { name: nameOf_(r.id), who: who.id, role: who.role || "", ...(i.origin ? { origin: i.origin } : {}) });
+        const t = await ctx.call("appmods.ticket", { name: nameOf_(r.id), who: who.id, role: who.role || "", ...(i.embed === true ? { embed: true } : {}), ...(i.origin ? { origin: i.origin } : {}) });
         if (t.error) throw refuse(t.error.message || "the front door did not answer", t.error.code || "unavailable");
         return { url: t.data.url, host: t.data.host };
       },

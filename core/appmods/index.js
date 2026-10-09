@@ -334,7 +334,7 @@ export default {
         // A preview (core/previews) is one more origin behind the same front, ticket and cookie: asked of that module by name, never by import.
         if (PREVIEW_NAME.test(String(name))) {
           const p = await ctx.call("previews.resolve", { name: String(name) }).catch(() => null);
-          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, ...(typeof p.data.viewerKey === "string" ? { viewerKey: p.data.viewerKey } : {}), credentials: async () => ({}) } : null;
+          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, allowEmbed: true, ...(typeof p.data.viewerKey === "string" ? { viewerKey: p.data.viewerKey } : {}), credentials: async () => ({}) } : null;
         }
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
@@ -397,7 +397,7 @@ export default {
     };
     ctx.tool("appmods.ticket", {
       description: "A one-time sign-in address for a preview, on its own origin: { url, host }. Internal: the previews module has already decided that this person may open it.", internal: true,
-      input: obj({ name: str, next: str, origin: str, who: str, role: str }, ["name"]),
+      input: obj({ name: str, next: str, origin: str, who: str, role: str, embed: { type: "boolean" } }, ["name"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         previewsOnly(meta, i.name);
         let base = baseHost();
@@ -405,7 +405,7 @@ export default {
         const here = originFor(i.name, base);
         const next = typeof i.next === "string" && i.next.startsWith("/") && !i.next.startsWith("//") ? i.next : "/";
         const who = typeof i.who === "string" && i.who ? { w: String(i.who).slice(0, 120), r: String(i.role || "").slice(0, 20) } : null;
-        return { url: `${here}${ENTER}?t=${tickets.issue(i.name, new URL(here).host, next, who)}`, host: new URL(here).host };
+        return { url: `${here}${ENTER}?t=${tickets.issue(i.name, new URL(here).host, next, who, i.embed === true)}`, host: new URL(here).host };
       },
     });
     ctx.tool("appmods.drop", {

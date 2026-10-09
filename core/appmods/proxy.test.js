@@ -80,3 +80,29 @@ test("a signed-in session survives a restart when a store keeps it (by the hash 
   b.drop("pv-0a1b2c3d");
   assert.equal(createTickets({ now: () => at, store }).valid(got.sid, "pv-0a1b2c3d", "pv-0a1b2c3d.localhost"), false);
 });
+
+test("a frame's address gets a cookie that works inside a frame (SameSite=None; Secure; Partitioned); an ordinary one stays Lax", async () => {
+  const { createHostProxy } = await import("./proxy.js");
+  const http = await import("node:http");
+  const up = http.createServer((_q, r) => { r.writeHead(200, { "x-frame-options": "DENY", "content-security-policy": "default-src 'self'; frame-ancestors 'none'; img-src data:" }); r.end("page"); });
+  await new Promise(r => up.listen(0, "127.0.0.1", () => r(undefined)));
+  const tickets = createTickets();
+  const serve = createHostProxy({ tickets, app: async (n) => (n === "pv-0a1b2c3d" ? { origin: `http://127.0.0.1:${/** @type {any} */ (up.address()).port}`, origins: [], login: null, public: [], rewriteHost: true, passCookies: true, allowEmbed: true, credentials: async () => ({}) } : null) });
+  const front = http.createServer((q, s) => { serve(q, s, { url: new URL(q.url || "/", "http://x") }).then(d => { if (!d) { s.writeHead(404); s.end(); } }); });
+  await new Promise(r => front.listen(0, "127.0.0.1", () => r(undefined)));
+  const port = /** @type {any} */ (front.address()).port;
+  const get = (/** @type {string} */ p, /** @type {Record<string, string>} */ h = {}) => new Promise(resolve => { http.get({ host: "127.0.0.1", port, path: p, headers: { host: "pv-0a1b2c3d.vyre.test", ...h } }, res => { res.resume(); res.on("end", () => resolve(res)); }); });
+  try {
+    const embed = /** @type {any} */ (await get(`${ENTER}?t=${tickets.issue("pv-0a1b2c3d", "pv-0a1b2c3d.vyre.test", "/", { w: "p", r: "owner" }, true)}`));
+    assert.match(String(embed.headers["set-cookie"]), /SameSite=None; Secure; Partitioned/);
+    const plain = /** @type {any} */ (await get(`${ENTER}?t=${tickets.issue("pv-0a1b2c3d", "pv-0a1b2c3d.vyre.test", "/", { w: "p", r: "owner" }, false)}`));
+    assert.match(String(plain.headers["set-cookie"]), /SameSite=Lax/);
+    assert.ok(!/None/.test(String(plain.headers["set-cookie"])));
+    const cookie = String(embed.headers["set-cookie"]).split(";")[0];
+    const page = /** @type {any} */ (await get("/", { cookie }));
+    assert.equal(page.statusCode, 200);
+    assert.equal(page.headers["x-frame-options"], undefined, "the page's wish not to be framed does not apply to Vyre's own app");
+    assert.ok(!/frame-ancestors/.test(String(page.headers["content-security-policy"])), "nor its frame-ancestors");
+    assert.match(String(page.headers["content-security-policy"]), /default-src 'self'.*img-src data:/, "the rest of its policy is kept");
+  } finally { front.close(); up.close(); }
+});

@@ -28,6 +28,15 @@ export const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascr
   ".webmanifest": "application/manifest+json" };
 // The same policy as web/'s files (core/daemon/index.js serveWeb).
 export const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+/**
+ * The app's policy for a request to this host: the same, plus the right to frame this box's own preview addresses (pv-<id>.<this host>), and nothing else. A host that is not a plain name changes nothing.
+ * @param {string | undefined} host the request's Host @param {string} [base] where Vyre's front is served (config appmods.base), when it is not this host
+ */
+export function cspFor(host, base) {
+  const names = [...new Set([host, base].map(h => String(h || "").toLowerCase().replace(/:\d+$/, "")).filter(h => /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/.test(h)))];
+  const src = [...names.map(h => `https://*.${h}`), "http://*.localhost:*"].join(" ");
+  return CSP.replace("frame-ancestors 'none'", `frame-src 'self' ${src}; frame-ancestors 'none'`);
+}
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
 /** @param {import("node:http").ServerResponse} res */
