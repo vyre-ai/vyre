@@ -15,7 +15,7 @@
 
   function err(code, message) { var e = new Error(message || code); e.code = code; return e; }
   function post(op, args) {
-    return fetch(API, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-vyre-bridge": "1" }, body: JSON.stringify({ op: op, args: args || {} }) })
+    return fetch(API, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-page-bridge": "1" }, body: JSON.stringify({ op: op, args: args || {} }) })
       .then(function (r) { return r.json().catch(function () { return null; }); })
       .then(function (j) { if (!j || j.error) throw err(j && j.error ? j.error.code : "unavailable", j && j.error ? j.error.message : "the page's server did not answer"); return j.data; });
   }

@@ -218,7 +218,7 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
   /** One bridge call. @param {string} op @param {any} args @param {Record<string, string>} [extra] */
   const bridge = (op, args = {}, extra = {}) => new Promise((resolve, reject) => {
     const body = JSON.stringify({ op, args });
-    const req = http.request({ host: "127.0.0.1", port: frontPort, method: "POST", path: "/__vyre/api", headers: { host: u.host, cookie, "content-type": "application/json", "x-vyre-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...extra } },
+    const req = http.request({ host: "127.0.0.1", port: frontPort, method: "POST", path: "/__vyre/api", headers: { host: u.host, cookie, "content-type": "application/json", "x-page-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...extra } },
       res => { const c = /** @type {Buffer[]} */ ([]); res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, ...JSON.parse(Buffer.concat(c).toString() || "{}") })); });
     req.on("error", reject); req.end(body);
   });
@@ -232,7 +232,7 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
   assert.equal(meta.state.db, "prompt");
   assert.equal(meta.state.permissions, "granted");
   assert.equal(await code("db.get", { path: "tasks/t1" }), "consent_required", "a declared capability still asks at its first use");
-  assert.equal((/** @type {any} */ (await bridge("db.get", { path: "tasks/t1" }, { "x-vyre-bridge": "0" }))).status, 403, "a request that is not from the page's own script is refused");
+  assert.equal((/** @type {any} */ (await bridge("db.get", { path: "tasks/t1" }, { "x-page-bridge": "0" }))).status, 403, "a request that is not from the page's own script is refused");
   assert.equal((await ok("permissions.grant", { names: ["db", "user", "nope"], allow: true })).db, "granted");
   assert.equal((await ok("caps", {})).state.sample, "prompt");
   assert.equal(await code("sample.complete", { input: "hi" }), "consent_required");
@@ -297,7 +297,7 @@ test("the bridge: a page that declared capabilities gets Claude's runtime shape,
 
   // rules: the maker is owner, so every level passes; a member at "interact" is held to them
   const o = /** @type {any} */ (await call("previews.resolve", { name: `pv-${id}` }, "module:appmods"));
-  const direct = (/** @type {Record<string, string>} */ headers) => new Promise(resolve => { const body = JSON.stringify({ op: "caps", args: {} }); const r = http.request({ host: "127.0.0.1", port: Number(new URL(o.data.origin).port), method: "POST", path: "/__vyre/api", headers: { host: `pv-${id}.localhost`, "content-type": "application/json", "x-vyre-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...headers } }, res => resolve(res.statusCode)); r.end(body); });
+  const direct = (/** @type {Record<string, string>} */ headers) => new Promise(resolve => { const body = JSON.stringify({ op: "caps", args: {} }); const r = http.request({ host: "127.0.0.1", port: Number(new URL(o.data.origin).port), method: "POST", path: "/__vyre/api", headers: { host: `pv-${id}.localhost`, "content-type": "application/json", "x-page-bridge": "1", "content-length": String(Buffer.byteLength(body)), ...headers } }, res => resolve(res.statusCode)); r.end(body); });
   assert.equal(await direct({}), 401, "no viewer, no bridge");
   assert.equal(await direct({ "x-vyre-viewer": "eyJ3IjoiZXZpbCJ9.forged" }), 401, "a local process cannot say who it is");
   assert.equal((await call("previews.open", { title: "Plain", path: path.join(dir, "plain.html") })).data.preview.source, "files");

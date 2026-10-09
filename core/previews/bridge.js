@@ -242,7 +242,7 @@ export function createBridge(o) {
     if (!v) return fail(res, 401, "not_granted", "sign in to the preview again");
     if (url.pathname === "/__vyre/api/stream" && req.method === "GET") return stream(req, res, row, v, url);
     if (url.pathname !== "/__vyre/api" || req.method !== "POST") return false;
-    if (req.headers["x-vyre-bridge"] !== "1") return fail(res, 403, "not_granted", "that request is not from the page");
+    if (req.headers["x-page-bridge"] !== "1") return fail(res, 403, "not_granted", "that request is not from the page");
     try {
       const body = JSON.parse((await readBody(req)) || "{}");
       const out = await run(row, v, String(body.op || ""), body.args || {});
