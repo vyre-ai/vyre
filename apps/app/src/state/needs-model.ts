@@ -154,15 +154,35 @@ export function order(list: readonly Need[]): Need[] {
   return [...list].sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
-/** gate.held and threads.asks as one list. */
-export function merge(gates: unknown, asks: unknown, ctx: NeedsContext = {}): Need[] {
+/**
+ * What approvals.items answers, as the two kinds of row this model reads: each card carries its owner's own row as `facts`, and `presence` is whether THIS device has a live proof
+ * (the box says so per caller; the owners' rows inside the cards were read for the box itself and do not count).
+ */
+export function fromItems(data: unknown): { gates: unknown[]; asks: unknown[]; presence: { covered: boolean; since: number | null } | null } {
+  const d = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+  const items = Array.isArray(d.items) ? d.items : [];
+  const facts = (source: string) => items.filter((c) => c && typeof c === "object" && (c as Record<string, unknown>).source === source && (c as Record<string, unknown>).facts && typeof (c as Record<string, unknown>).facts === "object").map((c) => (c as Record<string, unknown>).facts);
+  const p = d.presence && typeof d.presence === "object" ? (d.presence as Record<string, unknown>) : null;
+  return { gates: facts("gate"), asks: facts("threads"), presence: p ? { covered: Boolean(p.covered), since: typeof p.since === "number" ? p.since : null } : null };
+}
+
+/**
+ * The held drafts and the open asks as one list. `presence` replaces what the rows say about this device (approvals.items); absent, a row is taken as not covered, so a swipe opens the
+ * item rather than commit what the box might refuse.
+ */
+export function merge(gates: unknown, asks: unknown, ctx: NeedsContext = {}, presence?: { covered: boolean; since: number | null } | null): Need[] {
   const out: Need[] = [];
+  const here = (row: Record<string, unknown>): Record<string, unknown> => {
+    if (presence === undefined) return row;
+    const own = row.presence && typeof row.presence === "object" ? (row.presence as Record<string, unknown>) : {};
+    return { ...row, presence: { required: own.required, covered: presence ? presence.covered : false, since: presence ? presence.since : null } };
+  };
   for (const g of Array.isArray(gates) ? gates : []) {
-    const n = g && typeof g === "object" ? fromGate(g as Record<string, unknown>, ctx) : null;
+    const n = g && typeof g === "object" ? fromGate(here(g as Record<string, unknown>), ctx) : null;
     if (n) out.push(n);
   }
   for (const a of Array.isArray(asks) ? asks : []) {
-    const n = a && typeof a === "object" ? fromAsk(a as Record<string, unknown>, ctx) : null;
+    const n = a && typeof a === "object" ? fromAsk(here(a as Record<string, unknown>), ctx) : null;
     if (n) out.push(n);
   }
   return order(out);
