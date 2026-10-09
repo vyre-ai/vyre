@@ -61,6 +61,7 @@ export function dockerRunner(args, opt = {}) {
       const code = err ? (typeof (/** @type {any} */ (err)).code === "number" ? /** @type {number} */ (/** @type {any} */ (err).code) : 1) : 0;
       resolve({ code, stdout: String(stdout || ""), stderr: String(stderr || (err && err.message) || "") });
     });
+    if (child.stdin) child.stdin.on("error", () => {});   // a helper that already exited must not turn a late write into an unhandled error
     if (opt.input !== undefined && child.stdin) child.stdin.end(opt.input);
   });
 }
