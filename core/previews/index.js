@@ -191,7 +191,8 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
         db.prepare("UPDATE previews_items SET wanted = 0 WHERE id = ?").run(r.id);
-        if (r.mode === "supervised") sup.stop(r.id); else setState(r.id, "stopped");
+        if (r.mode === "supervised") sup.stop(r.id);
+        setState(r.id, "stopped");
         await ctx.call("appmods.drop", { name: nameOf(r.id) }).catch(() => {});
         return { preview: view(row(r.id)) };
       },
