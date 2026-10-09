@@ -132,16 +132,18 @@ await seeded("flow: intake-welcome, approved", async () => {
 await seeded("vault: the stored Acme API key (an api-credential)", async () => {
   await must("vault.put", { name: "acme", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
 });
-await seeded("connection: Acme CRM (label, host, key item, check)", async () => {
-  await must("vault.put", { name: "acme-crm-key", kind: "secret", fields: { value: KEY } });
-  const r = await must("connectors.connection.create", { label: "Acme CRM", base_url: "https://api.acme-proof.test", send: { how: "bearer" }, credential: { item: "acme-crm-key" }, check: { path: "/v1/status" } });
+await seeded("connection: Orbit CRM (label, host, key item, check)", async () => {
+  await must("vault.put", { name: "orbit-crm-key", kind: "secret", fields: { value: KEY } });
+  const r = await must("connectors.connection.create", { label: "Orbit CRM", base_url: "https://api.orbit-proof.test", send: { how: "bearer" }, credential: { item: "orbit-crm-key" }, check: { path: "/v1/status" } });
   return JSON.stringify(r);
 });
 
 /** @type {any} */ let projectRecord = null;
+/** @type {string | null} */ let teammateAgent = null;
 await seeded("teammate: backend on northwind", async () => {
   projectRecord = (await until(async () => { const r = await call("work.project.ref", { project: "northwind" }); return r.error ? null : r.data; }, "the northwind Project record", 20_000)).id;
   const r = await must("team.add", { project: projectRecord, role: "backend", brief: "backend code and errors" });
+  teammateAgent = r.agent;
   return `${r.agent} ${r.state}`;
 });
 
@@ -195,6 +197,25 @@ function installRepeatSkill() {
 }
 const removeLearned = () => fs.rmSync(path.join(home, "learned"), { recursive: true, force: true });
 
+/**
+ * What this run's own thread wrote: the copy files its claude processes made (`<tee>.<pid>.part`), only those whose session started in the agent's folder under this proof's home, oldest first.
+ * Helper sessions (memory, a teammate) start in other folders and are left out, as is anything another proof on the box wrote.
+ * @param {string} tee
+ */
+function readRun(tee) {
+  const dir = path.dirname(tee), base = path.basename(tee) + ".";
+  const mine = path.join(home, "agents", "juno");
+  /** @type {{ at: number, text: string }[]} */ const parts = [];
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    if (!f.startsWith(base) || !f.endsWith(".part")) continue;
+    const file = path.join(dir, f);
+    const text = fs.readFileSync(file, "utf8");
+    const init = text.split("\n").map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((e) => e && e.type === "system" && e.subtype === "init");
+    if (init && String(init.cwd || "").startsWith(mine)) parts.push({ at: fs.statSync(file).birthtimeMs || fs.statSync(file).ctimeMs, text });
+  }
+  return parts.sort((a, b) => a.at - b.at).map((x) => x.text).join("");
+}
+
 /** The repeat task passes when exactly one todo has the title, its real id is in the answer, and so is the matter count (one). */
 async function verifyRepeat(/** @type {string} */ text) {
   const l = await call("planner.list", { state: "all", limit: 500 });
@@ -221,12 +242,20 @@ if (cmd === "run") {
   const arms = flag("arms", "old,core").split(",").filter((a) => a in ARMS), reps = Number(flag("reps", "1")), only = flag("only") ? flag("only").split(",") : null;
   const standIn = args.includes("--stand-in");
   const out = flag("out", fs.mkdtempSync(`${home}-proof-`)); fs.mkdirSync(out, { recursive: true });
+  // One proof per out folder: two at once wrote into the same files and made a whole round unreadable.
+  const lock = path.join(out, ".world.lock");
+  try { const pid = Number(fs.readFileSync(lock, "utf8")); if (pid && pid !== process.pid) { try { process.kill(pid, 0); console.error(`refused: another proof (pid ${pid}) is writing to ${out}`); await d.stop(); process.exit(2); } catch (e) { if (/** @type {any} */ (e).code !== "ESRCH") throw e; } } } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT" && !/another proof/.test(String(/** @type {any} */ (e).message))) { /* an unreadable lock is stale */ } }
+  if (fs.existsSync(path.join(out, "rows.json")) && !args.includes("--again")) { console.error(`refused: ${out} already holds a round's rows.json; use a fresh --out, or --again to add to it`); await d.stop(); process.exit(2); }
+  fs.writeFileSync(lock, String(process.pid));
+  process.on("exit", () => { try { fs.rmSync(lock, { force: true }); } catch { /* gone */ } });
   /** @type {any[]} */ const rows = []; let spent = 0; let rolled = false;
   outer: for (let rep = 0; rep < reps; rep++) for (const task of TASKS.filter((t) => !only || only.includes(t.id))) for (const arm of arms) {
     if (standIn && !task.standIn) continue;
     if (task.arms ? !task.arms.includes(arm) : /^(roll|skill)-/.test(arm) && !only) continue;
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
     // A fresh thread for every run, nothing carried over: stop the agent and delete its threads, or agents.ask would resume the last one (its whole context, the earlier task's included).
+    // The teammate the `teammate` task asks keeps working after its task: stop it too, or its session runs on beside the next task.
+    if (teammateAgent) { await call("agents.stop", { agent: teammateAgent }); for (const th of ((await call("agents.threads", { agent: teammateAgent })).data || []).map((/** @type {any} */ x) => x.id || x.thread)) if (th) await call("threads.delete", { thread: th }); }
     await call("agents.stop", { agent: "juno" });
     for (const th of ((await call("agents.threads", { agent: "juno" })).data || []).map((/** @type {any} */ x) => x.id || x.thread)) if (th) await call("threads.delete", { thread: th });
     // The window arms: rollover off, or on at 30 percent of the window so it happens in the middle of the long task. Every other arm runs with the defaults (on, 60).
@@ -247,10 +276,11 @@ if (cmd === "run") {
     const t0 = Date.now();
     const asked = await call("agents.ask", { agent: "juno", text: standIn ? /** @type {string} */ (task.standIn) : task.prompt, wait: true, surface: "deck" });
     // agents.ask answers as soon as the thread stops to ask the person, which can be before the turn is over: wait for the run's own result line (the person's answer comes from the loop above).
-    await until(async () => !(await call("threads.asks", {})).data?.length && fs.existsSync(tee) && /"type":"result"/.test(fs.readFileSync(tee, "utf8")), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
-    const run = parseStream(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "");
+    await until(async () => !(await call("threads.asks", {})).data?.length && /"type":"result"/.test(readRun(tee)), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
+    const stream = readRun(tee);
+    const run = parseStream(stream);
     const extra = task.verify === "long" ? await verifyLong(run.text) : task.verify === "repeat" ? await verifyRepeat(run.text) : true;
-    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : ""), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "") && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(stream), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(stream) && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
@@ -268,7 +298,7 @@ const PROBES = [
   ["record", "work.call", { tool: "clients.find", input: { where: { name: "Dana Whitfield" } } }, /probate/],
   ["flow", "flows.start", { id: () => flowId, input: { name: "Test Client" } }, /run_|"run"|started|status/i],
   ["vault", "vault.request", { credential: "acme", method: "GET", url: "https://api.acme-proof.test/v1/status" }, /"status":\s*200|ok/],
-  ["connection", "vault.request", { credential: "conn-acme-crm", method: "GET", url: "https://api.acme-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
+  ["connection", "vault.request", { credential: "conn-orbit-crm", method: "GET", url: "https://api.orbit-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
   ["chain", "work.call", { tool: "matters.find", input: { where: { client_name: "Dana Whitfield" } } }, /Deed transfer/],
   ["biglist", "work.call", { tool: "clients.find", input: {} }, /Aaron Abbott/],
   ["both", "work.call", { tool: "matters.find", input: {} }, /Deed transfer|Abbott file/],

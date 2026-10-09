@@ -6,7 +6,9 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 
-const real = process.env.TOKEN_PROOF_REAL_CLAUDE || "claude", tee = process.env.TOKEN_PROOF_TEE || "";
+// One copy file per claude process (`<TOKEN_PROOF_TEE>.<pid>.part`), never one shared file: a helper session Vyre starts beside the thread under test (memory, a teammate), or a second proof running on the
+// same box, would otherwise interleave its lines with the run's, and the run's tokens, cost and answer would be read from several sessions at once.
+const real = process.env.TOKEN_PROOF_REAL_CLAUDE || "claude", tee = process.env.TOKEN_PROOF_TEE ? `${process.env.TOKEN_PROOF_TEE}.${process.pid}.part` : "";
 // stdin, stdout, stderr, and descriptor 3 as given (an API key comes on a descriptor, never in the environment)
 const child = spawn(real, process.argv.slice(2), { stdio: ["pipe", "pipe", "inherit", "inherit"], env: process.env });
 process.stdin.pipe(/** @type {any} */ (child.stdin));
