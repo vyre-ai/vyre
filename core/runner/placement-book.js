@@ -9,6 +9,8 @@ import path from "node:path";
 
 /** Why a session is where it is, as the chat says it (design's words). `you` is the person's own move. */
 export const REASONS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off", "offline", "lease-expired", "crash", "version-skew", "you"]);
+/** The reasons of a move the computer chose by its own condition: at most one per cooldown for a session. A crash, a lapse, the person's move and a version skew are never held back. */
+export const AUTO = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off"]);
 /** The reasons that clear by themselves: when the computer is well again the session is offered back (never moved back). */
 export const CLEARS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "offline", "lease-expired"]);
 export const STATES = Object.freeze(["here", "moving", "server", "locked", "updating"]);
@@ -17,13 +19,15 @@ export const HEARTBEAT_MS = 5_000;
 export const LAPSE_MS = 20_000;
 /** After an automatic move (a condition, not the person) the same session is not moved automatically again for this long: one move per state change. */
 export const COOLDOWN_MS = 120_000;
+/** A computer that was asked to hand a session over and has not within this long is overruled: the server takes it. */
+export const ASK_MS = 60_000;
 
 const bad = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
- * @typedef {{ session: string, chat: string | null, person: string, device: string, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating",
- *   reason: string | null, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean,
+ * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating",
+ *   reason: string | null, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
  *   facts?: { cpuPercent?: number, memoryMb?: number, turn?: number } }} Row
  * @typedef {{ load(): Row[], save(rows: Row[]): void }} Store
  */
@@ -66,7 +70,7 @@ export function createPlacementBook(o = {}) {
     /**
      * The lender starts (or resumes) a session on its computer. A session now on the server comes back only when the person asked for it (`bringBack`), and never while pinned to the server.
      * Answers the row, with a new epoch: everything the lender writes from now on names it.
-     * @param {{ session: string, chat?: string | null, person: string, device: string }} i
+     * @param {{ session: string, chat?: string | null, person: string, device: string, key?: string | null }} i
      */
     lend(i) {
       const session = String(i.session);
@@ -76,8 +80,8 @@ export function createPlacementBook(o = {}) {
       if (had && had.pin === "server") throw bad("this session is pinned to the server: unpin it before it runs on a computer", "conflict");
       if (had && had.where === "server" && !had.allowMac) throw bad("this session runs on the server now: bring it back to the computer from its chat first", "conflict");
       const t = now();
-      /** @type {Row} */ const r = { session, chat: i.chat || (had && had.chat) || null, person: i.person, device: i.device, where: "mac", state: "here", reason: null, since: t, epoch: (had ? had.epoch : 0) + 1,
-        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false };
+      /** @type {Row} */ const r = { session, chat: i.chat || (had && had.chat) || null, person: i.person, device: i.device, key: i.key || null, where: "mac", state: "here", reason: null, since: t, epoch: (had ? had.epoch : 0) + 1,
+        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: false, ask: null };
       rows.set(session, r); save();
       if (had && had.where === "server") moved(r, "server", "mac", "you");
       return copy(r);
@@ -89,7 +93,7 @@ export function createPlacementBook(o = {}) {
       const live = /** @type {Row} */ (rows.get(r.session));
       if (live.pin === "server") throw bad("this session is pinned to the server: unpin it first", "conflict");
       if (live.where === "mac") return copy(live);
-      live.allowMac = true; live.offer = "mac"; save();
+      live.allowMac = true; live.offer = "mac"; live.ask = { do: "start", reason: null, at: now() }; save();
       return copy(live);
     },
 
@@ -110,6 +114,9 @@ export function createPlacementBook(o = {}) {
     /** Is a lender's call at this epoch still the session's current one? @param {string} session @param {number} epoch @param {string} device */
     current(session, epoch, device) { const r = rows.get(String(session)); return Boolean(r && r.where === "mac" && r.epoch === epoch && r.device === device); },
 
+    /** A restarted home gives every lender a whole lapse to show itself before it takes a session. */
+    grace() { const t = now(); let n = 0; for (const r of rows.values()) if (r.where === "mac") { r.beat = t; n++; } return n; },
+
     /** The sessions on a computer that has not been heard from for the lapse: they are the server's to take. @returns {Row[]} */
     lapsed() { const t = now(); return [...rows.values()].filter(r => r.where === "mac" && t - r.beat > lapse).map(copy); },
 
@@ -125,10 +132,28 @@ export function createPlacementBook(o = {}) {
       if (r.where === "server") return { changed: false, why: "there", row: copy(r) };
       const t = now();
       if (opt.auto && r.movedAt !== null && t - r.movedAt < cooldown) return { changed: false, why: "cooldown", row: copy(r) };
-      r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.facts = undefined;
+      r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.ask = null; r.facts = undefined;
       save(); moved(r, "mac", "server", reason);
       return { changed: true, row: copy(r) };
     },
+
+    /** The person (or the server) asks the lender to hand a session over: it finishes its turn, checkpoints and releases it. Until it does the session reads as moving. @param {string} id @param {string} reason */
+    askRelease(id, reason) {
+      const r = this.find(id); if (!r) throw bad("no such session", "not_found");
+      if (!REASONS.includes(reason)) throw bad("that reason is not one the chat knows", "bad_input");
+      const live = /** @type {Row} */ (rows.get(r.session));
+      if (live.where !== "mac") return copy(live);
+      live.state = "moving"; live.ask = { do: "release", reason, at: now() }; save();
+      return copy(live);
+    },
+    /** What the home wants this computer to do, told in the answer to its heartbeat: hand a session over, or start one the person brought back. @param {string} device @returns {{ do: "release" | "start", session: string, chat: string | null, reason: string | null }[]} */
+    directives(device) {
+      return [...rows.values()].filter(r => r.device === device && r.ask && (r.ask.do === "release" ? r.where === "mac" : r.where === "server" && r.allowMac)).map(r => ({ do: /** @type {"release" | "start"} */ (/** @type {any} */ (r.ask).do), session: r.session, chat: r.chat, reason: /** @type {any} */ (r.ask).reason }));
+    },
+    /** Sessions of this computer the server has and the person may bring back. @param {string} device */
+    offered(device) { return [...rows.values()].filter(r => r.device === device && r.where === "server" && r.offer === "mac" && r.pin !== "server").map(r => r.session); },
+    /** Sessions the lender was asked to hand over and has not, for longer than ASK_MS: overruled. */
+    overdue() { const t = now(); return [...rows.values()].filter(r => r.where === "mac" && r.ask && r.ask.do === "release" && t - r.ask.at > ASK_MS).map(copy); },
 
     /** The computer's condition cleared (lid open, plugged in, back online): every session of it that moved for a reason that clears is offered back. Nothing moves. Answers the sessions offered. @param {string} device */
     clear(device) {
@@ -157,5 +182,5 @@ export function createPlacementBook(o = {}) {
 /** The place a row stands for, in the shape `runner.placement` answers (the contract: team/contracts/runner.md). @param {Row | null} r @param {{ computer?: string | null }} [x] */
 export function placementOf(r, x = {}) {
   if (!r) return { where: "server", computer: null, state: "server", reason: null, since: null, offer: null, pinned: false, pin: null };
-  return { where: r.where, computer: r.where === "mac" ? x.computer ?? null : null, state: r.state, reason: r.reason, since: r.since, offer: r.offer, pinned: r.pin !== null, pin: r.pin };
+  return { where: r.where, computer: r.where === "mac" ? x.computer ?? null : null, state: r.state, reason: r.reason, since: r.since, offer: r.offer, pinned: r.pin !== null, pin: r.pin, epoch: r.epoch };
 }

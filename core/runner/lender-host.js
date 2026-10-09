@@ -37,7 +37,7 @@ export function createLenderHost(o) {
     sync: client.sync,
     grants: () => state,
     onRevoke: fn => { told.add(fn); if (!timer) { timer = setInterval(refresh, pollMs); timer.unref?.(); } return () => { told.delete(fn); if (!told.size && timer) { clearInterval(timer); timer = null; } }; },
-    spec: client.spec,
+    spec: client.spec, stop: client.stop, beat: client.beat, release: client.release, epochOf: client.epochOf, onFenced: client.onFenced,
     server: o.server, requestServer: o.requestServer,
   };
   // `ready` settles once the first answer is in (or the home was unreachable): await it before handing the ports to the runner, so its first `grants()` is not a guess.
