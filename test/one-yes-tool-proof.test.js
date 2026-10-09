@@ -49,9 +49,8 @@ test("a software-key proof over the call opens relay.enable, relay.pair.start an
     // spent: the same proof does not open it again
     assert.equal((await at(tool, {}, good)).error?.code, "presence_required", `${tool}: a proof is single use`);
   }
-  // a tool that is not one of the moments takes no such proof, however well signed
-  const bad = sign("relay.disable");
-  assert.equal((await at("relay.disable", {}, bad)).error?.code, "presence_required");
+  // a tool that is not one of the moments needs the person and no proof at all (taking access away is never held up behind a prompt): the person's call runs, and a signed yes for it changes nothing
+  assert.notEqual((await at("relay.disable", {})).error?.code, "presence_required", "relay.disable asks nothing of the person");
 });
 
 test("a release build refuses the software-key proof for the same three tools", { timeout: 120_000 }, async t => {

@@ -6,7 +6,8 @@
 import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
-import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
+import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp, REUSE_OPS } from "../../lib/one-yes.js";
+import { yesDeviceOf } from "../../lib/caller.js";
 import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
 import { createItems } from "./items.js";
 import { clean } from "../../lib/waiting-text.js";
@@ -30,7 +31,7 @@ export default {
     const ctx = Object.assign(Object.create(base), { tool: (/** @type {string} */ name, /** @type {any} */ def) => base.tool(name, name === "approvals.items" || !def || typeof def.run !== "function" ? def
       : { ...def, run: async (/** @type {any} */ i, /** @type {any} */ m) => { try { return await def.run(i, m); } finally { if (items) items.touch(); } } }) });
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
-    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, redeemedAt?: number, covered?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
+    /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, reuse?: boolean, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, redeemedAt?: number, covered?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
     const open = new Map();
     const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > ASK_MS) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
     const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
@@ -56,13 +57,13 @@ export default {
     /** A device the owner declined cannot ask again for ten minutes. @type {Map<string, number>} */
     const refusedUntil = new Map();
     /** Cards the registry redeemed for a call: the Gate may use each ONCE, within CARD_LIFE_MS, for the call it was redeemed for (approvals.cover). */
-    setCardRedeemer((id, moment, request, device) => {
+    const unredeem = setCardRedeemer((id, moment, request, device) => {
       const a = open.get(id);
       if (!a || !a.moment || a.state !== "approved" || !a.verified || now() - a.at > ASK_MS * 2) return "no_proof";
       if (a.used) return "replayed";
       if (a.moment !== moment || a.request.op !== request.op || canon(a.request.fields) !== canon(request.fields && typeof request.fields === "object" ? request.fields : {}) || (device && device !== a.device)) return "wrong_request";
       a.used = true; a.redeemedAt = now();
-      return "ok";
+      return a.reuse === true ? "ok_reuse" : "ok";
     });
     // ---- a group of held calls: one list, one yes, each item its own exact words and its own proof ---------------------------------------------------
     /** Groups the person has begun to answer: a card held after that starts a group of its own, so an answered group never grows. @type {Set<string>} */
@@ -97,7 +98,7 @@ export default {
     });
     ctx.tool("approvals.ask", {
       description: "Ask the person's paired phone to approve an act this session cannot prove itself. Give the op and fields the kernel will verify (grant.* or task.decide, as the proof request for the act builds them). Answers { id, payload_hash, expires_in_s }; read the outcome with approvals.status. Open for 5 minutes; at most 5 open.",
-      input: obj({ op: { type: "string" }, space: { type: "string" }, fields: { type: "object" }, moment: { type: "string", enum: ["pair", "vault", "outward"] }, request: { type: "object" } }, []),
+      input: obj({ op: { type: "string" }, space: { type: "string" }, fields: { type: "object" }, moment: { type: "string", enum: ["pair", "vault", "outward"] }, request: { type: "object" }, reuse: { type: "boolean" } }, []),
       callers: SURFACES,
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         sweep();
@@ -121,8 +122,11 @@ export default {
           let who = "A device";
           const device = deviceOf(meta);
           try { const d = device ? await ctx.call("wink.device.record", { id: device }) : null; if (d && d.data && d.data.name) who = String(d.data.name); } catch { /* the generic name */ }
-          const line = lineOfOp(request.op, request.fields, who);
-          open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device, at: now(), state: "waiting", moment, request, line });
+          // a reveal, a copy or a code may ask to be reused for five minutes by the same device: the card says so, so the person's yes is to that
+          const reuse = input.reuse === true && REUSE_OPS.includes(request.op);
+          const line = lineOfOp(request.op, request.fields, who) + (reuse ? " (and again for 5 minutes)" : "");
+          // a person's own surface on this machine (the terminal, the Capsule, the Deck) asks as `local:<surface>`, and confirms on this computer (approvals.local-yes); a paired device asks as itself
+          open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: device || yesDeviceOf(from), at: now(), state: "waiting", moment, request, line, ...(reuse ? { reuse: true } : {}) });
           return { id, expires_in_s: ASK_MS / 1000, line };
         }
         const op = String(input.op || "");
@@ -163,6 +167,23 @@ export default {
         const group = groupFor(from);
         open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, group, ...(held ? { input: held } : {}) });
         return { id, line, group };
+      },
+    });
+    ctx.tool("approvals.local-yes", {
+      description: "Give the yes for a card you asked for yourself, here: Touch ID on a Mac, or the code Vyre writes to your own terminal. { id } starts it and answers { answered: \"approved\" }, or { need: \"code\", challenge } when a code was written to `tty` (give it back as { id, challenge, code }). Only the surface that asked can confirm its own card, and only on this computer; a server with no screen of its own asks your phone instead.",
+      input: obj({ id: { type: "string" }, tty: { type: "string" }, challenge: { type: "string" }, code: { type: "string" } }, ["id"]),
+      callers: ["cli", "local", "capsule", "deck"],
+      presence: { summary: async () => "Confirm a yes on this computer" },
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        sweep();
+        const a = open.get(String(input.id));
+        if (!a || a.state !== "waiting" || !a.moment) throw refuse("there is nothing waiting for you with that id", "not_found");
+        if (a.from !== String((meta && meta.caller) || "") || !String(a.device || "").startsWith("local:")) throw refuse("only the surface that asked can confirm its own card here", "denied");
+        const r = await ctx.call("presence.confirm", { summary: a.line || a.request.op, tool: a.request.op, input: a.request.fields, ...(input.tty ? { tty: String(input.tty) } : {}), ...(input.challenge ? { challenge: String(input.challenge), code: String(input.code || "") } : {}) });
+        if (r.error) throw refuse(String(r.error.message || r.error.code), r.error.code === "no_dialog" ? "no_dialog" : "presence_required");
+        if (r.data && r.data.need) return { need: r.data.need, challenge: r.data.challenge };
+        a.state = "approved"; a.verified = true; a.at = now();
+        return { answered: "approved" };
       },
     });
     ctx.tool("approvals.pending", {
@@ -358,6 +379,6 @@ export default {
     });
     items.start();
 
-    return { async stop() { open.clear(); if (items) await items.stop(); } };
+    return { async stop() { unredeem(); open.clear(); if (items) await items.stop(); } };
   },
 };

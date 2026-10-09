@@ -331,8 +331,6 @@ export default {
       // Listed so a first-party module may call it (the floor asks every non-module caller for a person's proof); a model that asks is held for a person.
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
       presence: {
-        // Every send may ride a session; the floor's SESSIONABLE list is what allows it at all.
-        session: () => true,
         summary: async (/** @type {any} */ input) => {
           const a = registry.find(input && input.app);
           const act = a && Object.prototype.hasOwnProperty.call(a.actions, input.action) ? a.actions[input.action] : null;

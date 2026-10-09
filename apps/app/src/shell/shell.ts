@@ -26,8 +26,6 @@ export type MacShell = {
   };
   /** The version of this app, when the bridge says (a release candidate shows its own install line). */
   version?: string;
-  /** The x-vyre-presence header for one call, from Touch ID (the person's own prompt). Rejects with plain words when it is refused. */
-  presence(tool: string, input: Record<string, unknown>, summary?: string): Promise<string>;
   /** The Capsule's key for a Mac server: its public half (SPKI, base64url) and the id vyre-core will give it. The pairing hands it to the server as the server's Capsule key; `presence` then signs with it behind Touch ID. Made on first use, sent nowhere. */
   presenceKey?(): Promise<{ public_key: string; id: string }>;
   notify(title: string, body: string): Promise<unknown>;

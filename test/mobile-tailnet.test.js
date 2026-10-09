@@ -85,7 +85,7 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
   t.after(() => { for (const [k, v] of [["VYRE_SEAL_DEV", saved.dev], ["VYRE_SEAL_SOFTWARE", saved.sw]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const w = await world(t);
   const tools = await (await fetch(`${w.base}/v1/tools`)).json();
-  for (const name of ["gate.get", "gate.approve", "gate.reject", "gate.revise", "threads.answer", "push.subscribe", "vault.reveal", "vault.totp", "presence.session.open"]) {
+  for (const name of ["gate.get", "gate.approve", "gate.reject", "gate.revise", "threads.answer", "push.subscribe", "vault.reveal", "vault.totp", "presence.code"]) {
     assert.ok(tools.data.some(x => x.name === name), `${name} is listed for the phone`);
   }
   // The owner's phone is the owner: what the Deck may use, it may (callerAllowed on main). A tool
@@ -127,8 +127,8 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal(w.mail.got.length, 1, "the approved draft went out");
 
-  // A device proof opens a presence session bound to this phone.
-  const s = await w.phone("presence.session.open", {}, { ...person, ...k.header("presence.session.open", {}) });
+  // An old (0.3.0) device-key header is admitted at the edge as a yes for a pairing-weight act: the phone gets a one-time code.
+  const s = await w.phone("presence.code", {}, { ...person, ...k.header("presence.code", {}) });
   assert.equal(s.status, 200, JSON.stringify(s.body));
-  assert.ok(s.body.data.session && s.body.data.secret);
+  assert.ok(s.body.data.code);
 });

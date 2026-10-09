@@ -1,6 +1,11 @@
 {
  "_comment": "Files that call a tool through ctx.call or use with a computed name. Each runs as a module caller, so the callee's reach must allow modules; the owner reviews and lowers the count or documents it. test/reach-module-calls.test.js fails on a new one.",
  "files": {
+  "core/approvals/index.js": {
+   "count": 1,
+   "owner": "session-transfer",
+   "note": "reviewed (9 Oct): createItems reads the owners' own lists through one forwarding wrapper; core/approvals/items.js names only threads.asks, gate.held and vault.pending (all literal in OWNERS), each already open to modules"
+  },
   "core/connectors/index.js": {
    "count": 4,
    "owner": "site-ops",

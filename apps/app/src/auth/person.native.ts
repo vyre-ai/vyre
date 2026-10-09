@@ -7,10 +7,8 @@
 //   human     vyre.human, a second key that signs only after a strong biometric. Its public JWK
 //             goes to /v1/person/token as `human`; the box enrolls it as a presence key and
 //             answers its id (`data.human.key`), kept in the secure store beside the token.
-//             HUMAN_ONLY calls carry `x-vyre-presence: device key=<id> ...` signed by it (DER, as
-//             the module returns it) and `x-vyre-presence-keep: 1`; the session the box answers
-//             with (`x-vyre-presence-session`, read in box.native.ts) covers the SESSIONABLE calls
-//             after it for 30 minutes with no prompt (person.ts devicePresence)
+//             It signs the relay sign-in only; an act that needs the person's yes goes by a card or
+//             a signed yes (src/real/box.ts), and there are no presence sessions (one-yes, 0.3.1)
 //   token     per box and per path ("direct", "relay"; the box pins a token to the tailnet node
 //             or the relay device), in expo-secure-store (Keychain, Keystore-wrapped prefs): one
 //             slot holding a JSON map. A single token from before becomes the direct one.
@@ -21,14 +19,12 @@
 //
 // The request proof is P1363 (derToP1363 converts the module's DER); the presence proof is DER.
 
-import { presencePrompt } from "./presence-words.js";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import * as Keys from "../../modules/vyre-signer";
 import {
   derToP1363,
   devicePersonStart,
-  devicePresence,
   fromB64url,
   jwkFromXY,
   keyIdFromXY,
@@ -37,7 +33,6 @@ import {
   personSession,
   pkce,
   toolOf,
-  type DevicePresence,
   type PersonSession,
   type Signer,
   type Slot,
@@ -165,9 +160,8 @@ export async function finishSignIn(box: string, person: PersonSession): Promise<
 /** The box path a request goes over now (box.native.ts: the paths layer's fetch). */
 export type Send = (path: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; json(): Promise<unknown> }>;
 
-/** The person session with the phone's presence on it (box.native.ts hands it the session header). */
+/** The person session on the phone. */
 export type NativePerson = PersonSession & {
-  presence: DevicePresence;
   /**
    * Sign in on the current path: the browser hop on the direct one, the device flow on the relay.
    * `force` (the person asked) goes even inside the quiet times. True once a token is stored.
@@ -179,8 +173,8 @@ export type NativePerson = PersonSession & {
  * The person session for `box` on this phone. `onSignIn` hears every request for one; the sign-in
  * runs from here too, and `onSignedIn` hears when it stored a token.
  * @param box the box's direct address, or the relay's route URL on a relay-only phone
- * @param o.human enroll the biometric key at sign-in and prove HUMAN_ONLY calls with it (default true)
- * @param o.path which way the box is reached now ("direct", "relay"): tokens and presence sessions are kept per path
+ * @param o.human enroll the biometric key at sign-in, which signs the relay sign-in (default true)
+ * @param o.path which way the box is reached now ("direct", "relay"): tokens are kept per path
  * @param o.send a fetch of a box path over the current path, for the relay sign-in and sign-out
  * @param o.name what this box's stores are keyed by (default the origin's host)
  */
@@ -207,22 +201,6 @@ export function nativePerson(
       return null;
     }
   };
-
-  const presence = devicePresence({
-    keyId: humanId,
-    sign: (message, tool, input) => Keys.sign(Keys.HUMAN, message, { prompt: presencePrompt(tool, input) }),
-    nonce: () => Keys.randomBytes(16),
-    store: secureSlot(slotName("presence", name)),
-    path: o.path,
-    failed: (e) => {
-      // The enrolled biometrics changed: the key is gone for good. A new one is made and enrolled
-      // at the next sign-in; until then the box asks for its passkey.
-      if ((e as { code?: string }).code !== "ERR_KEY_INVALIDATED") return;
-      void Keys.deleteKey(Keys.HUMAN).catch(() => {});
-      void humanKey.save(null);
-    },
-    lost: () => void humanKey.save(null),
-  });
 
   // The native code sends no Origin (the box refuses one on it). An https App Link return is a
   // web app to the box, traded under that origin, so name it there.
@@ -266,15 +244,6 @@ export function nativePerson(
         await humanKey.save(keyIdFromXY(x, y));
       }
     },
-    async more(method, url, body): Promise<Record<string, string>> {
-      const tool = toolOf(url);
-      if (!useHuman || method !== "POST" || !tool) return {};
-      return presence.headers(tool, body);
-    },
-    answered(method, url, body, r) {
-      const tool = toolOf(url);
-      return useHuman && method === "POST" && tool ? presence.answered(tool, body, r) : false;
-    },
     signIn: () => {
       onSignIn?.();
       void run().catch(() => o.onSignedIn?.(false));
@@ -303,10 +272,8 @@ export function nativePerson(
   });
   return {
     ...session,
-    presence,
     signIn: (opts) => run(opts),
     async end() {
-      await presence.forget();
       await session.end();
     },
   };

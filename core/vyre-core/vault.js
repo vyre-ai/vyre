@@ -13,7 +13,7 @@
 //   write  vault.delete, vault.grant,    a proof over the exact input
 //          vault.verify
 //   plain  vault.reveal, vault.totp      only to the Capsule core signed, with a proof or a core
-//                                        session bound to that Capsule process
+//                                        bound to that Capsule process
 //
 // An unverified item (one a module or any other process put) is never offered to fill, is shown
 // marked, and can't be granted until the person verifies it: otherwise a model plants a
@@ -63,8 +63,6 @@ export function openVault({ db, dataDir, log = () => {}, emit = () => {}, testKd
     trust,
     /** Whether an item of this name exists. @param {string} name */
     exists: name => Boolean(vault.row(String(name || ""))),
-    /** A session may prove a plain read of this item: never a reprompt item. @param {any} input */
-    sessionOk: input => { const r = /** @type {any} */ (vault.row(String(input && input.name || ""))); return Boolean(r && !r.reprompt); },
 
     read: {
       "vault.list": async input => {

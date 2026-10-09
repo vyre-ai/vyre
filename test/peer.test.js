@@ -281,7 +281,7 @@ test("peer: a person-only call from under a claude is refused silently; the same
   assert.equal(carried.status, 403, JSON.stringify(carried));
   assert.match(carried.body.error.message, /inside a Claude session/);
   // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
-  const held = await client(dir, socket, "presence.session.open", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
+  const held = await client(dir, socket, "presence.code", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
   assert.equal(held.status, 403, JSON.stringify(held));
   assert.match(held.body.error.message, /inside a Claude session/);
 });

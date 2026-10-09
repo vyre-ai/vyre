@@ -47,7 +47,6 @@ public func vyredSocketPath(_ env: [String: String] = ProcessInfo.processInfo.en
 }
 
 /// The words a call fails with when the Capsule would need to prove a person is at the Mac.
-public let presenceNotBuilt = "This needs you at the Mac. Presence from Lumen is not built yet."
 
 // MARK: - Time, injectable so backoff is tested without waiting
 
@@ -418,80 +417,58 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
         return (j["data"] ?? .null, nil)
     }
 
-    /// Makes the x-vyre-presence header for a human-only call, or says why not (the person
-    /// cancelled, or no way to prove it here). Gets the tool, its input and the words to show
-    /// (nil: the tool and its input). Set by the app (Host/Presence.swift); nil in tests.
-    public var presenceProof: (@Sendable (String, [String: Any], String?) async -> Result<String, VyredFailure>)? {
-        get { lock.lock(); defer { lock.unlock() }; return proofMaker }
-        set { lock.lock(); proofMaker = newValue; lock.unlock() }
-    }
-    private var proofMaker: (@Sendable (String, [String: Any], String?) async -> Result<String, VyredFailure>)?
-
-    /// The tools a presence session may cover (core/presence SESSIONABLE); vyred still decides.
-    public static let sessionable: Set<String> = ["gate.approve", "apps.send", "vault.reveal", "vault.copy", "vault.totp"]
-    /// The presence session one proof opened: `session id=.. secret=..` as x-vyre-presence
-    /// takes it, and when it ends (ms). In memory only; never written anywhere.
-    private var presenceSession: (header: String, id: String, expires: Double)?
     public var now: @Sendable () -> Double = { Date().timeIntervalSince1970 * 1000 }
-
-    /// Whether a presence session is live here, for "covered" on a held row.
-    public var presenceCovered: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return presenceSession.map { $0.expires > now() } ?? false
-    }
-
-    /// Forget the presence session and end it on vyred: the Mac locked or slept, or the person
-    /// asked. The next human-only call asks again.
-    public func dropPresenceSession() {
-        lock.lock(); let s = presenceSession; presenceSession = nil; lock.unlock()
-        guard let s else { return }
-        Task { [self] in _ = await call("presence.session.close", ["session": s.id], timeout: 5) }
-    }
-
-    /// `session id=<id> secret=<s> expires=<ms>` from x-vyre-presence-session, or nil.
-    static func parseSession(_ value: String?) -> (header: String, id: String, expires: Double)? {
-        guard let value, value.hasPrefix("session ") else { return nil }
-        var f: [String: String] = [:]
-        for part in value.dropFirst("session ".count).split(separator: " ") {
-            if let i = part.firstIndex(of: "=") { f[String(part[..<i])] = String(part[part.index(after: i)...]) }
-        }
-        guard let id = f["id"], !id.isEmpty, let secret = f["secret"], !secret.isEmpty, let exp = f["expires"].flatMap(Double.init) else { return nil }
-        return ("session id=\(id) secret=\(secret)", id, exp)
-    }
+    /// How long a card waits for the owner's phone, and how often it is looked at (a test shortens both).
+    public var yesWaitMs: Double = 300_000
+    public var yesPollNanos: UInt64 = 1_500_000_000
+    /// A reveal, a copy or a code asks for the five-minute reuse (core lib/one-yes.js REUSE_OPS).
+    static let reuseTools: Set<String> = ["vault.reveal", "vault.copy", "vault.totp"]
 
     public func call(_ tool: String, _ input: [String: Any], presence: Bool) async -> VyredResult {
         await call(tool, input, presence: presence, summary: nil)
     }
 
+    /// A call that may need the person's yes (ADR 0004; one-yes, 0.3.1). vyred answers presence_required with the moment and the exact request it needs approved; the yes then goes the one way: ask a
+    /// card (approvals.ask), let Touch ID on this Mac give it (approvals.local-yes, vyred's own dialog), or, when this vyred has no screen of its own, wait while the owner's phone answers
+    /// (approvals.status), then call again with the approved card (x-vyre-approval). The old device-key header and the 30-minute session are gone. `summary` is the words the card line now carries.
     public func call(_ tool: String, _ input: [String: Any], presence: Bool, summary: String?) async -> VyredResult {
         guard presence else { return await call(tool, input, timeout: 10) }
-        let rides = Self.sessionable.contains(tool)
-        // A live session covers it without asking; one vyred no longer knows is forgotten.
-        if rides, let s = liveSession() {
-            let r = await call(tool, input, timeout: 30, headers: ["x-vyre-presence": s.header])
-            if r.error == nil || r.errorCode != "presence_required" { return r }
-            lock.lock(); if presenceSession?.id == s.id { presenceSession = nil }; lock.unlock()
-        }
-        // A human-only tool (ADR 0004): the person proves they are here, in the panel, first.
-        guard let make = presenceProof else { return .failure(code: "presence", message: presenceNotBuilt) }
-        switch await make(tool, input, summary) {
-        case .failure(let f): return .failure(code: "presence", message: f.message)
-        case .success(let header):
-            var headers = ["x-vyre-presence": header]
-            if rides { headers["x-vyre-presence-keep"] = "1" }
-            return await call(tool, input, timeout: 30, headers: headers) { [weak self] h in
-                guard let self, let s = Self.parseSession(h["x-vyre-presence-session"]) else { return }
-                self.lock.lock(); self.presenceSession = s; self.lock.unlock()
+        let first = await callDetailed(tool, input, timeout: 30)
+        guard first.result.errorCode == "presence_required", let moment = first.error?["moment"] as? String, let request = first.error?["request"] as? [String: Any] else { return first.result }
+        var ask: [String: Any] = ["moment": moment, "request": request]
+        if Self.reuseTools.contains(tool) { ask["reuse"] = true }
+        let asked = await callLocal("approvals.ask", ask, timeout: 10)
+        guard let id = (asked.data as? [String: Any])?["id"] as? String else { return asked.error != nil ? asked : .failure(code: "presence", message: "Vyre could not ask for your yes.") }
+        let again: () async -> VyredResult = { [self] in await call(tool, input, timeout: 30, headers: ["x-vyre-approval": id]) }
+        // On this Mac Touch ID gives the yes at once; anywhere else vyred refuses and the card waits for the phone.
+        let here = await callLocal("approvals.local-yes", ["id": id], timeout: 75)
+        if let a = (here.data as? [String: Any])?["answered"] as? String, a == "approved" { return await again() }
+        let end = now() + yesWaitMs
+        while now() < end {
+            try? await Task.sleep(nanoseconds: yesPollNanos)
+            let st = await callLocal("approvals.status", ["id": id], timeout: 10)
+            guard let d = st.data as? [String: Any] else { return st }
+            switch d["state"] as? String {
+            case "approved": return await again()
+            case "waiting": continue
+            default: return .failure(code: "presence", message: "That was not approved. Nothing was done.")
             }
         }
+        return .failure(code: "presence", message: "Nobody approved it in time. Ask again.")
     }
 
-    private func liveSession() -> (header: String, id: String, expires: Double)? {
-        lock.lock(); defer { lock.unlock() }
-        guard let s = presenceSession else { return nil }
-        // A minute's margin: a session about to end asks now rather than fail half way.
-        if s.expires - 60_000 <= now() { presenceSession = nil; return nil }
-        return s
+    /// One tool call to this Mac's own vyred, answered as the result AND the error object when there is one (presence_required names the moment and the request in it).
+    private func callDetailed(_ tool: String, _ input: [String: Any], timeout: TimeInterval, headers: [String: String] = [:]) async -> (result: VyredResult, error: [String: Any]?) {
+        guard let body = VJ.encode(input) else { return (.failure(code: "bad_input", message: "The input to \(tool) is not JSON."), nil) }
+        let socket = self.socket
+        return await withCheckedContinuation { (k: CheckedContinuation<(result: VyredResult, error: [String: Any]?), Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let r = VyHTTP.exchange(socket: socket, method: "POST", path: "/v1/tools/" + Glass.encode(tool), body: body, timeout: timeout, headers: headers, onHead: { _ in })
+                var err: [String: Any]? = nil
+                if case .success(let (_, data)) = r, let j = VJ.decode(data) as? [String: Any] { err = j["error"] as? [String: Any] }
+                k.resume(returning: (VyHTTP.result(r, timeout: timeout), err))
+            }
+        }
     }
 
     public func call(_ tool: String, _ input: [String: Any], timeout: TimeInterval, headers: [String: String],

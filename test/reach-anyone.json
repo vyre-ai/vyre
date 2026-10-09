@@ -69,6 +69,10 @@
    "module": "appmods",
    "reason": "read-only: one installed app's state and whether it answers; no key, no address of a secret"
   },
+  "approvals.items": {
+   "module": "approvals",
+   "reason": "read-only; callers limited in code to capsule, cli, deck, device, local, mobile, module"
+  },
   "artifacts.activity": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
@@ -1086,10 +1090,6 @@
    "reason": "callers are the relay, tailnet and device labels (a paired device presenting its own key, never a model, agent or assistant); the signature over the grant's challenge with the key the owner confirmed is the proof"
   },
   "presence.remove": {
-   "module": "presence",
-   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
-  },
-  "presence.session.open": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },

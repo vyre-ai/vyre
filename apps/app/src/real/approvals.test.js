@@ -89,7 +89,7 @@ test("asking for the yes: ask, poll, and return the approval id for one retry, w
   const call = async (t, input) => { calls.push([t, input]); return t === "approvals.ask" ? { id: "ap_1", line: "Vyre on browser wants to reveal a secret" } : states[Math.min(i++, 1)]; };
   let said = "";
   assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onWaiting: (l) => { said = l; } }), { approval: "ap_1" });
-  assert.deepEqual(calls[0], ["approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }]);
+  assert.deepEqual(calls[0], ["approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} }, reuse: true }], "a reveal asks for the five-minute reuse");
   assert.deepEqual(calls[1], ["approvals.status", { id: "ap_1" }]);
   assert.match(said, /wants to reveal/);
 });

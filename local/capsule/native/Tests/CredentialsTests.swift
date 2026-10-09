@@ -6,19 +6,8 @@
 import AppKit
 import Foundation
 
-/// Presence proven at once, and each proof's words kept: saving a key is the person's act.
-final class CredProofs: @unchecked Sendable {
-    private let lock = NSLock()
-    private var said: [String] = []
-    var summaries: [String] { lock.lock(); defer { lock.unlock() }; return said }
-    var maker: @Sendable (String, [String: Any], String?) async -> Result<String, VyredFailure> {
-        { [self] _, _, summary in lock.lock(); said.append(summary ?? ""); lock.unlock(); return .success("capsule key=k1 ts=1 nonce=n sig=s") }
-    }
-}
-
-@MainActor private func credModel(_ v: FakeVyred, _ p: CredProofs = CredProofs()) -> CapsuleModel {
+@MainActor private func credModel(_ v: FakeVyred) -> CapsuleModel {
     let c = VyredClient(socket: v.socket)
-    c.presenceProof = p.maker
     let m = CapsuleModel(home: vyScratch("cred-\(UUID().uuidString.prefix(6))"), vyred: c, providers: [])
     m.willShow(front: nil)
     return m
@@ -37,8 +26,7 @@ let credentialsSuite = Suite("credentials") { t in
         v.tool("vault.put") { _ in ["stored": true] }
         v.tool("vault.grant") { _ in ["grant": ["status": "granted"]] }
         let r: [String]? = t.wait {
-            let proofs = CredProofs()
-            let m = await MainActor.run { credModel(v, proofs) }
+            let m = await MainActor.run { credModel(v) }
             _ = await until { m.vyred.isUp && m.vyred.has("vault.grant") }
             let saved = await MainActor.run { () -> Box in
                 let b = Box()
@@ -51,10 +39,10 @@ let credentialsSuite = Suite("credentials") { t in
             let put = v.callsOf("vault.put").first, grant = v.callsOf("vault.grant").first
             return await MainActor.run {
                 [open, VJ.s(put?["name"]), VJ.s((put?["fields"] as? [String: Any])?["value"]), VJ.s(grant?["module"]),
-                 "\(saved.hit) \(m.credentialAsk == nil)", m.line ?? m.credentialAsk?.error ?? "", proofs.summaries.first ?? "no proof"]
+                 "\(saved.hit) \(m.credentialAsk == nil)", m.line ?? m.credentialAsk?.error ?? ""]
             }
         }
-        t.eq(r, ["true [\"Save in the vault\", \"Cancel\"]", "voice-deepgram-key", "dg-test-000", "voice", "true true", "Saved your Deepgram key in the vault.", "Save your Deepgram key in the vault for voice"])
+        t.eq(r, ["true [\"Save in the vault\", \"Cancel\"]", "voice-deepgram-key", "dg-test-000", "voice", "true true", "Saved your Deepgram key in the vault."])
     }
 
     t.test("vault.connect when vyred has it, with vault.need's fields; a failure stays on the row and clears the value") {

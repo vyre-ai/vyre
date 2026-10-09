@@ -95,17 +95,17 @@ let agentDeskSuite = Suite("agent desk") { t in
         t.ok(got?.gone == true, "gone, and the card closed, once gate.released arrived")
     }
 
-    t.test("a send vyred holds for presence asks once in the panel, with words, and goes") {
+    t.test("a send vyred holds for the person's yes asks a card, Touch ID on this Mac gives it, and the send goes once") {
         let v = seeded(); defer { v.stop() }
         v.tool("gate.approve") { _ in ["state": "approved"] }
+        v.tool("approvals.ask") { _ in ["id": "ap_1", "line": "Send to dana@harlowlegal.com: Intake follow-up"] }
+        v.tool("approvals.local-yes") { _ in ["answered": "approved"] }
         v.headerHook = { tool, h in
-            guard tool == "gate.approve", h["x-vyre-presence"] == nil else { return (nil, [:]) }
-            return (FakeError(code: "presence_required", message: "gate.approve needs presence"), [:])
+            guard tool == "gate.approve", h["x-vyre-approval"] == nil else { return (nil, [:]) }
+            return (FakeError(code: "presence_required", message: "gate.approve needs your yes", extra: ["moment": "outward", "request": ["op": "gate.approve", "fields": ["id": "h1"]]]), [:])
         }
-        let asked = NSMutableArray()
         let got: (calls: Int, note: String?)? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = deskModel(v); m.willShow(front: nil); return m }
-            m.vyred.presenceProof = { _, _, summary in asked.add(summary ?? ""); return .success("capsule key=k1 ts=1 nonce=n sig=s") }
             _ = await until { m.desk.waiting.count == 3 }
             let h = await MainActor.run { m.desk.waiting.first { $0.source == .gate }! }
             await m.desk.yes(h)
@@ -113,7 +113,8 @@ let agentDeskSuite = Suite("agent desk") { t in
             await MainActor.run { m.didHide() }
             return (v.callsOf("gate.approve").count, note)
         }
-        t.eq(asked as? [String], ["Send to dana@harlowlegal.com: Intake follow-up"])
+        t.eq(v.callsOf("approvals.ask").first?["moment"] as? String, "outward")
+        t.eq(v.toolHeaders.last { $0.tool == "gate.approve" }?.headers["x-vyre-approval"], "ap_1")
         t.eq(got?.calls, 1, "the refused try never reached the tool")
         t.eq(got?.note, nil)
     }

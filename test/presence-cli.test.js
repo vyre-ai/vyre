@@ -1,8 +1,7 @@
 // @ts-check
-// `vyre vault` writes against the REAL presence verifier (no test fixture that finds a person at
-// every call). Without a terminal they are refused asking for a person at a terminal, which is
-// callAsPerson's answer, so the commands do route through it. With the proof (the code vyred
-// writes to the person's login terminal, typed back) they go through. `vyre memory` corrections
+// `vyre vault` against the REAL presence verifier (no test fixture that finds a person at every call). A write needs the person and no yes; a grant or a reveal needs the yes: without a terminal it is
+// refused asking for a person at a terminal, which is callAsPerson's answer, so the commands do route through it. With the yes (Touch ID, or the code vyred writes to the person's login terminal, typed
+// back) it goes through. `vyre memory` corrections
 // are the user's own and ask nothing (the no-nag rule).
 
 import "../scripts/mac-test-guard.mjs";
@@ -25,13 +24,14 @@ async function realVyred(t, { touchid = false, terminal = null } = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], vault: { keystore: "file" } }));
   const screen = [];
+  const touches = { n: 0 };
   // person: which login terminal vyred sees the caller in; the real check reads the kernel (test/peer.test.js).
   const d = await start({ root, log: () => {}, person: async () => terminal, presence: deps => new Presence({ ...deps, ...(touchid ? { platform: "darwin" } : {}),
-    touchid: { available: async () => touchid, authenticate: async () => (touchid ? { ok: true } : { ok: false, reason: "unavailable" }) },
+    touchid: { available: async () => touchid, authenticate: async () => { touches.n++; return touchid ? { ok: true } : { ok: false, reason: "unavailable" }; } },
     who: async () => ["ttys007"], statTty: () => ({ uid: process.getuid?.() ?? 0, isCharacterDevice: () => true }),
     writeTty: (file, text) => screen.push({ file, text }) }) });
   t.after(() => d.stop());
-  return { root, screen };
+  return { root, screen, touches };
 }
 
 /** The CLI as the model's Bash runs it: pipes, no controlling terminal. */
@@ -51,11 +51,12 @@ const terminal = screen => ({
   prompt: async () => /type this code[^:]*: ([A-Z0-9]+)/i.exec(screen.at(-1)?.text || "")?.[1] || "",
 });
 
-test("presence cli: vault writes without a person are refused asking for one, exit 3; memory asks nothing", async t => {
+test("presence cli: a vault write needs the person and no yes; a grant needs the yes and, from a shell with no terminal, is refused asking for a person at a terminal (exit 3); memory asks nothing", async t => {
   const { root } = await realVyred(t);
   const env = { VYRE_HOME: root };
+  const put = await vyre(["vault", "put", "mail-token", "--kind", "api-key"], env, "fixture-value\n");
+  assert.equal(put.code, 0, `vyre vault put: ${put.out}`);
   const cases = [
-    [["vault", "put", "mail-token", "--kind", "api-key"], "fixture-value\n"],
     [["vault", "grant", "mail-token", "gate"]],
     [["vault", "get", "mail-token", "--copy"]],
   ];
@@ -72,38 +73,30 @@ test("presence cli: vault writes without a person are refused asking for one, ex
   }
 });
 
-test("presence cli: with the person's proof from their terminal, vault.put and vault.grant go through", async t => {
+test("presence cli: vault.put goes through with no yes; vault.grant asks a card, the code vyred wrote to the person's terminal confirms it, and the card lets the call through", async t => {
   const { root, screen } = await realVyred(t);
   const io = terminal(screen);
-  const put = await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true });
+  const put = await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io });
   assert.ok(put.data, JSON.stringify(put));
-  assert.equal(screen.at(-1).file, "/dev/ttys007", "the code went to the person's login terminal");
-  const grant = await callAsPerson("vault.grant", { name: "mail-token", module: "gate" }, { root, io, tty: true });
+  assert.equal(screen.length, 0, "a put asked nothing");
+  const grant = await callAsPerson("vault.grant", { name: "mail-token", module: "gate" }, { root, io });
   assert.ok(grant.data, JSON.stringify(grant));
+  assert.equal(screen.at(-1).file, "/dev/ttys007", "the code went to the person's login terminal");
 });
 
-test("presence cli: one Touch ID at a login, then that login's grants ask nothing and are audited; reveals still ask; MCP and agents are refused", async t => {
-  const { root, screen } = await realVyred(t, { touchid: true, terminal: { key: "ttys007#700@start", tty: "ttys007" } });
-  const io = terminal(screen);
-  assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
+test("presence cli: one Touch ID for a reveal covers the next reveals for five minutes on this device; a grant, another yes, asks again; MCP and agents are refused", async t => {
+  const { root, touches } = await realVyred(t, { touchid: true, terminal: { key: "ttys007#700@start", tty: "ttys007" } });
+  const io = terminal([]);
+  assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io })).data);
+  assert.equal(touches.n, 0);
   const first = await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io });
   assert.ok(first.data, JSON.stringify(first));
-  const again = await vyre(["vault", "get", "mail-token", "--reveal"], { VYRE_HOME: root });
-  assert.equal(again.code, 3, "a reveal asks every time: " + again.out);
-  assert.doesNotMatch(again.out, /fixture-value/);
-  const grant = await vyre(["vault", "grant", "mail-token", "gate"], { VYRE_HOME: root });
-  assert.equal(grant.code, 0, grant.out);
-  assert.ok(screen.some(w => /used your Touch ID window for letting gate use mail-token/.test(w.text)), "the notice on the terminal");
-  const audit = await call("vault.audit", { name: "mail-token" }, { root });
-  assert.match(JSON.stringify(audit), /Touch ID window on ttys007/);
+  assert.equal(touches.n, 1);
+  const again = await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io });
+  assert.ok(again.data, JSON.stringify(again));
+  assert.equal(touches.n, 1, "the second reveal rode the window");
+  const grant = await callAsPerson("vault.grant", { name: "mail-token", module: "gate" }, { root, io });
+  assert.ok(grant.data, JSON.stringify(grant));
+  assert.equal(touches.n, 2, "a grant is not covered by a reveal's window");
   for (const caller of ["mcp", "cli agent:kit"]) assert.ok((await call("vault.reveal", { name: "mail-token" }, { root, caller })).error, caller);
-});
-
-test("presence cli: a caller vyred sees in no login terminal (a model's shell) asks every time", async t => {
-  const { root, screen } = await realVyred(t, { touchid: true, terminal: null });
-  const io = terminal(screen);
-  assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
-  assert.ok((await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io })).data);
-  const again = await vyre(["vault", "grant", "mail-token", "gate"], { VYRE_HOME: root });
-  assert.equal(again.code, 3, again.out);
 });

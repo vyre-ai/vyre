@@ -217,7 +217,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   assert.equal(ungranted.grant, "vyre vault grant harlow-github-hook hooks");
   assert.deepEqual(evts("hook.opened").map(e => e.payload), [{ route: "northwind-orders", scheme: "hmac-sha256" }, { route: "harlow-forms", scheme: "github" }]);
 
-  await no("hooks.close", { name: "northwind-orders" }, "cli", "presence_required", {});
+  // closing a route takes access away: it needs the person and no yes (hooks.open and hooks.enable are the moments)
   await no("hooks.close", { name: "northwind-orders" }, "mcp:agent:kit", "held_unavailable");
   await no("hooks.close", { name: "northwind-orders" }, "tailnet-guest:sam@example.com", "denied");
   const closed = await ok("hooks.close", { name: "northwind-orders" });

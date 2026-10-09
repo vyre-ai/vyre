@@ -1172,8 +1172,8 @@ shardTest("the session strength is proven at each sign-in (the identity entry's 
     // the request must fit the moment and be plain data
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
     await assert.rejects(() => links.askApproval("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
-    // MO-1 (vault.export and vault.backup moved into the vault moment with the one yes at the floor, lib/one-yes.js): each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
-    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.put"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
+    // MO-1: each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
+    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.move"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
     // and at the floor: an approval never counts for such a tool
     const del = await links.sessionFor("srv").call("vault.delete", { name: "northwind-mail", approval: "ap_notacardatall1" }).then(() => null, e => e);
     assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && true, "vault.delete is not a moment: the old floor");

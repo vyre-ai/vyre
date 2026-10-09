@@ -156,17 +156,6 @@ export default {
       },
     });
 
-    ctx.tool("presence.session.open", {
-      effect: "write",
-      description: "After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
-      presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
-      input: obj({}),
-      run: async (_, meta) => {
-        if (!meta.presence) throw new Error("a session opens from a person's proof, not from a module");
-        return presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer });
-      },
-    });
-
     // The person session (person.js): a browser signed in as the person, not only their device.
     const people = new PersonSessions({ db: ctx.store.db, softwareCap: Boolean(ctx.config && ctx.config.presence && ctx.config.presence.softwareKeyCap) });
     const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
@@ -407,18 +396,42 @@ export default {
       },
     });
 
+    // Sessions are gone (a yes is per call; a reveal may reuse one for five minutes, lib/one-yes.js createReuse): nothing is ever "covered". Kept as an answer for the surfaces that still ask (the Gate and the Switchboard put it on held items and asks).
     ctx.tool("presence.covered", {
       internal: true,
-      description: "Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session, since when and until when (ms). The Gate and the Switchboard put it on held items and asks.",
+      description: "Always { covered: false }: there are no presence sessions any more. Kept so the surfaces that ask keep working.",
       input: obj({ peer: { type: "object" } }),
-      run: async ({ peer }) => presence.coverage(peer || null),
+      run: async () => ({ covered: false, since: null, expires: null }),
     });
 
-    ctx.tool("presence.session.close", {
-      effect: "write",
-      description: "End a presence session now.",
-      input: obj({ session: str }, ["session"]),
-      run: async ({ session }) => ({ closed: presence.closeSession(session) }),
+    // The local yes (approvals.local-yes asks it): Touch ID on a Mac, or the code Vyre writes to the person's own terminal. Only the approvals module asks; the card it confirms is its own.
+    ctx.tool("presence.confirm", {
+      internal: true,
+      description: "Confirm a yes on THIS computer for the approvals queue: Touch ID on a Mac, or a code written to the person's login terminal (`tty`) and typed back (`challenge`, `code`). Answers { ok: true }, { need: \"code\", challenge }, or refuses.",
+      input: obj({ summary: str, tool: str, input: { type: "object" }, tty: str, challenge: str, code: str }, ["tool", "input"]),
+      run: async (i, meta = {}) => {
+        const local = ctx.verifier || presence;
+        if (String((meta && meta.caller) || "") !== "module:approvals") throw Object.assign(new Error("only the approvals queue asks for a local confirmation"), { code: "denied" });
+        const def = { presence: { summary: async () => String(i.summary || i.tool) } };
+        const refuse = v => Object.assign(new Error(v.message), { code: v.code === "no_dialog" ? "no_dialog" : "presence_required" });
+        if (i.challenge) {
+          const v = await local.verify({ tool: i.tool, input: i.input, caller: "cli", proof: { method: "tty", id: String(i.challenge), code: String(i.code || "") }, def });
+          if (!v.ok) throw refuse(v);
+          return { ok: true };
+        }
+        const methods = await local.methods();
+        if (methods.includes("touchid")) {
+          const v = await local.verify({ tool: i.tool, input: i.input, caller: "cli", proof: { method: "touchid" }, def });
+          if (!v.ok) throw refuse(v);
+          return { ok: true };
+        }
+        if (methods.includes("tty") && i.tty) {
+          const c = await local.challenge({ tool: i.tool, input: i.input, method: "tty", tty: String(i.tty), def });
+          if (c.error) throw Object.assign(new Error(c.error.message), { code: c.error.code === "no_dialog" ? "no_dialog" : "presence_required" });
+          return { need: "code", challenge: c.challenge };
+        }
+        throw Object.assign(new Error("this computer cannot confirm that: approve it in Vyre on your phone"), { code: "presence_required" });
+      },
     });
 
     return { async stop() {} };

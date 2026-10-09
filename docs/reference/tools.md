@@ -435,6 +435,7 @@ Ask the person's paired phone to approve an act this session cannot prove itself
   - `moment` one of "pair", "vault", "outward"
   - `op` string
   - `request` object
+  - `reuse` boolean
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
@@ -494,6 +495,18 @@ Everything else that waits on the person, as cards in this queue: the Gate's hel
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`
+
+### `approvals.local-yes`
+
+Give the yes for a card you asked for yourself, here: Touch ID on a Mac, or the code Vyre writes to your own terminal. { id } starts it and answers { answered: "approved" }, or { need: "code", challenge } when a code was written to `tty` (give it back as { id, challenge, code }). Only the surface that asked can confirm its own card, and only on this computer; a server with no screen of its own asks your phone instead.
+
+- Input:
+  - `id` string, required
+  - `challenge` string
+  - `code` string
+  - `tty` string
+- Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `approvals.pending`
 
@@ -6961,9 +6974,22 @@ A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs
 - Callers: any caller
 - Needs a person present.
 
+### `presence.confirm`
+
+Confirm a yes on THIS computer for the approvals queue: Touch ID on a Mac, or a code written to the person's login terminal (`tty`) and typed back (`challenge`, `code`). Answers { ok: true }, { need: "code", challenge }, or refuses.
+
+- Input:
+  - `input` object, required
+  - `tool` string, required
+  - `challenge` string
+  - `code` string
+  - `summary` string
+  - `tty` string
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
 ### `presence.covered`
 
-Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session, since when and until when (ms). The Gate and the Switchboard put it on held items and asks.
+Always { covered: false }: there are no presence sessions any more. Kept so the surfaces that ask keep working.
 
 - Input:
   - `peer` object
@@ -7109,22 +7135,6 @@ Remove an enrolled Capsule key, device key or passkey by id. Needs presence.
 - Input:
   - `id` string, required
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `module`, `space`, `tailnet`
-- Needs a person present.
-
-### `presence.session.close`
-
-End a presence session now.
-
-- Input:
-  - `session` string, required
-- Callers: any caller
-
-### `presence.session.open`
-
-After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.
-
-- Input: none
-- Callers: any caller
 - Needs a person present.
 
 ## projects
