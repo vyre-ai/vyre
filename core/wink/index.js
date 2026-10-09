@@ -23,14 +23,13 @@ import path from "node:path";
 import { createWinkCode, CODE_TTL_MS, MAX_ATTEMPTS } from "./code.js";
 import { ticketTag } from "../../relay/client/pairwords.js";
 import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
-import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
+import { createGrants, moveLocalGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
 import { lentRevoked } from "./lent-revoked.js";
-import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
@@ -106,9 +105,15 @@ export function createWink(inject = {}) {
     };
     const spaceId = async () => spaceIdOf(await ensureRoute());
     let spaceCache = "";
-    // The table is made at start; the space is known once the relay has a route, and every grant call asks for it first.
-    const grantsStore = createGrants({ ctx, space: () => spaceCache, now });
-    const grants = async () => { spaceCache = await spaceId(); return grantsStore; };
+    // Grants are the kernel's (core/wink/grants.js). The space is known once the relay has a route, and every grant call asks for it first; the first call also carries the old tables' rows over, once.
+    const grantsStore = createGrants({ ctx });
+    /** @type {Promise<unknown> | null} */ let moving = null;
+    const grants = async () => {
+      spaceCache = await spaceId();
+      moving ||= (async () => { const identity = await owner1(); await moveLocalGrants({ ctx, adoptDevice: x => adoptDevice(identity, x) }); })().catch(e => { moving = null; ctx.log(`wink: the old grants have not moved yet: ${/** @type {Error} */ (e).message}`); });
+      await moving;
+      return grantsStore;
+    };
     const actor = async (/** @type {"person" | "device"} */ kind, /** @type {string} */ id) => ({ kind, id, space: await spaceId() });
     /** The ONE identity of the person (DESIGN-wink 1): the spaces module owns it, claimed once through the names directory, so Wink reads it live and never makes a second one. A box whose home has no identity yet (a server before it is paired) falls back to an id derived from its route. */
     const identityId = async () => {
@@ -421,27 +426,13 @@ export function createWink(inject = {}) {
       else ctx.events.emit("wink.joined", { device: p.id, flow, kind });
       return dev;
     };
-    // Grants an older build wrote for devices become registry rows once, and the grants are revoked: a device is never a member of a space.
-    let adopted = false;
-    const adoptLegacy = async () => {
-      if (adopted) return;
-      adopted = true;
-      const g = await grants();
-      const identity = await owner1();
-      /** @type {any[]} */ let legacy;
-      // An event handler has no running call to build the kernel chain from, so the kernel refuses the list. That is the only error taken here, once, in one plain line: a server made by this build has no
-      // legacy grants to adopt, and the pairing never waits on it (the device is registered first). Any other error still propagates.
-      try { legacy = await g.list({ status: "active", source: "wink:W" }); }
-      catch (e) { if (/kernel-built chain/.test(String(/** @type {Error} */ (e).message))) { ctx.log("wink: legacy device grants were not looked for (an event has no chain to ask the kernel with); a server made by this build has none"); return; } throw e; }
-      for (const x of legacy) {
-        const sub = x.subject.kind === "actor" ? x.subject.actor : null;
-        if (!sub || sub.kind !== "device" || !x.actions.includes("space.act")) continue;
-        const who = String(x.reason || "").split(", ");
-        if (!pairing.devices.get(sub.id)) pairing.devices.add({ id: sub.id, identity, kind: /** @type {any} */ (FLOW_KIND)[String(x.source).slice(5)] || "computer", name: who[0], fingerprint: who[1], target: { kind: "identity", id: identity } });
-        await g.revoke(x.id, "devices belong to your identity now");
-      }
+    // A grant an older build wrote for a device becomes a registry row once: a device is never a member of a space (it belongs to the identity).
+    const adoptDevice = (/** @type {string} */ identity, /** @type {any} */ x) => {
+      const sub = x.subject.actor;
+      const who = String(x.reason || "").split(", ");
+      if (!pairing.devices.get(sub.id)) pairing.devices.add({ id: sub.id, identity, kind: /** @type {any} */ (FLOW_KIND)[String(x.source).slice(5)] || "computer", name: who[0], fingerprint: who[1], target: { kind: "identity", id: identity } });
     };
-    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await registerDevice(e.payload || e); await adoptLegacy(); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
+    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await registerDevice(e.payload || e); await grants(); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
     const offRemoved = ctx.events.on("device.removed", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {
@@ -554,9 +545,10 @@ export function createWink(inject = {}) {
       if (!o) throw fail("not_found", "no such invitation");
       const g = await grants();
       const space = await spaceId();
+      const person = `per_${base32(sha(`person\n${who.key}`), 26)}`;
       const grant = await g.create({
-        subject: { kind: "actor", actor: { kind: "person", id: `per_${base32(sha(`person\n${who.key}`), 26)}`, space } },
-        actions: ["member.act"], resource: { prefix: `vyre://${space}/` }, conditions: {},
+        subject: { kind: "actor", actor: { kind: "person", id: person, space } },
+        actions: ["member.act"], resource: { prefix: `vyre://${space}/member/${person}/` }, conditions: {},
         source: "wink:W5", reason: `${String(who.name || "someone")}, ${String(who.fingerprint || "")}, ${o.role}${(o.projects || []).length ? `, ${(o.projects || []).join(" ")}` : ""}`.trim(),
       }, await owner0());
       writeOffer(offerId, "done", { grant: grant.id, receiver: { name: who.name, fingerprint: who.fingerprint } });
@@ -645,7 +637,6 @@ export function createWink(inject = {}) {
       run: async (input, meta = {}) => {
         owner(meta, "the access list");
         const g = await grants();
-        await adoptLegacy();
         const list = await g.list({ ...(input.status ? { status: input.status } : { status: "active" }), source: "wink:" });
         const devices = await Promise.all(pairing.devices.list(await owner1()).map(async d => ({ ...d, card: card({ kind: /** @type {any} */ (d.kind), receiver: { name: d.name, fingerprint: d.fingerprint }, space: d.owner.kind === "space" ? await spaceName(d.owner.id) : "Personal" }) })));
         return { devices, grants: await Promise.all(list.map(cardOf)) };
@@ -740,7 +731,7 @@ export function createWink(inject = {}) {
       }
       return { found, notes };
     };
-    const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId,
+    const storage = createStorageDevices({ ctx, grants: { create: async (/** @type {any} */ i) => (await grants()).create(i), revoke: async (/** @type {string} */ id, /** @type {string} */ r) => (await grants()).revoke(id, r), get: async (/** @type {string} */ id) => (await grants()).get(id) }, vault: storageVault, admin: storageAdmin, space: spaceId,
       scanners: realScanners({ roots: storageRoots }), remoteCandidates, viaReach: (/** @type {string} */ d) => holds.has(d) });
     registerStorageTools(ctx, storage, "wink.storage");
     // `vyre doctor`'s Wink checks read the identity list through this port (a device on the list, by its entry id, in this home's space) and this device's own entry. The node host and the
