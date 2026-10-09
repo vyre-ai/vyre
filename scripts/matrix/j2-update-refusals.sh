@@ -167,7 +167,7 @@ wd=$(wdir)
 [ "$wd" = "$ST/private/run" ] && rec 7c-root-update-ran-from-root-copy ok "working_dir $wd" || rec 7c-root-update-ran-from-root-copy false "working_dir '$wd', want $ST/private/run"
 [ "$priv" = false ] && rec 7b-edited-compose-not-run ok "the running vyre container is not privileged" || rec 7b-edited-compose-not-run false "privileged='$priv'"
 if [ $rc -eq 0 ] && [ "$v" = "9.9.9-e2e.1" ] && seen && mem && printf '%s' "$s" | grep -q '"state":"ok"'; then rec 7-signed-update ok "$V0 to $v"
-else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; fi
+else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; printf '%s\n' "$out" | tail -40 >&2; docker logs --tail 60 vyre-vyre-1 2>&1 | tail -40 >&2; fi
 # 8 now the floor is 9.9.9: the candidate's own, validly signed version is an old release and is refused
 V0=9.9.9-e2e.1
 mk back "$(tr -d ' \r\n' <"$BOX/VERSION")" good; offer back; ask $PORT "$GOODPUB"; refused 8-floor-after-update 'never goes back'
