@@ -20,7 +20,7 @@ import { parseOperation, readOnly } from "../shared/sk/siteops/spec.js";
 import { refsOf } from "../shared/sk/siteops/build.js";
 import { fillTemplate, walk } from "../shared/sk/siteops/codec.js";
 import * as redact from "../shared/sk/siteops/redact.js";
-import { held, writeGate, digest, PASS } from "../shared/outbound.js";
+import { held, writeGate, digest } from "../shared/outbound.js";
 import net, { records, target, refuse, pageFetch, start, runIn } from "./net.js";
 
 const BODY_CAP = 1_000_000;
@@ -161,17 +161,18 @@ function gateFor(op, inputs, trust) {
     gate: built => {
       const m = String(built.method).toUpperCase();
       const body = typeof built.body === "string" ? built.body : "";
-      if (op.kind === "read" && /^(GET|HEAD)$/.test(m)) { passed = { pass: PASS }; return null; }
-      if (trust && (trust.asked === true || trust.writeOk === true) && op.kind !== "send" && op.kind !== "spend") { passed = { pass: PASS }; return null; }
+      // The pass itself is the write gate's to give (net.js alone checks it): ask it, once this function has decided the call may go.
+      const allow = () => { passed = writeGate(m, built.url, body, { asked: true }); return null; };
+      if (op.kind === "read" && /^(GET|HEAD)$/.test(m)) return allow();
+      if (trust && (trust.asked === true || trust.writeOk === true) && op.kind !== "send" && op.kind !== "spend") return allow();
       if (op.kind === "send" || op.kind === "spend") {
-        if (trust && trust.asked === true) { passed = { pass: PASS }; return null; }
+        if (trust && trust.asked === true) return allow();
         const h = held(m, built.url, op.kind === "spend" ? "this spends money" : "this sends something as the person", `${m} ${built.url} ${body}`);
         return { ...h, control: { role: "request", name: `${op.name} (${op.kind})` }, fields, op: op.name };
       }
       const g = writeGate(m, built.url, body, trust || {});
       if (g.held) return { ...g.held, control: { role: "request", name: `${op.name} (${op.kind})` }, fields, op: op.name };
-      passed = { pass: PASS };
-      return null;
+      return allow();
     },
   };
 }
