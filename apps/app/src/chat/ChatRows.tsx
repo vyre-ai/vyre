@@ -244,16 +244,21 @@ function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
   const { color } = useUiTheme();
   const label = `Asked ${it.name}` + (it.role && it.role !== it.name ? ` (${it.role})` : "");
   const state = it.state === "running" ? "working" : it.state;
+  const router = useRouter();
+  // Once the teammate has a conversation of its own (it carries the thread), the row opens it.
+  const open = it.thread ? () => { if (!allowsMock()) router.push({ pathname: "/u/chats/[id]", params: { id: String(it.thread) } }); } : undefined;
+  const Row = open ? Pressable : View;
   return (
-    <View style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`}>
+    <Row style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`} {...(open ? { onPress: open, accessibilityRole: "link" as const, accessibilityHint: `Opens ${it.name}'s conversation` } : {})}>
       <View style={S.s9}>
         <Face name={it.name || it.agent} family="assistant" size={24} id={`agent:${it.agent}`} />
         <Text size="caption" strong numberOfLines={1}>{label}</Text>
         {it.project ? <Text size="caption" tone="label" numberOfLines={1} style={S.s10}>{`· ${String(it.project)}`}</Text> : <View style={S.s10} />}
         <Text size="caption" tone={it.state === "failed" ? "err" : "label"}>{state}</Text>
+        {open ? <Icon name="chev-r" size={14} tone="muted" /> : null}
       </View>
       {it.text ? <Text size="caption" tone="muted" numberOfLines={2}>{it.text}</Text> : null}
-    </View>
+    </Row>
   );
 }
 
