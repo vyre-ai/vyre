@@ -33,11 +33,14 @@ jobs:
           VYRE_TEST_UNSTRIPPED_WRAPPER: ${{ matrix.mode == 'source' && '1' || '' }}
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="8.0.0-rc.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          sh scripts/build-site.sh
+          # A candidate with no signed module list boots no module (the installer now says so). The throwaway key is pinned in this runner's checkout and signs the candidate, as a release is signed.
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
           if [ "${{ matrix.mode }}" = stripped ]; then ! grep -q VYRE_RELEASE_KEY site/box/vyre; else grep -q VYRE_RELEASE_KEY site/box/vyre; fi
       - name: J2b, the update refusals (${{ matrix.mode }})
         env:
           J2B_MODE: ${{ matrix.mode }}
+          J2B_KEYDIR: ${{ runner.temp }}/j2key
         run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals-${{ matrix.mode }}
       - name: Diagnostics
         if: failure()
