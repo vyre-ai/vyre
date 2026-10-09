@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(app,test): the pairing code files import the shell as shell.ts like their neighbours, so node resolves them (wink-code.test.js ran red on main).
 - fix(presence): a device that lost its session token signs in again with its own confirmed key (#112). Asking for a challenge renews the device's grant without ending the session it holds; answering it with the device's own key replaces that session, the old token is dead at once, and a presence.session-replaced event is logged. Another key, or a removed device, stays refused, and the refusal now says in plain words how to get back (sign in again with its own key; if the owner removed it, pair it again from the owner's device).
 
 ## Unreleased
