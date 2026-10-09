@@ -41,7 +41,10 @@ const seeded = async (/** @type {string} */ name, /** @type {() => Promise<strin
 
 // ------------------------------------------------------------------ the fake vendor (Acme): a real HTTP service on this machine, reached through the vault's development-only network seam
 const KEY = "fixture-acme-key-0001";
+/** Every request the vendor saw, "METHOD /path?query", for the honest eval's checks (scripts/eval-honest/run.mjs): a task is verified by what reached the vendor, not by what a model says. */
+const vendorHits = /** @type {string[]} */ ([]);
 const vendor = http.createServer((req, res) => {
+  vendorHits.push(`${req.method} ${req.url}`);
   const ok = req.headers.authorization === `Bearer ${KEY}`;
   const url = new URL(req.url || "/", "http://x");
   const send = (/** @type {number} */ code, /** @type {any} */ body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
@@ -73,8 +76,8 @@ fs.writeFileSync(path.join(work, "northwind", "engagement-letter.txt"), "Engagem
 const transcripts = path.join(home, "transcripts"); fs.mkdirSync(transcripts, { recursive: true });
 // The switchboard reads the claude program once, when the daemon starts: a paid round puts the tee in front of the real claude (or, with --stand-in, in front of the stand-in) from the start.
 const TEE_BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "token-proof-claude.mjs");
-if (cmd === "run") { process.env.TOKEN_PROOF_REAL_CLAUDE = args.includes("--stand-in") ? FAKE : flag("claude", "claude"); if (flag("model")) process.env.ANTHROPIC_MODEL = flag("model"); }
-Object.assign(process.env, { VYRE_CLAUDE_BIN: cmd === "run" ? TEE_BIN : FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+if (cmd === "run" || cmd === "eval") { process.env.TOKEN_PROOF_REAL_CLAUDE = args.includes("--stand-in") ? FAKE : flag("claude", "claude"); if (flag("model")) process.env.ANTHROPIC_MODEL = flag("model"); }
+Object.assign(process.env, { VYRE_CLAUDE_BIN: cmd === "run" || cmd === "eval" ? TEE_BIN : FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
 fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "proof-box", role: "box", transcripts: [transcripts], vault: { keystore: "file" }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects"), sessions: { install: false, thread_socket: "on" } }));
 const d = await start({ root: home, presence: present, log: () => {}, kernel: true });
 asOwner(d, home);
@@ -202,7 +205,7 @@ const removeLearned = () => fs.rmSync(path.join(home, "learned"), { recursive: t
  * Helper sessions (memory, a teammate) start in other folders and are left out, as is anything another proof on the box wrote.
  * @param {string} tee
  */
-function readRun(tee) {
+function readRun(tee, split = false) {
   const dir = path.dirname(tee), base = path.basename(tee) + ".";
   const mine = path.join(home, "agents", "juno");
   /** @type {{ at: number, text: string }[]} */ const parts = [];
@@ -213,7 +216,8 @@ function readRun(tee) {
     const init = text.split("\n").map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((e) => e && e.type === "system" && e.subtype === "init");
     if (init && String(init.cwd || "").startsWith(mine)) parts.push({ at: fs.statSync(file).birthtimeMs || fs.statSync(file).ctimeMs, text });
   }
-  return parts.sort((a, b) => a.at - b.at).map((x) => x.text).join("");
+  const sorted = parts.sort((a, b) => a.at - b.at).map((x) => x.text);
+  return split ? sorted : sorted.join("");
 }
 
 /** The repeat task passes when exactly one todo has the title, its real id is in the answer, and so is the matter count (one). */
@@ -238,6 +242,13 @@ async function verifyLong(/** @type {string} */ text) {
   const idOf = (/** @type {string} */ title) => (items.find((/** @type {any} */ x) => x.title === title) || {}).id;
   const a = idOf("Call Aaron Adair"), b = idOf("Call Carl Cole");
   return Boolean(a && b && text.includes(a) && text.includes(b) && /\b(6|six)\b/i.test(text) && items.filter((/** @type {any} */ x) => /^Call /.test(String(x.title))).length === 6);
+}
+
+// ------------------------------------------------------------------ the honest eval (R031-00v): scripts/eval-honest/run.mjs, on this same seeded world
+if (cmd === "eval") {
+  const { evalMain } = await import("./eval-honest/run.mjs");
+  const code = await evalMain({ args, flag, d, call, must, viaSession, home, work, until, readRun, clearTodos, vendorHits, vendorPort, FAKE, KEY, counters: () => ({ allowed, refused }), teammateAgent: () => teammateAgent });
+  vendor.close(); await d.stop(); process.exit(code);
 }
 
 // ------------------------------------------------------------------ the paid round
