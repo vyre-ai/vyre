@@ -52,12 +52,11 @@ export async function evalMain(ctx) {
   const rowsFile = path.join(out, "rows.json");
   // A heartbeat the front door's supervisor watches (scripts/eval-honest.mjs): if this process stops beating (its event loop is blocked), the supervisor takes a diagnostic report and ends it. A loop that
   // lags more than 30 s is also said aloud, with how long, so a stall leaves a trace even when it clears.
-  const beat = () => { try { fs.writeFileSync(path.join(out, ".heartbeat"), String(Date.now())); } catch { /* the folder is gone */ } };
+  let phase = "starting";
+  const beat = () => { try { fs.writeFileSync(path.join(out, ".heartbeat"), JSON.stringify({ at: Date.now(), phase })); } catch { /* the folder is gone */ } };
   beat();
   let lastTick = Date.now();
   setInterval(() => { const now = Date.now(); if (now - lastTick > 30_000) console.error(`WARNING: the harness event loop was blocked for ${Math.round((now - lastTick) / 1000)} s`); lastTick = now; beat(); }, 5000).unref();
-  // `--stall-proof`: block this process's event loop on purpose after 20 s, to prove the supervisor notices, takes the diagnostic report and ends it (node scripts/eval-honest.mjs check --home <dir> --stall-proof --stall-min 0.5).
-  if (args.includes("--stall-proof")) setTimeout(() => { for (;;) { /* blocked on purpose */ } }, 20_000).unref();
   const RUN_CAP_MS = Number(flag("run-cap-min", "10")) * 60_000;
   if (flag("disclose")) { const f = path.join(out, "disclosures.json"); const had = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []; fs.writeFileSync(f, JSON.stringify([...had, flag("disclose")], null, 1)); }
   /** The claude children of plain runs in flight, so a run that times out can end its own. @type {Set<import("node:child_process").ChildProcess>} */
@@ -190,7 +189,9 @@ export async function evalMain(ctx) {
   /** One Eval A run. @param {{ task: any, arm: string, group: string, rep: number, n: number, retryOf?: number|null }} u */
   async function runA(u) {
     const { task, arm } = u;
+    phase = `run ${u.n} (A ${task.id}/${arm}): resetting the world`;
     const left = await resetWorld(); if (left.length) throw new Error(`the world was not reset before run ${u.n}: ${left.join(", ")}`);
+    phase = `run ${u.n} (A ${task.id}/${arm}): the model is working`;
     const tee = path.join(out, `A-${u.n}-${task.id}-${arm}.jsonl`);
     const t0 = Date.now();
     /** @type {string} */ let stream = ""; let plain = arm !== "vyre"; let todos = (await todoNow());
@@ -212,6 +213,7 @@ export async function evalMain(ctx) {
       todos = arm === "plain-a2" && fs.existsSync(tf) ? { titles: fs.readFileSync(tf, "utf8").split("\n").map((l) => l.trim()).filter(Boolean), ids: Object.fromEntries(fs.readFileSync(tf, "utf8").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const m = l.match(/^(\S+)\s*\|\s*(.+)$/); return m ? [m[2].trim(), m[1]] : [l, l]; })) } : { titles: [], ids: {} };
       if (arm === "plain-a2" && task.check === "heldout_todo") todos.titles = todos.titles.map((t) => t.replace(/^\S+\s*\|\s*/, ""));
     }
+    phase = `run ${u.n} (A ${task.id}/${arm}): checking the answer`;
     const run = parseStream(stream);
     const { model: seen, models } = initsOf(stream);
     const processes = arm === "vyre" ? readRun(tee, true).length : 1;
@@ -292,12 +294,16 @@ export async function evalMain(ctx) {
   if (args.includes("--plan")) { for (const j of jobs) console.log(`${j.n} rep${j.rep} ${j.name}`); return 0; }
 
   let stopped = false;
+  // `--stall-proof`: block this process's event loop on purpose as the first run starts, to prove the supervisor notices, takes the diagnostic report and ends it
+  // (node scripts/eval-honest.mjs check --home <dir> --stall-proof --stall-min 0.4).
+  if (args.includes("--stall-proof")) for (;;) { /* blocked on purpose */ }
   for (const j of jobs) {
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); stopped = true; break; }
     /** @type {any} */ let row = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       // the run function reads its number from the job so a re-run is a new number that names the one it repeats
       const num = attempt === 0 ? j.n : ++n;
+      phase = `run ${num} (${j.name}, rep ${j.rep})`;
       // One wall-clock cap for the whole run: a run that hits it is INVALID ("timed out"), its children are ended, and it is re-run once like any invalid run.
       /** @type {any} */ let capTimer = null;
       const capped = new Promise((resolve) => { capTimer = setTimeout(() => resolve("TIMED_OUT"), RUN_CAP_MS); });
@@ -307,7 +313,7 @@ export async function evalMain(ctx) {
           for (const k of plainKids) { try { k.kill("SIGKILL"); } catch { /* gone */ } }
           await call("agents.stop", { agent: "juno" }).catch(() => null);
           const [evalName, ...rest] = j.name.split(" ");
-          row = { eval: evalName, cell: rest.join(" ").split("/").pop() || "", task: rest.join(" ").split("/")[0] || "", group: "", rep: j.rep, n: num, valid: false, invalid: [`timed out: no end after ${Math.round(RUN_CAP_MS / 60000)} minutes`], outcome: "fail", why: "timed out",
+          row = { eval: evalName, cell: rest.join(" ").split("/").pop() || "", task: rest.join(" ").split("/")[0] || "", group: "", rep: j.rep, n: num, valid: false, invalid: [`timed out: no end after ${Math.round(RUN_CAP_MS / 6000) / 10} minutes`], outcome: "fail", why: "timed out",
             usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, usd: 0, ms: RUN_CAP_MS, turns: 0, calls: 0, sha, stream: "" };
         } else row = got;
       } catch (e) { console.error(`stopped: ${/** @type {Error} */ (e).message}`); save(); return 1; } finally { clearTimeout(capTimer); }
