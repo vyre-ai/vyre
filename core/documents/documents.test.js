@@ -46,7 +46,7 @@ test("a template is added to the Drive, a new version when the name is used agai
   const g = await r.run("documents.template.get", { name: "Engagement letter", version: 1 });
   assert.equal(g.version, 1);
   assert.equal((await code(r.run("documents.template.get", { name: "Nothing" }))).code, "not_found");
-  for (const bad of ["../x", "", "a/b", " x"]) assert.equal((await code(r.run("documents.template.add", { name: bad, base64: b64(LETTER()) }))).code, "bad_input", bad);
+  for (const bad of ["../x", "", "a/b", ".hidden", "x".repeat(90)]) assert.equal((await code(r.run("documents.template.add", { name: bad, base64: b64(LETTER()) }))).code, "bad_input", bad);
   assert.equal((await code(r.run("documents.template.add", { name: "x", base64: b64(Buffer.from("not a docx")) }))).code, "bad_template");
 });
 
