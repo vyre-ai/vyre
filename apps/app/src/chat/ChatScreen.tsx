@@ -406,7 +406,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
+          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant", doing: "Waiting on your answer" }, { name: "kit", family: "assistant", doing: "Working on Northwind Bakery" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
           records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Juniper Studio intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this Mac", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
