@@ -148,7 +148,7 @@ if (!STATIC) {
   }
   const mineRed = [...red].filter(f => !baseRed.includes(f));
   testsOk = !mineRed.length;
-  if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by install-proof's list, not blocking you):\n    ${baseRed.join("\n    ")}`);
+  if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by release's red list, not blocking you):\n    ${baseRed.join("\n    ")}`);
   if (!testsOk) fail("T2", `red because of this branch:\n    ${mineRed.join("\n    ")}\n  A guard names its rule in its message; fix the cause, never loosen the guard.`);
 
   // App types: only errors in files this branch touched count against it.
