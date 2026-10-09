@@ -910,27 +910,32 @@ export class FlowRunner {
     const run = ctx.run;
     const led = this.#led(ctx, key);
     if (led && (led.status === "done" || led.status === "skipped") && !(s.kind in BLOCK_KINDS)) return;
+    if (led && led.status === "failed_handled" && s.kind in BLOCK_KINDS) return;
     run.error = { step: s.id, code: "", message: "" }; // names the step in flight; cleared by a clean finish
     const scope = () => this.#scope(ctx, locals);
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
     const val = (/** @type {any} */ v) => resolveValue(v, scope());
 
     if (s.kind === "decide") {
-      let branch = led && led.output && led.output.branch;
-      if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
-      await this.#walk(ctx, s[branch] || [], suffix, locals);
-      await this.#mark(ctx, key, { status: "done", output: { branch } });
+      await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        let branch = led && led.output && led.output.branch;
+        if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
+        await this.#walk(ctx, s[branch] || [], suffix, locals);
+        return { branch };
+      });
       return;
     }
     if (s.kind === "repeat") {
-      let items = led && led.output && led.output.items;
-      if (!items) {
-        const list = ev(s.over);
-        items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-        await this.#mark(ctx, key, { status: "started", output: { items } });
-      }
-      for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-      await this.#mark(ctx, key, { status: "done", output: { count: items.length } });
+      await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        let items = led && led.output && led.output.items;
+        if (!items) {
+          const list = ev(s.over);
+          items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
+          await this.#mark(ctx, key, { status: "started", output: { items } });
+        }
+        for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
+        return { count: items.length };
+      });
       return;
     }
 
@@ -971,6 +976,39 @@ export class FlowRunner {
     }
     await this.#mark(ctx, key, { status: "done", output: out, started_at: (this.#led(ctx, key) || {}).started_at ?? t0, finished_at: this.now(), error: undefined, handling: undefined });
     this.#emit("step.done", { run: run.id, step: key, kind: s.kind }, run, `vyre://${run.space}/flow-run/${run.id}`);
+  }
+
+  /**
+   * A decide or a repeat under its failure path and its check (f1, f2 on blocks). A step inside that fails for good, or a check that fails, sends the block to its on_fail steps, which read
+   * `error`; `then: continue` lets the run go on after them, the default fails the run. Replay-safe like a step: the block's ledger entry records that the failure path was started.
+   * @param {any} ctx @param {any} s @param {string} key @param {string} suffix @param {Record<string, any>} locals @param {() => any} scope @param {() => Promise<any>} body
+   */
+  async #block(ctx, s, key, suffix, locals, scope, body) {
+    const run = ctx.run;
+    const led0 = this.#led(ctx, key);
+    /** @type {{ code: string, message: string } | null} */ let failure = null;
+    if (led0 && led0.status === "failed" && led0.handling && s.on_fail) failure = led0.error || { code: "error", message: "failed" };
+    if (!failure) {
+      try {
+        const out = await body();
+        const bad = ctx.dry ? null : await this.#verify(ctx, s, key, out, scope);
+        if (bad) throw new StepFail("verify_failed", bad);
+        await this.#mark(ctx, key, { status: "done", output: { ...((this.#led(ctx, key) || {}).output || {}), ...out } });
+        return;
+      } catch (e) {
+        if (e instanceof Suspend || e instanceof PauseFlow || e instanceof Hold || !s.on_fail) throw e;
+        failure = failOf(e);
+        await this.#mark(ctx, key, { status: "failed", error: failure, handling: true, finished_at: this.now() });
+      }
+    }
+    await this.#walk(ctx, s.on_fail.steps, `${suffix}!${s.id}`, { ...locals, error: { code: failure.code, message: failure.message, step: s.id } });
+    run.error = { step: s.id, code: failure.code, message: failure.message };
+    if (s.on_fail.then === "continue") {
+      await this.#mark(ctx, key, { status: "failed_handled", output: { failed: true, error: failure }, handling: undefined, finished_at: this.now() });
+      this.#emit("step.failed-handled", { run: run.id, step: key, code: failure.code }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return;
+    }
+    throw new StepFail(failure.code, failure.message);
   }
 
   /**

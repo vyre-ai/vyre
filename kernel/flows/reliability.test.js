@@ -136,6 +136,17 @@ test("f2: a failure path survives a restart without doing its work twice", async
   assert.ok(id);
 });
 
+test("f2 on blocks: a block's failure path survives a restart without doing its work twice", async () => {
+  const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
+  await install(w, flowOf([{ id: "d", kind: "decide", if: "true", then: [fn("f", { retry: false })], on_fail: { steps: [{ id: "n", kind: "create", type: "matter", set: { client: "handled" } }] } }]));
+  const run = await fire(w);
+  const again = structuredClone(run); again.state = "running"; again.finished_at = undefined; again.attention = undefined;
+  await w.store.putRun(again);
+  await w.runner.recover(); await settle(w);
+  assert.equal(mine(w, "matter").length, 1, "the handler's record was made once");
+  assert.equal((await lastRun(w)).state, "failed");
+});
+
 test("f2: the Flow's own on_failure runs once before the run is called failed", async () => {
   const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
   await install(w, flowOf([fn("f", { retry: false })], { on_failure: [{ id: "tell", kind: "create", type: "matter", set: { client: { expr: "error.step" } } }] }));
@@ -299,7 +310,47 @@ test("a failure path's steps count for the Flow's powers and names", async () =>
   assert.ok(bad.errors.some((/** @type {any} */ e) => /nothing/.test(e.message)), "names in a handler are checked");
 });
 
-test("a block takes no policy yet: the schema refuses a key the runner would ignore", () => {
-  const bad = checkFlow(flowOf([{ id: "d", kind: "decide", if: "true", then: [], verify: { check: "true" } }]));
-  assert.ok(bad.some(p => /verify is not part of this/.test(p.message)), JSON.stringify(bad));
+test("a block takes a failure path and a check, but no time limit or retry: a key the runner would ignore is refused", () => {
+  assert.deepEqual(checkFlow(flowOf([{ id: "d", kind: "decide", if: "true", then: [], verify: { check: "true" }, on_fail: { steps: [fn("h")] } }])), []);
+  for (const key of ["timeout_ms", "retry"]) {
+    const bad = checkFlow(flowOf([{ id: "d", kind: "repeat", over: "[1]", as: "x", steps: [], [key]: key === "retry" ? false : 1000 }]));
+    assert.ok(bad.some(p => new RegExp(`${key} is not part of this`).test(p.message)), JSON.stringify(bad));
+  }
+});
+
+test("f2 on blocks: a step failing inside a decide goes to the decide's failure path, and then: continue lets the run go on", async () => {
+  const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
+  await install(w, flowOf([
+    { id: "d", kind: "decide", if: "true", then: [fn("f", { retry: false })], on_fail: { then: "continue", steps: [{ id: "n", kind: "create", type: "matter", set: { client: { expr: "error.code" } } }] } },
+    { id: "after", kind: "create", type: "matter", set: { client: "after" } },
+  ]));
+  const run = await fire(w);
+  assert.equal(run.state, "done", JSON.stringify(run.error));
+  assert.equal(run.steps.d.status, "failed_handled");
+  assert.deepEqual(mine(w, "matter").map((/** @type {any} */ m) => m.data.client).sort(), ["after", "bad_output"]);
+});
+
+test("f2 on blocks: a repeat's failure path with then: stop runs once and the run fails with the original error", async () => {
+  const w = await world({ ports: { sandbox: async () => { throw coded("bad_output"); } } });
+  await install(w, flowOf([
+    { id: "r", kind: "repeat", over: "[1, 2]", as: "x", steps: [fn("f", { retry: false })], on_fail: { steps: [{ id: "n", kind: "create", type: "matter", set: { client: "handled" } }] } },
+    { id: "after", kind: "create", type: "matter", set: { client: "after" } },
+  ]));
+  const run = await fire(w);
+  assert.equal(run.state, "failed");
+  assert.equal(run.error.code, "bad_output");
+  assert.deepEqual(mine(w, "matter").map((/** @type {any} */ m) => m.data.client), ["handled"]);
+});
+
+test("verify on blocks: a check over the repeat's count fails the block, and an optional one only raises attention", async () => {
+  const w = await world({});
+  await install(w, flowOf([{ id: "r", kind: "repeat", over: "[1, 2]", as: "x", steps: [{ id: "c", kind: "create", type: "matter", set: { client: "x" } }], verify: { check: "output.count == 3", say: "expected three" } }]));
+  const run = await fire(w);
+  assert.equal(run.state, "failed");
+  assert.equal(run.error.code, "verify_failed");
+  const w2 = await world({});
+  await install(w2, flowOf([{ id: "r", kind: "repeat", over: "[1, 2]", as: "x", steps: [{ id: "c", kind: "create", type: "matter", set: { client: "x" } }], verify: { check: "output.count == 3", essential: false } }]));
+  const run2 = await fire(w2);
+  assert.equal(run2.state, "done", JSON.stringify(run2.error));
+  assert.equal(run2.steps.r.verify.ok, false);
 });
