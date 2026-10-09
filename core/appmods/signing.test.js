@@ -152,7 +152,6 @@ test("a signer's actions go through: the submit, the decline, the signature uplo
   });
   assert.equal(status, 413);
   assert.equal(f.a.seen.length, before);
-}); r.destroy(); resolve(null); void big; });
 });
 
 test("the owner keeps everything: with a ticket the admin pages open, signed in as the install, and the signer's cookie never reaches the admin jar", async t => {
