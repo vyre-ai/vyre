@@ -43,7 +43,13 @@ test("a raw key sent through each surface's chat tools is refused before any tur
   const id = ok.data.id;
 
   // threads.send, by each surface and by a model's call
-  for (const caller of ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness"]) refused(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined), caller);
+  for (const caller of ["cli", "local", "deck", "capsule"]) refused(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller), caller);
+  // a model's call, or a surface this box does not know as the owner's, is stopped by the kernel before the tool or by the tool itself: either way it is an error and nothing is sent
+  for (const caller of ["mobile", "mcp", "harness"]) {
+    const r = await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined);
+    assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
+    assert.ok(!JSON.stringify(r).includes(KEY));
+  }
   refused(await call("threads.edit-retry", { thread: id, text: `again ${KEY}` }));
   refused(await call("stream.send", { chat: "chat-none", text: `to the group ${KEY}` }));
   // the same reference a person sends goes through
