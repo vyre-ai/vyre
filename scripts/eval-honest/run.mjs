@@ -29,7 +29,7 @@ export function loadSealed() {
 
 /** @param {any} ctx */
 export async function evalMain(ctx) {
-  const { args, flag, d, call, home, work, until, readRun, clearTodos, vendorHits, vendorPort, FAKE } = ctx;
+  const { args, flag, d, call, home, work, until, readRun, clearTodos, vendor, vendorPort, FAKE } = ctx;
   const standIn = args.includes("--stand-in"), checkOnly = args.includes("--check");
   const which = flag("which", "all");
   const fail = (/** @type {string} */ m) => { console.error(m); return 2; };
@@ -50,6 +50,18 @@ export async function evalMain(ctx) {
   const out = flag("out", fs.mkdtempSync(`${home}-honest-`));
   fs.mkdirSync(out, { recursive: true });
   const rowsFile = path.join(out, "rows.json");
+  // A heartbeat the front door's supervisor watches (scripts/eval-honest.mjs): if this process stops beating (its event loop is blocked), the supervisor takes a diagnostic report and ends it. A loop that
+  // lags more than 30 s is also said aloud, with how long, so a stall leaves a trace even when it clears.
+  const beat = () => { try { fs.writeFileSync(path.join(out, ".heartbeat"), String(Date.now())); } catch { /* the folder is gone */ } };
+  beat();
+  let lastTick = Date.now();
+  setInterval(() => { const now = Date.now(); if (now - lastTick > 30_000) console.error(`WARNING: the harness event loop was blocked for ${Math.round((now - lastTick) / 1000)} s`); lastTick = now; beat(); }, 5000).unref();
+  // `--stall-proof`: block this process's event loop on purpose after 20 s, to prove the supervisor notices, takes the diagnostic report and ends it (node scripts/eval-honest.mjs check --home <dir> --stall-proof --stall-min 0.5).
+  if (args.includes("--stall-proof")) setTimeout(() => { for (;;) { /* blocked on purpose */ } }, 20_000).unref();
+  const RUN_CAP_MS = Number(flag("run-cap-min", "10")) * 60_000;
+  if (flag("disclose")) { const f = path.join(out, "disclosures.json"); const had = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []; fs.writeFileSync(f, JSON.stringify([...had, flag("disclose")], null, 1)); }
+  /** The claude children of plain runs in flight, so a run that times out can end its own. @type {Set<import("node:child_process").ChildProcess>} */
+  const plainKids = new Set();
   if (fs.existsSync(rowsFile) && !args.includes("--again")) return fail(`refused: ${out} already holds rows.json; use a fresh --out, or --again to add to it`);
   const lock = path.join(out, ".eval.lock");
   try { const pid = Number(fs.readFileSync(lock, "utf8")); if (pid && pid !== process.pid) { try { process.kill(pid, 0); return fail(`refused: another eval (pid ${pid}) is writing to ${out}`); } catch { /* stale */ } } } catch { /* none */ }
@@ -91,14 +103,14 @@ export async function evalMain(ctx) {
     for (const c of await clientIds(new RegExp(tagRe))) { const r = await call("records.forget", { type: "client", id: c.id }); if (r.error) await call("records.forget", { id: c.id }); }
     fs.mkdirSync(northwind, { recursive: true });
     for (const f of fs.readdirSync(northwind)) if (!SEED_FILES.has(f)) fs.rmSync(path.join(northwind, f), { recursive: true, force: true });
-    vendorHits.length = 0;
+    await vendor.reset();
     // the read-back
     const t = await todoNow(); if (t.titles.length) left.push(`${t.titles.length} todos`);
     const h = await heldNow(); if (h.length) left.push(`${h.length} held items`);
     const w = (await writesNow()).filter((/** @type {any} */ x) => !seedWrites.has(String(x.id))); if (w.length) left.push(`${w.length} memory writes`);
     const c = await clientIds(new RegExp(tagRe)); if (c.length) left.push(`${c.length} eval clients`);
     const fs2 = fs.readdirSync(northwind).filter((f) => !SEED_FILES.has(f)); if (fs2.length) left.push(`${fs2.length} files in northwind`);
-    if (vendorHits.length) left.push("vendor log not empty");
+    if ((await vendor.hits()).length) left.push("vendor log not empty");
     const threads = ((await call("agents.threads", { agent: "juno" })).data || []); if (threads.length) left.push(`${threads.length} threads`);
     return left;
   }
@@ -109,7 +121,7 @@ export async function evalMain(ctx) {
     const made = await call("records.create", { type: "client", data: { name: "Zab12 One", case_type: "probate" } });
     const mem = await call("memory.write", { kind: "fact", text: "eval reset probe fact", project: "northwind" });
     fs.writeFileSync(path.join(northwind, "stray.txt"), "left by a run");
-    vendorHits.push("GET /v1/status");
+    await vendor.push("GET /v1/status");
     console.log(`made: client ${made.error ? "ERROR " + made.error.message : "ok"}, memory write ${mem.error ? "ERROR " + mem.error.message : "ok"}`);
     const left = await resetWorld();
     console.log(`reset read-back: ${left.length ? "LEFT " + left.join(", ") : "empty, as it must be"}`);
@@ -120,7 +132,7 @@ export async function evalMain(ctx) {
   if (args.includes("--probe-held")) {
     const r = await ctx.viaSession("juno", "vault.request", { credential: "acme", method: "POST", url: "https://api.acme-proof.test/v1/notes", body: JSON.stringify({ text: "retainer ready" }), headers: { "content-type": "application/json" } });
     console.log(`held probe: ${JSON.stringify(r).slice(0, 400)}`);
-    console.log(`vendor saw: ${JSON.stringify(vendorHits)}; held items now: ${(await heldNow()).length}`);
+    console.log(`vendor saw: ${JSON.stringify(await vendor.hits())}; held items now: ${(await heldNow()).length}`);
     return 0;
   }
 
@@ -133,10 +145,11 @@ export async function evalMain(ctx) {
       const argv = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", ...(model ? ["--model", model] : []), "--permission-mode", "acceptEdits",
         "--allowedTools", "Bash", "Read", "Write", "Edit", "Glob", "Grep", "--strict-mcp-config"];
       const child = spawn(bin, argv, { cwd, env: { ...process.env, ...env, CLAUDE_CONFIG_DIR: cfg }, stdio: ["pipe", "pipe", "ignore"] });
+      plainKids.add(child);
       let buf = "";
       child.stdout.on("data", (/** @type {Buffer} */ b) => { buf += b; });
       const timer = setTimeout(() => child.kill("SIGKILL"), 600_000);
-      child.on("close", () => { clearTimeout(timer); fs.writeFileSync(tee, buf); fs.rmSync(cfg, { recursive: true, force: true }); resolve(buf); });
+      child.on("close", () => { plainKids.delete(child); clearTimeout(timer); fs.writeFileSync(tee, buf); fs.rmSync(cfg, { recursive: true, force: true }); resolve(buf); });
       // The stand-in names its model only after an initialize request (a real claude does it by itself on the first message): the plumbing check sends one so the model and process guards see what they would.
       if (standIn) child.stdin.write(JSON.stringify({ type: "control_request", request_id: "i1", request: { subtype: "initialize" } }) + "\n");
       child.stdin.write(JSON.stringify({ type: "user", message: { role: "user", content: [{ type: "text", text: prompt }] } }) + "\n");
@@ -205,7 +218,7 @@ export async function evalMain(ctx) {
     const fresh = !/SessionStart:resume/.test(stream);
     invalid.push(...guards({ fresh, processes, model: seen, models }, { model: standIn ? "" : model, processes: arm === "vyre" ? [1, 2] : 1 }));
     if (!run.text.trim() && !standIn) invalid.push("the run ended with no answer text");
-    const verdict = CHECKS[task.check]({ text: run.text, calls: run.calls, todos: todos.titles, todoIds: todos.ids, hits: [...vendorHits], expect: expectA });
+    const verdict = CHECKS[task.check]({ text: run.text, calls: run.calls, todos: todos.titles, todoIds: todos.ids, hits: await vendor.hits(), expect: expectA });
     // a task with no plain equivalent is measured as given, not given invented data
     const outcome = outcomeOf(verdict, run.text, plain);
     const u2 = usageOf([stream]);
@@ -253,7 +266,7 @@ export async function evalMain(ctx) {
     const fresh = !/SessionStart:resume/.test(parts[0] || "");
     invalid.push(...guards({ fresh, processes, model: seen, models, rolled, compacted }, { model: standIn ? "" : model, processes: arm.processes, roll: arm.roll === "none" ? null : arm.roll }));
     const todos = await todoNow();
-    for (const m of B.messages.filter((/** @type {any} */ x) => x.kind === "question")) verdicts[m.id] = B_CHECKS[m.check]({ text: answers[m.id] || "", calls: [], todos: todos.titles, hits: [...vendorHits], expect: { secondId } });
+    for (const m of B.messages.filter((/** @type {any} */ x) => x.kind === "question")) verdicts[m.id] = B_CHECKS[m.check]({ text: answers[m.id] || "", calls: [], todos: todos.titles, hits: await vendor.hits(), expect: { secondId } });
     const failed = Object.entries(verdicts).filter(([, v]) => !v.pass).map(([k]) => k);
     const u2 = usageOf(parts);
     return { eval: "B", cell: arm.id, task: "memory", group: "", rep: u.rep, n: u.n, valid: invalid.length === 0, invalid, outcome: failed.length === 0 ? "pass" : "fail", why: failed.length ? `wrong: ${failed.join(", ")} (${Object.keys(verdicts).length - failed.length} of ${Object.keys(verdicts).length} right)` : "all four questions right", retryOf: u.retryOf || null, ...u2, sha, stream: path.basename(tee), questions: Object.fromEntries(Object.entries(verdicts).map(([k, v]) => [k, v.pass])) };
@@ -285,13 +298,26 @@ export async function evalMain(ctx) {
     for (let attempt = 0; attempt < 2; attempt++) {
       // the run function reads its number from the job so a re-run is a new number that names the one it repeats
       const num = attempt === 0 ? j.n : ++n;
-      try { row = await j.run(num); } catch (e) { console.error(`stopped: ${/** @type {Error} */ (e).message}`); save(); return 1; }
+      // One wall-clock cap for the whole run: a run that hits it is INVALID ("timed out"), its children are ended, and it is re-run once like any invalid run.
+      /** @type {any} */ let capTimer = null;
+      const capped = new Promise((resolve) => { capTimer = setTimeout(() => resolve("TIMED_OUT"), RUN_CAP_MS); });
+      try {
+        const got = await Promise.race([j.run(num), capped]);
+        if (got === "TIMED_OUT") {
+          for (const k of plainKids) { try { k.kill("SIGKILL"); } catch { /* gone */ } }
+          await call("agents.stop", { agent: "juno" }).catch(() => null);
+          const [evalName, ...rest] = j.name.split(" ");
+          row = { eval: evalName, cell: rest.join(" ").split("/").pop() || "", task: rest.join(" ").split("/")[0] || "", group: "", rep: j.rep, n: num, valid: false, invalid: [`timed out: no end after ${Math.round(RUN_CAP_MS / 60000)} minutes`], outcome: "fail", why: "timed out",
+            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, usd: 0, ms: RUN_CAP_MS, turns: 0, calls: 0, sha, stream: "" };
+        } else row = got;
+      } catch (e) { console.error(`stopped: ${/** @type {Error} */ (e).message}`); save(); return 1; } finally { clearTimeout(capTimer); }
       row.n = num; row.retryOf = attempt === 0 ? null : j.n;
       rows.push(row); spent += row.usd; save(); console.log(line(row));
       if (row.valid) break;
     }
   }
-  const md = report(rows, { title: `Honest eval, ${which}`, seal });
+  const discl = fs.existsSync(path.join(out, "disclosures.json")) ? JSON.parse(fs.readFileSync(path.join(out, "disclosures.json"), "utf8")) : [];
+  const md = report(rows, { title: `Honest eval, ${which}`, seal, disclosures: discl });
   fs.writeFileSync(path.join(out, "report.md"), md);
   console.log(`\nreport: ${path.join(out, "report.md")}\nrows: ${rowsFile}\nspent (as Claude Code reported): $${spent.toFixed(3)}${stopped ? " (stopped at the cap)" : ""}`);
   const c = ctx.counters(); console.log(`permission asks answered for the person: ${c.allowed} allowed, ${c.refused} refused`);

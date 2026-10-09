@@ -41,20 +41,27 @@ const seeded = async (/** @type {string} */ name, /** @type {() => Promise<strin
 
 // ------------------------------------------------------------------ the fake vendor (Acme): a real HTTP service on this machine, reached through the vault's development-only network seam
 const KEY = "fixture-acme-key-0001";
-/** Every request the vendor saw, "METHOD /path?query", for the honest eval's checks (scripts/eval-honest/run.mjs): a task is verified by what reached the vendor, not by what a model says. */
-const vendorHits = /** @type {string[]} */ ([]);
-const vendor = http.createServer((req, res) => {
-  vendorHits.push(`${req.method} ${req.url}`);
-  const ok = req.headers.authorization === `Bearer ${KEY}`;
-  const url = new URL(req.url || "/", "http://x");
-  const send = (/** @type {number} */ code, /** @type {any} */ body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
-  if (!ok) return send(401, { error: "bad key" });
-  if (url.pathname === "/v1/status") return send(200, { status: "ok", service: "acme" });
-  if (url.pathname === "/v1/customers") return send(200, { data: [{ id: "cus_1", name: "Test Customer" }].slice(0, Number(url.searchParams.get("limit") || 10)), has_more: false });
-  return send(404, { error: "not found" });
+/** The vendor: in this process for the token proof; for the honest eval its own process (scripts/eval-honest/vendor.mjs), so the plain arms never depend on this process's event loop. */
+const { makeVendor } = await import("./eval-honest/vendor.mjs");
+/** @type {{ close: () => void }} */ let vendor;
+let vendorPort = 0;
+const vendorCtl = (/** @type {string} */ pathq) => new Promise((resolve, reject) => {
+  http.get({ host: "127.0.0.1", port: vendorPort, path: pathq, agent: false, timeout: 5000 }, (res) => {
+    let b = ""; res.on("data", (c) => { b += c; }); res.on("end", () => { try { resolve(JSON.parse(b)); } catch (e) { reject(e); } });
+  }).on("error", reject).on("timeout", function () { this.destroy(new Error("the vendor did not answer")); });
 });
-await new Promise((r) => vendor.listen(0, "127.0.0.1", () => r(undefined)));
-const vendorPort = /** @type {any} */ (vendor.address()).port;
+if (cmd === "eval") {
+  const { spawn } = await import("node:child_process");
+  const child = spawn(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), "eval-honest", "vendor.mjs"), "--key", KEY], { stdio: ["ignore", "pipe", "inherit", "ipc"] });
+  vendorPort = await new Promise((resolve, reject) => { child.stdout.on("data", (b) => { const m = /PORT (\d+)/.exec(String(b)); if (m) resolve(Number(m[1])); }); child.on("exit", () => reject(new Error("the vendor process exited"))); });
+  vendor = { close: () => { try { child.kill(); } catch { /* gone */ } } };
+} else {
+  const v = makeVendor(KEY);
+  await new Promise((r) => v.server.listen(0, "127.0.0.1", () => r(undefined)));
+  vendorPort = /** @type {any} */ (v.server.address()).port;
+  vendor = v.server;
+}
+const vendorApi = { hits: async () => /** @type {string[]} */ (await vendorCtl("/__hits")), reset: async () => { await vendorCtl("/__reset"); }, push: async (/** @type {string} */ line) => { await vendorCtl(`/__hit?line=${encodeURIComponent(line)}`); } };
 const { devNet } = await import("../core/vault/request.js");
 devNet.deps = {
   lookup: async () => [{ address: "93.184.216.34", family: 4 }],
@@ -247,7 +254,7 @@ async function verifyLong(/** @type {string} */ text) {
 // ------------------------------------------------------------------ the honest eval (R031-00v): scripts/eval-honest/run.mjs, on this same seeded world
 if (cmd === "eval") {
   const { evalMain } = await import("./eval-honest/run.mjs");
-  const code = await evalMain({ args, flag, d, call, must, viaSession, home, work, until, readRun, clearTodos, vendorHits, vendorPort, FAKE, KEY, counters: () => ({ allowed, refused }), teammateAgent: () => teammateAgent });
+  const code = await evalMain({ args, flag, d, call, must, viaSession, home, work, until, readRun, clearTodos, vendor: vendorApi, vendorPort, FAKE, KEY, counters: () => ({ allowed, refused }), teammateAgent: () => teammateAgent });
   vendor.close(); await d.stop(); process.exit(code);
 }
 

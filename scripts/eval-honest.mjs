@@ -11,7 +11,7 @@
 //   node scripts/eval-honest.mjs report --out <dir>         the report from <dir>/rows.json
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { report, plan, lint } from "./lib/eval-honest.js";
 import { loadSealed } from "./eval-honest/run.mjs";
@@ -29,13 +29,29 @@ if (cmd === "seal") {
   const out = flag("out");
   if (!out) { console.error("--out <dir> is required"); process.exit(2); }
   const { seal } = loadSealed();
-  const md = report(JSON.parse(fs.readFileSync(path.join(out, "rows.json"), "utf8")), { title: "Honest eval", seal });
+  const dp = path.join(out, "disclosures.json");
+  const md = report(JSON.parse(fs.readFileSync(path.join(out, "rows.json"), "utf8")), { title: "Honest eval", seal, disclosures: fs.existsSync(dp) ? JSON.parse(fs.readFileSync(dp, "utf8")) : [] });
   fs.writeFileSync(path.join(out, "report.md"), md); console.log(md);
 } else if (cmd === "check" || cmd === "run") {
   if (!flag("home")) { console.error("--home <a fresh folder for the proof box> is required"); process.exit(2); }
   const extra = cmd === "check" ? ["--check", "--stand-in"] : [];
-  const r = spawnSync(process.execPath, [path.join(HERE, "token-proof-world.mjs"), "eval", ...args.slice(1), ...extra], { stdio: "inherit", env: process.env });
-  process.exit(r.status ?? 1);
+  // The run always has an --out folder: the supervisor below reads the harness's heartbeat there.
+  const out = flag("out") || `${path.resolve(flag("home"))}-honest-${Date.now()}`;
+  const rest = args.slice(1);
+  if (!flag("out")) rest.push("--out", out);
+  // --report-on-signal: on a stall the supervisor asks the harness for a diagnostic report (its JS stack, where it is blocked) before it ends it.
+  const child = spawn(process.execPath, ["--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${out}`, path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: "inherit", env: process.env });
+  const STALL_MS = Number(flag("stall-min", "3")) * 60_000;
+  const watch = setInterval(() => {
+    let age = 0;
+    try { age = Date.now() - fs.statSync(path.join(out, ".heartbeat")).mtimeMs; } catch { return; }   // no beat yet: still seeding
+    if (age <= STALL_MS) return;
+    console.error(`STALLED: the harness has not beaten for ${Math.round(age / 1000)} s (its event loop is blocked). Taking a diagnostic report in ${out}, then ending it.`);
+    clearInterval(watch);
+    try { child.kill("SIGUSR2"); } catch { /* gone */ }
+    setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, 8000);
+  }, 15_000);
+  child.on("exit", (code, sig) => { clearInterval(watch); process.exit(sig ? 3 : (code ?? 1)); });
 } else {
   const { prereg, heldout, seal, sealed } = loadSealed();
   const msgs = prereg.evalB.messages;

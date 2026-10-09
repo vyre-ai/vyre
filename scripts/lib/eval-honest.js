@@ -183,11 +183,12 @@ const sum = (/** @type {number[]} */ xs) => xs.reduce((a, b) => a + b, 0);
 
 /**
  * The report: a table per cell (pass, declined, fail and invalid counted apart; the per-rep values listed, not a mean alone), then every run. Nothing is dropped.
- * @param {Row[]} rows @param {{ title?: string, seal?: string }} [o]
+ * @param {Row[]} rows @param {{ title?: string, seal?: string, disclosures?: string[] }} [o]
  */
 export function report(rows, o = {}) {
   const lines = [`# ${o.title || "Honest eval report"}`, ""];
   if (o.seal) lines.push(`Pre-registration seal: ${o.seal}`, "");
+  for (const d of o.disclosures || []) lines.push(`Disclosure: ${d}`, "");
   lines.push("Disclosure: the process-count guard was corrected after probe 1, before any counted run. It first counted init events (Claude Code emits one per message, so a ten-message thread showed ten); it now counts claude processes (the tee files a run made) and also requires one model throughout. Guards are not part of the pre-registration.", "");
   const shas = [...new Set(rows.map((r) => r.sha))];
   lines.push(`Tree sha(s) the runs were made on: ${shas.join(", ") || "none"}${shas.length > 1 ? " (more than one: a fix was made between runs; the cells below are split by it in the run list)" : ""}.`, `Runs: ${rows.length} (${rows.filter((r) => r.valid).length} valid, ${rows.filter((r) => !r.valid).length} invalid, listed). Spend: ${f$(sum(rows.map((r) => r.usd)))}.`, "");
