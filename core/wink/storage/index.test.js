@@ -171,7 +171,7 @@ test("remove now: the grant is revoked, the saved login is deleted, one event; r
   assert.deepEqual(w.s.offers().map(o => o.id), [b.device.id]);
   const gone = w.events.filter(e => e.type === "storage.removed");
   assert.deepEqual(gone[0].payload, { id: a.device.id, kind: "s3", name: a.device.name, owner: { kind: "space", id: SPACE }, drain: false, final: true });
-  assert.equal(w.events.filter(e => e.type === "grant.revoked").length, 1);
+  assert.equal([...w.mint.made.values()].filter(g => g.status === "revoked").length, 1, "the kernel holds the end of that grant");
 
   const d = await w.s.remove({ id: b.device.id, drain: true });
   assert.equal(d.removed, false);
