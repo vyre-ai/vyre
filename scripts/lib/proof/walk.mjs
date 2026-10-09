@@ -397,12 +397,12 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
     assert.equal(await worksWith(old), false, "the old token is dead at once");
     return "replaced; the old token is dead";
   }, { needs });
-  await replaceStep("a second sign-in with the device's own key succeeds and replaces the first session", [U("record what the vault and records hold before the update")]);
+  // (no replace step BEFORE the update: the old release this proof starts from (0.2.12) predates #112 and refuses a second sign-in while its first session is live)
   await run.step(U("the app asks for the update (update.apply, the Settings button's call)"), async () => {
     const r = await mac.callTool("update.apply");
     assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
     return "requested";
-  }, { needs: [U("a second sign-in with the device's own key succeeds and replaces the first session")] });
+  }, { needs: [U("record what the vault and records hold before the update")] });
   await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
     // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
     // Wait for the box to say it runs the new version AT THE BOX (a docker exec, no app sign-in), then make exactly ONE sign-in try as the app would on reconnecting: more wrong tries lock the device out (presence LOCK_MS).
