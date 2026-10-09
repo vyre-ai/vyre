@@ -30,6 +30,7 @@ export const OPEN_NOTES = Object.freeze({
   "ask.get": "reads the state and answers of a question card the agent made",
   "previews.operator": "shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it",
   "previews.step": "words for the status line of the agent's own card",
+  "previews.run-get": "reads the state of a run the agent started and what the person typed when it was stuck",
   "previews.signin": "asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page",
   "previews.signin-get": "reads whether the person finished a sign-in the agent asked for",
   "previews.open": "shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for",

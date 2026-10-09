@@ -337,13 +337,13 @@ export default {
     // ---- the live screen: the operator card and the sign-in card (R031-88, R031-91) ---------------------------------------------------------------------------------------------------
     // A computer's live screen is Glass (the card in the app draws it and takes it over); this side only keeps what the CARD says: which computer, what it is doing now (the newest receipt, in words), the last
     // few steps, and a sign-in waiting for the person. In memory: a restart ends the wait, the agent asks again. Whoever drives the computer (Vyre Computer's tools) calls these.
-    /** @type {Map<string, { id: string, computer: string, thread: string | null, title: string, state: string, line: string, steps: { line: string, state: string }[], at: number }>} */
+    /** @type {Map<string, { id: string, computer: string, thread: string | null, title: string, state: string, line: string, ask: string, reply: string, steps: { line: string, state: string }[], at: number, waiters: Set<() => void> }>} */
     const operators = new Map();
     /** @type {Map<string, { id: string, computer: string, thread: string | null, site: string, why: string, state: "waiting"|"done"|"cancelled"|"expired", at: number, waiters: Set<() => void> }>} */
     const signins = new Map();
     const STEP_STATES = ["working", "done", "stuck", "paused"];
     const COMPUTER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-    const operatorCard = (/** @type {any} */ o) => { if (o.thread) emit("thread.operator", { run: o.id, computer: o.computer, title: o.title, state: o.state, line: o.line, steps: o.steps }, { thread: o.thread }); };
+    const operatorCard = (/** @type {any} */ o) => { if (o.thread) emit("thread.operator", { run: o.id, computer: o.computer, title: o.title, state: o.state, line: o.line, ask: o.ask || "", steps: o.steps }, { thread: o.thread }); };
     const signinCard = (/** @type {any} */ s) => { if (s.thread) emit("thread.signin", { id: s.id, computer: s.computer, site: s.site, why: s.why, state: s.state }, { thread: s.thread }); };
     const threadOf = (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ trusted) => (trusted && i.thread ? String(i.thread) : (meta && meta.thread) || null);
     const asker = (/** @type {any} */ meta) => ({ person: isPerson(meta), module: String((meta && meta.caller) || "").startsWith("module:") });
@@ -357,7 +357,7 @@ export default {
         const existing = i.run ? operators.get(String(i.run)) : null;
         if (existing) { operatorCard(existing); return { run: existing.id, state: existing.state }; }
         const id = crypto.randomBytes(6).toString("hex");
-        const o = { id, computer: String(i.computer), thread: threadOf(i, meta, a.person || a.module), title: String(i.title || `${i.computer}'s computer`).replace(/\s+/g, " ").trim().slice(0, 120), state: "working", line: "Getting started", steps: [], at: now() };
+        const o = { id, computer: String(i.computer), thread: threadOf(i, meta, a.person || a.module), title: String(i.title || `${i.computer}'s computer`).replace(/\s+/g, " ").trim().slice(0, 120), state: "working", line: "Getting started", ask: "", reply: "", steps: [], at: now(), waiters: new Set() };
         operators.set(id, o);
         for (const [k, v] of operators) if (now() - v.at > 6 * 3_600_000) operators.delete(k);
         operatorCard(o);
@@ -367,7 +367,7 @@ export default {
 
     ctx.tool("previews.step", {
       description: "Say what the computer is doing now, in words a person reads (\"Opening the workflow list\", \"Typing the password from your Vault\"): { run, line, state? } with state working, done, stuck or paused. The card's status line and its last seven steps follow.",
-      input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES } }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES }, ask: str }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
         if (!o) throw refuse("no such run: start it with previews.operator", "not_found");
@@ -379,8 +379,51 @@ export default {
         if (o.steps.length && o.steps[o.steps.length - 1].state === "working") o.steps[o.steps.length - 1].state = "done";
         o.steps.push({ line, state }); o.steps = o.steps.slice(-7);
         o.line = line; o.state = state; o.at = now();
+        // A stuck run may say what it needs typed (a code, an answer): the card shows a box for it; the person's reply is read with previews.run-get.
+        o.ask = state === "stuck" && typeof i.ask === "string" ? i.ask.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+        if (state !== "stuck") o.reply = "";
         operatorCard(o);
         return { run: o.id, state: o.state };
+      },
+    });
+
+    ctx.tool("previews.reply", {
+      description: "The person types what a stuck run asked for (a code, an answer) on its card: { run, text }. The run reads it with previews.run-get. A person at their own surface; never a model.",
+      input: obj({ run: str, text: str }, ["run", "text"]), callers: PERSON_ONLY,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!isPerson(meta)) throw refuse("only a person at their own surface answers", "denied");
+        const o = operators.get(String(i.run));
+        if (!o) throw refuse("no such run", "not_found");
+        const text = String(i.text || "").trim().slice(0, 500);
+        if (!text) throw refuse("type the answer", "bad_input");
+        o.reply = text; o.state = "working"; o.line = "Got your answer"; o.ask = ""; o.at = now();
+        operatorCard(o);
+        o.waiters.forEach(w => w());
+        return { run: o.id, state: o.state };
+      },
+    });
+    ctx.tool("previews.run-get", {
+      description: "The state of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck. With wait_ms (at most 55 s) it waits for a reply.",
+      input: obj({ run: str, wait_ms: { type: "integer" } }, ["run"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const o = operators.get(String(i.run));
+        if (!o) throw refuse("no such run", "not_found");
+        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run", "not_found");
+        const ms = Math.min(Math.max(Number(i.wait_ms) || 0, 0), 55_000);
+        if (ms && !o.reply && o.state === "stuck") await new Promise(resolve => { const done = () => { clearTimeout(t); o.waiters.delete(done); resolve(undefined); }; const t = setTimeout(done, ms); o.waiters.add(done); });
+        return { run: o.id, state: o.state, ...(o.reply ? { reply: o.reply } : {}) };
+      },
+    });
+    ctx.tool("previews.frame", {
+      description: "A small still of a run's computer for its card: { image (base64 JPEG), mime, at }, or { image: null, why }. A person at their own surface; a Mac's pixels never leave the Mac, so a Mac has none here.",
+      input: obj({ run: str, maxWidth: { type: "integer" } }, ["run"]), callers: PERSON_ONLY,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        await needPerson(meta);
+        const o = operators.get(String(i.run));
+        if (!o) throw refuse("no such run", "not_found");
+        const r = await ctx.call("sight.frame", { target: `agent:${o.computer}`, maxWidth: Math.min(Math.max(Number(i.maxWidth) || 640, 160), 1280) });
+        if (r.error) return { image: null, why: r.error.code === "local_only" ? "mac" : r.error.code === "no_such_tool" ? "none" : "later" };
+        return { image: r.data.image || null, mime: r.data.mime || "image/jpeg", at: r.data.at || now(), ...(r.data.image ? {} : { why: r.data.why || "none" }) };
       },
     });
 

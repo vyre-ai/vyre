@@ -130,6 +130,20 @@ test("the live screen cards: an operator run with a status line, and a private s
   assert.equal((await call("previews.signin-done", { id: asked.data.id })).data.state, "done");
   assert.equal((await waiting).data.state, "done", "the agent carries on once the person is done");
   assert.equal((await call("previews.signin", { computer: "kit", site: "" }, "module:siteops")).error.code, "bad_input");
+
+  // a stuck run asks for what it needs typed; the person's reply reaches it; a model cannot reply for them
+  assert.ok((await call("previews.step", { run: run.data.run, line: "The site asked for a code I do not have", state: "stuck", ask: "The 6-digit code" }, "module:siteops")).data);
+  const pending = call("previews.run-get", { run: run.data.run, wait_ms: 10_000 }, "module:siteops");
+  await new Promise(r => setTimeout(r, 100));
+  assert.ok((await call("previews.reply", { run: run.data.run, text: "123456" }, "mcp")).error, "a model does not reply for the person");
+  assert.equal((await call("previews.reply", { run: run.data.run, text: "   " })).error.code, "bad_input");
+  assert.equal((await call("previews.reply", { run: run.data.run, text: "123456" })).data.state, "working");
+  assert.deepEqual((await pending).data, { run: run.data.run, state: "working", reply: "123456" }, "the run reads what the person typed");
+  assert.equal((await call("previews.run-get", { run: "nope" }, "module:siteops")).error.code, "not_found");
+  // a still of the computer for the card: a person's call; without a computer service it says why, not an error page
+  const frame = await call("previews.frame", { run: run.data.run });
+  assert.ok(frame.data && frame.data.image === null && typeof frame.data.why === "string", JSON.stringify(frame));
+  assert.ok((await call("previews.frame", { run: run.data.run }, "mcp")).error, "a model gets no picture of the person's screen");
 });
 
 test("files: a page, a folder, Markdown and a single-page app are served on a preview's own origin as written; the root is a wall", { timeout: 60_000 }, async t => {

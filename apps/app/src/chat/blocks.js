@@ -16,7 +16,7 @@
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
  *  | { block: "preview", id: string, title: string, state: string, source: string, mode: string, access: string }
- *  | { block: "operator", run: string, computer: string, title: string, state: "working" | "done" | "stuck" | "paused", line: string, steps: { line: string, state: string }[] }
+ *  | { block: "operator", run: string, computer: string, title: string, state: "working" | "done" | "stuck" | "paused", line: string, ask: string, steps: { line: string, state: string }[] }
  *  | { block: "signin", id: string, computer: string, site: string, why: string, state: "waiting" | "done" | "cancelled" | "expired" }
  *  | { block: "questions", id: string, title: string, state: "waiting" | "answered" | "cancelled" | "expired", questions: { id: string, prompt: string, choices: { label: string, detail?: string }[], allowText: boolean, optional: boolean }[], answers: Record<string, { choice?: string, text?: string }> | null }
  *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
@@ -128,7 +128,7 @@ export function normalizeBlock(raw, fallback = "Done") {
     case "operator": {
       const run = str(o.run, 20), computer = str(o.computer, 64);
       if (!/^[0-9a-f]{12}$/.test(run) || !computer) return text();
-      return { block: "operator", run, computer, title: str(o.title, 120) || `${computer}'s computer`, state: ["working", "done", "stuck", "paused"].includes(o.state) ? o.state : "working", line: str(o.line, 160),
+      return { block: "operator", run, computer, title: str(o.title, 120) || `${computer}'s computer`, state: ["working", "done", "stuck", "paused"].includes(o.state) ? o.state : "working", line: str(o.line, 160), ask: str(o.ask, 120),
         steps: arr(o.steps).slice(-7).map((x) => rec(x)).filter(Boolean).map((x) => ({ line: str(x?.line, 160), state: ["working", "done", "stuck", "paused"].includes(x?.state) ? x?.state : "done" })).filter((x) => x.line) };
     }
     case "signin": {

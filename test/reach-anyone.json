@@ -1113,6 +1113,10 @@
    "module": "previews",
    "reason": "an agent shows the person a computer's live screen as a card in its own chat; the card holds a name and words, never the screen, which the person's surface asks Glass for under Glass's own rules"
   },
+  "previews.run-get": {
+   "module": "previews",
+   "reason": "read-only: the state of a run the asker started, and what the person typed when it was stuck; a model reads only a run of its own chat"
+  },
   "previews.signin": {
    "module": "previews",
    "reason": "an agent asks the person to sign in on a computer as a card; the sign-in is private (the agent sees nothing of the page and gets no password) and only the person's own surface finishes it"
