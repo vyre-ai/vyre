@@ -47,7 +47,7 @@ jobs:
           node-version: 24
       - run: node scripts/gen-tokens --check
       - run: node scripts/gen-gallery --check
-      - run: node --test lib/views/blocks.test.js
+      - run: node --test lib/views/blocks.test.js lib/views/fixtures.test.js
       - run: node --test test/tokens.test.js test/theme.test.js
       - run: node scripts/design-audit
         env:

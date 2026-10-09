@@ -73,3 +73,7 @@ export { Ring } from "./components/Ring";
 export { FlowCanvas } from "./canvas/FlowCanvas";
 export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
 export { Meter } from "./components/Meter";
+
+// The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
+export { BlockScreen, ChatCard, DRAWN_TYPES } from "./blocks";
+export type { Screen as BlockScreenData, Handlers as BlockHandlers } from "./blocks";
