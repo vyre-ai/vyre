@@ -3,7 +3,7 @@
 // with three choices, the way a document is shared. State changes arrive as the chat's own frames (the card is patched in place), and every action asks the box and takes its answer.
 import { useState } from "react";
 import { Linking, Platform, View } from "react-native";
-import { Banner, Button, Chip, Icon, Segmented, Sheet, Text, showToast, useUiTheme } from "@vyre/ui";
+import { Banner, Button, Chip, Icon, IconButton, Menu, Segmented, Sheet, Text, showToast, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { previewActions, previewWord, shareWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
 
@@ -26,28 +26,33 @@ export function PreviewCard({ block }: { block: PreviewBlock }) {
     catch (e) { setProblem(say(e, "That did not work.")); }
     finally { setBusy(false); }
   };
+  const showLog = () => run(() => tool<{ log: string }>("previews.log", { id: b.id }), (r) => setLog(String(r.log || "Nothing was printed yet.")));
+  const more = [
+    ...(a.keep ? [{ label: "Keep it running", onPress: () => run(() => tool("previews.keep", { id: b.id })) }] : []),
+    ...(a.open && a.restart ? [{ label: "Restart", onPress: () => run(() => tool("previews.restart", { id: b.id })) }] : []),
+    ...(a.log && a.open ? [{ label: "Look at the log", onPress: showLog }] : a.log && a.restart ? [{ label: "Look at the log", onPress: showLog }] : []),
+    ...(a.stop ? [{ label: "Stop", onPress: () => run(() => tool("previews.stop", { id: b.id })), danger: true }] : []),
+  ];
   const open = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
 
   return (
     <View accessible accessibilityLabel={`${b.title}, ${word.toLowerCase()}`} style={{ borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 14, overflow: "hidden", marginVertical: 4, maxWidth: 560 }}>
-      <View style={{ aspectRatio: 16 / 7, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center", gap: 6 }}>
+      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ aspectRatio: 16 / 5, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
         <Icon name="globe" size={24} tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "label"} />
-        <Text size="caption" tone="label">{b.state === "live" ? "Running" : b.state === "starting" ? "Starting" : b.state === "crashed" ? "Needs attention" : "Not running"}</Text>
       </View>
       <View style={{ padding: 12, gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <Text strong numberOfLines={2} style={{ flex: 1, minWidth: 0 }}>{b.title}</Text>
           <Chip tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "plain"}>{word}</Chip>
         </View>
-        <Text size="caption" tone="label">{shareWord(b.access)}{b.mode === "session" && b.state === "live" ? " · lasts as long as the server does" : ""}</Text>
+        <Text size="caption" tone="label">{b.state === "stopped" && b.mode === "session" ? "The server stopped. Ask the assistant to start it again." : `${shareWord(b.access)}${b.mode === "session" && b.state === "live" ? " · lasts as long as the server does" : ""}`}</Text>
         {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
-          {a.open ? <Button kind="primary" size="sm" icon="external" label="Open" disabled={busy} onPress={open} /> : null}
-          {a.keep ? <Button kind="ghost" size="sm" label="Keep it running" disabled={busy} onPress={() => run(() => tool("previews.keep", { id: b.id }))} /> : null}
-          {a.restart ? <Button kind={a.open ? "ghost" : "primary"} size="sm" icon="refresh" label="Restart" disabled={busy} onPress={() => run(() => tool("previews.restart", { id: b.id }))} /> : null}
-          {a.log ? <Button kind="ghost" size="sm" label="Look at the log" disabled={busy} onPress={() => run(() => tool<{ log: string }>("previews.log", { id: b.id }), (r) => setLog(String(r.log || "Nothing was printed yet.")))} /> : null}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {a.open ? <Button kind="primary" size="sm" icon="external" label="Open" disabled={busy} onPress={open} />
+            : a.restart ? <Button kind="primary" size="sm" icon="refresh" label="Restart" disabled={busy} onPress={() => run(() => tool("previews.restart", { id: b.id }))} />
+            : a.log ? <Button kind="primary" size="sm" label="Look at the log" disabled={busy} onPress={showLog} /> : null}
           <Button kind="ghost" size="sm" icon="share" label="Share" disabled={busy} onPress={() => setShare(true)} />
-          {a.stop ? <Button kind="ghost" size="sm" label="Stop" disabled={busy} onPress={() => run(() => tool("previews.stop", { id: b.id }))} /> : null}
+          {more.length ? <Menu trigger={<IconButton icon="more" label="More" />} items={more} /> : null}
         </View>
       </View>
       <Sheet open={share} onClose={() => setShare(false)} title="Who can open this">
