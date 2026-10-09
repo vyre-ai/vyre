@@ -61,7 +61,7 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
         if (next !== rec) write(next);
         return { data: { rung: true, rev: next.rev } };
       }
-      if (!["controls", "api", "frames", "flows"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
+      if (!["controls", "api", "frames", "flows", "ops"].includes(String(i.part)) || !["ok", "miss"].includes(String(i.outcome))) return { error: { code: "bad_request", message: "bad part or outcome" } };
       const rec = read(key);
       const list = rec && rec[i.part];
       const at = Array.isArray(list) ? list.findIndex((/** @type {any} */ x) => itemId(i.part, x) === String(i.id)) : -1;
@@ -74,7 +74,7 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
     /** What is known, by origin. */
     list() {
       let files = []; try { files = fs.readdirSync(dir).filter(f => f.endsWith(".json")); } catch { /* none yet */ }
-      return { data: files.map(f => { try { const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); return { origin: r.key, rev: r.rev, updated: r.updated, controls: r.controls.length, api: r.api.length, flows: r.flows.length, frames: r.frames.length }; } catch { return null; } }).filter(Boolean) };
+      return { data: files.map(f => { try { const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")); return { origin: r.key, rev: r.rev, updated: r.updated, controls: r.controls.length, api: r.api.length, ops: (r.ops || []).length, flows: r.flows.length, frames: r.frames.length }; } catch { return null; } }).filter(Boolean) };
     },
     /** Forget one origin entirely. @param {{ origin: string }} i */
     forget(i) {

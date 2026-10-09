@@ -9,7 +9,7 @@ import { redact, scan } from "../lib/sanitize.js";
 import { secretIn } from "../core/memory/write.js";
 import { scanText } from "../core/sync/scrub.js";
 import { findInSource } from "./source-files.js";
-import { text as extensionRedact } from "../local/hands-chrome-mac/extension/shared/redact.js";
+import { text as extensionRedact } from "../local/hands-chrome-mac/extension/shared/sk/siteops/redact.js";
 import { startsLikeCredential, mentionsCredentialPrefix, credentialAtTokenStart } from "../lib/credential-shapes.js";
 
 /** Where a vendor prefix is still written by hand, and why. Each is a decision, not an oversight; the other runtimes are held to the table by the parity checks below. */
@@ -19,7 +19,7 @@ const ALLOWED = new Map([
   ["core/onboard/index.js", "names Anthropic's two sign-in token KINDS (setup token and API key) for the picker; the table has one Anthropic row and does not distinguish them"],
   ["modules/vault-extension/keyfind.js", "runs in a web page and cannot import lib/; keyfind.test.js holds every row to classify()"],
   ["modules/vault-extension/testing/", "browser checks that mint fake keys"],
-  ["local/hands-chrome-mac/extension/shared/redact.js", "runs in the extension; the parity check below holds it to the table"],
+  ["local/hands-chrome-mac/extension/shared/sk/siteops/redact.js", "runs in the extension; the parity check below holds it to the table"],
   ["apps/app/screens/connections/model.ts", "runs in the phone app (no Buffer, TypeScript); redacts a connection's error text"],
   ["apps/app/screens/vault/data.ts", "mock data for screenshots"],
   ["web/onboard/onboard.js", "a placeholder in an input box"],

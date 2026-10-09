@@ -2,7 +2,7 @@
 // background: the shell. It does four things and nothing else (ADR 0049):
 //   1. holds the native-messaging connection to the host ("run.vyre.chrome") and says hello,
 //   2. hands each {id, op, args} to the capability registry (caps/index.js),
-//   3. redacts every result (shared/redact.js) before it leaves the browser,
+//   3. redacts every result (shared/sk/siteops/redact.js) before it leaves the browser,
 //   4. answers {id, ok:true, result} or {id, ok:false, error:{code, message}}.
 //
 // Light by default (Vyre SPEC principle 8): while connected the open native port keeps the worker

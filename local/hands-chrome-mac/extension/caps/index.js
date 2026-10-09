@@ -14,7 +14,7 @@
 import { proto } from "../lib/shared.js";
 import { err } from "../lib/err.js";
 import { setGhlHosts } from "../shared/ghlhosts.js";
-import { url as redactUrl } from "../shared/redact.js";
+import { url as redactUrl } from "../shared/sk/siteops/redact.js";
 import tabs from "./tabs.js";
 import page from "./page.js";
 import batch from "./batch.js";
