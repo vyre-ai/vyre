@@ -95,6 +95,8 @@ export default {
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
     // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
+    // The older credential scopes become grants once (agents start after the vault: until they answer it is tried again at the first model call).
+    if (vault.access) vault.access.convertScopes(true).catch(e => ctx.log(`vault: credential scopes were not converted yet: ${/** @type {Error} */ (e).message}`));
     if (vault.access) vault.access.carry().catch(e => ctx.log(`vault: agent logins were not carried over yet: ${/** @type {Error} */ (e).message}`));
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
@@ -200,19 +202,23 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), (input, { caller, project, agentKind }) => {
+      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
         const r = cli.list(vault.list(input), input);
-        // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
-        // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
-        // never matched against a module name. "Granted to that agent" means one key: the agent's verified project scope (meta.project)
-        // equals a grant's project. An agent with no project sees nothing.
+        // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
+        const model = /^mcp(:|$)/.test(String(caller));
+        if (!model || !r || !Array.isArray(r.items)) return r;
+        if (vault.access && vault.access.K) {
+          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
+          return { ...r, items: mine };
+        }
+        // SHIM(no kernel): the older rule, an agent sees what is granted to its project.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
-        if (!who || !r || !Array.isArray(r.items)) return r;
+        if (!who) return r;
         // The person's own assistant keeps its reach through vault.request (api-request: the assistant is not asked for a scope), so it is shown the credentials it can call: the name, kind,
         // description and hosts of each api-credential, never a value and never another kind of item. Without this it reads an empty vault and gives up on a credential it may use.
         const mine = g => Boolean(project) && g.project === project;
         // An api-credential is listed exactly when vault.request would let this caller read through it (modelMayRead: the one check), never more.
-        return (async () => {
+        return await (async () => {
           const callable = [];
           for (const i of r.items.filter(x => x.kind === "api-credential")) {
             let config; try { config = (await vault.apiCredential(i.name)).config; } catch { continue; }

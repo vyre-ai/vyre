@@ -819,16 +819,16 @@ export function createGrantsStore(cfg) {
     },
     /**
      * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these three shapes): an agent's login (`vault.fill` on one item at one exact origin), a module's
-     * release (`vault.release` on one item, for a watcher or a project when named) or an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
+     * release (`vault.release` on one item, for a watcher or a project when named) an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate) the same for an agent or a project (a credential's older scope, carried over once), or an agent's lease of a Connection for one task (`task`, until its expiry). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
      */
     async carryOver(module, rows) {
       const k = kernelChain(), made = [], pv = await personalOf(), home = urn("vault", pv.id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
       for (const r of rows) {
-        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
-        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
-        if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
-        const resource = { prefix: rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(pass ? { parent: [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home).id } : {}), source: rel ? `install:${r.who}:vault` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
+        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass" || r.kind === "scope" || r.kind === "lease", grp = String(r.who).startsWith("project:"), actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (r.kind === "lease" && !/^[A-Za-z0-9_.-]{1,80}$/.test(String(r.task))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        if (!grp && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
+        const resource = { prefix: r.kind === "lease" ? `${home}/connection/${r.item}` : rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: grp ? { kind: "group", id: String(r.who) } : { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(pass ? { parent: [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home).id } : {}), source: rel ? `install:${r.who}:vault` : r.kind === "scope" ? "vault:scope" : r.kind === "lease" ? `vault:lease:${r.task}` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
         grants.set(g.id, g); made.push(g.id);
         await note(k, "grant.created", urn("grant", g.id), { grant: g });
       }
@@ -837,7 +837,7 @@ export function createGrantsStore(cfg) {
     /** The vault module ending what it lent (by id, or all under an address), and what was handed on from it: only grants it made (`vault:` but not the maker's own `manage`). Taking access away needs no person. @param {{ id?: string, prefix?: string, reason?: string }} q */
     async takeBack(q) {
       const out = [], why = String(q.reason || "taken back");
-      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.source ? g.source === q.source : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
       return out;
     },
     personalVault: async () => (await personalOf()).id,
