@@ -33,8 +33,9 @@ export function signingFlow(o) {
     trigger: { on: "stage", type, stage: o.out_stage },
     steps: [
       { id: "rec", kind: "pick", type, where: "record.id == trigger.id" },
-      // sent once: a record that already carries a signing request is left alone
+      // sent once: a record that already carries a signing request (or is being sent one) is left alone
       { id: "once", kind: "decide", if: `steps.rec.found and not steps.rec.record.data.${field}`, then: [
+        { id: "claim", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: "sending" } },
         { id: "send", kind: "service", connection: conn, operation: "submissions.create", input: { body: { template_id: o.template_id, send_email: false, submitters: [{ email: { expr: mine }, ...(name ? { name: { expr: `steps.rec.record.data.${name}` } } : {}) }] } } },
         { id: "mark", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: { expr: `"" + ${first}.submission_id` } } },
         { id: "link", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: { expr: mine }, subject: o.subject || "Your document is ready to sign",

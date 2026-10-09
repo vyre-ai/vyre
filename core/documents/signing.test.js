@@ -27,7 +27,7 @@ test("the builder refuses what it cannot make a Flow from", () => {
   assert.throws(() => signingFlow({ ...OPTS, wait_days: 0 }), /wait_days/);
   const f = signingFlow(OPTS);
   assert.deepEqual(f.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
-  assert.equal(f.steps[1].then[2].input.body.expr.includes("https://harlow.vyre.run/sign/"), true);
+  assert.equal(f.steps[1].then[3].input.body.expr.includes("https://harlow.vyre.run/sign/"), true);
 });
 
 test("a matter entering the stage gets a signing request and its link by email; the signed event moves it on", async () => {
