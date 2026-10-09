@@ -274,7 +274,7 @@ Taking access away never needs presence; giving it does.
 ## Lend a login to an agent
 
 ```
-vyre vault agent grant kit harlow-drive https://app.harlow.test --expires 7d
+vyre vault agent grant kit juniper-drive https://drive.juniper.example --expires 7d
 vyre vault agent grants
 vyre vault agent revoke <id>
 ```
