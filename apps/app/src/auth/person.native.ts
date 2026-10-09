@@ -21,6 +21,7 @@
 //
 // The request proof is P1363 (derToP1363 converts the module's DER); the presence proof is DER.
 
+import { presencePrompt } from "./presence-words.js";
 import * as SecureStore from "expo-secure-store";
 import * as WebBrowser from "expo-web-browser";
 import * as Keys from "../../modules/vyre-signer";
@@ -209,7 +210,7 @@ export function nativePerson(
 
   const presence = devicePresence({
     keyId: humanId,
-    sign: (message, tool) => Keys.sign(Keys.HUMAN, message, { prompt: `Confirm ${tool} on your home` }),
+    sign: (message, tool, input) => Keys.sign(Keys.HUMAN, message, { prompt: presencePrompt(tool, input) }),
     nonce: () => Keys.randomBytes(16),
     store: secureSlot(slotName("presence", name)),
     path: o.path,

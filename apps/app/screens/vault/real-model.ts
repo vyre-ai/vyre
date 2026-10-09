@@ -93,15 +93,24 @@ export const NEW_KINDS: [NewItem["kind"], string][] = [["login", "Login"], ["api
 /** The host of a link the person typed, lower case, or "" when it is not one. */
 export const hostOf = (url: string): string => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(url.trim()); return m ? m[1].toLowerCase() : ""; };
 
-/** The input of vault.put for what the person typed, or the first thing wrong in words. A login needs the password and a name for it; a key or secret its value. */
+/** What is wrong with a new item, field by field, in words the person can act on: every required field that is empty, shown under that field (never left to the browser's own bubble). */
+export function putProblems(n: NewItem): Partial<Record<"name" | "username" | "secret" | "url", string>> {
+  const out: Partial<Record<"name" | "username" | "secret" | "url", string>> = {};
+  if (!n.name.trim()) out.name = "Give it a name.";
+  if (n.kind === "login" && !n.username.trim()) out.username = "Type the username.";
+  if (!n.secret) out.secret = n.kind === "login" ? "Type the password." : "Type the value.";
+  if (n.kind === "login" && n.url.trim() && !hostOf(n.url)) out.url = "That is not a web address.";
+  return out;
+}
+
+/** The input of vault.put for what the person typed, or the first thing wrong in words (putProblems has every one, by field). A login needs the username and the password and a name; a key or secret its value. */
 export function putInput(n: NewItem): { input: Record<string, unknown> } | { error: string } {
+  const first = Object.values(putProblems(n))[0];
+  if (first) return { error: first };
   const name = n.name.trim();
-  if (!name) return { error: "Give it a name." };
-  if (!n.secret) return { error: n.kind === "login" ? "Type the password." : "Type the value." };
   if (n.kind === "login") {
     const host = hostOf(n.url);
-    if (n.url.trim() && !host) return { error: "That is not a web address." };
-    return { input: { name, kind: "login", fields: { ...(n.username.trim() ? { username: n.username.trim() } : {}), password: n.secret }, ...(host ? { url: n.url.trim(), hosts: [host] } : {}) } };
+    return { input: { name, kind: "login", fields: { username: n.username.trim(), password: n.secret }, ...(host ? { url: n.url.trim(), hosts: [host] } : {}) } };
   }
   return { input: { name, kind: n.kind, fields: { value: n.secret } } };
 }
