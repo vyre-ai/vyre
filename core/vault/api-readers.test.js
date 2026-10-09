@@ -41,7 +41,7 @@ async function mk(t) {
     return { error: { code: "no_such_tool", message: name } };
   };
   const said = saidTools.register({ vault: v, internal });
-  register({ vault: v, tool, internal, call, said, deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport: async r => { net.last = r.headers; net.calls.push(`${r.method} ${r.url.pathname}`); return json(200, { value: [{ subject: "Harlow Legal check-in" }] }); } } });
+  register({ vault: v, tool, internal, call, said, deps: { lookup: async () => [{ address: "93.184.216.10", family: 4 }], transport: async r => { net.last = r.headers; net.calls.push(`${r.method} ${r.url.pathname}`); return json(200, { value: [{ subject: "Harlow Legal check-in" }] }); } } });
   const secret = fake("secret");
   await v.put({ name: "microsoft", kind: "api-credential", fields: { config: JSON.stringify(CONFIG), secret } }, "cli");
   const ask = (input, caller) => tools.get("vault.request").run({ credential: "microsoft", ...input }, { caller });

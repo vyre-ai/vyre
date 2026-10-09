@@ -18,6 +18,7 @@ import http from "node:http";
 import crypto from "node:crypto";
 import net from "node:net";
 import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { isPublicAddress } from "../../lib/netguard.js";
 import { createTunnelFront } from "./tunnel.js";
 import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
 
@@ -279,7 +280,7 @@ export function createRelay(o = {}) {
     s.once("timeout", () => { s.destroy(); resolve(false); });
     s.once("error", () => resolve(false));
   }));
-  const publicAddress = a => { const v = String(a).replace(/^::ffff:/, ""); return !(net.isIP(v) === 0 || /^(127\.|10\.|192\.168\.|169\.254\.|0\.|::1$|fe80:|f[cd][0-9a-f]{2}:)/i.test(v) || /^172\.(1[6-9]|2\d|3[01])\./.test(v) || /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(v)); };
+  const publicAddress = a => isPublicAddress(String(a).replace(/^::ffff:/, ''), []);   // lib/netguard.js: the one address deny list
   function onReachCheck(req, res) {
     const reply = (code, body) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
     const ip = addressOf(req).replace(/^::ffff:/, "");

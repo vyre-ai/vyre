@@ -9,7 +9,8 @@ import { createEgress, privateAddress } from "./egress.js";
 import { createSupervisor } from "./supervisor.js";
 import { createModuleHost, wildcardOk, SHARED_SUFFIXES } from "./host.js";
 import { createFirstPartyCheck, signModule, treeHash } from "./firstparty.js";
-import { pinnedFetch, ipBytes } from "./egress.js";
+import { pinnedFetch } from "./egress.js";
+import { toBytes } from "../../lib/netguard.js";
 import crypto from "node:crypto";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
@@ -146,7 +147,7 @@ test("egress: the default fetch connects to the address that was checked, whatev
   assert.deepEqual(all, [{ address: "93.184.216.34", family: 4 }]);
   assert.equal(opts.servername, "api.example.com", "TLS and Host keep the real name");
   assert.ok(destroyed && /not checked/.test(destroyed.message), "a socket that connected to loopback is destroyed before the request is written");
-  assert.deepEqual([...ipBytes("::ffff:7f00:1").slice(10)], [255, 255, 127, 0, 0, 1]);
+  assert.deepEqual([...toBytes("::ffff:7f00:1").subarray(10)], [255, 255, 127, 0, 0, 1]);
 });
 
 test("host: needs.egress is shown on a card and approved; shared-suffix wildcards are refused; the entry stays inside the module folder", async () => {

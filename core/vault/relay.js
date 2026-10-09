@@ -29,6 +29,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { sign, verify, canonical } from "./crypto.js";
 import { capValues } from "../link/transport.js";
+import { isLoopbackHost } from "../../lib/netguard.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -287,10 +288,7 @@ export function checkEmergency(env, { audience, now = Date.now(), seen }) {
 }
 
 /** 127.0.0.0/8, ::1 and localhost. */
-export function isLoopback(host) {
-  const h = String(host || "").replace(/^\[|\]$/g, "").toLowerCase();
-  return h === "localhost" || h === "::1" || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h);
-}
+export function isLoopback(host) { return isLoopbackHost(String(host || "").replace(/^\[|\]$/g, "")); }
 
 /** https, or http to loopback only. A relayed value never crosses a network in clear text. */
 export function secureTarget(url) {

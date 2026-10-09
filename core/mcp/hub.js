@@ -24,6 +24,7 @@
 import crypto from "node:crypto";
 import { McpError } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
+import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcp_servers (
@@ -207,9 +208,7 @@ const strList = v => Array.isArray(v) && v.every(x => typeof x === "string" && x
  */
 function httpAllowed(u, extra) {
   const h = u.hostname.replace(/^\[|\]$/g, "");
-  if (["localhost", "127.0.0.1", "::1"].includes(h) || /^127\./.test(h)) return true;
-  const m = /^100\.(\d+)\.\d+\.\d+$/.exec(h);
-  if (m && Number(m[1]) >= 64 && Number(m[1]) <= 127) return true;
+  if (isLoopbackHost(h) || isTailnet(h)) return true;
   return extra.some(x => { try { return new URL(x).origin === u.origin; } catch { return false; } });
 }
 

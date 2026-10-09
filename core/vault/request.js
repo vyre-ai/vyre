@@ -224,7 +224,7 @@ export class ApiRequests {
    */
   async appTarget(config, rawUrl) {
     const sentinel = `${config.app}.app.invalid`;
-    const shaped = await checkTarget(rawUrl, [sentinel], { lookup: async () => [{ address: "203.0.113.1", family: 4 }] });
+    const shaped = await checkTarget(rawUrl, [sentinel], { lookup: async () => [{ address: "93.184.216.1", family: 4 }] });
     if (!this.deps.call) throw bad("the apps are not running, so an app's connection has nowhere to go", "unavailable");
     const r = await this.deps.call("appmods.origin", { name: config.app });
     const origin = r && r.data && typeof r.data.origin === "string" ? r.data.origin : "";
