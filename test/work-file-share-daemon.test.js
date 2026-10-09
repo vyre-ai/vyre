@@ -28,16 +28,22 @@ test("work.file.share opens one chat file to a project member and work.file.unsh
   const as = async (/** @type {any} */ c) => ({ token: (await d.kernel.surfaces.open(c, {})).token });
   const call = async (/** @type {any} */ c, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", await as(c));
   const chat = await grants.chats.create(bob, {});
-  const dir = `Projects/p1/chat/${chat.id}`, drive = d.kernel.gateway.drive;
+  // the work module files every chat in its creator's Personal project: the chat's folders are under that record's drive root
+  const rec = await until(async () => ((await d.kernel.gateway.records.query(bob, "chat-record", { filter: { field: "chat", op: "eq", value: chat.id }, page: { limit: 1 } })).rows || [])[0], "the chat record");
+  const dir = `${rec.data.drive}/chat/${chat.id}`, drive = d.kernel.gateway.drive;
   await drive.put(bob, `${dir}/shared.txt`, new TextEncoder().encode("for the project"));
   await drive.put(bob, `${dir}/private.txt`, new TextEncoder().encode("not shared"));
   await assert.rejects(() => drive.get(dan, `${dir}/shared.txt`), { code: "not_found" });
-  assert.equal((await call(dan, "work.file.share", { path: `${dir}/shared.txt` })).error === undefined, true, "a share by someone outside the chat is accepted as a record but opens nothing");
+  assert.ok((await call(dan, "work.file.share", { path: `${dir}/shared.txt` })).error, "someone outside the chat cannot share its file");
   await assert.rejects(() => drive.get(dan, `${dir}/shared.txt`), { code: "not_found" });
+  const listed = async () => ((await call(bob, "work.file.list", { chat: chat.id })).data || {}).files || [];
+  assert.deepEqual((await listed()).map((/** @type {any} */ f) => [f.name, f.shared]).sort(), [["private.txt", false], ["shared.txt", false]], "the chat's files by name, none shared yet");
+  assert.deepEqual((await call(dan, "work.file.list", { chat: chat.id })).data.files, [], "someone outside the chat sees none");
   const made = await call(bob, "work.file.share", { path: `${dir}/shared.txt` });
   assert.equal(made.data && made.data.shared, true, JSON.stringify(made.error));
   assert.equal(new TextDecoder().decode(await drive.get(dan, `${dir}/shared.txt`)), "for the project");
   await assert.rejects(() => drive.get(dan, `${dir}/private.txt`), { code: "not_found" });
+  assert.deepEqual((await listed()).map((/** @type {any} */ f) => [f.name, f.shared]).sort(), [["private.txt", false], ["shared.txt", true]], "shared.txt is marked");
   const back = await call(bob, "work.file.unshare", { path: `${dir}/shared.txt` });
   assert.ok(back.data && back.data.unshared >= 1, JSON.stringify(back));
   await assert.rejects(() => drive.get(dan, `${dir}/shared.txt`), { code: "not_found" });

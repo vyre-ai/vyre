@@ -118,6 +118,12 @@ On a phone, a key bar under the terminal gives Esc, Tab, Ctrl, the arrows, | and
 
 On a Mac, the terminal ends when Vyre stops.
 
+## Files in a chat
+
+Open the chat's tools and choose Files. The panel lists what the chat made and what it received, each by name, with its size. A file shows a mark when it is shared with the chat's project.
+
+Select a file to see it: text and images show right there, anything else says so. Share to project opens that one file to the project's members and nothing else in the chat. Unshare takes it back at once. File names are encrypted to the people in the chat, so only they see this list. See [Private chats](private-chats.md).
+
 ## Sessions from your Mac
 
 With a Mac paired, the server's Chat lists the Mac's sessions and projects beside its own, newest

@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- feat(app): a chat's Files panel (chat tools, Files): the files the chat made or received by name, a mark on the shared ones, Share to project / Unshare, and a preview for text and images. New tool work.file.list; work.file.share now refuses a person who is not in the chat. Screenshot walk: scripts/app-walk-chat-files-shots.mjs.
 - feat(chat): a share taken back while the chat is locked stops opening to the project at once, and the key rotation it owes is done by the first participant to open the chat (kernel/storage/sealed-drive.js, kept in the project's sealed share index). Documented in using/private-chats.
 - feat(chat): Share to project works over an encrypted chat (R031-41). A file-share record by someone in the chat wraps the file's key into the project's ring (the project's sealed share index is read back at start); taking the last share back rotates the key. New tools work.file.share and work.file.unshare. The two chat-sealed todos are real tests. Kernel base 9340 of 9440.
 - fix(flows-host): a task event the host published is not published again (the log took it back and looped, so stop() never returned); test/flows-publish-once.test.js.
