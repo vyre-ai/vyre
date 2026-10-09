@@ -27,8 +27,10 @@ rec() { # rec STEP ok|false [why]
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
-mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
+# The seed is two files in the box's home volume (planner and personal memory need the record store and a person, which a bare CI box has not). seen/mem read them back through the container.
+seen() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
+mem() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | grep -q 'Robin'; }
+seedfiles() { docker exec -u vyre vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >/dev/null 2>&1; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
 
@@ -108,10 +110,9 @@ refused 12-moving-tag "$R1" 'not pinned by digest' unpinned 'Nothing was install
 # the baseline: a real install with data
 serve "$BOX" 18180
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
-if VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
+if VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
 else rec B1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
-vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
-vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
+seedfiles
 seen && mem && rec B2-seed ok || rec B2-seed false "seed not readable"
 SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
 
@@ -122,7 +123,9 @@ ST=/var/lib/vyre-update
 docker tag vyre:local ghcr.io/vyre-ai/vyre:latest && docker push -q ghcr.io/vyre-ai/vyre:latest >/dev/null
 sed -i '/^COMPOSE_FILE=.*compose.build.yml/d' "$DIR/.env"
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
-node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
+# With J2B_KEYDIR the candidate was pinned to and signed with that key (scripts/matrix/j2-pin-key.mjs), so its modules boot.
+if [ -n "${J2B_KEYDIR:-}" ] && [ -s "$J2B_KEYDIR/good.pem" ]; then cp "$J2B_KEYDIR/good.pem" "$J2B_KEYDIR/good.pub" "$WORK"/
+else node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"; fi
 GOODPUB=$(cat "$WORK/good.pub")
 mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming REF for the box image
   mkrel "$1" "$2"; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"

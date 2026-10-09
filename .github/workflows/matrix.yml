@@ -229,7 +229,9 @@ jobs:
       - name: The candidate, one version above 0.1.1 so an update has somewhere to go
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+          # The throwaway key is pinned in this runner's checkout and signs the candidate, so its modules boot.
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
       - name: The v0.1.1 release files
         env: { GH_TOKEN: "${{ github.token }}" }
         run: gh release download v0.1.1 --repo vyre-ai/vyre --dir old
@@ -249,10 +251,15 @@ jobs:
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: box, path: box }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The candidate, signed with a throwaway key pinned in this checkout so its modules boot
+        run: |
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
       - name: J8, export, import and uninstall
-        run: bash scripts/matrix/j8-data.sh box results/data
+        run: bash scripts/matrix/j8-data.sh site/box results/data
       - name: Diagnostics
         if: failure()
         run: for f in results/data/*.log; do echo "== $f"; tail -15 "$f"; done; docker ps -a
@@ -310,7 +317,9 @@ jobs:
       - name: The candidate, one version above 0.1.1
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+          # The throwaway key is pinned in this runner's checkout and signs the candidate, so its modules boot.
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
       - name: J2b, the signed-update refusals on a real install
         run: bash scripts/matrix/j2-update-refusals.sh site/box results/update-refusals
       - name: Diagnostics
@@ -374,8 +383,12 @@ jobs:
       - name: The candidate, with the unstripped wrapper the cosign cases need
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+          # The throwaway key is pinned in this runner's checkout and signs the candidate, so its modules boot.
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
       - name: J2c, the cosign refusals
+        env:
+          J2B_KEYDIR: ${{ runner.temp }}/j2key
         run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
       - name: Diagnostics
         if: failure()

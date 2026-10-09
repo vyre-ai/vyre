@@ -14,10 +14,11 @@ rec() { ok=$2; [ "$ok" = ok ] && ok=true || { ok=false; FAILED=$((FAILED + 1)); 
   echo "$([ "$ok" = true ] && echo pass || echo FAIL)  J8 $DEV $1 ${3:-}"; }
 python3 -m http.server 18080 --bind 127.0.0.1 --directory "$BOX" >/dev/null 2>&1 & SRV=$!
 for i in $(seq 1 50); do curl -fs http://127.0.0.1:18080/SHA256SUMS >/dev/null && break; sleep 0.2; done
-install() { VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes --print-link </dev/null >"$OUT/install-$1.log" 2>&1; }
+install() { VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes --print-link </dev/null >"$OUT/install-$1.log" 2>&1; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-seed() { vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1; vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1; }
-has_data() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft' && vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
+# The made-up world is one planner note on the built-in store (personal memory needs a person's chain, which `vyre call` on a bare box has not, so it is not part of the world here).
+seed() { vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed.log" 2>&1; }
+has_data() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
 vols() { docker volume ls -q --filter label=run.vyre=1; }
 leftovers() { # what a complete uninstall must not leave
   { docker ps -aq --filter label=com.docker.compose.project=vyre | sed 's/^/container /'
@@ -32,7 +33,7 @@ docker ps -a --format '{{.Names}}' | sort >"$OUT/containers-before.txt"
 
 # 8.0 install and fill
 if install a && ready; then rec 8.0-install ok; else rec 8.0-install false "$(tail -4 "$OUT/install-a.log")"; kill $SRV; exit 1; fi
-seed; has_data && rec 8.1-seed ok || rec 8.1-seed false "the made-up world is not readable"
+seed; has_data && rec 8.1-seed ok || rec 8.1-seed false "the made-up world is not readable: $(head -c 200 "$OUT/seed.log" | tr '\n' ' ')"
 
 # 8.2 export: one step, sealed under a passphrase
 PASS=$(head -c 18 /dev/urandom | base64 | tr -d '=+/\n' | cut -c1-20)

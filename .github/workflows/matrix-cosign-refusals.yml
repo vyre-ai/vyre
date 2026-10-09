@@ -26,8 +26,12 @@ jobs:
       - name: The candidate
         run: |
           node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json","utf8"));p.version="0.2.0-e2e.1";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
-          VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh
+          # The throwaway key is pinned in this runner's checkout and signs the candidate, so its modules boot.
+          node scripts/matrix/j2-pin-key.mjs "$RUNNER_TEMP/j2key"
+          VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_SIGNING_KEY="$(cat "$RUNNER_TEMP/j2key/good.pem")" sh scripts/build-site.sh
       - name: J2c, the cosign refusals
+        env:
+          J2B_KEYDIR: ${{ runner.temp }}/j2key
         run: bash scripts/matrix/j2c-cosign-refusals.sh site/box results/cosign-refusals
       - name: Diagnostics
         if: failure()
