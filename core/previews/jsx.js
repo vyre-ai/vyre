@@ -80,11 +80,11 @@ export function shell({ title, entry, bridge }) {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${bridge ? '<script src="/__vyre/claude.js"></script>' : ""}<script type="importmap">${imports}</script><script src="${TAILWIND}"></script><style>html,body{margin:0}#vyre-problem{display:none;max-width:560px;margin:48px auto;padding:16px 18px;border:1px solid #dcd9d1;border-radius:12px;font:15px/1.5 -apple-system,system-ui,sans-serif;color:#171716;background:#fff}</style></head><body><div id="root"></div><div id="vyre-problem" role="alert"></div><script type="module">
 const problem = (m) => { const e = document.getElementById("vyre-problem"); e.style.display = "block"; e.textContent = m; };
 try {
-  const [{ default: React }, { createRoot }, mod] = await Promise.all([import("react"), import("react-dom/client"), import(${JSON.stringify("/" + entry)})]);
+  const [{ default: React }, { createRoot }, mod] = await Promise.all([IMPORT("react"), IMPORT("react-dom/client"), IMPORT(${JSON.stringify("/" + entry)})]);
   if (typeof mod.default !== "function") problem("This page has no default export: export the component to show (export default function App() {...}).");
   else createRoot(document.getElementById("root")).render(React.createElement(mod.default));
 } catch (e) { problem(String(e && e.message || e)); }
-</script></body></html>`;
+</script></body></html>`.replaceAll("IMPORT(", "import("); // written apart so a scan for this server's own imports does not read the page's
 }
 
 /** A module that says why it could not be built, as the error the shell shows. @param {string} message */
