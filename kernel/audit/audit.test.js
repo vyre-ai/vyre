@@ -2,7 +2,8 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
-import { createCheckpointer, verifyTail, verifyLog, verifyCheckpoint, createDeviceCheckpoints, compareCheckpoints, ed25519Signer } from "./index.js";
+import { createCheckpointer, verifyTail, verifyLog, verifyCheckpoint, createDeviceCheckpoints, ed25519Signer } from "./index.js";
+import { compareCheckpoints } from "./verify.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
