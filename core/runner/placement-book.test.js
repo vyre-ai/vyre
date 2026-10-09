@@ -20,7 +20,7 @@ test("a lent session is on the computer; moving it to the server raises the epoc
   const m = b.toServer("s1", "lid-closed", { auto: true });
   assert.equal(m.changed, true);
   assert.deepEqual([m.row?.where, m.row?.state, m.row?.epoch, m.row?.reason], ["server", "server", 2, "lid-closed"]);
-  assert.deepEqual(said, [["thread.moved", { thread: "chat_x", session: "s1", from: "mac", to: "server", reason: "lid-closed", at: c.now() }]]);
+  assert.deepEqual(said, [["thread.moved", { thread: "chat_x", session: "s1", from: "mac", to: "server", reason: "lid-closed", epoch: 2, device: "dev_mac", at: c.now() }]]);
   assert.deepEqual(b.toServer("s1", "crash"), { changed: false, why: "there", row: b.get("s1") }, "a second move to the same place changes nothing and says nothing");
   assert.equal(said.length, 1);
   assert.throws(() => b.toServer("s1", "not-a-reason"), e => /** @type {any} */ (e).code === "bad_input");

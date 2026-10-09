@@ -57,7 +57,7 @@ export function createPlacementBook(o = {}) {
   const copy = (/** @type {Row} */ r) => ({ ...r, ...(r.facts ? { facts: { ...r.facts } } : {}) });
   /** What a move says to the world: the chat (or the session when no chat is named), from, to, why. */
   const moved = (/** @type {Row} */ r, /** @type {string} */ from, /** @type {string} */ to, /** @type {string | null} */ reason) => {
-    try { o.emit?.("thread.moved", { thread: r.chat || r.session, session: r.session, from, to, reason, at: now() }); } catch { /* a notice, never a stop */ }
+    try { o.emit?.("thread.moved", { thread: r.chat || r.session, session: r.session, from, to, reason, epoch: r.epoch, device: r.device, at: now() }); } catch { /* a notice, never a stop */ }
   };
 
   return {
