@@ -818,6 +818,7 @@
  "test/cli.test.js": 6,
  "test/client-socket.test.js": 4,
  "test/credential-shapes-single.test.js": 5,
+ "test/cron-single.test.js": 5,
  "test/daemon.test.js": 27,
  "test/dependency-guard.test.js": 2,
  "test/do-firstboot.test.js": 7,

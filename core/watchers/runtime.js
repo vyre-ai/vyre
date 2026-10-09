@@ -26,6 +26,7 @@ import { parseWhen } from "./when.js";
 import { buildPreset } from "./presets.js";
 import { wakeText, DEFAULT_PER_DAY } from "./wake.js";
 import { DUTY_NAME, DUTY_WATCH_JS } from "./duty.js";
+import { systemZone } from "../../lib/time/index.js";
 
 /** Schedules that are not cron: nothing is due on a clock. */
 const PUSHED = new Set(["webhook", "event"]);
@@ -112,6 +113,8 @@ export class Runtime {
   constructor(deps) {
     this.d = deps;
     this.now = deps.now || Date.now;
+    /** The Space's time zone for cron schedules: the server's own unless the Space sets one. */
+    this.zone = deps.zone || systemZone;
     this.db = deps.db;
     /** @type {Map<string, Promise<any>>} runs in flight, one per watcher */
     this.running = new Map();
@@ -155,7 +158,7 @@ export class Runtime {
       const state = !f.hash && on ? "missing" : f.problems.length ? "invalid" : !on ? "draft"
         : f.hash !== r.hash ? "changed" : r.paused ? "paused" : "on";
       const schedule = f.spec?.schedule || r?.schedule || null;
-      const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule) : null;
+      const every = schedule === "event" && f.spec ? describeOn(f.spec) : schedule ? cron.describe(schedule, this.zone()) : null;
       out.push({ name, state, hash: f.hash || null, title: f.spec?.summary?.do || null, project: f.spec?.project || r?.project || null, schedule, every,
         next: on && !r.paused && r.next_at ? new Date(r.next_at).toISOString() : null,
         lastRun: r?.last_run ? new Date(r.last_run).toISOString() : null, lastError: r?.last_error || null, failures: r?.failures || 0,
@@ -188,7 +191,7 @@ export class Runtime {
     return {
       ok: true, name, project: project ? project.slug : null,
       ...(project ? {} : { warning: `no project "${spec.project}"; watchers.create will refuse until it exists (vyre projects lists them)` }),
-      schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), needs: spec.needs, count: res.items.length,
+      schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone()), needs: spec.needs, count: res.items.length,
       alreadyFiled: res.items.filter(i => filed.get(name, i.id)).length,
       items: res.items.slice(0, 20), logs: res.logs.slice(-20), ms: res.ms, sandboxed: res.sandboxed, networkIsolated: res.isolated === true, wall: res.wall || null,
       ...(res.items.length ? {} : { note: "no items. That can be right (nothing new matches), or the filter or the parsing is wrong; the logs show what it saw" }),
@@ -203,7 +206,7 @@ export class Runtime {
   card(name) {
     const { spec, hash } = this.spec(name);
     const r = this.row(name);
-    const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule);
+    const when = spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone());
     const duty = spec.owner != null && spec.owner.kind === "teammate";
     const wakes = spec.about && spec.about.session && spec.act ? spec.about.session : null;
     return {
@@ -245,7 +248,7 @@ export class Runtime {
     this.d.emit("watcher.created", { name, project: project.slug, schedule: spec.schedule }, { project: project.slug });
     if (!pushed) this.kick(name, "create");
     if (spec.schedule === "event") this.subscribe();
-    return { name, project: project.slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule), state: "on",
+    return { name, project: project.slug, schedule: spec.schedule, every: spec.schedule === "event" ? describeOn(spec) : cron.describe(spec.schedule, this.zone()), state: "on",
       ...(hook ? { hook: { method: "POST", path: `/v1/watchers/${name}/hook`, header: "x-vyre-token", token } } : {}) };
   }
 
@@ -295,7 +298,7 @@ export class Runtime {
     if (!r || !cur.owner) throw Object.assign(new Error(`${d.name} is not a duty`), { code: "not_found" });
     this.writeDuty({ project: cur.project, owner: cur.owner, when: d.when, instruction: d.instruction, act: d.act, name: d.name, current: cur });
     const { hash, spec } = this.spec(d.name);
-    const next = PUSHED.has(spec.schedule) ? null : cron.next(cron.parse(spec.schedule), this.now());
+    const next = PUSHED.has(spec.schedule) ? null : cron.next(cron.parse(spec.schedule), this.now(), this.zone());
     this.db.prepare("UPDATE watchers_watchers SET tested_hash = ?, tested_at = ?, hash = ?, schedule = ?, next_at = ? WHERE name = ?").run(hash, this.now(), hash, spec.schedule, r.paused ? null : next, d.name);
     if (spec.schedule === "event") this.subscribe();
     return { name: d.name, state: r.paused ? "paused" : "on", schedule: spec.schedule };
@@ -356,7 +359,7 @@ export class Runtime {
     const { hash } = this.spec(name);
     if (shown && shown !== hash) throw new Error(`${name} changed after its card was shown; show the card again, then turn it on`);
     if (hash !== r.hash) throw new Error(`${name} changed since it was turned on; run watchers.test and watchers.create again`);
-    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
+    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now(), this.zone());
     this.db.prepare("UPDATE watchers_watchers SET paused = 0, paused_why = NULL, failures = 0, next_at = ? WHERE name = ?").run(next, name);
     this.d.emit("watcher.resumed", { name }, { project: r.project });
     return { name, state: "on", next: next ? new Date(next).toISOString() : null };
@@ -513,7 +516,7 @@ export class Runtime {
     } else if (fresh.length && spec.memory !== false) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
 
     const cursor = res.cursor ?? started;
-    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());
+    const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now(), this.zone());
     this.db.prepare(`UPDATE watchers_watchers SET since = ?, failures = 0, last_run = ?, last_ok = ?, last_error = NULL, next_at = ? WHERE name = ?`)
       .run(JSON.stringify(cursor), started, started, next, name);
     if (fresh.length && spec.about && spec.about.session && spec.act) await this.wake(spec, fresh, res.logs);
