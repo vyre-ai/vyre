@@ -604,7 +604,8 @@ export const DECLINED_MS = 60_000;
  */
 export function devicePresence(o: {
   keyId: () => Promise<string | null>;
-  sign: (message: string, tool: string) => Promise<string>;
+  /** `input` is the call's input, so the prompt can say what is being done in words (presence-words.js). */
+  sign: (message: string, tool: string, input?: unknown) => Promise<string>;
   nonce: () => string;
   store?: Slot<string>;
   now?: () => number;
@@ -708,7 +709,7 @@ export function devicePresence(o: {
       const ts = now();
       const nonce = o.nonce();
       try {
-        const sig = await o.sign(presenceMessage(tool, await inputHash(input), ts, nonce), tool);
+        const sig = await o.sign(presenceMessage(tool, await inputHash(input), ts, nonce), tool, input);
         sent.set(id, "device");
         return { "x-vyre-presence": `${o.method ?? "device"} key=${key} ts=${ts} nonce=${nonce} sig=${sig}`, "x-vyre-presence-keep": "1" };
       } catch (e) {

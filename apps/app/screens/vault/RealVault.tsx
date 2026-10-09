@@ -13,7 +13,7 @@ import { presenceText } from "../shell/FaceIdSheet";
 import { DevicesPage, EditSheet, ItemHistory, PassesPage, SharedPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
-import { NEW_KINDS, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
+import { NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -33,6 +33,9 @@ export default function RealVault() {
   const [pw, setPw] = useState("");
   const [pwProblem, setPwProblem] = useState("");
   const [unlock, setUnlock] = useState<"passphrase" | "none">("none");
+  // a save that went through says the vault is open, whatever the list said before it
+  const savedOpen = useRef(false);
+  const [fieldErr, setFieldErr] = useState<Partial<Record<"name" | "username" | "secret" | "url", string>>>({});
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState<NewItem | null>(null);
   const [problem, setProblem] = useState("");
@@ -48,7 +51,7 @@ export default function RealVault() {
 
   const load = useCallback(() => {
     setErr("");
-    listReal().then((r) => { setRows(r.items); setLocked(r.locked); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
+    listReal().then((r) => { setRows(r.items); setLocked(r.locked && !savedOpen.current); setPersonal(r.personal); }).catch((e) => setErr(say(e, "The vault did not answer.")));
     stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
   }, []);
   useEffect(load, [load]);
@@ -97,10 +100,12 @@ export default function RealVault() {
   };
   const doAdd = () => {
     if (!adding) return;
+    const bad = putProblems(adding);
+    if (Object.keys(bad).length) { setFieldErr(bad); setProblem(""); return; }
     const p = putInput(adding);
     if ("error" in p) { setProblem(p.error); return; }
-    setBusy(true); setProblem("");
-    putReal(p.input).then(() => { showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
+    setBusy(true); setProblem(""); setFieldErr({});
+    putReal(p.input).then(() => { savedOpen.current = true; setLocked(false); showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
   };
 
   /** Open an item from another page (Watchtower): the Items section, on that item's tab. */
@@ -153,7 +158,7 @@ export default function RealVault() {
                 </View>
               ))}
             </Card>
-          ) : <Text tone="muted">Only you.</Text>}
+          ) : <Text tone="muted">Only you. No module or assistant can use this item until you share it.</Text>}
           {claimBlocked() ? null : <View className="self-start pt-s2"><Button kind="ghost" size="sm" icon="plus" label="Share with a module or assistant" onPress={() => { setProblem(""); setSharing({ module: "", project: "" }); }} /></View>}
         </Sec>
         <ItemHistory name={cur.id} />
@@ -204,7 +209,7 @@ export default function RealVault() {
       {tab === "Held" ? (
         records.error && !records.data ? <Card flush><EmptyState title="Held fields did not load" body={records.error.message} action={{ label: "Try again", onPress: () => void records.reload() }} /></Card>
         : records.loading && !records.data ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card>
-        : <Card flush>
+        : <><Text size="caption" tone="label">A held field is a sealed value on a record, such as a tax ID. The Vault keeps the value; the record keeps only a reference, and an assistant sees that it is on file, not what it says.</Text><Card flush>
             {held.length ? heldByRecord(held).map((g, gi) => (
               <View key={g.urn}>{gi ? <Divider /> : null}
                 <Row dense title={g.title} sub={g.typeLabel} />
@@ -215,7 +220,7 @@ export default function RealVault() {
                 ))}
               </View>
             )) : <EmptyState title="No sealed fields" body="Seal a field on a record and its value moves into the Vault." />}
-          </Card>
+          </Card></>
       ) : null}
       {tab !== "Held" && !err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
@@ -246,14 +251,14 @@ export default function RealVault() {
           </View>
         ) : null}
       </Sheet>
-      <Sheet open={!!adding} onClose={() => setAdding(null)} title="Add to the vault">
+      <Sheet open={!!adding} onClose={() => { setAdding(null); setFieldErr({}); }} title="Add to the vault">
         {adding ? (
           <View className="gap-s3">
             <Segmented label="Kind" value={adding.kind} onChange={(kind) => setAdding({ ...adding, kind })} options={NEW_KINDS} />
-            <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"} />
-            {adding.kind === "login" ? <Field label="Username" value={adding.username} onChangeText={(username) => setAdding({ ...adding, username })} /> : null}
-            <Field label={adding.kind === "login" ? "Password" : "Value"} value={adding.secret} onChangeText={(secret) => setAdding({ ...adding, secret })} kind="password" />
-            {adding.kind === "login" ? <Field label="Web address (optional)" value={adding.url} onChangeText={(url) => setAdding({ ...adding, url })} placeholder="https://drive.juniper.example" /> : null}
+            <Field label="Name" error={fieldErr.name} value={adding.name} onChangeText={(name) => { setFieldErr((e) => ({ ...e, name: undefined })); setAdding({ ...adding, name }); }} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"} />
+            {adding.kind === "login" ? <Field label="Username" error={fieldErr.username} value={adding.username} onChangeText={(username) => { setFieldErr((e) => ({ ...e, username: undefined })); setAdding({ ...adding, username }); }} /> : null}
+            <Field label={adding.kind === "login" ? "Password" : "Value"} error={fieldErr.secret} value={adding.secret} onChangeText={(secret) => { setFieldErr((e) => ({ ...e, secret: undefined })); setAdding({ ...adding, secret }); }} kind="password" />
+            {adding.kind === "login" ? <Field label="Web address (optional)" error={fieldErr.url} value={adding.url} onChangeText={(url) => { setFieldErr((e) => ({ ...e, url: undefined })); setAdding({ ...adding, url }); }} placeholder="https://drive.juniper.example" /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <Button kind="primary" label={busy ? "Saving" : "Save with Face ID"} onPress={busy ? () => {} : doAdd} />
             <Text size="caption" tone="label">The box asks you to approve this save. Assistants never see the value.</Text>

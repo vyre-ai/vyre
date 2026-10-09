@@ -84,6 +84,11 @@ test("an added item is checked before the box is asked, and sent as vault.put wi
   assert.deepEqual(ok, { input: { name: "Juniper Drive", kind: "login", fields: { username: "alex", password: "pw-1" }, url: "https://drive.juniper.example", hosts: ["drive.juniper.example"] } });
   assert.deepEqual(m.putInput({ kind: "api-key", name: "k", username: "", secret: "v", url: "" }), { input: { name: "k", kind: "api-key", fields: { value: "v" } } });
   for (const bad of [{ kind: "login", name: "", username: "", secret: "x", url: "" }, { kind: "secret", name: "n", username: "", secret: "", url: "" }, { kind: "login", name: "n", username: "", secret: "x", url: "zzz" }]) assert.ok("error" in m.putInput(/** @type {any} */ (bad)), JSON.stringify(bad));
+  // a login needs its username too, and every empty required field is named under that field
+  assert.deepEqual(m.putProblems({ kind: "login", name: "", username: "", secret: "", url: "zzz" }), { name: "Give it a name.", username: "Type the username.", secret: "Type the password.", url: "That is not a web address." });
+  assert.deepEqual(m.putProblems({ kind: "login", name: "n", username: "  ", secret: "x", url: "" }), { username: "Type the username." });
+  assert.deepEqual(m.putProblems({ kind: "api-key", name: "k", username: "", secret: "", url: "" }), { secret: "Type the value." });
+  assert.deepEqual(m.putProblems({ kind: "login", name: "n", username: "a", secret: "x", url: "" }), {});
   const b = box();
   const s = vaultSource(b.call);
   await s.putReal(/** @type {any} */ (ok).input); await s.unlockReal("pass phrase");
