@@ -1295,8 +1295,18 @@ export function createGrantsStore(cfg) {
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
+    /** The whole state as plain data, what a snapshot holds: a Space bundle carries it, and `adopt` puts it back. */
+    state() { return { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()], teams: [...teams.values()], vaults: [...vaults.values()] };
+    },
+    /** Restore a bundle's state onto a Space that has none (its first owner only): it is loaded and written as a snapshot under THIS seal, so authority again rests on events this store sealed. Kernel-only, once. @param {any} st */
+    async adopt(st) {
+      if (memberships.size > 1 || !st || !Array.isArray(st.grants) || !Array.isArray(st.memberships)) throw new KernelError("bad_input", "a Space bundle's grants go onto a Space with no members but its owner");
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear(); teams.clear(); vaults.clear();
+      loadState(st);
+      return api.snapshot();
+    },
     async snapshot() {
-      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()], teams: [...teams.values()], vaults: [...vaults.values()] };
+      const state = api.state();
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
@@ -1368,18 +1378,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY), ...(d.ring ? { ring: structuredClone(d.ring) } : {}) })); }
       };
       if (snap) {
-        const st = snap.core.state;
-        adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
-        for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
-        for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
-        for (const a of st.actors) actors.add(a);
-        for (const o of st.offers) offers.set(o.id, freeze(structuredClone(o)));
-        for (const v of st.invites) invites.set(v.id, freeze(structuredClone(v)));
-        for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
-        for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.teams || []) teams.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.vaults || []) vaults.set(x.id, freeze(structuredClone(x)));
+        loadState(snap.core.state);
         nextN = /** @type {number} */ (snap.n) + 1; nextPrev = sha256(snap.mac);
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
@@ -1405,6 +1404,20 @@ export function createGrantsStore(cfg) {
   };
 
   /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
+  /** Put a state (a snapshot's, or a bundle's) into the maps. @param {any} st */
+  const loadState = (st) => {
+    adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
+    for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
+    for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
+    for (const a of st.actors || []) actors.add(a);
+    for (const o of st.offers || []) offers.set(o.id, freeze(structuredClone(o)));
+    for (const v of st.invites || []) invites.set(v.id, freeze(structuredClone(v)));
+    for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
+    for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.teams || []) teams.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.vaults || []) vaults.set(x.id, freeze(structuredClone(x)));
+  };
   const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), teams: new Map(teams), vaults: new Map(vaults), gseq, gprev });
   const restore = (/** @type {any} */ c) => {
     adopted = c.adopted || null;
