@@ -27,11 +27,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 38 | 16 | none |
-| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 40 | 16 | none |
+| [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 33 | 22 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
@@ -230,7 +230,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [38](tools.md#chrome), 2 of them only for other modules
+- Tools: [40](tools.md#chrome), 4 of them only for other modules
 - Emits: [16 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -240,7 +240,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#chrome), 2 of them only for other modules
+- Tools: [6](tools.md#chrome), 4 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -272,8 +272,8 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [28](tools.md#connectors), 2 of them only for other modules
-- Emits: [10 events](events.md#connectors)
+- Tools: [39](tools.md#connectors), 3 of them only for other modules
+- Emits: [14 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
 
@@ -465,8 +465,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [30](tools.md#link), 5 of them only for other modules
-- Emits: [21 events](events.md#link)
+- Tools: [33](tools.md#link), 5 of them only for other modules
+- Emits: [22 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
