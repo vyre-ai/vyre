@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1462,"event":487,"config":271,"env":263,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1463,"event":487,"config":271,"env":263,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -112,6 +112,7 @@
     {"kind":"tool","name":"artifacts.public.base","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactspublicbase","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.public.set","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactspublicset","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.public.status","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactspublicstatus","module":"artifacts","mentions":[]},
+    {"kind":"tool","name":"artifacts.render-page","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsrender-page","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.restore","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsrestore","module":"artifacts","mentions":[{"page":"design/system/components/artifact-card.md","line":122,"anchor":"what-the-persons-actions-do"}]},
     {"kind":"tool","name":"artifacts.search","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactssearch","module":"artifacts","mentions":[]},
     {"kind":"tool","name":"artifacts.share","definedIn":"core/artifacts/index.js","page":"reference/tools.md#artifactsshare","module":"artifacts","mentions":[{"page":"design/system/components/artifact-card.md","line":119,"anchor":"what-the-persons-actions-do"},{"page":"design/system/components/artifact-card.md","line":130,"anchor":"what-agents-can-do-for-the-person"}]},

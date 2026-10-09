@@ -23,7 +23,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`appmods`](#appmods) | `core/appmods` | `box` | 18 | 6 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 12 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
-| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
@@ -184,7 +184,7 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Folder: `core/artifacts`, version 0.2.0
 - Runs on: `box`
 - Requires: none
-- Tools: [28](tools.md#artifacts)
+- Tools: [29](tools.md#artifacts), 1 of them only for other modules
 - Emits: [10 events](events.md#artifacts)
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
@@ -611,9 +611,10 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/previews`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [16](tools.md#previews), 1 of them only for other modules
+- Tools: [16](tools.md#previews)
 - Emits: [6 events](events.md#previews)
 - Shows on: cli
+- Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`
 
 ## projects
 
