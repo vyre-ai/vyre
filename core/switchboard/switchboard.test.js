@@ -29,9 +29,16 @@ process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs th
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
 
+// 55 cases ran 367 s, past the 300 s per-file limit. They are dealt out to two files: this one, and
+// switchboard-b.test.js, which sets VYRE_SWITCHBOARD_SHARD=1 and imports this module.
+const SHARDS = 2;
+const SHARD = Number(process.env.VYRE_SWITCHBOARD_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (...a) => (dealt++ % SHARDS === SHARD ? test(...a) : undefined);
+
 // ------------------------------------------------------------ pure parts
 
-test("translate: real stream-json lines become small thread events", () => {
+shardTest("translate: real stream-json lines become small thread events", () => {
   assert.deepEqual(translate({ type: "system", subtype: "init", session_id: "s1", model: "claude-haiku-4-5" }), { events: [], session: "s1", model: "claude-haiku-4-5" });
   assert.equal(translate({ type: "system", subtype: "hook_response", output: "the user's own hook output" }).events.length, 0, "hook output never reaches an event");
   assert.equal(translate({ type: "stream_event", event: { type: "message_start", message: { id: "m1" } } }).message, "m1");
@@ -79,7 +86,7 @@ const keyed = () => {
   };
 };
 
-test("translate: text keys (message, block) count content blocks across the lines of one message, as the transcript does", () => {
+shardTest("translate: text keys (message, block) count content blocks across the lines of one message, as the transcript does", () => {
   const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
   const tr = keyed();
   let message = "";
@@ -121,12 +128,12 @@ test("translate: text keys (message, block) count content blocks across the line
   assert.equal(translate({ type: "assistant", message: { id: "m9", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] } }).events[1].payload.block, 1);
 });
 
-test("describe: a sending tool names where it goes", () => {
+shardTest("describe: a sending tool names where it goes", () => {
   assert.equal(describe("mcp__mail__send_message", { to: "dana@harlowlegal.com", body: "hi" }).destination, "dana@harlowlegal.com");
   assert.ok(describe("Bash", { command: "x".repeat(900) }).summary.length <= 200);
 });
 
-test("argsFor: every session loads only Vyre's own MCP server, never the account's claude.ai connectors or any other server", () => {
+shardTest("argsFor: every session loads only Vyre's own MCP server, never the account's claude.ai connectors or any other server", () => {
   const cfg = a => JSON.parse(a[a.indexOf("--mcp-config") + 1]);
   const withPlugin = argsFor({ id: "u1", plugin: "/p" });
   assert.ok(withPlugin.includes("--strict-mcp-config"), "strict: nothing but --mcp-config is loaded (connectors, user and project servers, other plugins' servers)");
@@ -138,7 +145,7 @@ test("argsFor: every session loads only Vyre's own MCP server, never the account
   }
 });
 
-test("argsFor: the flags a headless session needs, new and resumed", () => {
+shardTest("argsFor: the flags a headless session needs, new and resumed", () => {
   const a = argsFor({ id: "u1", plugin: "/p", model: "haiku", name: "Site copy" });
   for (const f of ["-p", "--input-format", "--output-format", "--include-partial-messages", "--verbose", "--permission-prompt-tool"]) assert.ok(a.includes(f), f);
   assert.deepEqual(a.slice(a.indexOf("--session-id"), a.indexOf("--session-id") + 2), ["--session-id", "u1"]);
@@ -152,7 +159,7 @@ test("argsFor: the flags a headless session needs, new and resumed", () => {
   assert.deepEqual(lean.slice(lean.indexOf("--setting-sources"), lean.indexOf("--setting-sources") + 2), ["--setting-sources", ""]);
 });
 
-test("lease: one holder, take-over says who had it, quiet holders expire", t => {
+shardTest("lease: one holder, take-over says who had it, quiet holders expire", t => {
   const root = tempHome(t);
   const db = open(path.join(root, "l.db"));
   migrate(db, "threads", MIGRATIONS);
@@ -171,7 +178,7 @@ test("lease: one holder, take-over says who had it, quiet holders expire", t => 
   db.close();
 });
 
-test("adopt: only a claude given the session with --resume or --session-id has it open", () => {
+shardTest("adopt: only a claude given the session with --resume or --session-id has it open", () => {
   // A `vyre threads watch <id>` under a folder named claude-* was taken for a second writer, and
   // every resume after a stop was refused while it ran. Found by scripts/stress-drive.
   const id = "61801033-b22a-48c3-ba36-a9da797ca777";
@@ -184,7 +191,7 @@ test("adopt: only a claude given the session with --resume or --session-id has i
   assert.equal(opensSession(`claude --resume ${id}0`, id), false, "another id that starts with this one");
 });
 
-test("lease: a terminal whose process exited holds nothing, so the next terminal can type", t => {
+shardTest("lease: a terminal whose process exited holds nothing, so the next terminal can type", t => {
   // `vyre threads start` took the lease as cli:<pid> and exited; every later `vyre threads send`
   // (a new pid) was refused for the whole TTL. Found by scripts/stress-drive.
   const root = tempHome(t);
@@ -323,7 +330,7 @@ function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.random
 
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
 
-test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
+shardTest("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
   const w = await boot(t);
   const { root, work, tool, launches, d } = w;
   const a = sse(root), b = sse(root);
@@ -449,7 +456,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   assert.deepEqual(last.argv.slice(last.argv.indexOf("--resume"), last.argv.indexOf("--resume") + 2), ["--resume", id]);
 });
 
-test("switchboard: a finished turn's partial text is pruned after the grace; the done text stays", async t => {
+shardTest("switchboard: a finished turn's partial text is pruned after the grace; the done text stays", async t => {
   const was = process.env.VYRE_TEXT_PRUNE_MS;
   process.env.VYRE_TEXT_PRUNE_MS = "1500"; // long enough that reading the deltas inside the grace is not a race with the log
   t.after(() => { if (was === undefined) delete process.env.VYRE_TEXT_PRUNE_MS; else process.env.VYRE_TEXT_PRUNE_MS = was; });
@@ -468,7 +475,7 @@ test("switchboard: a finished turn's partial text is pruned after the grace; the
   assert.ok(got.events.some(e => e.type === "thread.finished") && got.events.some(e => e.type === "thread.started"));
 });
 
-test("switchboard: a stopped thread's open question is closed, not left waiting", async t => {
+shardTest("switchboard: a stopped thread's open question is closed, not left waiting", async t => {
   const { root, work, tool } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -480,7 +487,7 @@ test("switchboard: a stopped thread's open question is closed, not left waiting"
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data.answered, false);
 });
 
-test("switchboard: a terminal resume of a live headless thread is warned about, never blocked", async t => {
+shardTest("switchboard: a terminal resume of a live headless thread is warned about, never blocked", async t => {
   const { root, work, tool, d } = await boot(t);
   // threads.claimed is internal; a temp-home module is an added one under contract v1, so ask as vyred's own label.
   const claimed = session => d.registry.call("threads.claimed", { session }, "module:vyred");
@@ -512,7 +519,7 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
   assert.equal(of(s.got, id, "thread.contended").length, 1);
 });
 
-test("switchboard: vyred restarting marks its threads stopped", async t => {
+shardTest("switchboard: vyred restarting marks its threads stopped", async t => {
   const { root, work, tool, d, setDaemon } = await boot(t);
   const id = (await tool("threads.start", { cwd: work })).data.id;
   await d.stop();
@@ -540,7 +547,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   assert.ok(Date.now() - before < 5000, `resuming after a restart took ${Date.now() - before}ms`);
 });
 
-test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
+shardTest("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
   const { root, tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value", "api-key": "fake-api-value" } });
   const s = sse(root);
   t.after(() => s.close());
@@ -615,7 +622,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   await until(() => launches().at(-1).argv.includes("--resume") && launches().at(-1).agent === "scout", "the agent's resume");
 });
 
-test("agents: an agent whose item is not granted to agents is refused, naming the grant to make", async t => {
+shardTest("agents: an agent whose item is not granted to agents is refused, naming the grant to make", async t => {
   const { tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value" }, ungranted: ["setup-token"] });
   await tool("agents.create", { name: "scout", projects: [], auth: { vault: "setup-token" } });
   const r = await tool("agents.ask", { agent: "scout", text: "whoami" });
@@ -628,7 +635,7 @@ test("agents: an agent whose item is not granted to agents is refused, naming th
   assert.equal((await tool("agents.ask", { agent: "scout", text: "whoami" })).data.text, "auth=subscription");
 });
 
-test("agents: a subscription agent whose fallback key is not in the vault still starts, without the fallback", async t => {
+shardTest("agents: a subscription agent whose fallback key is not in the vault still starts, without the fallback", async t => {
   const { tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value" } });
   await tool("agents.create", { name: "juno", kind: "assistant", auth: { vault: "setup-token", fallback: "api-key" } });
   const r = await tool("agents.ask", { agent: "juno", text: "whoami" });
@@ -636,7 +643,7 @@ test("agents: a subscription agent whose fallback key is not in the vault still 
   assert.equal(launches().at(-1).auth, "subscription");
 });
 
-test("agents: an API-key agent stops at its budget", async t => {
+shardTest("agents: an API-key agent stops at its budget", async t => {
   const { tool } = await boot(t, { vault: { "api-key": "fake-api-value" } });
   await tool("agents.create", { name: "ledger", projects: [], auth: { fallback: "api-key", budget_usd: 0.2 } });
   const r = (await tool("agents.ask", { agent: "ledger", text: "whoami" })).data;
@@ -647,7 +654,7 @@ test("agents: an API-key agent stops at its budget", async t => {
   assert.match(again.error.message, /spent its \$0.2 budget/);
 });
 
-test("switchboard: the presence summary of an answer says what is allowed, where, and in which thread", () => {
+shardTest("switchboard: the presence summary of an answer says what is allowed, where, and in which thread", () => {
   const asks = { a1: { thread: "0f3c9a2e-1111", tool: "Write", summary: "write notes.md", destination: "/work/notes.md" } };
   const sb = /** @type {any} */ ({ asks: { get: id => asks[id] || null }, record: () => ({ name: "Intake" }) });
   assert.equal(answerSummary(sb, { ask: "a1", decision: "allow" }), "Allow Write to /work/notes.md: write notes.md (thread Intake)");
@@ -655,7 +662,7 @@ test("switchboard: the presence summary of an answer says what is allowed, where
   assert.equal(answerSummary(sb, { ask: "zz", decision: "deny" }), "deny permission question zz");
 });
 
-test("sessions: a session binds to a running claude once, its key is checked, and a gone process vouches for nothing", t => {
+shardTest("sessions: a session binds to a running claude once, its key is checked, and a gone process vouches for nothing", t => {
   const db = open(path.join(tempHome(t), "s.db"));
   migrate(db, "threads", MIGRATIONS);
   const up = new Set([100, 200, 300]);
@@ -676,7 +683,7 @@ test("sessions: a session binds to a running claude once, its key is checked, an
   assert.ok(sessions.bind(id, 200).key, "a resumed session binds from its new process");
 });
 
-test("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused to a model and queued for a person", async t => {
+shardTest("adopt: a terminal session nobody has open is resumed headless with the lease; one that is open is refused to a model and queued for a person", async t => {
   const { tool, work, launches, transcripts, root } = await boot(t);
   const quiet = terminalSession(transcripts, work);
   const sent = (await tool("threads.send", { thread: quiet.id, text: "add a phone field", surface: "capsule" })).data;
@@ -726,7 +733,7 @@ test("adopt: a terminal session nobody has open is resumed headless with the lea
   assert.match((await tool("threads.send", { thread: crypto.randomUUID(), text: "hi" })).error.message, /no thread/);
 });
 
-test("queued for a terminal session: the Stop hook hands it over, Claude answers in that session, and the reply comes back as the thread's", async t => {
+shardTest("queued for a terminal session: the Stop hook hands it over, Claude answers in that session, and the reply comes back as the thread's", async t => {
   const { root, work, tool, launches, transcripts } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -763,7 +770,7 @@ test("queued for a terminal session: the Stop hook hands it over, Claude answers
   assert.equal(launches().filter(l => l.argv.includes(busy.id)).length, 0, "no process was started for it");
 });
 
-test("threads.unqueue: a person takes back words not yet handed over; handed-over words stay; a model cannot", async t => {
+shardTest("threads.unqueue: a person takes back words not yet handed over; handed-over words stay; a model cannot", async t => {
   const { work, tool, transcripts } = await boot(t);
   const busy = terminalSession(transcripts, work, { ageMs: 1000 });
   const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" }, "capsule")).data;
@@ -784,7 +791,7 @@ test("threads.unqueue: a person takes back words not yet handed over; handed-ove
   assert.match((await tool("threads.unqueue", { thread: busy.id }, "deck")).data.note, /Nothing is waiting/);
 });
 
-test("threads.list: live is true for a session bound to a running claude that is not ours, and false once it exits", async t => {
+shardTest("threads.list: live is true for a session bound to a running claude that is not ours, and false once it exits", async t => {
   const { work, tool, transcripts, root } = await boot(t);
   const term = terminalSession(transcripts, work);
   const bin = path.join(root, "bin");
@@ -804,7 +811,7 @@ test("threads.list: live is true for a session bound to a running claude that is
   await until(async () => (await row()).live === false, "live false after the terminal exits");
 });
 
-test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
+shardTest("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {
   const { tool } = await boot(t);
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "scout", projects: [], computer: true });
@@ -824,7 +831,7 @@ test("agents.history: each question with its answer and thread, newest last, pag
   assert.match((await tool("agents.history", { agent: "nobody" })).error.message, /no agent nobody/);
 });
 
-test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a job stops after its answer", async t => {
+shardTest("lean and one-shot threads: no plugin, tools or settings, kept on resume; a job stops after its answer", async t => {
   const { d, tool, work, launches } = await boot(t);
   const lean = (await tool("threads.start", { cwd: work, prompt: "what is 2+2", lean: true, surface: "capsule" })).data;
   await until(async () => (await tool("threads.get", { thread: lean.id })).data.events.some(e => e.type === "thread.finished"), "the answer");
@@ -847,7 +854,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
   assert.ok(!jobArgv.includes("--plugin-dir") && jobArgv.includes("--strict-mcp-config") && jobArgv[jobArgv.indexOf("--model") + 1] === "haiku");
 });
 
-test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project starts in its own worktree; github.session.cleanup runs once it is truly finished, never merely stopped", async t => {
+shardTest("ADR 0041 (github, worked with sessions): a new thread in a GitHub project starts in its own worktree; github.session.cleanup runs once it is truly finished, never merely stopped", async t => {
   const worktree = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-worktree-")));
   t.after(() => fs.rmSync(worktree, { recursive: true, force: true }));
   // The real core/github is loaded on a box now, and a module name loads once, so the stand-in
@@ -904,7 +911,7 @@ test("ADR 0041 (github, worked with sessions): a new thread in a GitHub project 
   assert.ok(!ghCalls.some(c => c[1] && c[1].session === plain.id), "no GitHub call at all for a non-GitHub project's thread");
 });
 
-test("threads.watch: said once when the thread finishes or asks, always when it stops, and not for other agents", async t => {
+shardTest("threads.watch: said once when the thread finishes or asks, always when it stops, and not for other agents", async t => {
   const { root, tool, work } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -939,7 +946,7 @@ test("threads.watch: said once when the thread finishes or asks, always when it 
   assert.equal((await tool("threads.watch", { thread: id })).data.fired, true, "a stopped thread fires at once");
 });
 
-test("usage and budget: turns, tokens and cost per agent; a warning at 80% and a stop at 100% on the API key", async t => {
+shardTest("usage and budget: turns, tokens and cost per agent; a warning at 80% and a stop at 100% on the API key", async t => {
   const { root, tool } = await boot(t, { vault: { "api-key": "fake-api-value" } });
   const s = sse(root);
   t.after(() => s.close());
@@ -970,7 +977,7 @@ test("usage and budget: turns, tokens and cost per agent; a warning at 80% and a
   assert.equal((await tool("agents.usage", { agent: "scout", since: Date.now() + 60_000 })).data[0].turns, 0, "nothing since the future");
 });
 
-test("usage on the subscription: turns and time, no dollars, and the rate-limit report said in the thread", async t => {
+shardTest("usage on the subscription: turns and time, no dollars, and the rate-limit report said in the thread", async t => {
   const { root, tool } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -991,7 +998,7 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   assert.ok(juno.duration_ms >= 5);
 });
 
-test("rate limit: a warning under 80% is kept on the thread and not said in it", async t => {
+shardTest("rate limit: a warning under 80% is kept on the thread and not said in it", async t => {
   const { root, tool } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -1004,7 +1011,7 @@ test("rate limit: a warning under 80% is kept on the thread and not said in it",
   assert.equal((await tool("agents.usage", {})).data.find(x => x.agent === "juno").limit.utilization, 0.27, "still recorded");
 });
 
-test("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {
+shardTest("learned skills: the account's and the project's folders load as plugins; lean threads and jobs get only what they name", async t => {
   const { d, root, tool, work, launches } = await boot(t);
   assert.ok(!(await tool("projects.create", { name: "Harlow", home: work })).error);
   const plugin = dir => { fs.mkdirSync(path.join(dir, ".claude-plugin"), { recursive: true }); fs.writeFileSync(path.join(dir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: path.basename(dir) })); return dir; };
@@ -1035,7 +1042,7 @@ test("learned skills: the account's and the project's folders load as plugins; l
   assert.deepEqual(dirsOf((await until(() => launches()[4], "scout's launch")).argv).slice(1), [account, harlow, scoutDir]);
 });
 
-test("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
+shardTest("agents: the assistant's brief says how to watch and drive threads for the user; an agent's does not", async () => {
   const { preamble } = await import("../agents/index.js");
   const brief = preamble({ name: "juno", kind: "assistant", projects: "*" });
   assert.match(brief, /threads_watch with \{thread, notify: "capsule", note: "<a short label>"\}/);
@@ -1044,7 +1051,7 @@ test("agents: the assistant's brief says how to watch and drive threads for the 
   assert.doesNotMatch(preamble({ name: "scout", kind: "agent", projects: ["harlow"] }), /threads_watch/);
 });
 
-test("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
+shardTest("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
   const { tool, d, root } = await boot(t);
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "probe", projects: [] });
@@ -1063,7 +1070,7 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
 
 // ------------------------------------------------------------ questions and richer permission asks (ADR 0024)
 
-test("translate: an AskUserQuestion is a question, redacted and capped; any other tool is a permission with its detail", () => {
+shardTest("translate: an AskUserQuestion is a question, redacted and capped; any other tool is a permission with its detail", () => {
   const token = "ghp_" + "A1b2".repeat(9);
   const q = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", tool_use_id: "t1",
     input: { questions: [
@@ -1096,7 +1103,7 @@ test("translate: an AskUserQuestion is a question, redacted and capped; any othe
   assert.deepEqual(other.detail, { input: { to: "kit@northwind.example", body: "hi" } });
 });
 
-test("switchboard: the presence summary of a question names the answers; always and decline say so", () => {
+shardTest("switchboard: the presence summary of a question names the answers; always and decline say so", () => {
   const asks = {
     q1: { thread: "0f3c9a2e-1111", kind: "question", tool: "AskUserQuestion", summary: "Which palette?", destination: null,
       questions: [{ question: "Which palette?", header: "Palette" }, { question: "Which sections?", header: "Sections" }] },
@@ -1118,7 +1125,7 @@ function responses(t, root) {
   return () => { try { return fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
 }
 
-test("switchboard: a question is raised small, read whole, answered (single and multi-select) and said back", async t => {
+shardTest("switchboard: a question is raised small, read whole, answered (single and multi-select) and said back", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
   const s = sse(root);
@@ -1167,7 +1174,7 @@ test("switchboard: a question is raised small, read whole, answered (single and 
   assert.equal(answered.payload.decision, "allow");
 });
 
-test("switchboard: a question can be declined", async t => {
+shardTest("switchboard: a question can be declined", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
   const s = sse(root);
@@ -1181,7 +1188,7 @@ test("switchboard: a question can be declined", async t => {
   assert.equal(of(s.got, id, "ask.answered")[0].payload.answers, undefined);
 });
 
-test("plan: the fake's ExitPlanMode ask carries the plan in its detail; allow starts building, deny keeps planning with the note", async t => {
+shardTest("plan: the fake's ExitPlanMode ask carries the plan in its detail; allow starts building, deny keeps planning with the note", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
   const s = sse(root);
@@ -1201,7 +1208,7 @@ test("plan: the fake's ExitPlanMode ask carries the plan in its detail; allow st
   assert.equal(said2.payload.text, "Starting on the plan: the price list first.");
 });
 
-test("items: a thread is its tool kinds, its plan and its words, oldest first, from stored events, with a since cursor and the caps it started with", async t => {
+shardTest("items: a thread is its tool kinds, its plan and its words, oldest first, from stored events, with a since cursor and the caps it started with", async t => {
   const { work, tool, root } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -1237,7 +1244,7 @@ test("items: a thread is its tool kinds, its plan and its words, oldest first, f
   assert.ok((await tool("threads.get", { thread: id })).data.thread.caps.resume, "the thread keeps what its provider could do when it started");
 });
 
-test("demo: Edit and Bash asks carry their detail, always hands back the suggestions, and the transcript is Claude Code's shape", async t => {
+shardTest("demo: Edit and Bash asks carry their detail, always hands back the suggestions, and the transcript is Claude Code's shape", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
   const tx = path.join(root, "fake-projects");
@@ -1293,7 +1300,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.equal(bashResult.l.toolUseResult.stdout, bashResult.b.content);
 });
 
-test("fake claude: the echo and ask turns are written to the transcript too", async t => {
+shardTest("fake claude: the echo and ask turns are written to the transcript too", async t => {
   const { root, work, tool } = await boot(t);
   const tx = path.join(root, "fake-projects");
   const was = process.env.FAKE_CLAUDE_TRANSCRIPTS;
@@ -1314,7 +1321,7 @@ test("fake claude: the echo and ask turns are written to the transcript too", as
   assert.match(lines[4].message.content[0].content, /User has answered your questions: "Which palette should the Northwind Bakery menu use\?"="Plain"/);
 });
 
-test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
+shardTest("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
   const { tool } = await boot(t);
   await tool("agents.create", { name: "kit", projects: [] });
   const r = await tool("agents.update", { agent: "kit", computer: true }, "deck");
@@ -1327,7 +1334,7 @@ test("agents.update: names its agent by name or agent, as the Deck's Give a comp
   assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
 });
 
-test("agents.create: computer true, as the Deck's New agent and Create your assistant boxes send it, is kept", async t => {
+shardTest("agents.create: computer true, as the Deck's New agent and Create your assistant boxes send it, is kept", async t => {
   const { tool } = await boot(t);
   const r = await tool("agents.create", { name: "kit", kind: "agent", projects: [], computer: true }, "deck");
   assert.equal(r.error, undefined, r.error && r.error.message);
@@ -1341,19 +1348,19 @@ test("agents.create: computer true, as the Deck's New agent and Create your assi
   assert.equal(list.find(a => a.name === "pax").computer, false, "unticked stays without one");
 });
 
-test("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {
+shardTest("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {
   for (const args of ["claude", "/usr/local/bin/claude --resume abc", "/opt/homebrew/bin/node /usr/local/bin/claude", "node /Users/alex/.npm/bin/claude -p hi"]) assert.equal(claudeCommand(args), true, args);
   for (const args of ["MainThread", "node /usr/local/bin/vyre", "/usr/bin/python3 claude.py", "bash -c claude", ""]) assert.equal(claudeCommand(args), false, args);
 });
 
-test("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
+shardTest("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
   const { queuesFor, fromLink } = await import("./index.js");
   for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com", "link:box"]) assert.equal(queuesFor(c), true, c);
   assert.deepEqual(["link:box", "deck", "mcp:link:box"].map(fromLink), [true, false, false], "the link is a caller kind of its own");
   for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
 });
 
-test("projectRules: Claude Code's addRules suggestions keep their rules; a mode becomes a rule for the whole tool", () => {
+shardTest("projectRules: Claude Code's addRules suggestions keep their rules; a mode becomes a rule for the whole tool", () => {
   assert.deepEqual(projectRules("Bash", [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "session" }]),
     [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }]);
   assert.deepEqual(projectRules("Edit", [{ type: "setMode", mode: "acceptEdits", destination: "session" }]),
@@ -1363,7 +1370,7 @@ test("projectRules: Claude Code's addRules suggestions keep their rules; a mode 
   assert.equal(answerSummary(sb, { ask: "p1", decision: "always", scope: "project" }), "Always allow Bash in Harlow Legal: npm test (thread Menu)");
 });
 
-test("always in <project>: offered for a thread in its project's folder, sent as a localSettings rule; refused elsewhere", async t => {
+shardTest("always in <project>: offered for a thread in its project's folder, sent as a localSettings rule; refused elsewhere", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
   assert.ok(!(await tool("projects.create", { name: "Harlow Legal", home: work })).error);
@@ -1393,7 +1400,7 @@ test("always in <project>: offered for a thread in its project's folder, sent as
   assert.equal((await tool("threads.asks", { thread: other })).data.length, 1, "still open after the refusal");
 });
 
-test("switchboard: a push ask and a Write ask carry the Changes row in threads.asks, never in ask.raised", async t => {
+shardTest("switchboard: a push ask and a Write ask carry the Changes row in threads.asks, never in ask.raised", async t => {
   const { root, work, tool } = await boot(t);
   const { execFileSync } = await import("node:child_process");
   const env = { ...process.env, GIT_AUTHOR_NAME: "alex", GIT_AUTHOR_EMAIL: "alex@example.com", GIT_COMMITTER_NAME: "alex", GIT_COMMITTER_EMAIL: "alex@example.com",
@@ -1432,7 +1439,7 @@ test("switchboard: a push ask and a Write ask carry the Changes row in threads.a
   await tool("threads.stop", { thread: id });
 });
 
-test("steer and queue while an ask is open: both are kept, threads.get shows them, and each reaches Claude after the answer", async t => {
+shardTest("steer and queue while an ask is open: both are kept, threads.get shows them, and each reaches Claude after the answer", async t => {
   const { root, work, tool } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -1475,7 +1482,7 @@ test("steer and queue while an ask is open: both are kept, threads.get shows the
   assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
 });
 
-test("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
+shardTest("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
   // Built at run time so the fake key does not trip the hygiene scan (test/hygiene.test.js).
   const fake = ["sk", "ant", "api03", "abcdefghijklmnopqrstuvwxyz0123456789ABCD"].join("-");
   const d = describe("Bash", { command: `curl -H "Authorization: Bearer ${fake}" https://example.com` });
@@ -1484,7 +1491,7 @@ test("describe: a Bash ask's summary is redacted, as it is shown on every device
   assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
 });
 
-test("spend cap, through the real daemon: at the cap the person's own agents.ask, threads.send and unnamed mcp session go through, the ask with a notice on the thread", async t => {
+shardTest("spend cap, through the real daemon: at the cap the person's own agents.ask, threads.send and unnamed mcp session go through, the ask with a notice on the thread", async t => {
   const { root, tool, work } = await boot(t);
   const s = sse(root);
   t.after(() => s.close());
@@ -1509,7 +1516,7 @@ test("spend cap, through the real daemon: at the cap the person's own agents.ask
   }
 });
 
-test("switchedLine: what carries over is said plainly, per kind of move", async () => {
+shardTest("switchedLine: what carries over is said plainly, per kind of move", async () => {
   const { switchedLine, modelName, providerName } = await import("./index.js");
   const caps = { rewind: true, steering: true, questions: true, interrupt: true, transcripts: true };
   assert.equal(switchedLine({ from: "claude", to: "grok", had: true, fromCaps: caps, toCaps: caps }), "Switched to Grok. It has this session's memory and files.");
@@ -1522,13 +1529,13 @@ test("switchedLine: what carries over is said plainly, per kind of move", async 
   assert.equal(providerName("openrouter"), "OpenRouter");
 });
 
-test("ownSurface: only the person's own surface names, anchored; every other string is a contest", () => {
+shardTest("ownSurface: only the person's own surface names, anchored; every other string is a contest", () => {
   for (const own of ["deck", "deck:1", "phone", "phone:ab", "capsule", "capsule:x", "glass", "lumen", "mac", "mac:studio", "web"]) assert.equal(ownSurface(own), true, own);
   for (const not of ["machine", "webhook:x", "deckx", "phones", "webby", "tailnet:other@x", "tailnet:owner@example", "tailnet:agent:a", "tailnet-guest:g@x", "device:x", "device:aaaaaaaaaaaaaaaa",
     "box:phone", "cli:123", "chat", "person", "you", "vyre", "", "mcp", "xdeck"]) assert.equal(ownSurface(not), false, not);
 });
 
-test("surfaceFor: identity comes from the verified caller, never from the surface a call names", async () => {
+shardTest("surfaceFor: identity comes from the verified caller, never from the surface a call names", async () => {
   const { surfaceFor } = await import("./index.js");
   const owner = "Owner@Example";
   // The owner's own devices.
@@ -1576,7 +1583,7 @@ test("surfaceFor: identity comes from the verified caller, never from the surfac
   assert.equal(surfaceFor({ surface: "glass:laptop" }, "module:planner", owner), "via:module:planner");
 });
 
-test("one model per turn (#41): the thread follows what the provider reports, says so once, and a switch labels old and new replies apart", async t => {
+shardTest("one model per turn (#41): the thread follows what the provider reports, says so once, and a switch labels old and new replies apart", async t => {
   const { root, work, tool } = await boot(t);
   // The account's default is not the alias the thread asked for: the provider says what it really runs.
   const had = process.env.FAKE_CLAUDE_REPORT_MODEL;
