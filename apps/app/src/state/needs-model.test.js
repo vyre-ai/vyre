@@ -122,3 +122,24 @@ test("needs: ages read short", { skip: !strip }, async () => {
   assert.equal(age(0, 3 * 3_600_000), "3h");
   assert.equal(age(0, 72 * 3_600_000), "3d");
 });
+
+test("needs: approvals.items becomes the same list; this device's proof comes from the call, not from the rows inside the cards", { skip: !strip }, async () => {
+  const { fromItems, merge } = await load();
+  const data = { items: [
+    { id: "gate:g1", source: "gate", kind: "draft", facts: gate({ presence: { required: true, covered: true, since: 5 } }) },
+    { id: "threads:a1", source: "threads", kind: "ask", facts: ask() },
+    { id: "vault:v1", source: "vault", kind: "access" }, { id: "gate:big", source: "gate", kind: "draft" },
+  ], presence: { covered: false, since: null } };
+  const w = fromItems(data);
+  assert.equal(w.gates.length, 1);
+  assert.equal(w.asks.length, 1);
+  const list = merge(w.gates, w.asks, ctx, w.presence);
+  assert.deepEqual(list.map((n) => n.id), ["gate:g1", "ask:a1"]);
+  assert.equal(list[0].presence.covered, false, "the card's row was read for the box itself: this device's own answer wins");
+  assert.equal(list[0].presence.required, true, "what the kind needs stays");
+  const covered = merge(w.gates, w.asks, ctx, { covered: true, since: 9 });
+  assert.deepEqual([covered[0].presence.covered, covered[0].presence.since], [true, 9]);
+  assert.equal(merge(w.gates, w.asks, ctx, null)[0].presence.covered, false, "no answer about this device: not covered, so a swipe opens the item");
+  assert.deepEqual(fromItems(null), { gates: [], asks: [], presence: null });
+  assert.equal(merge([gate()], [], ctx)[0].presence.covered, false, "without the argument rows are read as they say (the old path)");
+});

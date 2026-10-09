@@ -1,5 +1,5 @@
 // Needs you and Chats, live (ADR 0027 section 7, the spike's Now): painted from this device's
-// cache at once, then read from the box (gate.held, threads.asks, threads.list, projects.list) and
+// cache at once, then read from the box (approvals.items for what waits on the person, threads.list, projects.list) and
 // kept current by the event stream (ask.*, gate.*, thread.*). The approve swipe's answers run
 // here too: optimistic, held for Undo, then through the outbox (answers.ts).
 
@@ -10,7 +10,7 @@ import { tokens } from "../theme/tokens";
 import { createAnswers } from "./answers";
 import { viewCache } from "./cache";
 import { onConnection } from "./connection";
-import { answerCall, answerOutcome, applyNeedsEvent, hydrate, merge, type Decision, type Need, type NeedsContext } from "./needs-model";
+import { answerCall, answerOutcome, applyNeedsEvent, fromItems, hydrate, merge, type Decision, type Need, type NeedsContext } from "./needs-model";
 import { needsStore, setNeeds } from "./needs";
 import { threadsStore, toThreads, type ThreadRow } from "./threads";
 import { MOCK } from "../real/box";
@@ -46,9 +46,8 @@ function read(): Promise<void> {
     return reading;
   }
   reading = (async () => {
-    const [held, asks, threads, projects] = await Promise.all([
-      call("gate.held"),
-      call("threads.asks"),
+    const [waiting, threads, projects] = await Promise.all([
+      call("approvals.items"),
       call("threads.list"),
       ctx.projects ? Promise.resolve({ data: null }) : call("projects.list"),
     ]);
@@ -59,8 +58,9 @@ function read(): Promise<void> {
       void viewCache.set(CHATS_KEY, rows);
     }
     // Keep what shows when a read fails: the cache or the last read stands until one works.
-    if (held.error || asks.error) return;
-    const list = merge(held.data, asks.data, ctx);
+    if (waiting.error) return;
+    const w = fromItems(waiting.data);
+    const list = merge(w.gates, w.asks, ctx, w.presence);
     setNeeds(list, "box");
     answers.prune(list.map((n) => n.id));
     void viewCache.set(NEEDS_KEY, list);

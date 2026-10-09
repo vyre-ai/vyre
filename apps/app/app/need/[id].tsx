@@ -109,7 +109,7 @@ function HeldSend({ n }: { n: Need }) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={[type.title, { color: color.text }]}>{n.title}</Text>
         {n.agent || n.project ? <Text style={[type.meta, { color: color.label }]}>{[n.agent, n.project].filter(Boolean).join(" · ")}</Text> : null}
-        {n.why ? <Field label="Why" value={n.why} /> : null}
+        {item?.why ?? n.why ? <Field label="Why" value={item?.why ?? n.why} /> : null}
         {item ? (
           <View style={[styles.field, { borderTopColor: color.rule }]}>
             <Text style={[type.meta, { color: color.label }]}>To</Text>
