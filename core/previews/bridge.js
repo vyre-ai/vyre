@@ -283,5 +283,5 @@ export function createBridge(o) {
     return true;
   }
 
-  return { api, run, changed, forget(/** @type {string} */ id) { for (const s of subs.get(id) || []) { try { s.res.end(); } catch { /* gone */ } } subs.delete(id); met.delete(id); } };
+  return { api, run, changed, closeAll() { for (const [, set] of subs) for (const s of set) { try { s.res.end(); } catch { /* gone */ } } subs.clear(); }, forget(/** @type {string} */ id) { for (const s of subs.get(id) || []) { try { s.res.end(); } catch { /* gone */ } } subs.delete(id); met.delete(id); } };
 }

@@ -443,6 +443,6 @@ export default {
       }
     }
 
-    return { async stop() { staticSrv.close(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
+    return { async stop() { bridge.closeAll(); staticSrv.close(); /** @type {any} */ (staticSrv).closeAllConnections?.(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
   },
 };
