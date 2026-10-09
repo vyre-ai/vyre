@@ -117,7 +117,7 @@ const once = (args, env) => new Promise(resolve =>
 // On a loaded machine the process listing that tells vyred who is calling can come back empty, and vyred answers "could not tell who is calling; try again": a person tries again, so the test does.
 const run = async (args, env) => {
   let r = await once(args, env);
-  for (let i = 0; i < 5 && r.code !== 0 && /could not tell who is calling/.test(r.out); i++) { await new Promise(res => setTimeout(res, 1000)); r = await once(args, env); }
+  for (let i = 0; i < 30 && r.code !== 0 && /could not tell who is calling/.test(r.out); i++) { await new Promise(res => setTimeout(res, 1000)); r = await once(args, env); }
   return r;
 };
 

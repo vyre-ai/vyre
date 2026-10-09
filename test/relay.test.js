@@ -6,8 +6,8 @@
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
-// This file has 38 cases that took 108 s on an idle machine and past the 300 s per-file limit under load. The cases are dealt out to 2 files (relay.test.js and its -b.. siblings, which set VYRE_RELAY_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
-const SHARDS = 2;
+// This file has 38 cases that took 108 s on an idle machine and past the 300 s per-file limit under load. The cases are dealt out to 4 files (relay.test.js and its -b.. siblings, which set VYRE_RELAY_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 4;
 const SHARD = Number(process.env.VYRE_RELAY_SHARD ?? 0);
 let dealt = 0;
 const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);

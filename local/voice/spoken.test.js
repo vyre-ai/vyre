@@ -50,14 +50,17 @@ test("only the first 20000 characters are read, so a huge reply is quick and sti
   assert.equal(MAX_INPUT, 20_000);
 });
 
-test("a hostile reply cannot freeze the engine: 20000 spaces, backticks, newlines and other repeats each run in well under a second", () => {
+test("a hostile reply cannot freeze the engine: 20000 spaces, backticks, newlines and other repeats cost work in proportion to their size", () => {
   const N = 20_000;
-  for (const [name, text] of Object.entries({ spaces: " ".repeat(N), backticks: "`".repeat(N), newlines: "\n".repeat(N), tabs: "\t".repeat(N), tildes: "~".repeat(N), pipes: "|".repeat(N),
-    "space-newline": " \n".repeat(N / 2), "dash-space-newline": "- \n".repeat(N / 3), "backtick-newline": "`\n".repeat(N / 2), brackets: "[".repeat(N), "open-image": "![".repeat(N / 2), angles: "<".repeat(N), "gt": ">".repeat(N), hashes: "#".repeat(N) })) {
-    // The bracket and image patterns scan up to 300 characters from every opening bracket (about 65 ms for 20000 of them, input is capped there), so the bar is a quadratic blow-up, which takes seconds. Best of three keeps a busy machine from failing it.
-    let best = Infinity;
-    for (let i = 0; i < 3; i++) { const t = performance.now(); spoken(text); best = Math.min(best, performance.now() - t); }
-    assert.ok(best < 300, `${name} took ${Math.round(best)} ms`);
+  const makers = { spaces: n => " ".repeat(n), backticks: n => "`".repeat(n), newlines: n => "\n".repeat(n), tabs: n => "\t".repeat(n), tildes: n => "~".repeat(n), pipes: n => "|".repeat(n),
+    "space-newline": n => " \n".repeat(n / 2), "dash-space-newline": n => "- \n".repeat(n / 3), "backtick-newline": n => "`\n".repeat(n / 2), brackets: n => "[".repeat(n), "open-image": n => "![".repeat(n / 2), angles: n => "<".repeat(n), gt: n => ">".repeat(n), hashes: n => "#".repeat(n) };
+  // Best of three, then the same input at a quarter of the size: linear work is four times as slow at four times the size, a quadratic blow-up sixteen times, and a loaded machine slows both sizes alike,
+  // so the ratio holds where a fixed number of milliseconds did not (the bracket and image patterns alone take about 65 ms for 20000 characters on an idle machine).
+  const best = text => { let b = Infinity; for (let i = 0; i < 3; i++) { const t = performance.now(); spoken(text); b = Math.min(b, performance.now() - t); } return b; };
+  for (const [name, make] of Object.entries(makers)) {
+    const big = best(make(N)), small = best(make(N / 4));
+    assert.ok(big < 30 || big / Math.max(small, 2) < 10, `${name}: ${big.toFixed(0)} ms at ${N} characters but ${small.toFixed(0)} ms at ${N / 4}`);
+    assert.ok(big < 20_000, `${name} took ${big.toFixed(0)} ms`);
   }
 });
 
