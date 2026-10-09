@@ -78,6 +78,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_APPLE_TEAM_ID` | Not described yet. | `core/daemon/app.js` |
+| `VYRE_APP_URL` | Not described yet. | `harness/mcp/design.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |

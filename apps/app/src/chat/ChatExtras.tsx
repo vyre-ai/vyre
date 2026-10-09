@@ -7,6 +7,7 @@ import { SpendCapCard, WatcherCard, WelcomeCard } from "../../screens/chat-tools
 import { listen } from "../api/box";
 import { tool } from "../real/box";
 import { isSpendCapFor, spendCardData, watcherNames } from "./extras.js";
+import { ShownScreen, useShownScreens } from "./ChatShown";
 
 export function ChatExtras({ thread, empty, busy }: { thread: string; empty: boolean; busy: boolean }) {
   const real = !allowsMock();
@@ -23,12 +24,14 @@ export function ChatExtras({ thread, empty, busy }: { thread: string; empty: boo
     tool("watchers.shown", { thread }).then((d) => { if (live) setNames(watcherNames(d)); }).catch(() => {});
     return () => { live = false; };
   }, [real, thread, busy]);
+  const screens = useShownScreens(thread, busy, real);
   if (!real) return null;
-  if (!cap && !names.length && !empty) return null;
+  if (!cap && !names.length && !empty && !screens.length) return null;
   return (
     <View style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: 12, gap: 8, paddingTop: 6 }}>
       {empty ? <WelcomeCard /> : null}
       {names.map((n) => <WatcherCard key={n} name={n} />)}
+      {screens.map((e) => <ShownScreen key={`${e.module}/${e.command}/${e.id ?? ""}`} entry={e} />)}
       {cap ? <SpendCapCard data={cap as never} /> : null}
     </View>
   );

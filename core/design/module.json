@@ -1,0 +1,23 @@
+{
+  "name": "design",
+  "version": "0.1.0",
+  "description": "The design language's keeper: the block catalogue and a screen checker for anyone who designs (the Engineer, Claude Code, Codex), the space's own screens, and the proposals to change them. An agent proposes a screen; the screen's owner sees it before and after and says yes or no.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["design.catalogue", "design.validate", "design.screens", "design.proposals"],
+    "tools": [
+      { "name": "design.catalogue", "reach": "anyone", "effect": "read" },
+      { "name": "design.validate", "reach": "anyone", "effect": "read" },
+      { "name": "design.propose", "reach": "anyone", "effect": "write" },
+      { "name": "design.proposals", "reach": "person", "effect": "read" },
+      { "name": "design.decide", "reach": "person", "effect": "write" },
+      { "name": "design.screens", "reach": "anyone", "effect": "read" },
+      { "name": "design.screen.remove", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["design.proposed", "design.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}
