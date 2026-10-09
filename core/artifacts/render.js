@@ -160,18 +160,21 @@ const shell = (title, body, extra = "") => `<!doctype html><html lang="en"><head
 /**
  * An artifact's content as one page. For html it is the author's own page, unchanged (its
  * headers are what keep it in its box); for every other format it is built here, escaped.
- * @param {{ title: string, format: Format, files: Record<string,string> }} a
+ * @param {{ title: string, format: Format, files: Record<string,string>, brand?: { css: string, header: string } }} a
  * @returns {{ html: string, scripts: boolean }}
  */
-export function page({ title, format, files }) {
+export function page({ title, format, files, brand }) {
   const main = files[MAIN_FILE[format]] || "";
   if (format === "html") return { html: main, scripts: true };
-  if (format === "markdown") { const t = docTheme(main); return { html: shell(title, markdown(t.md), t.css), scripts: false }; }
+  // The space's brand (core/brand) is the default look: its style comes first, so a document's own theme, which follows, wins. Typed kinds take its accent and fonts only.
+  const bs = brand ? `<style>${brand.css}</style>` : "";
+  if (format === "markdown") { const t = docTheme(main); return { html: shell(title, (brand ? brand.header : "") + markdown(t.md), bs + t.css), scripts: false }; }
   // The typed kinds are drawn by Vyre from tokens only (draw/, app-design's artifact-renderers).
-  if (format === "slides") return { html: typed(title, DECK_CSS, drawDeck(title, main)), scripts: false };
-  if (format === "svg") return { html: typed(title, DIAGRAM_CSS, drawSvg(title, main)), scripts: false };
-  if (format === "mermaid") return { html: typed(title, DIAGRAM_CSS, drawMermaid(title, main)), scripts: false };
-  return { html: typed(title, CHART_CSS, drawChart(title, main, files[DATA_FILE] || "[]")), scripts: false };
+  const b = brand ? brand.css : "";
+  if (format === "slides") return { html: typed(title, DECK_CSS + b, drawDeck(title, main)), scripts: false };
+  if (format === "svg") return { html: typed(title, DIAGRAM_CSS + b, drawSvg(title, main)), scripts: false };
+  if (format === "mermaid") return { html: typed(title, DIAGRAM_CSS + b, drawMermaid(title, main)), scripts: false };
+  return { html: typed(title, CHART_CSS + b, drawChart(title, main, files[DATA_FILE] || "[]")), scripts: false };
 }
 
 /** A typed kind's page: the shared tokens, its own styles, and the body Vyre drew. @param {string} title @param {string} css @param {string} body */

@@ -25,6 +25,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 37 | 16 | none |
@@ -33,7 +34,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
-| [`design`](#design) | `core/design` | `box`, `local` | 7 | 2 | cli |
+| [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
@@ -200,6 +201,17 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Emits: [3 events](events.md#assistant)
 - Shows on: cli
 
+## brand
+
+The space's brand profile: logo, colours, fonts, density and the company's name, legal name, address, phone and letterhead. It is the default for artifacts, previews, documents, signing pages and screens unless a document says otherwise. All of it is optional, and a colour is never used raw: it is pulled to the nearest one that keeps text readable.
+
+- Folder: `core/brand`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#brand)
+- Emits: [1 events](events.md#brand)
+- Shows on: cli
+
 ## bridges
 
 Lets one Space share with another on purpose: a shared view, a reference, an event projection, a copy, a Kit or a hand-off task. Both Spaces agree, nothing sealed crosses, and either side can stop it at once.
@@ -295,8 +307,8 @@ The design language's keeper: the block catalogue and a screen checker for anyon
 - Folder: `core/design`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#design)
-- Emits: [2 events](events.md#design)
+- Tools: [11](tools.md#design)
+- Emits: [3 events](events.md#design)
 - Shows on: cli
 
 ## docs

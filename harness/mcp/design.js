@@ -3,7 +3,7 @@
 // session: it is added when the work is design or building a module, so its tools cost nothing the rest of the time. Inside Vyre only the Engineer designs; it calls the same functions.
 //
 // Design:  design_catalogue (the blocks, small), design_validate (a screen, with the fix for each problem), design_render (a picture of a screen, sample data where there is none),
-//          design_propose (the screen goes to its owner for a yes, before and after)
+//          design_propose (the screen goes to its owner for a yes, before and after), design_brand (the space's brand defaults, so a design is built in them)
 // Module:  module_scaffold, module_check, module_test (the kit `vyre module new|check|test`, in a few lines), module_install (checks, then stages it for the owner: installing code is theirs)
 //
 // Answers are written for few tokens: a pass is a few words, a problem names its path and the fix, a picture comes back as one image and its path.
@@ -28,6 +28,7 @@ export const TOOLS = [
   { name: "design_validate", description: "Check a screen; each problem names the path and the fix.", inputSchema: obj({ screen: { type: "object" } }, ["screen"]) },
   { name: "design_render", description: "A picture of a screen (sample data where a block has none).", inputSchema: obj({ screen: { type: "object" }, surface: { type: "string", enum: ["app", "phone", "chat"] }, theme: { type: "string", enum: ["dark", "paper"] } }, ["screen"]) },
   { name: "design_propose", description: "Send a screen to its owner for a yes, with why.", inputSchema: obj({ id: str, title: str, screen: { type: "object" }, why: str }, ["id", "screen", "why"]) },
+  { name: "design_brand", description: "The space's brand defaults: names, colour, fonts, letterhead.", inputSchema: obj({}) },
   { name: "module_scaffold", description: "Start a module that passes the checks.", inputSchema: obj({ name: str, dir: str }, ["name"]) },
   { name: "module_check", description: "Check a module's manifest, screens and entry.", inputSchema: obj({ dir: str }, ["dir"]) },
   { name: "module_test", description: "Conformance and the module's own tests.", inputSchema: obj({ dir: str }, ["dir"]) },
@@ -76,6 +77,13 @@ export async function callTool(/** @type {string} */ name, /** @type {any} */ a 
       if (r.data && r.data.problems) return text(r.data.problems.join("\n"), true);
       const p = r.data.proposal;
       return text(`proposal ${p.id} sent to the owner${p.replaces ? " (replaces a screen)" : ""}; reads ${p.uses.reads.join(", ") || "nothing"}; runs ${p.uses.runs.join(", ") || "nothing"}`);
+    }
+    case "design_brand": {
+      if (!env.box) return text("no Vyre box to ask: start Vyre (vyre up)", true);
+      const r = await env.box("brand.resolve", {});
+      if (r.error) return text(`${r.error.code}: ${r.error.message}`, true);
+      const b = r.data;
+      return text(JSON.stringify({ names: b.names, accent: b.accent && { light: b.accent.paper, dark: b.accent.dark }, fonts: b.fonts, letterhead: b.letterhead.on, logo: Boolean(b.logos.light || b.logos.mark) }));
     }
     case "module_scaffold": { const r = /** @type {any} */ (await run(["module", "new", String(a.name), ...(a.dir ? ["--dir", String(a.dir)] : [])])); return text(r.out, r.code !== 0); }
     case "module_check": { const r = /** @type {any} */ (await run(["module", "check", String(a.dir)])); return text(r.out || "ok", r.code !== 0); }

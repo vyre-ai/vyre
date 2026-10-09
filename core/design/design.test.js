@@ -84,3 +84,44 @@ test("design: views.preview resolves a screen that is not installed, for the own
   const bad = (await c("views.preview", { screen: { v: 2, layout: { block: "x" }, blocks: { x: { type: "nope" } } } })).data;
   assert.equal(bad.code, "bad_screen");
 });
+
+const CSS = '[data-block="kpis"] { background-color: var(--surface-2); border-radius: var(--r-card); }';
+
+test("design: custom CSS goes through the Engineer, passes the linter, waits for the owner and is drawn for the web only", async t => {
+  const c = await world(t);
+  const asOther = await c("design.css.propose", { scope: "space", css: CSS, why: "x" }, "mcp");
+  assert.equal(asOther.error && asOther.error.code, "denied", "an agent that is not the Engineer is refused (the Engineer itself is checked by its verified agent claim, which a test cannot forge)");
+  const bad = (await c("design.css.propose", { scope: "space", css: "body { color: red; }", why: "x" }, "cli")).data;
+  assert.ok(bad.problems.length, "the linter words come back");
+  const p = (await c("design.css.propose", { scope: "space", css: CSS, why: "softer cards" }, "cli")).data.proposal;
+  assert.equal(p.appliesTo, "web");
+  assert.deepEqual((await c("design.css", {}, "mcp")).data.css, [], "nothing on until the owner says yes");
+  const list = (await c("design.proposals", { status: "pending" })).data.proposals;
+  assert.deepEqual([list[0].kind, list[0].before, list[0].after], ["css", null, CSS]);
+  assert.deepEqual((await c("design.decide", { id: p.id, yes: true })).data, { status: "accepted", css: "space", appliesTo: "web" });
+  assert.deepEqual((await c("design.css", {}, "mcp")).data.css, [{ scope: "space", css: CSS }]);
+  assert.deepEqual((await c("design.css.verify", {})).data.off, [], "still passes");
+});
+
+test("design: an update that breaks a custom CSS turns it off with the reason, and the screen draws without it", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  let d = await start({ root, log: () => {} });
+  const c = (/** @type {string} */ tool, input = {}, caller = "cli") => call(tool, input, { root, caller });
+  const p = (await c("design.css.propose", { scope: "screen:orders", css: '[data-screen="orders"] [data-block="list"] { color: var(--accent); }', why: "x" }, "cli")).data.proposal;
+  await c("design.decide", { id: p.id, yes: true });
+  assert.equal((await c("design.css", {}, "mcp")).data.css.length, 1);
+  await d.stop();
+  // an update changes what passes: the stored stylesheet now names a token that is gone (written straight into the module's store while vyred is down)
+  const { DatabaseSync } = await import("node:sqlite");
+  const dbs = [];
+  (function walk(/** @type {string} */ dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const f = path.join(dir, e.name); if (e.isDirectory()) walk(f); else if (/^vyre\.db$/.test(e.name)) dbs.push(f); } })(root);
+  assert.ok(dbs.length, "found the store");
+  for (const f of dbs) { const db = new DatabaseSync(f); try { db.prepare("UPDATE design_css SET css = ?").run('[data-screen="orders"] { color: var(--gone); }'); } finally { db.close(); } }
+  d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  assert.deepEqual((await c("design.css", {}, "mcp")).data.css, [], "the broken stylesheet is not drawn");
+  const st = (await c("design.css.status", {})).data.css[0];
+  assert.deepEqual([st.scope, st.status], ["screen:orders", "off"]);
+  assert.match(st.reason, /--gone is not a token|use design tokens/);
+});
