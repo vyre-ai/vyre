@@ -195,6 +195,8 @@ export function ChatScreen(p: ChatScreenProps) {
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
+      // a cited field opens the record it was read from
+      onOpenRecord: (urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never),
       onReplyTo: (message: string, name: string, text?: string) => setReplyTo({ message, name, text: text ?? "" }),
       flash,
       onJumpTo: (message: string) => {
