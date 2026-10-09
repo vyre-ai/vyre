@@ -883,10 +883,10 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   await assert.rejects(tools.get("presence.person.end-paired").run({ device: "dev1" }, { caller: "module:relay" }), /only the pairing/);
   assert.equal((await tools.get("presence.person.end-paired").run({}, { caller: "module:wink" })).ended, 2);
   // The device side: only a device channel, one refusal whatever the reason.
-  await assert.rejects(tools.get("presence.person.pair-challenge").run({}, { caller: "cli", peer: { kind: "tailnet" } }), /cannot sign in that way/);
+  await assert.rejects(tools.get("presence.person.pair-challenge").run({}, { caller: "cli", peer: { kind: "tailnet" } }), /could not sign in/);
   assert.match((await tools.get("presence.person.pair-challenge").run({}, { caller: "device:aaaaaaaaaaaaaaaa", peer: { kind: "device", node: "dev1" } })).challenge, /^[A-Za-z0-9_-]{32}$/);
   assert.match(String((await grant("dev2", "module:wink")).challenge), /^[A-Za-z0-9_-]{32}$/, "the grant hands the challenge to the pairing");
-  await assert.rejects(tools.get("presence.person.start-paired").run({ sig: "x" }, { caller: "cli", peer: { kind: "tailnet" } }), /cannot sign in that way/);
+  await assert.rejects(tools.get("presence.person.start-paired").run({ sig: "x" }, { caller: "cli", peer: { kind: "tailnet" } }), /could not sign in/);
 });
 
 test("paired: a software-key device is recorded as one, and a standing rule gives it the 90-day cap back", async t => {
@@ -1018,28 +1018,39 @@ test("presence: the owner's own device is a confirmed paired Wink device: a stra
   assert.deepEqual(calls.map(c => c[0]), ["wink.device.record", "wink.device.record", "wink.device.record", "wink.device.record"], "only well-formed device ids are looked up");
 });
 
-// ---- a paired device signs in again (the app reconnects with its token; it signs in anew only when the session has lapsed) -------------------------------------------------------
+// ---- #112: a device that lost its token signs in again with its own confirmed key and replaces its own session --------------------------------------------------------------
 
-test("paired: a live session is not replaced by a second sign-in (the app keeps its token), and a lapsed one is renewed and signs in again", async t => {
-  const r = await pairedRig(t), k = r.kp();
+test("paired: asking for a challenge never ends a live session; only the device's own key answering replaces it (the old token dies at once), and another key cannot", async t => {
+  const r = await pairedRig(t), k = r.kp(), other = r.kp();
   const { IDLE } = await import("./person.js");
   r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });
   const first = /** @type {any} */ (r.startWith(k));
   assert.ok(first.token);
-  // the renewal (the module's renewGrant) does nothing while the session is live: holds() is true, so no grant is made, and a second start has nothing to answer
   assert.equal(r.people.holds("dev1"), true);
-  assert.deepEqual(r.startWith(k), { refused: true }, "a second sign-in while the first session is live is refused");
-  // the first session is untouched by that refusal: the app reconnecting with its token still works, also after a long quiet while inside the idle window
+  assert.deepEqual(r.startWith(k), { refused: true }, "with no grant at all a second start has nothing to answer");
   r.tick(10 * DAYMS);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(first, k), node: "dev1" })).ok, true, "the app reconnecting with its token works");
+  // the renewal the module makes when a device asks for a challenge: a grant that KEEPS the live session
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk, keepSession: true });
+  assert.equal(r.people.holdsGrant("dev1"), true);
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(first, k), node: "dev1" })).ok, true, "asking for the challenge cost the device nothing");
+  // another key cannot answer it, and the live session is untouched by the wrong try
+  assert.deepEqual(r.startWith(other), { refused: true });
   assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(first, k), node: "dev1" })).ok, true);
-  // left alone past the idle window the session lapses; the device then holds nothing, the renewal grants again, and the same key signs in
-  r.tick(IDLE + DAYMS);
-  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(first, k), node: "dev1" })).ok, false, "the lapsed token no longer works");
-  assert.equal(r.people.holds("dev1"), false);
-  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk });   // what renewGrant does for a confirmed owner device
+  // the device's own confirmed key answers: it replaces the session it held, the old token is dead at once
   const second = /** @type {any} */ (r.startWith(k));
-  assert.ok(second.token && second.token !== first.token, "a new session opens through the renewal");
+  assert.ok(second.token && second.token !== first.token);
+  assert.equal(second.replaced, 1, "the answer says how many it ended");
+  assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(first, k), node: "dev1" })).ok, false, "the old token is dead");
   assert.equal(/** @type {any} */ (r.people.check({ headers: r.bearer(second, k), node: "dev1" })).ok, true);
+  assert.equal(r.people.list().filter(x => x.node === "dev1").length, 1, "one live session for the device, never two");
+  // a lapsed session is renewed the same way
+  r.tick(IDLE + DAYMS);
+  assert.equal(r.people.holds("dev1"), false);
+  r.people.grant({ device: "dev1", keyId: "owner-key", deviceKey: k.jwk, keepSession: true });
+  const third = /** @type {any} */ (r.startWith(k));
+  assert.ok(third.token);
+  assert.equal(third.replaced, undefined, "nothing was live to replace");
 });
 
 test("paired: a revoked device holds nothing and every sign-in is refused, with or without its key", async t => {
@@ -1051,4 +1062,39 @@ test("paired: a revoked device holds nothing and every sign-in is refused, with 
   assert.equal(r.people.holds("dev1"), false);
   assert.deepEqual(r.startWith(k), { refused: true }, "its own key gets a random challenge and is refused");
   assert.deepEqual(r.startWith(other), { refused: true }, "so does any other key");
+});
+
+test("paired (module): a device that lost its session signs in again through the renewal; the event is logged; a removed device and another key stay refused", async t => {
+  const { default: mod } = await import("./module.js");
+  const { pairedStart } = await import("./person.js");
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const tools = new Map(), events = [], logs = [];
+  const kp = () => { const k = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }); return { priv: k.privateKey, jwk: k.publicKey.export({ format: "jwk" }) }; };
+  const sign = (k, text) => crypto.sign("sha256", Buffer.from(text), { key: k.priv, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const mine = kp(), stranger = kp();
+  let rec = { id: "dev1", kind: "computer", confirmed: true, owner: "id1", confirmedBy: "id1", hardware: false, key: mine.jwk, confirmKeyId: "owner-key" };
+  const ctx = /** @type {any} */ ({ store: { db }, config: {}, log: m => logs.push(m), events: { emit: (e, x) => events.push([e, x]) }, deps: {}, tool: (n, d) => tools.set(n, d),
+    call: async n => n === "wink.device.record" ? { data: rec } : { error: { message: "no" } } });
+  await mod.start(ctx);
+  const meta = { caller: "device:aaaaaaaaaaaaaaaa", peer: { kind: "device", node: "dev1" } };
+  const challenge = async () => (await tools.get("presence.person.pair-challenge").run({}, meta)).challenge;
+  const signIn = async (/** @type {any} */ k) => tools.get("presence.person.start-paired").run({ sig: sign(k, pairedStart({ device: "dev1", challenge: await challenge() })) }, meta);
+  const live = () => db.prepare("SELECT id FROM presence_people WHERE node = 'dev1' AND paired = 1").all().map(x => x.id);
+  const a = await signIn(mine);                         // the first sign-in: the renewal makes the grant from the confirmed record
+  assert.deepEqual(live(), [a.id]);
+  const b = await signIn(mine);                         // the app lost its token: it signs in again with its own key while the first session is still live
+  assert.notEqual(b.token, a.token);
+  assert.deepEqual(live(), [b.id], "the new session replaced the old");
+  assert.ok(db.prepare("SELECT 1 FROM presence_removed WHERE id = ?").get(a.id), "the old token is on the removed list");
+  assert.ok(events.some(([e, x]) => e === "presence.session-replaced" && x.device === "dev1" && x.ended === 1), "the replacement is logged as an event");
+  assert.ok(logs.some(l => /signed in again with its own key/.test(l)));
+  await assert.rejects(signIn(stranger), /could not sign in/, "a key the owner did not confirm is refused");
+  assert.deepEqual(live(), [b.id], "and the live session is untouched");
+  // removed by the owner: the pairing record goes, its sessions end, and nothing renews
+  assert.equal((await tools.get("presence.person.end-paired").run({ device: "dev1" }, { caller: "module:wink" })).ended >= 1, true);
+  rec = /** @type {any} */ (null);
+  await assert.rejects(signIn(mine), /pair it again from the owner's device/, "a removed device stays refused, with its own old key, and the refusal names the way back");
+  assert.deepEqual(live(), []);
 });
