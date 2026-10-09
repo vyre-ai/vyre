@@ -143,6 +143,7 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Map<string, { prefix: string, actions: string[] }[]>} what each first-party module may mint for others: its manifest's `needs.kernel.mints`, set at install */ const mints = new Map();
   /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
   /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
@@ -799,6 +800,7 @@ export function createGrantsStore(cfg) {
      */
     async installModule(name, needs) {
       const k = kernelChain(), actor = { kind: "service", id: name, space: cfg.space };
+      mints.set(name, Array.isArray(needs.mints) ? needs.mints.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)).map((/** @type {any} */ e) => ({ prefix: e.prefix, actions: e.actions.map(String) })) : []);
       if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", name), { actor }); }
       // What the module is given: `needs.grants` is a list of { prefix, actions } (each prefix its own actions, so a service can be narrowed to its own types); the older `actions` with `prefixes` gives every
       // prefix the same actions. A change to either replaces the module's grants.
@@ -838,6 +840,26 @@ export function createGrantsStore(cfg) {
     async takeBack(q) {
       const out = [], why = String(q.reason || "taken back");
       for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.source ? g.source === q.source : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      return out;
+    },
+    /**
+     * A first-party module making a grant for someone else (a device it paired, a deployment's secret): only for the actions and under the address prefixes its signed manifest lists in `needs.kernel.mints`,
+     * from a `source` of its own name, never wider; the kernel refuses anything else. The module checks its own person's yes before it calls. @param {string} module @param {{ subject: any, actions: string[], resource: { prefix: string }, conditions?: any, source: string, reason?: string }} i
+     */
+    async mint(module, i) {
+      const acts = Array.isArray(i.actions) ? i.actions.map(String) : [], res = i.resource && i.resource.prefix, list = mints.get(module) || [];
+      if (!acts.length || typeof res !== "string" || !String(i.source).startsWith(`${module}:`) || !list.some(e => acts.every(a => e.actions.includes(a)) && containedPrefix(res, `vyre://${cfg.space}/${e.prefix}`))) throw new KernelError("not_allowed", `${module} may not make that grant`);
+      if (!i.subject || !["actor", "group"].includes(i.subject.kind)) throw new KernelError("bad_input", "a made grant has an actor or a group for its subject");
+      const k = kernelChain(), actor = i.subject.actor;
+      if (actor && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: i.subject, actions: acts, action_set_version: version, resource: i.resource, conditions: i.conditions || {}, issuer: { kind: "service", id: module, space: cfg.space }, source: i.source, ...(i.reason ? { reason: String(i.reason).slice(0, 200) } : {}), status: "active", created_at: clock() });
+      grants.set(g.id, g); await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      return g.id;
+    },
+    /** A module ending grants it made (by id, or by `source`): only those whose source carries its name. @param {string} module @param {{ id?: string, source?: string, reason?: string }} q */
+    async unmint(module, q) {
+      const out = [];
+      for (const g of [...grants.values()]) if (g.source.startsWith(`${module}:`) && (q.id ? g.id === q.id : q.source && g.source === q.source)) out.push(...await killTree(kernelChain(), g, String(q.reason || "taken back")));
       return out;
     },
     personalVault: async () => (await personalOf()).id,
