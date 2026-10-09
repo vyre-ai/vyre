@@ -34,7 +34,7 @@ agent/CLI --tool--> module chrome (local/hands-chrome-mac/index.js, in vyred)
 
 `extension/background.js` is the shell: it connects to the host, authenticates the tab floor,
 dispatches `{id, op, args}` to the capability that registered `op`, redacts the result
-(`shared/redact.js`), and answers. A capability is a file in `extension/caps/` that default-exports
+(`shared/sk/siteops/redact.js`), and answers. A capability is a file in `extension/caps/` that default-exports
 `{ name, ops: { "<cap>.<name>": async (args, ctx) => result }, onEvent?(evt, ctx) }` and is listed in
 `extension/caps/index.js`. `ctx` gives `ctx.cdp` (attach/send/on), `ctx.tabs`, `ctx.emit(event)`,
 `ctx.stopped()` (true while the person's stop is in force) and `ctx.floorAllows(tabId, op)`. The vault
@@ -78,7 +78,7 @@ opened is remembered and is the only kind `tabs.close` may close.
 ## Redaction
 
 Cookies, tokens, session ids, CSRF tokens, API keys and passwords are removed before the model sees
-them (`shared/redact.js`): names and lengths stay, values never. It runs in the extension on every
+them (`shared/sk/siteops/redact.js`): names and lengths stay, values never. It runs in the extension on every
 result and again in the module on arrival. There is no argument that asks for a raw value.
 
 ## Floor and Gate

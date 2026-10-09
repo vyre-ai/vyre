@@ -970,5 +970,13 @@
  "test/tools-budget.test.js": 3,
  "test/tools-find-quality.test.js": 2,
  "test/tools-text-names.test.js": 6,
- "test/token-proof.test.js": 8
+ "test/token-proof.test.js": 8,
+ "lib/siteops/classify.test.js": 8,
+ "lib/siteops/codec.test.js": 6,
+ "lib/siteops/extract.test.js": 6,
+ "lib/siteops/learn.test.js": 10,
+ "lib/siteops/store.test.js": 7,
+ "lib/siteops/run.test.js": 5,
+ "local/hands-chrome-mac/ext-ops.test.js": 7,
+ "local/hands-chrome-mac/ops-tool.test.js": 6
 }

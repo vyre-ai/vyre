@@ -13,7 +13,7 @@ import path from "node:path";
 import { encode, reader } from "./native-host/stdio.js";
 import { socketPath } from "./native-host/host.js";
 import * as proto from "./extension/shared/proto.js";
-import * as redact from "./extension/shared/redact.js";
+import * as redact from "./extension/shared/sk/siteops/redact.js";
 
 export { socketPath };
 

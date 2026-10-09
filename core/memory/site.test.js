@@ -138,7 +138,7 @@ test("site.list, site.forget and site.restore: one item, a whole site, then the 
   await w.call("memory.site.put", { origin: AGENCY, patch: { family: "ghl", names: ["GHL"] } });
   const list = (await w.call("memory.site.list", {})).data.sites;
   assert.deepEqual(list.map(s => s.key).sort(), [AGENCY, ORIGIN]);
-  assert.deepEqual(list.find(s => s.key === ORIGIN).counts, { controls: 1, api: 1, flows: 0, notes: 0, frames: 0 });
+  assert.deepEqual(list.find(s => s.key === ORIGIN).counts, { controls: 1, api: 1, ops: 0, flows: 0, notes: 0, frames: 0 });
   assert.equal((await w.call("memory.site.forget", { key: ORIGIN, part: "api", id: "e_1" })).data.forgotten, 1);
   assert.equal((await w.call("memory.site.get", { origin: ORIGIN })).data.origin.api.length, 0);
   assert.equal((await w.call("memory.site.forget", { key: ORIGIN })).data.forgotten, 1);

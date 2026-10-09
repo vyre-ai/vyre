@@ -8,7 +8,7 @@
 // minutes with no reader (one setTimeout per tab, no polling). Console and script rings fill only
 // while a group is on.
 //
-// NOTHING RAW LEAVES. Every return path goes through shared/redact.js. Page HTML, script source,
+// NOTHING RAW LEAVES. Every return path goes through shared/sk/siteops/redact.js. Page HTML, script source,
 // console text and eval results are page-controlled strings, so they are treated as hostile and
 // as secret-bearing: they are redacted first and bounded after, so a cut can never leave half a
 // token that no longer matches a pattern.
@@ -19,7 +19,7 @@
 // per session, so a child's script is addressed as "<session>:<id>". dev.inspect and dev.console.eval take a `frame`
 // and run in that frame's session (or its execution context, for a same-process frame).
 
-import * as redact from "../shared/redact.js";
+import * as redact from "../shared/sk/siteops/redact.js";
 import { classify } from "../shared/floor.js";
 import { passwordFieldScript, CREDENTIAL_STORE } from "../shared/guards.js";
 import { guardInstallWrites, guardCollect, held as heldRequest } from "../shared/outbound.js";

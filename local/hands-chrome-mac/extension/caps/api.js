@@ -1,7 +1,7 @@
 // @ts-check
 // api: learn an app's own API from what the page already called, then call it the same way.
 //
-// api.learn reduces the net buffer's XHR/fetch traffic to shapes (shared/apilearn.js: path
+// api.learn reduces the net buffer's XHR/fetch traffic to shapes (shared/sk/siteops/apilearn.js: path
 // templates, query and body types, credential KIND, status codes, no values) and keeps the
 // catalog in chrome.storage.session by origin, bounded. Session storage is cleared when the
 // browser closes and is never synced, and it holds no secret because the catalog has none.
@@ -18,7 +18,7 @@
 // frame's own cookies and auth sign it; the origin guard then compares against that frame's origin.
 
 import { classifySend, held, writeGate } from "../shared/outbound.js";
-import { learn, mergeCatalog, buildCall } from "../shared/apilearn.js";
+import { learn, mergeCatalog, buildCall } from "../shared/sk/siteops/apilearn.js";
 import { records, target, refuse, pageFetch, present, start, frameList } from "./net.js";
 
 
