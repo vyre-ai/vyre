@@ -42,6 +42,13 @@ test("a matter entering the stage gets a signing request and its link by email; 
   const rec = await w.kernel.records.create(alex, "matter", { client: "Dana Harlow", email: "dana@harlow.test", stage: "Intake" });
   await w.kernel.records.update(alex, "matter", rec.id, { stage: "Out for signature" }, rec.version);
   await settle(w);
+  // the signing request and the email are outward: each waits for the person's yes, and runs once it is given
+  for (let i = 0; i < 6; i++) {
+    const held = w.kernel.tasks.filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.state !== "done");
+    if (!held.length) break;
+    for (const t of held) w.kernel.completeTask(t.id, { outcome: "approved" });
+    await settle(w);
+  }
   assert.equal(services.length, 1, "one signing request");
   assert.deepEqual(services[0].request.body, { template_id: 12, send_email: false, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow" }] });
   assert.equal(mine(w, "matter")[0].data.signature_submission, "4411");
