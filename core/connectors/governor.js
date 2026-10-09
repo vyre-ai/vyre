@@ -115,8 +115,8 @@ export function createGovernor({ store, now = Date.now, random = Math.random, ma
       store.put(id, s);
       return { stopped: !!s.stopped_at, cooldown_until: s.cooldown_until };
     },
-    /** A person cleared the challenge. @param {string} id */
-    resume(id) { const s = store.get(id); if (!s) return false; store.put(id, { ...s, stopped_at: null, stopped_reason: null }); return true; },
+    /** A person cleared the challenge: true when the account was stopped. @param {string} id */
+    resume(id) { const s = store.get(id); if (!s || !s.stopped_at) return false; store.put(id, { ...s, stopped_at: null, stopped_reason: null }); return true; },
     /** Today's use, for the Connection page. @param {string} id @param {NonNullable<ReturnType<typeof settingsOf>>} settings */
     usage(id, settings) { const s = load(id, localParts(now(), settings.tz).day); return { day: s.day, reads: s.reads, writes: s.writes, stopped: !!s.stopped_at, stopped_reason: s.stopped_reason, cooldown_until: s.cooldown_until > now() ? s.cooldown_until : null }; },
   };
