@@ -207,7 +207,7 @@
       "design/system/components/top-bar.md",
       "design/system/components/turn.md"
     ]},
-    { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
+    { "title": "Status", "pages": ["roadmap.md", "known-gaps.md", "changelog.md"] }
   ],
   "unpublished": ["proposals/", "design/boards/"]
 }
