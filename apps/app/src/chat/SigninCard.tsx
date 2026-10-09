@@ -10,17 +10,18 @@ import { loginsFor, signinWords } from "./screen-model.js";
 
 type Sign = { block: "signin"; id: string; computer: string; site: string; why: string; state: "waiting" | "done" | "cancelled" | "expired" };
 
-export function SigninCard({ block }: { block: Sign }) {
+/** `sample` stands in for the Vault's matching logins in the sample world (the shots); a real card asks the Vault. */
+export function SigninCard({ block, sample }: { block: Sign; sample?: { name: string; origin: string; exact: boolean }[] }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
-  const [logins, setLogins] = useState<{ name: string; origin: string; exact: boolean }[]>([]);
+  const [logins, setLogins] = useState<{ name: string; origin: string; exact: boolean }[]>(sample ?? []);
   const state = done && block.state === "waiting" ? "done" : block.state;
   const w = signinWords({ site: block.site, state });
   useEffect(() => {
-    if (state !== "waiting") return;
+    if (state !== "waiting" || sample) return;
     let dead = false;
     tool<{ items?: { name: string; kind: string; hosts?: string[] }[] }>("vault.items.names", { q: block.site.split(".").slice(-2, -1)[0] || block.site, kind: "login", limit: 30 })
       .then((r) => { if (!dead) setLogins(loginsFor(r.items ?? [], block.site)); }).catch(() => {});
