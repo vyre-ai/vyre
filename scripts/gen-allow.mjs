@@ -336,15 +336,52 @@ export const PRESENCE_RULINGS = Object.freeze({
   }),
 });
 
+/**
+ * A tool a PERSON does, newly open to the surfaces they use (the Deck, the Capsule, the phone and the paired computer): a cell that was `denied` because the tool listed other callers, now a person-surface caller
+ * that still has to pass the tool's own presence floor. Narrow like a presence removal: one tool, the person callers, the one refusal it replaced, and the person's ruling. Never a model, guest, MCP or harness
+ * caller. Written into kernel/golden/presence.json beside the presence rulings.
+ */
+export const SURFACE_RULINGS = Object.freeze({
+  "vault.import": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "the app imports the export a person picked (its bytes), or the .env files a scan found, into their own Vault; it asks the person's presence on that exact import, and an assistant still cannot pass bytes",
+  }),
+  "vault.import.preview": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "the app previews the export a person picked, by name and count only, before it imports; it asks the person's presence",
+  }),
+  "vault.env.scan": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["mobile"]),
+    note: "the phone app lists the .env files in the person's projects that hold keys: names and counts, never a value",
+  }),
+});
+
 /** @returns {{ tool: string, was: string, callers: string[], ruling: string, reason: string }[]} */
 export function generatePresence() {
   const RISKY = /agent|^tailnet-guest|^mcp|^harness/;
-  return Object.entries(PRESENCE_RULINGS).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([tool, r]) => {
-    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
-    if (!/CHAT\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a presence removal names its CHAT.md ruling`);
-    if (!r.callers.length || r.callers.some(c => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a presence removal names person callers only, never a model, guest, MCP or harness caller`);
+  const person = (/** @type {string} */ tool, /** @type {any} */ r) => {
+    if (!/(CHAT|ROADMAP)\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a ruled change names its CHAT.md or ROADMAP.md ruling`);
+    if (!r.callers.length || r.callers.some((/** @type {string} */ c) => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a ruled change names person callers only, never a model, guest, MCP or harness caller`);
     return { tool, was: r.was, callers: [...r.callers], ruling: r.ruling, reason: `${r.ruling}; ${tool} changed in ${r.commit}: ${r.note}` };
+  };
+  const presence = Object.entries(PRESENCE_RULINGS).map(([tool, r]) => {
+    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
+    return person(tool, r);
   });
+  const surfaces = Object.entries(SURFACE_RULINGS).map(([tool, r]) => {
+    if (r.was !== "denied") throw new Error(`gen-allow: ${tool}: a surface ruling is for a denied cell`);
+    return person(tool, r);
+  });
+  return [...presence, ...surfaces].sort((a, b) => (a.tool < b.tool ? -1 : 1));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

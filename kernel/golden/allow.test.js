@@ -62,14 +62,14 @@ test("every DECLARED tool has its own entry naming the commit, none is person on
 });
 
 // A ruled presence removal on a tool a person does (kernel/golden/presence.json, generated from PRESENCE_RULINGS): narrow, and never a way to open a tool to a model.
-import { generatePresence, PRESENCE_FILE, PRESENCE_RULINGS } from "../../scripts/gen-allow.mjs";
+import { generatePresence, PRESENCE_FILE, PRESENCE_RULINGS, SURFACE_RULINGS } from "../../scripts/gen-allow.mjs";
 import { weakened, presenceAllow, risky } from "./index.js";
 
-test("the committed presence file is exactly the generator's output, and every entry names a CHAT.md ruling, one refusal (presence_required) and person callers only", () => {
+test("the committed presence file is exactly the generator's output, and every entry names a ruling, one refusal (presence_required, or denied for a surface ruling) and person callers only", () => {
   assert.equal(fs.readFileSync(PRESENCE_FILE, "utf8"), render(generatePresence()), "run: npm run golden:allow");
   for (const e of JSON.parse(fs.readFileSync(PRESENCE_FILE, "utf8"))) {
-    assert.match(e.ruling, /CHAT\.md/);
-    assert.equal(e.was, "presence_required");
+    assert.match(e.ruling, /(CHAT|ROADMAP)\.md/);
+    assert.equal(e.was, e.tool in SURFACE_RULINGS ? "denied" : "presence_required");
     assert.ok(e.callers.length > 0 && !e.callers.some(risky), `${e.tool}: no model, guest, MCP or harness caller`);
   }
 });
@@ -87,6 +87,20 @@ test("the gate lets a ruled presence removal through only for its tool, its pers
   const tool2 = mk("spaces.members.add", "deck", "presence_required");
   assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
   assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
+});
+
+test("a surface ruling excuses its tool, its person callers and the one refusal (denied), and nothing else", () => {
+  const mk = (tool, caller, was, now = "would run") => ({ a: { roles: { box: { rows: { [tool]: "A" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { A: was } }, b: { roles: { box: { rows: { [tool]: "B" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { B: now } } });
+  const allow = presenceAllow();
+  const ok = mk("vault.import", "capsule", "denied");
+  assert.deepEqual(weakened(ok.a, ok.b, allow), []);
+  for (const caller of ["mcp", "cli:agent:kit", "tailnet-guest", "harness"]) { const m = mk("vault.import", caller, "denied"); assert.equal(weakened(m.a, m.b, allow).length, 1, `${caller} is not excused`); }
+  const refused = mk("vault.import", "capsule", "presence_required");
+  assert.equal(weakened(refused.a, refused.b, allow).length, 1, "another refusal is not excused");
+  const other = mk("vault.reveal", "capsule", "denied");
+  assert.equal(weakened(other.a, other.b, allow).length, 1, "another tool is not excused");
+  const phoneOnly = mk("vault.env.scan", "deck", "denied");
+  assert.equal(weakened(phoneOnly.a, phoneOnly.b, allow).length, 1, "env.scan is excused for the phone only");
 });
 
 test("every memory tool a model may call has a note, and a note is only for a tool the manifest still has", () => {

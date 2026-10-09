@@ -38,6 +38,7 @@ import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
+import { secureSecrets } from "./secure-paste.js";
 import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
@@ -104,6 +105,8 @@ export function ChatScreen(p: ChatScreenProps) {
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
   const [note, setNote] = useState<string | null>(null);
+  // A key in the message is on its way into the Vault: the label of the one being secured now.
+  const [securing, setSecuring] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [toolsOpen, setToolsOpen] = useState(false);
   // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
@@ -209,8 +212,13 @@ export function ChatScreen(p: ChatScreenProps) {
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
+    async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
+      // A key in the words goes to the Vault first; what is sent holds a reference, so the assistant and the transcript never hold the value.
+      const safe = await secureSecrets(typed, { list: async () => ((await tool<{ items?: { name: string }[] }>("vault.list")).items ?? []).map((i) => i.name), put: (input) => tool("vault.put", input), onSecuring: setSecuring });
+      setSecuring(null);
+      if ("error" in safe) { setNote(safe.error); return; }
+      const text = safe.text;
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
         if (!r.ok) setNote(r.reason);
@@ -328,6 +336,11 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      {securing ? (
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+          <Chip tone="ok" icon="shield">{`Securing your ${securing} in the Vault`}</Chip>
+        </View>
+      ) : null}
       {note ? (
         <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Text size="caption" tone="muted">{note}</Text>

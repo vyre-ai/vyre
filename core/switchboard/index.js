@@ -14,6 +14,8 @@
 
 import { capsFromInit } from "../../lib/harness-caps.js";
 import { newId } from "../../lib/id.js";
+import { refuseKey, planSecure } from "../../lib/secure-paste.js";
+import { locateSecrets } from "../../lib/credential-shapes.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -3988,6 +3990,7 @@ export default {
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
         guard(caller, "start sessions");
+        if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
@@ -4131,6 +4134,59 @@ export default {
       throw Object.assign(new Error(e.message), { code: e.code });
     };
 
+    // A key in a person's own message: held as a card, not bounced (R031-68). The raw key lives only in this process's memory under a random ref, and only for HELD_KEY_MS; the Gate holds the words with
+    // `vault://name` where the key was, and the person's yes on that card (the Gate's outward approval, a verified yes) is what lets the Vault save the key and the message go out. A no, a restart or the
+    // timeout sends nothing and keeps nothing. Anyone who is not a person's own surface is refused outright (refuseKey).
+    const HELD_KEY_MS = 30 * 60_000;
+    /** @type {Map<string, { until: number, items: { name: string, label: string, input: any }[], text: string, i: any, caller: string, peer: any }>} */
+    const heldKeys = new Map();
+    const KEY_SENDER = "threads:key";
+    let keySenderOffered = false;
+    const offerKeySender = async () => {
+      if (keySenderOffered) return;
+      const r = await ctx.call("gate.offer", { name: KEY_SENDER, tool: "threads.key-release", kinds: ["send"], content: { body: "the message, with vault://name where each key was", summary: "what the card says it does" } });
+      if (r.error) throw Object.assign(new Error(`the Gate did not take the key sender: ${r.error.message}`), { code: r.error.code || "failed" });
+      keySenderOffered = true;
+    };
+    /** @type {(i: any, meta?: any) => Promise<any>} */ let sendHandler;
+    const holdKey = async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!locateSecrets(i.text).length) return null;
+      if (!personTurn(meta.caller)) { refuseKey(i.text); }
+      let taken = [];
+      try { const l = await ctx.call("vault.list", {}); taken = (l.data && l.data.items || []).map((/** @type {any} */ x) => x.name); } catch { /* the save says if the Vault is not there */ }
+      const plan = planSecure(String(i.text), taken);
+      const now = Date.now();
+      for (const [k, v] of heldKeys) if (v.until < now) heldKeys.delete(k);
+      const ref = crypto.randomBytes(12).toString("hex");
+      heldKeys.set(ref, { until: now + HELD_KEY_MS, items: plan.items, text: plan.text, i: { ...i, text: plan.text }, caller: String(meta.caller), peer: meta.peer });
+      const what = plan.items.map(x => x.label).join(" and ");
+      await offerKeySender();
+      const r = await ctx.call("gate.request", { kind: "send", via: KEY_SENDER, to: [String(i.thread)], content: { ref, body: plan.text, summary: `Save your ${what} to the Vault and send this message` },
+        why: `Save this ${what} to your Vault and send the message with it?`, thread: String(i.thread) });
+      if (r.error) { heldKeys.delete(ref); throw Object.assign(new Error(r.error.message), { code: r.error.code }); }
+      return { held: true, state: "held", id: r.data && r.data.id, keys: plan.items.map(x => x.label),
+        message: `That message has ${plan.items.length === 1 ? "a key" : "keys"} in it, so it is held. Approve it and Vyre saves ${plan.items.length === 1 ? "it" : "them"} to your Vault and sends the message with ${plan.items.map(x => "vault://" + x.name).join(", ")} in its place. A no sends nothing.` };
+    };
+    ctx.tool("threads.key-release", {
+      description: "The Gate's sender for a held message that carried a key: once the person approves the card, save the key to the Vault and send the message with its vault:// reference. Not a public name.", internal: true,
+      input: { type: "object", required: ["id", "to", "content"], properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } } },
+      callers: ["module"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (meta.caller !== "module:gate") throw Object.assign(new Error("the Gate alone releases a held key message"), { code: "denied" });
+        const ref = String(i.content && i.content.ref || "");
+        const h = heldKeys.get(ref);
+        if (!h || h.until < Date.now()) { heldKeys.delete(ref); throw Object.assign(new Error("this message was held too long, or the box restarted since: paste the key and send it again"), { code: "expired" }); }
+        // The yes on the card covered this: the Gate only calls here after the person's approval.
+        for (const it of h.items) {
+          const r = await ctx.call("vault.put", it.input);
+          if (r.error) throw Object.assign(new Error(`the Vault did not take your ${it.label}: ${r.error.message}`), { code: r.error.code || "failed" });
+        }
+        const sent = await sendHandler(h.i, { caller: h.caller, peer: h.peer, firstParty: false });
+        heldKeys.delete(ref);
+        return { saved: h.items.map(x => x.name), sent: true, ...(sent && sent.uuid ? { uuid: sent.uuid } : {}) };
+      },
+    });
+
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
@@ -4144,8 +4200,10 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
+      (sendHandler = async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
+        // a key never reaches a model, from any surface (lib/secure-paste.js): a person's own surface gets it held as a card, anyone else a refusal
+        { const held = await holdKey(i, meta); if (held) return held; }
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
@@ -4174,7 +4232,7 @@ export default {
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
-      });
+      }));
 
     tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
       { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
@@ -4378,6 +4436,7 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { ...EDIT_SHAPE, text: str } },
       async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "edit and retry messages");
+        refuseKey(i.text);
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit and retry a message"), { code: "denied" });
         return sb.editRetry(i.thread, i.message || null, String(i.text), { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });

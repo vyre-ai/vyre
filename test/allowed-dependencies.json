@@ -32,6 +32,7 @@
    "expo-camera": "scan a pairing QR on iOS (Android uses modules/vyre-scan)",
    "expo-clipboard": "copy and paste",
    "expo-constants": "expo peer: app config",
+   "expo-document-picker": "choose a password export from Files on a phone (nothing else in the app opens the system file picker)",
    "expo-font": "expo peer: fonts",
    "expo-haptics": "touch feedback",
    "expo-linking": "deep links for pairing",

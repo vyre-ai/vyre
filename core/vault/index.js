@@ -355,15 +355,37 @@ export default {
 
     // Preview opens the file and the existing logins, so it asks for the same presence as import
     // (ADR 0028, decision 1). It returns names and counts, never a value.
-    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
-      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.importPreview(input, caller),
-      presence("Preview a file for import", ({ file }) => `Preview the items in ${path.resolve(String(file))}`));
+    // The app sends the bytes of the file the person picked (`content`, base64, with its `filename`); an assistant never does, so a value cannot pass through Claude.
+    const noContentFromClaude = (input, caller) => { if (input.content !== undefined && callerKind(caller) === "mcp") throw new Error("Claude reads a file by its path on this machine; the bytes are never passed through Claude"); };
+    const what = ({ file, filename }) => (file ? path.resolve(String(file)) : String(filename || "the exported file"));
+    tool("vault.import.preview", [...SURFACES, ...PHONE, "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
+      obj({ file: str, format: str, content: str, filename: str }), (input, { caller }) => { noContentFromClaude(input, caller); if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content"); return vault.importPreview(input, caller); },
+      presence("Preview a file for import", input => `Preview the items in ${what(input)}`));
 
-    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
-      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
-      presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
+    // Several .env files in one call, so one yes covers a whole scan (vault.env.scan lists them). Each is imported on its own and the answers are merged; a file that fails is reported, and the rest still go.
+    const importMany = async (input, caller) => {
+      const files = input.files;
+      if (!Array.isArray(files) || !files.length || files.length > 100 || !files.every(f => typeof f === "string" && path.isAbsolute(f))) throw new Error("files is a list of up to 100 absolute paths");
+      const out = { format: "env", added: [], updated: [], same: [], conflicts: [], renamed: [], skipped: [], rewritten: [], unchanged: [], committed: [] };
+      for (const file of files) {
+        try {
+          const r = await vault.import({ file, format: "env", conflicts: input.conflicts, rewrite: input.rewrite }, caller);
+          for (const k of Object.keys(out)) if (Array.isArray(r[k])) out[k].push(...r[k]);
+        } catch (e) { out.skipped.push(`${path.basename(path.dirname(file))}/${path.basename(file)}: ${e.message}`); out.unchanged.push(file); }
+      }
+      return out;
+    };
+    tool("vault.import", [...SURFACES, ...PHONE, "mcp"], "Import a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and the other managers vyred reads. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored. `files` imports several .env files at once, under one yes.",
+      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" }, content: str, filename: str, files: strs }),
+      (input, { caller }) => {
+        noContentFromClaude(input, caller);
+        if (input.files !== undefined) return importMany(input, caller);
+        if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content");
+        return vault.import(input, caller);
+      },
+      presence("Import a file into the vault", input => Array.isArray(input.files) ? `Import ${input.files.length} .env file${input.files.length === 1 ? "" : "s"} into the vault${input.rewrite ? " and rewrite them to vault references" : ""}` : `Import the items in ${what(input)} into the vault${input.rewrite ? " and rewrite its .env files to vault references" : ""}`));
 
-    tool("vault.env.scan", SURFACES, "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
+    tool("vault.env.scan", [...SURFACES, ...PHONE], "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
       obj({ roots: strs }), async ({ roots }) => {
         /** @type {{ project?: string, dir: string }[]} */
         let dirs = [];
