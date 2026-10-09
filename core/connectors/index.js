@@ -302,7 +302,7 @@ export default {
       effect: "read", callers: PEOPLE,
       description: "The Connections an assistant proposed that the person has not yet approved or declined: { proposals: [{ proposal, by, form, card }] }, the card being the plain words the person is asked.",
       input: obj({}),
-      run: async () => ({ proposals: await made.proposals() }),
+      run: () => ({ proposals: made.proposals() }),
     });
     ctx.tool("connectors.connection.approve", {
       effect: "write", callers: PEOPLE,

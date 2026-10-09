@@ -177,21 +177,20 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
       const label = String(form.label || "").trim();
       if (!label) throw fail("label: a short name", "bad_input");
       siteDeclaration({ id: form.id ? String(form.id) : label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40), label, origin, entries, ...(Array.isArray(form.polls) ? { polls: form.polls } : {}) });
-      const clean = { site: origin, label, ...(form.id ? { id: String(form.id) } : {}), ...(Array.isArray(form.operations) ? { operations: form.operations.map(String) } : {}), ...(Array.isArray(form.polls) ? { polls: form.polls } : {}) };
+      const card = siteCardOf({ label, origin, entries });
+      // the card is kept with the proposal, so the person's list is read without asking the site record again
+      const clean = { site: origin, label, card, ...(form.id ? { id: String(form.id) } : {}), ...(Array.isArray(form.operations) ? { operations: form.operations.map(String) } : {}), ...(Array.isArray(form.polls) ? { polls: form.polls } : {}) };
       const id = newPrefixedId("prop");
       db.prepare("DELETE FROM connectors_proposals WHERE json_extract(form, '$.label') = ? AND proposed_by = ?").run(label, by);
       db.prepare("INSERT INTO connectors_proposals (id, form, proposed_by, why, created) VALUES (?,?,?,?,?)").run(id, JSON.stringify(clean), by, why ? String(why).slice(0, 300) : null, now());
       emit("connectors.connection-proposed", { proposal: id, label });
-      return { proposal: id, card: siteCardOf({ label, origin, entries }) };
+      return { proposal: id, card };
     },
-    proposals: async () => Promise.all(/** @type {any[]} */ (db.prepare("SELECT * FROM connectors_proposals ORDER BY created DESC").all()).map(async r => {
+    proposals: () => /** @type {any[]} */ (db.prepare("SELECT * FROM connectors_proposals ORDER BY created DESC").all()).map(r => {
       const form = JSON.parse(r.form);
-      if (form.site) {
-        const entries = siteEntries ? await siteEntries(form.site, form.operations).catch(() => []) : [];
-        return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form, card: siteCardOf({ label: form.label, origin: form.site, entries }) };
-      }
+      if (form.site) { const { card, ...rest } = form; return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form: rest, card }; }
       return { proposal: r.id, by: r.proposed_by, why: r.why, created: r.created, form, card: cardOf(fromForm(form), form.credential.item) };
-    })),
+    }),
     /** The person's yes: the same create as the form's, as that person. */
     approve: async (/** @type {string} */ proposal, /** @type {string} */ as) => {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM connectors_proposals WHERE id = ?").get(proposal));
