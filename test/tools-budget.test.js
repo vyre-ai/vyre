@@ -10,17 +10,17 @@ import { agentCatalog } from "./tools-universe.js";
 
 const MAX_TOOLS = 30, MAX_TOKENS = 6000;
 
-test("the listed tools stay within the budget", () => {
-  const catalog = agentCatalog();
+test("the listed tools stay within the budget", async (t) => {
+  const catalog = await agentCatalog(t);
   const listed = listing(catalog);
   const size = tokens(JSON.stringify(listed));
-  console.log(`tools listed: ${listed.length} (max ${MAX_TOOLS}); tokens: ${size} (max ${MAX_TOKENS}); of ${catalog.length} an agent may use, whose full list is ${tokens(JSON.stringify(catalog.map((c) => ({ name: c.name, description: c.description, inputSchema: c.input }))))} tokens`);
+  console.log(`tools listed: ${listed.length} (max ${MAX_TOOLS}); tokens: ${size} (max ${MAX_TOKENS}); of the ${catalog.length} tools the registry lists for an agent, whose full list is ${tokens(JSON.stringify(catalog.map((c) => ({ name: c.name, description: c.description, inputSchema: c.input }))))} tokens`);
   assert.ok(listed.length <= MAX_TOOLS, `${listed.length} tools are listed; the budget is ${MAX_TOOLS}`);
   assert.ok(size <= MAX_TOKENS, `${size} tokens are listed; the budget is ${MAX_TOKENS}`);
 });
 
-test("every core tool exists for an agent, and everything else is reached through tools_call", () => {
-  const catalog = agentCatalog();
+test("every core tool exists for an agent, and everything else is reached through tools_call", async (t) => {
+  const catalog = await agentCatalog(t);
   const have = new Set(catalog.map((c) => c.name));
   assert.deepEqual(CORE.filter((n) => !have.has(n)), [], "core tools that an agent does not have (renamed or removed?)");
   const names = listing(catalog).map((t) => t.name);

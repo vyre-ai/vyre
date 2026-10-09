@@ -12,10 +12,10 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 import { fileURLToPath } from "node:url";
 import { CORE, META, listing } from "../harness/mcp/core-tools.js";
-import { agentCatalog } from "./tools-universe.js";
+import { broadCatalog } from "./tools-universe.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const catalog = agentCatalog();
+const catalog = broadCatalog();
 const listed = new Set([...CORE, ...META]);
 /** Every name an agent could write for a tool it is not listed: the MCP name and the dotted one. */
 const outside = new Set(catalog.filter((c) => !listed.has(c.name)).flatMap((c) => [c.name, c.tool]));
