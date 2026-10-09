@@ -8,6 +8,7 @@ export type Provider = { id: string; label: string; accounts: { id: string; labe
 export function worksLine(projects: unknown): string {
   if (projects === "*") return "Every project";
   const n = Array.isArray(projects) ? projects.length : 0;
+  if (n === 1 || n === 2) return `Works on ${(projects as unknown[]).map(String).join(" and ")}`;
   return n ? `${n} ${n === 1 ? "project" : "projects"}` : "No projects yet";
 }
 /** "Your assistant" for the one assistant, else "Agent". */

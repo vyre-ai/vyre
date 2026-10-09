@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
+import { doingLine, modelChoices, peopleFor, recordPicks, switchCall } from "./real-composer.js";
 
 const ROWS = [
   { id: "claude", label: "Claude", accounts: [{ id: "default", label: "Default", signed_in: true, default: true }], models: [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }] },
@@ -35,4 +35,14 @@ test("records to tag carry their urn and how many sealed fields hold a value; in
     byType: { contact: [{ urn: "vyre://s/contact/c1", id: "c1", data: { name: "Jane Doe", ssn: { sealed: "SSN", present: true }, pw: { sealed: "PW", present: false } } }], "def-x": [{ id: "d", data: {} }] } };
   assert.deepEqual(recordPicks(world, (d, r) => r.data.name), [{ name: "Jane Doe", type: "Contact", sealed: 1, urn: "vyre://s/contact/c1", kind: "record" }]);
   assert.deepEqual(recordPicks(null, () => ""), []);
+});
+
+test("the @ picker says what each live session is doing and where", () => {
+  const agents = [{ name: "kit", doing: "working", projects: ["billing"] }, { name: "juno", doing: "waiting on your answer", projects: "*" }, { name: "sage", doing: "not started", projects: [] }];
+  const people = peopleFor({ actors: [{ id: "x", name: "kit", family: "agent" }], agents, viewer: "me", here: [] });
+  assert.equal(people.find((p) => p.name === "kit")?.doing, "Working on billing", "an agent already listed as an actor still gets its line");
+  assert.equal(people.find((p) => p.name === "juno")?.doing, "Waiting on your answer");
+  assert.equal(people.find((p) => p.name === "sage")?.doing, undefined);
+  assert.equal(doingLine(null), "");
+  assert.equal(doingLine({ doing: "idle", projects: ["a", "b"] }), "Idle");
 });

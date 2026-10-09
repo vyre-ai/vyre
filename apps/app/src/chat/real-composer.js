@@ -41,11 +41,16 @@ export function switchCall(chat, id, providerRows, current = {}, slot) {
 
 /** The people and assistants to @mention: this chat's own first, then the space's actors and the person's agents, each once, never the viewer. @param {{ actors?: any, agents?: any, viewer?: string | null, here?: { name: string, family: string }[] }} o */
 export function peopleFor({ actors, agents, viewer, here = [] }) {
-  /** @type {Map<string, { name: string, id: string, family: "person" | "assistant" }>} */ const out = new Map();
+  /** @type {Map<string, { name: string, id: string, family: "person" | "assistant", doing?: string }>} */ const out = new Map();
   const add = (/** @type {string} */ name, /** @type {string} */ family, /** @type {string} */ id = "") => { const n = String(name || "").trim(); if (n && !out.has(n.toLowerCase())) out.set(n.toLowerCase(), { name: n, id: String(id || n), family: family === "assistant" || family === "agent" ? "assistant" : "person" }); };
   for (const p of here) add(p.name, p.family);
   for (const a of Array.isArray(actors?.actors) ? actors.actors : Array.isArray(actors) ? actors : []) if (a && a.id !== viewer && a.name !== viewer) add(a.name || a.id, a.family, a.id);
-  for (const a of Array.isArray(agents) ? agents : []) add(a?.name, "assistant");
+  for (const a of Array.isArray(agents) ? agents : []) {
+    add(a?.name, "assistant");
+    // what the live session is doing now and where it works, said under its name in the picker
+    const row = out.get(String(a?.name || "").trim().toLowerCase());
+    if (row) { const line = doingLine(a); if (line) row.doing = line; }
+  }
   return [...out.values()];
 }
 
@@ -62,4 +67,13 @@ export function recordPicks(world, titleOf, max = 300) {
     }
   }
   return out;
+}
+
+/** "Working on billing" or "Waiting on your answer": what an agent's live session is doing now, and the one project it works on when it works on one. Nothing for an agent that has not started. @param {{ doing?: string, projects?: unknown } | null | undefined} a */
+export function doingLine(a) {
+  const d = a && typeof a.doing === "string" ? a.doing : "";
+  if (!d || d === "not started") return "";
+  const word = d === "working" ? "Working" : d === "idle" ? "Idle" : d.charAt(0).toUpperCase() + d.slice(1);
+  const ps = a && Array.isArray(a.projects) ? a.projects.map(String).filter(Boolean) : [];
+  return ps.length === 1 ? `${word} on ${ps[0]}` : word;
 }
