@@ -473,7 +473,7 @@ test("install waits for the extension when asked, says connected the moment it d
   await ext.send({ event: "host", origin });
   await ext.hello();
   assert.equal(await done, 0, text);
-  assert.match(text, /Connected: Vyre for Chrome is talking to your browser/);
+  assert.match(text, /Connected: Vyre Computer is talking to your browser/);
   // 2. Nothing connects: the exact next step.
   const q = spawnSync(process.execPath, [cli, "install", "--browsers", "chrome", "--wait", "1"], { env, encoding: "utf8" });
   assert.equal(q.status, 2);

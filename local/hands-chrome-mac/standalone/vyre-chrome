@@ -1,5 +1,5 @@
 #!/bin/sh
-# Vyre for Chrome: the launcher. Finds a Node 22 or newer on its own, so it works from a login shell whose PATH has no node
+# Vyre Computer: the launcher. Finds a Node 22 or newer on its own, so it works from a login shell whose PATH has no node
 # (nvm, Volta, fnm and asdf only put node on PATH in an interactive shell), then runs cli.mjs with the same arguments.
 # Follows a symlink to itself (install puts one in ~/.local/bin).
 self="$0"
@@ -28,7 +28,7 @@ if [ -z "$node" ]; then
   done
 fi
 if [ -z "$node" ]; then
-  echo "Vyre for Chrome needs Node 22 or newer, and could not find one (looked on PATH, in nvm, Volta, fnm, asdf, Homebrew and /usr/local)." >&2
+  echo "Vyre Computer needs Node 22 or newer, and could not find one (looked on PATH, in nvm, Volta, fnm, asdf, Homebrew and /usr/local)." >&2
   echo "Install it from https://nodejs.org (or with nvm or Homebrew) and run this again." >&2
   exit 127
 fi

@@ -1,6 +1,6 @@
 // @ts-check
 // frames (harness): does the extension see INSIDE cross-origin iframes on a real Chrome? The GoHighLevel workflow builder is one
-// (real-use finding), so this is the proof that Vyre for Chrome is not blind to it. A shell page on one site embeds an app on another
+// (real-use finding), so this is the proof that Vyre Computer is not blind to it. A shell page on one site embeds an app on another
 // site, which embeds a third: three sites, three processes under site isolation, one server answering by hostname (*.localhost).
 //
 //   node standalone/harness/frames.mjs [--out file] [--chrome path]

@@ -27,6 +27,6 @@ export function explain(c, now = Date.now()) {
   const since = c.failingSince ? Math.round((now - c.failingSince) / 1000) : 0;
   if (!c.lastError && c.attempts <= 1 && since < 5) return { state: "connecting", headline: "Connecting to Vyre...", fix: null, detail: null };
   if (hit) return { state: "failing", headline: hit.headline, fix: hit.fix, detail: `${err} (${c.attempts} tries, failing for ${since} s)` };
-  if (c.everConnected) return { state: "failing", headline: "The connection to Vyre dropped.", fix: "Is Claude Code (the Vyre for Chrome server) still running? Start a Claude Code session, or run `vyre-chrome doctor`.", detail: err ? `${err} (${c.attempts} tries)` : null };
+  if (c.everConnected) return { state: "failing", headline: "The connection to Vyre dropped.", fix: "Is Claude Code (the Vyre Computer server) still running? Start a Claude Code session, or run `vyre-chrome doctor`.", detail: err ? `${err} (${c.attempts} tries)` : null };
   return { state: "failing", headline: "Not connected to Vyre yet.", fix: "Run `vyre-chrome doctor` in a terminal. If it says everything is fine, quit and reopen Chrome once.", detail: err ? `${err} (${c.attempts} tries, failing for ${since} s)` : `${c.attempts} tries, failing for ${since} s` };
 }

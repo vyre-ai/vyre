@@ -39,6 +39,8 @@ export const RECORDERS = ["module:sessions", "module:assistant", "module:threads
 export const THREADS_KINDS = ["use", "act_out"];
 /** How long a plain (not standing) ask is good from when it was said, unless the recorder gave its own window (1 to 60 minutes): a stale "merge it" or "send that email" cannot be spent days later. */
 export const PLAIN_WINDOW_MS = Object.freeze({ act_out: 15 * 60_000, setting: 15 * 60_000, revoke: 15 * 60_000, send: 60 * 60_000, post: 60 * 60_000, pay: 60 * 60_000 });
+/** A tagged login (a "use" intent) stays usable in its conversation until the conversation has been idle this long (the person can take it back sooner, and it ends with the conversation). */
+export const USE_IDLE_MS = 8 * 3_600_000;
 const MAX_TO = 20, MAX_TEXT = 500;
 
 const isObj = v => Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -81,7 +83,9 @@ export function matchIntent(call, intents, lineage = []) {
   for (const it of intents || []) {
     if (!it || it.revoked || !covers.includes(it.kind)) continue;
     // A plain ask is used up by the send it asked for; only a standing permission persists.
-    if (it.used && !it.standing) continue;
+    if (it.used && !it.standing && it.kind !== "use") continue;
+    // A tagged login is lent to the conversation, not for good: idle for 8 hours (`used` is the last time it was used) and it stops matching.
+    if (it.kind === "use" && !it.standing && at > Math.max(it.at, it.used || 0) + USE_IDLE_MS) continue;
     // A plain act_out ask is for now, not for days: it stops matching after its window (15 minutes unless the recorder said otherwise).
     if (!it.standing && PLAIN_WINDOW_MS[it.kind] && at > it.at + (it.limits && Number.isFinite(it.limits.window_ms) ? it.limits.window_ms : PLAIN_WINDOW_MS[it.kind])) continue;
     // An intent that names agents covers only them; one that names none covers any of the person's agents.
@@ -167,6 +171,17 @@ export class SaidIntents {
   /** What the person sees: live intents (revoked ones too with `all`), never a value. @param {{ thread?: string, all?: boolean }} [f] */
   list(f = {}) { return { intents: this.rows(f).map(out) }; }
 
+  /** A conversation ended: its tagged logins go with it (a revoked row never matches again). @param {string} thread @param {string} caller */
+  dropThread(thread, caller) {
+    const t = Date.now();
+    for (const r of /** @type {any[]} */ (this.vault.db.prepare("SELECT * FROM vault_said_intents WHERE thread = ? AND kind = 'use' AND revoked IS NULL").all(thread))) {
+      if (!this.vault.rowOk("vault_said_intents", r)) continue;
+      this.vault.db.prepare("UPDATE vault_said_intents SET revoked = ? WHERE id = ?").run(t, r.id);
+      this.vault.sign("vault_said_intents", r.id);
+      this.vault.audit("said-revoke", null, caller, true, `use in ${thread}: the conversation ended`);
+    }
+  }
+
   /** The person takes one back. It stops covering anything at once. @param {{ id: string }} input @param {string} caller */
   revoke({ id }, caller) {
     const r = /** @type {any} */ (this.vault.db.prepare("SELECT * FROM vault_said_intents WHERE id = ?").get(String(id)));
@@ -188,7 +203,14 @@ export class SaidIntents {
     const lineage = [...new Set([...(where.thread ? [where.thread] : []), ...(where.lineage || [])].map(String))];
     const intents = this.rows().map(out);
     const m = matchIntent(call, intents, lineage);
-    if (!m || !consume) return m;
+    if (!m) return m;
+    // A tagged login that is used keeps its conversation's lending alive: the idle clock restarts.
+    const hit = intents.find(x => x.id === m.id);
+    if (hit && hit.kind === "use" && !hit.standing) {
+      this.vault.db.prepare("UPDATE vault_said_intents SET used = ? WHERE id = ?").run(Date.now(), m.id);
+      this.vault.sign("vault_said_intents", m.id);
+    }
+    if (!consume) return m;
     // A plain ask is used up by the send it asked for: claim it before anything goes out, so two
     // calls cannot both ride it. A standing permission is never used up.
     const it = intents.find(x => x.id === m.id);

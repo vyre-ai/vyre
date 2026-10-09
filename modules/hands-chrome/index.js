@@ -125,6 +125,9 @@ export default {
         where.thread ? { thread: where.thread } : {});
     };
 
+    // A Vault sign-in on the agent's computer names the tab it earned a session in (core/vault/agent-fill.js); the hands work there next.
+    try { ctx.events.on("computer.fill-ended", (/** @type {any} */ e) => { const p = e && e.payload; if (p && p.agent && p.target && p.why === "done") pool.prefer(String(p.agent), String(p.target)); }); } catch { /* no event bus in a bare test */ }
+
     /** Connect (or reuse) the agent's CDP session and its page. */
     const session = async agent => {
       const r = await ctx.call("computers.endpoint", { agent });

@@ -1,5 +1,5 @@
 // @ts-check
-// "What do you know about GoHighLevel?": memory.ask's answer about a site Vyre for Chrome learned, given when a question names the site, built in code from the
+// "What do you know about GoHighLevel?": memory.ask's answer about a site Vyre Computer learned, given when a question names the site, built in code from the
 // stored records (lib/site-knowledge.js), no model. It names the origins and the family, when it last worked, what it
 // knows (frames, controls, the site's own API, flows), how sure it is, and what used to work. Everything here is structure;
 // the store never held a value, so there is none to say. The answer is plain text quoted from memory, never an instruction.
@@ -102,5 +102,5 @@ export function answerSite(question, records, { now = Date.now() } = {}) {
     for (const r of all) sources.push({ session: `site:${r.key}`, seq: 0, role: "site", name, site: r.key, rev: r.rev, quote: lines[0], ts: r.updated ? Date.parse(r.updated) : null });
   }
   if (!parts.length) return null;
-  return { answer: `From what Vyre for Chrome learned: ${parts.join(" ")}`, confidence: 0.9, abstained: false, known: [], sources, via: "site" };
+  return { answer: `From what Vyre Computer learned: ${parts.join(" ")}`, confidence: 0.9, abstained: false, known: [], sources, via: "site" };
 }

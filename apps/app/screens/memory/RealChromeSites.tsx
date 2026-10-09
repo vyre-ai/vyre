@@ -1,4 +1,4 @@
-// The Sites tab in Memory on a real vyred: what Vyre for Chrome learned about each website. Forget never asks first (a family and Forget all ask once, they touch many):
+// The Sites tab in Memory on a real vyred: what Vyre Computer learned about each website. Forget never asks first (a family and Forget all ask once, they touch many):
 // every Forget can be undone for a day, from any device. Nothing polls: it loads on open and after each act.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -52,7 +52,7 @@ export default function RealChromeSites() {
   const familyCount = (s: SiteRow) => data.sites.filter((x) => x.kind === "origin" && x.family && x.family === s.family).length;
   return (
     <View className="gap-s2 pt-s2">
-      <Text tone="muted" size="secondary">What Vyre for Chrome learned about each site: its layout, how to find its buttons, what its pages do. Never what you typed or what a page said. Forget anything and you can bring it back for a day.</Text>
+      <Text tone="muted" size="secondary">What Vyre Computer learned about each site: its layout, how to find its buttons, what its pages do. Never what you typed or what a page said. Forget anything and you can bring it back for a day.</Text>
       {problem ? <Banner><Text>{problem}</Text></Banner> : null}
       <View className="flex-row items-center gap-s2 pt-s2">
         <Text strong size="secondary" className="min-w-0 flex-1">{plural(data.sites.length, "site")}</Text>
@@ -85,7 +85,7 @@ export default function RealChromeSites() {
             );
           })}
         </Card>
-      ) : <Card><EmptyState title="No sites yet" body="Vyre for Chrome learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre." /></Card>}
+      ) : <Card><EmptyState title="No sites yet" body="Vyre Computer learns a site as you and your agents use it. Nothing is learned from pages you have not opened with Vyre." /></Card>}
       {data.forgotten.length ? (
         <View className="gap-s2 pt-s2">
           <Button kind="ghost" size="sm" label={`${recent ? "Hide" : "Show"} recently forgotten (${data.forgotten.length})`} onPress={() => setRecent((v) => !v)} />

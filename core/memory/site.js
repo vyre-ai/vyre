@@ -1,14 +1,14 @@
 // @ts-check
-// site.*: what Vyre for Chrome learned about each website, kept in Vyre Memory (team/0.2/chrome-learning-plan.md).
+// site.*: what Vyre Computer learned about each website, kept in Vyre Memory (team/0.2/chrome-learning-plan.md).
 //
 // The record's rules (allowlist, privacy, merge, self-heal) are lib/site-knowledge.js, shared with the extension
-// and standalone Vyre for Chrome, so a record means the same thing on every side. This file is the store and the
+// and standalone Vyre Computer, so a record means the same thing on every side. This file is the store and the
 // tools: one row per origin and per family, the small arrival card Chrome reads on every page, a bounded event
 // ring, and a 24-hour undo for a forgotten record.
 //
 // Callers: the person's own surfaces and first-party modules (Chrome's bridge) read and write; an agent never
 // does (Chrome's own tools read it on the person's behalf). Two settings, both on by default: memory.site.learn
-// (learn at all) and memory.site.sync (take what standalone Vyre for Chrome learned on its own).
+// (learn at all) and memory.site.sync (take what standalone Vyre Computer learned on its own).
 
 import fs from "node:fs";
 import os from "node:os";
@@ -136,7 +136,7 @@ export function register(ctx, { denied }) {
   ctx.tool("memory.site.get", {
     effect: "read",
     callers: SITE_CALLERS,
-    description: "What Vyre for Chrome knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
+    description: "What Vyre Computer knows about a site: { origin, family?, rev, family_rev } cards (the small record Chrome reads on every page), or { not_modified: true } when since_rev and family_rev are current. parts: [controls|api|flows|notes|frames] returns the full record's named parts instead of the card. Structure only, never a value. For the person's surfaces and Vyre's own modules.",
     input: { type: "object", required: ["origin"], properties: { origin: { type: "string" }, since_rev: { type: "integer" }, family_rev: { type: "integer" },
       parts: { type: "array", items: { type: "string", enum: PARTS } } } },
     run: async (i, { caller, ...meta } = {}) => {
@@ -392,7 +392,7 @@ export function register(ctx, { denied }) {
   ctx.tool("memory.site.sync", {
     effect: "write",
     callers: SITE_CALLERS,
-    description: "Two-way sync with a replica (standalone Vyre for Chrome on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
+    description: "Two-way sync with a replica (standalone Vyre Computer on a computer, once it reaches this box): { have: { key: rev }, push: [records] } -> { accepted, skipped, refused, pull: [records newer than have], forgotten: [{ key, at }] }. Each pushed record goes through the same allowlist and is folded in by per-item newest-verified, never overwriting; items the store did not hold start at 0.5 at most; items older than a forget the person made are dropped, and the replica is told what was forgotten. Off when memory.site.sync is off. The person's own surfaces and Chrome's bridge.",
     input: { type: "object", properties: { have: { type: "object" }, push: { type: "array", maxItems: 100, items: { type: "object" } } } },
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
@@ -426,7 +426,7 @@ export function register(ctx, { denied }) {
   });
   return {
     isPerson,
-    /** memory.ask's step: what Vyre for Chrome knows about a site the question names, or null. */
+    /** memory.ask's step: what Vyre Computer knows about a site the question names, or null. */
     answer: (/** @type {string} */ question) => {
       // Match the question against an index of names, families and hosts first; only the matched sites' records are parsed.
       const index = /** @type {any[]} */ (q.index.all()).map(r => ({ key: String(r.key), names: String(r.names || "").split("|").filter(Boolean), family: r.family ? String(r.family) : null }));

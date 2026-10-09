@@ -62,9 +62,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/link/mac.js": {
-   "count": 2,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "count": 4,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): ctx.call(q.tool) for the allowlisted reads, ctx.call(engine) for a Vyre Computer action whose engine is chosen from lib/computer-classes.js after the person's class allowlist, and the chrome.op.call / chrome.op.send choice in callOp, each a literal pair"
   },
   "core/mail/index.js": {
    "count": 2,
@@ -210,6 +210,16 @@
    "count": 1,
    "owner": "session-transfer",
    "note": "reviewed (10 Oct, connect-anything): a forwarder (createItems' call) over the literal tools named in core/approvals/items.js (threads.asks, gate.held, vault.pending and the answering tools); it runs as the approvals module"
+  },
+  "core/computer/index.js": {
+   "count": 2,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the `ask` helper over literal names, and ctx.call(engine) where engine comes from lib/computer-classes.js engineFor (chrome.*, hands.*, hands-desktop.*, files.*), run for the caller's own agent or a person; each engine checks the caller itself"
+  },
+  "core/vault/tools/agent-fill.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the call wrapper handed to agentFill, which names only computers.fill.begin and computers.fill.end (both vault-only)"
   }
  }
 }

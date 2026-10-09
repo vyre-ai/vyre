@@ -43,6 +43,8 @@ const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
   // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
   // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
   if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  // The paired box, after the link checked the person's allowlist for it (link.computer.allow / link.ops.allow): that allowlist is the grant. Nothing it asks is the person's own, so a send is still held.
+  if (String(caller) === "module:link") return null;
   return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -555,16 +557,27 @@ export default {
     // for an outward one, the box's signed assertion for exactly this call. Nothing else may call it.
     ctx.tool("chrome.op.call", {
       internal: true, callers: ["module"],
-      description: "Run one learned operation of a site in the person's Chrome for the box, through the link: { site, name, inputs, approved? } -> the operation's answer. Never called directly.",
-      input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool }, ["site", "name"]),
+      description: "Run one learned READ of a site in the person's Chrome for the box, through the link: { site, name, inputs } -> the operation's answer. An operation that submits is refused here and goes through chrome.op.send. Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" } }, ["site", "name"]),
       run: async (/** @type {any} */ i, /** @type {any} */ m) => {
         if (!m || m.caller !== "module:link") throw denied("denied", "only the link runs a site's operation for the box");
-        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: i.approved === true, connection: true });
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, connection: true, only: "read" });
+      } });
+    // The same door for an operation that submits (a change, send, spend or delete). It runs only for the link, after the link checked the box's signed assertion for exactly this site, operation
+    // and inputs: that signature is the person's one yes (given on the box, once, for 60 s), so the registry's floor does not ask again (`asks`).
+    ctx.tool("chrome.op.send", {
+      internal: true, callers: ["module"],
+      description: "Run one learned operation that SUBMITS in the person's Chrome for the box, through the link, after the link verified the box's signed approval: { site, name, inputs, approved: true } -> the operation's answer. Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool }, ["site", "name", "approved"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        if (!m || m.caller !== "module:link") throw denied("denied", "only the link runs a site's operation for the box");
+        if (i.approved !== true) throw denied("denied", "chrome.op.send runs only with the person's approval");
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: true, connection: true, only: "send" });
       } });
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });
-    tool("chrome.site", "What Vyre for Chrome has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.",
+    tool("chrome.site", "What Vyre Computer has learned about a site, from this device: the frame layout, stable controls, the site's own API endpoints, login signals. Structure only: never a value, token or personal data. Give a tab (default: the current one) or an origin.",
       obj({ action: { type: "string", enum: ["card", "flush"], description: "flush: send what was learned now instead of in 10 seconds." }, tab, origin: str }),
       (i, m) => dispatch(i.action === "flush" ? "site.flush" : "site.card", { ...(i.tab !== undefined ? { tab: i.tab } : {}), ...(i.origin ? { origin: i.origin } : {}) }, m));
     tool("chrome.recipe", "Replay a flow that already worked on this site as ONE call: no model turn between steps. list: the recipes for this tab's site (name, steps, parameters, runs, what they write). run: name the recipe and give its parameters; it runs as a normal batch (the stop switch, the URL floor, the send-hold and any plan approval all apply). A recipe is saved when chrome_batch is given saveAs and every step worked; what a person typed is never kept, only {parameters}. Recipes last until the browser closes unless learning is on.",

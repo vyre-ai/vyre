@@ -13,7 +13,7 @@ const screen = { v: 2, title: "Today", layout: { col: [{ block: "k" }, { block: 
 
 test("design MCP: the tool list is small enough to leave on", async () => {
   const list = (await handle({ id: 1, method: "tools/list" })).tools;
-  assert.equal(list.length, 8);
+  assert.equal(list.length, 9);
   const tokens = Math.round(JSON.stringify(list).length / 4);
   assert.ok(tokens <= 700, `tools/list is about ${tokens} tokens`);
   const init = await handle({ id: 0, method: "initialize", params: {} });
@@ -39,6 +39,13 @@ test("design MCP: propose goes to the box tool and says what it reads and runs; 
   assert.match(r.content[0].text, /proposal 7 sent to the owner; reads m\.x; runs nothing/);
   assert.equal((await callTool("design_propose", { id: "today", screen, why: "x" })).isError, true);
   assert.equal((await callTool("design_propose", { id: "today", screen: { v: 2, layout: { block: "z" }, blocks: {} }, why: "x" }, { box })).isError, true, "an invalid screen never leaves");
+});
+
+test("design MCP: the brand defaults come from the box in a few words", async () => {
+  const box = async (/** @type {string} */ tool) => ({ data: { names: { name: "Northwind Law", legalName: null, address: null, phone: null }, accent: { paper: "#1F4E9C", dark: "#5E80B8", note: null }, fonts: { heading: "serif" }, letterhead: { on: true }, logos: { light: "data:image/png;base64,AA" } } });
+  const r = JSON.parse((await callTool("design_brand", {}, { box })).content[0].text);
+  assert.deepEqual([r.names.name, r.accent.light, r.letterhead, r.logo], ["Northwind Law", "#1F4E9C", true, true]);
+  assert.equal((await callTool("design_brand", {})).isError, true);
 });
 
 test("design MCP: the module tools run the kit and install only stages", async () => {

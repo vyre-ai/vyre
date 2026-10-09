@@ -1,0 +1,34 @@
+# Refresh the golden decisions (kernel/golden/golden.json) in the CI environment, where the recorder's answers are the ones the node workflow checks. The test box differs (for one, a share server runs
+# there), so a refresh made on it does not match what CI records. Push a commit whose message contains [golden-update]; the run writes allow.json, presence.json and golden.json and uploads them as an
+# artifact to commit with the code that moved them (kernel/golden/allow.test.js and golden.test.js must then pass).
+name: golden-refresh
+on:
+  push:
+    branches: ["work/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  refresh:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[golden-update]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      - run: npm ci
+      - run: node scripts/gen-allow.mjs
+      - run: node kernel/golden/index.js --write
+      - uses: actions/upload-artifact@v4
+        with:
+          name: golden
+          path: |
+            kernel/golden/allow.json
+            kernel/golden/presence.json
+            kernel/golden/golden.json

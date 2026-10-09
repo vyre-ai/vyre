@@ -2180,6 +2180,18 @@
   "connectors.site.rows": {
    "module": "connectors",
    "reason": "read-only: one row per website operation for a view (callers list)"
+  },
+  "computer.targets": {
+   "module": "computer",
+   "reason": "read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
+  },
+  "computer.use": {
+   "module": "computer",
+   "reason": "guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
+  },
+  "vault.agent.fill": {
+   "module": "vault",
+   "reason": "guard: a vouched agent signs in on its own computer only, with a login lent to it at that exact origin (a grant or a # tag in this conversation); the value is typed by vyred and never returned; Vyre Computer alone may call it for an agent (callers list, check, owner)"
   }
  }
 }

@@ -30,8 +30,8 @@ const PEOPLE = ["cli", "local", "deck", "capsule"];
  * cli:agent:, ...) by that name, and every other caller (a tailnet guest, a module, a hook) by a
  * key no one can be granted under, so it is refused. Fail closed (reviewer-2 H1).
  */
-/** Modules that ship with Vyre and act for the person (the apps adapters press Send through hands.commit; sight reads). A module someone adds is not on it. */
-const FIRST_PARTY = /^module:(apps|sight|gate|chrome)$/;
+/** Modules that ship with Vyre and act for the person (the apps adapters press Send through hands.commit; sight reads; the link runs what the paired box asked after the person's own link.computer.allow, which is the grant for the box). A module someone adds is not on it. */
+const FIRST_PARTY = /^module:(apps|sight|gate|chrome|link)$/;
 const grantKey = (caller, meta) => {
   // The name alone is not enough: a module someone adds under a free name (apps, chrome) must not pass. The loader sets firstParty only for modules the repo ships (reviewer-2).
   if (FIRST_PARTY.test(String(caller)) && meta && meta.firstParty === true) return null;

@@ -7,6 +7,7 @@ on:
     branches: ["work/design-language-*"]
     paths:
       - "apps/app/ui/**"
+      - "apps/app/screens/**"
       - "apps/app/screens/shell/ViewHost.tsx"
       - "apps/app/app/gallery.tsx"
       - "apps/app/scripts/design-pictures.mjs"
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - "apps/app/ui/**"
+      - "apps/app/screens/**"
       - "apps/app/screens/shell/ViewHost.tsx"
       - "apps/app/app/gallery.tsx"
       - "apps/app/scripts/design-pictures.mjs"

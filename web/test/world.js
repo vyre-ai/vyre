@@ -161,7 +161,7 @@ export async function makeAgents(root) {
 }
 
 /**
- * One site Vyre for Chrome learned, for the Sites tab (the sample is web/test/site-sample.js). The store's test clock (honoured only
+ * One site Vyre Computer learned, for the Sites tab (the sample is web/test/site-sample.js). The store's test clock (honoured only
  * under the test flag and only in a temp home) puts the misses on earlier days; the clock file is removed after, so what the
  * screenshot shows is on real time.
  * @param {string} root @param {string} clockFile

@@ -97,6 +97,14 @@
    "class": "held",
    "why": "only a proposal for the person to approve: nothing is made and nothing is called until the person says yes from their own screen"
   },
+  "design.css.propose": {
+   "class": "held",
+   "why": "only a proposal for the owner to approve before and after: nothing is drawn until they say yes, and only the Engineer's verified agent claim or a person may file it (a plain session is refused inside the tool)"
+  },
+  "design.propose": {
+   "class": "held",
+   "why": "only a proposal for the owner to approve before and after: nothing changes on any screen until they say yes, and it lists every tool the screen reads and every button runs"
+  },
   "files.fetch": {
    "class": "review",
    "why": "brings a box file to the Mac: files owner to confirm a plain session may not name any path"
@@ -612,6 +620,14 @@
   "work.file.unshare": {
    "class": "own",
    "why": "removes shares the person the call carries may remove (their own, or any for an admin)"
+  },
+  "vault.agent.fill": {
+   "class": "refused",
+   "why": "refused in the body for a session that names no agent; a named agent signs in its own computer only, with a login lent to it at that origin"
+  },
+  "computer.use": {
+   "class": "refused",
+   "why": "refused in the body for a session that names no agent; a named agent works on its own computer, and a Mac only for a class the person allowed there"
   }
  }
 }
