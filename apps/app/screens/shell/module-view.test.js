@@ -4,7 +4,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getInput, actInput, missingFields, initialValues, outcome, moveAction, barHeights, actionsOf } from "./module-view.js";
+import { emailOf, getInput, actInput, missingFields, initialValues, outcome, moveAction, barHeights, actionsOf } from "./module-view.js";
 
 const card = { id: "c1", title: "Write brief", actions: [{ id: "move", title: "Move" }, { id: "nudge", title: "Nudge", outward: true }] };
 
@@ -49,4 +49,10 @@ test("module view: a card shows its actions but not the move (that is the drag),
   assert.deepEqual(actionsOf(card).map(a => a.id), ["nudge"]);
   assert.deepEqual(barHeights({ points: [{ label: "Mon", value: 3 }, { label: "Tue", value: 6 }, { label: "Wed", value: 0 }] }).map(b => b.share), [0.5, 1, 0]);
   assert.deepEqual(barHeights(undefined), []);
+});
+
+test("emailOf: a record's address as one string, from a text field or a list, and nothing otherwise", () => {
+  assert.equal(emailOf({ email: " jo@example.com " }), "jo@example.com");
+  assert.equal(emailOf({ email: ["", "jo@example.com", "x@y.z"] }), "jo@example.com");
+  for (const bad of [null, undefined, {}, { email: 5 }, { email: [] }, { email: { a: 1 } }, "jo@example.com"]) assert.equal(emailOf(bad), "");
 });

@@ -155,6 +155,13 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.ok(waiting.rows.some(/** @param {any} r */ r => /signer@example.com/.test(JSON.stringify(r))), `the waiting view shows the document just sent: ${JSON.stringify(waiting.rows).slice(0, 300)}`);
   const sendList = (await d.registry.call("views.get", { module: "appmods", command: "documents-send" }, "cli", await ownerMeta())).data;
   assert.ok(sendList.rows && sendList.rows.some(/** @param {any} r */ r => /Vyre proof NDA/.test(JSON.stringify(r))), `the send view lists the template: ${JSON.stringify(sendList).slice(0, 300)}`);
+  // "Send for signature" from a Contact: the row's action opens the form with the signer's e-mail (the view's q) already in it
+  const sendRow = sendList.rows.find(/** @param {any} r */ r => /Vyre proof NDA/.test(JSON.stringify(r)));
+  const act = (await d.registry.call("views.act", { module: "appmods", command: "documents-send", action: "send", id: sendRow.id, q: "signer@example.com" }, "cli", await ownerMeta())).data;
+  assert.equal(act.kind, "view", JSON.stringify(act).slice(0, 300));
+  assert.equal(act.frame.kind, "form");
+  assert.equal(act.frame.fields.find(/** @param {any} f */ f => f.name === "email").default, "signer@example.com", "the e-mail is already in the form");
+  if (process.env.VYRE_FRAMES_OUT) fs.writeFileSync(process.env.VYRE_FRAMES_OUT, JSON.stringify({ list: sendList, form: act.frame, waiting }));
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
