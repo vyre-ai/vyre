@@ -339,3 +339,13 @@ test("two runs on one record that do interleave replay correctly: each run's led
   assert.deepEqual(made, ["one", "one-b", "two", "two-b"], "each write once");
   assert.ok(f.id);
 });
+
+test("a Flow tool that needs an id says so, with where to find it", async () => {
+  const { createFlows } = await import("./index.js");
+  const w = await world();
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.moduleChain({ module: "flows", approver: x.approver }) }, catalog: () => w.cat, store: w.store, clock: () => w.clock.t, emit: () => {}, ports: w.runner.ports });
+  const chain = { hops: [{ actor: { kind: "person", id: "per_alex", space: "spc_harlow000001" } }] };
+  for (const [tool, input] of [["flows.start", { flow: "intake-welcome" }], ["flows.run", {}], ["flows.retry", {}], ["flows.timeline", {}], ["flows.get", {}]]) {
+    await assert.rejects(() => f.tools[/** @type {string} */ (tool)](chain, input), (/** @type {any} */ e) => e.code === "bad_input" && /is required/.test(e.message), `${tool} names what it needs`);
+  }
+});
