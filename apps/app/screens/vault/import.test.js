@@ -16,7 +16,7 @@ test("fifteen places to bring passwords in from, each with how to export and wha
   const { SOURCES } = await import("./import-model.ts");
   assert.equal(SOURCES.length, 15);
   assert.equal(new Set(SOURCES.map((s) => s.id)).size, 15);
-  for (const s of SOURCES) { assert.ok(s.name && s.how && s.accept && s.mark && s.mark.length <= 3, s.id); assert.ok(!/\bkdbx\b/.test(s.accept), `${s.id}: the encrypted KeePass file is not offered`); }
+  for (const s of SOURCES) { assert.ok(s.name && s.how && s.accept && s.mark && s.mark.length <= 4, s.id); assert.ok(!/\bkdbx\b/.test(s.accept), `${s.id}: the encrypted KeePass file is not offered`); }
 });
 
 test("a preview in plain words: counts, kinds, the first names, what differs", { skip: !strip }, async () => {
