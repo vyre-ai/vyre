@@ -9,8 +9,9 @@ import { createGrantsStore } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
+import { containsDims } from "../core/authorize.js";
 import { canonical, sha256 } from "../core/canonical.js";
-import { ACCESS_LEVELS, AGENT_ACTIONS, levelActions, levelOf } from "../seal/uses.js";
+import { ACCESS_LEVELS, AGENT_ACTIONS, levelActions, levelOf, SURFACE_GROUPS } from "../seal/uses.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", ALICE = "per_alice", BOB = "per_bob", CAROL = "per_carol";
 let T = 1_800_000_000_000;
@@ -113,7 +114,47 @@ test("origins: a login lent for a site is used only at that origin, exactly, and
   for (const o of ["https://app.stripe.com:8443", "http://app.stripe.com", "https://app.stripe.com.evil.example", "https://evil.example", undefined]) {
     assert.equal((await ask(gw, personChain(ALICE), "vault.fill", item(), o ? { origin: o } : {})).effect, "deny", String(o));
   }
+  // narrowing may only shrink the list: a child lent for some of the parent's origins is inside it; one that adds an origin, names another or drops the condition is not
+  const gr = (/** @type {string[] | undefined} */ origins) => ({ space: SPACE, subject: { kind: "actor", actor: actor("person", ALICE) }, actions: ["vault.fill"], action_set_version: 1, resource: { prefix: item() }, conditions: origins ? { where: { origins } } : {} });
+  const [a, b, c] = ["https://app.stripe.com", "https://dashboard.stripe.com", "https://evil.example"];
+  assert.equal(containsDims(gr([a, b]), gr([a])), true);
+  assert.equal(containsDims(gr([a, b]), gr([a, b])), true);
+  assert.equal(containsDims(gr([a]), gr([a, b])), false, "a longer list");
+  assert.equal(containsDims(gr([a]), gr([c])), false, "another origin");
+  assert.equal(containsDims(gr([a]), gr(undefined)), false, "no condition at all");
   assert.ok(parent.id);
+});
+
+test("a pass for an outside agent is a grant: it sees only its items, use only; a revoked pass opens nothing; reveal on a pass is refused to the agent and never asks it", async () => {
+  const { gw, g } = await rig();
+  const v = await g.vaults.set(owner(), { name: "Client: Northwind" });
+  const base = `vyre://${SPACE}/vault/${v.id}`, a = `${base}/item/stripe`, b = `${base}/item/mailgun`;
+  const ext = actor("agent", "ext_p1");
+  await g.addActor(owner(), ext, P.actor(ext));
+  const pass = await give(g, { kind: "actor", actor: ext }, "use", { resource: { prefix: a }, source: "pass:p1" });
+  const outsider = assistantOf(OWNER, "ext_p1");
+  for (const act of ["vault.fill", "vault.totp", "vault.read"]) assert.equal((await ask(gw, outsider, act, a)).effect, "allow", act);
+  assert.equal((await ask(gw, outsider, "vault.read", b)).effect, "deny", "an item that is not on the pass");
+  assert.equal((await ask(gw, outsider, "vault.read", `${base}/item/stripe-live`)).effect, "deny", "not a longer name either");
+  assert.notEqual((await ask(gw, outsider, "vault.reveal", a)).effect, "allow", "use is not reveal");
+  assert.notEqual((await ask(gw, outsider, "vault.edit", a)).effect, "allow");
+  // a pass cannot be made to show a value: the grant is refused, whoever asks
+  const wide = { subject: { kind: "actor", actor: ext }, actions: [...levelActions("reveal")], resource: { prefix: a }, conditions: {}, source: "pass:p1" };
+  await assert.rejects(() => g.create(owner(), wide, P.create(wide)), { code: "bad_input" });
+  // revoking the pass opens nothing, and what was handed on from it goes too
+  await g.revoke(owner(), pass.id, "pass ended", { presence: proof("grants.revoke", { id: pass.id, reason: "pass ended" }, `vyre://${SPACE}/grant/${pass.id}`) });
+  assert.equal((await ask(gw, outsider, "vault.read", a)).effect, "deny");
+});
+
+test("vault.call under a use grant is still held for a yes: use never turns an API write into a free act", async () => {
+  const { gw, g } = await rig();
+  const v = await g.vaults.set(owner(), { name: "Client: Northwind" });
+  const it = `vyre://${SPACE}/vault/${v.id}/item/stripe`;
+  await give(g, { kind: "actor", actor: actor("person", ALICE) }, "use", { resource: { prefix: it } });
+  assert.equal((await ask(gw, personChain(ALICE), "vault.read", it)).effect, "allow");
+  const call = await ask(gw, personChain(ALICE), "vault.call", it);
+  assert.equal(call.effect, "ask", "an outward act waits for a person");
+  assert.ok(call.obligations.some((/** @type {any} */ o) => o.type === "ask" || o.type === "presence"), "and says what it waits for");
 });
 
 test("teams and their grants come back from the log after a restart", async () => {
@@ -160,14 +201,17 @@ test("named vaults: any member makes one and holds manage on it, shares a part o
   assert.deepEqual(g.vaults.list(personChain(ALICE)), []);
 });
 
-test("a project's people and assistants are a group: one grant to project:<id> lets them use a vault, and the person's own key is still needed", async () => {
+test("a project's people and assistants are a group read from its reach grants: one grant to project:<id> lets them use a vault, and the person's own key is still needed", async () => {
   const log = createEventLog({ space: SPACE, clock });
-  const members = { people: [ALICE], agents: ["kit"] };
-  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence, projectMembers: (/** @type {string} */ id) => (id === "northwind" ? members : null) });
+  const gs = createGrantsStore({ space: SPACE, log, chains, clock, key: Buffer.alloc(32, 5), presence, projectExists: async (/** @type {string} */ id) => id === "northwind" });
   const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, grantsStore: gs, presence, owner: OWNER, hasPresenceSession: () => true });
   await gs.bootstrap({ owner: OWNER });
   for (const who of [ALICE, BOB]) await gw.grants.setRole(owner(), { person: who, role: "member" }, P.role({ person: who, role: "member" }));
   await gw.grants.addActor(owner(), actor("agent", "kit"), P.actor(actor("agent", "kit")));
+  // who is on the project is who holds reach on its record's address: Alice by a grant of her own, the project's assistant by the agent reach grant
+  const reach = (/** @type {any} */ subject) => { const i = { subject, actions: ["project.reach"], resource: { prefix: `vyre://${SPACE}/project/northwind` }, conditions: {}, source: "projects:reach" }; return gw.grants.create(owner(), i, P.create(i)); };
+  const alice = await reach({ kind: "actor", actor: actor("person", ALICE) });
+  await reach({ kind: "actor", actor: actor("agent", "kit") });
   const v = await gw.grants.vaults.set(owner(), { name: "Client: Northwind" });
   const base = `vyre://${SPACE}/vault/${v.id}`;
   await assert.rejects(() => give(gw.grants, { kind: "group", id: "project:nope" }, "use", { resource: { prefix: base } }), { code: "bad_input" });
@@ -180,4 +224,43 @@ test("a project's people and assistants are a group: one grant to project:<id> l
   // and not the owner's personal vault: it was never given
   const personal = await gw.grants.vaults.set(owner(), { name: "Mine", personal: true });
   assert.equal((await ask(gw, assistantOf(ALICE), "vault.read", `vyre://${SPACE}/vault/${personal.id}/item/k`)).effect, "deny");
+  // taking the reach away takes the project's vault with it, at the next call
+  await gw.grants.revoke(owner(), alice.id, "left the project", { presence: proof("grants.revoke", { id: alice.id, reason: "left the project" }, `vyre://${SPACE}/grant/${alice.id}`) });
+  assert.equal((await ask(gw, personChain(ALICE), "vault.read", `${base}/item/k`)).effect, "deny", "off the project");
+});
+
+test("carried-over agent logins: one agent, fill, one exact origin, until its expiry; a row already carried or already expired is skipped", async () => {
+  const { gw, g, gs } = await rig();
+  const prefix = `vyre://${SPACE}/vault/${await gs.personalVault()}/item/harlow-drive`;
+  const rows = [
+    { id: "ag_one", who: "kit", item: "harlow-drive", origin: "https://app.northwind.test", expires: T + 86400_000 },
+    { id: "ag_old", who: "kit", item: "harlow-drive", origin: "https://old.northwind.test", expires: T - 1 },
+    { id: "ag_bad", who: "kit", item: "harlow-drive", origin: "https://app.northwind.test/login", expires: null },
+  ];
+  assert.equal((await gs.carryOver("vault", rows)).length, 1);
+  assert.equal((await gs.carryOver("vault", rows)).length, 0, "twice makes one");
+  const kit = assistantOf(OWNER);
+  assert.equal((await ask(gw, kit, "vault.fill", prefix, { origin: "https://app.northwind.test" })).effect, "allow");
+  assert.equal((await ask(gw, kit, "vault.fill", prefix, { origin: "https://old.northwind.test" })).effect, "deny");
+  assert.equal((await ask(gw, kit, "vault.reveal", prefix, { origin: "https://app.northwind.test" })).effect, "deny", "fill is not reveal");
+  const mine = (await g.list(owner())).filter(x => x.source === "vault:agent");
+  assert.equal(mine.length, 1);
+  assert.deepEqual(mine[0].conditions.where.origins, ["https://app.northwind.test"]);
+});
+
+test("a Connection is open to a surface by a grant to the group surface:<name>: it reaches chains that came in through that surface, takes no fresh proof to make, and names only the four surfaces", async () => {
+  const { gw, g } = await rig();
+  const conn = `vyre://${SPACE}/connection/cn_mail`;
+  assert.deepEqual(Object.keys(SURFACE_GROUPS), ["capsule", "phone", "chat", "agents"]);
+  const open = (/** @type {string} */ name) => g.create(owner(), { subject: { kind: "group", id: `surface:${name}` }, actions: [...levelActions("use")], resource: { prefix: conn }, conditions: {}, source: "vault:connection" });
+  await assert.rejects(() => open("fax"), { code: "bad_input" });
+  const grant = await open("capsule");
+  assert.equal(grant.status, "active", "made on the person's own session, no fresh proof");
+  const via = (/** @type {string} */ surface) => chains.fromFacts({ kind: "socket", surface, uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
+  assert.equal((await ask(gw, via("capsule"), "vault.read", conn)).effect, "allow");
+  assert.equal((await ask(gw, via("deck"), "vault.read", conn)).effect, "deny", "another surface");
+  assert.equal((await ask(gw, via("capsule"), "vault.read", `vyre://${SPACE}/connection/cn_other`)).effect, "deny", "another connection");
+  assert.notEqual((await ask(gw, via("capsule"), "vault.reveal", conn)).effect, "allow", "use, not reveal");
+  await g.revoke(owner(), grant.id, "closed", { presence: proof("grants.revoke", { id: grant.id, reason: "closed" }, `vyre://${SPACE}/grant/${grant.id}`) });
+  assert.equal((await ask(gw, via("capsule"), "vault.read", conn)).effect, "deny", "taken back");
 });

@@ -13,7 +13,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 // each needing kernel authority; the base measured 9251. A ceiling, not a target: 0.3.0 trims it back under 9100 (team/BACKLOG.md).
 // 9400 (lead ruling, 9 Oct 2026): one grant model, replaces five; core deletes about 1,200 lines in steps B to G. The grants store gains teams, named vaults, the project group and the origin condition (step A, 167 net lines);
 // the Vault's own grant tables, Publish's secret grants and Wink's local grants leave core as steps B to G land. Any growth after this needs its own ruling.
-const CAP = 9400;
+// 9440 (lead ruling, 9 Oct 2026, once): one grant model C plus module release; replaces five grant models. The grants evaluator's pure core (matchGrant) is shared with vyre-core's own store.
+const CAP = 9440;
 
 /** Base: whole directories and single files. */
 const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];

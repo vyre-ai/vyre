@@ -175,6 +175,38 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {() => number} [clock]
  */
 
+/**
+ * Does one grant cover one action on one resource right now, by its own words and nothing else: the action list, the selector (prefix and row predicates over the kernel's attributes), the
+ * time it is good for and, for a login, the origins. Pure: no store, no chain, no clock of its own. The authorizer's `evaluate` and every other home of grants (the vault's own store in vyre-core)
+ * ask this one function. `probe` skips row predicates (a type-level question). @param {any} g @param {string} action @param {string} resource @param {{ attrs?: any, now: number, probe?: boolean, origin?: string, since?: number, risk?: string }} o
+ */
+export function matchGrant(g, action, resource, o) {
+  const attrs = o.attrs || {};
+  let cov = null;
+  for (const p of g.actions) { const c = patternCovers(p, action, o.since ?? 0, g.action_set_version, o.risk); if (c === "covered") { cov = c; break; } if (c) cov = c; }
+  if (cov === null) return { ok: false, reason: "no_grant" };
+  if (cov !== "covered") return { ok: false, reason: "pattern_not_covered" };
+  if (!covers(g.resource.prefix, resource)) return { ok: false, reason: "no_grant" };
+  // A type-level probe (input.probe) asks only what a grant carries for the type, to learn its field limits: row predicates are skipped, and the
+  // answer is never an access decision for any row.
+  for (const pr of o.probe ? [] : g.resource.where || []) {
+    // A predicate on an absent attribute matches nothing, for every op; an unknown op denies.
+    if (!Object.hasOwn(attrs, pr.attr) || attrs[pr.attr] === undefined || attrs[pr.attr] === null) return { ok: false, reason: "no_grant" };
+    const v = attrs[pr.attr];
+    const want = pr.value;
+    if (!["eq", "ne", "in"].includes(pr.op)) return { ok: false, reason: "no_grant" };
+    const hit = pr.op === "eq" ? v === want : pr.op === "ne" ? v !== want : Array.isArray(want) && want.includes(v);
+    if (!hit) return { ok: false, reason: "no_grant" };
+  }
+  const c = g.conditions || {};
+  if (c.when) {
+    if (c.when.expires !== undefined && c.when.expires <= o.now) return { ok: false, reason: "expired" };
+    if (c.when.not_before !== undefined && o.now < c.when.not_before) return { ok: false, reason: "no_grant" };
+  }
+  if (c.where && c.where.origins && !(typeof o.origin === "string" && c.where.origins.includes(o.origin))) return { ok: false, reason: "wrong_node" };
+  return { ok: true };
+}
+
 /** @param {AuthorizerConfig} cfg */
 export function createAuthorizer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -359,35 +391,15 @@ export function createAuthorizer(cfg) {
     if (!subjectOk) return { ok: false, reason: "no_grant" };
     // An assistant reaches a team's grant only by association with a person in the team, and by it holds use and nothing that changes who has access or shows a value: no admin, grant or sharing act.
     if (subj.kind === "group" && h.actor.kind === "agent" && ["admin", "grant", "outward.share", "outward.delete"].includes(String((reg.get(action) || {}).risk))) return { ok: false, reason: "no_grant" };
-    let cov = null;
-    for (const p of g.actions) { const c = patternCovers(p, action, since(action), g.action_set_version, riskOf(action)); if (c === "covered") { cov = c; break; } if (c) cov = c; }
-    if (cov === null) return { ok: false, reason: "no_grant" };
-    if (cov !== "covered") return { ok: false, reason: "pattern_not_covered" };
-    if (!covers(g.resource.prefix, resource)) return { ok: false, reason: "no_grant" };
-    // A type-level probe (input.probe) asks only what a grant carries for the type, to learn its field limits: row predicates are skipped, and the
-    // answer is never an access decision for any row.
-    for (const pr of probe ? [] : g.resource.where || []) {
-      // A predicate on an absent attribute matches nothing, for every op; an unknown op denies.
-      if (!Object.hasOwn(attrs, pr.attr) || attrs[pr.attr] === undefined || attrs[pr.attr] === null) return { ok: false, reason: "no_grant" };
-      const v = attrs[pr.attr];
-      const want = pr.value;
-      if (!["eq", "ne", "in"].includes(pr.op)) return { ok: false, reason: "no_grant" };
-      const hit = pr.op === "eq" ? v === want : pr.op === "ne" ? v !== want : Array.isArray(want) && want.includes(v);
-      if (!hit) return { ok: false, reason: "no_grant" };
-    }
+    const m = matchGrant(g, action, resource, { attrs, now, probe, origin, since: since(action), risk: riskOf(action) });
+    if (!m.ok) return m;
     const c = g.conditions || {};
     let obsUnknownSchedule = false;
     // A schedule is stored but not evaluated here: a grant that carries one cannot be proven to apply now, so it is never met silently (it makes the effect an ask).
     if (c.when && c.when.schedule !== undefined) obsUnknownSchedule = true;
-    if (c.when) {
-      if (c.when.expires !== undefined && c.when.expires <= now) return { ok: false, reason: "expired" };
-      if (c.when.not_before !== undefined && now < c.when.not_before) return { ok: false, reason: "no_grant" };
-    }
     if (c.where) {
       if (c.where.surfaces && !(h.via && c.where.surfaces.includes(h.via.surface))) return { ok: false, reason: "wrong_node" };
       if (c.where.nodes && !(h.via && c.where.nodes.includes(h.via.node))) return { ok: false, reason: "wrong_node" };
-      // A login lent for one site (team/0.3.1/DESIGN-one-grant.md section 6): the origin the use is for (scheme, host, port) must be one of these, exactly. No origin named is not a match.
-      if (c.where.origins && !(typeof origin === "string" && c.where.origins.includes(origin))) return { ok: false, reason: "wrong_node" };
     }
     if (c.audience && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "service" && !c.audience.includes(x.actor.id))) return { ok: false, reason: "no_grant" };
     /** @type {any[]} */ const obs = [];

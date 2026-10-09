@@ -30,6 +30,7 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
+import { Access } from "./access.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
@@ -79,6 +80,8 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
+    // Who may use a login is a kernel grant (access.js); the vault keeps no table of it.
+    vault.access = new Access(vault, ctx);
     // Every tool that returns or moves a value asks for presence first (prove.js), until the
     // registry does it (ADR 0004). All registrations below go through this ctx.
     const gated = gate({ ctx, vault });
@@ -92,6 +95,8 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
+    if (vault.access) vault.access.carry().catch(e => ctx.log(`vault: agent logins were not carried over yet: ${/** @type {Error} */ (e).message}`));
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
@@ -261,7 +266,7 @@ export default {
       obj({}), () => vault.pending());
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, { caller, presence: how }) => { windowUse(how, "approve", input.id, caller); return vault.approve(input, caller); },
+      obj({ id: str }, ["id"]), (input, meta) => { windowUse(meta.presence, "approve", input.id, meta.caller); return vault.approve(input, meta.caller, meta); },
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
