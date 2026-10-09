@@ -210,3 +210,13 @@ test("adapter: a preview of the chat is one block, patched by the same tool id a
   assert.equal(next[0].data.result.access, "team");
   assert.deepEqual(a.event(ev("thread.preview", { id: "not-an-id", title: "x" })), []);
 });
+
+test("adapter: a computer's operator card and a sign-in become blocks patched by their own ids, with words only", () => {
+  const a = createAdapter();
+  const op = a.event(ev("thread.operator", { run: "0a1b2c3d4e5f", computer: "kit", title: "Kit's computer", state: "working", line: "Reading the list", steps: [{ line: "Opening the site", state: "done" }], password: "never" }));
+  assert.deepEqual(op.map(s => [s.kind, s.data.tool_id, s.data.result.block, s.data.result.line]), [["tool-finished", "op:0a1b2c3d4e5f", "operator", "Reading the list"]]);
+  assert.ok(!JSON.stringify(op).includes("never"));
+  const si = a.event(ev("thread.signin", { id: "1b2c3d4e5f60", computer: "kit", site: "GoHighLevel", why: "to read the workflow", state: "waiting" }));
+  assert.deepEqual(si.map(s => [s.data.tool_id, s.data.result.block, s.data.result.site]), [["signin:1b2c3d4e5f60", "signin", "GoHighLevel"]]);
+  assert.deepEqual(a.event(ev("thread.operator", { run: "bad" })), []);
+});
