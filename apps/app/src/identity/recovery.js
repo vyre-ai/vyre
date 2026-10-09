@@ -6,8 +6,8 @@
 import { argon2idAsync } from "@noble/hashes/argon2.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { eidOf, b64u } from "../../../../kernel/identity/chain.js";
+import { base32 } from "../../../../lib/bytes.js";
 
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 export const PASSWORD_MIN = 8;
 /** The work factor: kernel/identity/stretch.js STRETCH. Part of what makes a stolen paper slow to use. */
 export const STRETCH = Object.freeze({ memoryKiB: 19456, passes: 2 });
@@ -16,10 +16,7 @@ export const STRETCH_SALT = "vyre-recovery-code-v1";
 /** @param {(n: number) => Uint8Array} [random] */
 export function newCode(random = n => crypto.getRandomValues(new Uint8Array(n))) {
   const raw = random(16);
-  let out = "", bits = 0, value = 0;
-  for (const b of raw) { value = (value << 8) | b; bits += 8; while (bits >= 5) { out += ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; } }
-  if (bits > 0) out += ALPHABET[(value << (5 - bits)) & 31];
-  return out.slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
+  return base32(raw).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
 }
 /** @param {unknown} code */
 export const normalizeCode = code => String(code ?? "").toLowerCase().replace(/[\s-]/g, "");

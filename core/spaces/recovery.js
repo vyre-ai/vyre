@@ -10,18 +10,15 @@
 import crypto from "node:crypto";
 import { keyId } from "../../lib/identity/directory.js";
 import { argon2id, STRETCH, STRETCH_SALT } from "../../kernel/identity/stretch.js";
+import { base32 } from "../../lib/bytes.js";
 
-const ALPHABET = "abcdefghijklmnopqrstuvwxyz234567";
 const PKCS8_ED25519 = Buffer.from("302e020100300506032b657004220420", "hex");
 export const PASSWORD_MIN = 8;
 
 /** A fresh code: 128 bits as 26 characters in groups of four. @param {(n: number) => Buffer} [random] */
 export function newCode(random = crypto.randomBytes) {
   const raw = random(16);
-  let out = "", bits = 0, value = 0;
-  for (const b of raw) { value = (value << 8) | b; bits += 8; while (bits >= 5) { out += ALPHABET[(value >>> (bits - 5)) & 31]; bits -= 5; } }
-  if (bits > 0) out += ALPHABET[(value << (5 - bits)) & 31];
-  return out.slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
+  return base32(raw).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
 }
 
 /** What a person types back is forgiving about case, spaces and dashes. @param {unknown} code */

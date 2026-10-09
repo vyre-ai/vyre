@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { canonical as kernelCanonical } from "../../kernel/core/canonical.js";
 
 /** How long an assertion is good for. */
 export const TTL = 60_000;
@@ -23,12 +24,8 @@ export const KEY_FILE = "link-assert-key.json";
 
 const b64u = (/** @type {Buffer} */ b) => Buffer.from(b).toString("base64url");
 
-/** JSON with every object's keys sorted, so both ends hash the same bytes for the same value. @param {any} v @returns {string} */
-export function canonical(v) {
-  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return `[${v.map(x => (x === undefined ? "null" : canonical(x))).join(",")}]`;
-  return `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
-}
+/** JSON with every object's keys sorted, so both ends hash the same bytes for the same value: the kernel's canonical (kernel/core/canonical.js). A value that is undefined at the top is "null". @param {any} v @returns {string} */
+export const canonical = v => (v === undefined ? "null" : kernelCanonical(v));
 
 /** sha256 of the canonical JSON, base64url: what the assertion's `decision` binds. @param {any} input */
 export const decisionHash = input => b64u(crypto.createHash("sha256").update(canonical(input)).digest());

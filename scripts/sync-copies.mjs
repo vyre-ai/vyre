@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // scripts/sync-copies.mjs: code that must run where it cannot import from lib/ is GENERATED from lib/, never edited by hand. Today:
 //   - local/hands-chrome-mac/extension/shared/sk/ (the credential shapes and the site-knowledge store; the extension runs inside Chrome),
-//   - core/computers/image/computerd/ws.js (the computers image is built from that folder alone).
+//   - core/computers/image/computerd/ws.js (the computers image is built from that folder alone),
+//   - relay/client/bytes.js (the Windows capsule ships relay/client/*.js on its own).
 // They are byte copies behind a one-line header; test/generated-copies.test.js fails when one drifts.
 //   node scripts/sync-copies.mjs                  write the copies
 //   import { generatedFiles } from "./sync-copies.mjs"   what they should contain, as { path: text }
@@ -20,6 +21,8 @@ export function generatedFiles() {
     const text = fs.readFileSync(path.join(ROOT, src), "utf8");
     out[`${DEST}/${path.basename(src)}`] = `// GENERATED from ${src} by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.\n${text}`;
   }
+  const bytes = fs.readFileSync(path.join(ROOT, "lib/bytes.js"), "utf8");
+  out["relay/client/bytes.js"] = `// GENERATED from lib/bytes.js by scripts/sync-copies.mjs (the Windows capsule ships relay/client/*.js on its own, so this folder cannot import from lib/). Do not edit here.\n${bytes}`;
   const ws = fs.readFileSync(path.join(ROOT, "lib/ws.js"), "utf8");
   out["core/computers/image/computerd/ws.js"] = `// GENERATED from lib/ws.js by scripts/sync-copies.mjs (computerd is copied alone into the image at /opt/computerd and cannot import from outside its folder). Do not edit here.\n${ws}`;
   out[`${DEST}/VERSION`] = `generated from ${SOURCES.join(" and ")} by scripts/sync-copies.mjs; test/generated-copies.test.js fails on drift\n`;
