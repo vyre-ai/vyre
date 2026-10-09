@@ -28,7 +28,7 @@ async function rig(t) {
   const jane = (await ok("records.create", { type: "contact", data: { name: "Jane Doe", age: 40 } })).record;
   await ok("records.seal-put", { urn: jane.urn, field: "ssn", value: "123-45-6789", class: "us-ssn" });
   const secret = (await ok("records.create", { type: "matter", data: { title: "Harlow v. Harlow" } })).record;
-  const outside = d.registry.modules.get("outside").handle;
+  const outside = d.registry.modules.get("outside").handle.handle;
   assert.ok(outside, "the outside module is running");
   const rpc = (token, method, params, source = "10.0.0.1") => outside({ method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), source });
   const tools = async token => (await rpc(token, "tools/list")).body.result.tools.map(x => x.name);

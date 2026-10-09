@@ -53,7 +53,7 @@ export function registerOutside(ctx, seam = {}) {
   /** The person must hold what they give: delegation only narrows. */
   const mayGive = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
     const d = await K.authorize({ chain, action, resource });
-    if (!d || d.effect !== "allow") throw fail(`you do not hold that access yourself, so you cannot give it (${action})`, "denied");
+    if (!d || d.effect !== "allow") throw fail(`you do not hold that access yourself, so you cannot give it (${action}${d && d.reason ? `: ${d.reason}` : ""})`, "denied");
   };
   const mint = (/** @type {any} */ agent, /** @type {string[]} */ actions, /** @type {string} */ prefix, /** @type {number} */ until, /** @type {string} */ reason) => K.mint.make({
     subject: { kind: "actor", actor: actorOf(agent.id) }, actions, resource: { prefix }, conditions: { when: { expires: until }, rate: { n: Math.max(1, agent.rate), per_seconds: 60 } },
