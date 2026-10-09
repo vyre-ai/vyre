@@ -1,12 +1,11 @@
-import { mentionsCredentialPrefix } from "../../lib/credential-shapes.js";
 // @ts-check
+import { clean, at, opt, DETAIL_MAX } from "../../lib/waiting-text.js";
 // waiting: one "waiting on you" (docs/adr/0036-one-system.md, section 4).
 //
-// Four modules each hold something only the person can settle: the Switchboard's asks, the Gate's
-// held drafts, the Planner's ringing reminders and the link's pairing requests. Every surface used
-// to read some of them and miss the rest. This module reads all four and hands back one list, so
-// the Capsule, the Deck, the phone, push and the status line count the same things, and one
-// answer clears every device.
+// What waits on the person is held in three places now: the approvals queue (the Gate's held drafts, a session's asks and the vault's pending requests are cards in it, core/approvals/items.js),
+// the Planner's ringing reminders and the link's pairing requests. Every surface used to read some of
+// them and miss the rest. This module reads those and hands back one list, so the Capsule, the Deck,
+// the phone, push and the status line count the same things, and one answer clears every device.
 //
 // It owns nothing. Answering stays with the owner: each row's `answer` names the owner's tool and
 // the input it already knows, and `fill` names what the person still has to give (a decision, or
@@ -16,64 +15,21 @@ import { mentionsCredentialPrefix } from "../../lib/credential-shapes.js";
 // Titles are the owners' own summaries, capped, and dropped whole when one looks like a secret.
 
 const DEBOUNCE_MS = 300;
-const TITLE_MAX = 120;
-const DETAIL_MAX = 160;
 const LIMIT_MAX = 500;
 /** How long a pairing request lives on the box (core/link/box.js TTL): link.pending gives only its expiry. */
 const PAIR_TTL_MS = 10 * 60_000;
 
-export const KINDS = /** @type {const} */ (["ask", "draft", "reminder", "pairing"]);
+export const KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "reminder", "pairing"]);
 
 // Owners' events that can change what waits. planner.* is narrowed: added, removed and schedule
 // never ring or stop a ring by themselves.
 const WATCH = [
-  ["ask.*", () => true],
-  ["gate.*", () => true],
+  ["approvals.*", t => t === "approvals.changed"],
   ["planner.*", t => t === "planner.fired" || t === "planner.acked" || t === "planner.changed"],
   ["link.*", t => t === "link.pair-requested" || t === "link.paired" || t === "link.unpaired"],
 ];
 
-// A title reaches every device and the lock screen. The owners redact what they store, but a
-// Bash ask's summary is the command as typed, so a line shaped like a credential goes whole.
-const SECRET = [
-  { test: (/** @type {string} */ s) => mentionsCredentialPrefix(s) },   // a key prefix anywhere (lib/credential-shapes.js)
-  /[A-Za-z0-9_+/=-]{32,}/,
-  /\b(password|passwd|secret|token|api[_-]?key)\s*[=:]/i,
-];
-const one = (/** @type {unknown} */ s) => String(s ?? "").replace(/\s+/g, " ").trim();
-const cap = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-/** @param {unknown} s @param {number} n @returns {string} empty when it looks like a secret */
-export const clean = (s, n = TITLE_MAX) => { const t = one(s); return t && !SECRET.some(r => r.test(t)) ? cap(t, n) : ""; };
-
-const at = v => (typeof v === "number" && Number.isFinite(v) ? v : 0);
-const opt = (k, v) => (v ? { [k]: v } : {});
-
-/** threads.asks rows. A question is answered with a decision and its answers; a permission with a decision. */
-export const fromAsks = rows => rows.map(a => {
-  const question = a.kind === "question";
-  const first = question && Array.isArray(a.questions) && a.questions[0] ? a.questions[0].question : "";
-  const title = clean(a.summary) || clean(first) || (question ? "A question from a session" : `Allow ${clean(a.tool, 40) || "a tool"}?`);
-  const who = [clean(a.agent, 40), clean(a.thread_name, 80)].filter(Boolean).join(" in ");
-  // An ask from a session on the paired Mac is answered on that Mac: the box cannot forward an
-  // answer yet (threads.answer {machine} arrives with federation, after 0.1.0). Until then the
-  // row names the machine and its answer has no tool, so a surface says "Answer it on <mac>".
-  const mac = a.source === "mac";
-  const machine = mac && a.machine ? clean(a.machine, 80) : "";
-  return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
-    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
-    answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
-      : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
-});
-
-/** gate.held rows. Only the sender's own summary and where it goes, never the draft. */
-export const fromHeld = rows => rows.map(h => {
-  const to = (Array.isArray(h.to) ? h.to : [h.to]).map(x => one(x)).filter(Boolean).join(", ");
-  const via = clean(h.via, 40);
-  const title = clean(h.summary) || `A ${clean(h.kind, 20) || "draft"}${via ? ` via ${via}` : ""}`;
-  const detail = clean([via, to && `to ${to}`].filter(Boolean).join(" "), DETAIL_MAX);
-  return { id: `gate:${h.id}`, kind: "draft", title, ...opt("detail", detail), ...opt("project", h.project), ...opt("thread", h.thread),
-    at: at(h.at), source: "gate", answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
-});
+export { clean };
 
 /** planner.ringing rows, shaped like planner.fired. `at` is when it was due. */
 export const fromRinging = rows => rows.map(r => ({
@@ -92,9 +48,11 @@ export const fromPending = rows => rows.map(p => {
     answer: { tool: "link.pair.approve", input: {}, fill: ["code"] } };
 });
 
+/** The approvals queue's cards are already rows; the owners it could not read are named like a source of ours. */
+const fromCards = data => (data && Array.isArray(data.items) ? data.items.filter(x => x && typeof x === "object").map(({ state: _state, ...row }) => row) : []);
+
 const SOURCES = /** @type {const} */ ([
-  ["threads", "threads.asks", fromAsks],
-  ["gate", "gate.held", fromHeld],
+  ["approvals", "approvals.items", fromCards],
   ["planner", "planner.ringing", fromRinging],
   ["link", "link.pending", fromPending],
 ]);
@@ -116,11 +74,13 @@ export default {
     let cache = null;
     let said = JSON.stringify(tally([])), timer = null, running = null, again = false, stopped = false;
 
-    /** One source's rows, or null when it failed, is refused or is not running here. */
+    /** One source's rows, or null when it failed, is refused or is not running here. The approvals queue also names the owners it could not read (`partial`). */
     const read = async (tool, map) => {
       try {
         const r = await ctx.call(tool, {});
-        if (!r || r.error || !Array.isArray(r.data)) return null;
+        if (!r || r.error) return null;
+        if (tool === "approvals.items") return r.data && typeof r.data === "object" ? Object.assign(map(r.data), { partial: Array.isArray(r.data.partial) ? r.data.partial.map(String) : [] }) : null;
+        if (!Array.isArray(r.data)) return null;
         return map(r.data.filter(x => x && typeof x === "object"));
       } catch { return null; }
     };
@@ -130,7 +90,7 @@ export default {
     const sources = ctx.config && ctx.config.role === "box" ? SOURCES : SOURCES.filter(([name]) => name !== "planner");
     const compute = async () => {
       const got = await Promise.all(sources.map(([, tool, map]) => read(tool, map)));
-      const partial = sources.filter((_, i) => got[i] === null).map(([name]) => name);
+      const partial = [...sources.filter((_, i) => got[i] === null).map(([name]) => name), ...got.flatMap(g => (g && Array.isArray(/** @type {any} */ (g).partial) ? /** @type {any} */ (g).partial : []))];
       const rows = got.flatMap(g => g || []).sort(order);
       return { rows, ...tally(rows), partial };
     };
@@ -169,7 +129,7 @@ export default {
     const int = { type: "integer", minimum: 1, maximum: LIMIT_MAX };
 
     ctx.tool("waiting.list", {
-      description: "Everything waiting on the user, newest first: session asks (ask), held drafts (draft), ringing reminders (reminder) and pairing requests (pairing). Each row: id, kind, title, detail?, project?, thread?, at, source, and answer {tool, input, fill}: the owner's tool that settles it, the input it already has, and what the person still gives. Also count and by_kind over all rows, and partial: the sources that could not be read.",
+      description: "Everything waiting on the user, newest first: yes waiting on the phone (approval), session asks (ask), held drafts (draft), the vault's pending requests (access), ringing reminders (reminder) and pairing requests (pairing). The asks, drafts and vault requests are read from the approvals queue. Each row: id, kind, title, detail?, project?, thread?, at, source, and answer {tool, input, fill}: the owner's tool that settles it, the input it already has, and what the person still gives. Also count and by_kind over all rows, and partial: the sources that could not be read.",
       input: { type: "object", properties: { limit: int } },
       effect: "read",
       callers,
@@ -181,7 +141,7 @@ export default {
     });
 
     ctx.tool("waiting.count", {
-      description: "How many things wait on the user, and how many of each kind (ask, draft, reminder, pairing).",
+      description: "How many things wait on the user, and how many of each kind (approval, ask, draft, access, reminder, pairing).",
       input: { type: "object", properties: {} },
       effect: "read",
       callers,

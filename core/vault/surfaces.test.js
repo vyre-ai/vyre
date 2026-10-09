@@ -238,7 +238,7 @@ test("surfaces: the Deck and the Capsule reveal behind presence; without a proof
   t.after(() => d.stop());
   const pw = canary("pw");
   await as("cli")("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw }, url: "https://mail.example.com" });
-  for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login", confirm: true })).data.value, pw);
+  for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login" })).data.value, pw);
   const cleared = await as("mcp")("vault.clipboard.clear");
   assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
 });
@@ -257,7 +257,7 @@ test("surfaces: reveal is on in vault.caps, and with vyred's real presence check
   await d.registry.call("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw } }, "module:onboard");
   assert.equal((await as("deck")("vault.caps")).data.reveal, true);
   for (const who of ["deck", "capsule"]) {
-    const r = await as(who)("vault.reveal", { name: "site-login", confirm: true });
+    const r = await as(who)("vault.reveal", { name: "site-login" });
     assert.ok(r.error, `${who} got a value with no proof`);
     assert.ok(!JSON.stringify(r).includes(pw), `${who}: the value is in the refusal`);
   }

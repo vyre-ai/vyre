@@ -48,7 +48,6 @@ import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
-import { gate } from "./prove.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 
@@ -77,7 +76,7 @@ export default {
   async start(ctx) {
     // A first-party tool declared anyone is open to an added module that lists it in needs.tools (ADR 0047). These four
     // take or use secrets for Vyre's own modules only: an added module reaches a secret through ctx.vault.fetch.
-    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify"] });
+    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify", "vault.pending"] });
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
     if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
@@ -85,11 +84,7 @@ export default {
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     // Who may use a login is a kernel grant (access.js); the vault keeps no table of it.
     vault.access = new Access(vault, ctx);
-    // Every tool that returns or moves a value asks for presence first (prove.js), until the
-    // registry does it (ADR 0004). All registrations below go through this ctx.
-    const gated = gate({ ctx, vault });
-    const base = ctx;
-    ctx = Object.assign(Object.create(base), { tool: (name, def) => base.tool(name, gated(name, def)) });
+    // Every tool that returns or moves a value is held at the registry's floor, which asks the one yes (lib/one-yes.js) before the tool runs; nothing here asks twice.
 
     const opts = (ctx.config && ctx.config.vault) || {};
     // An existing home opens its agent vault now, so a v1 home is re-sealed as v2 at start
@@ -265,7 +260,8 @@ export default {
         return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
-    tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
+    // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
+    tool("vault.pending", [...SURFACES, "mcp", "module"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
