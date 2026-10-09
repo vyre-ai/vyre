@@ -122,3 +122,39 @@ test("R031-05: the assistant holds the person's own access on their project, and
     assert.notEqual((await decide(forBob, action, item)).effect, "allow", `${action} is not the assistant's`);
   }
 });
+
+test("R031-03: a Personal project (a project record with an owner attribute) is its person's alone: the Space owner, another member, any assistant for them and any other module get not_found; the person, their assistant and the module that made it reach it", async () => {
+  const { k, owner, bob, forBob, forOwner, g } = await rig();
+  const carl = "per_carl";
+  const r = { person: carl, role: "member" };
+  await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${carl}`) });
+  const forCarl = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: carl, agent: "assistant", session: "s9" });
+  const type = { name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  await k.gateway.records.define(owner, { add_types: [type] });
+  // two first-party modules, each with the records grant a real module has
+  const modules = {};
+  for (const name of ["work", "reports"]) {
+    const actor = { kind: "service", id: name, space: SPACE };
+    await g.addActor(owner, actor, { presence: proof("grants.role", { actor }, `vyre://${SPACE}/member/${name}`) });
+    const gi = { subject: { kind: "actor", actor }, actions: ["records.read", "records.create", "records.update"], resource: { prefix: `vyre://${SPACE}/project/*` }, conditions: {}, source: "test" };
+    await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+    modules[name] = k.gateway.serviceChain(name);
+  }
+  const mine = await k.gateway.records.create(modules.work, "project", { name: "Personal" }, { attrs: { owner: BOB } });
+  const shared = await k.gateway.records.create(owner, "project", { name: "Shared" });
+  const read = (chain) => k.gateway.records.get(chain, "project", mine.id);
+  const seen = async (chain) => { try { return Boolean(await read(chain)); } catch (e) { if (e.code === "not_found") return false; throw e; } };
+  const listed = async (chain) => (await k.gateway.records.query(chain, "project", { page: { limit: 50 } })).rows.some((x) => x.data.name === "Personal");
+  const carlDevice = k.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: carl, path: "direct" });
+  for (const [who, chain] of [["the Space owner", owner], ["another member", carlDevice], ["that member's assistant", forCarl], ["the owner's assistant", forOwner], ["another module", modules.reports]]) {
+    assert.equal(await seen(chain), false, `${who} gets not_found`);
+    assert.equal(await listed(chain), false, `${who} does not see it listed`);
+    await assert.rejects(() => k.gateway.records.update(chain, "project", mine.id, { name: "x" }, mine.version), (e) => ["not_found", "denied", "not_allowed"].includes(e.code), `${who} cannot write it`);
+  }
+  for (const [who, chain] of [["the person", bob], ["their assistant", forBob], ["the module that made it", modules.work]]) {
+    assert.equal(await seen(chain), true, `${who} reads it`);
+    assert.equal(await listed(chain), true, `${who} sees it listed`);
+  }
+  assert.equal((await k.gateway.records.get(owner, "project", shared.id)).data.name, "Shared", "an ordinary project is unchanged");
+  assert.equal((await k.gateway.records.get(modules.reports, "project", shared.id)).data.name, "Shared");
+});
