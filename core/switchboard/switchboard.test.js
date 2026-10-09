@@ -408,7 +408,7 @@ shardTest("switchboard: a thread streams to two clients, asks, is answered, and 
   assert.equal((await tool("threads.send", { thread: id, text: "from the phone, same person", surface: "phone" })).data.sent, true);
   // The owner's device is the person's Deck, not a participant of its own.
   // With the kernel on the owner's device is the facts the listener proves (a paired app row), not the label.
-  // (the owner's device over the socket, as the real listener proves it; the tailnet caller this once was is gone with Tailscale)
+  // (the owner's device over the socket, as the real listener proves it; a tailnet caller no longer exists)
   const asOwner = (name, input) => tool(name, { surface: "phone", ...input });
   assert.equal((await asOwner("threads.send", { thread: id, text: "over the socket" })).data.sent, true);
   assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "phone");

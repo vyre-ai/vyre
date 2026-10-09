@@ -1,7 +1,6 @@
 // One cell of the golden tests: one role and one recorder run (VYRE_GOLDEN_ROLE box|local, VYRE_GOLDEN_RUN plain|gates|generated), set by golden-<role>-<run>.test.js, which imports this.
 // The recorder asks every tool of every caller in every world; all of it in one file took 15 minutes, past the 300 s per-file limit, so each (role, run) is its own file. Nothing here is skipped:
 // the old golden.test.js's recorder cases are these files (the generated run in six parts a role), and the cases that need no recording stay in golden.test.js.
-import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { record, recordAsync, loadRole, diff } from "./index.js";

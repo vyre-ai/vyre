@@ -5,6 +5,11 @@
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+// This file has 46 cases of 5 to 25 s each, which ran past the 300 s per-file limit. The cases are dealt out to 6 files (wink.test.js and its -b.. siblings, which set VYRE_WINK_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 6;
+const SHARD = Number(process.env.VYRE_WINK_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -19,6 +24,8 @@ import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
 import { tempHome } from "./helpers.js";
+import { allowLoopbackForTests } from "../lib/http.js";
+allowLoopbackForTests();   // this file runs its relay on loopback
 import { macCore } from "./fake-core-keys.js";
 import { card, removal, FORBIDDEN } from "../core/wink/cards.js";
 import { peerDoor, composeWinkHome } from "../core/wink/index.js";
@@ -110,7 +117,7 @@ async function addPhoneByCode(t, w, code, offer) {
   return { ack, typed, joining };
 }
 
-test("wink: a typed code is two-sided, ends in one device grant and events, and the code never rides the event bus", async t => {
+shardTest("wink: a typed code is two-sided, ends in one device grant and events, and the code never rides the event bus", async t => {
   const w = await world(t);
   const open = await w.call("wink.code.open", { flow: "W2" });
   assert.ok(open.data?.code, JSON.stringify(open.error));
@@ -140,7 +147,7 @@ test("wink: a typed code is two-sided, ends in one device grant and events, and 
   assert.equal((await w.call("wink.offers")).data.offers.length, 0, "a used offer is no longer waiting");
 });
 
-test("wink: a wrong code typed back closes the code at once and a fresh one is showing; nothing is added", async t => {
+shardTest("wink: a wrong code typed back closes the code at once and a fresh one is showing; nothing is added", async t => {
   const w = await world(t);
   const open = await w.call("wink.code.open", { flow: "W2" });
   const { states, done } = typeCode(t, w, open.data.code, { waitMs: 1500 });
@@ -156,7 +163,7 @@ test("wink: a wrong code typed back closes the code at once and a fresh one is s
   assert.equal((await w.call("wink.access")).data.grants.length, 0, "nothing was added");
 });
 
-test("wink: the code is the owner's: an agent, a guest and a hook are refused", async t => {
+shardTest("wink: the code is the owner's: an agent, a guest and a hook are refused", async t => {
   const w = await world(t);
   for (const caller of ["tailnet:agent:juno", "tailnet-guest:kit", "hook", "anonymous"]) {
     const r = await w.call("wink.code.open", { flow: "W2" }, caller);
@@ -164,7 +171,7 @@ test("wink: the code is the owner's: an agent, a guest and a hook are refused", 
   }
 });
 
-test("wink: an invitation is sealed into a ticket; the invited person's redemption writes a membership grant", async t => {
+shardTest("wink: an invitation is sealed into a ticket; the invited person's redemption writes a membership grant", async t => {
   const w = await world(t);
   const inv = await w.call("wink.invite", { role: "member", projects: ["intake"], days: 2 });
   assert.ok(inv.data?.ticket, JSON.stringify(inv.error));
@@ -187,7 +194,7 @@ test("wink: an invitation is sealed into a ticket; the invited person's redempti
   await assert.rejects(() => pairTicket(ticket, { relay: w.status.url, crypto: nodeCrypto(), keyStore: keystore(t) }), /expired or was already used/);
 });
 
-test("wink: a sensitive role waits for the admin's approval, and decline adds nothing", async t => {
+shardTest("wink: a sensitive role waits for the admin's approval, and decline adds nothing", async t => {
   const w = await world(t);
   const inv = await w.call("wink.invite", { role: "admin" });
   const ticket = fromBase64url(inv.data.ticket);
@@ -207,7 +214,7 @@ test("wink: a sensitive role waits for the admin's approval, and decline adds no
   assert.equal((await w.call("wink.invite", { role: "owner" })).error?.code, "bad_input");
 });
 
-test("wink: sharing a computer is a node.host grant with limits, and only for a computer that is paired", async t => {
+shardTest("wink: sharing a computer is a node.host grant with limits, and only for a computer that is paired", async t => {
   const w = await world(t);
   assert.equal((await w.call("wink.share", { device: "nopenopenopenope" })).error?.code, "not_found");
   const open = await w.call("wink.code.open", { flow: "W2" });
@@ -230,7 +237,7 @@ test("wink: sharing a computer is a node.host grant with limits, and only for a 
   assert.equal(dev.offers.compute, true);
 });
 
-test("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
+shardTest("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
   const w = await world(t);
   const open = await w.call("wink.code.open", { flow: "W2" });
   const { states, done } = typeCode(t, w, open.data.code);
@@ -280,7 +287,7 @@ async function askPhone(w, id, seed, name) {
 }
 const relayHas = async (w, id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.some(d => d.id === id);
 
-test("wink: a release drops the adopter's relay device and a refused adopt drops the stranger's; wink.access is empty and the device is refused afterwards", async t => {
+shardTest("wink: a release drops the adopter's relay device and a refused adopt drops the stranger's; wink.access is empty and the device is refused afterwards", async t => {
   const w = await world(t);
   const app = await pairDevice(t, w);
   const as = id => `device:${id}`;
@@ -316,7 +323,7 @@ test("wink: a release drops the adopter's relay device and a refused adopt drops
   assert.equal(row, undefined, "the relay no longer knows it");
 });
 
-test("wink: a ring pairing (relay.pair.ticket) is gated: the redeemer is a waiting pairing until the three words are picked on the computer, then it registers a phone, and removing the device at the relay clears it", async t => {
+shardTest("wink: a ring pairing (relay.pair.ticket) is gated: the redeemer is a waiting pairing until the three words are picked on the computer, then it registers a phone, and removing the device at the relay clears it", async t => {
   const w = await world(t);
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t) });
@@ -340,7 +347,7 @@ test("wink: a ring pairing (relay.pair.ticket) is gated: the redeemer is a waiti
   await until(async () => (await w.call("wink.access")).data.devices.length === 0);
 });
 
-test("wink: Add a phone shows a QR and a code, a phone never takes a space target, and the phone's typed-back code adds it as a phone", async t => {
+shardTest("wink: Add a phone shows a QR and a code, a phone never takes a space target, and the phone's typed-back code adds it as a phone", async t => {
   const w = await world(t);
   assert.equal((await w.call("wink.phone.open", { space: "spc_aaaaaaaaaaaa" })).error?.code, "identity_only");
   const open = await w.call("wink.phone.open", { typed: true });
@@ -357,7 +364,7 @@ test("wink: Add a phone shows a QR and a code, a phone never takes a space targe
   assert.match(scan.error.message, /not to a space/);
 });
 
-test("wink: the server's own code and typed-back confirmation use the same two-sided path, and a pick-a-number tool does not exist", async t => {
+shardTest("wink: the server's own code and typed-back confirmation use the same two-sided path, and a pick-a-number tool does not exist", async t => {
   const w = await world(t);
   const open = await w.call("wink.server.code", {});
   assert.match(open.data.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
@@ -369,7 +376,7 @@ test("wink: the server's own code and typed-back confirmation use the same two-s
   for (const gone of ["wink.code.pick", "wink.pick"]) assert.equal((await w.call(gone, {})).error?.code, "no_such_tool", `${gone} is gone`);
 });
 
-test("wink: the app's side carries the proof: pair.server without presence is refused, a space pairing by a non-admin is refused, an admin passes; the server's own side stays presence-free", async t => {
+shardTest("wink: the app's side carries the proof: pair.server without presence is refused, a space pairing by a non-admin is refused, an admin passes; the server's own side stays presence-free", async t => {
   const w = await world(t);
   const bare = { peer: A.peer, person: A.person };
   const own = (await w.call("wink.pair.targets", {})).data.targets[0];
@@ -391,7 +398,7 @@ test("wink: the app's side carries the proof: pair.server without presence is re
   assert.equal((await w.call("wink.server.confirm", { offer: open.data.offer, typed: "WINK-0000-0000" }, SCREEN, bare)).error?.code, "not_found", "reaches the module with no proof");
 });
 
-test("wink: a new server code always replaces the old one: the abandoned code stops working and the offer closes", async t => {
+shardTest("wink: a new server code always replaces the old one: the abandoned code stops working and the offer closes", async t => {
   const w = await world(t);
   const first = (await w.call("wink.server.code", {})).data;
   const second = (await w.call("wink.server.code", {})).data;
@@ -408,7 +415,7 @@ test("wink: a new server code always replaces the old one: the abandoned code st
   await done;
 });
 
-test("wink cards: every card and prompt is in the words of wink-copy.md and never names a network, a key or a ticket", () => {
+shardTest("wink cards: every card and prompt is in the words of wink-copy.md and never names a network, a key or a ticket", () => {
   const kinds = ["phone", "computer", "server", "invite", "lend", "share"];
   for (const kind of kinds) {
     const c = card({ kind: /** @type {any} */ (kind), receiver: { name: "Alex's iPhone", fingerprint: "7KQM 4P2X", os: "mac" }, approver: { name: "your phone", fingerprint: "9f8e 7d6c" }, space: kind === "invite" || kind === "lend" ? "Harlow Legal" : "Personal", inviter: { name: "Chris", fingerprint: "ab12 cd34" }, server: "harlow-home", quota: "4 GB, 2 sessions at a time" });
@@ -429,7 +436,7 @@ test("wink cards: every card and prompt is in the words of wink-copy.md and neve
   }
 });
 
-test("wink: the code on screen is never derivable from the typed-back code, and the typed-back code is the same on both ends", () => {
+shardTest("wink: the code on screen is never derivable from the typed-back code, and the typed-back code is the same on both ends", () => {
   const key = crypto.randomBytes(32);
   assert.equal(ackCode(key), ackCode(key));
   assert.notEqual(ackCode(key), ackCode(crypto.randomBytes(32)));
@@ -447,7 +454,7 @@ async function pairComputer(t, w) {
   return r.paired.device;
 }
 
-test("wink.relay.apply: the owner's app signs the instruction, the box checks it; no presence is asked on the box (lead ruling 3 Oct)", async t => {
+shardTest("wink.relay.apply: the owner's app signs the instruction, the box checks it; no presence is asked on the box (lead ruling 3 Oct)", async t => {
   const w = await world(t);
   const device = await pairComputer(t, w);
   const box = (await w.d.registry.call("relay.route.id", {}, "module:wink", {})).data.route;
@@ -478,7 +485,7 @@ test("wink.relay.apply: the owner's app signs the instruction, the box checks it
   assert.equal((await w.call("wink.relay.apply", make(), "tailnet:agent:juno", {})).error?.code, "denied");
 });
 
-test("peerDoor: allow answers from the wink module's registry and accept is the host's own relay door, ready for the relay bridge", () => {
+shardTest("peerDoor: allow answers from the wink module's registry and accept is the host's own relay door, ready for the relay bridge", () => {
   const accepted = [];
   const door = peerDoor({ wink: { peers: { allow: d => d === "srv1" } }, host: { acceptRelay: space => (s, who) => accepted.push([space, who]) }, space: "harlow" });
   assert.equal(door.space, "harlow");
@@ -488,7 +495,7 @@ test("peerDoor: allow answers from the wink module's registry and accept is the 
   assert.deepEqual(accepted, [["harlow", { deviceId: "srv1" }]]);
 });
 
-test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code with no typed code; a scan only pairs the device, the server asks, and its three words equal what the scanning side derives from its own keys", async t => {
+shardTest("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code with no typed code; a scan only pairs the device, the server asks, and its three words equal what the scanning side derives from its own keys", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   process.env.VYRE_WINK_TYPED_CODE = "0";
@@ -521,7 +528,7 @@ test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code wi
   await assert.rejects(() => pairTicket(scan.seed, { relay: w.status.url, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }));
 });
 
-test("H-1, real daemon: wink.server.handover answers no module but wink, no device and no empty caller (reviewer-3 probe: module:evil got home, authKey and peerSecret)", async t => {
+shardTest("H-1, real daemon: wink.server.handover answers no module but wink, no device and no empty caller (reviewer-3 probe: module:evil got home, authKey and peerSecret)", async t => {
   const w = await world(t);
   for (const caller of ["module:evil", "module:platform", "module:relay", "device:abcdefghijklmnop", "cli", "deck", "tailnet:owner", "anonymous"]) {
     const r = await w.d.registry.call("wink.server.handover", {}, caller, PROOF);
@@ -532,7 +539,7 @@ test("H-1, real daemon: wink.server.handover answers no module but wink, no devi
   assert.deepEqual(own.data, { handover: null }, "the Wink module itself is answered (nothing handed over yet)");
 });
 
-test("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host's pathOf, hands the held connections to Wink, and gives the app side its handover seam", async () => {
+shardTest("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host's pathOf, hands the held connections to Wink, and gives the app side its handover seam", async () => {
   const accepted = [], served = [], hosted = [];
   const wink = { peers: { allow: d => d === "srv1" }, holds: { onSession: (c, s) => accepted.push([c, s]) }, ownHandover: () => ({ home: "100.64.0.1:8443", authKey: "KEY", peerSecret: "SECRET" }) };
   const host = { acceptRelay: space => (s, who) => accepted.push([space, who]), pathOf: c => (c === "device:wink1" ? "wink" : "relay"), serveHome: async (space, o) => { hosted.push([space, o]); } };
@@ -575,7 +582,7 @@ test("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host
   assert.equal(ctx.peerDoor, undefined);
 });
 
-test("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides derive the same three words, nothing is added until yes, a second scanner is refused", async t => {
+shardTest("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides derive the same three words, nothing is added until yes, a second scanner is refused", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   process.env.VYRE_WINK_TYPED_CODE = "0";
@@ -609,7 +616,7 @@ test("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides de
   assert.equal((await w.call("wink.phone.wait", {}, `device:${paired.device}`, {})).data.state, "yes");
 });
 
-test("Add a phone, real daemon, typed code OFF: a no, or wrong words, adds nothing and the phone is let go", async t => {
+shardTest("Add a phone, real daemon, typed code OFF: a no, or wrong words, adds nothing and the phone is let go", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   process.env.VYRE_WINK_TYPED_CODE = "0";
@@ -650,7 +657,7 @@ const PROBED = ["relay.devices.list", "wink.access", "relay.status", "system.inf
   "relay.pair.ticket", "relay.pair.window.open", "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.open", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
   "wink.offer.set", "wink.pair.server", "wink.storage.remove", "wink.device.key", "wink.relay.apply", "about.text", "identity.sign"];
 
-test("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairing: no device, no presence key, no tool at all but its own wink.phone.wait; a no or a timeout leaves nothing and the ticket is spent", async t => {
+shardTest("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairing: no device, no presence key, no tool at all but its own wink.phone.wait; a no or a timeout leaves nothing and the ticket is spent", async t => {
   const w = await world(t, { pendingMs: 1500 });
   const open = (await w.call("wink.phone.open", {})).data;
   const scan = parsePhoneQr(open.qr);
@@ -732,7 +739,7 @@ for (const withQr of [false, true]) {
   });
 }
 
-test("paired session, real daemon, relay and presence module: the owner's pick records the device and its key, grants a session, the relay trusts it at once, and the device opens its session with no prompt; removal ends it", async t => {
+shardTest("paired session, real daemon, relay and presence module: the owner's pick records the device and its key, grants a session, the relay trusts it at once, and the device opens its session with no prompt; removal ends it", async t => {
   const w = await world(t);
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
@@ -772,7 +779,7 @@ test("paired session, real daemon, relay and presence module: the owner's pick r
   await until(async () => (await live()).length === 0);
 });
 
-test("paired session on the real kernel: pair, pick, start-paired, then memory.graph answers as the owner with no prompt; the same device without its session gets the sign-in hint; removal ends it", async t => {
+shardTest("paired session on the real kernel: pair, pick, start-paired, then memory.graph answers as the owner with no prompt; the same device without its session gets the sign-in hint; removal ends it", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
@@ -853,13 +860,13 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   return { w, paired, sessionId, read, live, ownerKey };
 }
 
-test("paired session ends, on the real kernel: a revoked session id is gone at once", async t => {
+shardTest("paired session ends, on the real kernel: a revoked session id is gone at once", async t => {
   const { w, sessionId, live } = await pairedOnKernel(t);
   assert.equal((await w.d.registry.call("presence.person.revoke", { id: sessionId }, "cli", PROOF)).data.revoked, sessionId);
   assert.equal(await live(), false, "a revoked session is gone from presence, so the daemon verifies nothing for it");
 });
 
-test("paired session ends, on the real kernel: sign-out-everywhere (wink asks presence to end every paired session) ends the session, and only module:wink may ask", async t => {
+shardTest("paired session ends, on the real kernel: sign-out-everywhere (wink asks presence to end every paired session) ends the session, and only module:wink may ask", async t => {
   const a = await pairedOnKernel(t);
   assert.ok((await a.w.d.registry.call("presence.person.end-paired", {}, "cli", PROOF)).error, "only module:wink may end paired sessions");
   assert.equal(await a.live(), true, "a refused end changed nothing");
@@ -868,7 +875,7 @@ test("paired session ends, on the real kernel: sign-out-everywhere (wink asks pr
   assert.equal(await a.live(), false, "after sign-out-everywhere the session is gone");
 });
 
-test("BR-2 over the relay: a browser's channel is web:<id> (it may ask to be trusted, about itself), an app's is device:<id> (it may not), an unknown id gets no channel, and none reaches vault.session.status", async t => {
+shardTest("BR-2 over the relay: a browser's channel is web:<id> (it may ask to be trusted, about itself), an app's is device:<id> (it may not), an unknown id gets no channel, and none reaches vault.session.status", async t => {
   process.env.VYRE_TEST_UNGATED_RING = "1";
   t.after(() => { delete process.env.VYRE_TEST_UNGATED_RING; });
   const w = await world(t);
@@ -898,7 +905,7 @@ test("BR-2 over the relay: a browser's channel is web:<id> (it may ask to be tru
   assert.ok(none.status === 0 || none.status === 404 || none.status === 401, `an unknown id reaches nothing (${none.status})`);
 });
 
-test("one pairing path for a browser: unconfirmed it is web:<id> and reaches wink.phone.wait only; confirmed with the three words its row is kind app with a software key, and it is device:<id>", async t => {
+shardTest("one pairing path for a browser: unconfirmed it is web:<id> and reaches wink.phone.wait only; confirmed with the three words its row is kind app with a software key, and it is device:<id>", async t => {
   const w = await world(t);
   const ks = keystore(t);
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
@@ -921,7 +928,7 @@ test("one pairing path for a browser: unconfirmed it is web:<id> and reaches win
   assert.notEqual(asked.status, 200, "device:<id> is not a browser with limits to lift");
 });
 
-test("a browser's passkey is enrolled only after the three words, bound to its device id and the app's origin, and removed with the device", async t => {
+shardTest("a browser's passkey is enrolled only after the three words, bound to its device id and the app's origin, and removed with the device", async t => {
   const w = await world(t);
   const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const passkey = { credential_id: crypto.randomBytes(24).toString("base64url"), public_key: kp.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, rp_id: "app.vyre.run" };
@@ -943,7 +950,7 @@ test("a browser's passkey is enrolled only after the three words, bound to its d
   await until(async () => (await keys()).length === 0);
 });
 
-test("a passkey a browser offers that the box cannot bind is refused, and the device is still paired without it; a phone's offered passkey is never enrolled", async t => {
+shardTest("a passkey a browser offers that the box cannot bind is refused, and the device is still paired without it; a phone's offered passkey is never enrolled", async t => {
   const w = await world(t);
   const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const spki = kp.publicKey.export({ format: "der", type: "spki" }).toString("base64url");
@@ -969,7 +976,7 @@ test("a passkey a browser offers that the box cannot bind is refused, and the de
   assert.equal((await keys()).length, 0, "a phone keeps its device key; an offered passkey is not enrolled");
 });
 
-test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
+shardTest("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {
   const w = await world(t);
   const open = (await w.call("wink.phone.open", {})).data;
   const scan = parsePhoneQr(open.qr);
@@ -998,7 +1005,7 @@ test("X-1, real daemon and relay: the yes makes the device (row, presence key, b
   assert.equal((await w.call("wink.access")).data.devices.length, 1);
 });
 
-test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.server.adopt; the pick at the server console decides; no or a timeout leaves nothing and spends the ticket", async t => {
+shardTest("X-1, real daemon and relay: a server's QR redeemer reaches only wink.server.adopt; the pick at the server console decides; no or a timeout leaves nothing and spends the ticket", async t => {
   const w = await world(t, { pendingMs: 2500 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   process.env.VYRE_WINK_TYPED_CODE = "0";
@@ -1038,7 +1045,7 @@ test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.serve
   assert.equal(row.presence, true, "with its presence key, made only now");
 });
 
-test("X-1, real daemon and relay: a server's scanner nobody answers leaves nothing behind when the time runs out, and the ticket is spent", async t => {
+shardTest("X-1, real daemon and relay: a server's scanner nobody answers leaves nothing behind when the time runs out, and the ticket is spent", async t => {
   const w = await world(t, { pendingMs: 1500 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   process.env.VYRE_WINK_TYPED_CODE = "0";
@@ -1067,7 +1074,7 @@ test("X-1, real daemon and relay: a server's scanner nobody answers leaves nothi
   assert.equal(await deviceRow(w, r2.paired.device), undefined);
 });
 
-test("X-1 and the ring, real daemon and relay: device.paired says how the device came (via, and gate for a confirmed gated ticket); the ungated ring is the one a module-less relay still takes", async t => {
+shardTest("X-1 and the ring, real daemon and relay: device.paired says how the device came (via, and gate for a confirmed gated ticket); the ungated ring is the one a module-less relay still takes", async t => {
   const w = await world(t);
   const paired = () => w.events.filter(e => e[0] === "device.paired").map(e => e[1]);
   // a typed code (module-minted, ungated)
@@ -1230,7 +1237,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
 // ---- IV-5 (reviewer-3): invitee channels have a pool and a life of their own ----
 
 // ---- walker (4 Oct): an unowned server with a leftover paired device refused a new pairing silently ----
-test("an unowned server lets go of devices left by a pairing that never completed ownership when a new pairing starts, and every refused hello is logged with its reason", async t => {
+shardTest("an unowned server lets go of devices left by a pairing that never completed ownership when a new pairing starts, and every refused hello is logged with its reason", async t => {
   process.env.VYRE_TEST_UNGATED_RING = "1";
   t.after(() => { delete process.env.VYRE_TEST_UNGATED_RING; });
   const w = await world(t);
@@ -1249,7 +1256,7 @@ test("an unowned server lets go of devices left by a pairing that never complete
   assert.ok(w.logs.some(l => /let go of 1 leftover device/.test(l)));
 });
 
-test("relay.devices.clear-leftover refuses for itself when the server is owned, and a flood of refused hellos logs one line per reason per minute with a count", async t => {
+shardTest("relay.devices.clear-leftover refuses for itself when the server is owned, and a flood of refused hellos logs one line per reason per minute with a count", async t => {
   const f = await pairFreshServer(t);
   const row = async () => (await f.w.d.registry.call("relay.device.info", { id: f.done.device }, "module:vyred")).data;
   assert.equal((await row()).removed, false);
@@ -1272,7 +1279,7 @@ test("relay.devices.clear-leftover refuses for itself when the server is owned, 
 /** Turns the typed code to its release default (on; the development flag unset) for one test. @param {any} t */
 const releaseTyped = t => { const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; }); };
 
-test("typed code, release: wink.phone.open gives the QR and a typed code on the same window; the code lasts 10 minutes, is single use, and ends the QR too", async t => {
+shardTest("typed code, release: wink.phone.open gives the QR and a typed code on the same window; the code lasts 10 minutes, is single use, and ends the QR too", async t => {
   releaseTyped(t);
   const w = await world(t);
   const open = await w.call("wink.phone.open", {});
@@ -1294,7 +1301,7 @@ test("typed code, release: wink.phone.open gives the QR and a typed code on the 
   assert.equal(await w.call("wink.phone.open", {}).then(r => r.data.code === open.data.code), false, "a fresh window, not the used code");
 });
 
-test("typed code, release: three wrong tries close the code and a fresh one replaces it", async t => {
+shardTest("typed code, release: three wrong tries close the code and a fresh one replaces it", async t => {
   releaseTyped(t);
   const w = await world(t);
   const open = await w.call("wink.phone.open", {});
@@ -1312,7 +1319,7 @@ test("typed code, release: three wrong tries close the code and a fresh one repl
   assert.match(fresh, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
 });
 
-test("typed code, release: wink.code.carry is the spaces module's alone, and an invitation's link rides the typed code to wink.code.redeem and out of wink.pair.status", async t => {
+shardTest("typed code, release: wink.code.carry is the spaces module's alone, and an invitation's link rides the typed code to wink.code.redeem and out of wink.pair.status", async t => {
   releaseTyped(t);
   const w = await world(t);
   const link = "https://northwind.vyre.run/join/inv_abc.eyJwaW4iOiJ4In0";
@@ -1336,7 +1343,7 @@ test("typed code, release: wink.code.carry is the spaces module's alone, and an 
   assert.equal(done.ack, undefined);
 });
 
-test("typed code, release: a wrong ack for an invitation's code delivers nothing", async t => {
+shardTest("typed code, release: a wrong ack for an invitation's code delivers nothing", async t => {
   releaseTyped(t);
   const w = await world(t);
   const c = await w.call("wink.code.carry", { link: "https://northwind.vyre.run/join/inv_abc.x" }, "module:spaces");
@@ -1350,7 +1357,7 @@ test("typed code, release: a wrong ack for an invitation's code delivers nothing
   assert.equal(s.invite, undefined);
 });
 
-test("typed code, release: the kill switch (wink.typedCode false) refuses every typed path", async t => {
+shardTest("typed code, release: the kill switch (wink.typedCode false) refuses every typed path", async t => {
   const saved = process.env.VYRE_WINK_TYPED_CODE; process.env.VYRE_WINK_TYPED_CODE = "0"; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t);
   assert.equal((await w.call("wink.code.redeem", { code: "WINK-K7QM-4P2X" })).error?.code, "typed_code_off");
@@ -1358,7 +1365,7 @@ test("typed code, release: the kill switch (wink.typedCode false) refuses every 
   assert.equal((await w.call("wink.phone.open", {})).data.code, undefined, "the QR alone");
 });
 
-test("typed code, release: a device with no box redeems an invitation's code with redeemInviteCode: the ack it shows is typed back, and the link comes out", async t => {
+shardTest("typed code, release: a device with no box redeems an invitation's code with redeemInviteCode: the ack it shows is typed back, and the link comes out", async t => {
   releaseTyped(t);
   const { redeemInviteCode } = await import("../relay/client/join.js");
   const w = await world(t);
@@ -1374,7 +1381,7 @@ test("typed code, release: a device with no box redeems an invitation's code wit
   assert.equal((await redeemInviteCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", waitMs: 500, pollMs: 50 })).ok, false);
 });
 
-test("typed code, release: a browser with no box pairs to the server by the code its phone shows (joinWithCode, about web): the ack typed back on the phone is the yes, and the device is a web device", async t => {
+shardTest("typed code, release: a browser with no box pairs to the server by the code its phone shows (joinWithCode, about web): the ack typed back on the phone is the yes, and the device is a web device", async t => {
   releaseTyped(t);
   const w = await world(t);
   const open = await w.call("wink.code.open", { flow: "W2" });
@@ -1392,7 +1399,7 @@ test("typed code, release: a browser with no box pairs to the server by the code
   assert.equal((await joinWithCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", name: "x", waitMs: 500, pollMs: 50, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } })).ok, false);
 });
 
-test("the camera reader: wink.phone.open and an invitation's code carry the avatar bytes of the same code, and addThisDevice takes them in place of typing", async t => {
+shardTest("the camera reader: wink.phone.open and an invitation's code carry the avatar bytes of the same code, and addThisDevice takes them in place of typing", async t => {
   const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const { avatarBytesToCode } = await import("../relay/client/avatarcode.js");
   const { addThisDevice } = await import("../relay/client/phonepair.js");
