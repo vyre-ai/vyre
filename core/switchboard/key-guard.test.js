@@ -45,14 +45,14 @@ test("a raw key sent through each surface's chat tools never reaches a turn: a p
   // threads.send from a person's own surface holds the message as a card (the raw key is not in the card); anyone else is refused outright
   /** @param {any} r */ const heldCard = r => { assert.ok(r.data && r.data.held === true && r.data.id, JSON.stringify(r)); assert.ok(!JSON.stringify(r).includes(KEY), "the answer never repeats the key"); return r.data.id; };
   const ids = [];
-  for (const caller of ["cli", "local", "deck", "capsule"]) ids.push(heldCard(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller)));
+  for (const caller of ["cli", "local", "deck", "capsule", "mobile"]) ids.push(heldCard(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller)));
   const card = (await call("gate.get", { id: ids[0] }, "cli")).data;
   assert.equal(card.state, "held");
   assert.ok(!JSON.stringify(card).includes(KEY), "the Gate's card holds the words with a reference, never the key");
   assert.match(JSON.stringify(card), /vault:\/\/anthropic-key/);
   assert.match(String(card.why), /Save this Anthropic key to your Vault and send the message with it\?/);
-  // a model's call, or a surface this box does not know as the owner's, is stopped by the kernel before the tool or by the tool itself: either way it is an error and nothing is held or sent
-  for (const caller of ["mobile", "mcp", "harness"]) {
+  // a model's call is stopped by the kernel before the tool or by the tool itself: either way it is an error and nothing is held or sent
+  for (const caller of ["mcp", "harness"]) {
     const r = await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined);
     assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
     assert.ok(!JSON.stringify(r).includes(KEY));
