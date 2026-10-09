@@ -30,6 +30,7 @@
 // production defaults are the strict ones, and no seam turns a check off.
 
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 import https from "node:https";
 import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
@@ -780,8 +781,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  */
 export const devNet = { deps: null };
 
-/** The request dependencies, with the development network seam laid over them only while VYRE_SEAL_DEV=1; anywhere else they come back exactly as given. @param {RequestDeps} deps @param {Record<string, string | undefined>} [env] */
-export const withDevNet = (deps, env = process.env) => (devNet.deps && env.VYRE_SEAL_DEV === "1" ? { ...deps, ...devNet.deps } : deps);
+/** The request dependencies, with the development network seam laid over them only while VYRE_SEAL_DEV=1; anywhere else they come back exactly as given. A release-kind build ignores it even with the variable set (devSwitch). @param {RequestDeps} deps @param {Record<string, string | undefined>} [env] @param {string} [root] build folder, tests only */
+export const withDevNet = (deps, env = process.env, root = undefined) => (devNet.deps && devSwitch(env.VYRE_SEAL_DEV, root) ? { ...deps, ...devNet.deps } : deps);
 
 /**
  * @param {{ vault: import("./vault.js").Vault,

@@ -96,5 +96,13 @@ test("the development network seam is refused unless VYRE_SEAL_DEV=1, so no prod
     assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "true" }), given);
     assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "1" }).transport, fake.transport, "only the development switch lays it over");
   } finally { devNet.deps = before; }
+  // a release-kind build ignores the seam even with the switch set (it goes through devSwitch)
+  const rel = fs.mkdtempSync(path.join(os.tmpdir(), "pk-rel-")); fs.mkdirSync(path.join(rel, "lib"));
+  fs.writeFileSync(path.join(rel, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  devNet.deps = fake;
+  try {
+    const given = { now: () => 1 };
+    assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "1" }, rel), given, "release-kind build: the seam is ignored with the switch set");
+  } finally { devNet.deps = before; fs.rmSync(rel, { recursive: true, force: true }); }
   assert.equal(withDevNet({}, { VYRE_SEAL_DEV: "1" }) && Object.keys(withDevNet({}, { VYRE_SEAL_DEV: "1" })).length, 0, "nothing set: nothing laid over");
 });
