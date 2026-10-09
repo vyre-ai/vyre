@@ -169,6 +169,35 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
     // a stranger is not the install's admin: the signing page is the signer's view, and the app saw no admin cookie (the page has no "Sign out")
     assert.ok(!/sign_out|Sign out/i.test(signPage.text), "the page is the signer's, not the admin's");
     console.log(`signing page: ${signPage.text.length} bytes, ${assets.length} assets, all public`);
+    // With CHROME_BIN set, a real browser opens the signing page with no cookie: every request the page makes must be answered (none refused by the list), and the page must show the credit.
+    if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
+      const { spawn } = await import("node:child_process");
+      const { Cdp } = await import("../../lib/cdp.js");
+      const dir = fs.mkdtempSync(path.join(root, "chrome-"));
+      const child = spawn(process.env.CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain", "--password-store=basic", `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
+      t.after(() => { try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { /* gone */ } });
+      let cport = 0;
+      for (let i = 0; i < 400 && !cport; i++) { try { const n = Number(fs.readFileSync(path.join(dir, "DevToolsActivePort"), "utf8").split("\n")[0]); if (n && (await fetch(`http://127.0.0.1:${n}/json/version`)).ok) cport = n; } catch { /* not yet */ } if (!cport) await new Promise(r => setTimeout(r, 50)); }
+      assert.ok(cport, "Chrome came up");
+      const cdp = new Cdp({ cdpUrl: `http://127.0.0.1:${cport}` });
+      await cdp.connect();
+      const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+      /** @type {{ url: string, status: number }[]} */ const resp = []; /** @type {string[]} */ const failed = [];
+      cdp.on(m => { if (m.sessionId !== sessionId) return; if (m.method === "Network.responseReceived") resp.push({ url: m.params.response.url, status: m.params.response.status }); if (m.method === "Network.loadingFailed" && !m.params.canceled) failed.push(`${m.params.errorText} ${m.params.requestId}`); });
+      await cdp.send("Network.enable", {}, sessionId); await cdp.send("Page.enable", {}, sessionId); await cdp.send("Runtime.enable", {}, sessionId);
+      const loaded = cdp.waitFor(m => m.sessionId === sessionId && m.method === "Page.loadEventFired", 30_000);
+      await cdp.send("Page.navigate", { url: `http://${H}/sign/${subId}/${slug}` }, sessionId);
+      await loaded; await new Promise(r => setTimeout(r, 4000));
+      const bad = resp.filter(r => r.status >= 400);
+      const text = (await cdp.send("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }, sessionId)).result.value || "";
+      try { fs.writeFileSync(`/tmp/sign-page-requests-${process.pid}.json`, JSON.stringify(resp, null, 1)); } catch { /* no copy */ }
+      await cdp.close();
+      assert.deepEqual(bad, [], `a real browser on the signing page got errors: ${JSON.stringify(bad).slice(0, 400)}`);
+      assert.deepEqual(failed, [], "no request failed");
+      assert.ok(text.includes("Signatures by"), "the credit shows in the page");
+      console.log(`browser: ${resp.length} requests, none refused`);
+    }
   }
   // the Vyre views over DocuSeal's Connection, against the real app: the document just sent is waiting for a signature
   const listed = (await d.registry.call("views.list", {}, "cli", await ownerMeta())).data;
