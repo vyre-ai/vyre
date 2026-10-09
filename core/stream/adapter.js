@@ -194,6 +194,11 @@ export function createAdapter() {
         // One card of several questions: patched in place as it is answered (the same tool id).
         case "thread.questions":
           return typeof p.id === "string" && /^[0-9a-f]{12}$/.test(p.id) && Array.isArray(p.questions) ? [spec("tool-finished", { tool_id: `ask:${p.id}`, ok: true, result: { block: "questions", id: p.id, title: String(p.title || "A few questions").slice(0, 120), state: String(p.state || "waiting"), questions: p.questions.slice(0, 6), ...(p.answers && typeof p.answers === "object" ? { answers: p.answers } : {}) } })] : [];
+        // A computer's live screen card and its status line, kept current by the same tool id; and a sign-in the person is asked for.
+        case "thread.operator":
+          return typeof p.run === "string" && /^[0-9a-f]{12}$/.test(p.run) ? [spec("tool-finished", { tool_id: `op:${p.run}`, ok: true, result: { block: "operator", run: p.run, computer: String(p.computer || "").slice(0, 64), title: String(p.title || "A computer").slice(0, 120), state: String(p.state || "working"), line: String(p.line || "").slice(0, 160), steps: (Array.isArray(p.steps) ? p.steps : []).slice(-7).map((/** @type {any} */ x) => ({ line: String(x && x.line || "").slice(0, 160), state: String(x && x.state || "done") })) } })] : [];
+        case "thread.signin":
+          return typeof p.id === "string" && /^[0-9a-f]{12}$/.test(p.id) ? [spec("tool-finished", { tool_id: `signin:${p.id}`, ok: true, result: { block: "signin", id: p.id, computer: String(p.computer || "").slice(0, 64), site: String(p.site || "").slice(0, 80), why: String(p.why || "").slice(0, 200), state: String(p.state || "waiting") } })] : [];
         case "thread.artifact":
           return p.artifact ? [spec("tool-finished", { tool_id: `art:${p.artifact}:${p.version ?? 0}`, ok: true, result: { block: "text", text: `Artifact ${String(p.title || p.artifact).slice(0, 120)}` } })] : [];
         case "ask.raised":

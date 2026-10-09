@@ -104,3 +104,30 @@ test("a port becomes a preview, opened on its own origin with a one-time ticket;
   assert.ok(await until(async () => !(await new Promise(r => http.get({ host: "127.0.0.1", port: kport }, () => r(true)).on("error", () => r(false))))), "the process is gone");
   await call("previews.remove", { id: kid });
 });
+
+test("the live screen cards: an operator run with a status line, and a private sign-in the person finishes", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
+
+  const run = await call("previews.operator", { computer: "kit", title: "Kit's computer" }, "module:siteops");
+  assert.ok(run.data && /^[0-9a-f]{12}$/.test(run.data.run), JSON.stringify(run));
+  assert.equal((await call("previews.operator", { computer: "bad name!" }, "module:siteops")).error.code, "bad_input");
+  for (const line of ["Opening app.example.test", "Typing the password from your Vault", "Reading the workflow list"]) assert.ok((await call("previews.step", { run: run.data.run, line }, "module:siteops")).data);
+  assert.equal((await call("previews.step", { run: "nope", line: "x" }, "module:siteops")).error.code, "not_found");
+  assert.equal((await call("previews.step", { run: run.data.run, line: "" }, "module:siteops")).error.code, "bad_input");
+
+  // a sign-in: the agent waits, the person signs in and says so; a model cannot say it for them
+  const asked = await call("previews.signin", { computer: "kit", site: "GoHighLevel", why: "I need to look at the workflow", wait_ms: 0 }, "module:siteops");
+  assert.equal(asked.data.state, "waiting");
+  assert.ok((await call("previews.signin-done", { id: asked.data.id }, "mcp")).error, "a model does not sign in for the person");
+  assert.equal((await call("previews.signin-get", { id: asked.data.id }, "module:siteops")).data.state, "waiting");
+  const waiting = call("previews.signin-get", { id: asked.data.id, wait_ms: 10_000 }, "module:siteops");
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal((await call("previews.signin-done", { id: asked.data.id })).data.state, "done");
+  assert.equal((await waiting).data.state, "done", "the agent carries on once the person is done");
+  assert.equal((await call("previews.signin", { computer: "kit", site: "" }, "module:siteops")).error.code, "bad_input");
+});

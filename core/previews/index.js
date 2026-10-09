@@ -249,6 +249,101 @@ export default {
       },
     });
 
+    // ---- the live screen: the operator card and the sign-in card (R031-88, R031-91) ---------------------------------------------------------------------------------------------------
+    // A computer's live screen is Glass (the card in the app draws it and takes it over); this side only keeps what the CARD says: which computer, what it is doing now (the newest receipt, in words), the last
+    // few steps, and a sign-in waiting for the person. In memory: a restart ends the wait, the agent asks again. Whoever drives the computer (Vyre Computer's tools) calls these.
+    /** @type {Map<string, { id: string, computer: string, thread: string | null, title: string, state: string, line: string, steps: { line: string, state: string }[], at: number }>} */
+    const operators = new Map();
+    /** @type {Map<string, { id: string, computer: string, thread: string | null, site: string, why: string, state: "waiting"|"done"|"cancelled"|"expired", at: number, waiters: Set<() => void> }>} */
+    const signins = new Map();
+    const STEP_STATES = ["working", "done", "stuck", "paused"];
+    const COMPUTER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+    const operatorCard = (/** @type {any} */ o) => { if (o.thread) emit("thread.operator", { run: o.id, computer: o.computer, title: o.title, state: o.state, line: o.line, steps: o.steps }, { thread: o.thread }); };
+    const signinCard = (/** @type {any} */ s) => { if (s.thread) emit("thread.signin", { id: s.id, computer: s.computer, site: s.site, why: s.why, state: s.state }, { thread: s.thread }); };
+    const threadOf = (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ trusted) => (trusted && i.thread ? String(i.thread) : (meta && meta.thread) || null);
+    const asker = (/** @type {any} */ meta) => ({ person: isPerson(meta), module: String((meta && meta.caller) || "").startsWith("module:") });
+
+    ctx.tool("previews.operator", {
+      description: "Show the person a computer's live screen as a card in this chat, with what it is doing now: { computer, title?, run?, thread? }. Returns { run }. Then call previews.step as it works, so the card's status line and step track follow. The person watches, or takes over the keyboard, from the card.",
+      input: obj({ computer: str, title: str, run: str, thread: str }, ["computer"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
+        const a = asker(meta);
+        const existing = i.run ? operators.get(String(i.run)) : null;
+        if (existing) { operatorCard(existing); return { run: existing.id, state: existing.state }; }
+        const id = crypto.randomBytes(6).toString("hex");
+        const o = { id, computer: String(i.computer), thread: threadOf(i, meta, a.person || a.module), title: String(i.title || `${i.computer}'s computer`).replace(/\s+/g, " ").trim().slice(0, 120), state: "working", line: "Getting started", steps: [], at: now() };
+        operators.set(id, o);
+        for (const [k, v] of operators) if (now() - v.at > 6 * 3_600_000) operators.delete(k);
+        operatorCard(o);
+        return { run: id, state: o.state };
+      },
+    });
+
+    ctx.tool("previews.step", {
+      description: "Say what the computer is doing now, in words a person reads (\"Opening the workflow list\", \"Typing the password from your Vault\"): { run, line, state? } with state working, done, stuck or paused. The card's status line and its last seven steps follow.",
+      input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES } }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const o = operators.get(String(i.run));
+        if (!o) throw refuse("no such run: start it with previews.operator", "not_found");
+        // A model may only move a card of its own chat.
+        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run", "not_found");
+        const line = String(i.line || "").replace(/\s+/g, " ").trim().slice(0, 160);
+        if (!line) throw refuse("say what it is doing", "bad_input");
+        const state = STEP_STATES.includes(i.state) ? i.state : "working";
+        if (o.steps.length && o.steps[o.steps.length - 1].state === "working") o.steps[o.steps.length - 1].state = "done";
+        o.steps.push({ line, state }); o.steps = o.steps.slice(-7);
+        o.line = line; o.state = state; o.at = now();
+        operatorCard(o);
+        return { run: o.id, state: o.state };
+      },
+    });
+
+    ctx.tool("previews.signin", {
+      description: "Ask the person to sign in to a site on the computer, as a card in this chat: { computer, site, why?, thread?, wait_ms? }. The card says \"Sign in to <site>\" and opens the screen in place with the keyboard theirs and private (you cannot see the page until they hand back, and you never get the password); when they are done you carry on. Waits up to wait_ms (at most 55 s); if they have not finished, answers { id, state: \"waiting\" } and you call previews.signin-get { id, wait_ms }.",
+      input: obj({ computer: str, site: str, why: str, thread: str, wait_ms: { type: "integer" } }, ["computer", "site"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
+        const site = String(i.site || "").replace(/\s+/g, " ").trim().slice(0, 80);
+        if (!site) throw refuse("name the site to sign in to", "bad_input");
+        if ([...signins.values()].filter(x => x.state === "waiting").length >= 10) throw refuse("too many sign-ins are waiting", "rate_limited");
+        const a = asker(meta);
+        const s = { id: crypto.randomBytes(6).toString("hex"), computer: String(i.computer), thread: threadOf(i, meta, a.person || a.module), site, why: String(i.why || "").replace(/\s+/g, " ").trim().slice(0, 200), state: /** @type {"waiting"} */ ("waiting"), at: now(), waiters: new Set() };
+        signins.set(s.id, s);
+        signinCard(s);
+        await waitFor(s, Number(i.wait_ms) || 0);
+        return { id: s.id, state: s.state };
+      },
+    });
+    /** @param {any} s @param {number} ms */
+    const waitFor = (s, ms) => new Promise(resolve => {
+      if (s.state !== "waiting" || ms <= 0) return resolve(undefined);
+      const done = () => { clearTimeout(t); s.waiters.delete(done); resolve(undefined); };
+      const t = setTimeout(done, Math.min(ms, 55_000));
+      s.waiters.add(done);
+    });
+    ctx.tool("previews.signin-get", {
+      description: "Whether the person has finished signing in: { id, state } (waiting, done, cancelled, expired). With wait_ms (at most 55 s) it waits.", input: obj({ id: str, wait_ms: { type: "integer" } }, ["id"]),
+      callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      run: async (/** @type {any} */ i) => {
+        const s = signins.get(String(i.id));
+        if (!s) throw refuse("no such sign-in", "not_found");
+        if (s.state === "waiting" && now() - s.at > 30 * 60_000) { s.state = "expired"; signinCard(s); }
+        await waitFor(s, Number(i.wait_ms) || 0);
+        return { id: s.id, state: s.state };
+      },
+    });
+    ctx.tool("previews.signin-done", {
+      description: "The person has signed in (or put the card away): { id, done? }. A person at their own surface.", input: obj({ id: str, done: { type: "boolean" } }, ["id"]), callers: PERSON_ONLY,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!isPerson(meta)) throw refuse("only a person at their own surface does this", "denied");
+        const s = signins.get(String(i.id));
+        if (!s) throw refuse("no such sign-in", "not_found");
+        if (s.state === "waiting") { s.state = i.done === false ? "cancelled" : "done"; signinCard(s); s.waiters.forEach(w => w()); }
+        return { id: s.id, state: s.state };
+      },
+    });
+
     // ---- restore -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     // What Vyre kept running comes back with it; an agent's own server is looked at (its port may still answer) and left as it is.
     for (const r of db.prepare("SELECT * FROM previews_items").all()) {
@@ -259,6 +354,6 @@ export default {
       }
     }
 
-    return { async stop() { sup.shutdown(); } };
+    return { async stop() { sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
   },
 };

@@ -16,10 +16,15 @@
       { "name": "previews.remove", "effect": "write", "reach": "person" },
       { "name": "previews.log", "effect": "read", "reach": "person" },
       { "name": "previews.share", "effect": "write", "reach": "person" },
+      { "name": "previews.operator", "effect": "write", "reach": "anyone" },
+      { "name": "previews.step", "effect": "write", "reach": "anyone" },
+      { "name": "previews.signin", "effect": "write", "reach": "anyone" },
+      { "name": "previews.signin-get", "effect": "read", "reach": "anyone" },
+      { "name": "previews.signin-done", "effect": "write", "reach": "person" },
       { "name": "previews.resolve", "effect": "read", "reach": "modules" }
     ]
   },
-  "watches": { "emits": ["preview.state", "preview.opened", "preview.removed", "thread.preview"] },
+  "watches": { "emits": ["preview.state", "preview.opened", "preview.removed", "thread.preview", "thread.operator", "thread.signin"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}

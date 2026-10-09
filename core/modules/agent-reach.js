@@ -312,6 +312,7 @@ export const PERSON_ONLY = new Map([
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
   "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
+  "previews.operator", "previews.step", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
   "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
   "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide

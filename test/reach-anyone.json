@@ -1101,6 +1101,22 @@
    "module": "previews",
    "reason": "read-only: the previews of a chat or project by title, state and who may open them; never an address, a ticket or a command"
   },
+  "previews.operator": {
+   "module": "previews",
+   "reason": "an agent shows the person a computer's live screen as a card in its own chat; the card holds a name and words, never the screen, which the person's surface asks Glass for under Glass's own rules"
+  },
+  "previews.signin": {
+   "module": "previews",
+   "reason": "an agent asks the person to sign in on a computer as a card; the sign-in is private (the agent sees nothing of the page and gets no password) and only the person's own surface finishes it"
+  },
+  "previews.signin-get": {
+   "module": "previews",
+   "reason": "read-only: whether the person has finished a sign-in the asker made"
+  },
+  "previews.step": {
+   "module": "previews",
+   "reason": "words for the status line of the asker's own card (a model only moves a card of its own chat)"
+  },
   "previews.open": {
    "module": "previews",
    "reason": "an agent shows the person something running: it names a port of its own (never Vyre's, never below 1024) and the preview opens only for the person, through a ticket the person's own surface asks for; a command is run only for a person's own call, never a model's"
