@@ -12,12 +12,12 @@
   "three": "0.160.0",
   "chart.js": "4.4.3",
   "date-fns": "3.6.0",
-  "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+  "xlsx": "0.20.3",
   "@tailwindcss/browser": "4.1.11",
   "esbuild-wasm": "0.28.2"
  },
  "tarballs": {
-  "_comment": "SheetJS publishes 0.20.x only from its own site (npm stops at 0.18.5, which has known prototype-pollution and ReDoS flaws). The tarball is fetched once by build.mjs and refused unless its sha256 matches.",
-  "xlsx": "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8"
+  "_comment": "SheetJS publishes 0.20.x only from its own site; npm stops at 0.18.5, which has known prototype-pollution and ReDoS flaws. The tarball is committed here (taken from SheetJS's release page for 0.20.3) and build.mjs installs it only if its sha256 matches.",
+  "xlsx": { "file": "xlsx-0.20.3.tgz", "sha256": "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8" }
  }
 }
