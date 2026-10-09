@@ -819,6 +819,7 @@
  "test/client-socket.test.js": 4,
  "test/credential-shapes-single.test.js": 3,
  "test/daemon.test.js": 27,
+ "test/dependency-guard.test.js": 2,
  "test/do-firstboot.test.js": 7,
  "test/docs-shots.test.js": 11,
  "test/eval/answer-eval.test.js": 6,
