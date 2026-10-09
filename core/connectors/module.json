@@ -38,7 +38,12 @@
       "connectors.calendar.today",
       "connectors.mention.search",
       "connectors.mention.resolve",
-      "connectors.persist"
+      "connectors.persist",
+      { "name": "connectors.site.connect", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.operations", "reach": "anyone", "effect": "read" },
+      { "name": "connectors.site.rollback", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.run", "reach": "modules", "effect": "write" }
     ]
   },
   "watches": {
@@ -52,7 +57,8 @@
       "connectors.connection-checked",
       "connectors.connection-deleted",
       "connectors.connection-received",
-      "connectors.connection-proposed"
+      "connectors.connection-proposed",
+      "connectors.site-needs-signin"
     ]
   },
   "shows": {

@@ -6,13 +6,15 @@
 import { defineConnector, appHost } from "../../records/connectors/format.js";
 import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { siteDeclaration, siteConfig } from "../../records/connectors/site.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
 /**
- * @param {{ db: any, call: (tool: string, input: any, opts?: any) => Promise<any>, now?: () => number, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void }} deps
+ * @param {{ db: any, call: (tool: string, input: any, opts?: any) => Promise<any>, now?: () => number, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void,
+ *   siteCheck?: (id: string) => Promise<{ light: "green" | "red", words: string }> }} deps
  */
-export function madeConnections({ db, call, now = Date.now, emit = () => {}, log = () => {} }) {
+export function madeConnections({ db, call, now = Date.now, emit = () => {}, log = () => {}, siteCheck }) {
   const fail = (/** @type {string} */ msg, /** @type {string} */ code) => Object.assign(new Error(msg), { code });
   const data = (/** @type {any} */ r) => { if (r.error) throw fail(r.error.message, r.error.code || "failed"); return r.data; };
   const row = (/** @type {string} */ id) => /** @type {any} */ (db.prepare("SELECT * FROM connectors_made WHERE id = ?").get(id));
@@ -22,7 +24,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     const auth = a.type === "api-key" ? (a.in === "query" ? { kind: "query", name: a.param } : { kind: "header", name: a.header || "x-api-key" }) : { kind: a.type };
     const f = r.form ? JSON.parse(r.form) : {};
     return { id: r.id, label: r.label, host: d.app ? appHost(d.app) : new URL(d.base_url).hostname, ...(d.app ? { app: d.app } : {}), auth, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, headers: f.headers || {}, vars: f.vars || {},
-      check: { method: "GET", path: r.check_path }, origin: r.origin,
+      check: { method: "GET", path: r.check_path }, origin: r.origin, ...(d.transport === "site" ? { transport: "site", site: d.base_url } : {}),
       light: stale ? "out_of_step" : r.light, reason: stale ? "the Vault credential was changed outside this connection; save the connection again to rebuild it" : r.reason, checked_at: r.checked_at, created: r.created,
       operations: operationsOf(d),
       // How an assistant calls this API: vault.request with this credential, a method and a full address on the host; the key is attached outside it and never seen. (The Connection's own key item is not what to pass.)
@@ -38,6 +40,8 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   /** Write the derived credential from the row, as the person. @param {any} r @param {string} as */
   async function materialize(r, as) {
     const decl = defineConnector(JSON.parse(r.declaration));
+    // A website signed in through a browser has no key in the Vault: the credential holds the host and the route rules, and nothing else.
+    if (decl.transport === "site") return materializeSite(r, decl, as);
     const config = toConfig({ declaration: decl, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, check: { path: r.check_path } });
     const name = credentialName(r.id);
     const old = (await items()).get(name);
@@ -52,6 +56,47 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     const reg = await call("vault.connections.register", { ref: `made:${r.id}`, provider: "custom", account: decl.app ? `${decl.app} (on this machine)` : new URL(decl.base_url).hostname, auth: AUTH_OF[/** @type {keyof typeof AUTH_OF} */ (decl.auth.type)] || "api-key", label: decl.label });
     if (reg.error) log("connections: could not register the row", { id: r.id, error: reg.error.message });
     return name;
+  }
+
+  /** The derived credential of a site Connection. @param {any} r @param {import("../../records/connectors/format.js").Declaration} decl @param {string} as */
+  async function materializeSite(r, decl, as) {
+    const name = credentialName(r.id);
+    const old = (await items()).get(name);
+    if (old && old.kind !== "api-credential") throw fail(`the vault already has an item named ${name} that is not an api credential; rename or delete it first`, "exists");
+    const put = await call("vault.put", { name, kind: "api-credential", description: `${decl.label} (a website, signed in through a browser; derived from the connection record, change the connection, not this)`, fields: { config: JSON.stringify(siteConfig(decl)) } }, { as });
+    if (put.error) throw fail(`could not save the credential in the vault: ${put.error.message}`, put.error.code || "vault");
+    const after = (await items()).get(name);
+    db.prepare("UPDATE connectors_made SET item_updated = ? WHERE id = ?").run(after ? Number(after.updated) || now() : now(), r.id);
+    const reg = await call("vault.connections.register", { ref: `made:${r.id}`, provider: "custom", account: new URL(/** @type {string} */ (decl.base_url)).hostname, auth: "none", label: decl.label });
+    if (reg.error) log("connections: could not register the row", { id: r.id, error: reg.error.message });
+    return name;
+  }
+
+  /**
+   * Make (or, with `replace`, rewrite) the Connection of a website from the operations its site record holds. A person's act: it widens what the Connection can reach, and the vault asks them to
+   * confirm the credential it writes.
+   * @param {{ id?: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[] }} site @param {{ as: string, replace?: boolean }} o
+   */
+  async function saveSite(site, o) {
+    const id = site.id ? String(site.id) : String(site.label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
+    const declaration = siteDeclaration({ id, label: site.label, origin: site.origin, entries: site.entries });
+    const had = row(id);
+    if (had && !o.replace) throw fail(`there is already a connection ${id}; sync it to change it`, "exists");
+    if (!had && o.replace) throw fail(`no connection ${id}`, "not_found");
+    if (had && JSON.parse(had.declaration).transport !== "site") throw fail(`${id} is not a website connection`, "bad_input");
+    const t = now();
+    const formJson = JSON.stringify({ site: site.origin });
+    if (had) db.prepare("UPDATE connectors_made SET label=?, declaration=?, light='unknown', reason=NULL, updated=?, form=? WHERE id=?").run(declaration.label, JSON.stringify(declaration), t, formJson, id);
+    else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, form, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id, declaration.label, JSON.stringify(declaration), "", null, "/", "site", o.as, formJson, t, t);
+    try { await materialize(row(id), o.as); }
+    catch (e) { if (!had) db.prepare("DELETE FROM connectors_made WHERE id = ?").run(id); throw e; }
+    emit(had ? "connectors.connection-updated" : "connectors.connection-created", { id });
+    return { id, credential: credentialName(id), operations: Object.keys(declaration.ops).length };
+  }
+
+  /** The light of a Connection, set from what a call or a check found. @param {string} id @param {"green" | "red"} light @param {string} words */
+  function touch(id, light, words) {
+    db.prepare("UPDATE connectors_made SET light = ?, reason = ?, checked_at = ? WHERE id = ?").run(light, words, now(), id);
   }
 
   /** @param {any} form @param {{ as: string, origin?: string, replace?: boolean }} o */
@@ -78,7 +123,8 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     const d = JSON.parse(r.declaration);
     const stale = await isStale(r);
     /** @type {{ light: "green" | "red", words: string }} */ let out;
-    if (stale) out = { light: "red", words: "the Vault credential was changed outside this connection; save the connection again to rebuild it" };
+    if (d.transport === "site") out = stale ? { light: "red", words: "the Vault credential was changed outside this connection; sync the connection again to rebuild it" } : siteCheck ? await siteCheck(id) : { light: "red", words: "no browser is connected" };
+    else if (stale) out = { light: "red", words: "the Vault credential was changed outside this connection; save the connection again to rebuild it" };
     else {
       const res = await call("vault.request", { credential: credentialName(id), method: "GET", url: (d.app ? `https://${appHost(d.app)}` : d.base_url) + r.check_path });
       out = res.error ? outcomeOf({ error: res.error }) : outcomeOf({ reply: res.data });
@@ -95,7 +141,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   }
 
   return {
-    save, check, row,
+    save, saveSite, touch, check, row,
     list: async () => { return { connections: await Promise.all(/** @type {any[]} */ (db.prepare("SELECT * FROM connectors_made ORDER BY label").all()).map(async r => shape(r, await isStale(r)))) }; },
     get: async (/** @type {string} */ id) => {
       const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");

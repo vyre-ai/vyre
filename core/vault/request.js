@@ -534,7 +534,8 @@ export class ApiRequests {
    * @param {any} plan @param {{ who: string, tag: string, said: string | null, released: string | null, raw: boolean }} o
    */
   async executeBrowser(plan, { who, tag, said, released, raw }) {
-    const run = this.deps.siteRun;
+    // the connectors module runs it (it holds the Connection and knows the rungs); a rig may hand in its own.
+    const run = this.deps.siteRun || (typeof this.deps.call === "function" ? async (/** @type {any} */ q) => { const r = await this.deps.call("connectors.site.run", q); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } : null);
     try {
       if (typeof run !== "function") throw bad(`${plan.name} is a website signed in through a browser, and no browser is connected to run it`, "unavailable");
       if (plan.kind !== "read" && !(released || said)) throw bad("an outward call to a website waits for the person's yes", "denied");
