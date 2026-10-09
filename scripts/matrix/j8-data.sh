@@ -14,7 +14,7 @@ rec() { ok=$2; [ "$ok" = ok ] && ok=true || { ok=false; FAILED=$((FAILED + 1)); 
   echo "$([ "$ok" = true ] && echo pass || echo FAIL)  J8 $DEV $1 ${3:-}"; }
 python3 -m http.server 18080 --bind 127.0.0.1 --directory "$BOX" >/dev/null 2>&1 & SRV=$!
 for i in $(seq 1 50); do curl -fs http://127.0.0.1:18080/SHA256SUMS >/dev/null && break; sleep 0.2; done
-install() { VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes --print-link </dev/null >"$OUT/install-$1.log" 2>&1; }
+install() { VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes --print-link </dev/null >"$OUT/install-$1.log" 2>&1; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 # The made-up world is one file in the home's certs folder, a part of the home that `vyre backup` carries. (Planner and personal memory need the record store and a person on a bare box, and the
 # built-in store keeps a module's rows under kernel/spaces, which the backup does not list; that gap is reported, not hidden by this test.)
