@@ -22,7 +22,7 @@ const NAME = "harlow.vyre.run", APP_HOST = "documents.harlow.vyre.run";
 /** @param {number} port @param {string} ca @param {string} host @param {string} path */
 const visit = (port, ca, host, path) => new Promise((resolve, reject) => {
   const req = https.request({ host: "127.0.0.1", port, ca, servername: host, method: "GET", path, headers: { host }, timeout: 8000 }, res => {
-    const ch = /** @type {Buffer[]} */ ([]); res.on("data", d => ch.push(d)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(ch).toString(), cert: /** @type {any} */ (res.socket).getPeerCertificate().subject }));
+    const ch = /** @type {Buffer[]} */ ([]); res.on("data", d => ch.push(d)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(ch).toString() }));
   });
   req.on("error", reject); req.on("timeout", () => req.destroy(new Error("timeout"))); req.end();
 });
