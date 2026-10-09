@@ -1056,6 +1056,32 @@ test("L-1: an update that ends with a signed module not running rolls back by it
   assert.equal(JSON.parse(fs.readFileSync(path.join(b.U, "private", "release.prev", "modules.json"), "utf8")).counter, 3004100);
 });
 
+test("L-1b: a healthy update leaves no swap mark, and an update that fails before its own swap clears an old one so it cannot undo a swap it never made", async t => {
+  const b = await box(t, { releases: [{ tag: "v0.2.1", list: 3004200 }] });
+  units_dirs(b);
+  const rel = path.join(b.U, "status", "release"), priv = path.join(b.U, "private");
+  fs.mkdirSync(rel, { recursive: true });
+  fs.writeFileSync(path.join(rel, "modules.json"), JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: {} }, null, 1) + "\n");
+  const r = /** @type {any} */ (await b.run(["update"], { MODULES_WAIT: "2" }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200);
+  assert.equal(fs.existsSync(path.join(priv, "release.swapped")), false, "a healthy update does not leave its swap mark behind");
+  // A mark left by an older wrapper, then an update whose signed list is older than the published one: it fails before any swap of its own.
+  fs.writeFileSync(path.join(priv, "release.swapped"), "");
+  const src = path.join(b.DIR, "src-old");
+  const modules = JSON.stringify({ v: 1, counter: 3004100, release: "0.2.0", modules: {} }, null, 1) + "\n";
+  const sums = Buffer.from(`${sha(modules)}  modules.json\n${sha("shell")}  shell.json\n`);
+  fs.mkdirSync(src);
+  fs.writeFileSync(path.join(src, "SHA256SUMS"), sums);
+  fs.writeFileSync(path.join(src, "SHA256SUMS.sig"), signSums(sums, RELEASE.privateKey));
+  fs.writeFileSync(path.join(src, "shell.json"), "shell");
+  fs.writeFileSync(path.join(src, "modules.json"), modules);
+  const old = /** @type {any} */ (await b.run(["publish-release", src], {}));
+  assert.match(old.out, /older \(counter 3004100\)/);
+  assert.equal(fs.existsSync(path.join(priv, "release.swapped")), false, "the old mark is cleared before the refusal, so a rollback cannot restore the older release.prev");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(rel, "modules.json"), "utf8")).counter, 3004200, "the published release is still the running one");
+});
+
 test("L-1a: a release that carries no module list cannot be published best-effort over a box that already has one", async t => {
   const b = await box(t, { releases: [{ tag: "v0.2.1" }] });
   units_dirs(b);

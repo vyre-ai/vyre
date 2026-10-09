@@ -543,6 +543,9 @@ publish_release() {
     return "$FATAL"
   fi
   if ! unit_dirs_ok; then echo "vyre: $UPD_ROOT is not root's alone; the release's signature files were not published" >&2; return "$FATAL"; fi
+  # Whatever an earlier update left is not this one's: the mark that restore_release trusts is made only by a swap below, so an update that
+  # fails before the swap can never "undo" one it did not make (the older release.prev put back under the running image).
+  rm -f "$UPD_PRIV/release.swapped"
   reconcile_release
   # The caller's folder is not trusted, even when root was asked by name: each file is copied WITHOUT following a link into a folder
   # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
@@ -827,6 +830,8 @@ update() {
   compose up -d || roll_back
   ready || roll_back
   modules_ok || roll_back
+  # Healthy: the swap this update made stays (release.prev is the rollback's), but its mark does not outlive the update.
+  rm -f "$UPD_PRIV/release.swapped" 2>/dev/null || true
   # The Space helper (when installed): the new container has none of the old one's network joins or firewall rules, and the image the helper regenerates from changed.
   if [ -s "$SP_PRIV/images" ]; then space_helper_record && space_helper_reattach || echo "vyre: the Space helper could not be brought up to date after the update" >&2; fi
   # The watcher is a long-running process of the OLD wrapper's text: left alone it would keep re-walling with the old code after the next restart of the vyre container (found on a real box: it knew no apps).

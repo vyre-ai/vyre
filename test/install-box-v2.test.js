@@ -522,6 +522,36 @@ test("install-box.sh v2: IR-7 when Docker's install fails the screen names the l
   assert.match(fs.readFileSync(log, "utf8"), /NOISE_FROM_DOCKER_SCRIPT/);
 });
 
+test("install-box.sh v2: a root run on Ubuntu with no Docker installs it from Docker's signed apt repository, with one printed line and no question", t => {
+  const b = noDocker(t);
+  const bin = path.join(b.base, "bin");
+  const calls = path.join(b.base, "apt.calls");
+  const inst = `printf '#!/bin/sh\\ncase "$1 $2" in "compose version") echo 2.29.1 ;; esac\\nexit 0\\n' > "${path.join(bin, "docker")}"; chmod 755 "${path.join(bin, "docker")}"`;
+  fs.writeFileSync(path.join(bin, "apt-get"), `#!/bin/sh\necho "apt-get $*" >> "${calls}"\ncase "$*" in *docker-ce*) ${inst} ;; esac\nexit 0\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "dpkg"), `#!/bin/sh\necho amd64\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(bin, "curl"), `#!/bin/sh\necho "curl $*" >> "${calls}"\nwhile [ $# -gt 0 ]; do [ "$1" = -o ] && echo KEY > "$2"; shift; done\nexit 0\n`, { mode: 0o755 });
+  const osr = path.join(b.base, "os-release");
+  fs.writeFileSync(osr, 'ID=ubuntu\nVERSION_CODENAME=noble\n');
+  const aroot = path.join(b.base, "aroot");
+  const r = run({ ...b.env, TMPDIR: b.base, VYRE_APT_AS_ROOT: "0", VYRE_OS_RELEASE: osr, VYRE_APT_ROOT: aroot }, ["--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Installing Docker \(about a minute\)\./);
+  assert.doesNotMatch(r.stdout + r.stderr, /get\.docker\.com|\[y\/N\]/);
+  const log = fs.readFileSync(calls, "utf8");
+  assert.match(log, /curl .*download\.docker\.com\/linux\/ubuntu\/gpg/);
+  assert.match(log, /apt-get install -y docker-ce docker-ce-cli containerd\.io docker-buildx-plugin docker-compose-plugin/);
+  assert.doesNotMatch(log, /get\.docker\.com/);
+  assert.match(fs.readFileSync(path.join(aroot, "etc/apt/sources.list.d/docker.list"), "utf8"), /^deb \[arch=amd64 signed-by=\/etc\/apt\/keyrings\/docker\.asc\] https:\/\/download\.docker\.com\/linux\/ubuntu noble stable$/);
+  // Another system keeps the older way: nothing from apt runs.
+  fs.rmSync(calls);
+  fs.rmSync(path.join(bin, "docker"), { force: true });
+  fs.writeFileSync(osr, 'ID=fedora\nVERSION_CODENAME=\n');
+  const c = noDocker(t);
+  const r2 = run({ ...c.env, TMPDIR: c.base, VYRE_APT_AS_ROOT: "0", VYRE_OS_RELEASE: osr }, ["--yes", "--from", REPO]);
+  assert.match(r2.stdout, /Installing Docker\. This takes a minute or two\./);
+  assert.equal(fs.existsSync(calls), false, "apt was not used on a system that is not Ubuntu or Debian");
+});
+
 test("install-box.sh v2: the Records choice rides the install line as VYRE_STORE: auto (the default) or sqlite, written once into vyre.env; anything else stops the install", t => {
   const b = box(t);
   let r = run({ ...b.env, VYRE_STORE: "sqlite" }, ["--yes", "--from", REPO]);

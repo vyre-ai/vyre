@@ -237,9 +237,42 @@ compose_ok() {
   [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -ge 24 ]; }
 }
 
+# docker_apt_install: Docker from Docker's own signed apt repository, for a root run on Ubuntu or Debian (the most common server there is): no question, no piped script.
+# Returns 1 when this is not that kind of server (the caller then keeps the older message), and stops with the log's path when the packages did not install.
+docker_apt_install() {
+  [ "${VYRE_APT_AS_ROOT:-$(id -u)}" = 0 ] || return 1
+  osr=${VYRE_OS_RELEASE:-/etc/os-release}
+  aroot=${VYRE_APT_ROOT:-}   # tests only: a folder standing in for /
+  [ -r "$osr" ] || return 1
+  os_id=$(. "$osr"; printf '%s' "${ID:-}")
+  case "$os_id" in ubuntu|debian) ;; *) return 1 ;; esac
+  command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1 || return 1
+  os_code=$(. "$osr"; if [ "$ID" = ubuntu ]; then printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; else printf '%s' "${VERSION_CODENAME:-}"; fi)
+  [ -n "$os_code" ] || return 1
+  if [ "$DRY" = 1 ]; then say "would install Docker from Docker's apt repository for $os_id $os_code"; return 0; fi
+  dlog=$(mktemp "${TMPDIR:-/tmp}/vyre-docker-install.XXXXXX")
+  say "  ${ASH}Installing Docker (about a minute).$RESET"
+  if ! {
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y && apt-get install -y ca-certificates curl \
+      && install -m 0755 -d "$aroot/etc/apt/keyrings" "$aroot/etc/apt/sources.list.d" \
+      && curl -fsSL "https://download.docker.com/linux/$os_id/gpg" -o "$aroot/etc/apt/keyrings/docker.asc" \
+      && chmod a+r "$aroot/etc/apt/keyrings/docker.asc" \
+      && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/%s %s stable\n' "$(dpkg --print-architecture)" "$os_id" "$os_code" >"$aroot/etc/apt/sources.list.d/docker.list" \
+      && apt-get update -y \
+      && apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  } >"$dlog" 2>&1; then
+    die "Docker did not install. Its own output is in $dlog; after fixing that, run this installer again."
+  fi
+  rm -f "$dlog"
+  if command -v systemctl >/dev/null 2>&1; then systemctl enable --now docker >/dev/null 2>&1 || true; fi
+  return 0
+}
+
 need_docker() {
   cmd="curl -fsSL https://get.docker.com | sh"
-  if ! command -v docker >/dev/null 2>&1; then
+  if ! command -v docker >/dev/null 2>&1 && docker_apt_install; then [ "$DRY" != 1 ] || return 0
+  elif ! command -v docker >/dev/null 2>&1; then
     if ask "Docker is not installed. Install it now with: $cmd ?"; then
       if [ "$DRY" = 1 ]; then priv sh -c "$cmd"; return 0; fi
       # Docker's own script is long and loud (rootless notes, API warnings). Its output goes to a log; the screen gets one line, and the log's path only if it fails.
