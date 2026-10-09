@@ -268,7 +268,8 @@ export default {
      */
     async function dispatch(op, input, meta, o = /** @type {any} */ ({})) {
       return via.run(meta || {}, async () => {
-        const agent = agentOf(meta.caller, meta);
+        // A Connection the person made (a website, run from a Flow or a view) is its own grant: the kernel and the connectors module have already judged who may run it.
+        const agent = o.connection === true ? null : agentOf(meta.caller, meta);
         const args = { ...input };
         delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget; delete args.pointBudget;
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
@@ -548,7 +549,7 @@ export default {
       input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool, check: bool }, ["site", "name"]),
       run: async (/** @type {any} */ i, /** @type {any} */ m) => {
         if (!m || m.caller !== "module:connectors") throw denied("denied", "only the connectors module runs a site's operation");
-        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: i.approved === true, check: i.check === true });
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: i.approved === true, check: i.check === true, connection: true });
       } });
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),

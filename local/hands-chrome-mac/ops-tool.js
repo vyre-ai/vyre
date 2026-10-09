@@ -13,7 +13,7 @@ const DRAFT_TTL_MS = 60 * 60_000;
 const MAX_DRAFTS = 20;
 
 /**
- * @param {{ dispatch: (op: string, args: any, meta: any, o?: { asked?: boolean }) => Promise<any>, call: (tool: string, input: any) => Promise<any>, originOf: (u: string) => string, isPerson: (meta: any) => boolean,
+ * @param {{ dispatch: (op: string, args: any, meta: any, o?: { asked?: boolean, connection?: boolean }) => Promise<any>, call: (tool: string, input: any) => Promise<any>, originOf: (u: string) => string, isPerson: (meta: any) => boolean,
  *   denied: (code: string, message: string) => Error, urls: Map<number, string> }} d
  */
 export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls }) {
@@ -34,10 +34,10 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     return { ops: (r && r.origin && Array.isArray(r.origin.ops) ? r.origin.ops : []), rev: r && r.rev ? r.rev : 0 };
   }
 
-  /** A tab on the site: the one asked for, else the person's tab on it, opened if there is none. @param {any} i @param {string} origin @param {any} m */
-  async function tabFor(i, origin, m) {
+  /** A tab on the site: the one asked for, else the person's tab on it, opened if there is none. @param {any} i @param {string} origin @param {any} m @param {{ connection?: boolean }} [o] */
+  async function tabFor(i, origin, m, o = {}) {
     if (Number.isInteger(i.tab)) return i.tab;
-    const r = await dispatch("tabs.use", { url: origin, openIfMissing: true }, m);
+    const r = await dispatch("tabs.use", { url: origin, openIfMissing: true }, m, o);
     const t = isObj(r) && isObj(r.tab) ? r.tab : r;
     if (!t || !Number.isInteger(t.id)) throw denied("no_tab", `no tab on ${origin}: open the site in Chrome first`);
     return t.id;
@@ -62,24 +62,24 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
   /**
    * Call a kept operation by site and name. The one path for the agent's `call` and for the connectors module's `chrome.op.run`: the stored template is always tried first; a drift of a read is
    * repaired once and the repair kept only after a replay answers; a send or change comes back held (unless `asked`: the person's yes already covers this call).
-   * @param {{ origin: string, name: string, inputs: Record<string, any>, meta: any, tab?: number, heal?: boolean, maxChars?: number, asked?: boolean, check?: boolean }} q
+   * @param {{ origin: string, name: string, inputs: Record<string, any>, meta: any, tab?: number, heal?: boolean, maxChars?: number, asked?: boolean, check?: boolean, connection?: boolean }} q
    */
-  async function callStored({ origin, name, inputs, meta: m, tab: tabArg, heal = true, maxChars, asked = false, check = false }) {
+  async function callStored({ origin, name, inputs, meta: m, tab: tabArg, heal = true, maxChars, asked = false, check = false, connection = false }) {
     const { ops } = await stored(origin);
     const entry = ops.find((/** @type {any} */ o) => o.name === name);
     if (!entry) throw denied("not_found", `no operation ${name.slice(0, 40)} for ${origin}; known: ${ops.map((/** @type {any} */ o) => o.name).join(", ") || "none"}`);
-    const tab = await tabFor({ tab: tabArg }, origin, m);
-    const opts = asked ? { asked: true } : {};
+    const opts = { ...(asked ? { asked: true } : {}), ...(connection ? { connection: true } : {}) };
+    const tab = await tabFor({ tab: tabArg }, origin, m, opts);
     if (check) return dispatch("ops.check", { tab, op: entry.op }, m, opts);
     const res = await dispatch("ops.call", { tab, op: entry.op, inputs, ...(maxChars ? { maxChars } : {}) }, m, opts);
     if (!isObj(res) || res.held) return res;
     if (res.ok) { await report(origin, entry.name, "ok", "ok"); return { ...res, version: entry.version }; }
     // Reactive repair, reads only: the stored template is always tried first; only a drift triggers a relearn, and the repair is kept only after a replay answers.
     if (res.class === "drift" && entry.kind === "read" && heal) {
-      const h = await dispatch("ops.heal", { tab, op: entry.op, inputs }, m);
+      const h = await dispatch("ops.heal", { tab, op: entry.op, inputs }, m, connection ? { connection: true } : {});
       if (isObj(h) && h.outcome === "healed" && h.operation) {
         await putOp(origin, { name: entry.name, kind: entry.kind, op: h.operation, outcome: "ok" });
-        const again = await dispatch("ops.call", { tab, op: h.operation, inputs }, m);
+        const again = await dispatch("ops.call", { tab, op: h.operation, inputs }, m, opts);
         if (isObj(again) && again.ok) return { ...again, healed: true };
       }
       await report(origin, entry.name, "miss", "drift");
