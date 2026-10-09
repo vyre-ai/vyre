@@ -45,7 +45,8 @@ test("ingress: a signer outside reaches the dressed signing page through the rel
   const k = newRouteKey(), route = routeId(k.pub);
   const declared = new Set([APP_HOST]); let suspended = false;
   /** @type {string[]} */ const asked = [];
-  const relay = createRelay({ tunnel: { resolve: async h => { asked.push(h); return declared.has(h) && !suspended ? { route } : null; } } });
+  // ttlMs 0: the relay keeps the directory's answer for 60 s in service; the test asks every time so a suspend shows at the next visitor
+  const relay = createRelay({ tunnel: { resolve: async h => { asked.push(h); return declared.has(h) && !suspended ? { route } : null; }, limits: { ttlMs: 0 } } });
   const base = await relay.listen(); const { tls: tlsPort } = await relay.listenTunnel(); t.after(() => relay.close());
 
   const end = createTunnelEnd({ name: NAME, port: () => at.port });

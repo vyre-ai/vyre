@@ -24,6 +24,8 @@ The result is filed in the Drive under `Documents/<project>/` and, when your Spa
 
 ## Signing pages
 
+A signer outside your network needs a way in. With a public address for your server (the relay your server is connected to), their browser reaches your server directly and the relay sees only encrypted traffic: it cannot read the page or the signed contract.
+
 When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer, held for your yes), and a new one is one call away.
 
 ## Send an email or a text
