@@ -2,7 +2,7 @@
 // the person), vault.pass.list / create / revoke and vault.offboard, vault.devices and vault.device.revoke, vault.health and vault.breach.check (Watchtower), vault.history,
 // vault.audit for an item, vault.update (replace a value, or make a new one on the box) and vault.ssh.generate. Acts that need the person are answered by the app's call
 // with the device's own proof, so a refusal that reaches here is a real one. A value never comes back from any of these.
-import { pickEmergency, pickReveals, pickMcpMade, pickBreach, pickCaps, pickDevices, pickHealth, pickHistory, pickPasses, pickPending } from "./more-model.ts";
+import { pickPeople, pickVaults, pickCodes, pickEmergency, pickReveals, pickMcpMade, pickBreach, pickCaps, pickDevices, pickHealth, pickHistory, pickPasses, pickPending } from "./more-model.ts";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 
@@ -22,6 +22,12 @@ export function vaultMoreSource(call: Call) {
     emergencyDeny: (person: string) => ask("vault.emergency.deny", { person }),
     emergencyRemove: (person: string) => ask("vault.emergency.remove", { person }),
     emergencyRefresh: () => ask("vault.emergency.refresh", {}),
+    /** Two-factor codes read by the person's own camera, or pasted: what would be added, then the import. Names only come back. */
+    async codesPreview(uris: string[]) { return pickCodes(await ask("vault.codes.import", { uris, preview: true })); },
+    async codesImport(uris: string[]) { return pickCodes(await ask("vault.codes.import", { uris })); },
+    /** Shared vaults (members, roles, item names) and the people Vyre shares with. Reads only: changing a vault is done at the command line until the device may ask for it. */
+    async sharedVaults() { return pickVaults(await maybe("vault.vaults.list")); },
+    async people() { return pickPeople(await maybe("vault.people")); },
     async caps() { return pickCaps(await maybe("vault.caps")); },
     /** The passes, and what waits for the person (a box without vault.pending has none). */
     async passes() {

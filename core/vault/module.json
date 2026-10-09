@@ -94,6 +94,8 @@
       { "name": "vault.fill.native", "effect": "write", "reach": "anyone" },
       { "name": "vault.caps", "effect": "read", "reach": "anyone" },
       { "name": "vault.health", "effect": "write", "reach": "anyone" },
+      { "name": "vault.health.summary", "effect": "read", "reach": "anyone" },
+      { "name": "vault.health.dismiss", "effect": "write", "reach": "person" },
       { "name": "vault.breach.check", "effect": "write", "reach": "anyone" },
       { "name": "vault.update", "effect": "write", "reach": "anyone" }, { "name": "vault.verify", "effect": "write", "reach": "anyone" },
       { "name": "vault.clipboard.clear", "effect": "write", "reach": "anyone" },

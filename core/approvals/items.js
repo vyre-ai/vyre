@@ -7,7 +7,7 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
-export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval"]);
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health"]);
 const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
@@ -98,6 +98,20 @@ export const fromStuckTasks = rows => rows.map(t => ({ id: `tasks:${t.task}`, ki
   answer: { tool: "tasks.move", input: { id: t.task }, fill: ["to", "reason"], choices: ["ready", "skipped"] } }));
 
 /**
+ * vault.health.summary (R031-80s): the vault's Watchtower findings as ONE calm row, never a row per item: how many need to be rotated and how many to be fixed, counts only. Dismissing it is vault.health.dismiss;
+ * the row opens the Vault, where each item is named.
+ */
+export const fromHealth = (/** @type {any} */ h) => {
+  const total = h && Number.isFinite(h.total) ? Number(h.total) : 0;
+  if (!total) return [];
+  const rotate = Number(h.rotate) || 0, fix = Number(h.fix) || 0;
+  const bits = [rotate ? `${rotate} to rotate` : "", fix ? `${fix} to fix` : ""].filter(Boolean).join(", ");
+  return [{ id: "vault:health", kind: "health", title: `${total} vault item${total === 1 ? "" : "s"} need${total === 1 ? "s" : ""} attention`, detail: bits, at: 0, source: "vault-health",
+    facts: { rotate, fix }, answer: { tool: "vault.health.dismiss", input: { days: 7 }, fill: [] },
+    answers: [...(rotate ? [{ label: "Rotate", open: "/u/vault" }] : []), ...(fix ? [{ label: "Fix", open: "/u/vault" }] : []), { label: "Dismiss", tool: "vault.health.dismiss", input: { days: 7 }, fill: [] }] }];
+};
+
+/**
  * models.evals (R031-87): a new model whose evals the owner has not yet answered. One `eval` card each: what it would cost (from the model's own price, or "cost unknown"), answered by
  * models.eval-approve (all the proposed types; the owner may name fewer) or declined. Nothing runs from the card; approving only queues.
  */
@@ -119,6 +133,7 @@ export const OWNERS = [
     ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
     ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
     ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
+  { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
@@ -147,7 +162,7 @@ export function createItems({ call, on, now, log = () => {}, emit = () => {}, ex
     const t = now();
     for (let i = 0; i < OWNERS.length; i++) {
       const o = OWNERS[i], rows = got[i];
-      if (rows === null) { partial.add(o.name); continue; }
+      if (rows === null) { if (!(/** @type {any} */ (o)).quiet) partial.add(o.name); continue; }
       partial.delete(o.name);
       const live = new Set(rows.map(r => r.id));
       for (const [id, card] of open) if (card.source === o.name && !live.has(id)) {

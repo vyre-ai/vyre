@@ -656,25 +656,40 @@ export default {
       try { const st = identity.status(); if (st.exists && !st.pending) await P.sync({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), binds: [] }); } catch (e) { ctx.log.warn(`presence sync was not sent: ${/** @type {Error} */ (e).message}`); }
     };
     const needPresence = () => { const P = presenceOf(); if (!P) throw refuse("This computer has no sealing process running, so there is no presence to recover.", "unavailable"); return P; };
-    // ---- The Space bundle (R031-83, lib/space-bundle.js): enrol once with the recovery code, then the export runs unattended into the home, where a backup carries it ----
+    const personIdOfChain = (/** @type {any} */ c) => { const h = c && c.hops && c.hops[0]; return h && h.actor.kind === "person" ? String(h.actor.id) : ""; };
+    // ---- The Space bundle (R031-83, lib/space-bundle.js): every Space this box holds, each opened by its OWN owner's recovery code, given once; the export then runs unattended into the home, where a backup carries it ----
     const bundleK = ctx.kernel && ctx.kernel.bundle ? ctx.kernel.bundle : null;
-    const bundleId = () => ({ space: String(ctx.kernel.space), owner: String(ctx.kernel.owner) });
-    let bundleLast = 0;
-    const exportNow = async () => { const r = await exportBundle({ root: ctx.paths.root, id: bundleId(), k: /** @type {any} */ (bundleK) }); bundleLast = Date.now(); return r; };
-    tool("spaces.bundle.enrol", "Give your recovery code ONCE so this Space can be backed up with its members, grants and sealed values, and brought back on a fresh box with the same code. Nothing is stored in the clear: the code only wraps a key the Space keeps sealed.",
-      obj({ code: str, password: str }, ["code"]), async (i) => {
-        if (!bundleK) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" });
-        await enrolBundle(bundleK, String(ctx.kernel.space), String(i.code), String(i.password || ""));
-        return { enrolled: true, ...(await exportNow()) };
+    const homeSpace = () => String(ctx.kernel.space);
+    /** @type {Map<string, number>} */ const bundleLast = new Map();
+    const bundleOfSpace = (/** @type {string} */ id) => { const k = bundleK && bundleK.of(id); if (!k) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" }); return k; };
+    const bundleIdent = (/** @type {string} */ id, /** @type {any} */ k) => (id === homeSpace() ? { space: id, owner: String(ctx.kernel.owner) } : { space: id, owner: String(k.id.owner), ...(k.id.name ? { name: k.id.name } : {}) });
+    const exportSpace = async (/** @type {string} */ id) => { const k = bundleOfSpace(id), r = await exportBundle({ root: ctx.paths.root, id: bundleIdent(id, k), k, home: id === homeSpace() }); bundleLast.set(id, Date.now()); return r; };
+    const nameOfSpace = (/** @type {string} */ id, /** @type {any} */ k) => (id === homeSpace() ? "this box's own Space" : String((k.id && k.id.name) || id));
+    tool("spaces.bundle.enrol", "Give a Space's owner's recovery code ONCE so that Space can be backed up with its members, grants, store and sealed values, and brought back on a fresh box with the same code. Each Space has its own owner and its own code. Nothing is stored in the clear: the code only wraps a key the Space keeps sealed.",
+      obj({ space: str, code: str, password: str }, ["code"]), async (i, meta) => {
+        const id = String(i.space || homeSpace()), k = bundleOfSpace(id);
+        const who = personIdOfChain(await ctx.kernel.chain(meta)), owner = bundleIdent(id, k).owner;
+        if (!who || who !== owner) throw Object.assign(new Error("only this Space's owner can turn on its backup"), { code: "denied" });
+        await enrolBundle(k, id, String(i.code), String(i.password || ""));
+        return { enrolled: true, space: id, ...(await exportSpace(id)) };
       }, { effect: "write", reach: "person" });
-    tool("spaces.bundle.export", "Write the Space bundle now (it also runs by itself, hourly). A backup of this box carries the file.", obj({}), async () => {
-      if (!bundleK) throw Object.assign(new Error("this box has no Space bundle yet"), { code: "unavailable" });
-      return exportNow();
+    tool("spaces.bundle.export", "Write the Space bundles now: every Space whose owner turned on backups (it also runs by itself, hourly). A backup of this box carries the files.", obj({}), async () => {
+      const done = [];
+      for (const id of bundleOfIds()) { if (await bundleEnrolled(bundleOfSpace(id))) done.push({ space: id, ...(await exportSpace(id)) }); }
+      return { written: done };
     }, { effect: "write", reach: "person" });
-    tool("spaces.bundle.status", "Whether the Space bundle is set up (the recovery code was given) and when it was last written.", obj({}), async () => ({ available: Boolean(bundleK), enrolled: bundleK ? await bundleEnrolled(bundleK) : false, last: bundleLast || null }), { effect: "read", reach: "person" });
-    // unattended: at start and every hour once enrolled, so a scheduled backup always carries a fresh bundle
-    const bundleTick = () => { if (bundleK) void bundleEnrolled(bundleK).then(on => (on ? exportNow() : null)).catch((e) => ctx.log.warn(`space bundle not written: ${e.message}`)); };
-    const bundleFirst = setTimeout(bundleTick, 5000), bundleTimer = setInterval(bundleTick, 3_600_000);
+    tool("spaces.bundle.status", "Which Spaces on this box are backed up, and which are not because their owner has not turned on backups, with the plain line to show for each.", obj({}), async () => {
+      const spaces = [];
+      for (const id of bundleOfIds()) {
+        const k = bundleOfSpace(id), on = await bundleEnrolled(k), name = nameOfSpace(id, k);
+        spaces.push({ space: id, name, home: id === homeSpace(), enrolled: on, last: bundleLast.get(id) || null, ...(on ? {} : { note: id === homeSpace() ? "Your own Space isn't backed up yet: turn on backups with your recovery code." : `Space ${name} isn't backed up: its owner hasn't turned on backups.` }) });
+      }
+      return { available: Boolean(bundleK), spaces };
+    }, { effect: "read", reach: "person" });
+    const bundleOfIds = () => (bundleK ? bundleK.ids() : []);
+    // unattended: at start and every hour, every Space whose owner has enrolled, so a scheduled backup always carries fresh bundles
+    const bundleTick = async () => { for (const id of bundleOfIds()) { try { if (await bundleEnrolled(bundleOfSpace(id))) await exportSpace(id); } catch (e) { ctx.log.warn(`space bundle for ${id} not written: ${/** @type {Error} */ (e).message}`); } } };
+    const bundleFirst = setTimeout(() => void bundleTick(), 5000), bundleTimer = setInterval(() => void bundleTick(), 3_600_000);
     bundleFirst.unref?.(); bundleTimer.unref?.();
     tool("spaces.presence.begin", "On a new device that has lost every presence key: ask the sealing process for the one-time token the recovery needs, for the key this device just made (its id and public key).",
       obj({ key_id: str, spki: str }, ["key_id", "spki"]), async (i, meta) => {

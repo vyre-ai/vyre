@@ -132,3 +132,17 @@ test("R031-87: a new model's pending evals are one `eval` card with a cost from 
   assert.deepEqual(rows[0].answer, { tool: "models.eval-approve", input: { model: "codex/gpt-5.5" }, fill: ["evals"] });
   assert.deepEqual(rows[0].decline, { tool: "models.eval-decline", input: { model: "codex/gpt-5.5" } });
 });
+
+test("R031-80s: the vault's health is one calm row of counts, never a row per item, and none when nothing needs attention", async () => {
+  const { fromHealth } = await import("./items.js");
+  assert.deepEqual(fromHealth({ total: 0 }), []);
+  assert.deepEqual(fromHealth(null), []);
+  const [row, ...more] = fromHealth({ total: 5, rotate: 2, fix: 3, counts: { rotate: 2, reused: 3 } });
+  assert.equal(more.length, 0);
+  assert.equal(row.title, "5 vault items need attention");
+  assert.equal(row.detail, "2 to rotate, 3 to fix");
+  assert.deepEqual(row.answers.map((/** @type {any} */ a) => a.label), ["Rotate", "Fix", "Dismiss"]);
+  assert.equal(fromHealth({ total: 1, rotate: 1, fix: 0 })[0].title, "1 vault item needs attention");
+  assert.deepEqual(fromHealth({ total: 1, rotate: 1, fix: 0 })[0].answers.map((/** @type {any} */ a) => a.label), ["Rotate", "Dismiss"]);
+  assert.ok(JSON.stringify(row).includes("password") === false && !JSON.stringify(row).includes("name"), "counts only");
+});
