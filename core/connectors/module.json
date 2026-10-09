@@ -42,6 +42,8 @@
       { "name": "connectors.site.connect", "reach": "person", "effect": "write" },
       { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
       { "name": "connectors.site.operations", "reach": "anyone", "effect": "read" },
+      { "name": "connectors.site.list", "reach": "anyone", "effect": "read" },
+      { "name": "connectors.site.rows", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.rollback", "reach": "person", "effect": "write" },
       { "name": "connectors.site.run", "reach": "modules", "effect": "write" }
     ]
@@ -69,6 +71,39 @@
       "connect"
     ],
     "capsule": {
+      "view:sites": {
+        "title": "Websites",
+        "keywords": ["website", "websites", "linkedin", "signed in", "login", "operations", "browser"],
+        "icon": "globe",
+        "root": true,
+        "list": {
+          "tool": "connectors.site.list",
+          "input": {},
+          "map": { "rows": "sites", "id": "id", "title": "title", "subtitle": "subtitle", "accessory": "light", "url": "site" },
+          "detail": { "tool": "connectors.site.operations", "input": { "id": "{id}" }, "map": { "title": "id", "fields": [{ "label": "Site", "path": "site" }, { "label": "Light", "path": "light" }, { "label": "Says", "path": "reason" }] } },
+          "actions": [
+            { "id": "open", "title": "Open the site (to sign in)", "do": { "open": "{url}" } },
+            { "id": "check", "title": "Check it now", "tool": "connectors.connection.check", "input": { "id": "{id}" } },
+            { "id": "sync", "title": "Bring up to date with what was learned", "tool": "connectors.site.sync", "input": { "id": "{id}" } }
+          ],
+          "empty": "No website is connected yet. Teach an operation with chrome_op, then connect the site."
+        }
+      },
+      "view:site-operations": {
+        "title": "Website operations",
+        "keywords": ["operations", "versions", "rollback", "learned", "heal", "repair"],
+        "icon": "history",
+        "list": {
+          "tool": "connectors.site.rows",
+          "input": {},
+          "map": { "rows": "rows", "id": "id", "title": "title", "subtitle": "subtitle", "accessory": "accessory", "url": "site" },
+          "actions": [
+            { "id": "rollback", "title": "Roll back to the version before", "tool": "connectors.site.rollback", "input": { "row": "{id}" } },
+            { "id": "open", "title": "Open the site (to sign in again)", "do": { "open": "{url}" } }
+          ],
+          "empty": "No website operations yet."
+        }
+      },
       "view:next": {
         "title": "Next meeting",
         "keywords": [

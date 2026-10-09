@@ -111,3 +111,32 @@ test("a send is held for the person's yes, never sent without it, and the sign-i
   assert.match(got.reason, /sign in to app\.example\.com again/);
   assert.ok(w.d.registry.deps.events.since(0, { limit: 5000 }).some((/** @type {any} */ e) => e.type === "connectors.site-needs-signin" && e.payload.id === "linkedin"));
 });
+
+test("the Capsule's Websites and Website operations views list the Connections and their operations, with the light and a rollback, through the existing views engine", async t => {
+  const w = await world(t);
+  await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
+  const view = async (/** @type {string} */ command, extra = {}) => { const r = await w.d.registry.call("capsule.view", { module: "connectors", command, ...extra }, "capsule"); return r.data || { kind: "error", code: r.error && r.error.code, message: r.error && r.error.message }; };
+  const sites = await view("sites");
+  assert.equal(sites.kind, "list", JSON.stringify(sites));
+  assert.deepEqual(sites.rows.map((/** @type {any} */ r) => [r.id, r.title, r.accessory]), [["linkedin", "LinkedIn", "unknown"]]);
+  assert.match(sites.rows[0].subtitle, /app\.example\.com/);
+  const detail = await view("sites", { view: "detail", id: "linkedin" });
+  assert.equal(detail.kind, "detail", JSON.stringify(detail));
+  assert.ok(detail.fields.some((/** @type {any} */ f) => f.label === "Site" && f.value === ORIGIN));
+  const rows = await view("site-operations");
+  assert.equal(rows.kind, "list", JSON.stringify(rows));
+  assert.deepEqual(rows.rows.map((/** @type {any} */ r) => [r.id, r.title, r.accessory]).sort(), [["linkedin:searchPeople", "searchPeople", "ok"], ["linkedin:sendMessage", "sendMessage", "ok"]]);
+  assert.ok(rows.rows.every((/** @type {any} */ r) => r.actions === undefined || Array.isArray(r.actions)));
+  // a rollback by row with no earlier version says so plainly, and a model cannot make one
+  const none = await w.cli("connectors.site.rollback", { row: "linkedin:searchPeople" });
+  assert.equal(none.error?.code, "not_found");
+  assert.equal((await w.model("connectors.site.rollback", { row: "linkedin:searchPeople" })).error?.code, "denied");
+  // teach a better version; the Connection is brought up to date and the row can go back
+  const v2 = read(); v2.response.extract = "items";
+  await w.cli("memory.site.put", { origin: ORIGIN, target: "origin", patch: { key: ORIGIN, ops: [{ name: "searchPeople", kind: "read", op: v2, outcome: "ok" }] } });
+  assert.deepEqual((await w.cli("connectors.site.sync", { id: "linkedin" })).data, { id: "linkedin", credential: "conn-linkedin", operations: 2 });
+  const after = (await w.cli("connectors.site.operations", { id: "linkedin" })).data.operations.find((/** @type {any} */ o) => o.name === "searchPeople");
+  assert.deepEqual([after.version, after.history.map((/** @type {any} */ h) => h.version)], [2, [1]]);
+  const back = await w.cli("connectors.site.rollback", { row: "linkedin:searchPeople" });
+  assert.deepEqual(back.data, { rolledBack: true, name: "searchPeople", version: 3 }, JSON.stringify(back));
+});

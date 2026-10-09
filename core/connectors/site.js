@@ -162,12 +162,55 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
     },
   });
 
+  /** @param {any} r @param {any} d */
+  const siteRow = (r, d) => ({ id: r.id, title: r.label, subtitle: r.reason || new URL(d.base_url).hostname, light: r.light, site: d.base_url, operations: Object.keys(d.ops).length });
+  const siteRows = () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM connectors_made ORDER BY label").all()).map(r => ({ r, d: JSON.parse(r.declaration) })).filter(x => x.d.transport === "site");
+
+  ctx.tool("connectors.site.list", {
+    effect: "read", callers: [...people, "module", "mcp", "harness"],
+    description: "The website Connections, one row each: { sites: [{ id, title, subtitle (what the light says, or the host), light, site, operations }] }. What the Websites view lists.",
+    input: obj({}, []),
+    run: async () => ({ sites: siteRows().map(({ r, d }) => siteRow(r, d)) }),
+  });
+
+  ctx.tool("connectors.site.rows", {
+    effect: "read", callers: [...people, "module", "mcp", "harness"],
+    description: "Every operation of every website Connection, one row each: { rows: [{ id (<connection>:<name>), title (the name), subtitle (connection, kind, version), accessory (health), site, version, kept (versions held for a rollback) }] }. What the Website operations view lists.",
+    input: obj({}, []),
+    run: async () => {
+      const rows = [];
+      for (const { r, d } of siteRows()) {
+        let have = [];
+        try { have = await recordOps(call, d.base_url); } catch { /* the site record is not readable: the rows say removed */ }
+        for (const o of Object.values(d.ops)) {
+          const e = have.find(x => x.name === o.site.name);
+          const cls = e && e.lastClass ? e.lastClass : "";
+          rows.push({ id: `${r.id}:${o.site.name}`, title: o.site.name, subtitle: `${r.label} · ${o.kind}${e ? ` · v${e.version}` : ""}`, accessory: e ? (!cls || cls === "ok" ? "ok" : cls) : "removed", site: d.base_url, version: e ? e.version : null, kept: e && e.prev ? e.prev.length : 0 });
+        }
+      }
+      return { rows };
+    },
+  });
+
   ctx.tool("connectors.site.rollback", {
     effect: "write", callers: people,
     description: "Put one operation of a website Connection back to an earlier version it still holds: { id, name, version }. The Connection is brought up to date with it. Your own act.",
-    input: obj({ id: str, name: str, version: { type: "integer" } }, ["id", "name", "version"]),
-    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+    input: obj({ id: str, name: str, version: { type: "integer" }, row: str }, []),
+    run: async (/** @type {any} */ rawInput, /** @type {any} */ meta) => {
       const as = yours(meta, "roll back an operation");
+      // a row of the Website operations view names the Connection and the operation ("linkedin:searchPeople") and means: back to the version before this one
+      let input = rawInput;
+      if (typeof rawInput.row === "string" && rawInput.row.includes(":")) {
+        const [cid, ...rest] = rawInput.row.split(":");
+        const name = rest.join(":");
+        const row0 = made.row(cid);
+        const d0 = row0 && JSON.parse(row0.declaration);
+        const e0 = d0 && d0.transport === "site" ? (await recordOps(call, d0.base_url)).find(x => x.name === name) : null;
+        const back = e0 && e0.prev && e0.prev[0] ? e0.prev[0].version : null;
+        if (!back) throw fail("there is no earlier version of that operation to go back to", "not_found");
+        input = { id: cid, name, version: back };
+      }
+      if (!input.id || !input.name || !Number.isInteger(input.version)) throw fail("rollback names { id, name, version } or a row of the Website operations view", "bad_input");
       const r = made.row(String(input.id));
       if (!r) throw fail(`no connection ${String(input.id).slice(0, 40)}`, "not_found");
       const d = JSON.parse(r.declaration);
