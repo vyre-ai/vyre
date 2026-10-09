@@ -398,7 +398,8 @@ export default {
     const signins = new Map();
     const STEP_STATES = ["working", "done", "stuck", "paused"];
     const COMPUTER = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-    const operatorCard = (/** @type {any} */ o) => { if (o.thread) emit("thread.operator", { run: o.id, computer: o.computer, title: o.title, state: o.state, line: o.line, ask: o.ask || "", steps: o.steps }, { thread: o.thread }); };
+    // the event freezes its payload, so it gets a copy of the steps: the run keeps adding to its own
+    const operatorCard = (/** @type {any} */ o) => { if (o.thread) emit("thread.operator", { run: o.id, computer: o.computer, title: o.title, state: o.state, line: o.line, ask: o.ask || "", steps: o.steps.map((/** @type {any} */ x) => ({ ...x })) }, { thread: o.thread }); };
     const signinCard = (/** @type {any} */ s) => { if (s.thread) emit("thread.signin", { id: s.id, computer: s.computer, site: s.site, why: s.why, state: s.state }, { thread: s.thread }); };
     const threadOf = (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ trusted) => (trusted && i.thread ? String(i.thread) : (meta && meta.thread) || null);
     const asker = (/** @type {any} */ meta) => ({ person: isPerson(meta), module: String((meta && meta.caller) || "").startsWith("module:") });
