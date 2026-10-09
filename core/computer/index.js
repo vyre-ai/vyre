@@ -198,7 +198,12 @@ export default {
               // Nothing is lent for this site: the person signs in themselves, on a card that opens the screen with the keyboard theirs.
               const host = hostOf(input.url || input.site) || "the site";
               const s = await ask("previews.signin", { computer: glassName(target, agent), site: host, why: "A login is needed here", thread: meta.thread, wait_ms: 55_000 });
-              if (s && s.state === "done") return { computer: target.name, signedIn: true, by: "you" };
+              if (s && s.state === "done") {
+                // The card may have lent a login from the Vault on the way (the person's yes): try the fill once more before taking it as signed in by hand.
+                const again = await ctx.call("vault.agent.fill", { item: String(input.login || ""), ...(input.url ? { origin: new URL(String(input.url)).origin } : {}), agent, thread: meta.thread, lineage: meta.lineage });
+                if (!again.error) return { computer: target.name, ...again.data };
+                return { computer: target.name, signedIn: true, by: "you" };
+              }
               return { computer: target.name, needsSignIn: true, site: host, ...(s ? { card: s.id, state: s.state } : { note: r.error.message }) };
             }
             if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });

@@ -149,7 +149,7 @@ test("an ambiguous computer is one merged question; the answer picks the compute
 test("a login nobody lent turns into a sign-in card for the person, not a failure", async () => {
   const b = await boot({ answers: { "vault.agent.fill": { error: { code: "denied", message: "harlow-test is not lent to kit for https://app.harlow.test in this conversation" } }, "previews.signin": { id: "s1", state: "done" } } });
   const r = await b.run({ do: "signin", login: "harlow-test", url: "https://app.harlow.test/login" }, "mcp agent:kit", { thread: "t-1" });
-  assert.deepEqual([r.signedIn, r.by], [true, "you"]);
+  assert.deepEqual([r.signedIn, r.by], [true, "you"], "done by hand when the retry still finds nothing lent");
   const c = b.calls.find(c => c.tool === "previews.signin").input;
   assert.deepEqual([c.computer, c.site, c.thread], ["kit", "app.harlow.test", "t-1"]);
 });
