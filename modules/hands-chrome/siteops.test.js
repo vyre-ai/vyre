@@ -11,6 +11,8 @@ import * as F from "../../lib/siteops/fixtures.js";
 const ORIGIN = "https://app.example.com";
 const people = (/** @type {string} */ t) => ({ total: 1, results: [{ id: "p-1", name: `${t} one`, profileUrl: "u", headline: "h", meta: { score: 1, tags: [] } }] });
 const read = () => learnOperation({ name: "searchPeople", exchanges: F.pageRest("alpha corp"), exchanges2: F.pageRest("beta works"), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], storage: F.restStorage, trigger: { url: `${ORIGIN}/search?q={query}` } }).operation;
+/** Learned with no storage on the page: the csrf header is a reference by its own name, which only the page's traffic can supply. */
+const readByHeader = () => learnOperation({ name: "searchPeople", exchanges: F.pageRest("alpha corp"), exchanges2: F.pageRest("beta works"), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], trigger: { url: `${ORIGIN}/search?q={query}` } }).operation;
 const send = () => learnOperation({ name: "sendMessage", kind: "send", exchanges: F.pageSend("ada-lovelace", "hello there friend"), exchanges2: F.pageSend("grace-hopper", "second text here"), examples: [{ recipient: "ada-lovelace", text: "hello there friend" }, { recipient: "grace-hopper", text: "second text here" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], storage: F.restStorage, trigger: { url: `${ORIGIN}/inbox` } }).operation;
 
 /** A fake Chrome page: where it is, what it stores, what the site answers, and the events a navigation makes. */
@@ -48,8 +50,9 @@ function fakePage(/** @type {any} */ o = {}) {
 
 test("a read runs in the agent's own Chrome: the site is opened, the reference resolved from the page's own traffic, the fetch made by the page, the answer extracted", async () => {
   const p = fakePage({ local: {} });
-  const out = await runBoxOperation({ cdp: p.cdp, sessionId: "s1", op: read(), inputs: { query: "gamma labs" } });
+  const out = await runBoxOperation({ cdp: p.cdp, sessionId: "s1", op: readByHeader(), inputs: { query: "gamma labs" } });
   assert.equal(out.ok, true, JSON.stringify(out));
+  assert.deepEqual(readByHeader().slots.filter((/** @type {any} */ s) => s.ref).map((/** @type {any} */ s) => s.ref), ["session:x-csrf-token"]);
   assert.equal(/** @type {any} */ (out.data)[0].name, "gamma labs one");
   assert.equal(p.st.fetches.length, 1, "one request");
   assert.equal(p.st.fetches[0].init.headers["x-csrf-token"], F.CSRF, "resolved from what the page itself sent");
