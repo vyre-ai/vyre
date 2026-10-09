@@ -7,7 +7,7 @@
 import { KernelError } from "../core/errors.js";
 import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
-import { proofRequest, PROOF_CALLS, proofNameOf } from "./proof.js";
+import { proofRequest, PROOF_CALLS, proofNameOf, leaseIssueCover } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
 import { remoteBinding, payloadHash } from "../core/presence.js";
 import { youngAt } from "../identity/chain.js";
@@ -46,6 +46,8 @@ export function createRemoteServer(cfg) {
     if (call === "seal.reveal" && args[0] && typeof args[0] === "object" && typeof args[0].ref === "string" && typeof args[0].purpose === "string") cover = { op: "seal.reveal", fields: { ref: args[0].ref, purpose: args[0].purpose }, payload_hash: payloadHash("seal.reveal", cfg.space, { ref: args[0].ref, purpose: args[0].purpose }) };
     // granting a removed computer again: the proof is the sealing process's own for `lease.reinstate`, over the member and the computer
     if (call === "leases.reinstate" && args[0] && typeof args[0] === "object" && typeof args[0].member === "string" && typeof args[0].device === "string") { const f = { member: args[0].member, device: args[0].device }; cover = { op: "lease.reinstate", fields: f, payload_hash: payloadHash("lease.reinstate", cfg.space, f) }; }
+    // a lease request: the runner's signed hello, under the sealing process's `lease.issue`
+    if (call === "leases.issue") { const c = leaseIssueCover(cfg.space, args[0]); if (c) cover = c; }
     if (short && PROOF_CALLS.includes(short)) { try { const r = proofRequest(cfg.space, short, ...args); cover = { op: r.op, fields: r.fields, payload_hash: r.payload_hash }; } catch { cover = {}; } }
     return { call, space: cfg.space, home: cfg.home || cfg.space, nonce, expires: now + CHALLENGE_TTL_MS, args_hash: ah, ...cover };
   }
@@ -94,6 +96,7 @@ export function createRemoteServer(cfg) {
   const ADAPT = {
     // the person's proof arrives as the trailing `{ presence }` option (checked against the home's challenge first); the gateway takes it inside the request
     "seal.reveal": () => (/** @type {any} */ chain, /** @type {any} */ i, /** @type {any} */ o) => k.gateway.seal.reveal(chain, { ...(i && typeof i === "object" ? i : {}), proof: o && typeof o === "object" ? o.presence : undefined }),
+    "leases.issue": () => (/** @type {any} */ chain, /** @type {any} */ i, /** @type {any} */ o) => k.gateway.leases.issue(chain, { ...(i && typeof i === "object" ? i : {}), proof: o && typeof o === "object" ? o.presence : undefined }),
     "leases.reinstate": () => (/** @type {any} */ chain, /** @type {any} */ i, /** @type {any} */ o) => k.gateway.leases.reinstate(chain, { member: i && i.member, device: i && i.device, proof: o && typeof o === "object" ? o.presence : undefined }),
     "records.definitions": () => (/** @type {any} */ chain) => k.gateway.definitions(chain),
     "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => k.surfaces.revoke(session, chain),

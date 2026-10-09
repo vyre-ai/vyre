@@ -4,11 +4,13 @@
 // Nothing here writes a key or a secret to disk. Files cross in numbered base64 chunks, transcripts in batches that fit one request.
 import crypto from "node:crypto";
 import { CHUNK_BYTES } from "./lent-home.js";
+import { RUNNER_PROTOCOL, runnerVersion } from "./protocol.js";
 
 const BATCH_BYTES = 120 * 1024;
 
 /**
- * @param {{ invoke: (call: string, args: any[]) => Promise<any>, device: string, deviceKey: string }} o
+ * @param {{ invoke: (call: string, args: any[]) => Promise<any>, device: string, deviceKey: string, eid?: string, cap?: () => ("provider" | "internet" | undefined) }} o
+ *   eid: this computer's identity-list entry, the device whose presence key signs the lease request; with it the request carries a signed hello (device, key, limit, runner version, protocol)
  */
 export function createLentClient(o) {
   let lease = "";
@@ -46,12 +48,18 @@ export function createLentClient(o) {
     whoami: () => o.invoke("lent.whoami", []),
     sync,
     vault: {
-      lease: async () => { const r = await o.invoke("leases.issue", [{ device: o.device, device_key: o.deviceKey }]); if (r && r.id) lease = r.id; return r; },
+      lease: async () => {
+        // The hello names exactly what the lease is for; the home asks this computer's own presence key to sign it (the remote call answers the challenge) and refuses a request that is not.
+        const cap = o.cap ? o.cap() : undefined;
+        const hello = o.eid ? { device: o.device, device_key: o.deviceKey, eid: o.eid, cap: cap || null, runner_version: runnerVersion(), protocol: RUNNER_PROTOCOL } : undefined;
+        const r = await o.invoke("leases.issue", [{ device: o.device, device_key: o.deviceKey, ...(hello ? { hello } : {}) }]);
+        if (r && r.id) lease = r.id; return r;
+      },
       renew: ({ id }) => o.invoke("leases.renew", [{ id }]),
       credential: req => o.invoke("leases.use", [{ session: req.session, route: req.route, method: req.method, path: req.path }]),
     },
     /** The Space's definition of the session, written at the home with the lender's cap already applied. */
-    spec: ({ session, chat }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}) }]),
+    spec: ({ session, chat, cap }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}), ...(cap ? { cap } : {}) }]),
     stop: session => o.invoke("lent.stop", [{ session }]),
   };
 }
