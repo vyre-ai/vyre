@@ -7,14 +7,15 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { until, pair } from "./link-harness.js";
 import { fakeExtension } from "../local/hands-chrome-mac/fake-extension.js";
 
-async function world(/** @type {any} */ t) {
+async function world(/** @type {any} */ t, /** @type {any} */ extra = {}) {
   const sockDir = fs.mkdtempSync(path.join(os.tmpdir(), "vc-comp-"));
   t.after(() => fs.rmSync(sockDir, { recursive: true, force: true }));
   const sockPath = path.join(sockDir, "chrome.sock");
-  const s = await pair(t, { macConfig: { modules: { disable: ["hands"] }, chrome: { sockPath, extensionOrigin: null } } });
+  const s = await pair(t, { macConfig: { modules: { disable: ["hands"] }, chrome: { sockPath, extensionOrigin: null }, ...extra } });
   const macs = await until(async () => { const m = (await s.boxCall("link.macs")).data; return m.length === 1 && m[0].online && m; });
   /** @type {any[]} */ const seen = [];
   const x = await fakeExtension(sockPath, { handler: (op, args) => {
@@ -67,4 +68,41 @@ test("the box can send computer.call only through the computer module, and the M
   assert.ok((await s.boxCall("link.macs.call", { tool: "computer.call", input: { action: "look", approved: true } }, "module:computer")).error, "no outward path");
   // the person's list is theirs alone: an assistant cannot widen it
   assert.ok((await s.macCall("link.computer.allow", { class: "act" }, "mcp agent:kit")).error, "a model may not allow itself");
+});
+
+test("files: the box finds and brings a file from Downloads, Desktop or Documents once the person allowed it, and from nowhere else", { timeout: 120_000 }, async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vc-home-"));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  for (const d of ["Downloads", "Documents", "Library", ".ssh"]) fs.mkdirSync(path.join(home, d));
+  const big = crypto.randomBytes(2_500_000);
+  fs.writeFileSync(path.join(home, "Downloads", "report-q3.bin"), big);
+  fs.writeFileSync(path.join(home, "Library", "report-secret.txt"), "not for the box");
+  fs.writeFileSync(path.join(home, ".ssh", "key"), "PRIVATE");
+  fs.symlinkSync(path.join(home, "Library", "report-secret.txt"), path.join(home, "Downloads", "report-link.txt"));
+  fs.writeFileSync(path.join(home, "Downloads", "huge-report.bin"), Buffer.alloc(9 * 1024 * 1024));
+  const s = await world(t, { computer: { home }, files: { roots: [home] } });
+  const find = (/** @type {string} */ q) => s.boxCall("computer.use", { do: "find", on: s.name, args: { q } }, KIT);
+  const get = (/** @type {string} */ p) => s.boxCall("computer.use", { do: "get", on: s.name, args: { path: p } }, KIT);
+  assert.match(JSON.stringify(await find("report")), /link\.computer\.allow files|has not allowed/, "off until the person allows files");
+  await s.macCall("link.computer.allow", { class: "files" });
+  const found = await find("report");
+  assert.ok(!found.error, JSON.stringify(found));
+  const names = found.data.results.map((/** @type {any} */ r) => path.basename(r.path));
+  assert.ok(names.includes("report-q3.bin"));
+  assert.ok(!names.includes("report-secret.txt"), "Library is not on the list");
+  // a file arrives whole, in parts, and is the same bytes
+  const got = await get(path.join(home, "Downloads", "report-q3.bin"));
+  assert.ok(!got.error, JSON.stringify(got).slice(0, 300));
+  assert.equal(got.data.size, big.length);
+  assert.deepEqual(crypto.createHash("sha256").update(fs.readFileSync(got.data.saved)).digest("hex"), crypto.createHash("sha256").update(big).digest("hex"));
+  assert.ok(got.data.saved.includes(path.join("computer", "inbox", "kit")), got.data.saved);
+  // nowhere else: another folder, a path that climbs, a symlink out, a dotfile, a file that is too big
+  for (const bad of [path.join(home, "Library", "report-secret.txt"), path.join(home, "Downloads", "..", ".ssh", "key"), path.join(home, "Downloads", "report-link.txt"), path.join(home, ".ssh", "key")]) {
+    const r = await get(bad);
+    assert.ok(r.error, `${bad} must be refused`);
+  }
+  const huge = await get(path.join(home, "Downloads", "huge-report.bin"));
+  assert.match(JSON.stringify(huge), /the most brought at once/);
+  assert.equal((await s.macCall("link.computer.revoke", { class: "files" })).data.revoked, true);
+  assert.ok((await get(path.join(home, "Downloads", "report-q3.bin"))).error, "revoked");
 });

@@ -30,6 +30,7 @@ import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
 import { CLASSES, classOf, engineFor } from "../../lib/computer-classes.js";
+import { allowed as filesAllowed, only as filesOnly, saveName as filesSaveName } from "../../lib/computer-files.js";
 import { checkAnswer, checkCall, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
@@ -342,6 +343,20 @@ export function macSide(ctx, seam = {}) {
     if (!cls) return { error: { code: "denied", message: `${action.slice(0, 40)} is not something the box may ask this Mac to do` } };
     if (input.approved === true) return { error: { code: "denied", message: "nothing the box asks of this Mac is pre-approved" } };
     if (!loadComputer().includes(cls)) return { error: { code: "denied", message: `the person has not allowed the box to ${cls === "look" ? "look at" : cls === "act" ? "act on" : "find files on"} this Mac (link.computer.allow ${cls})` } };
+    // Files: the person's Downloads, Desktop and Documents only (lib/computer-files.js), on top of the files module's own guard. A search is cut to them; a chunk is read from a path inside them.
+    if (cls === "files") {
+      const home = ctx.config && ctx.config.computer && typeof ctx.config.computer.home === "string" ? ctx.config.computer.home : os.homedir();
+      const a = input.args && typeof input.args === "object" ? input.args : {};
+      if (action === "find") {
+        const r = await ctx.call("files.search", { q: String(a.q || ""), limit: Math.min(200, Number(a.limit) || 50), where: "here" });
+        return r.error ? r : { data: { results: filesOnly(r.data && r.data.results, home).slice(0, 50) } };
+      }
+      let real;
+      try { real = fs.realpathSync(String(a.path || "")); } catch { return { error: { code: "not_found", message: "no such file in Downloads, Desktop or Documents" } }; }
+      if (!filesAllowed(String(a.path || ""), home) || !filesAllowed(real, fs.realpathSync(home))) return { error: { code: "denied", message: "the box may bring files only from Downloads, Desktop and Documents" } };
+      const r = await ctx.call("files.fetch", { path: real, offset: Math.max(0, Number(a.offset) || 0), length: Math.min(1024 * 1024, Math.max(1, Number(a.length) || 1024 * 1024)) });
+      return r.error ? r : { data: { path: r.data.path, name: filesSaveName(real), size: r.data.size, mtime: r.data.mtime, offset: r.data.offset, length: r.data.length, base64: r.data.base64, done: r.data.done } };
+    }
     const app = typeof input.app === "string" ? input.app.slice(0, 120) : undefined;
     const engine = engineFor("here", action, { app, screen: input.screen === true });
     if (!engine) return { error: { code: "unsupported", message: `${action} is not something this Mac does${app ? " in an app" : " on a page"}` } };

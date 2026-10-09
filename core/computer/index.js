@@ -8,7 +8,10 @@
 //                    (computer.call, the person's own allowlist there, link.computer.allow). Every call keeps the engine's own floor, indicator, Gate and stop key.
 //   signing in       a login the person lent (a # tag in this conversation, or vault.agent.grant) is typed into the page by the Vault. The model never sees it (core/vault/agent-fill.js).
 
+import fs from "node:fs";
+import path from "node:path";
 import { agentClaim } from "../modules/index.js";
+import { MAX_BYTES, saveName } from "../../lib/computer-files.js";
 import { resolveTarget, planRoute, hostOf, registrable } from "./route.js";
 import { CLASS, engineFor } from "../../lib/computer-classes.js";
 import { isPerson } from "../../lib/caller.js";
@@ -75,6 +78,42 @@ export default {
       return { plan, teach: true };
     }
 
+    /** One call to a paired Mac through the link; the Mac's answer's data, or an error with the Mac's own words. */
+    async function onMac(/** @type {import("./route.js").Target} */ target, /** @type {any} */ input) {
+      const r = await ctx.call("link.macs.call", { tool: "computer.call", mac: target.id.slice(4), input, timeout: 15_000 });
+      if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+      const a = Array.isArray(r.data) ? r.data[0] : r.data;
+      if (!a || a.ok === false) throw Object.assign(new Error(a && a.error ? a.error.message : `${target.name} did not answer`), { code: a && a.error ? a.error.code : "failed" });
+      return a.data || {};
+    }
+
+    /** Bring one file from a Mac's Downloads, Desktop or Documents to the box, a megabyte at a time, and keep it where the agent's work can use it. The file goes nowhere else: sending it on is a separate, held act. */
+    async function bringFile(/** @type {import("./route.js").Target} */ target, /** @type {any} */ a, /** @type {string | null} */ agent) {
+      const p = String(a.path || "");
+      if (!p) throw fail("bad_input", "say which file: args.path (find it first with do: find)");
+      /** @type {Buffer[]} */ const parts = [];
+      let offset = 0, first = null, name = "file";
+      for (let i = 0; i < 16; i++) {
+        const c = await onMac(target, { action: "get", args: { path: p, offset, length: 1024 * 1024 } });
+        if (!first) { first = { size: Number(c.size), mtime: c.mtime }; name = saveName(String(c.name || p)); if (!(first.size >= 0) || first.size > MAX_BYTES) throw fail("too_big", `${name} is ${first.size} bytes; the most brought at once is ${MAX_BYTES}`); }
+        else if (Number(c.size) !== first.size || c.mtime !== first.mtime) throw fail("changed", `${name} changed while it was being brought`);
+        if (Number(c.offset) !== offset) throw fail("failed", "the Mac sent the wrong part of the file");
+        const buf = Buffer.from(String(c.base64 || ""), "base64");
+        if (buf.length !== c.length) throw fail("failed", "a part of the file arrived damaged");
+        parts.push(buf); offset += buf.length;
+        if (c.done) break;
+        if (!buf.length) throw fail("failed", "the Mac stopped sending the file");
+        if (offset > MAX_BYTES) throw fail("too_big", `${name} is more than the ${MAX_BYTES} bytes that are brought at once`);
+      }
+      const data = Buffer.concat(parts);
+      if (first && data.length !== first.size) throw fail("changed", `${name} changed while it was being brought`);
+      const dir = path.join(ctx.paths.root, "computer", "inbox", agent || "person");
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      const to = path.join(dir, name);
+      fs.writeFileSync(to, data, { mode: 0o600 });
+      return { saved: to, name, size: data.length, from: "the Mac's Downloads, Desktop or Documents", note: "On the box now. Sending it anywhere (a Slack upload, an email) is a separate step, held for your yes." };
+    }
+
     ctx.tool("computer.targets", {
       description: "The computers you can work on by name: the cloud computer and each paired Mac (or this Mac), and whether each is online. Left unnamed, work goes to the cloud computer.",
       input: obj({}), effect: "read", callers: CALLERS,
@@ -122,13 +161,8 @@ export default {
           return { computer: target.name, ...r.data };
         }
 
-        if (target.kind === "mac") {
-          const r = await ctx.call("link.macs.call", { tool: "computer.call", mac: target.id.slice(4), input: { action, args: input.args || {}, ...(input.app ? { app: input.app } : {}), ...(input.screen ? { screen: true } : {}) }, timeout: 15_000 });
-          if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
-          const a = Array.isArray(r.data) ? r.data[0] : r.data;
-          if (!a || a.ok === false) throw Object.assign(new Error(a && a.error ? a.error.message : `${target.name} did not answer`), { code: a && a.error ? a.error.code : "failed" });
-          return { computer: target.name, ...(a.data || {}) };
-        }
+        if (target.kind === "mac" && action === "get") return { computer: target.name, ...(await bringFile(target, input.args || {}, agent)) };
+        if (target.kind === "mac") return { computer: target.name, ...(await onMac(target, { action, args: input.args || {}, ...(input.app ? { app: input.app } : {}), ...(input.screen ? { screen: true } : {}) })) };
         const engine = engineFor(target.kind === "cloud" ? "cloud" : "here", action, { app: input.app, screen: input.screen });
         if (!engine) throw fail("unsupported", `${action} is not something ${target.name} does${input.app ? " in an app" : " on a page"}`);
         // This Mac is driven by a model through the engine's own tools, which carry its own grant for the Mac; the front door names the tool rather than lend it an identity it was not given.
