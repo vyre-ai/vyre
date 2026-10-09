@@ -244,9 +244,11 @@ docker_apt_install() {
   osr=${VYRE_OS_RELEASE:-/etc/os-release}
   aroot=${VYRE_APT_ROOT:-}   # tests only: a folder standing in for /
   [ -r "$osr" ] || return 1
+  # shellcheck source=/dev/null
   os_id=$(. "$osr"; printf '%s' "${ID:-}")
   case "$os_id" in ubuntu|debian) ;; *) return 1 ;; esac
   command -v apt-get >/dev/null 2>&1 && command -v dpkg >/dev/null 2>&1 || return 1
+  # shellcheck source=/dev/null
   os_code=$(. "$osr"; if [ "$ID" = ubuntu ]; then printf '%s' "${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"; else printf '%s' "${VERSION_CODENAME:-}"; fi)
   [ -n "$os_code" ] || return 1
   if [ "$DRY" = 1 ]; then say "would install Docker from Docker's apt repository for $os_id $os_code"; return 0; fi

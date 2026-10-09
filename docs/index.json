@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1382,"event":471,"config":272,"env":256,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1382,"event":471,"config":272,"env":259,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2357,6 +2357,8 @@
     {"kind":"env","name":"VYRE_APP_BOX_URL","definedIn":"scripts/mac-app-package.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_APP_WEB_DIR","definedIn":"scripts/mac-app-package.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_APPLE_TEAM_ID","definedIn":"core/daemon/app.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_APT_AS_ROOT","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_APT_ROOT","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_ASK_TRIES","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_BACKUP_SKIP_PROJECTS","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_BACKUP_SKIP_TRANSCRIPTS","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[]},
@@ -2476,6 +2478,7 @@
     {"kind":"env","name":"VYRE_ONBOARD_HOST","definedIn":"core/onboard/loopback.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_OPEN_BIN","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[{"page":"adr/0037-windows.md","line":68,"anchor":"changes-landing-with-this-adr"},{"page":"contributing/testing.md","line":78,"anchor":"fakes-for-outside-services"}]},
     {"kind":"env","name":"VYRE_OPENROUTER_URL","definedIn":"core/sessions/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_OS_RELEASE","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_OTHER_VPN_BIN","definedIn":"core/network/other-vpn.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_OVERLAY_BIN","definedIn":"local/hands-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PACKAGE","definedIn":"harness/lib/vyre.js","page":"reference/config.md#environment-variables","mentions":[{"page":"adr/0020-claude-code-plugin.md","line":48,"anchor":"decision"}]},
