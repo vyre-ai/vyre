@@ -41,6 +41,12 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     for (let n = 1; n < 1000; n++) { const s = n === 1 ? base : `${base}-${n}`; if (!(await find(PROJECT, "slug", s))) return s; }
     throw Object.assign(new Error("could not find a free short name for this project"), { code: "conflict" });
   }
+  /** The Project's owner field for the person it is made for: the named owner, else the first hop of the caller's chain when that is a person. @param {any} caller @param {string} [named] */
+  const ownerOf = (caller, named) => {
+    const h = caller && Array.isArray(caller.hops) ? caller.hops[0] : null;
+    const id = named || (h && h.actor && h.actor.kind === "person" ? h.actor.id : null);
+    return id ? { actor: { kind: "person", id: String(id), space: kernel.space } } : null;
+  };
   /** @param {any} caller the chain the record is made under (the person's own); the folder marker is the service's */
   async function createProject(caller, { name, repo, client, slug, personal_of, owner }) {
     const nm = String(name || "").trim();
@@ -48,7 +54,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (slug !== undefined && !(typeof slug === "string" && SLUG_RE.test(slug))) throw Object.assign(new Error("the short name is lower case letters, numbers and dashes"), { code: "bad_input" });
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
-    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
+    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
+      // the person who makes a project owns it: the Project's own files open for its owner and its team (kernel/gateway/project-members.js), so a project nobody owned would have files nobody could open
+      ...(ownerOf(caller, owner) ? { owner: ownerOf(caller, owner) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
     // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
     // project. With a Drive, the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
     const plain = !kernel.drive;

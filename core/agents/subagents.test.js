@@ -21,7 +21,7 @@ test("a helper cannot hold more than its parent: its tool list is inside the par
   const spawn = (/** @type {any} */ input, /** @type {any} */ meta) => d.registry.call("agents.spawn", input, "mcp:agent:kit", { agent: "kit", thread, ...meta });
 
   // held to a short list itself: a helper may ask for less, never for more
-  const parentOnly = ["recall.search", "memory.space.recall"];
+  const parentOnly = ["agents.spawn", "recall.search", "memory.space.recall"];   // the parent is held to a short list, and spawning is on it
   const over = await spawn({ task: "look things up", tools: ["recall.search", "vault.reveal"] }, { agentOnly: parentOnly });
   assert.equal(over.error.code, "denied"); assert.match(over.error.message, /vault\.reveal/);
   const ok = await spawn({ task: "look things up", label: "researcher", tools: ["recall.search"] }, { agentOnly: parentOnly });
@@ -29,7 +29,7 @@ test("a helper cannot hold more than its parent: its tool list is inside the par
   assert.deepEqual(ok.data.tools, ["recall.search"]);
   // with no list of its own, it inherits the parent's list
   const inherit = await spawn({ task: "again" }, { agentOnly: parentOnly });
-  assert.deepEqual(inherit.data.tools, parentOnly);
+  assert.deepEqual(inherit.data.tools, ["recall.search", "memory.space.recall"], "its parent's list less the power to spawn");
 
   // the daemon holds the helper's thread to its list and the parent's thread to none (agents.scope is what vyred puts on the meta of the helper's calls)
   const scope = (/** @type {string} */ th) => d.registry.call("agents.scope", { name: "kit", thread: th }, "module:vyred");

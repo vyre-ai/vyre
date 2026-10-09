@@ -127,6 +127,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.bridge.accept", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.storage.bridge.drive", "needs the person's Face ID or presence: pairing and devices"],
   ["flows.approve", "needs the person's Face ID or presence: approving a Flow gives it authority"],
+  ["work.template.golive", "puts a template version live: the template's owner or an admin in their own name; an assistant proposes it (flows.propose what: template) and the owner approves on a card"],
   ["flows.pause", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.resume", "the person's stop over automation: an assistant must not be able to resume what its person paused"],
   ["flows.kit.remove", "changes the Space's shape and revokes grants"],
