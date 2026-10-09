@@ -2717,36 +2717,62 @@ Read a docs page, or one section of it. `page` is the path from docs.find ("usin
 
 Make a document from a template and values, and file it: { template, values?, records?: { alias: record reference }, name?, project?, contact?, format? (docx or pdf), version?, space? }. `values` and the fields of each record (under its alias, {client.name}) fill the {placeholders}. A missing value stops it and names every one; nothing is guessed. Files the result in the Drive under Documents/<project>/ and, when the Space has a Document type, a Document record linked to `contact` and `project`. Answers { path, version, size, sha256, format, record? }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `template` string, required
+  - `contact` string
+  - `format` "docx" or "pdf"
+  - `name` string
+  - `project` string
+  - `records` object
+  - `space` string
+  - `values` object
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.signing.flow`
 
 The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, base, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. When a record of that type enters out_stage it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (held for your yes), waits for the signature and moves the record to signed_stage. Nothing is created: define it with the Flows tools.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `base` string, required
+  - `out_stage` string, required
+  - `signed_stage` string, required
+  - `template_id` integer, required
+  - `type` string, required
+  - `email_field` string
+  - `name_field` string
+  - `subject` string
+  - `submission_field` string
+  - `wait_days` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.add`
 
-No description.
+Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most 10 MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops, loopFields }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `base64` string, required
+  - `name` string, required
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.get`
 
 One template and what it asks for: { name, version?, space? } -> { name, version, placeholders, loops }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `name` string, required
+  - `space` string
+  - `version` integer
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ### `documents.template.list`
 
 The Word templates in the Space's Drive: { templates: [{ name, size }] }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `space` string
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
 ## events
 

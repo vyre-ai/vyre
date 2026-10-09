@@ -1,0 +1,17 @@
+# Merge rules for files many teams touch (team/FOUNDATION.md, part 6; wired by scripts/team/setup.sh).
+# Shared JSON lists merge by key, not by line.
+test/test-counts.json merge=json3
+test/reach-anyone.json merge=json3
+test/reach-computed-calls.json merge=json3
+test/plain-session-writes.json merge=json3
+test/allowed-dependencies.json merge=json3
+test/one-person-surfaces.json merge=json3
+test/reach-allowlist.json merge=json3
+test/description-baseline.json merge=json3
+# Generated files: keep ours on merge; scripts/team/regen.mjs rebuilds them right after.
+docs/index.json merge=regen
+docs/reference/** merge=regen
+docs/agents/** merge=regen
+docs/architecture/map.md merge=regen
+kernel/golden/allow.json merge=regen
+kernel/golden/presence.json merge=regen
