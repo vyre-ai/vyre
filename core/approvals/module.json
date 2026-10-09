@@ -60,7 +60,7 @@
       },
       {
         "name": "approvals.items", "effect": "read",
-        "reach": "person"
+        "reach": "anyone"
       }
     ]
   },
