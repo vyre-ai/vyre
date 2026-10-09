@@ -11370,7 +11370,6 @@ Write a backup of the whole vault, sealed to a passphrase of its own.
 - Input:
   - `file` string, required
   - `passphrase` string, required
-  - `confirm` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
 
@@ -11527,7 +11526,6 @@ Rename a connection or set its capabilities (both survive every resync), or make
 Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Never returns the value.
 
 - Input:
-  - `confirm` boolean
   - `field` string
   - `front` object
   - `id` string
@@ -11569,7 +11567,6 @@ Let a new device into your vault. It receives the account keyset sealed to its o
 A one-time code (8 characters, 5 minutes) to pair a browser extension, or with phone a phone's autofill service that unlocks with its device key.
 
 - Input:
-  - `confirm` boolean
   - `name` string
   - `phone` boolean
 - Callers: `cli`, `local`
@@ -11612,7 +11609,6 @@ Open an autofill session for a paired browser without a passphrase, after Touch 
 
 - Input:
   - `device` string, required
-  - `confirm` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
 
@@ -11725,7 +11721,6 @@ Fill a login's username and password into the app in front, by Accessibility. Th
   - `app` object
     - `bundle` string
     - `pid` integer
-  - `confirm` boolean
   - `front` object
     - `bundle` string
     - `pid` integer
@@ -11796,7 +11791,6 @@ The git credential helper (git-credential-vyre): get, store or erase, for logins
 - Input:
   - `action` one of "get", "store", "erase", required
   - `request` string, required
-  - `confirm` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
 
@@ -11884,7 +11878,6 @@ Values for `vyre vault run`, which puts them in one child process's environment.
     - `name` string, required
     - `env` string
     - `field` string
-  - `confirm` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
 
@@ -12206,7 +12199,6 @@ Render a template's {{ vault://item/field }} references into a file vyred writes
 - Input:
   - `out` string, required
   - `template` string, required
-  - `confirm` boolean
   - `force` boolean
 - Callers: `cli`, `local`
 - Needs a person present.
@@ -12233,7 +12225,6 @@ Values for vault://item/field references, for `vyre vault read` and `inject` to 
 
 - Input:
   - `refs` list of string, required
-  - `confirm` boolean
   - `destination` string
 - Callers: `cli`, `local`
 - Needs a person present.
@@ -12255,7 +12246,6 @@ Show one field of an item to the person, on their own device. Hide it again afte
 
 - Input:
   - `name` string, required
-  - `confirm` boolean
   - `field` string
   - `session` string
   - `version` integer
@@ -12415,7 +12405,6 @@ Unlock the vault in the Deck, the Capsule or the extension for a while. Returns 
 
 - Input:
   - `surface` one of "deck", "capsule", "extension", required
-  - `confirm` boolean
   - `ttl_s` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 - Needs a person present.
@@ -12504,7 +12493,6 @@ Look in a folder, its git history (history) and the shell's history (shell) for 
 The current one-time code for a login with a TOTP seed.
 
 - Input:
-  - `confirm` boolean
   - `id` string
   - `name` string
   - `session` string

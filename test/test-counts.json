@@ -453,7 +453,6 @@
  "core/vault/needs.test.js": 3,
  "core/vault/presence.test.js": 8,
  "core/vault/prompt.test.js": 3,
- "core/vault/prove.test.js": 5,
  "core/vault/provider-token.test.js": 8,
  "core/vault/qr.test.js": 10,
  "core/vault/rate.test.js": 4,
