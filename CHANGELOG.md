@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(daemon): an event stream asked for by a client that is already gone (a request routed while the daemon stops) is not started, and its heartbeat timer no longer keeps the process alive: core/cli/commands/threads-sessions.test.js passed every case on CI and then never ended because of that 15 s interval (found with the new hang report). perf-check's idle heap budget moves from 50 to 60 MB (measured 50.0 MB on the integration).
 - test: wink-paired.test.js and wink-paired-2.test.js are three files each (they ran past 300 s on a busy box); the relay device-removal case waits, bounded, for the channel to close instead of a fixed 150 ms.
 - fix(test): the hang diagnostics broke five files (a node started under the permission model, a test that checks `setInterval.name`): the timer tracer watches with an async hook instead of replacing the timers, and the report flags go on the test runner's command line, not in NODE_OPTIONS, so nothing a test file starts inherits them. relay/client/bytes.js is regenerated from lib/bytes.js (scripts/sync-copies.mjs) after the `toBytes` typing.
 - test: more margin under the 300 s file limit: sessions.test.js is eight files and switchboard.test.js four (they ran 190 to 296 s on a busy box); wink.test.js keeps the camera-reader case, which takes about three minutes on its own, in wink-g.test.js; apps/test/world.js removes its `<home>.sessions` folder at exit (tmp-guard named it left behind).
