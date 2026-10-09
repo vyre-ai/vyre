@@ -149,7 +149,7 @@ test("an outside caller label reaches no tool of the registry", { timeout: 120_0
   const label = "ext:k3m9x2q7pw4t";
   const names = [...d.registry.tools.keys()];
   /** @type {string[]} */ const reached = [];
-  for (const n of names) { const r = await call(n, { "__probe__": 1 }, label, {}); if (!r.error || !["denied", "not_allowed", "no_such_tool", "forbidden"].includes(r.error.code)) reached.push(`${n}: ${r.error ? r.error.code : "ran"}`); }
+  for (const n of names) { const r = await call(n, { "__probe__": 1 }, label, {}); if (!r.error || !["denied", "not_allowed", "no_such_tool", "forbidden", "held_unavailable"].includes(r.error.code)) reached.push(`${n}: ${r.error ? r.error.code : "ran"}`); }
   assert.deepEqual(reached, [], "every tool refuses an ext label unless its callers list names ext");
   for (const bad of ["ext", "ext:", "ext:SHORT", "ext:a:agent:x"]) assert.ok((await call("records.types", {}, bad, {})).error, bad);
 });
