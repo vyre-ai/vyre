@@ -10,28 +10,14 @@
 
 import { agentClaim } from "../modules/index.js";
 import { resolveTarget, planRoute, hostOf, registrable } from "./route.js";
-import { CLASS } from "../../lib/computer-classes.js";
+import { CLASS, engineFor } from "../../lib/computer-classes.js";
+import { isPerson } from "../../lib/caller.js";
 
 const CALLERS = ["cli", "local", "deck", "capsule", "mcp", "harness", "module"];
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const TAUGHT_MS = 30 * 60_000;
 
-export { CLASS };
-
-/**
- * The engine tool for an action on a kind of computer. `args` pass through as the engine's own input (its own names for a control: a selector for the cloud's Chrome, a ref for the Mac's).
- * @param {"cloud" | "here" | "mac"} kind @param {string} action @param {{ app?: string, screen?: boolean }} q
- * @returns {string | null}
- */
-export function engineFor(kind, action, q = {}) {
-  const app = Boolean(q.app);
-  if (kind === "cloud") {
-    if (app) return { look: "hands-desktop.tree", shot: "hands-desktop.screenshot", act: "hands-desktop.act", click: "hands-desktop.act", type: "hands-desktop.act", press: "hands-desktop.act" }[action] || null;
-    return { look: q.screen ? "chrome.screenshot" : "chrome.snapshot", shot: "chrome.screenshot", open: "chrome.open", click: "chrome.click", type: "chrome.type" }[action] || null;
-  }
-  if (app) return { look: "hands.observe", find: "hands.find", act: "hands.act", click: "hands.act", type: "hands.act", press: "hands.act", shot: "screen.shot" }[action] || null;
-  return { look: q.screen ? "chrome.screenshot" : "chrome.snapshot", shot: "chrome.screenshot", tabs: "chrome.tabs", open: "chrome.open", click: "chrome.click", type: "chrome.type", fill: "chrome.fill", act: "chrome.act" }[action] || null;
-}
+export { CLASS, engineFor };
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
@@ -145,25 +131,12 @@ export default {
         }
         const engine = engineFor(target.kind === "cloud" ? "cloud" : "here", action, { app: input.app, screen: input.screen });
         if (!engine) throw fail("unsupported", `${action} is not something ${target.name} does${input.app ? " in an app" : " on a page"}`);
+        // This Mac is driven by a model through the engine's own tools, which carry its own grant for the Mac; the front door names the tool rather than lend it an identity it was not given.
+        if (target.kind === "here" && !isPerson(meta)) return { computer: target.name, direct: true, tool: engine, input: { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}) }, note: "Call this tool directly: it carries your own permission to drive this Mac." };
         const call = { ...(input.args || {}), ...(input.url ? { url: input.url } : {}), ...(input.app ? { app: input.app } : {}), ...(target.kind === "cloud" && agent ? { agent } : {}) };
         const r = await ctx.call(engine, call);
         if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
         return { computer: target.name, engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) };
-      },
-    });
-
-    // The Mac's side of computer.call: what the paired box asked, run here after the person's own allowlist (link) has passed it. Modules only.
-    ctx.tool("computer.exec", {
-      internal: true, callers: ["module"],
-      description: "Run one action on this machine for the paired box: { action, args, app, screen } -> the engine's answer. The link has already checked the person's allowlist for the action's class. Never called directly.",
-      input: obj({ action: str, args: { type: "object" }, app: str, screen: { type: "boolean" } }, ["action"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
-        if (!meta || meta.caller !== "module:link") throw fail("denied", "only the link runs an action for the box");
-        const engine = engineFor("here", String(i.action), { app: i.app, screen: i.screen });
-        if (!engine) throw fail("unsupported", `${i.action} is not something this Mac does${i.app ? " in an app" : " on a page"}`);
-        const r = await ctx.call(engine, { ...(i.args || {}), ...(i.app ? { app: i.app } : {}) });
-        if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
-        return { engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) };
       },
     });
   },

@@ -104,12 +104,12 @@ test("signin goes to the Vault with the agent and conversation the registry vouc
   await assert.rejects(m.run({ do: "signin", login: "x", on: "my Mac" }, "mcp agent:kit"), /signing in from a Vault login is done on the cloud computer/);
 });
 
-test("the Mac's own side: only the link may run an action for the box", async () => {
+test("this Mac: a person's call runs the engine; a model is pointed at the tool that carries its own grant", async () => {
   const b = await boot({ role: "local" });
-  const exec = b.tools.get("computer.exec");
-  await assert.rejects(exec.run({ action: "look" }, { caller: "mcp agent:kit" }), /only the link/);
-  const r = await exec.run({ action: "look", args: {} }, { caller: "module:link" });
-  assert.equal(r.engine, "chrome.snapshot");
-  const app = await exec.run({ action: "look", app: "Notes" }, { caller: "module:link" });
-  assert.equal(app.engine, "hands.observe");
+  const person = await b.run({ do: "look" }, "cli");
+  assert.deepEqual([person.computer, person.engine], ["This Mac", "chrome.snapshot"]);
+  const model = await b.run({ do: "open", url: "https://example.org/" }, "mcp agent:kit");
+  assert.equal(model.direct, true);
+  assert.equal(model.tool, "chrome.open");
+  assert.ok(!b.calls.some(c => c.tool === "chrome.open"), "nothing was lent an identity");
 });

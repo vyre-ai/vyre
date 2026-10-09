@@ -29,7 +29,7 @@ import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js"
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
-import { CLASSES, classOf } from "../../lib/computer-classes.js";
+import { CLASSES, classOf, engineFor } from "../../lib/computer-classes.js";
 import { checkAnswer, checkCall, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
@@ -342,7 +342,12 @@ export function macSide(ctx, seam = {}) {
     if (!cls) return { error: { code: "denied", message: `${action.slice(0, 40)} is not something the box may ask this Mac to do` } };
     if (input.approved === true) return { error: { code: "denied", message: "nothing the box asks of this Mac is pre-approved" } };
     if (!loadComputer().includes(cls)) return { error: { code: "denied", message: `the person has not allowed the box to ${cls === "look" ? "look at" : cls === "act" ? "act on" : "find files on"} this Mac (link.computer.allow ${cls})` } };
-    return ctx.call("computer.exec", { action, args: input.args && typeof input.args === "object" ? input.args : {}, ...(typeof input.app === "string" ? { app: input.app.slice(0, 120) } : {}), ...(input.screen === true ? { screen: true } : {}) });
+    const app = typeof input.app === "string" ? input.app.slice(0, 120) : undefined;
+    const engine = engineFor("here", action, { app, screen: input.screen === true });
+    if (!engine) return { error: { code: "unsupported", message: `${action} is not something this Mac does${app ? " in an app" : " on a page"}` } };
+    // The Mac's own engines run it as the link: the person's class allowlist above is their grant for the box, and an engine still holds a send for the person here.
+    const r = await ctx.call(engine, { ...(input.args && typeof input.args === "object" ? input.args : {}), ...(app ? { app } : {}) });
+    return r.error ? r : { data: { engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) } };
   }
 
   /**

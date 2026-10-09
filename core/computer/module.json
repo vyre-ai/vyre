@@ -8,8 +8,7 @@
   "does": {
     "tools": [
       { "name": "computer.use", "effect": "write", "reach": "anyone" },
-      { "name": "computer.targets", "effect": "read", "reach": "anyone" },
-      { "name": "computer.exec", "reach": "modules" }
+      { "name": "computer.targets", "effect": "read", "reach": "anyone" }
     ]
   },
   "watches": {},

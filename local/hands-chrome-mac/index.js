@@ -43,6 +43,8 @@ const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
   // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
   // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
   if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  // The paired box, after the link checked the person's allowlist for it (link.computer.allow / link.ops.allow): that allowlist is the grant. Nothing it asks is the person's own, so a send is still held.
+  if (String(caller) === "module:link") return null;
   return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
