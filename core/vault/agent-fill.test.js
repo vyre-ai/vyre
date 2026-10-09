@@ -147,6 +147,7 @@ test("a lent login signs the agent in; the replica sees the exact login once, an
   // The canary scan: the login's values (and the code the page accepted) are in no result, event, audit row or log line.
   const code = s.log.find(x => x.path === "/code").code;
   const blob = everything(w, r);
+  assert.ok(blob.includes("northwind-app") && blob.includes(s.origin), "the scan really covers the audit and the result");
   for (const secret of [user, pass, code, SEED]) assert.ok(!blob.includes(secret), "a value of the login leaked");
   assert.equal(w.db.prepare("SELECT COUNT(*) AS n FROM vault_audit WHERE action='agent-fill' AND ok=1").get().n, 1);
   assert.equal(w.events.filter(e => e.type === "vault.filled").length, 1);
