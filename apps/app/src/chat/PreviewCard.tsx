@@ -4,12 +4,15 @@
 import { useState } from "react";
 import { Linking, Platform, View } from "react-native";
 import { Banner, Button, Chip, Icon, IconButton, Menu, Segmented, Sheet, Text, showToast, useUiTheme } from "@vyre/ui";
+import { Image } from "react-native";
+import { openPreview } from "./previewPane";
+import { usePreviewThumb } from "./usePreviewThumb";
 import { tool } from "../real/box";
 import { previewActions, previewWord, shareWord, SHARE_CHOICES, type PreviewBlock } from "./preview-model.js";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error && e.message ? e.message : fallback);
 
-export function PreviewCard({ block }: { block: PreviewBlock }) {
+export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: string }) {
   const { color } = useUiTheme();
   const [now, setNow] = useState<Partial<PreviewBlock> | null>(null);
   const b = { ...block, ...(now ?? {}) } as PreviewBlock;
@@ -18,6 +21,8 @@ export function PreviewCard({ block }: { block: PreviewBlock }) {
   const [log, setLog] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const a = previewActions(b);
+  const real = usePreviewThumb(sample ? "00000000" : b.id, b.thumb ?? 0);
+  const thumb = sample ?? real;
   const word = previewWord(b.state);
 
   const run = async (what: () => Promise<unknown>, after?: (r: any) => void) => {
@@ -28,17 +33,20 @@ export function PreviewCard({ block }: { block: PreviewBlock }) {
   };
   const showLog = () => run(() => tool<{ log: string }>("previews.log", { id: b.id }), (r) => setLog(String(r.log || "Nothing was printed yet.")));
   const more = [
+    ...(a.open ? [{ label: "Open in browser", onPress: inBrowser }] : []),
     ...(a.keep ? [{ label: "Keep it running", onPress: () => run(() => tool("previews.keep", { id: b.id })) }] : []),
     ...(a.open && a.restart ? [{ label: "Restart", onPress: () => run(() => tool("previews.restart", { id: b.id })) }] : []),
     ...(a.log && a.open ? [{ label: "Look at the log", onPress: showLog }] : a.log && a.restart ? [{ label: "Look at the log", onPress: showLog }] : []),
     ...(a.stop ? [{ label: "Stop", onPress: () => run(() => tool("previews.stop", { id: b.id })), danger: true }] : []),
   ];
-  const open = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
+  const open = () => openPreview({ id: b.id, title: b.title });
+  const inBrowser = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
 
   return (
     <View accessible accessibilityLabel={`${b.title}, ${word.toLowerCase()}`} style={{ borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 14, overflow: "hidden", marginVertical: 4, maxWidth: 560 }}>
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ aspectRatio: 16 / 5, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center" }}>
-        <Icon name="globe" size={24} tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "label"} />
+      <View accessibilityElementsHidden={!thumb} importantForAccessibility={thumb ? "yes" : "no-hide-descendants"} style={{ aspectRatio: 16 / 10, backgroundColor: color["surface-3"], alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+        {thumb ? <Image accessibilityLabel={`${b.title}, as it looks now`} source={{ uri: thumb }} resizeMode="cover" style={{ width: "100%", height: "100%", opacity: b.state === "live" ? 1 : 0.55 }} />
+          : <Icon name="globe" size={24} tone={b.state === "live" ? "ok" : b.state === "crashed" ? "warn" : "label"} />}
       </View>
       <View style={{ padding: 12, gap: 10 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
