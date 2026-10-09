@@ -334,6 +334,12 @@ export const PERSON_ONLY = new Map([
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
   ["ask.answer", "answers a question card in the person's own words: an assistant answering would decide for the person"],
   ["ask.cancel", "puts a question card away: the person's own act, the agent is told it was cancelled"],
+  ["previews.keep", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only (assistant management: BACKLOG 0.3.2)"],
+  ["previews.restart", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.stop", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.remove", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.log", "the process log of a preview, for its maker or an admin, read from the person's own session; the body admits a person surface only"],
+  ["previews.share", "opens a preview to a project or the whole Space, as its maker or an admin from the person's own session: the person's own act"],
   ["previews.url", "makes the one-time ticket that opens a preview in the person's own browser: the person's own act"],
   ["previews.signin-done", "says the person has signed in on a computer: their own hands on their own keyboard"],
   ["previews.reply", "the person's typed answer to a stuck run: their own words"],
@@ -345,7 +351,6 @@ export const PERSON_ONLY = new Map([
 export const OPEN = new Set([
   "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
   "previews.operator", "previews.step", "previews.run-get", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
-  "previews.keep", "previews.restart", "previews.stop", "previews.remove", "previews.log", // looking after a preview the person could look after: the kernel's grants and the preview's own access decide
   "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
 
   "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
@@ -490,7 +495,6 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
-  ["previews.share", "opens a preview to a project or the whole Space: more people than the person chose"],
   ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],
