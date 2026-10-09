@@ -158,7 +158,8 @@ test("Vyre on PATH, vyred up: the copied plugin's hooks and MCP server reach it"
   assert.equal(d.registry.deps.db.prepare("SELECT path FROM harness_files WHERE session='s1'").get().path, "/w/notes.md");
   const replies = await mcp(path.join(cache, "mcp", "run.js"), e, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
     { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "system_echo", arguments: { text: "hello" } } }], 3);
-  assert.ok(replies.get(2).result.tools.some(x => x.name === "system_echo"));
+  // Only the core is listed; every other tool is reached with tools_find and tools_call (and still by its own name).
+  assert.ok(replies.get(2).result.tools.some(x => x.name === "tools_find") && replies.get(2).result.tools.some(x => x.name === "tools_call"));
   assert.equal(JSON.parse(replies.get(3).result.content[0].text).text, "hello");
 });
 
@@ -237,7 +238,7 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
     call(3, "planner_add", { text: "remind me in 2 hours call Harlow Legal" }), call(4, "planner_add", { text: "buy flour", kind: "todo" }),
     call(5, "planner_agenda", {}), call(6, "planner_add", { text: "remind me call Harlow Legal" }), call(7, "planner_list", { kind: "todo" })], 7);
   const names = replies.get(2).result.tools.map(x => x.name);
-  for (const n of ["planner_add", "planner_list", "planner_agenda"]) assert.ok(names.includes(n), n);
+  for (const n of ["planner_add", "planner_list"]) assert.ok(names.includes(n), n);
   assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
   assert.equal(replies.get(1).result.instructions.includes("only this session's project"), true, "Claude says plainly that it is not granted yet");
   assert.equal(/Access/.test(replies.get(1).result.instructions), false, "no screen is named that the request may not live on");
@@ -274,7 +275,7 @@ test("memory: the user's own session's remember is kept pending, not as the pers
   const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
     call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
   const names = own.get(2).result.tools.map(x => x.name);
-  for (const n of ["memory_remember", "memory_answer"]) assert.ok(names.includes(n), n);
+  for (const n of ["memory_remember", "memory_ask"]) assert.ok(names.includes(n), n);
   // HD-8: a session is a model, and a model's words are not the person's. It is kept as an untrusted, attributed note, pending until the person tells memory themselves.
   const kept = out(own, 3);
   assert.equal(kept.pending, true);

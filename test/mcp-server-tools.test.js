@@ -34,12 +34,23 @@ test("mcp server: no person-only or human-only tool is listed; ordinary ones are
   };
   await ask(1, "initialize", { protocolVersion: "2025-06-18" });
   const names = new Set((await ask(2, "tools/list")).result.tools.map(x => x.name));
-  assert.ok(names.size > 10, `${names.size} tools`);
-  assert.ok(names.has("system_echo"), "an ordinary tool is offered");
-  // memory_correct is the agent's own tool (memory.heard); the person's memory.correct is not behind it.
+  // Only the small core is listed (harness/mcp/core-tools.js); the rest is reached with tools_find and tools_call.
+  assert.ok(names.has("tools_find") && names.has("tools_call") && names.size <= 30, `${names.size} tools`);
+  assert.ok(!names.has("system_echo"), "an ordinary tool is not in the always-loaded core");
+  const text = r => JSON.parse(r.result.content[0].text);
+  const found = text(await ask(3, "tools/call", { name: "tools_find", arguments: { query: "echo text back" } })).tools.map(x => x.name);
+  assert.ok(found.includes("system_echo"), `an ordinary tool is found: ${found}`);
+  assert.equal(text(await ask(4, "tools/call", { name: "tools_call", arguments: { tool: "system.echo", arguments: { text: "hi" } } })).text, "hi");
+  assert.ok((await ask(5, "tools/call", { name: "tools_call", arguments: { tool: "nope.nothing" } })).result.isError, "an unknown tool is refused");
+  assert.ok((await ask(6, "tools/call", { name: "tools_call", arguments: { tool: "tools_call" } })).result.isError, "tools_call does not call itself");
+  // memory_correct is the agent's own tool (memory.heard); the person's memory.correct is not behind it. A person's own or human-only tool is never found.
   const agentNames = new Set(Object.keys(ALIASES));
-  for (const tool of [...PERSON_ONLY, ...HUMAN_ONLY]) assert.ok(agentNames.has(tool.replace(/\./g, "_")) || !names.has(tool.replace(/\./g, "_")), `${tool} is not offered`);
-  for (const a of Object.keys(ALIASES)) assert.ok(names.has(a), `${a} is offered`);
+  for (const tool of [...PERSON_ONLY, ...HUMAN_ONLY]) {
+    const n = tool.replace(/\./g, "_");
+    assert.ok(agentNames.has(n) || !names.has(n), `${tool} is not offered`);
+    if (agentNames.has(n)) continue;
+    assert.ok((await ask(7, "tools/call", { name: "tools_call", arguments: { tool } })).result.isError, `${tool} is not reachable through tools_call`);
+  }
 });
 
 test("mcp server: a tool call carries Claude Code's tool_use id as X-Vyre-Call-Id", async t => {

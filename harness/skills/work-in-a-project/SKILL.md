@@ -11,14 +11,14 @@ The user picks sessions into projects by hand; never move or remove a pick yours
 
 ## Find context before you guess
 
-1. **Which project:** `projects_of` with the current folder. If it returns nothing and the user
-   named a client or project, check `projects_list`.
-2. **The brief:** `projects_context` returns what the project is, its people, folders and
+1. **Which project:** `tools_call projects_of` with the current folder. If it returns nothing and the user
+   named a client or project, check `tools_call projects_list`.
+2. **The brief:** `tools_call projects_context` returns what the project is, its people, folders and
    threads. It was probably added at the start of this session already; don't fetch it twice.
 3. **Past work:** `recall_search` searches every past session by what was said. Use it before
    asking the user to repeat something. Pass the project's folders to keep results inside it.
-   `recall_thread` reads a whole earlier thread.
-4. **Facts:** `memory_facts` for people, addresses, domains and links. Memory comes with its
+   `tools_call recall_thread` reads a whole earlier thread.
+4. **Facts:** `tools_call memory_facts` for people, addresses, domains and links. Memory comes with its
    source; when you rely on a fact, say where it came from ("from the Harlow site rebuild
    thread, 3 weeks ago") and check anything that may have changed since.
 
@@ -30,5 +30,5 @@ belongs to, ask.
 
 ## When the user wants to change the project
 
-- Add or remove threads: `projects_add-threads`, `projects_remove-threads`, only on request.
+- Add or remove threads: `tools_call projects_add-threads`, `tools_call projects_remove-threads`, only on request.
 - New project: suggest `vyre new`, which lets them search the catalogue and pick sessions.

@@ -1,0 +1,627 @@
+[
+ {
+  "intent": "what did we decide last week about the pricing page",
+  "expect": [
+   "memory.ask",
+   "memory.decisions"
+  ]
+ },
+ {
+  "intent": "find the conversation where we talked about the Stripe webhook",
+  "expect": [
+   "memory.retrieve",
+   "recall.search"
+  ]
+ },
+ {
+  "intent": "remind me tomorrow at 9 to call the accountant",
+  "expect": [
+   "planner.add"
+  ]
+ },
+ {
+  "intent": "what is on my plan for today",
+  "expect": [
+   "planner.agenda",
+   "planner.list"
+  ]
+ },
+ {
+  "intent": "snooze that reminder for an hour",
+  "expect": [
+   "planner.snooze"
+  ]
+ },
+ {
+  "intent": "mark the reminder as finished",
+  "expect": [
+   "planner.done"
+  ]
+ },
+ {
+  "intent": "send an email to a client asking for the signed agreement",
+  "expect": [
+   "gate.request",
+   "mail.send",
+   "google.mail.send"
+  ]
+ },
+ {
+  "intent": "search my inbox for messages from Dana about the invoice",
+  "expect": [
+   "mail.search",
+   "google.mail.search"
+  ]
+ },
+ {
+  "intent": "read the email thread with the landlord",
+  "expect": [
+   "mail.read",
+   "google.mail.read"
+  ]
+ },
+ {
+  "intent": "write a draft reply but do not send it",
+  "expect": [
+   "google.mail.draft"
+  ]
+ },
+ {
+  "intent": "what meetings do I have tomorrow",
+  "expect": [
+   "google.calendar.list",
+   "google.calendar.next",
+   "connectors.calendar.today"
+  ]
+ },
+ {
+  "intent": "put a dentist appointment on my calendar for Friday at 3",
+  "expect": [
+   "google.calendar.create"
+  ]
+ },
+ {
+  "intent": "move the team call to next Tuesday",
+  "expect": [
+   "google.calendar.update"
+  ]
+ },
+ {
+  "intent": "show me which logins are stored in the vault",
+  "expect": [
+   "vault.list"
+  ]
+ },
+ {
+  "intent": "call the vendor API using the stored key without seeing the key",
+  "expect": [
+   "vault.request"
+  ]
+ },
+ {
+  "intent": "generate a new strong password and save it",
+  "expect": [
+   "vault.generate",
+   "vault.pass.create"
+  ]
+ },
+ {
+  "intent": "give an agent access to a stored password",
+  "expect": [
+   "vault.agent.grant",
+   "vault.grant"
+  ]
+ },
+ {
+  "intent": "find a file called budget on this computer",
+  "expect": [
+   "files.search"
+  ]
+ },
+ {
+  "intent": "look at the first lines of a file",
+  "expect": [
+   "files.preview"
+  ]
+ },
+ {
+  "intent": "bring a file from the server to my Mac",
+  "expect": [
+   "files.fetch"
+  ]
+ },
+ {
+  "intent": "how big is that folder and when was it changed",
+  "expect": [
+   "files.stat"
+  ]
+ },
+ {
+  "intent": "share a folder over the tailnet",
+  "expect": [
+   "files.drive.offer"
+  ]
+ },
+ {
+  "intent": "ask the backend teammate to fix the login bug",
+  "expect": [
+   "team.ask"
+  ]
+ },
+ {
+  "intent": "tell another agent what I need and wait for the answer",
+  "expect": [
+   "agents.ask"
+  ]
+ },
+ {
+  "intent": "which agents are working right now",
+  "expect": [
+   "agents.list"
+  ]
+ },
+ {
+  "intent": "how much have my agents spent this month",
+  "expect": [
+   "agents.usage",
+   "spend.summary"
+  ]
+ },
+ {
+  "intent": "start a new conversation thread with a prompt",
+  "expect": [
+   "threads.start"
+  ]
+ },
+ {
+  "intent": "send a follow up message to a running thread",
+  "expect": [
+   "threads.send"
+  ]
+ },
+ {
+  "intent": "interrupt what the thread is doing",
+  "expect": [
+   "threads.interrupt"
+  ]
+ },
+ {
+  "intent": "go back to an earlier message in the chat and try again",
+  "expect": [
+   "threads.rewind",
+   "threads.retry",
+   "threads.edit-retry"
+  ]
+ },
+ {
+  "intent": "fork this conversation into a new one",
+  "expect": [
+   "threads.fork",
+   "threads.branch"
+  ]
+ },
+ {
+  "intent": "archive an old conversation",
+  "expect": [
+   "threads.archive"
+  ]
+ },
+ {
+  "intent": "change the model a thread uses",
+  "expect": [
+   "threads.model"
+  ]
+ },
+ {
+  "intent": "define an automation that runs when a new lead arrives",
+  "expect": [
+   "flows.define"
+  ]
+ },
+ {
+  "intent": "run a flow right now with some input",
+  "expect": [
+   "flows.start"
+  ]
+ },
+ {
+  "intent": "approve the flow so it can run",
+  "expect": [
+   "flows.approve"
+  ]
+ },
+ {
+  "intent": "what happened in the last runs of my automation",
+  "expect": [
+   "flows.runs"
+  ]
+ },
+ {
+  "intent": "see all the automations in this space",
+  "expect": [
+   "flows.list"
+  ]
+ },
+ {
+  "intent": "pause an automation",
+  "expect": [
+   "flows.pause"
+  ]
+ },
+ {
+  "intent": "try a flow against recent events without doing anything",
+  "expect": [
+   "flows.simulate"
+  ]
+ },
+ {
+  "intent": "install a starter kit of record types and flows",
+  "expect": [
+   "flows.kit.propose",
+   "bridges.kit.install"
+  ]
+ },
+ {
+  "intent": "hold an outgoing payment until the person approves",
+  "expect": [
+   "gate.request"
+  ]
+ },
+ {
+  "intent": "which ways out can the gate send things",
+  "expect": [
+   "gate.senders"
+  ]
+ },
+ {
+  "intent": "connect my accounting app with an API key",
+  "expect": [
+   "connectors.connection.propose"
+  ]
+ },
+ {
+  "intent": "is my connection to the vendor still working",
+  "expect": [
+   "connectors.connection.check"
+  ]
+ },
+ {
+  "intent": "list the apps I can connect",
+  "expect": [
+   "connectors.catalog"
+  ]
+ },
+ {
+  "intent": "make a Connection from an OpenAPI description",
+  "expect": [
+   "connectors.connection.import"
+  ]
+ },
+ {
+  "intent": "call a tool on an external MCP server",
+  "expect": [
+   "mcp.call"
+  ]
+ },
+ {
+  "intent": "what tools do my MCP servers offer",
+  "expect": [
+   "mcp.tools"
+  ]
+ },
+ {
+  "intent": "find the right docs page for how to pair a phone",
+  "expect": [
+   "docs.find"
+  ]
+ },
+ {
+  "intent": "read that docs page",
+  "expect": [
+   "docs.read"
+  ]
+ },
+ {
+  "intent": "which skill helps me keep secrets out of files",
+  "expect": [
+   "skills.find"
+  ]
+ },
+ {
+  "intent": "show every skill I may use",
+  "expect": [
+   "skills.list"
+  ]
+ },
+ {
+  "intent": "write a report as a document for the person",
+  "expect": [
+   "artifacts.create"
+  ]
+ },
+ {
+  "intent": "save a new version of the dashboard page",
+  "expect": [
+   "artifacts.update"
+  ]
+ },
+ {
+  "intent": "see what changed between two versions of the document",
+  "expect": [
+   "artifacts.diff"
+  ]
+ },
+ {
+  "intent": "undo my last delete of the document",
+  "expect": [
+   "artifacts.undelete"
+  ]
+ },
+ {
+  "intent": "turn on a public link for a page",
+  "expect": [
+   "artifacts.public.set"
+  ]
+ },
+ {
+  "intent": "stop sharing the page publicly",
+  "expect": [
+   "artifacts.unshare"
+  ]
+ },
+ {
+  "intent": "search the artifacts for the quarterly numbers",
+  "expect": [
+   "artifacts.search"
+  ]
+ },
+ {
+  "intent": "show the project list",
+  "expect": [
+   "projects.list"
+  ]
+ },
+ {
+  "intent": "create a new project",
+  "expect": [
+   "work.project.create"
+  ]
+ },
+ {
+  "intent": "set a goal with milestones for this session",
+  "expect": [
+   "goals.set"
+  ]
+ },
+ {
+  "intent": "mark the second milestone done",
+  "expect": [
+   "goals.milestone-done"
+  ]
+ },
+ {
+  "intent": "watch the inbox and tell me when something matches",
+  "expect": [
+   "watchers.create"
+  ]
+ },
+ {
+  "intent": "pause a watcher",
+  "expect": [
+   "watchers.pause"
+  ]
+ },
+ {
+  "intent": "what is the state of the relay",
+  "expect": [
+   "relay.status"
+  ]
+ },
+ {
+  "intent": "make a ticket so a phone can pair with the server",
+  "expect": [
+   "relay.pair.ticket"
+  ]
+ },
+ {
+  "intent": "list paired phones and computers",
+  "expect": [
+   "relay.devices.all",
+   "link.status"
+  ]
+ },
+ {
+  "intent": "rename a paired Mac",
+  "expect": [
+   "link.rename"
+  ]
+ },
+ {
+  "intent": "invite a teammate to my space",
+  "expect": [
+   "spaces.invites.create"
+  ]
+ },
+ {
+  "intent": "accept an invitation to someone's space",
+  "expect": [
+   "spaces.invites.accept"
+  ]
+ },
+ {
+  "intent": "change a member's role",
+  "expect": [
+   "spaces.members.set-role"
+  ]
+ },
+ {
+  "intent": "add an agent as a member of the space",
+  "expect": [
+   "spaces.members.add-agent"
+  ]
+ },
+ {
+  "intent": "list the people in a space",
+  "expect": [
+   "spaces.members.list"
+  ]
+ },
+ {
+  "intent": "share a view of my records with another space",
+  "expect": [
+   "bridges.propose-view"
+  ]
+ },
+ {
+  "intent": "copy a record into another space",
+  "expect": [
+   "bridges.copy"
+  ]
+ },
+ {
+  "intent": "stop a share with another space",
+  "expect": [
+   "bridges.revoke"
+  ]
+ },
+ {
+  "intent": "give an agent a computer with a screen",
+  "expect": [
+   "computers.checkout"
+  ]
+ },
+ {
+  "intent": "open an agent's screen so I can watch",
+  "expect": [
+   "computers.watch",
+   "glass.open"
+  ]
+ },
+ {
+  "intent": "take over from the agent and give back the keyboard",
+  "expect": [
+   "computers.handback.set",
+   "computers.pause"
+  ]
+ },
+ {
+  "intent": "click a button in the browser",
+  "expect": [
+   "chrome.click",
+   "chrome.act"
+  ]
+ },
+ {
+  "intent": "take a screenshot of the page",
+  "expect": [
+   "chrome.screenshot",
+   "screen.shot"
+  ]
+ },
+ {
+  "intent": "log in to a website with the stored credentials",
+  "expect": [
+   "chrome.login"
+  ]
+ },
+ {
+  "intent": "upload a file into a folder on the agent's computer",
+  "expect": [
+   "glass.files.upload"
+  ]
+ },
+ {
+  "intent": "review a pull request on GitHub",
+  "expect": [
+   "github.project.pr.review"
+  ]
+ },
+ {
+  "intent": "open a pull request from this branch",
+  "expect": [
+   "github.project.pr.open"
+  ]
+ },
+ {
+  "intent": "merge the pull request",
+  "expect": [
+   "github.project.pr.merge"
+  ]
+ },
+ {
+  "intent": "undo the commits of this session",
+  "expect": [
+   "github.session.undo"
+  ]
+ },
+ {
+  "intent": "push the session branch",
+  "expect": [
+   "github.session.push"
+  ]
+ },
+ {
+  "intent": "what did the model spend on cost and tokens",
+  "expect": [
+   "spend.summary",
+   "agents.usage",
+   "sessions.usage.get"
+  ]
+ },
+ {
+  "intent": "show the current settings",
+  "expect": [
+   "settings.get"
+  ]
+ },
+ {
+  "intent": "change a setting",
+  "expect": [
+   "settings.request"
+  ]
+ },
+ {
+  "intent": "what theme does the app paint",
+  "expect": [
+   "appearance.resolve"
+  ]
+ },
+ {
+  "intent": "what version of Vyre is running",
+  "expect": [
+   "system.info",
+   "system.build"
+  ]
+ },
+ {
+  "intent": "which modules are running",
+  "expect": [
+   "system.modules"
+  ]
+ },
+ {
+  "intent": "see what the assistant did on my behalf",
+  "expect": [
+   "assistant.log"
+  ]
+ },
+ {
+  "intent": "morning summary of what is waiting for me",
+  "expect": [
+   "assistant.glance",
+   "assistant.brief"
+  ]
+ },
+ {
+  "intent": "add a lesson Vyre should remember to follow",
+  "expect": [
+   "learn.add"
+  ]
+ },
+ {
+  "intent": "what records tools can I use in this space",
+  "expect": [
+   "work.tools"
+  ]
+ }
+]

@@ -8,6 +8,8 @@ status: stable
 
 # Architecture
 
+New to the code? Read [The Vyre map](map.md) first: a 30-minute tour of the kernel, modules, the Gate, the Vault, Records and Flows, the apps and where data lives. This page is the short version.
+
 Vyre is one small daemon, `vyred`, on each machine you own, plus a Claude Code plugin. Everything else is a module the daemon loads. This page is the map. The [specification](spec.md) is the source of truth for every detail, and the [decision records](#decision-records) say why each hard choice went the way it did.
 
 ## One process per machine
