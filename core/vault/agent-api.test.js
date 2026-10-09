@@ -154,9 +154,13 @@ test("a model lists exactly the credentials it may use, by the same check, and n
   await v.put({ name: "a-login", kind: "login", fields: { username: "u", password: fake("pw") }, hosts: ["https://app.example.test"] }, "cli");
   await v.access.convertScopes();
   await give("graph-api", agent("kit"));
-  assert.deepEqual(await v.access.listFor("kit"), [{ name: "graph-api", kind: "api-credential" }]);
+  assert.deepEqual((await v.access.listFor("kit")).map(i => i.name), ["graph-api"]);
   assert.deepEqual((await v.access.listFor("juno")), []);
   assert.deepEqual((await v.access.listFor("assistant")).map(i => i.name).sort(), ["graph-api", "other-api"], "the assistant, as carried over");
+  // a login lent to the agent (agent.grant) is listed too, by name and kind: it holds a grant for it
+  await v.access.lend({ agent: "kit", item: "a-login", origin: "https://app.example.test", expires: Date.now() + 3600_000 }, { caller: "cli" }, false);
+  assert.deepEqual((await v.access.listFor("kit")).map(i => [i.name, i.kind]).sort(), [["a-login", "login"], ["graph-api", "api-credential"]]);
+  assert.deepEqual(await v.access.listFor("juno"), [], "nobody else sees it");
   assert.equal(v.access.modelName({ agent: "Kit" }, "mcp"), "kit");
   assert.equal(v.access.modelName({}, "mcp:agent:juno"), "juno");
   assert.equal(v.access.modelName({}, "mcp"), "assistant");

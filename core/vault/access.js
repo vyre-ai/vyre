@@ -202,7 +202,7 @@ export class Access {
       const c = /^conn-([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(item);
       if (c) at.push(`${at[0].split("/item/")[0]}/connection/${c[1]}`);
       let best = "deny";
-      for (const res of at) { const e = String(await K.agentMay(uid, action, res, undefined, true)); if (e === "allow") return e; if (e === "ask") best = e; }
+      for (const res of at) { const e = String(await K.agentMay(uid, action, res, origin, true)); if (e === "allow") return e; if (e === "ask") best = e; }
       return best;
     } catch { return "deny"; }
   }
