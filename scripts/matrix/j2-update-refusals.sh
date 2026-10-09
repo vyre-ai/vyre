@@ -87,10 +87,10 @@ if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" 
 else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; { echo "--- vyre status"; vyre status 2>&1 | head -40; echo "--- container logs"; docker logs --tail 80 vyre-vyre-1 2>&1; } >"$OUT/install-diag.log"; tail -120 "$OUT/install-diag.log" >&2; exit 1; fi
 wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
 # The modules start a little after the daemon answers: wait until a module tool is there before seeding
-for i in $(seq 1 60); do vyre status 2>/dev/null | grep -qE '[1-9][0-9]* modules running' && break; sleep 2; done
+for i in $(seq 1 60); do vyre call planner.list '{}' 2>&1 | grep -q no_such_tool || break; sleep 2; done
 r1=$(vyre call memory.remember '{"text":"My wife is Robin"}' 2>&1)
 r2=$(vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' 2>&1)
-seen && mem && rec 2-seed ok || rec 2-seed false "seed not readable: remember: $(printf %s "$r1" | head -c 150) / add: $(printf %s "$r2" | head -c 150)"
+seen && mem && rec 2-seed ok || { vyre status 2>&1 | head -8 >&2; vyre modules 2>&1 | grep -v running | head -20 >&2; docker logs --tail 40 vyre-vyre-1 2>&1 | grep -iE "planner|memory|not first party|kernel" | head -15 >&2; false; } || rec 2-seed false "seed not readable: remember: $(printf %s "$r1" | head -c 150) / add: $(printf %s "$r2" | head -c 150)"
 # 2b where the installer's own first `up` ran compose from: recorded as it is (the installer runs it as the person when they are in the docker
 #    group, so this is the stack folder; root's copies exist only once the updater is installed, which is the next step)
 rec 2b-first-up-working-dir ok "compose ran from $(wdir)"
