@@ -11,6 +11,7 @@ import { safePath } from "../../kernel/seal/uses.js";
 import { segments } from "../../kernel/core/urn.js";
 import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
+import { signingFlow } from "./signing.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -96,6 +97,13 @@ export function registerDocuments(ctx) {
       const rec = await filed(d, { name: title, status: "Draft", template: tname, template_version: tver, file: path, sha256, source: "generated", ...(i.contact ? { contact: String(i.contact) } : {}), ...(i.project ? { project: String(i.project) } : {}) });
       return { path, version: put.version, size: out.length, sha256, format, template: tname, template_version: tver, used, ...(rec ? { record: rec } : { record: null, note: "no Document record type here yet: install Documents from Apps to file these on the client" }) };
     });
+
+  ctx.tool("documents.signing.flow", {
+    description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, base, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. When a record of that type enters out_stage it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (held for your yes), waits for the signature and moves the record to signed_stage. Nothing is created: define it with the Flows tools.",
+    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, base: str, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id", "base"]),
+    callers: CALLERS, effect: "read",
+    run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),
+  });
 
   /** The Document record, when the Space has that type; null when it does not (the file is filed all the same). */
   async function filed(/** @type {any} */ d, /** @type {Record<string, any>} */ data) {

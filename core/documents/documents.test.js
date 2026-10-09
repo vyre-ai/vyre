@@ -117,3 +117,11 @@ test("a PDF needs the converter: refused in plain words without one, filed as a 
   assert.ok(seen[0].body.includes("Hello Dana") === false, "the converter gets the zipped .docx, not text");
   assert.equal(w.files.get(out.path)[0].subarray(0, 4).toString(), "%PDF");
 });
+
+test("the signing Flow comes back ready to define, and a bad ask is said", async () => {
+  const r = rig();
+  const out = await r.run("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, base: "https://harlow.vyre.run" });
+  assert.deepEqual(out.flow.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
+  assert.equal(out.flow.steps.at(-1).id, "once");
+  assert.equal((await code(r.run("documents.signing.flow", { type: "matter", out_stage: "A", signed_stage: "B", template_id: 0, base: "https://x.test" }))).code, "bad_input");
+});

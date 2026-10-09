@@ -220,6 +220,11 @@
    "count": 1,
    "owner": "site-ops",
    "note": "reviewed (9 Oct): the call wrapper handed to agentFill, which names only computers.fill.begin and computers.fill.end (both vault-only)"
+  },
+  "core/comms/index.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): the one forwarding wrapper (use) over literal names: mail.send, gate.request, gate.get"
   }
  }
 }
