@@ -40,6 +40,8 @@ try {
     const page = await ctx.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));
+    page.on("console", (m) => { if (process.env.ACCEPT_DEBUG) console.log("console:", m.type(), m.text()); });
+    page.on("response", (r) => { if (process.env.ACCEPT_DEBUG) console.log("http:", r.status(), r.url().replace(/\?t=.*/, "")); });
     await page.goto(scheme === "light" ? url : `http://${ticket.hostname}:${frontPort}/`, { waitUntil: "networkidle" });
     if (scheme === "dark") { /* a second context has no session: the preview is closed to it */ assert.equal(await page.locator("body").innerText(), "not found"); await ctx.close(); continue; }
     // the viewer is asked, in the page's own words, before stored data starts
