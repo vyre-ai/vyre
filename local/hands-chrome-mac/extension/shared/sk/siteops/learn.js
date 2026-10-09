@@ -315,7 +315,7 @@ function paramSlots(leaves, args, locs, warnings) {
     const literal = /^(true|false|null)$/.test(v);
     const digits = /^\d+$/.test(v);
     const enc = encodeURIComponent(asText(raw)).toLowerCase();
-    const forms = [...new Set([enc, enc.replace(/%20/g, "+")])].filter(f => f !== v);
+    const forms = [...new Set([enc, enc.split("%20").join("+")])].filter(f => f !== v);
     // digits inside a longer number (a timestamp, a cache-buster) are not the arg
     const inside = (/** @type {string} */ text, /** @type {string} */ t) => (digits ? new RegExp(`(?<!\\d)${t}(?!\\d)`).test(text) : text.includes(t));
     /** @type {Leaf[]} */ let exact = [];

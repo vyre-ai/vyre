@@ -119,64 +119,6 @@ export function actBind(a) {
 }
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }
-const EVENTS = { allow: { vault: "vault.used", drive: "file.accessed" }, deny: "access.refused" };
-const noun = a => a.split(".")[0];
-
-/**
- * @param {{ authorize: (i: any) => Promise<{ effect: string, decision: string, reason: string }>, append: (chain: any, e: { type: string, sv: number, subject: string, data: any, cause?: string }) => Promise<any> }} k
- */
-export function createGuard({ authorize, append }) {
-  /** Decide, run once, record. A refusal looks like absence to the caller; the true reason is in the event. */
-  async function act(chain, { action, resource, service, data = {}, run }) {
-    const d = await authorize({ chain, action, resource, input_class: service });
-    if (d.effect === "deny") {
-      await append(chain, { type: EVENTS.deny, sv: 1, subject: resource, data: { action, reason: d.reason, service: service ?? null }, cause: d.decision });
-      return { status: "refused", error: { code: "not_found" } };
-    }
-    if (d.effect === "ask") return { status: "ask", decision: d.decision };
-    const result = await run();
-    await append(chain, { type: EVENTS.allow[noun(action)] ?? "access.used", sv: 1, subject: resource, data: { action, service: service ?? null, ...data }, cause: d.decision });
-    return { status: "done", result };
-  }
-  return {
-    act,
-    /** Use a credential for a service. `run` receives nothing secret; the adapter that owns the vault does the use and returns only its outcome. */
-    useCredential: async (chain, { item, service, kind = "api", method = "GET", run }) => act(chain, { action: credentialAction(kind, method), resource: `vyre://${chain.space}/credential/${segment(item)}`, service, data: { kind, ...(kind === "api" ? { method: String(method).toUpperCase() } : {}) }, run }),
-    readFile: async (chain, { path, run }) => act(chain, { action: "drive.read", resource: `vyre://${chain.space}/file/${safePath(path)}`, run }),
-  };
-}
-
-/** "Used for Gmail 3 times today, Stripe once" from `vault.used` events. @param {{ type: string, time: number, data: any, actor?: string }[]} events */
-export function summarise(events, now = Date.now(), dayMs = 86_400_000) {
-  const by = new Map();
-  for (const e of events) {
-    if (e.type !== "vault.used" || e.time < now - dayMs) continue;
-    const k = e.data.service ?? "another service", cur = by.get(k) ?? { service: k, uses: 0, last: 0 };
-    cur.uses++; cur.last = Math.max(cur.last, e.time); by.set(k, cur);
-  }
-  const rows = [...by.values()].sort((a, b) => b.uses - a.uses || a.service.localeCompare(b.service));
-  const times = n => (n === 1 ? "once" : `${n} times`);
-  return { rows, text: rows.length ? `Used for ${rows.map(r => `${r.service} ${times(r.uses)}`).join(", ")} today.` : "Not used today." };
-}
-
-/** An old `vault_audit` row as a typed event body (contract 7.7). Only the shape the audit already holds: item, who, origin, surface. */
-export function foldAudit(row) {
-  const kind = { release: "release", fill: "fill", relay: "relay", inject: "run", totp: "totp", "api-request": "api" }[row.action];
-  if (!kind) return null;
-  // An old audit row does not say which method an API request used, so it is folded as the stricter action.
-  const action = { fill: "vault.fill", totp: "vault.totp", run: "vault.run", api: "vault.call", relay: "vault.call", release: "vault.run" }[kind];
-  return { type: row.ok ? "vault.used" : "access.refused", sv: 1, data: { action, kind, item: row.name ?? null, service: row.origin ?? null, via: row.surface ?? null }, time: row.at };
-}
-
-/** A vault agent grant (core/vault/agents.js row) as a kernel grant input: the same lending, now in the one grants table. */
-export function grantFromAgent(g, space) {
-  return {
-    subject: { kind: "actor", actor: { kind: "agent", id: g.agent, space } }, actions: ["vault.fill", "vault.totp"],
-    resource: { prefix: `vyre://${space}/credential/${segment(g.item)}` },
-    conditions: { where: { surfaces: ["harness", "mcp"] }, ...(g.expires ? { when: { expires: Number(g.expires) } } : {}), audience: [new URL(g.origin).host] },
-    source: "vault:agent-grant", reason: `lent to ${g.agent} for ${g.origin}`,
-  };
-}
 
 /**
  * Vault use at the point of use for a lent computer (DESIGN-local-runner.md section 3): the runner's egress proxy asks per request, the session must

@@ -5,7 +5,7 @@
 // it against the key it pinned at pairing before it runs threads.answer as "link:box". Agents,
 // MCP, guests and modules never reach the Mac. The checks one by one: core/link/assert.test.js.
 
-// Removed 9 Oct 2026 (main green): seven cases (a Mac's ask answered from the box, the owner's phone through a tailnet login, agents never reaching the Mac, key pins, the floor-tool proof, the open-asks list) drove
+// Cut cases are tracked in https://github.com/vyre-ai/vyre/issues/114 (the fix must restore all of them). Removed 9 Oct 2026 (main green): seven cases (a Mac's ask answered from the box, the owner's phone through a tailnet login, agents never reaching the Mac, key pins, the floor-tool proof, the open-asks list) drove
 // the box's labelled calls into a Mac over the simulated tailnet. The Mac's chat gate (0.3.0) answers not_found to a call with no person chain, and a link:box call carries none, so they cannot pass until the
 // box-to-Mac call is redesigned over Wink (team/BACKLOG.md, 0.3.1); "tailnet:" callers no longer exist. The two cases that stand test the box's own gating of an ask it never saw.
 import "../scripts/mac-test-guard.mjs";

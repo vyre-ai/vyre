@@ -15,6 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { PRIVATE_KEY_HEAD } from "../../lib/credential-shapes.js";
 
 /**
  * Names denied at any depth. A plain name matches a path segment exactly (case-insensitively:
@@ -32,7 +33,7 @@ export const DENY = Object.freeze([
  * A private key, whatever the file is called: PEM, OpenSSH and PuTTY all say so in their first
  * line. The same test link's files module applies (core/files/safety.js).
  */
-export const KEY_HEAD = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----|PuTTY-User-Key-File-/;
+export const KEY_HEAD = PRIVATE_KEY_HEAD;
 export const KEY_SNIFF = 512;
 
 /** Do these first bytes of a file say it is a private key? */

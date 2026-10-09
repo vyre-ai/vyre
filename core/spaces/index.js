@@ -46,7 +46,7 @@ import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
 import { planUpgrade, runUpgrade, fingerprint, resealPortFor } from "../../lib/spaces/upgrade.js";
 import { sealExportApproveRequest } from "../../kernel/remote/proof.js";
 import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
-import { ROLE_IDS } from "../../kernel/contracts/index.js";
+import { ROLE_IDS, ROLE_DEMOTE_TO } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
 import { createRoleAuthorize, personChain } from "../../lib/spaces/authz.js";
@@ -1943,7 +1943,7 @@ export default {
         return out(await (await members(row.id, meta)).extendTemp({ actor: s.id, person: await personRef(i.person), newExpires: i.expires, presence: meta.presence }));
       }, { presence: { summary: (/** @type {any} */ i) => `Extend ${i && i.person}'s access to ${i && i.space}` } });
     tool("spaces.members.transfer", "Hand a space to another member. The old owner becomes an admin (or the role you name). Needs the person's approval on their device.",
-      obj({ space: str, to: str, demoteTo: { type: "string", enum: ["admin", "manager", "member"] } }, ["space", "to"]), async (i, meta) => {
+      obj({ space: str, to: str, demoteTo: { type: "string", enum: [...ROLE_DEMOTE_TO] } }, ["space", "to"]), async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
         const r = out(await (await members(row.id, meta)).transferOwnership({ actor: s.id, to: await personRef(i.to), demoteTo: i.demoteTo, presence: meta.presence }));

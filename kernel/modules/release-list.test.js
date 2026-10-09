@@ -110,7 +110,7 @@ test("release list at boot: the signed list makes modules first party, a rollbac
   await k.stop();
 });
 
-import { signModule } from "./firstparty.js";
+import { signModule } from "../../test/sign-release.mjs";
 
 test("SG-1 and SG-2: the signed list decides for every name it holds (an old module.sig is no OR), and that name stays reserved so a failing folder is refused", { timeout: 120_000 }, async t => {
   const r = release(t, { counter: 5 });

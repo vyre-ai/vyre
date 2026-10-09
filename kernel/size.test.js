@@ -27,6 +27,7 @@ const BASE_FILES = [
 /** Not base, single files. */
 const NOT_BASE_FILES = {
   "modules/child.js": "runs INSIDE the module's sandbox, as the module's own host: the supervisor does not trust it (it is the confined side of the bridge, and everything it does is a message the host-side door checks)",
+  "audit/verify.js": "checks over public data that no kernel path calls yet (a device verifying a Space-key endorsement or revocation, two devices comparing checkpoints): it decides no grant and reads no secret, so it needs no kernel authority; kept for the device side that may still come",
   "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
 };
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */

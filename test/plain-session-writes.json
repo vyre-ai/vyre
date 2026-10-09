@@ -577,6 +577,10 @@
    "class": "own",
    "why": "reads the Space's records as the person the call carries"
   },
+  "connectors.site.propose": {
+   "class": "held",
+   "why": "a proposal only: the person approves it before anything is learned or connected"
+  },
   "agents.spawn": {
    "class": "refused",
    "why": "refused in the body for any call that is not an agent's own thread: a helper is started by an agent, never a plain session"
