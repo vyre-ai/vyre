@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1519,"event":494,"config":285,"env":268,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1522,"event":494,"config":285,"env":268,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2906,6 +2906,7 @@
     {"kind":"tool","name":"work.chat.keys.finish","definedIn":"core/work/index.js","page":"reference/tools.md#workchatkeysfinish","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.keys.lock","definedIn":"core/work/index.js","page":"reference/tools.md#workchatkeyslock","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.keys.status","definedIn":"core/work/index.js","page":"reference/tools.md#workchatkeysstatus","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.chat.link","definedIn":"core/work/index.js","page":"reference/tools.md#workchatlink","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.list","definedIn":"core/work/index.js","page":"reference/tools.md#workchatlist","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.move","definedIn":"core/work/index.js","page":"reference/tools.md#workchatmove","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.persistent","definedIn":"core/work/index.js","page":"reference/tools.md#workchatpersistent","module":"work","mentions":[]},
@@ -2927,6 +2928,7 @@
     {"kind":"tool","name":"work.know.move-import","definedIn":"core/work/index.js","page":"reference/tools.md#workknowmove-import","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.search","definedIn":"core/work/index.js","page":"reference/tools.md#workknowsearch","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.suggestions","definedIn":"core/work/index.js","page":"reference/tools.md#workknowsuggestions","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.link.suggest","definedIn":"core/work/index.js","page":"reference/tools.md#worklinksuggest","module":"work","mentions":[]},
     {"kind":"tool","name":"work.move.serve","definedIn":"core/work/index.js","page":"reference/tools.md#workmoveserve","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.create","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectcreate","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.ensure","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectensure","module":"work","mentions":[]},
@@ -2952,6 +2954,7 @@
     {"kind":"tool","name":"work.template.library","definedIn":"core/work/templates.js","page":"reference/tools.md#worktemplatelibrary","module":"work","mentions":[{"page":"using/project-templates.md","line":29,"anchor":"write-try-put-live"}]},
     {"kind":"tool","name":"work.template.list","definedIn":"core/work/templates.js","page":"reference/tools.md#worktemplatelist","module":"work","mentions":[]},
     {"kind":"tool","name":"work.template.test","definedIn":"core/work/templates.js","page":"reference/tools.md#worktemplatetest","module":"work","mentions":[{"page":"using/project-templates.md","line":24,"anchor":"write-try-put-live"}]},
+    {"kind":"tool","name":"work.timeline","definedIn":"core/work/index.js","page":"reference/tools.md#worktimeline","module":"work","mentions":[]},
     {"kind":"tool","name":"work.tools","definedIn":"core/work/index.js","page":"reference/tools.md#worktools","module":"work","mentions":[]}
   ]
 }
