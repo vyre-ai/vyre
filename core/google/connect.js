@@ -25,6 +25,7 @@ import { scrub, checkTokenUri } from "../../lib/connectors/auth.js";
 import { SCOPE, SCOPES } from "./api.js";
 import { NAME, EMAIL } from "./accounts.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { autoFetch } from "../../lib/http.js";
 
 export const AUTH_URI = "https://accounts.google.com/o/oauth2/v2/auth";
 export const TOKEN_URI = "https://oauth2.googleapis.com/token";
@@ -76,7 +77,7 @@ function page(text) {
 /** @param {ConnectDeps} deps */
 export function connector(deps) {
   const log = deps.log || (() => {});
-  const f = deps.fetch || globalThis.fetch;
+  const f = deps.fetch || autoFetch;
   const expiresMs = deps.expiresMs || EXPIRES_MS;
   /** @type {Map<string, Flow>} */ const flows = new Map();
   /** How each recent sign-in ended, by id and by its state's hash, so a reuse gets a plain answer. */

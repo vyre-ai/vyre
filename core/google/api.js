@@ -1,3 +1,4 @@
+import { autoFetch } from "../../lib/http.js";
 // @ts-check
 // api: one authenticated call to Google Calendar or Gmail, for one account, with one scope.
 //
@@ -41,7 +42,7 @@ export class GoogleError extends Error {
  * A client bound to one Credentials instance.
  * @param {{ creds: import("../../lib/connectors/auth.js").Credentials, fetch?: typeof fetch }} deps
  */
-export function client({ creds, fetch: f = globalThis.fetch }) {
+export function client({ creds, fetch: f = autoFetch }) {
   /**
    * @param {Account} acct @param {Request} req @returns {Promise<any>}
    */
