@@ -69,6 +69,10 @@
    "module": "appmods",
    "reason": "read-only: one installed app's state and whether it answers; no key, no address of a secret"
   },
+  "approvals.items": {
+   "module": "approvals",
+   "reason": "read-only; callers limited in code to capsule, cli, deck, device, local, mobile, module"
+  },
   "artifacts.activity": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
