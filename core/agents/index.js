@@ -25,6 +25,9 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
 import { isPerson } from "../../lib/caller.js";
 import { within } from "../../lib/within.js";
+import { createHash } from "node:crypto";
+import { change as changeTags } from "../../lib/tags.js";
+import { createMirror } from "./mirror.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE agents_agents (
@@ -42,6 +45,17 @@ export const MIGRATIONS = [
   `ALTER TABLE agents_agents ADD COLUMN personal INTEGER NOT NULL DEFAULT 0`,
   // A stable id for the agent, never reused: the kernel's grants and actor name THIS, not the name, so a deleted agent's name given to a new one inherits nothing.
   `ALTER TABLE agents_agents ADD COLUMN uid TEXT`,
+  // Every agent has an OWNER, a person with the say over it (R031-09); and free tags (R031-02, written through agents.update and mirrored to the agent records by core/agents/mirror.js).
+  `ALTER TABLE agents_agents ADD COLUMN owner TEXT`,
+  `ALTER TABLE agents_agents ADD COLUMN tags TEXT`,
+  // Every change to what an agent says or knows is a version (who proposed it, who said yes, what changed), and rollback writes a new one. A draft waits here until its owner decides; the proposal card
+  // carries only its id and hash (kernel/flows/proposals.js), never the words.
+  `CREATE TABLE agents_versions (agent TEXT NOT NULL, n INTEGER NOT NULL, before TEXT NOT NULL, after TEXT NOT NULL, by TEXT, approved_by TEXT, note TEXT, at INTEGER NOT NULL, PRIMARY KEY (agent, n));
+   CREATE TABLE agents_drafts (id TEXT PRIMARY KEY, agent TEXT NOT NULL, patch TEXT NOT NULL, hash TEXT NOT NULL, proposer TEXT NOT NULL, by TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL)`,
+  // Subagents (R031-07): a short-lived helper a session starts for one job. It runs as its PARENT (same agent, so it can hold nothing the parent does not) with a tool list that can only be shorter;
+  // this table is the one place that says a thread is one, so agents.scope can narrow it and the activity feed can nest it.
+  `CREATE TABLE agents_subs (id TEXT PRIMARY KEY, parent TEXT NOT NULL, parent_thread TEXT NOT NULL, thread TEXT, label TEXT NOT NULL, only TEXT, project TEXT, state TEXT NOT NULL DEFAULT 'running', result TEXT, at INTEGER NOT NULL, ended INTEGER);
+   CREATE INDEX agents_subs_thread ON agents_subs (thread)`,
 ];
 
 /**
@@ -107,7 +121,7 @@ export default {
 
     const shape = r => r && ({ uid: String(r.uid), name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), id: String(r.created_at) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), owner: r.owner == null ? null : String(r.owner), tags: r.tags == null ? "" : String(r.tags), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -120,6 +134,7 @@ export default {
     }
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
+    const mirror = createMirror({ kernel: () => ctx.kernel, rows: () => db.prepare("SELECT * FROM agents_agents").all().map(shape), log: m => ctx.log(m) });
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
 
     /** Tool results unwrapped; an error becomes a throw with its message. */
@@ -303,8 +318,109 @@ export default {
     // agent is really granted, never a filter the caller's own input or env carries.
     ctx.tool("agents.scope", {
       description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true, callers: ["module"],
-      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
-      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects, ...(a.personal ? { personal: true } : {}), ...(a.builtin && a.name === ENGINEER.name ? { only: ENGINEER.tools } : {}) } : null; },
+      input: { type: "object", required: ["name"], properties: { name: { type: "string" }, thread: { type: "string" } } },
+      // A subagent's thread is narrowed to the tools it was started with, on top of whatever its parent is held to; never wider.
+      run: async i => {
+        const a = get(String(i.name));
+        if (!a) return null;
+        const sub = i.thread ? db.prepare("SELECT only FROM agents_subs WHERE thread = ? AND parent = ?").get(String(i.thread), a.name) : null;
+        const own = a.builtin && a.name === ENGINEER.name ? [...ENGINEER.tools] : null;
+        const narrowed = sub && sub.only ? JSON.parse(String(sub.only)) : null;
+        const only = narrowed ? (own ? narrowed.filter((/** @type {string} */ t) => own.includes(t)) : narrowed) : own;
+        return { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects, ...(a.personal ? { personal: true } : {}), ...(only ? { only } : {}), ...(sub ? { subagent: true } : {}) };
+      },
+    });
+
+
+    // ---- Owners, versions and changes by conversation (R031-09) -------------------------------------------------------------------------------------------------------------------------------
+    // What an agent says and knows is its instructions, skills, model, effort and tags. A person (its owner or an admin) changes them directly and the change is a version. A model never does: it
+    // PROPOSES (flows.propose { what: "agent", agent, patch }), the draft waits here, its owner or an admin says yes on one card (kernel/flows/proposals.js), and that yes applies it as a new version.
+    // Permissions (projects, credentials, a computer) are not in a proposal: those are the person's own act, with the kernel's proof.
+    const CHANGEABLE = ["instructions", "skills", "model", "effort", "tags"];
+    const snapOf = a => ({ instructions: a.instructions ?? null, skills: a.skills || [], model: a.model ?? null, effort: a.effort ?? null, tags: a.tags || "" });
+    const hashOf = o => createHash("sha256").update(JSON.stringify(o)).digest("hex").slice(0, 24);
+    /** The person a call is for: its chain's first hop when that is a person, else the Space's owner (the CLI and the Deck are the owner's). */
+    const personOf = async meta => { if (!K) return ""; try { const c = await K.chain(meta); const h = c && c.hops && c.hops[0]; if (h && h.actor.kind === "person") return h.actor.id; } catch { /* no chain: the owner's surface */ } return String(K.owner || ""); };
+    const versionsOf = name => db.prepare("SELECT * FROM agents_versions WHERE agent = ? ORDER BY n DESC").all(name);
+    /** Write the new field values, and the version that says what they were and are. */
+    const writeVersion = (a, after, { by = null, approved_by = null, note = null } = {}) => {
+      const before = snapOf(a), next = { ...before, ...after };
+      if (hashOf(before) === hashOf(next)) return null;
+      const n = (db.prepare("SELECT COALESCE(MAX(n), 0) AS n FROM agents_versions WHERE agent = ?").get(a.name)?.n ?? 0) + 1;
+      db.prepare("UPDATE agents_agents SET instructions = ?, skills = ?, model = ?, effort = ?, tags = ?, updated_at = ? WHERE name = ?").run(next.instructions || null, JSON.stringify(next.skills || []), next.model || null, next.effort || null, next.tags || null, Date.now(), a.name);
+      db.prepare("INSERT INTO agents_versions (agent, n, before, after, by, approved_by, note, at) VALUES (?,?,?,?,?,?,?,?)").run(a.name, n, JSON.stringify(before), JSON.stringify(next), by, approved_by, note, Date.now());
+      return n;
+    };
+    /** Whose say it is over an agent: its owner, else any owner or admin of the Space (asked of the kernel by the host). */
+    const cleanPatch = patch => {
+      if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw Object.assign(new Error("a change is { instructions?, skills?, model?, effort?, tags? }"), { code: "bad_input" });
+      const bad = Object.keys(patch).filter(k => !CHANGEABLE.includes(k));
+      if (bad.length) throw Object.assign(new Error(`${bad.join(", ")} cannot be proposed: permissions (projects, credentials, a computer) are changed by the person themselves; a proposal changes ${CHANGEABLE.join(", ")}`), { code: "bad_input" });
+      const out = {};
+      if (patch.instructions !== undefined) { if (typeof patch.instructions !== "string" || patch.instructions.length > 20000) throw Object.assign(new Error("instructions are text of up to 20,000 characters"), { code: "bad_input" }); out.instructions = patch.instructions; }
+      if (patch.skills !== undefined) { if (!Array.isArray(patch.skills) || patch.skills.some(x => typeof x !== "string" || x.length > 120) || patch.skills.length > 100) throw Object.assign(new Error("skills are a list of skill names"), { code: "bad_input" }); out.skills = patch.skills; }
+      if (patch.model !== undefined) { if (patch.model !== null && typeof patch.model !== "string") throw Object.assign(new Error("model is a name"), { code: "bad_input" }); out.model = patch.model; }
+      if (patch.effort !== undefined) { if (patch.effort !== null && !EFFORTS.includes(patch.effort)) throw Object.assign(new Error(`effort is one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); out.effort = patch.effort; }
+      if (patch.tags !== undefined) { if (!Array.isArray(patch.tags)) throw Object.assign(new Error("tags are a list of words"), { code: "bad_input" }); out.tags = changeTags("", { add: patch.tags }); }
+      if (!Object.keys(out).length) throw Object.assign(new Error("that changes nothing"), { code: "bad_input" });
+      return out;
+    };
+    const titleOfDraft = (d, a) => `Change ${a.name}: ${Object.keys(JSON.parse(d.patch)).join(", ")}?`.slice(0, 200);
+    ctx.tool("agents.change.draft", {
+      description: "Store a proposed change to an agent's words, skills, model, effort or tags and say whose yes it needs (its owner, else an admin). For the Flows proposals path (kind agent).", internal: true, callers: ["module"],
+      input: { type: "object", required: ["agent", "patch", "proposer"], properties: { agent: { type: "string" }, patch: { type: "object" }, proposer: { type: "string" }, by: { type: "string" } } },
+      run: async i => {
+        const a = must(String(i.agent));
+        if (a.kind === "assistant" && i.by && i.by !== a.name) throw Object.assign(new Error("only the person changes the assistant"), { code: "denied" });
+        const patch = cleanPatch(i.patch);
+        if (a.builtin && Object.keys(patch).some(k => !["instructions", "model", "effort"].includes(k))) throw Object.assign(new Error(`${a.name} is built in: only its instructions, model and effort change`), { code: "bad_input" });
+        const hash = hashOf({ agent: a.name, patch, base: hashOf(snapOf(a)) });
+        // the same change asked for again while it waits is the same draft (and so the same card)
+        let d = db.prepare("SELECT * FROM agents_drafts WHERE agent = ? AND hash = ? AND state = 'open'").get(a.name, hash);
+        if (!d) { const id = `chg_${mintUuid()}`; db.prepare("INSERT INTO agents_drafts (id, agent, patch, hash, proposer, by, at) VALUES (?,?,?,?,?,?,?)").run(id, a.name, JSON.stringify(patch), hash, String(i.proposer), i.by || null, Date.now()); d = db.prepare("SELECT * FROM agents_drafts WHERE id = ?").get(id); }
+        const id = String(d.id);
+        return { id, hash, agent: a.name, owner: a.owner, title: titleOfDraft(d, a), before: snapOf(a), after: { ...snapOf(a), ...patch } };
+      },
+    });
+    ctx.tool("agents.change.title", {
+      description: "The title a stored draft really has, or null when it is gone, settled, or its agent changed since it was drafted. For the proposals path.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["id", "hash"], properties: { id: { type: "string" }, hash: { type: "string" } } },
+      run: async i => {
+        const d = db.prepare("SELECT * FROM agents_drafts WHERE id = ?").get(String(i.id));
+        const a = d && get(String(d.agent));
+        if (!d || !a || d.state !== "open" || d.hash !== i.hash || d.hash !== hashOf({ agent: a.name, patch: JSON.parse(String(d.patch)), base: hashOf(snapOf(a)) })) return null;
+        return titleOfDraft(d, a);
+      },
+    });
+    ctx.tool("agents.change.apply", {
+      description: "Apply a stored draft as a new version, on the owner's yes. For the proposals path.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["id", "hash", "approver"], properties: { id: { type: "string" }, hash: { type: "string" }, approver: { type: "string" } } },
+      run: async i => {
+        const d = db.prepare("SELECT * FROM agents_drafts WHERE id = ?").get(String(i.id));
+        const a = d && get(String(d.agent));
+        if (!d || !a || d.state !== "open" || d.hash !== i.hash) throw Object.assign(new Error("that change is no longer waiting"), { code: "not_found" });
+        if (d.hash !== hashOf({ agent: a.name, patch: JSON.parse(String(d.patch)), base: hashOf(snapOf(a)) })) throw Object.assign(new Error(`${a.name} changed since this was drafted: ask again`), { code: "conflict" });
+        db.prepare("UPDATE agents_drafts SET state = 'applied' WHERE id = ?").run(d.id);
+        const version = writeVersion(a, JSON.parse(String(d.patch)), { by: d.by || d.proposer, approved_by: String(i.approver) });
+        await mirror.schedule();
+        return { agent: a.name, version };
+      },
+    });
+
+    ctx.tool("agents.mirror", {
+      description: "Make the agent records equal the roster now, and say what changed (a level mirror changes nothing). For tests and repair.", internal: true, callers: ["module"],
+      input: { type: "object", properties: {} },
+      run: async () => { await mirror.schedule(); return mirror.reconcile(); },
+    });
+
+    ctx.tool("agents.versions", {
+      description: "An agent's versions, newest first: what changed, who proposed it and who said yes. Roll back with agents.update { agent, rollback: n }.",
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
+      run: async (i, { caller }) => {
+        guard(caller, "read an agent's versions");
+        const a = must(String(i.agent));
+        return { agent: a.name, owner: a.owner, versions: versionsOf(a.name).slice(0, Math.min(Number(i.limit) || 20, 100)).map(v => ({ n: v.n, by: v.by, approved_by: v.approved_by, note: v.note, at: v.at, before: JSON.parse(String(v.before)), after: JSON.parse(String(v.after)) })) };
+      },
     });
 
     ctx.tool("agents.list", {
@@ -341,10 +457,11 @@ export default {
         const uid = `agt_${mintUuid()}`;
         if (kind !== "assistant") await syncAccess(uid, [], projects, meta);
         const now = Date.now();
-        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid);
+        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at, uid, owner)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now, uid, await personOf(meta));
         if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
+        await mirror.schedule();
         return get(i.name);
       },
     });
@@ -353,7 +470,7 @@ export default {
       description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer, model or effort. Takes effect on its next thread.",
       // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
       // "Give a computer" sent it and got "input.name is required".
-      input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
+      input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, tags: { type: "array", items: { type: "string" } }, rollback: { type: "integer", minimum: 0, description: "restore the instructions, skills, model, effort and tags as of this version (0 is how the agent began); agents.versions lists them" }, ...fields } },
       // A person's surfaces, with no passkey (the owner's Deck over the tailnet included). Of the
       // models, only the assistant, and only for its words and model: never credentials, budget,
       // projects, skills or a computer. Every other agent, a bare MCP session and a guest are refused.
@@ -361,9 +478,8 @@ export default {
       run: async (i, meta) => {
         const { caller } = meta;
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
-          const m = /^mcp:agent:(.+)$/.exec(String(caller));
-          const plain = Object.keys(i).every(k => i[k] === undefined || PLAIN_UPDATE.has(k));
-          if (!m || get(m[1])?.kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
+          // A model never edits an agent: it proposes, and the agent's owner says yes on one card (R031-09).
+          throw Object.assign(new Error('changing agents is the person\'s; to ask for a change, propose it: flows.propose { what: "agent", agent: "<name>", patch: { instructions?, skills?, model?, effort?, tags? } }. Its owner approves; each approved change is a version you can roll back'), { code: "denied" });
         }
         if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");
         const who = i.name ?? i.agent;
@@ -379,9 +495,21 @@ export default {
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.uid, a.projects, next.projects, meta);
-        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, personal = ?, updated_at = ? WHERE name = ?`)
-          .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
-            next.computer ? 1 : 0, next.model || null, next.effort || null, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
+        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, computer = ?, personal = ?, updated_at = ? WHERE name = ?`)
+          .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.computer ? 1 : 0, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
+        // what it says and knows is versioned (R031-09): the person's own edit is a version approved by that person; `rollback: n` restores the state as of version n (0 is how it began)
+        let after = { instructions: next.instructions, skills: next.skills, model: next.model, effort: next.effort, tags: i.tags !== undefined ? changeTags("", { add: Array.isArray(i.tags) ? i.tags : [] }) : a.tags };
+        let note = null;
+        if (i.rollback !== undefined) {
+          const n = Number(i.rollback);
+          const vs = versionsOf(a.name).reverse();
+          const target = n === 0 ? (vs[0] ? JSON.parse(String(vs[0].before)) : null) : (vs.find(v => v.n === n) ? JSON.parse(String(vs.find(v => v.n === n).after)) : null);
+          if (!target) throw Object.assign(new Error(`${a.name} has no version ${n}`), { code: "not_found" });
+          after = target; note = `rolled back to version ${n}`;
+        }
+        const person = await personOf(meta);
+        writeVersion(a, after, { by: person, approved_by: person, note });
+        await mirror.schedule();
         return get(a.name);
       },
     });
@@ -498,6 +626,63 @@ export default {
       },
     });
 
+
+    // ---- Subagents (R031-07) ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+    // `agents.spawn` starts a short-lived helper for one job. It is the PARENT agent in a thread of its own (same credentials, same projects, the same kernel actor), so it can hold nothing the parent does
+    // not; its tool list can only be shorter (a list it names must be inside the parent's own, and a helper never starts helpers). It is announced with the same `summon.*` events teammates use, so the
+    // activity feed (core/stream/activity.js) nests its steps under one row in the parent's conversation, and it ends with its turn.
+    const SUB_MAX = 5;
+    const subRow = id => db.prepare("SELECT * FROM agents_subs WHERE id = ?").get(id);
+    ctx.tool("agents.spawn", {
+      description: "Start a short-lived helper for one job: it works as you, with your access or less (tools: a shorter list of tool names), its steps show under one row in this conversation, and it ends when its turn does. Give it everything it needs in `task`; it cannot start helpers of its own.",
+      input: { type: "object", required: ["task"], properties: { task: { type: "string", maxLength: 8000 }, label: { type: "string", maxLength: 40 }, tools: { type: "array", maxItems: 100, items: { type: "string", maxLength: 120 } }, project: { type: "string" } } },
+      callers: ["mcp", "harness", "cli", "local", "deck", "capsule", "module"],
+      run: async (i, meta) => {
+        const parent = meta.agent ? get(String(meta.agent)) : null;
+        if (!parent || !meta.thread) throw Object.assign(new Error("a helper is started by an agent from its own thread: there is none behind this call"), { code: "denied" });
+        if (db.prepare("SELECT 1 FROM agents_subs WHERE thread = ?").get(String(meta.thread))) throw Object.assign(new Error("a helper does not start helpers; ask the agent that started you"), { code: "denied" });
+        if (db.prepare("SELECT COUNT(*) AS n FROM agents_subs WHERE parent_thread = ? AND state = 'running'").get(String(meta.thread)).n >= SUB_MAX) throw Object.assign(new Error(`at most ${SUB_MAX} helpers at once; wait for one to finish`), { code: "busy" });
+        const task = String(i.task || "").trim();
+        if (!task) throw Object.assign(new Error("say what the helper is to do"), { code: "bad_input" });
+        // never wider than the parent: its tool list (when it is held to one) and its projects
+        const mine = Array.isArray(meta.agentOnly) ? meta.agentOnly : null;
+        let only = null;
+        if (i.tools !== undefined) {
+          if (!Array.isArray(i.tools) || i.tools.some((/** @type {any} */ t) => typeof t !== "string")) throw Object.assign(new Error("tools is a list of tool names"), { code: "bad_input" });
+          const extra = mine ? i.tools.filter((/** @type {string} */ t) => !mine.includes(t)) : [];
+          if (extra.length) throw Object.assign(new Error(`a helper cannot hold more than you do: ${extra.join(", ")} ${extra.length === 1 ? "is" : "are"} not yours`), { code: "denied" });
+          only = i.tools;
+        } else only = mine;
+        if (i.project && parent.projects !== "*" && !parent.projects.includes(String(i.project))) throw Object.assign(new Error(`${parent.name} has no access to ${i.project}`), { code: "denied" });
+        const id = `sub_${mintUuid()}`, label = String(i.label || "helper").replace(/[^\w .-]/g, "").slice(0, 40) || "helper";
+        db.prepare("INSERT INTO agents_subs (id, parent, parent_thread, label, only, project, at) VALUES (?,?,?,?,?,?,?)").run(id, parent.name, String(meta.thread), label, only ? JSON.stringify(only) : null, i.project ? String(i.project) : null, Date.now());
+        const ev = (/** @type {string} */ type, /** @type {any} */ more = {}) => ctx.events.emit(type, { request: id, teammate: parent.name, project: i.project ? String(i.project) : "", reply_to: String(meta.thread), role: `helper: ${label}`, sub: true, ...more });
+        ev("summon.queued", { text: task.replace(/\s+/g, " ").slice(0, 300) });
+        try {
+          const early = new Set();
+          const off = ctx.events.on("thread.finished", e => early.add(e.thread));
+          let t;
+          try { t = await launch(parent, { prompt: task, job: true, project: i.project }); } finally { off(); }
+          db.prepare("UPDATE agents_subs SET thread = ? WHERE id = ?").run(t.id, id);
+          ev("summon.started"); ev("summon.thread", { thread: t.id });
+          const done = async () => {
+            const row = subRow(id);
+            if (!row || row.state !== "running") return;
+            let result = "";
+            try { const g = await ctx.call("threads.get", { thread: t.id, limit: 1 }); result = String(g.data?.thread?.last_line || "").replace(/\s+/g, " ").trim().slice(0, 600); } catch { /* the helper's words stay in its thread */ }
+            db.prepare("UPDATE agents_subs SET state = 'done', result = ?, ended = ? WHERE id = ?").run(result, Date.now(), id);
+            ev("summon.finished", { status: "done", result });
+          };
+          if (early.has(t.id)) await done(); else { const stop = ctx.events.on("thread.finished", e => { if (e.thread === t.id) { stop(); void done(); } }); }
+          return { helper: id, thread: t.id, label, tools: only };
+        } catch (e) {
+          db.prepare("UPDATE agents_subs SET state = 'failed', result = ?, ended = ? WHERE id = ?").run(String(/** @type {Error} */ (e).message).slice(0, 300), Date.now(), id);
+          ev("summon.finished", { status: "failed", result: `could not start: ${/** @type {Error} */ (e).message}` });
+          throw e;
+        }
+      },
+    });
+
     ctx.tool("agents.threads", {
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
@@ -562,6 +747,7 @@ export default {
         }
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
+        await mirror.schedule();
         return { agent: a.name, deleted: true };
       },
     });
@@ -616,6 +802,13 @@ export default {
         return launch(a, { resume: id });
       },
     });
+
+    // the agent records follow the roster from the first moment, after every change to it, and after any change made to a record by hand (put back)
+    void mirror.schedule();
+    const k0 = ctx.kernel;
+    if (k0 && k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
+      try { k0.events.subscribe(k0.serviceChain("agents"), "agents-mirror", {}, async (/** @type {any} */ e) => { if (e && /^agent\.(created|updated|removed)$/.test(e.type)) await mirror.schedule(); }); } catch { /* no event feed in this kernel: the roster's own changes still schedule it */ }
+    }
 
     return { async stop() {} };
   },

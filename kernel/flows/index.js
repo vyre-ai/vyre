@@ -67,7 +67,7 @@ function personOf(chain) {
  *   store?: any, kitStore?: any, clock?: () => number,
  *   emit?: (type: string, data: any, o: any) => void,
  *   ports?: any, installerRole?: (a: any) => Promise<string> | string, limits?: any,
- *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
+ *   proposals?: { chain: () => any, applyTypes?: (approver: any, diff: any) => Promise<any>, kinds?: Record<string, import("./proposals.js").ProposalKind>, isAdmin?: (who: any) => Promise<boolean> | boolean },  an assistant's proposals become tasks (proposals.js)
  *   stages?: { approver: any },  stages made of tasks run when this is given: the person whose chain the module works under
  * }} o
  */
@@ -76,7 +76,7 @@ export function createFlows(o) {
   const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits, policy: o.policy, settings: o.settings });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
   const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin }) : null;
-  const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
+  const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, kinds: o.proposals.kinds, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
   /** The stages module this Space runs: made here, or attached by the host that makes it. @type {any} */ let stagesRef = stages;
   const cat = async () => o.catalog();
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {

@@ -251,6 +251,77 @@
         "summary": "accept a proposed fact onto its record",
         "reach": "person",
         "effect": "write"
+      },
+      {
+        "name": "work.template.define",
+        "summary": "write a project template as a new draft version",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.list",
+        "summary": "the project templates, or the versions of one",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.get",
+        "summary": "one template version with its body",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.golive",
+        "summary": "put a draft version live (its owner or an admin)",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.test",
+        "summary": "try a template with nothing created, sent or changed",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.from-project",
+        "summary": "a draft template from a project that ran one",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.library",
+        "summary": "the project templates the Kits ship",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.install",
+        "summary": "a library template as a draft in this Space",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.start-project",
+        "summary": "start a project from a live template",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.change.draft",
+        "summary": "check a draft can go live (proposals path)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.template.change.title",
+        "summary": "the title a stored template change has (proposals path)",
+        "reach": "modules"
+      },
+      {
+        "name": "work.template.change.apply",
+        "summary": "put the version live on the owner's yes (proposals path)",
+        "reach": "modules",
+        "effect": "write"
       }
     ]
   },
@@ -265,15 +336,15 @@
       "work": true,
       "attrs": true,
       "actions": [
-        "tasks.request",
-        "records.read",
-        "records.create",
-        "records.update",
-        "records.remove",
-        "events.read",
+        "drive.read",
         "drive.write",
+        "events.read",
         "grants.list",
-        "drive.read"
+        "records.create",
+        "records.read",
+        "records.remove",
+        "records.update",
+        "tasks.request"
       ],
       "types": [
         {
@@ -308,7 +379,11 @@
               "name": "client",
               "kind": "link",
               "label": "Client",
-              "to": "contact"
+              "to": "contact",
+              "inverse": {
+                "name": "projects",
+                "label": "Projects"
+              }
             },
             {
               "name": "owner",
@@ -349,6 +424,41 @@
               "name": "moved_from",
               "kind": "text",
               "label": "Moved from (Space and project) when it came from another"
+            },
+            {
+              "name": "template",
+              "kind": "text",
+              "label": "Template it started from (blank when none)"
+            },
+            {
+              "name": "template_version",
+              "kind": "text",
+              "label": "Template version it started from"
+            },
+            {
+              "name": "lead",
+              "kind": "text",
+              "label": "Project lead (an agent of the Space; a template may name one)"
+            },
+            {
+              "name": "template_stage",
+              "kind": "text",
+              "label": "Stage it is in (a template project)"
+            },
+            {
+              "name": "template_snapshot",
+              "kind": "text",
+              "label": "The template's stages as they were when it started (JSON)"
+            },
+            {
+              "name": "personal_of",
+              "kind": "text",
+              "label": "The person whose private Personal project this is (blank for every other project)"
+            },
+            {
+              "name": "tags",
+              "kind": "text",
+              "label": "Tags"
             }
           ]
         },
@@ -366,7 +476,11 @@
               "name": "project",
               "kind": "link",
               "label": "Project",
-              "to": "project"
+              "to": "project",
+              "inverse": {
+                "name": "chats",
+                "label": "Chats"
+              }
             },
             {
               "name": "chat",
@@ -419,6 +533,11 @@
               "name": "location",
               "kind": "text",
               "label": "This chat's Drive folder"
+            },
+            {
+              "name": "tags",
+              "kind": "text",
+              "label": "Tags"
             }
           ]
         },
@@ -441,5 +560,24 @@
       "flowsHost"
     ]
   },
-  "teaches": {}
+  "teaches": {},
+  "flow": {
+    "steps": [
+      {
+        "name": "work.start-project",
+        "label": "Start a project from a template",
+        "inputs": {
+          "template": "string",
+          "name": "string",
+          "client": "string",
+          "repo": "string"
+        },
+        "outputs": {
+          "project": "string",
+          "slug": "string",
+          "stage": "string"
+        }
+      }
+    ]
+  }
 }

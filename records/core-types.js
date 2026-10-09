@@ -238,7 +238,31 @@ export const PROJECT = {
     text("template", "Template it started from (blank when none)"),
     text("template_version", "Template version it started from"),
     text("lead", "Project lead (an agent of the Space; a template may name one)"),
+    // A project started from a template is pinned to that version's stages (JSON, written once at start) and sits in one of them: `template_stage` is plain text so the template's own names are its stages.
+    // The Flows stage module drives these two (kernel/flows/stages.js); they are the project's, never typed by hand.
+    text("template_stage", "Stage it is in (a template project)"),
+    text("template_snapshot", "The template's stages as they were when it started (JSON)"),
     text("personal_of", "The person whose private Personal project this is (blank for every other project)"),
+    TAGS,
+  ],
+};
+
+/**
+ * A project template, one record per version (R031-10): `template` is the stable id every version shares, `state` says which version is live (one at most), and `body` is the template as JSON (lib/project-template.js
+ * says what it holds and checks it). A project started from a version is pinned to that version's stages, so editing or retiring a template never changes a project that is running. `owner` is the person whose yes
+ * puts a version live (an admin may too); `kit` names where a template that shipped with a Kit came from.
+ */
+export const PROJECT_TEMPLATE = {
+  name: "project-template", label: "Project template", icon: "IconTemplate",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("template", "Template id (shared by every version)", { required: true }),
+    f("number", "version", "Version", { required: true }),
+    choice("state", "State", ["draft", "live", "retired"], { required: true }),
+    text("body", "The template (JSON)", { required: true }),
+    f("actor", "owner", "Owner"),
+    text("kit", "Shipped with Kit"),
+    text("note", "What changed"),
     TAGS,
   ],
 };
@@ -272,4 +296,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, CHAT, TASK].map((t) => Object.freeze(t)));
