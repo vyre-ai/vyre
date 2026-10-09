@@ -31,13 +31,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
+| [`comms`](#comms) | `core/comms` | `box` | 2 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
-| [`documents`](#documents) | `core/documents` | `box` | 4 | 0 | none |
+| [`documents`](#documents) | `core/documents` | `box` | 5 | 0 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
@@ -271,6 +272,19 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Emits: no events
 - Shows on: no surface
 
+## comms
+
+Send an email or a text message as you, held at the Gate for your yes and logged on the client it went to.
+
+- Folder: `core/comms`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [2](tools.md#comms), 1 of them only for other modules
+- Emits: [2 events](events.md#comms)
+- Shows on: no surface
+- Needs credentials: `[object Object]`
+- Needs vault: `per-connection`
+
 ## computer
 
 Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.
@@ -345,7 +359,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Folder: `core/documents`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [4](tools.md#documents)
+- Tools: [5](tools.md#documents)
 - Emits: no events
 - Shows on: no surface
 
