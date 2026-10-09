@@ -62,7 +62,8 @@
       "connectors.connection-received",
       "connectors.connection-proposed",
       "connectors.site-needs-signin",
-      "connectors.site-ran"
+      "connectors.site-ran",
+      "connectors.site-needs-browser"
     ]
   },
   "shows": {

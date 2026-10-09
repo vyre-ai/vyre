@@ -34,10 +34,10 @@ import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
-import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
+import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
 import { originClass } from "../modules/index.js";
 import { isPerson } from "../../lib/caller.js";
-import { boxKey, signAnswer } from "./assert.js";
+import { boxKey, signAnswer, signCall } from "./assert.js";
 import { companionSide } from "./companion.js";
 
 const TTL = 10 * 60_000;
@@ -434,7 +434,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       // is never the person, whatever `as` and `by` say (platform-3, HD-3's twin).
       if (write && !isPerson(originClass(meta))) throw Object.assign(new Error(`${tool} is sent to a Mac only for the person, not for a model or a module acting alone`), { code: "denied" });
       if (write && as !== "person") throw Object.assign(new Error(`${tool} is sent to a Mac only for the person`), { code: "denied" });
-      if (!write && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
+      const callOp = CALL.includes(tool);
+      if (!write && !callOp && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
+      // A learned website operation: a read is asked as it is; an outward one only from the connectors module, which has the kernel's approval for exactly that call, and it is signed below.
+      if (callOp && input && input.approved === true && !(meta && meta.caller === "module:connectors")) throw Object.assign(new Error(`${tool} runs an outward operation on a Mac only for the connectors module, with the person's approval`), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
       // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) —
@@ -461,6 +464,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         timer.unref();
         // The person's answer, signed for this Mac alone: its node, the ask, the exact input.
         let assertion;
+        if (callOp && input && input.approved === true) {
+          if (!m.stable_id) { clearTimeout(timer); return resolve({ ...who, ok: false, error: { code: "denied", message: `the Mac "${m.name}" paired without its node known; pair it again to run an outward operation there` } }); }
+          assertion = signCall(assertKey().privateKey, { mac: m.stable_id, call: { site: String(input.site), name: String(input.name), inputs: input.inputs }, caller: String((meta && meta.caller) || "unknown"), now: now() });
+        }
         if (answer) {
           if (!m.stable_id) { clearTimeout(timer); return resolve({ ...who, ok: false, error: { code: "denied", message: `the Mac "${m.name}" paired without its node known; pair it again to answer its asks here` } }); }
           assertion = signAnswer(assertKey().privateKey, { mac: m.stable_id, ask: String(input.ask), thread: known && known.mac === m.id ? known.thread : null, input,

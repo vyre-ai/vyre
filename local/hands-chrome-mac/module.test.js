@@ -82,7 +82,7 @@ test("module: the manifest is valid and every tool it declares is registered", a
   assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
   const { reg, connect } = await rig(t);
   assert.equal(reg.status().find((/** @type {any} */ m) => m.name === "chrome")?.state, "running");
-  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check" && n !== "chrome.op.run");
+  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check" && n !== "chrome.op.run" && n !== "chrome.op.call");
   const listed = reg.listTools().map((/** @type {any} */ x) => x.name);
   for (const name of declared) assert.ok(listed.includes(name), name);
   assert.ok(!listed.includes("chrome.release"), "release is internal: only the Gate calls it");

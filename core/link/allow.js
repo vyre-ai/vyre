@@ -35,3 +35,11 @@ export const FOLLOWED = Object.freeze(["thread.queued", "thread.sent", "thread.t
  * @type {readonly string[]}
  */
 export const ASKS = Object.freeze(["ask.raised", "ask.answered"]);
+
+/**
+ * The one call that is neither a read of the Mac nor a write to its sessions: a learned website operation, run by name in the person's own Chrome (docs: team/0.3.1/DESIGN-site-operations.md,
+ * rung "mac"). Both ends check this list as for ALLOW. It runs only an operation the person approved for the box on this Mac (link.ops.allow), a read at once; an outward one only with an
+ * assertion signed by the box's key, bound to this Mac, that site, that operation and those exact inputs (assert.js signCall), for 60 s and one use.
+ * @type {readonly string[]}
+ */
+export const CALL = Object.freeze(["chrome.op.call"]);

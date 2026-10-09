@@ -26,7 +26,7 @@ export function lightFor(cls, host, reason, agent = "") {
     case "blocked": return { light: "red", words: `${host} is challenging the browser: a person has to clear it once` };
     case "rate": return { light: "red", words: `${host} says to slow down` };
     case "drift": return { light: "red", words: `${host} changed and the operation could not be repaired: teach it again` };
-    case "no_browser": return { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre for Chrome${host ? ` and sign in to ${host}` : ""}` };
+    case "no_browser": return reason && /^needs your Chrome/.test(reason) ? { light: "red", words: reason } : { light: "red", words: `no signed-in browser is connected: open Chrome with Vyre for Chrome${host ? ` and sign in to ${host}` : ""}` };
     default: return { light: "red", words: `the last call did not work${reason ? `: ${String(reason).slice(0, 120)}` : ""}` };
   }
 }
@@ -50,6 +50,25 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
   }
 
   /**
+   * Rung "mac": a box asks the person's own Chrome on a paired Mac, through the link (named, person-approved operations only). A read runs at once; an outward call carries the box's signed
+   * assertion. When no Mac is on, the answer says so and the Connection says it needs the person's Chrome.
+   * @param {string} origin @param {string} name @param {Record<string, any>} inputs @param {boolean} approved
+   */
+  async function macRung(origin, name, inputs, approved) {
+    const r = await call("link.macs.call", { tool: "chrome.op.call", input: { site: origin, name, inputs, approved }, timeout: 15_000 });
+    if (r && r.error) return { class: "no_browser", reason: String(r.error.message || r.error.code) };
+    const answers = Array.isArray(r.data) ? r.data : [];
+    const ok = answers.find((/** @type {any} */ a) => a && a.ok);
+    if (ok) return ok.data;
+    const first = answers[0];
+    if (!first) return { class: "no_browser", reason: "no Mac is paired with this box" };
+    const code = first.error && first.error.code;
+    if (code === "mac_offline" || code === "timeout") return { class: "no_browser", reason: `needs your Chrome: the Mac "${first.name || "paired Mac"}" is ${code === "timeout" ? "not answering" : "offline"}`, mac: true };
+    if (code === "denied") return { class: "no_browser", reason: String(first.error && first.error.message || "the Mac has not allowed this operation for the box"), mac: true };
+    return { class: "error", reason: String(first.error && first.error.message || "the Mac could not run it") };
+  }
+
+  /**
    * Rung "public": a plain GET from here, for an operation that needs no login (public data). Runs 24/7 with no browser. The vault fetches it (private ranges refused at every hop, a size cap, no
    * cookie, no credential of ours), and the same run, classify, extract and cap as any rung judges the answer.
    * @param {any} op @param {Record<string, any>} inputs
@@ -70,6 +89,8 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     if (allowed.includes("page") && role !== "box") out.push("page");
     // the agent's own Chrome on a box: the login lives in that computer's profile, so it runs with the Mac off
     if (allowed.includes("box") && role === "box" && agent) out.push("box");
+    // the person's own Chrome on a paired Mac, asked through the link
+    if (allowed.includes("mac") && role === "box") out.push("mac");
     return out;
   }
 
@@ -95,7 +116,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     if (!rungs.length) res = { class: "no_browser", reason: "no browser that holds this login is reachable from this machine" };
     for (const r of rungs) {
       rung = r;
-      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
+      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : r === "mac" ? await macRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
       // a rung that has no browser to offer, or a public fetch the site refused, is not the answer while another rung remains
       if (res && (res.class === "no_browser" || (r === "public" && !res.ok && (res.class === "auth" || res.class === "blocked")))) continue;
       break;
@@ -108,6 +129,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
       emit("connectors.connection-checked", { id, light: l.light });
       if (cls === "auth") emit("connectors.site-needs-signin", { id, site: decl.base_url, host, rung, ...(rung === "box" && agent ? { agent } : {}) });
     }
+    if (res && res.mac && cls === "no_browser") emit("connectors.site-needs-browser", { id, site: decl.base_url, host, rung: "mac", reason: String(res.reason || "") });
     if (cls === "ok") return { status: 200, data: res.data === undefined ? null : res.data };
     log("site operation did not answer", { id, op: op.name, class: cls });
     const status = cls === "no_browser" ? 503 : STATUS_OF[cls] || 502;
