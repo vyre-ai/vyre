@@ -207,3 +207,22 @@ test("views: a v1 view asked for a surface comes back as a one-block screen, and
   assert.equal(s.blocks.main.type, "board");
   assert.deepEqual(s.blocks.main.content.columns.map((/** @type {any} */ x) => x.id), ["todo", "doing", "done", "other"]);
 });
+
+test("views: the assistant shows a screen in a thread, the chat asks what a thread was shown, and a failed view is never recorded as shown", async t => {
+  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen }, broken: { title: "Broken", screen: { v: 2, layout: { block: "x" }, blocks: { x: { type: "nope" } } } } } };
+  const { c } = await world(t, mf);
+  const shown = (await c("views.show", { module: "cards", command: "desk", thread: "t1" })).data;
+  assert.equal(shown.shown, true, JSON.stringify(shown));
+  assert.equal(shown.screen.v, 2);
+  assert.ok(Object.keys(shown.screen.blocks).length <= 3);
+  assert.ok(!JSON.stringify(shown).includes("cards.list"), "ids and titles only");
+  await c("views.show", { module: "cards", command: "board", thread: "t1" });
+  assert.equal((await c("views.show", { module: "cards", command: "broken", thread: "t1" })).data.shown, false);
+  assert.equal((await c("views.show", { module: "cards", command: "desk" })).data.shown, false, "no thread, nothing placed");
+  await c("views.show", { module: "cards", command: "desk", thread: "t1" });
+  const list = (await c("views.shown", { thread: "t1" })).data.screens;
+  assert.deepEqual(list.map((/** @type {any} */ x) => [x.module, x.command]), [["cards", "board"], ["cards", "desk"]], "each once, newest last");
+  assert.deepEqual((await c("views.shown", { thread: "other" })).data.screens, []);
+  const asAgent = await c("views.show", { module: "cards", command: "desk", thread: "t2" }, "mcp");
+  assert.equal(asAgent.error, undefined, JSON.stringify(asAgent.error));
+});

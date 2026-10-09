@@ -12,7 +12,7 @@ import { registerViews } from "../../lib/views/engine.js";
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    registerViews(ctx, { names: { commands: "views.list", view: "views.get", act: "views.act" }, surface: "app", mcp: false });
+    registerViews(ctx, { names: { commands: "views.list", view: "views.get", act: "views.act", show: "views.show", shown: "views.shown" }, surface: "app", mcp: false });
     return { async stop() {} };
   },
 };

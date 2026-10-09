@@ -1048,6 +1048,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer"
  },
  {
+  "tool": "views.show",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a read-only card of a module screen in their chat; the module's tool runs as the asking agent, and an action in it opens the full screen"
+ },
+ {
   "tool": "voice.listen",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a one-use 30 second ticket for the voice listen socket"
  },

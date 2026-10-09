@@ -167,6 +167,7 @@ export const PERSON_ONLY = new Map([
   ["appmods.open", "gives a browser a signed-in session on the app"],
   ["appmods.logs", "an app's logs can carry its users' data"],
   ["views.act", "a view action is the person's click; its outward acts are still held"],
+  ["views.shown", "the chat's own question of what a thread was shown"],
   ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
   ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
   ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
@@ -311,7 +312,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
+  "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",

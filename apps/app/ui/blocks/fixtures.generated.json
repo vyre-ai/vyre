@@ -1561,7 +1561,17 @@
           "value": "Your engagement letter"
          }
         ]
-       }
+       },
+       "actions": [
+        {
+         "id": "a",
+         "title": "Approve"
+        },
+        {
+         "id": "b",
+         "title": "Not now"
+        }
+       ]
       }
      },
      "surface": "app"
@@ -1587,7 +1597,17 @@
           "value": "Your engagement letter"
          }
         ]
-       }
+       },
+       "actions": [
+        {
+         "id": "a",
+         "title": "Approve"
+        },
+        {
+         "id": "b",
+         "title": "Not now"
+        }
+       ]
       }
      },
      "surface": "phone"
@@ -1617,7 +1637,17 @@
           "value": "Your engagement letter"
          }
         ]
-       }
+       },
+       "actions": [
+        {
+         "id": "a",
+         "title": "Approve"
+        },
+        {
+         "id": "b",
+         "title": "Not now"
+        }
+       ]
       }
      },
      "surface": "chat"
@@ -2608,6 +2638,372 @@
         "title": "Engagement letter",
         "kind": "text",
         "text": "Dear Dana, thank you for choosing us."
+       }
+      }
+     },
+     "surface": "chat"
+    }
+   }
+  },
+  "matter": {
+   "title": "Smith matter",
+   "screens": {
+    "full": {
+     "v": 2,
+     "id": "matter",
+     "title": "Smith matter",
+     "layout": {
+      "col": [
+       {
+        "block": "ask"
+       },
+       {
+        "block": "stage"
+       },
+       {
+        "split": [
+         {
+          "block": "cal"
+         },
+         {
+          "block": "team"
+         }
+        ]
+       },
+       {
+        "block": "files"
+       }
+      ]
+     },
+     "blocks": {
+      "ask": {
+       "type": "approval",
+       "content": {
+        "title": "Send the engagement letter",
+        "words": [
+         {
+          "label": "To",
+          "value": "dana@smith.example"
+         },
+         {
+          "label": "Subject",
+          "value": "Your engagement letter"
+         }
+        ]
+       },
+       "actions": [
+        {
+         "id": "send",
+         "title": "Send it",
+         "outward": true
+        },
+        {
+         "id": "hold",
+         "title": "Not now"
+        }
+       ]
+      },
+      "stage": {
+       "type": "stages",
+       "props": {
+        "title": "Where it is"
+       },
+       "content": {
+        "steps": [
+         {
+          "id": "intake",
+          "title": "Intake"
+         },
+         {
+          "id": "sign",
+          "title": "Signing"
+         },
+         {
+          "id": "done",
+          "title": "Done"
+         }
+        ],
+        "current": "sign"
+       }
+      },
+      "cal": {
+       "type": "calendar",
+       "props": {
+        "title": "Coming up"
+       },
+       "content": {
+        "events": [
+         {
+          "id": "1",
+          "date": "2026-10-12",
+          "title": "Closing, Smith"
+         },
+         {
+          "id": "2",
+          "date": "2026-10-14",
+          "title": "Hearing, Lee"
+         }
+        ]
+       }
+      },
+      "team": {
+       "type": "people",
+       "props": {
+        "title": "Who is on it"
+       },
+       "content": {
+        "people": [
+         {
+          "id": "1",
+          "name": "Dana Smith",
+          "role": "Client"
+         },
+         {
+          "id": "2",
+          "name": "Lee Park",
+          "role": "Attorney"
+         }
+        ]
+       }
+      },
+      "files": {
+       "type": "gallery",
+       "props": {
+        "title": "Files"
+       },
+       "content": {
+        "tiles": [
+         {
+          "id": "1",
+          "title": "Floor plan"
+         },
+         {
+          "id": "2",
+          "title": "Photo 1"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "app"
+    },
+    "compact": {
+     "v": 2,
+     "id": "matter",
+     "title": "Smith matter",
+     "layout": {
+      "col": [
+       {
+        "block": "ask"
+       },
+       {
+        "block": "stage"
+       },
+       {
+        "stack": [
+         {
+          "block": "cal"
+         },
+         {
+          "block": "team"
+         }
+        ]
+       },
+       {
+        "block": "files"
+       }
+      ]
+     },
+     "blocks": {
+      "ask": {
+       "type": "approval",
+       "content": {
+        "title": "Send the engagement letter",
+        "words": [
+         {
+          "label": "To",
+          "value": "dana@smith.example"
+         },
+         {
+          "label": "Subject",
+          "value": "Your engagement letter"
+         }
+        ]
+       },
+       "actions": [
+        {
+         "id": "send",
+         "title": "Send it",
+         "outward": true
+        },
+        {
+         "id": "hold",
+         "title": "Not now"
+        }
+       ]
+      },
+      "stage": {
+       "type": "stages",
+       "props": {
+        "title": "Where it is"
+       },
+       "content": {
+        "steps": [
+         {
+          "id": "intake",
+          "title": "Intake"
+         },
+         {
+          "id": "sign",
+          "title": "Signing"
+         },
+         {
+          "id": "done",
+          "title": "Done"
+         }
+        ],
+        "current": "sign"
+       }
+      },
+      "cal": {
+       "type": "list",
+       "props": {
+        "title": "Coming up"
+       },
+       "content": {
+        "rows": [
+         {
+          "id": "1",
+          "title": "Closing, Smith",
+          "subtitle": "2026-10-12"
+         },
+         {
+          "id": "2",
+          "title": "Hearing, Lee",
+          "subtitle": "2026-10-14"
+         }
+        ]
+       }
+      },
+      "team": {
+       "type": "people",
+       "props": {
+        "title": "Who is on it"
+       },
+       "content": {
+        "people": [
+         {
+          "id": "1",
+          "name": "Dana Smith",
+          "role": "Client"
+         },
+         {
+          "id": "2",
+          "name": "Lee Park",
+          "role": "Attorney"
+         }
+        ]
+       }
+      },
+      "files": {
+       "type": "gallery",
+       "props": {
+        "title": "Files",
+        "cols": 2
+       },
+       "content": {
+        "tiles": [
+         {
+          "id": "1",
+          "title": "Floor plan"
+         },
+         {
+          "id": "2",
+          "title": "Photo 1"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "phone"
+    },
+    "glance": {
+     "v": 2,
+     "id": "matter",
+     "title": "Smith matter",
+     "layout": {
+      "col": [
+       {
+        "block": "ask"
+       },
+       {
+        "block": "stage"
+       },
+       {
+        "block": "cal"
+       }
+      ]
+     },
+     "blocks": {
+      "ask": {
+       "type": "approval",
+       "content": {
+        "title": "Send the engagement letter",
+        "words": [
+         {
+          "label": "To",
+          "value": "dana@smith.example"
+         },
+         {
+          "label": "Subject",
+          "value": "Your engagement letter"
+         }
+        ]
+       },
+       "actions": [
+        {
+         "id": "send",
+         "title": "Send it",
+         "outward": true
+        },
+        {
+         "id": "hold",
+         "title": "Not now"
+        }
+       ]
+      },
+      "stage": {
+       "type": "stats",
+       "props": {
+        "title": "Where it is"
+       },
+       "content": {
+        "items": [
+         {
+          "label": "Stage",
+          "value": "Signing"
+         }
+        ]
+       }
+      },
+      "cal": {
+       "type": "list",
+       "props": {
+        "title": "Coming up"
+       },
+       "content": {
+        "rows": [
+         {
+          "id": "1",
+          "title": "Closing, Smith",
+          "subtitle": "2026-10-12"
+         },
+         {
+          "id": "2",
+          "title": "Hearing, Lee",
+          "subtitle": "2026-10-14"
+         }
+        ]
        }
       }
      },

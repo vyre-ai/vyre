@@ -68,6 +68,7 @@ export function ViewHost({ module, view, label, initialQ }: { module: string; vi
     open: (block, row) => void open(row, block),
     act: (block, action, id) => void act({ module, view, action, id: id ?? detailId, q, block }),
     move: (block, row, to) => { const m = moveAction(row, to, row.column, row.actions); if (m) void act({ module, view, block, ...m }); },
+    filter: (_block, text) => { setQ(text); void load(text); },
     submit: (block, form, fields) => void act({ module, view, block, action: "submit", form, fields }),
   };
   const kinds = new Set(Object.values(frame?.blocks ?? {}).map((b) => b.type));

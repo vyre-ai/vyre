@@ -79,7 +79,7 @@ const errors = [];
 /** A fresh context and page for a surface and theme; the browser itself is relaunched when it has died (the shared test box is busy and has killed one mid-run). */
 const open = async (s, t) => {
   if (!browser.isConnected()) browser = await chromium.launch();
-  const ctx = await browser.newContext({ viewport: { width: s.w, height: 900 }, colorScheme: t.scheme, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: s.w, height: 1400 }, colorScheme: t.scheme, reducedMotion: "reduce", deviceScaleFactor: 1 });
   const page = await ctx.newPage();
   page.on("pageerror", (e) => errors.push(String(e)));
   // The static server answers index.html for the service worker's script path: a harness artefact, not the screen's.

@@ -9,5 +9,6 @@ export type Handlers = {
   open?: (block: string, row: any) => void;
   act?: (block: string, action: string, id?: string) => void;
   move?: (block: string, row: any, to: string) => void;
+  filter?: (block: string, q: string, pill: string) => void;
   submit?: (block: string, form: string, values: Record<string, string>) => void;
 };

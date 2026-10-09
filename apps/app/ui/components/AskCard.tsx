@@ -37,7 +37,7 @@ export function AskCard({ lead, title, why, tags, actions = [], needsYou = true,
           {children}
           {actions.length ? (
             <View className={stack ? "gap-s2 pt-s2" : "flex-row flex-wrap gap-s2 pt-s1"}>
-              {actions.map((a, i) => <Button key={a.label} size={big && !phone ? "md" : "sm"} {...a} kind={a.kind ?? (i === 0 ? "primary" : "ghost")} className={stack ? "self-stretch" : undefined} />)}
+              {actions.map((a, i) => <Button key={a.label} size={big || phone ? "md" : "sm"} {...a} kind={a.kind ?? (i === 0 ? "primary" : "ghost")} className={stack ? "self-stretch" : undefined} />)}
             </View>
           ) : null}
         </View>

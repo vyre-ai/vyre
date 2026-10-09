@@ -10,6 +10,7 @@ import { Board } from "../components/Board";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/States";
 import { ActionsBlock, BannerBlock, ChartBlock, DetailBlock, DocumentBlock, EmptyBlock, FormBlock, KeyValueBlock, ListBlock, StatsBlock, SummaryBlock, TableBlock, TextBlock, TimelineBlock, ActionBar } from "./BlockViews";
+import { ActivityBlock, ApprovalBlock, CalendarBlock, FilterBlock, GalleryBlock, MapBlock, PeopleBlock, StagesBlock } from "./BlockViews2";
 import type { Block, Handlers, Node, Screen } from "./types";
 
 /** data-* attributes on the web, so a picture test and a scoped custom style can find a block; the native views ignore them. */
@@ -32,6 +33,8 @@ function BoardBlock({ k, b, h }: { k: string; b: Block; h: Handlers }) {
 const DRAW: Record<string, (p: { k: string; b: Block; h: Handlers }) => React.ReactNode> = {
   list: (p) => <ListBlock {...p} />, board: (p) => <BoardBlock {...p} />, summary: (p) => <SummaryBlock {...p} />, detail: (p) => <DetailBlock {...p} />, form: (p) => <FormBlock {...p} />,
   stats: (p) => <StatsBlock {...p} />, keyvalue: (p) => <KeyValueBlock {...p} />, table: (p) => <TableBlock {...p} />, timeline: (p) => <TimelineBlock {...p} />, chart: (p) => <ChartBlock {...p} />,
+  calendar: (p) => <CalendarBlock {...p} />, stages: (p) => <StagesBlock {...p} />, people: (p) => <PeopleBlock {...p} />, activity: (p) => <ActivityBlock {...p} />, approval: (p) => <ApprovalBlock {...p} />,
+  gallery: (p) => <GalleryBlock {...p} />, map: (p) => <MapBlock {...p} />, filter: (p) => <FilterBlock {...p} />,
   document: (p) => <DocumentBlock {...p} />, text: (p) => <TextBlock {...p} />, empty: (p) => <EmptyBlock {...p} />, banner: (p) => <BannerBlock {...p} />, actions: (p) => <ActionsBlock {...p} />,
 };
 export const DRAWN_TYPES = Object.keys(DRAW);
@@ -43,7 +46,7 @@ function Leaf({ k, screen, h }: { k: string; screen: Screen; h: Handlers }) {
   return (
     <View testID={`block-${k}`} {...ds({ block: k })} className="min-w-0">
       {draw ? draw({ k, b, h }) : <Text size="caption" tone="label">{`${b.type} is not drawn here yet.`}</Text>}
-      {b.type !== "actions" && b.type !== "list" && b.type !== "board" && b.type !== "detail" && b.actions?.length ? <View className="mt-s3"><ActionBar k={k} actions={b.actions} h={h} /></View> : null}
+      {b.type !== "actions" && b.type !== "approval" && b.type !== "list" && b.type !== "board" && b.type !== "detail" && b.actions?.length ? <View className="mt-s3"><ActionBar k={k} actions={b.actions} h={h} /></View> : null}
     </View>
   );
 }
