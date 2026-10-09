@@ -346,6 +346,7 @@
  "core/settings/hub.test.js": 14,
  "core/settings/settings.test.js": 29,
  "core/sight/sight.test.js": 15,
+ "core/skills/skills.test.js": 6,
  "core/space-sessions/budget.test.js": 3,
  "core/space-sessions/space-sessions.test.js": 6,
  "core/spaces/identity-ops.test.js": 11,

@@ -266,6 +266,7 @@ Claude Code and other sessions, the agents you name, and how they run.
 | `providers` | `core/providers/` | box and local | Every session provider on this machine, with its accounts and models. |
 | `runner` | `core/runner/` | local and box | Runs a Space's AI sessions on a computer: sandboxed, in an encrypted workspace. |
 | `sessions` | `core/sessions/` | box and local | How the sessions Vyre starts run: drivers, status and system prompts. |
+| `skills` | `core/skills/` | box and local | Find the skills a session may use for what it is about to do: skills.find, skills.list, skills.get, cut by permission. |
 | `stream` | `core/stream/` | box and local | The session stream: what the switchboard's threads emit, for every surface. |
 | `threads` | `core/switchboard/` | box and local | Headless Claude Code sessions streamed to every surface, one keyboard at a time (the `threads` module). |
 | `sync` | `core/sync/` | box and local | A paired Mac or Windows PC sends its own session files to the server. |

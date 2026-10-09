@@ -3,6 +3,7 @@
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
 ## Unreleased
+- feat(skills): skills.find, skills.list and skills.get (core/skills): the skills a session may use, found by what it is about to do with the docs ranker (lib/docs-rank.js, the one text ranker for docs, skills and tools.find). Sources: Vyre's own, the person's installed (account), a project's, an agent's; what a caller sees is cut by the permission system (projects.reach and lib/caller), so a skill it may not use is not listed, ranked or readable. The three rough token counts (the native assistant's situation, the context rollover, the head-to-head eval) now share lib/tokens.js.
 - feat(docs): docs.find and docs.read, one core docs tool (core/docs): docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section, within a token budget. A person gets the human docs; a session or an agent also gets the new agent docs (docs/agents, 14 pages, audience agents only, never published, never offered to a person; much of each page is generated from the code and a budget test holds each page to its size). Three tips teach it.
 
 ## 0.3.0 (9 Oct 2026)

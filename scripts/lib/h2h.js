@@ -2,6 +2,7 @@
 // The head-to-head's pure parts (scripts/eval-h2h.js): token and price arithmetic, the notes
 // writers' prompts, the arms' contexts, BM25 over turns, the pointer index and the scoring.
 // Nothing here calls a model or reads a key: a `Model` is passed in.
+import { tokens } from "../../lib/tokens.js";
 
 /** USD per million tokens, OpenRouter's public prices (an assumption: the live run reads each call's own cost). */
 export const PRICES = {
@@ -10,7 +11,7 @@ export const PRICES = {
 };
 export const DEFAULT_MODEL = "anthropic/claude-haiku-4.5";
 /** A rough token count: four characters a token. */
-export const tokensOf = (/** @type {string} */ s) => Math.ceil(String(s || "").length / 4);
+export const tokensOf = (/** @type {string} */ s) => tokens(String(s || ""));
 /** What one call costs at a model's prices. */
 export function priceOf(model, tin, tout) {
   const p = /** @type {any} */ (PRICES)[model] || PRICES[DEFAULT_MODEL];
