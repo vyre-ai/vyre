@@ -26,18 +26,24 @@ version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 # An install has no VERSION file until its first update, so until then the running image's version is the record.
 hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
-mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
+# The seed is two files in the box's home volume, which an update (or a refused one) must leave as it is. (Planner and personal memory need the record store and a person's chain,
+# neither of which a bare CI box has, so they cannot be the seed here.) seen/mem read them back through the running container.
+seen() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
+mem() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | grep -q 'Robin'; }
 statusf() { sudo cat "$ST/status/status.json" 2>/dev/null | tr -d '\n'; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
 
-# A throwaway signing key: the private half signs, the public half (SPKI, base64) is what the box is told to trust.
-node -e '
+# A throwaway signing key: the private half signs, the public half (SPKI, base64) is what the box is told to trust. With J2B_KEYDIR the candidate was already pinned to and signed with that
+# key (scripts/matrix/j2-pin-key.mjs), so its modules boot; without it a key is made here and the candidate's modules cannot boot.
+if [ -n "${J2B_KEYDIR:-}" ] && [ -s "$J2B_KEYDIR/good.pem" ]; then cp "$J2B_KEYDIR/good.pem" "$J2B_KEYDIR/good.pub" "$WORK"/
+else node -e '
 const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");
 const o=process.argv[1];
 fs.writeFileSync(o+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));
-fs.writeFileSync(o+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));
+fs.writeFileSync(o+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"; fi
+node -e '
+const c=require("crypto"),fs=require("fs");const o=process.argv[1];
 const k2=c.generateKeyPairSync("ed25519");fs.writeFileSync(o+"/other.pem",k2.privateKey.export({type:"pkcs8",format:"pem"}));' "$WORK"
 GOODPUB=$(cat "$WORK/good.pub")
 sign() { # sign DIR KEYPEM: SHA256SUMS.sig = base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes
@@ -79,12 +85,11 @@ refused() { # a third word, nostatus: a hand-run update does not write the statu
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
 # 1 install the candidate, fill it
 serve "$BOX" 18080
-if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
-else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
+if VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
+else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; { echo "--- vyre status"; vyre status 2>&1 | head -40; echo "--- container logs"; docker logs --tail 80 vyre-vyre-1 2>&1; } >"$OUT/install-diag.log"; tail -120 "$OUT/install-diag.log" >&2; exit 1; fi
 wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
-vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
-vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
-seen && mem && rec 2-seed ok || rec 2-seed false "seed not readable"
+docker exec -u vyre vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >"$OUT/seed.log" 2>&1; cat "$OUT/seed.log" >&2; docker ps --format '{{.Names}} {{.Status}}' >&2
+seen && mem && rec 2-seed ok || { vyre status 2>&1 | head -8 >&2; vyre modules 2>&1 | grep -v running | head -20 >&2; docker logs --tail 40 vyre-vyre-1 2>&1 | grep -iE "planner|memory|not first party|kernel" | head -15 >&2; false; } || rec 2-seed false "seed not readable"
 # 2b where the installer's own first `up` ran compose from: recorded as it is (the installer runs it as the person when they are in the docker
 #    group, so this is the stack folder; root's copies exist only once the updater is installed, which is the next step)
 rec 2b-first-up-working-dir ok "compose ran from $(wdir)"
@@ -148,7 +153,9 @@ mk other 9.9.9-e2e.1 other; offer other; ask $PORT "$GOODPUB"; refused 5b-wrong-
 mk badsig 9.9.9-e2e.1 badsig; offer badsig; ask $PORT "$GOODPUB"; refused 5c-signature-over-other-bytes 'signature does not match'
 mk tamper 9.9.9-e2e.1 tamper; offer tamper; ask $PORT "$GOODPUB"; refused 5d-signed-file-tampered 'checksum|sha256|does not match'
 # 5e the pinned key stays the default: a release signed by the throwaway key is refused when no override is given
-mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-default 'does not match|not signed'
+# 5e needs a pinned key that is NOT the one the release is signed with. When the candidate is pinned to the throwaway key (J2B_KEYDIR, so its modules boot) a release signed by it is the right
+# signer, so the default-pin case is the wrong-signer case (5b) and is not repeated here.
+if [ -z "${J2B_KEYDIR:-}" ]; then mk good 9.9.9-e2e.1 good; offer good; ask $PORT ""; refused 5e-pinned-key-default 'does not match|not signed'; else rec 5e-pinned-key-default ok "covered by 5b: the candidate is pinned to the throwaway key"; fi
 # 6 downgrade: a correctly signed release older than what the box runs
 mk old 0.0.1-e2e.1 good; offer old; ask $PORT "$GOODPUB"; refused 6-downgrade 'never goes back'
 # 6b the same version's earlier prerelease is a downgrade too (#15): the compare used to ignore the suffix
@@ -162,7 +169,7 @@ wd=$(wdir)
 [ "$wd" = "$ST/private/run" ] && rec 7c-root-update-ran-from-root-copy ok "working_dir $wd" || rec 7c-root-update-ran-from-root-copy false "working_dir '$wd', want $ST/private/run"
 [ "$priv" = false ] && rec 7b-edited-compose-not-run ok "the running vyre container is not privileged" || rec 7b-edited-compose-not-run false "privileged='$priv'"
 if [ $rc -eq 0 ] && [ "$v" = "9.9.9-e2e.1" ] && seen && mem && printf '%s' "$s" | grep -q '"state":"ok"'; then rec 7-signed-update ok "$V0 to $v"
-else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; fi
+else rec 7-signed-update false "rc $rc, runs '$v', status '$s': $(printf %s "$out" | tail -4)"; printf '%s\n' "$out" | tail -40 >&2; docker logs --tail 60 vyre-vyre-1 2>&1 | tail -40 >&2; fi
 # 8 now the floor is 9.9.9: the candidate's own, validly signed version is an old release and is refused
 V0=9.9.9-e2e.1
 mk back "$(tr -d ' \r\n' <"$BOX/VERSION")" good; offer back; ask $PORT "$GOODPUB"; refused 8-floor-after-update 'never goes back'
