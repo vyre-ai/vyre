@@ -200,9 +200,10 @@ export async function evalMain(ctx) {
       if (arm === "plain-a2" && task.check === "heldout_todo") todos.titles = todos.titles.map((t) => t.replace(/^\S+\s*\|\s*/, ""));
     }
     const run = parseStream(stream);
-    const { processes, model: seen } = initsOf(stream);
+    const { model: seen, models } = initsOf(stream);
+    const processes = arm === "vyre" ? readRun(tee, true).length : 1;
     const fresh = !/SessionStart:resume/.test(stream);
-    invalid.push(...guards({ fresh, processes, model: seen }, { model: standIn ? "" : model, processes: arm === "vyre" ? [1, 2] : 1 }));
+    invalid.push(...guards({ fresh, processes, model: seen, models }, { model: standIn ? "" : model, processes: arm === "vyre" ? [1, 2] : 1 }));
     if (!run.text.trim() && !standIn) invalid.push("the run ended with no answer text");
     const verdict = CHECKS[task.check]({ text: run.text, calls: run.calls, todos: todos.titles, todoIds: todos.ids, hits: [...vendorHits], expect: expectA });
     // a task with no plain equivalent is measured as given, not given invented data
@@ -247,9 +248,10 @@ export async function evalMain(ctx) {
     }
     const parts = readRun(tee, true);
     const stream = parts.join("");
-    const { processes, model: seen } = initsOf(stream);
+    const { model: seen, models } = initsOf(stream);
+    const processes = parts.length;
     const fresh = !/SessionStart:resume/.test(parts[0] || "");
-    invalid.push(...guards({ fresh, processes, model: seen, rolled, compacted }, { model: standIn ? "" : model, processes: arm.processes, roll: arm.roll === "none" ? null : arm.roll }));
+    invalid.push(...guards({ fresh, processes, model: seen, models, rolled, compacted }, { model: standIn ? "" : model, processes: arm.processes, roll: arm.roll === "none" ? null : arm.roll }));
     const todos = await todoNow();
     for (const m of B.messages.filter((/** @type {any} */ x) => x.kind === "question")) verdicts[m.id] = B_CHECKS[m.check]({ text: answers[m.id] || "", calls: [], todos: todos.titles, hits: [...vendorHits], expect: { secondId } });
     const failed = Object.entries(verdicts).filter(([, v]) => !v.pass).map(([k]) => k);

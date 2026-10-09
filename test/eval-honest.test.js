@@ -4,7 +4,7 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, KEY } from "../scripts/lib/eval-honest.js";
+import { initsOf, sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, KEY } from "../scripts/lib/eval-honest.js";
 import { loadSealed } from "../scripts/eval-honest/run.mjs";
 
 test("the pre-registration is sealed: prereg.json and heldout.json hash to PREREG.sha256, so a change after sealing is caught", () => {
@@ -109,4 +109,11 @@ test("the report lists every run, the invalid and the failed included, with the 
   assert.match(md, /\| plain-a1 \| ten \| 1 \| 0 \| 1 \| 0 \| 0 \|/);
   assert.match(md, /abc123/);
   assert.match(md, /vyre PFxP|vyre .*P/);
+});
+
+test("initsOf counts init events and models, not processes: ten messages in one process is ten inits and one model", () => {
+  const one = JSON.stringify({ type: "system", subtype: "init", model: "m" });
+  const r = initsOf(Array(10).fill(one).join("\n"));
+  assert.deepEqual([r.inits, r.model, r.models], [10, "m", ["m"]]);
+  assert.equal(guards({ fresh: true, processes: 1, model: "m", models: ["m", "other"] }, { model: "m", processes: 1 }).length, 1, "a model change mid-run is invalid");
 });
