@@ -25,6 +25,7 @@ test("there are fifteen tasks, each with a fixed prompt, a tool to look for and 
   assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill", "chain", "biglist", "long", "repeat", "both"]);
   for (const t of TASKS) assert.ok(t.prompt.length > 20 && t.tools.length && t.seed, t.id);
   assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 15);
+  assert.ok(TASKS.find((t) => t.id === "long")?.followUp, "the long task is two messages, because a window rolls over only between turns");
   assert.deepEqual(TASKS.filter((t) => t.batch).map((t) => t.id), ["chain", "biglist", "both"]);
 });
 

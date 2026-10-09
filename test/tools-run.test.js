@@ -458,3 +458,11 @@ test("results by reference is off in a real session and on only when VYRE_MCP_FE
   assert.deepEqual(featuresOf("none"), { run: false, ref: false });
   void listing; void catalogOf;
 });
+
+test("results by reference: the summary of a list keeps the signals next to it (more, next_cursor, capped_at), so a model that reads only the summary knows there is more", async () => {
+  const { createStore } = await import("../lib/results-store.js");
+  const store = createStore({ threshold: 10 });
+  const rows = Array.from({ length: 25 }, (_, i) => ({ id: `r${i}`, data: { n: i } }));
+  const s = store.shape("o", { result: { ok: true, type: "matter", records: rows, more: true, next_cursor: "abc" }, component: {} });
+  assert.deepEqual(s.ref.summary.head.meta, { ok: true, type: "matter", more: true, next_cursor: "abc" });
+});
