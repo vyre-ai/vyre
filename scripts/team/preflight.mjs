@@ -115,9 +115,37 @@ if (!STATIC) {
   for (const g of GENERATORS) spawnSync(process.execPath, g, { stdio: "ignore" });
   const list = [...tests];
   console.log(`preflight: running ${list.length} test files (${GUARDS.length} guards + ${list.length - GUARDS.length} touched)`);
-  const r = spawnSync(process.execPath, ["scripts/test-counts.mjs", "run", ...list], { stdio: "inherit", env: { ...process.env, VYRE_TEST_FILE_LIMIT_MS: process.env.VYRE_TEST_FILE_LIMIT_MS || "240000" } });
-  testsOk = r.status === 0;
-  if (!testsOk) fail("T2", "tests failed (above). A guard that fails names its rule; a touched test that fails is yours to fix. A red that is not yours: say so in your queue note with the file name, and do not queue until the lead rules.");
+  const r = spawnSync(process.execPath, ["scripts/test-counts.mjs", "run", ...list], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024, env: { ...process.env, VYRE_TEST_FILE_LIMIT_MS: process.env.VYRE_TEST_FILE_LIMIT_MS || "240000" } });
+  process.stdout.write(r.stdout || ""); process.stderr.write(r.stderr || "");
+  // The files that failed, or ran fewer tests than recorded, from the runner's own summary.
+  /** @type {Set<string>} */ const red = new Set();
+  let section = "";
+  for (const l of `${r.stdout}\n${r.stderr}`.split("\n")) {
+    if (/^test-counts: (files that failed|tests that did not run)/.test(l)) { section = "x"; continue; }
+    if (section && /^  \S/.test(l)) { red.add(l.trim().replace(/:.*$/, "")); continue; }
+    section = "";
+  }
+  if (r.status !== 0 && !red.size) red.add("(the runner failed; see above)");
+  // A red that is also red on the integration tip without this branch is not this branch's: it is reported, not blocking.
+  /** @type {string[]} */ const baseRed = [];
+  if (red.size && !red.has("(the runner failed; see above)")) {
+    const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-base-"));
+    try {
+      execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
+      for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
+      for (const g of GENERATORS) spawnSync(process.execPath, g, { cwd: tmp, stdio: "ignore" });
+      for (const f of red) {
+        if (!fs.existsSync(path.join(tmp, f))) continue;
+        const b = spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 });
+        if (b.status !== 0) baseRed.push(f);
+      }
+    } catch (e) { warns.push(`could not check the base for its own reds (${String(e).slice(0, 120)}); every red counts as yours`); }
+    finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* left for git worktree prune */ } }
+  }
+  const mineRed = [...red].filter(f => !baseRed.includes(f));
+  testsOk = !mineRed.length;
+  if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by install-proof's list, not blocking you):\n    ${baseRed.join("\n    ")}`);
+  if (!testsOk) fail("T2", `red because of this branch:\n    ${mineRed.join("\n    ")}\n  A guard names its rule in its message; fix the cause, never loosen the guard.`);
 
   // App types: only errors in files this branch touched count against it.
   if (existing.some(f => /^(apps\/app|lib)\//.test(f)) && fs.existsSync("apps/app/node_modules")) {
