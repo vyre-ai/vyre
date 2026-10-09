@@ -11,6 +11,7 @@
 // upgrade must come from the same caller (and device, where the router names one) or it is refused.
 
 import crypto from "node:crypto";
+import { refuseKey } from "../../lib/secure-paste.js";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serve, serveWS } from "./server.js";
@@ -259,6 +260,7 @@ export default {
       description, input, callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!groups) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
+        if (method === "send") refuseKey(i.text); // appended to the chat first, so refused before it is written
         await kernelGate(i, meta);
         return /** @type {any} */ (groups)[method](i, meta);
       },

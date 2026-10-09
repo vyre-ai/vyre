@@ -13,6 +13,7 @@
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
 import { newId } from "../../lib/id.js";
+import { refuseKey } from "../../lib/secure-paste.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -3930,6 +3931,7 @@ export default {
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
       async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
         guard(caller, "start sessions");
+        if (!firstParty) refuseKey(i.prompt); // a person's or a model's first words; a first-party module's own prompts are scrubbed where they are made
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
         // on a thread's behalf) the id it names. Anyone else's claim is dropped, never believed.
@@ -4088,6 +4090,7 @@ export default {
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
+        refuseKey(i.text); // a key never reaches a model, from any surface (lib/secure-paste.js)
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
@@ -4320,6 +4323,7 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { ...EDIT_SHAPE, text: str } },
       async (i, { caller, idempotencyKey, peer }) => {
         guard(caller, "edit and retry messages");
+        refuseKey(i.text);
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can edit and retry a message"), { code: "denied" });
         return sb.editRetry(i.thread, i.message || null, String(i.text), { restore: i.restore || "conversation", surface: surfaceOf(i, caller), author: authorOf(peer), admin: isAdminCall(peer), ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });

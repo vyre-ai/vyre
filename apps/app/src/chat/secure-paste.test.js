@@ -3,6 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { secureSecrets, partsOf, nameFor } from "./secure-paste.js";
+import { keyInText, refuseKey } from "../../../../lib/secure-paste.js";
 
 // Built at run time so this file holds no string a scanner reads as a real key.
 const anthropic = "sk-" + "ant-" + "a1B2".repeat(8);
@@ -70,4 +71,15 @@ test("ordinary ids, hashes and prose are left alone", async () => {
 test("partsOf splits a message at its Vault references", () => {
   assert.deepEqual(partsOf("use vault://anthropic-key now"), [{ text: "use " }, { vault: "anthropic-key" }, { text: " now" }]);
   assert.deepEqual(partsOf("plain"), [{ text: "plain" }]);
+});
+
+test("the server's check: a key is refused with the kind named and never the value; a vault reference and prose pass", () => {
+  const r = keyInText(`my key ${anthropic}`);
+  assert.equal(r?.code, "secret_in_message");
+  assert.deepEqual(r?.detail.found, [{ label: "Anthropic key" }]);
+  assert.ok(!JSON.stringify(r).includes(anthropic));
+  assert.equal(keyInText("use vault://anthropic-key for the deploy"), null);
+  assert.equal(keyInText(""), null);
+  assert.equal(keyInText(undefined), null);
+  assert.throws(() => refuseKey(pem), (e) => /** @type {any} */ (e).code === "secret_in_message");
 });
