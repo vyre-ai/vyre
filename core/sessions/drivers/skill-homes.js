@@ -5,7 +5,7 @@
 // `also` lists other project folders the harness is known to read (not used for placement; a sign that one shared folder could serve several harnesses later).
 //   claude  Claude Code's own.
 //   codex   VERIFIED against Codex CLI 0.159.3 (`codex debug prompt-input`, no model call): a project .codex/skills/<name>/SKILL.md and a project .agents/skills/<name>/SKILL.md are both listed to the model.
-//   grok    DOCUMENTED, not run (docs.x.ai/build/features/skills-plugins-marketplaces, page dated 11 Aug 2026): ./.grok/skills/ walked up to the repo root, ~/.grok/skills/, ~/.agents/skills/ (user level),
+//   grok    FROM DOCS, NOT RUN (counts as verified only after a real run, which waits on an xAI login). DOCUMENTED (docs.x.ai/build/features/skills-plugins-marketplaces, page dated 11 Aug 2026): ./.grok/skills/ walked up to the repo root, ~/.grok/skills/, ~/.agents/skills/ (user level),
 //           any enabled plugin's skills/, and extra [skills] paths in ~/.grok/config.toml; Claude Code's .claude/skills is read too. The layout <name>/SKILL.md matches a recorded real session
 //           (core/sessions/testing/real/grok/00-handshake.ndjson: ~/.grok/bundled/skills/<name>/SKILL.md). Not yet confirmed by running the CLI: the Grok Build binary is not installed on the test box.
 /** @type {Record<string, { dir: string, file: string, also?: string[] }>} */
