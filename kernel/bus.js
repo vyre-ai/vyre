@@ -10,13 +10,14 @@ import { randomBytes } from "node:crypto";
 import { createEventLog } from "./core/events.js";
 import { createChainBuilder } from "./core/chain.js";
 import { createKernelSeal } from "./core/seal.js";
+import { credentialAtTokenStart } from "../lib/credential-shapes.js";
 
 const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 
 // A deliberately blunt check. It refuses the obvious shapes (key=value secrets, long tokens with
 // known prefixes); the vault's own redactor is stricter and is what the vault module uses.
 // A token prefix counts only at the start of a token (not inside a longer word or a random id, where "sk-" or "AKIA" turn up by chance: FL-1), and the prefixes are case-sensitive as the providers issue them.
-const SECRET_PREFIX = /(?<![A-Za-z0-9_-])(?:sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16})/;
+const SECRET_PREFIX = { test: credentialAtTokenStart };   // a vendor key that begins a token (lib/credential-shapes.js)
 const SECRET_SHAPE = /-----BEGIN [A-Z ]*PRIVATE KEY-----|"(?:password|secret|token|api_?key)"\s*:\s*"[^"]{6,}"/i;
 const LOOKS_SECRET = { test: (/** @type {string} */ json) => SECRET_PREFIX.test(json) || SECRET_SHAPE.test(json) };
 

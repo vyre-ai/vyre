@@ -1,3 +1,4 @@
+import { mentionsCredentialPrefix } from "../../lib/credential-shapes.js";
 // @ts-check
 // waiting: one "waiting on you" (docs/adr/0036-one-system.md, section 4).
 //
@@ -35,7 +36,7 @@ const WATCH = [
 // A title reaches every device and the lock screen. The owners redact what they store, but a
 // Bash ask's summary is the command as typed, so a line shaped like a credential goes whole.
 const SECRET = [
-  /(sk-|ghp_|gho_|xox[abprs]-|AKIA|-----BEGIN)/,
+  { test: (/** @type {string} */ s) => mentionsCredentialPrefix(s) },   // a key prefix anywhere (lib/credential-shapes.js)
   /[A-Za-z0-9_+/=-]{32,}/,
   /\b(password|passwd|secret|token|api[_-]?key)\s*[=:]/i,
 ];

@@ -9,24 +9,18 @@ import { redact, scan } from "../lib/sanitize.js";
 import { secretIn } from "../core/memory/write.js";
 import { scanText } from "../core/sync/scrub.js";
 import { findInSource } from "./source-files.js";
+import { text as extensionRedact } from "../local/hands-chrome-mac/extension/shared/redact.js";
+import { startsLikeCredential, mentionsCredentialPrefix, credentialAtTokenStart } from "../lib/credential-shapes.js";
 
-/** Where a vendor prefix is still written by hand, and why. Each is a decision, not an oversight; shrinking this list is the way to finish the job. */
+/** Where a vendor prefix is still written by hand, and why. Each is a decision, not an oversight; the other runtimes are held to the table by the parity checks below. */
 const ALLOWED = new Map([
   ["lib/credential-shapes.js", "the one table"],
   ["local/hands-chrome-mac/extension/shared/sk/", "generated from lib/credential-shapes.js (scripts/sync-sk.mjs, test/sk-sync.test.js)"],
-  ["core/about/index.js", "drops a whole line on a bare prefix; blunter than the shapes on purpose"],
-  ["core/waiting/index.js", "drops a whole title on a bare prefix; blunter than the shapes on purpose"],
-  ["kernel/bus.js", "the kernel's event-payload guard (FL-1): token-start rule and its own thresholds"],
-  ["core/mcp/hub.js", "a header value that merely starts like a key is refused"],
-  ["core/vault/sweep.js", "a prefix gate in front of classify()"],
-  ["core/vault/providers.js", "per-provider field patterns of the Add form (loose shape checks)"],
-  ["core/onboard/index.js", "Anthropic's sign-in token kinds (oat / api), a product word, not a scanner"],
-  ["core/onboard/setup-token.js", "Anthropic's setup-token shape, read from `claude setup-token` output"],
-  ["lib/spaces/vps.js", "the DigitalOcean driver's own error scrub"],
-  ["modules/vault-extension/keyfind.js", "runs in a web page and cannot import lib/; keyfind.test.js holds it to classify()"],
+  ["core/onboard/index.js", "names Anthropic's two sign-in token KINDS (setup token and API key) for the picker; the table has one Anthropic row and does not distinguish them"],
+  ["modules/vault-extension/keyfind.js", "runs in a web page and cannot import lib/; keyfind.test.js holds every row to classify()"],
   ["modules/vault-extension/testing/", "browser checks that mint fake keys"],
-  ["local/hands-chrome-mac/extension/shared/redact.js", "runs in the extension; names-only redaction of browser secrets"],
-  ["apps/app/screens/connections/model.ts", "runs in the phone app (no Buffer); redacts a connection's error text"],
+  ["local/hands-chrome-mac/extension/shared/redact.js", "runs in the extension; the parity check below holds it to the table"],
+  ["apps/app/screens/connections/model.ts", "runs in the phone app (no Buffer, TypeScript); redacts a connection's error text"],
   ["apps/app/screens/vault/data.ts", "mock data for screenshots"],
   ["web/onboard/onboard.js", "a placeholder in an input box"],
   ["core/runner/testing/", "test support: fake secrets"],
@@ -59,10 +53,10 @@ test("every consumer sees a key the table knows", () => {
     assert.notEqual(redact(`token ${key} here`).text, `token ${key} here`, `sanitize.redact: ${where}`);
     assert.ok(scan(`token ${key} here`).length > 0, `sanitize.scan: ${where}`);
     assert.ok(findSecrets(`a\n${key}\nb`).length > 0, `findSecrets (share): ${where}`);
-    assert.equal(scanText(key).safe, vendor === "npm", `sync scanText: ${where}`);
+    assert.equal(scanText(key).safe, false, `sync scanText: ${where}`);
     assert.ok(redactShapes(`has ${key} inside`).includes(key) === false, `shapes redact: ${where}`);
   }
-  for (const k of ["anthropic", "github", "slack", "aws", "stripe", "google"]) assert.ok(secretIn(`see ${fake[k]}`), `memory write refuses ${k}`);
+  for (const k of ["anthropic", "github", "slack", "aws", "stripe", "google", "npm"]) assert.ok(secretIn(`see ${fake[k]}`), `memory write refuses ${k}`);
 });
 
 test("the table and its consumers agree on what is listed", () => {
@@ -73,4 +67,19 @@ test("the table and its consumers agree on what is listed", () => {
     for (const f of finders(use)) assert.ok(!f.re.global, `${use}/${f.name}: matchers are stateless`);
   }
   assert.equal(credentialIn("nothing to see: plain words, an id 12345 and a hash deadbeef", "ingest"), null);
+});
+
+test("the extension's own redactor removes every vendor key the table knows", () => {
+  for (const [vendor, key] of Object.entries(fake)) assert.ok(!extensionRedact(`see ${key} here`).includes(key), `extension redact: ${vendor}`);
+});
+
+test("the prefix checks (hub, sweep, about, waiting, the event bus) see the table's vendor prefixes", () => {
+  for (const [vendor, key] of Object.entries(fake)) {
+    assert.equal(startsLikeCredential(key), true, `startsLikeCredential: ${vendor}`);
+    assert.equal(mentionsCredentialPrefix(`a title ${key.slice(0, 12)}`), true, `mentionsCredentialPrefix: ${vendor}`);
+    assert.equal(credentialAtTokenStart(`{"x":"${key}"}`), true, `credentialAtTokenStart: ${vendor}`);
+  }
+  assert.equal(credentialAtTokenStart("task-" + "a".repeat(30)), false, "a prefix inside a longer word is not a key (FL-1)");
+  assert.equal(startsLikeCredential("a sentence about keys"), false);
+  assert.equal(mentionsCredentialPrefix("Bearer is just a word here"), false);
 });

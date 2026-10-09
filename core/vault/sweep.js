@@ -16,7 +16,7 @@ import path from "node:path";
 import os from "node:os";
 import readline from "node:readline";
 import { spawn } from "node:child_process";
-import { classify } from "../../lib/credential-shapes.js";
+import { classify, startsLikeCredential, isKnownShape } from "../../lib/credential-shapes.js";
 import { SKIP_DIRS } from "./envfiles.js";
 
 /**
@@ -29,7 +29,7 @@ const MIN_VALUE = 10;
 /** Characters that split a line into tokens. A value holding one of them is searched as a substring. */
 const SEP = /[\s"'`=:,;(){}[\]<>|\\@/?&#]+/;
 /** Token shapes worth handing to credential-shapes.js. Anything else is not a known credential shape. */
-const SHAPE = /^(sk-|sk_|rk_|whsec_|ghp_|gho_|ghu_|ghs_|ghr_|github_pat_|glpat-|xox[abpre]-|xapp-|AKIA|ASIA|AIza|GOCSPX-|ya29\.|SG\.|re_|key-|npm_|pypi-|hf_|dop_v1_|shpat_|shpss_|sq0|lin_api_|secret_|ntn_|pat[A-Za-z0-9]{10}|pcsk_|jina_|apify_api_|sb_secret_|eyJ)/;
+const SHAPE = { test: (/** @type {string} */ tok) => startsLikeCredential(tok) || isKnownShape(tok) || tok.startsWith("eyJ") };   // lib/credential-shapes.js: a vendor prefix, or a whole shape the table knows
 
 /**
  * The vault's values, ready to search. Short or trivial values are left out: a 6-character

@@ -8,9 +8,10 @@
 // can hold the token, so it is never logged, returned or put in an error (floor rule 8).
 
 import { spawn } from "node:child_process";
+import { findRegExp } from "../../lib/credential-shapes.js";
 
 const AUTHORIZE = /https:\/\/[^\s\x07\x1b"'<>]*\/oauth\/authorize\?[^\s\x07\x1b"'<>]+/;
-const TOKEN = /sk-ant-oat01-[A-Za-z0-9_-]{20,}/;
+const TOKEN = findRegExp("anthropic-oat");
 const MAX = 256 * 1024;
 const RELAY = `import os, pty, select, sys
 pid, fd = pty.fork()
