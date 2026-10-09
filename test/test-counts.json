@@ -950,5 +950,5 @@
  "test/tools-budget.test.js": 3,
  "test/tools-find-quality.test.js": 2,
  "test/tools-text-names.test.js": 6,
- "test/token-proof.test.js": 6
+ "test/token-proof.test.js": 7
 }

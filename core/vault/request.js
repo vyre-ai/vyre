@@ -798,13 +798,21 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
 /**
+ * DEVELOPMENT ONLY: a stand-in network for the vendor calls (the transport and the DNS lookup), set by code running in the same process as the daemon (the token proof's seeded world, scripts/token-proof-world.mjs)
+ * so a fake vendor on this machine can answer. It is honoured only while VYRE_SEAL_DEV=1 (a development build's switch, never set in a release build), and nothing outside the process can set it:
+ * there is no file, setting or request that reaches it. Every check on the address still runs against what the injected lookup returns.
+ * @type {{ deps: RequestDeps | null }}
+ */
+export const devNet = { deps: null };
+
+/**
  * @param {{ vault: import("./vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void,
  *   internal: (name: string, description: string, input: any, run: Function) => void,
  *   call?: (tool: string, input: any) => Promise<any>, said?: any, deps?: RequestDeps, log?: (m: string) => void }} o
  */
 export function register({ vault, tool, internal, call, said, deps = {}, log }) {
-  const api = new ApiRequests(vault, { call, said, log, ...deps });
+  const api = new ApiRequests(vault, { call, said, log, ...deps, ...(devNet.deps && process.env.VYRE_SEAL_DEV === "1" ? devNet.deps : {}) });
 
   internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),

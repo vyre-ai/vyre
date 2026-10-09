@@ -14,18 +14,18 @@ export function toolOf(name, input) {
 export const used = (calls, names) => calls.some((c) => c.ok !== false && names.map((n) => n.replace(/\./g, "_")).includes(toolOf(c.name, c.input)));
 
 /** The world the tasks run in is seeded on the box before a round (scripts/token-proof.mjs seed): `seed` names what each task needs there. */
-/** @type {{ id: string, prompt: string, tools: string[], answer?: RegExp, seed: string }[]} */
+/** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, tools: string[], answer?: RegExp, seed: string }[]} */
 export const TASKS = [
-  { id: "recall", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
-  { id: "todo", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
-  { id: "record", prompt: "Find the client record for Dana Whitfield in Vyre and tell me her case type.", tools: ["work.call", "records.list", "records.get"], answer: /probate/i, seed: "a client record: Dana Whitfield, case type probate" },
+  { id: "recall", standIn: "tooluse mcp__plugin_vyre_vyre__memory_search", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
+  { id: "todo", standIn: "tooluse mcp__plugin_vyre_vyre__planner_add", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
+  { id: "record", standIn: "tooluse mcp__plugin_vyre_vyre__work_call", prompt: "Find the client record for Dana Whitfield in Vyre and tell me her case type.", tools: ["work.call", "records.list", "records.get"], answer: /probate/i, seed: "a client record: Dana Whitfield, case type probate" },
   { id: "flow", prompt: "Run the Flow called intake-welcome in Vyre with the input {\"name\": \"Test Client\"} and tell me its run status.", tools: ["flows.start"], seed: "an approved Flow named intake-welcome" },
   { id: "connection", prompt: "Using the Stripe connection in Vyre, list the customers (limit 1) and tell me how many came back.", tools: ["vault.request", "mcp.call", "work.call"], seed: "a Stripe Connection with a test key" },
-  { id: "vault", prompt: "Without showing me the key, call the Acme API at /v1/status with the stored Acme key and tell me the HTTP status.", tools: ["vault.request"], answer: /\b(200|ok)\b/i, seed: "a vault api-credential named acme for a local stand-in host" },
-  { id: "file", prompt: "Find the file called engagement-letter in my projects folder with Vyre and show me its first line.", tools: ["files.search", "files.preview"], answer: /engagement/i, seed: "a file engagement-letter.txt in a project folder" },
-  { id: "teammate", prompt: "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.", tools: ["team.ask", "agents.ask"], seed: "a project with a backend teammate" },
-  { id: "doc", prompt: "Using Vyre, find the docs page that explains how to pair a phone and give me its path.", tools: ["docs.find"], answer: /\.md/, seed: "none (the docs ship with Vyre)" },
-  { id: "skill", prompt: "Using Vyre, find the skill that helps keep a password out of a file and give me its id.", tools: ["skills.find", "skills.list"], answer: /vyre\/|use-the-vault/i, seed: "none (Vyre's own skills ship with it)" },
+  { id: "vault", standIn: "tooluse mcp__plugin_vyre_vyre__vault_request", prompt: "Without showing me the key, call the Acme API at /v1/status with the stored Acme key and tell me the HTTP status.", tools: ["vault.request"], answer: /\b(200|ok)\b/i, seed: "a vault api-credential named acme for a local stand-in host" },
+  { id: "file", standIn: "tooluse mcp__plugin_vyre_vyre__files_search", prompt: "Find the file called engagement-letter in my projects folder with Vyre and show me its first line.", tools: ["files.search", "files.preview"], answer: /engagement/i, seed: "a file engagement-letter.txt in a project folder" },
+  { id: "teammate", standIn: "tooluse mcp__plugin_vyre_vyre__team_ask", prompt: "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.", tools: ["team.ask", "agents.ask"], seed: "a project with a backend teammate" },
+  { id: "doc", standIn: "tooluse mcp__plugin_vyre_vyre__docs_find", prompt: "Using Vyre, find the docs page that explains how to pair a phone and give me its path.", tools: ["docs.find"], answer: /\.md/, seed: "none (the docs ship with Vyre)" },
+  { id: "skill", standIn: "tooluse mcp__plugin_vyre_vyre__skills_find", prompt: "Using Vyre, find the skill that helps keep a password out of a file and give me its id.", tools: ["skills.find", "skills.list"], answer: /vyre\/|use-the-vault/i, seed: "none (Vyre's own skills ship with it)" },
 ];
 
 /** Did a run pass: the right tool was called and returned without an error, and the answer holds the seeded fact where the task has one. @param {typeof TASKS[number]} task @param {{ calls: { name: string, input?: any, ok?: boolean }[], text: string }} run */

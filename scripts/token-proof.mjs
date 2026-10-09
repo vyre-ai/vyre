@@ -4,7 +4,9 @@
 //
 //   node scripts/token-proof.mjs                      the dry estimate of one round and the ten tasks; calls no model, reads no key
 //   node scripts/token-proof.mjs run --home <dir> --max-usd 5 [--arms old,core] [--reps 3] [--model <id>] [--only todo,doc] [--out <dir>]
-//                                                     the paid round: drives headless Claude Code against the Vyre box at --home, one process per task and arm
+//                                                     the paid round: seeds a fresh box at --home (scripts/token-proof-world.mjs) and has the assistant do each task as a fresh thread on the
+//                                                     real claude, once per arm. The proof runs as a Vyre-started agent, the way agents really use Vyre: the person's own Claude Code session
+//                                                     attaches as the plugin agent and is offered only memory and recall, so it would show nothing.
 //
 // Arms: `old` lists every tool (VYRE_MCP_LISTING=all, Claude Code's own tool search off, so the whole listing is in the prompt); `old-search` lists every tool and leaves Claude Code's
 // own tool search forced on (ENABLE_TOOL_SEARCH=true; it defers a long MCP list by itself); `core` is the new listing with tools_find and tools_call. Each run records input, output and cache tokens, time, turns, the
@@ -13,12 +15,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { TASKS, parseStream, passed, summarize, estimate, PRICES } from "./lib/token-proof.js";
 import { tokens } from "../lib/tokens.js";
 import { listing } from "../harness/mcp/core-tools.js";
-import { agentCatalog } from "../test/tools-universe.js";
+import { broadCatalog } from "../test/tools-universe.js";
+import { catalogOf } from "../harness/mcp/core-tools.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -30,11 +33,26 @@ const ARMS = {
   core: { listing: "core", env: { ENABLE_TOOL_SEARCH: "false" } },
 };
 
-function dry() {
-  const cat = agentCatalog();
+/** The tools a Vyre agent is offered, from a real in-process daemon when this machine may start one (a test box); otherwise an estimate from the manifests, which counts about twice as many. */
+async function catalogNow() {
+  try {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "token-proof-dry-"));
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ vault: { keystore: "file" }, recall: { every: 0, vectors: false } }));
+    const { start } = await import("../core/daemon/index.js");
+    const { present } = await import("../test/helpers.js");
+    const { PERSON_ONLY, HUMAN_ONLY } = await import("../core/presence/index.js");
+    const d = await start({ root, presence: present, log: () => {} });
+    try {
+      return { exact: true, cat: catalogOf(d.registry.listTools("mcp:agent:kit").filter((/** @type {any} */ x) => !x.name.startsWith("harness.") && !PERSON_ONLY.has(x.name) && !HUMAN_ONLY.has(x.name)).map((/** @type {any} */ x) => ({ name: x.name, description: String(x.description || ""), input: x.input }))) };
+    } finally { await d.stop(); }
+  } catch { return { exact: false, cat: broadCatalog() }; }
+}
+
+async function dry() {
+  const { exact, cat } = await catalogNow();
   const size = (/** @type {string} */ mode) => tokens(JSON.stringify(listing(cat, mode)));
   const sizes = { all: size("all"), core: size("") };
-  console.log(`Listing: ${cat.length} tools an agent may use; all listed = ${sizes.all} tokens, core + tools_find/tools_call = ${sizes.core} tokens.\n`);
+  console.log(`${exact ? "" : "(An estimate from the manifests: this machine cannot start a daemon, and the estimate counts about twice as many tools. Run it on the test box for the exact numbers.)\n"}Listing: ${cat.length} tools an agent may use; all listed = ${sizes.all} tokens, core + tools_find/tools_call = ${sizes.core} tokens.\n`);
   console.log("Tasks (fixed prompts; pass = the right tool ran without an error, and the seeded fact is in the answer where there is one):");
   for (const t of TASKS) console.log(`  ${t.id.padEnd(10)} ${t.prompt}\n  ${" ".repeat(10)} tool: ${t.tools.join(" | ")}; world: ${t.seed}`);
   const reps = Number(flag("reps", "3"));
@@ -46,41 +64,13 @@ function dry() {
   console.log(`\nAssumptions: Claude Code's own prompt ~14,000 tokens; old arm 3 turns, core arm 5 (find, call, answer); ~900 tokens per tool result; prices per million tokens ${JSON.stringify(PRICES)} (check before a paid run).`);
 }
 
-/** Run claude to the end. @param {string[]} a @param {Record<string,string>} env @param {string} cwd */
-function claude(a, env, cwd) {
-  return new Promise((resolve) => {
-    const t0 = Date.now(); let out = "", err = "";
-    const c = spawn("claude", a, { env, cwd, stdio: ["ignore", "pipe", "pipe"] });
-    c.stdout.on("data", (d) => { out += d; }); c.stderr.on("data", (d) => { err += d; });
-    const timer = setTimeout(() => { try { c.kill("SIGKILL"); } catch { /* gone */ } }, 300_000);
-    c.on("error", (e) => { clearTimeout(timer); resolve({ out, err: String(e.message), ms: Date.now() - t0 }); });
-    c.on("close", () => { clearTimeout(timer); resolve({ out, err, ms: Date.now() - t0 }); });
-  });
+/** The paid round: refuses without the go, a cap and a home, then hands over to the seeded world (scripts/token-proof-world.mjs run), which starts the assistant's threads on the real claude. */
+function paid() {
+  if (process.env.VYRE_PROOF_PAID !== "yes" && !args.includes("--stand-in")) { console.error("refused: a paid round needs VYRE_PROOF_PAID=yes (the product owner's go)"); process.exit(2); }
+  if (!(Number(flag("max-usd")) > 0)) { console.error("refused: --max-usd is required"); process.exit(2); }
+  if (!flag("home")) { console.error("refused: --home <a fresh folder for the proof box> is required"); process.exit(2); }
+  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-world.mjs"), ...args], { stdio: "inherit", env: process.env });
+  process.exit(r.status ?? 1);
 }
 
-async function paid() {
-  if (process.env.VYRE_PROOF_PAID !== "yes") { console.error("refused: a paid round needs VYRE_PROOF_PAID=yes (the product owner's go)"); process.exit(2); }
-  const cap = Number(flag("max-usd")); if (!(cap > 0)) { console.error("refused: --max-usd is required"); process.exit(2); }
-  const home = flag("home"); if (!home || !fs.existsSync(home)) { console.error("refused: --home <the Vyre box's home> is required"); process.exit(2); }
-  const arms = flag("arms", "old,core").split(",").filter((a) => a in ARMS), reps = Number(flag("reps", "1")), model = flag("model", process.env.VYRE_PROOF_MODEL || "");
-  const only = flag("only") ? flag("only").split(",") : null, out = flag("out", fs.mkdtempSync(path.join(os.tmpdir(), "token-proof-")));
-  fs.mkdirSync(out, { recursive: true });
-  /** @type {any[]} */ const rows = []; let spent = 0;
-  outer: for (let r = 0; r < reps; r++) for (const task of TASKS.filter((t) => !only || only.includes(t.id))) for (const arm of arms) {
-    if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
-    const work = fs.mkdtempSync(path.join(os.tmpdir(), "token-proof-work-"));
-    const cfg = path.join(work, "mcp.json");
-    fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [path.join(ROOT, "harness", "mcp", "server.js")], env: { VYRE_HOME: home, ...(ARMS[/** @type {keyof typeof ARMS} */ (arm)].env.VYRE_MCP_LISTING ? { VYRE_MCP_LISTING: "all" } : {}) } } } }));
-    const env = { ...process.env, ...ARMS[/** @type {keyof typeof ARMS} */ (arm)].env, DISABLE_AUTOUPDATER: "1", CI: "1" };
-    const a = ["-p", task.prompt, "--output-format", "stream-json", "--verbose", "--mcp-config", cfg, "--strict-mcp-config", "--allowedTools", "mcp__vyre", "--max-turns", "12", "--max-budget-usd", String(Math.max(0.05, Math.min(1, cap - spent)).toFixed(2)), ...(model ? ["--model", model] : [])];
-    const res = /** @type {any} */ (await claude(a, /** @type {any} */ (env), work));
-    const run = parseStream(res.out);
-    const row = { arm, task: task.id, rep: r, pass: !run.error && passed(task, run), ...run, ms: run.ms || res.ms };
-    spent += run.usd; rows.push(row);
-    console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s`);
-    fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
-  }
-  console.log("\n" + JSON.stringify(summarize(rows), null, 1) + `\nrows: ${path.join(out, "rows.json")}`);
-}
-
-if (cmd === "run") await paid(); else dry();
+if (cmd === "run") paid(); else await dry();

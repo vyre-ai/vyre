@@ -65,16 +65,21 @@ test("the runner refuses to spend without the go, the cap and a box", () => {
   assert.equal(dry.status, 0); assert.match(dry.stdout, /Dry estimate/); assert.match(dry.stdout, /tokens/);
 });
 
-test("a paid-mode run against a stand-in claude records each run and stops at the cap", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tp-fake-"));
-  fs.writeFileSync(path.join(dir, "claude"), `#!/bin/sh\ncat <<'EOF'\n${sample("mcp__vyre__planner_add", { text: "renew the notary bond" }, "Done.", 0.06)}\nEOF\n`, { mode: 0o755 });
-  const out = path.join(dir, "out");
-  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof.mjs"), "run", "--home", dir, "--max-usd", "0.1", "--arms", "old,core", "--only", "todo,doc", "--out", out],
-    { env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, VYRE_PROOF_PAID: "yes" }, encoding: "utf8" });
+test("the tee in front of claude passes standard input and output through and keeps a copy", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tp-tee-"));
+  const real = path.join(dir, "real.sh");
+  fs.writeFileSync(real, "#!/bin/sh\nread l\necho \"got:$l\"\necho \"args:$*\"\n", { mode: 0o755 });
+  const tee = path.join(dir, "tee.jsonl");
+  const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-claude.mjs"), "-p", "x"], { input: "hello\n", env: { ...process.env, TOKEN_PROOF_REAL_CLAUDE: real, TOKEN_PROOF_TEE: tee }, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
-  const rows = JSON.parse(fs.readFileSync(path.join(out, "rows.json"), "utf8"));
-  // todo/old $0.06, todo/core $0.06 (spent 0.12 >= cap), then the next run does not start
-  assert.deepEqual(rows.map((/** @type {any} */ x) => [x.task, x.arm, x.pass]), [["todo", "old", true], ["todo", "core", true]]);
-  assert.match(r.stdout, /stopped: reported spend/);
-  assert.equal(rows[0].usage.cacheRead, 5000);
+  assert.equal(r.stdout, "got:hello\nargs:-p x\n");
+  assert.equal(fs.readFileSync(tee, "utf8"), r.stdout);
+});
+
+test("only the token proof's own world sets the development network seam of the vault", () => {
+  const found = [];
+  const walk = (/** @type {string} */ dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === "node_modules" || e.name === ".git") continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.(js|mjs)$/.test(e.name) && /devNet/.test(fs.readFileSync(p, "utf8"))) found.push(path.relative(ROOT, p)); } };
+  for (const d of ["core", "kernel", "lib", "scripts", "harness", "local", "modules"]) walk(path.join(ROOT, d));
+  assert.deepEqual(found.sort(), ["core/vault/request.js", "scripts/token-proof-world.mjs"]);
+  assert.match(fs.readFileSync(path.join(ROOT, "core/vault/request.js"), "utf8"), /devNet\.deps && process\.env\.VYRE_SEAL_DEV === "1"/);
 });
