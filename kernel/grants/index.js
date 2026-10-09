@@ -818,17 +818,17 @@ export function createGrantsStore(cfg) {
       return last;
     },
     /**
-     * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these two shapes): an agent's login (`vault.fill` on one item at one exact origin) or a module's
-     * release (`vault.release` on one item, for a watcher or a project when named). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null }[]} rows
+     * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these three shapes): an agent's login (`vault.fill` on one item at one exact origin), a module's
+     * release (`vault.release` on one item, for a watcher or a project when named) or an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
      */
     async carryOver(module, rows) {
       const k = kernelChain(), made = [], home = urn("vault", (await personalOf()).id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
       for (const r of rows) {
-        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
-        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
         if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
         const resource = { prefix: rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { where: { origins: [r.origin] }, ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: { kind: "service", id: module, space: cfg.space }, source: rel ? `install:${r.who}:vault` : "vault:agent", reason, status: "active", created_at: clock() });
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: { kind: "service", id: module, space: cfg.space }, source: rel ? `install:${r.who}:vault` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
         grants.set(g.id, g); made.push(g.id);
         await note(k, "grant.created", urn("grant", g.id), { grant: g });
       }

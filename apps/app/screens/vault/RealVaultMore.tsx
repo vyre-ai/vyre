@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { vaultMore } from "./more";
-import { EXPIRES, breachLine, deviceLines, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
-  type Device, type Health, type NewPass, type Pass, type Pending } from "./more-model";
+import { EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
+  type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
 const err = (e: unknown) => e as { code?: string; message?: string };
@@ -69,7 +69,12 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<{ ticket: string; pending: boolean; holder: string } | null>(null);
-  useEffect(() => { if (open) { setN(blank()); setProblem(""); setMade(null); } }, [open]);
+  const [agent, setAgent] = useState(false);
+  const apiOf = (name: string) => rows.find((r) => r.name === name)?.kind === "api-credential";
+  const blankMcp = (): NewMcpPass => ({ name: "", items: preset.filter((x) => apiOf(x)), days: 7, budget: "", offHosts: [], reveal: false });
+  const [m, setM] = useState<NewMcpPass>(blankMcp);
+  const [madeMcp, setMadeMcp] = useState<{ claude: string; codex: string; token: string; name: string } | null>(null);
+  useEffect(() => { if (open) { setN(blank()); setM(blankMcp()); setProblem(""); setMade(null); setMadeMcp(null); setAgent(false); } }, [open]);
   const hostsOf = (name: string) => rows.find((r) => r.name === name)?.hosts ?? [];
   const hosts = [...new Set(n.items.flatMap(hostsOf))];
   const go = () => {
@@ -78,6 +83,48 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
     setBusy(true); setProblem("");
     vaultMore.createPass(p.input).then((r) => { setMade({ ...r, holder: n.holder.trim() }); onMade(); }).catch((e) => setProblem(say(e, "shared"))).finally(() => setBusy(false));
   };
+  const mcpHosts = [...new Set(m.items.flatMap(hostsOf))];
+  const goMcp = () => {
+    const p = mcpPassInput(m, hostsOf);
+    if ("error" in p) { setProblem(p.error); return; }
+    setBusy(true); setProblem("");
+    vaultMore.createMcpPass(p.input).then((r) => { setMadeMcp(r); onMade(); }).catch((e) => setProblem(say(e, "shared"))).finally(() => setBusy(false));
+  };
+  if (agent) return (
+    <Sheet open={open} onClose={onClose} title={madeMcp ? "Pass made" : "New pass for an outside agent"}>
+      {madeMcp ? (
+        <View className="gap-s3">
+          <Text>{`Give ${madeMcp.name} one of these lines. It is shown once and holds no key: their agent can have calls made with the credentials and never sees them.`}</Text>
+          <Text size="caption" strong tone="label">Claude Code</Text>
+          <Text mono selectable size="secondary">{madeMcp.claude}</Text>
+          <Text size="caption" strong tone="label">Codex</Text>
+          <Text mono selectable size="secondary">{madeMcp.codex}</Text>
+          <Button kind="primary" label="Done" onPress={onClose} />
+        </View>
+      ) : (
+        <View className="gap-s3">
+          <Segmented label="For" value="agent" onChange={(v) => { if (v === "vyre") setAgent(false); }} options={[["vyre", "Another Vyre"], ["agent", "An outside agent"]]} />
+          <Field label="Name" value={m.name} onChangeText={(name) => setM({ ...m, name })} help="Who or what it is for, such as Dana's Claude." />
+          <Segmented label="Ends" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
+          <View className="gap-s1">
+            <Text size="caption" strong tone="label">Credentials</Text>
+            <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <Chip key={r.name} selected={m.items.includes(r.name)} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })}>{r.name}</Chip>)}</View>
+          </View>
+          {mcpHosts.length ? (
+            <View className="gap-s1">
+              <Text size="caption" strong tone="label">Hosts it may call</Text>
+              <View className="flex-row flex-wrap gap-s2">{mcpHosts.map((x) => <Chip key={x} selected={!m.offHosts.includes(x)} onPress={() => setM({ ...m, offHosts: m.offHosts.includes(x) ? m.offHosts.filter((y) => y !== x) : [...m.offHosts, x] })}>{x}</Chip>)}</View>
+            </View>
+          ) : null}
+          <Field label="Calls it may make" value={m.budget} onChangeText={(budget) => setM({ ...m, budget })} help="Leave empty for no limit. A change to anything still waits for you." />
+          <Chip selected={m.reveal} onPress={() => setM({ ...m, reveal: !m.reveal })}>May ask to see a value</Chip>
+          <Text size="secondary" tone="muted">The key never leaves your server. A read runs at once; anything that changes something waits for your yes. Ending the pass stops it at once.</Text>
+          {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+          <Button kind="primary" label={busy ? "Sharing" : "Share"} disabled={busy} onPress={goMcp} />
+        </View>
+      )}
+    </Sheet>
+  );
   return (
     <Sheet open={open} onClose={onClose} title={made ? "Pass made" : "New pass"}>
       {made ? (
@@ -88,6 +135,7 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
         </View>
       ) : (
         <View className="gap-s3">
+          <Segmented label="For" value="vyre" onChange={(v) => { if (v === "agent") setAgent(true); }} options={[["vyre", "Another Vyre"], ["agent", "An outside agent"]]} />
           <Field label="To" value={n.holder} onChangeText={(holder) => setN({ ...n, holder })} help={people.length ? `Known: ${people.join(", ")}` : "A name for the person."} />
           <Segmented label="Ends" value={n.expires} onChange={(expires) => setN({ ...n, expires })} options={EXPIRES} />
           <Field label="Their card" value={n.card} onChangeText={(card) => setN({ ...n, card })} help="From their vyre vault card. Needed the first time; a changed card must be confirmed." />

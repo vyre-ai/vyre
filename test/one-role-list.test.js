@@ -47,7 +47,7 @@ test("no source file types the five roles again; the lists that are not Space ro
   }
   assert.deepEqual(typed, [], "import ROLE_IDS from kernel/contracts instead of typing the roles");
   // not Space roles, each under a name that says so
-  assert.match(fs.readFileSync(path.join(root, "core/vault/shared.js"), "utf8"), /export const VAULT_MEMBER_ROLES = \["owner", "admin", "member", "read-only"\]/, "a vault's own sharing roles (they become access levels with item 6)");
+  assert.match(fs.readFileSync(path.join(root, "core/vault/shared.js"), "utf8"), /export const ROLE_LEVEL = Object\.freeze\(\{ owner: "manage", admin: "manage", member: "reveal", "read-only": "use" \}\)/, "a vault's own sharing roles: the signed words, written once as the access levels (ROLE_LEVEL)");
   assert.match(fs.readFileSync(path.join(root, "core/wink/index.js"), "utf8"), /const WINK_PAIR_ROLES = /, "the roles a Wink invitation can carry");
 });
 

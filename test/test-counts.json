@@ -452,6 +452,7 @@
  "core/vault/module.test.js": 11,
  "core/vault/native.test.js": 4,
  "core/vault/needs.test.js": 3,
+ "core/vault/passmcp.test.js": 8,
  "core/vault/presence.test.js": 8,
  "core/vault/prompt.test.js": 3,
  "core/vault/prove.test.js": 5,

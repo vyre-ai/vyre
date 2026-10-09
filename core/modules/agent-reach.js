@@ -261,6 +261,8 @@ export const PERSON_ONLY = new Map([
   ["vault.approve", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.connect", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.connections.grant", "needs the person's Face ID or presence: secrets, devices and vault access"],
+  ["vault.mcp.pass.create", "needs the person's Face ID or presence: it hands credentials to an outside agent"],
+  ["vault.mcp.reveal.clear", "answers an outside agent's ask to see a value: the owner's own decision"],
   ["vault.connections.sync", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.connections.update", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.device.revoke", "needs the person's Face ID or presence: secrets, devices and vault access"],

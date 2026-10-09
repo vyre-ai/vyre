@@ -25,7 +25,7 @@ export const NEEDS_PRESENCE = [
   "vault.members.invite", "vault.members.accept", "vault.members.role", "vault.members.remove", "vault.vaults.rotate", "vault.move",
   "vault.device.approve", "vault.agent.grant", "vault.codes", "vault.codes.import", "vault.sweep", "vault.rotate",
   "vault.emergency.add", "vault.emergency.refresh", "vault.emergency.request", "vault.emergency.status",
-  "vault.connect", "vault.connections.grant", "vault.connections.update",
+  "vault.connect", "vault.connections.grant", "vault.connections.update", "vault.mcp.pass.create",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
@@ -34,7 +34,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.device.join", "vault.device.list", "vault.device.sync",
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.state", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
-  "vault.agent.grants", "vault.agent.revoke", "vault.uses", "vault.remind.run", "vault.rotation",
+  "vault.agent.grants", "vault.agent.revoke", "vault.mcp.pass.list", "vault.mcp.pass.revoke", "vault.mcp.reveal.clear", "vault.uses", "vault.remind.run", "vault.rotation",
   "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list", "vault.need",
   "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",
   "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed",
