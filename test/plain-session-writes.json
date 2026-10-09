@@ -357,6 +357,14 @@
    "class": "own",
    "why": "the caller's own sidebar list only; an assistant arranges the person's own layer, which the person can undo"
   },
+  "sidebar.pin": {
+     "class": "own",
+     "why": "the caller's own sidebar list only; an assistant pins for the person, who can undo it"
+  },
+  "sidebar.unpin": {
+     "class": "own",
+     "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
+  },
   "sidebar.team": {
    "class": "held",
    "why": "the Space default needs the owner or admin role, and an assistant's request is held for the person's yes (ASK_FIRST)"

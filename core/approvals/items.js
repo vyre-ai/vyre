@@ -7,7 +7,7 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
-export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access"]);
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task"]);
 const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
@@ -55,6 +55,25 @@ export const fromVault = (/** @type {any} */ p) => {
 };
 
 /**
+ * flows.attention rows (f3): a run that stopped, is stuck, or a stage held back. Retry, Skip and Stop are one answer (`flows.settle`), a gate's is to move it on (`advance`, with a reason). Plain words only:
+ * the reason is the run's own message, already redacted by the owner; no step data. A quiet row (a person simply has not answered yet) is marked so a surface does not push for it.
+ */
+export const fromAttention = rows => rows.map(r => {
+  const gate = Boolean(r.gate);
+  return { id: `flows:${r.run}`, kind: "run", title: gate ? `${clean(r.label, 80)} is held` : `${clean(r.label, 80)} ${r.kind === "stuck" ? "is stuck at" : r.kind === "paused" ? "paused at" : r.kind === "stale" ? "is waiting at" : "stopped at"} ${clean(r.step_label || r.step, 60) || "a step"}`,
+    ...opt("detail", cap(clean(r.message), DETAIL_MAX)), at: at(r.since), source: "flows", ...(r.loud === false ? { quiet: true } : {}),
+    answer: gate ? { tool: "flows.settle", input: { run: r.run, action: "advance" }, fill: ["reason"] }
+      : r.kind === "stale" ? { tool: "flows.settle", input: { run: r.run }, fill: ["action"], choices: ["stop"] }
+      : { tool: "flows.settle", input: { run: r.run }, fill: ["action"], choices: ["retry", "skip", "stop"] } };
+});
+
+/**
+ * flows.attention's stuck tasks (R031-45): a task someone flagged stuck waits on a person to unblock or skip it. One `task` card each, the reason in the detail, answered by `tasks.move`.
+ */
+export const fromStuckTasks = rows => rows.map(t => ({ id: `tasks:${t.task}`, kind: "task", title: `${clean(t.label, 100) || "A task"} is stuck`, ...opt("detail", cap(clean(t.reason), DETAIL_MAX)), at: at(t.since), source: "flows",
+  answer: { tool: "tasks.move", input: { id: t.task }, fill: ["to", "reason"], choices: ["ready", "skipped"] } }));
+
+/**
  * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
  * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
  */
@@ -63,6 +82,10 @@ export const OWNERS = [
     ["ask.*", (t, p) => (t === "ask.answered" ? [`threads:${p && p.ask}`, one(p && p.decision) || "answered"] : t === "ask.cancelled" ? [`threads:${p && p.ask}`, "cancelled"] : null)]] },
   { name: "gate", tool: "gate.held", map: d => fromHeld(Array.isArray(d) ? d : []), watch: [
     ["gate.*", (t, p) => (t === "gate.released" ? [`gate:${p && p.id}`, "sent"] : t === "gate.rejected" ? [`gate:${p && p.id}`, "refused"] : t === "gate.settled" ? [`gate:${p && p.id}`, one(p && p.outcome) || "sent"] : t === "gate.failed" ? [`gate:${p && p.id}`, "failed"] : null)]] },
+  { name: "flows", tool: "flows.attention", map: d => [...fromAttention(d && Array.isArray(d.runs) ? d.runs : []), ...fromStuckTasks(d && Array.isArray(d.tasks) ? d.tasks : [])], watch: [
+    ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
+    ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
+    ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
     ["vault.granted", null], ["vault.revoked", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
 ];

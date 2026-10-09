@@ -75,7 +75,8 @@ Every step runs under a time limit and a retry rule, with defaults per kind (rea
 
 ## Write, test and stage Flows
 
-- Read `flows-cheatsheet.md` first. `flows.code`, `flows.define` and `flows.compile-text` take `format: "lines"`; change a Flow with `flows.patch { id, base, ops }`, not a rewrite.
-- `flows.test.save` keeps a test case (`{ id, name, event | input, expect }`, or `{ id, from_run }`); `flows.test.run` runs them. No version is approved while one fails. `flows.propose` also compiles the draft and replays last week first; you cannot skip that.
-- `flows.describe { run }` explains a run in four sentences. A stage with tasks is a gate run; `flows.advance { run, reason }` moves a record on early (the stage's owner or an admin, in their own name).
-- `flows.kit.test` tries a Kit on a sample with nothing sent. A task may carry a `brief` and a `checklist` that the gate checks.
+- Read `flows-cheatsheet.md` first. `flows.code`, `flows.define` and `flows.compile-text` take `format: "lines"`; change a Flow with `flows.patch { id, base, ops }`.
+- `flows.test.save` keeps a test case (`{ id, name, event | input, expect }` or `{ id, from_run }`); `flows.test.run` runs them. No version is approved while one fails. `flows.propose` also compiles and replays last week; you cannot skip it.
+- `flows.attention` lists runs that need a person; `flows.settle { run, action: retry | skip | stop }` answers.
+- `flows.describe { run }` explains a run. A stage with tasks is a gate run: `flows.advance { run, reason }` moves a record on early (its owner or an admin).
+- `flows.kit.test` tries a Kit on a sample, sending nothing. A task may have a `brief`, `checklist`.

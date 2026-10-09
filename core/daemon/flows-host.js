@@ -11,7 +11,7 @@
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
-import { createStages } from "../../kernel/flows/stages.js";
+import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
@@ -168,7 +168,11 @@ export function createFlowsHost(o) {
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
     await whenStoreReady(k.store, setupTypes);
 
-    const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
+    // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
+    const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
+      if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`);
+      if (o.publish && /^(flow\.(finished|stuck|stale|paused|cancelled|retried|started)|stage\.gate-(opened|closed))$/.test(type)) { try { o.publish(type, { run: data && data.run, flow: data && data.flow, ...(data && data.state ? { state: data.state } : {}) }); } catch { /* a notice, never a stop */ } }
+    };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
     const proposals = {
       chain: flowsChain,
@@ -178,13 +182,18 @@ export function createFlowsHost(o) {
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
-    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
+    // The tasks that are stuck, for the one "Needs you" list: read as the Flows service for the Space's owner (names, the reason and when; the kernel's own task read decides what it may see).
+    const stuckTasks = async () => {
+      const rows = await gw.ask.list(flowsChain(), { state: ["stuck"] }).catch(() => []);
+      return (Array.isArray(rows) ? rows : []).slice(0, 50).map((/** @type {any} */ t) => ({ task: t.id, label: String(t.title || "").slice(0, 120), reason: String((t.stuck && t.stuck.reason) || "").slice(0, 200), since: (t.stuck && t.stuck.since) || t.updated_at || 0, ...(t.record ? { record: t.record } : {}) }));
+    };
+    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings, stuckTasks });
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
     flows.attachStages(stages);
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); if (o.publish && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;

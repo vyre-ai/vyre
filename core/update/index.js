@@ -35,6 +35,26 @@ const STALE_MS = 3 * 3600_000;
 /** The person's own callers. */
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
+/** Where the plain-words release notes ship (release/notes/<version>.md). */
+const NOTES_DIR = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "release", "notes");
+const WHATS_NEW_MAX = 3000;
+
+/**
+ * The notes of a version for a person to read after an update: the headline and the bullets in the notes' own words, cut at a paragraph so it ends cleanly, never more than WHATS_NEW_MAX
+ * characters. Null when this build has no notes for the version (then nothing is shown). @param {string} version @param {string} [dir]
+ */
+export function whatsNewText(version, dir = NOTES_DIR) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) return null;
+  let text;
+  try { text = fs.readFileSync(path.join(dir, `${version}.md`), "utf8"); } catch { return null; }
+  text = text.replace(/\r\n/g, "\n").trim();
+  if (!text) return null;
+  if (text.length <= WHATS_NEW_MAX) return text;
+  const cut = text.slice(0, WHATS_NEW_MAX);
+  const at = Math.max(cut.lastIndexOf("\n\n"), cut.lastIndexOf("\n- "));
+  return `${cut.slice(0, at > 200 ? at : WHATS_NEW_MAX).trimEnd()}\n\n(and more: the release notes have the rest)`;
+}
+
 /** The one command a box person runs, or the words for an app that updates itself. @param {string} platform @param {string} role */
 export function howToUpdate(platform, role) {
   if (platform === "darwin" && role === "local") return { how: "app", command: null };
@@ -136,6 +156,30 @@ export default {
       description: "Whether a newer Vyre is out: the running version, the newest one on this channel (null when up to date), what changed, when it was last looked up, and how to update (the one command a box person runs, or 'app' when the Mac app updates itself). Read only: nothing is downloaded or changed. Every surface's Update card draws from this.",
       input: { type: "object", properties: {} },
       run: async () => status(),
+    });
+    // What's new after an update (R031-47): shown once to each person, in the release notes' own words. A person who has never been asked is recorded at the running version without a word
+    // (a new install has nothing "new"); after that, a different running version is an update, and its notes come back until the person says they have seen them.
+    const newFile = path.join(ctx.paths.root, "whatsnew.json");
+    const readSeen = () => { try { const j = JSON.parse(fs.readFileSync(newFile, "utf8")); return j && typeof j === "object" && j.seen && typeof j.seen === "object" ? j.seen : {}; } catch { return {}; } };
+    const writeSeen = (/** @type {Record<string, string>} */ seenBy) => { fs.writeFileSync(newFile, JSON.stringify({ seen: seenBy }), { mode: 0o600 }); };
+    const personKey = (/** @type {any} */ meta) => { const p = meta && (meta.person || (meta.chain && meta.chain.hops && meta.chain.hops[0] && meta.chain.hops[0].actor && meta.chain.hops[0].actor.id)); return typeof p === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(p) ? p : "owner"; };
+    ctx.tool("update.whats-new", {
+      effect: "read", callers: PEOPLE,
+      description: "What changed in the version that is running, once, after an update: { show, version, from?, notes? }. show is false on a first run and when this person has already seen it. Say it in the notes' own words, then call update.whats-new-seen.",
+      input: { type: "object", properties: {} },
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
+        const version = build().version, key = personKey(meta), all = readSeen(), was = all[key];
+        if (was === undefined) { writeSeen({ ...all, [key]: version }); return { show: false, version }; }
+        if (was === version) return { show: false, version };
+        const notes = whatsNewText(version);
+        return notes ? { show: true, version, from: was, notes } : { show: false, version };
+      },
+    });
+    ctx.tool("update.whats-new-seen", {
+      effect: "write", callers: PEOPLE,
+      description: "The person has read what is new in the running version: it is not shown again.",
+      input: { type: "object", properties: { version: { type: "string" } } },
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { const version = build().version; if (i && i.version && String(i.version) !== version) return { ok: false, version }; writeSeen({ ...readSeen(), [personKey(meta)]: version }); return { ok: true, version }; },
     });
     ctx.tool("update.apply", {
       effect: "write",

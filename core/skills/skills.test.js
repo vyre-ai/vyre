@@ -55,17 +55,17 @@ const ids = (/** @type {any} */ r) => r.skills.map((/** @type {any} */ s) => s.i
 test("the person sees every level; a named agent sees Vyre's, the account's, its projects' and its own, and no one else's", async (t) => {
   const w = await world(t);
   const person = ids(await w.as("cli").list());
-  for (const id of ["vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher", "account/send-invoices", "project/harlow/draft-motion", "project/harlow/folder-skill", "project/secret-case/hidden-skill", "agent/juno/juno-only", "agent/kit/kit-only"]) assert.ok(person.includes(id), `the person lacks ${id}`);
+  for (const id of ["vyre/turn-this-into-a-flow", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher", "account/send-invoices", "project/harlow/draft-motion", "project/harlow/folder-skill", "project/secret-case/hidden-skill", "agent/juno/juno-only", "agent/kit/kit-only"]) assert.ok(person.includes(id), `the person lacks ${id}`);
   const juno = ids(await w.as("mcp:agent:juno").list());
-  assert.deepEqual(juno, ["account/send-invoices", "agent/juno/juno-only", "project/harlow/draft-motion", "project/harlow/folder-skill", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
+  assert.deepEqual(juno, ["account/send-invoices", "agent/juno/juno-only", "project/harlow/draft-motion", "project/harlow/folder-skill", "vyre/turn-this-into-a-flow", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
   const kit = ids(await w.as("mcp:agent:kit").list());
   assert.ok(kit.includes("agent/kit/kit-only") && !kit.some((i) => i.startsWith("project/") || i === "agent/juno/juno-only"), "an agent with no project reach sees no project skill");
 });
 
 test("a caller that cannot be placed (an unnamed model session) gets Vyre's own skills and nothing private", async (t) => {
   const w = await world(t);
-  assert.deepEqual(ids(await w.as("mcp").list()), ["vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
-  assert.deepEqual(ids(await w.as("tailnet-guest:x").list()), ["vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
+  assert.deepEqual(ids(await w.as("mcp").list()), ["vyre/turn-this-into-a-flow", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
+  assert.deepEqual(ids(await w.as("tailnet-guest:x").list()), ["vyre/turn-this-into-a-flow", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
 });
 
 test("a skill you may not use is not ranked and not readable: it does not exist for you", async (t) => {
@@ -95,7 +95,7 @@ test("find ranks by what you are about to do, with the docs ranker", async (t) =
 
 test("list narrows by project and level, and no result names a path", async (t) => {
   const w = await world(t);
-  assert.deepEqual(ids(await w.as("cli").list({ level: "vyre" })), ["vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
+  assert.deepEqual(ids(await w.as("cli").list({ level: "vyre" })), ["vyre/turn-this-into-a-flow", "vyre/use-the-vault", "vyre/work-in-a-project", "vyre/write-a-watcher"]);
   assert.deepEqual(ids(await w.as("cli").list({ project: "harlow", level: "project" })), ["project/harlow/draft-motion", "project/harlow/folder-skill"]);
   const all = JSON.stringify(await w.as("cli").list());
   assert.ok(!all.includes(w.home) && !all.includes(w.folder) && !/SKILL\.md/.test(all), "an id is a name, never a path");

@@ -9,6 +9,8 @@
     "tools": [
       { "name": "sidebar.get", "reach": "anyone", "effect": "read" },
       { "name": "sidebar.edit", "reach": "anyone", "effect": "write" },
+      { "name": "sidebar.pin", "reach": "anyone", "effect": "write" },
+      { "name": "sidebar.unpin", "reach": "anyone", "effect": "write" },
       { "name": "sidebar.team", "reach": "anyone", "effect": "write" },
       { "name": "sidebar.stored", "reach": "person", "effect": "write" },
       { "name": "sidebar.serve", "reach": "modules", "effect": "write" }
