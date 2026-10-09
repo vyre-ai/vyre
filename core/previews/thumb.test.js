@@ -27,7 +27,8 @@ test("a Chrome is found by config, by VYRE_CHROME, then on the path; none is non
   assert.equal(findChrome({ PATH: "", VYRE_CHROME: chrome, PLAYWRIGHT_BROWSERS_PATH: dir }), chrome);
   const bin = path.join(dir, "bin"); fs.mkdirSync(bin); fs.copyFileSync(chrome, path.join(bin, "chromium")); fs.chmodSync(path.join(bin, "chromium"), 0o755);
   assert.equal(findChrome({ PATH: bin, PLAYWRIGHT_BROWSERS_PATH: dir }), path.join(bin, "chromium"));
-  assert.equal(findChrome({ PATH: "/nonexistent", PLAYWRIGHT_BROWSERS_PATH: dir }, "/nope"), null);
+  const pw = path.join(dir, "ms-playwright", "chromium-1200", "chrome-linux"); fs.mkdirSync(pw, { recursive: true }); fs.copyFileSync(chrome, path.join(pw, "chrome")); fs.chmodSync(path.join(pw, "chrome"), 0o755);
+  assert.equal(findChrome({ PATH: "/nonexistent", PLAYWRIGHT_BROWSERS_PATH: path.join(dir, "ms-playwright") }, "/nope"), null, "a Playwright download is never looked for");
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
