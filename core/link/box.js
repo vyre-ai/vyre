@@ -425,7 +425,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   ctx.tool("link.macs.call", {
     description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller, device, person session and presence method, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
-    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object", properties: { approved: { type: "boolean" }, site: { type: "string" }, name: { type: "string" }, inputs: { type: "object" } } }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" },
+    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" },
       by: { type: "object", properties: { caller: { type: "string" }, device: { type: "string" }, person: { type: "string" }, presence: { type: "string" } } } }, required: ["tool"] },
     internal: true,
     run: async ({ tool, input = {}, timeout, mac: only, as, by }, meta = {}) => {
