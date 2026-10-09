@@ -242,6 +242,8 @@ export async function createKernel(cfg) {
           } catch { return false; }
         },
       } : {}),
+      // Only for the module that declares `needs.kernel.outside: true` (core/outside): the chain of one registered outside agent, to act as it under only its own grants (the kernel builds it; no module can mint another), and the type definitions a person's chain may read.
+      ...(needs.outside === true ? { outside: Object.freeze({ chain: (/** @type {string} */ id) => chains.fromFacts({ kind: "outside", agent: `ext_${id}`, vouched: true }), definitions: gateway.definitions }) } : {}),
       ...(needs.work === true ? (() => {
         const personOnly = async (/** @type {any} */ meta) => {
           const c = await handle.chain(meta || {});
