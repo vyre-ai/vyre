@@ -33,9 +33,10 @@ async function rig(t) {
   const rpc = (token, method, params, source = "10.0.0.1") => outside({ method: "POST", headers: { authorization: `Bearer ${token}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }), source });
   const tools = async token => (await rpc(token, "tools/list")).body.result.tools.map(x => x.name);
   const use = async (token, name, args) => { const r = await rpc(token, "tools/call", { name, arguments: args }); const res = r.body && r.body.result; return { status: r.status, error: res && res.isError, text: res && res.content ? res.content[0].text : "", json: res && !res.isError && res.content ? JSON.parse(res.content[0].text) : null }; };
+  const heldList = async () => { const h = await ok("gate.held", {}); return Array.isArray(h) ? h : h.items || h.held || []; };
   const events = [];
   d.events.on("outside.*", e => events.push(e));
-  return { d, call, ok, jane, secret, rpc, tools, use, events, owner };
+  return { d, call, ok, jane, secret, rpc, tools, use, events, owner, heldList };
 }
 
 test("an outside agent reaches only what it was given, and sealed values come back as words", { timeout: 120_000 }, async t => {
@@ -80,18 +81,16 @@ test("an outside agent reaches only what it was given, and sealed values come ba
 });
 
 test("a write waits at the Gate: nothing changes until the person says yes, and a no changes nothing", { timeout: 120_000 }, async t => {
-  const { ok, call, rpc, use, events } = await rig(t);
+  const { ok, call, rpc, use, events, heldList } = await rig(t);
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"] } });
   assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes" } })).text, /needs the person to give you more access|write access/, "read access is not write access");
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
   const asked = await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes", age: 31 } });
   assert.ok(asked.json && /^hd_/.test(asked.json.held), JSON.stringify(asked));
-  assert.ok(true, JSON.stringify(await ok("gate.held", {})));
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Dana Reyes").length, 0, "nothing was made yet");
-  const held = (await ok("gate.held", {})).items || (await ok("gate.held", {}));
-  const item = (Array.isArray(held) ? held : held.held || []).find(x => /Muse wants to add a contact: Dana Reyes/.test(x.summary || ""));
-  assert.ok(item, "the card says who wants what: " + JSON.stringify(held).slice(0, 300));
+  const item = (await heldList()).find(x => /Muse wants to add a contact: Dana Reyes/.test(x.summary || ""));
+  assert.ok(item, "the card says who wants what");
   assert.equal((await use(reg.token, "held_get", { held: asked.json.held })).json.state, "waiting");
   assert.ok((await call("gate.approve", { id: item.id }, "mcp")).error, "a model does not approve for the person");
   const done = await ok("gate.approve", { id: item.id });
@@ -102,9 +101,7 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
 
   // a no
   const second = await use(reg.token, "records_create", { type: "contact", fields: { name: "Nope Person" } });
-  const heldNow = await ok("gate.held", {});
-  const item2 = (heldNow.items || heldNow.held || []).find(x => /Nope Person/.test(x.summary || ""));
-  assert.ok(item2, JSON.stringify({ second, heldNow }).slice(0, 700));
+  const item2 = (await heldList()).find(x => /Nope Person/.test(x.summary || ""));
   await ok("gate.reject", { id: item2.id });
   assert.equal((await use(reg.token, "held_get", { held: second.json.held })).json.state, "declined");
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Nope Person").length, 0);
@@ -116,11 +113,11 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
 });
 
 test("ending an agent takes everything back at once, even a request it is still waiting on", { timeout: 120_000 }, async t => {
-  const { ok, rpc, use, tools, events } = await rig(t);
+  const { ok, rpc, use, tools, events, heldList } = await rig(t);
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
   const asked = await use(reg.token, "records_create", { type: "contact", fields: { name: "Late Arrival" } });
-  const item = ((await ok("gate.held", {})).items || (await ok("gate.held", {})).held || []).find(x => /Late Arrival/.test(x.summary || ""));
+  const item = (await heldList()).find(x => /Late Arrival/.test(x.summary || ""));
   assert.equal((await ok("outside.revoke", { id: reg.id })).revoked, true);
   assert.equal((await rpc(reg.token, "tools/list")).status, 401, "the token opens nothing");
   const done = await ok("gate.approve", { id: item.id }).catch(e => e);
