@@ -38,6 +38,7 @@ import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
+import { MovedLines, PlacementChip, usePlacement } from "./placement";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
@@ -105,6 +106,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
+  const placed = usePlacement(p.sessionId, !allowsMock());
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
@@ -361,6 +363,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       <StatusLine
+        place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         presence={group.presenceLine()}
         state={meta.state}
         busy={meta.busy}
@@ -393,6 +396,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       {realComposer ? <GroupApprovals /> : null}
       {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
+      <MovedLines lines={placed.lines} />
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer

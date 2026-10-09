@@ -5,13 +5,15 @@ import { Platform, View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState, useRecordsWorld } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
-import { REVEAL_MS } from "./logic.js";
+import { REVEAL_MS, generatePassword, strengthWords } from "./logic.js";
 import { grantReal, listReal, putReal, revealHeldReal, revealReal, revokeReal, stateReal, unlockPersonalReal, unlockReal, usesReal } from "./real";
 import { claimBlocked } from "../shell/rc";
 import { ON_PHONE, howApprove } from "../../src/real/on-phone.js";
 import { presenceText } from "../shell/FaceIdSheet";
 import ImportPage from "./ImportPage";
 import { DevicesPage, EditSheet, ItemHistory, PassesPage, SharedPage, SshSheet, WatchtowerPage } from "./RealVaultMore";
+import { vaultMore } from "./more";
+import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
 import { NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
@@ -39,6 +41,8 @@ export default function RealVault() {
   const [fieldErr, setFieldErr] = useState<Partial<Record<"name" | "username" | "secret" | "url", string>>>({});
   const [pass, setPass] = useState("");
   const [adding, setAdding] = useState<NewItem | null>(null);
+  const [health, setHealth] = useState<{ total: number; line: string } | null>(null);
+  const [gen, setGen] = useState<{ length: string; symbols: boolean }>({ length: "20", symbols: true });
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
   const [section, setSection] = useState<"items" | "passes" | "shared" | "devices" | "health" | "import">("items");
@@ -56,6 +60,7 @@ export default function RealVault() {
     stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
   }, []);
   useEffect(load, [load]);
+  useEffect(() => { if (section === "items" && !locked) vaultMore.health().then((h) => setHealth(healthSummary(h))).catch(() => setHealth(null)); }, [section, locked, rows]);
 
   const items: RealItem[] = rows && tab !== "Held" ? itemsOf(rows, tab) : [];
   const cur = items.find((v) => v.id === sel) ?? (phone ? undefined : items[0]);
@@ -188,6 +193,7 @@ export default function RealVault() {
         {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Import")}</Text> : <ImportPage reload={load} />}
       </View> : null}
       {section !== "items" ? null : <>
+      {!err && rows && !locked && health && health.total ? <Card><View className="flex-row items-center gap-s3"><View className="min-w-0 flex-1"><Text strong>Health</Text><Text size="secondary" tone="label">{health.line}</Text></View><Button kind="primary" size={phone ? "md" : "sm"} label="Fix" onPress={() => { hide(); setSection("health"); }} /></View></Card> : null}
       <Tabs<Tab | "Held"> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held fields"]]} />
       {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
         <Text strong>Your personal vault is locked</Text>
@@ -264,6 +270,16 @@ export default function RealVault() {
             <Field label="Name" error={fieldErr.name} value={adding.name} onChangeText={(name) => { setFieldErr((e) => ({ ...e, name: undefined })); setAdding({ ...adding, name }); }} placeholder={adding.kind === "login" ? "Juniper Drive" : "OpenAI key"} />
             {adding.kind === "login" ? <Field label="Username" error={fieldErr.username} value={adding.username} onChangeText={(username) => { setFieldErr((e) => ({ ...e, username: undefined })); setAdding({ ...adding, username }); }} /> : null}
             <Field label={adding.kind === "login" ? "Password" : "Value"} error={fieldErr.secret} value={adding.secret} onChangeText={(secret) => { setFieldErr((e) => ({ ...e, secret: undefined })); setAdding({ ...adding, secret }); }} kind="password" />
+            {adding.kind === "login" ? (
+              <View className="gap-s2">
+                <View className="flex-row flex-wrap items-center gap-s2">
+                  <Button kind="secondary" size={phone ? "md" : "sm"} icon="refresh" label="Generate a strong one" onPress={() => { const pw = generatePassword((a) => globalThis.crypto.getRandomValues(a), { length: Number(gen.length), symbols: gen.symbols }); setFieldErr((e) => ({ ...e, secret: undefined })); setAdding({ ...adding, secret: pw }); showToast(strengthWords(Number(gen.length), gen.symbols)); }} />
+                  <Segmented label="Length" value={gen.length} onChange={(length) => setGen({ ...gen, length })} options={[["16", "16"], ["20", "20"], ["32", "32"]]} />
+                  <Chip selected={!gen.symbols} onPress={() => setGen({ ...gen, symbols: !gen.symbols })}>No symbols</Chip>
+                </View>
+                <Text size="caption" tone="label">Made on this device and typed into the field. It leaves only when you save.</Text>
+              </View>
+            ) : null}
             {adding.kind === "login" ? <Field label="Web address (optional)" error={fieldErr.url} value={adding.url} onChangeText={(url) => { setFieldErr((e) => ({ ...e, url: undefined })); setAdding({ ...adding, url }); }} placeholder="https://drive.juniper.example" /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
             <Button kind="primary" label={busy ? "Saving" : "Save with Face ID"} onPress={busy ? () => {} : doAdd} />

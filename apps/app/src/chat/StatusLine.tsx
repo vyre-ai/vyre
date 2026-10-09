@@ -11,7 +11,9 @@ const S = StyleSheet.create({
 });
 
 
-export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop }: {
+export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop, place }: {
+  /** Where the session runs, with its chip (R031-95): drawn before Stop. */
+  place?: React.ReactNode;
   presence: string;
   state: string;
   busy: boolean;
@@ -25,6 +27,7 @@ export function StatusLine({ presence, state, busy, canStop, stopping, offline, 
   return (
     <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", minHeight: phone ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: phone ? 16 : 24 }}>
       <Text size="caption" tone="label" numberOfLines={1} style={S.s1}>{words}</Text>
+      {place}
       {canStop ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={{ minHeight: phone ? 44 : 32, justifyContent: "center" }}>
           <Chip icon="stop" tone="err">Stop</Chip>

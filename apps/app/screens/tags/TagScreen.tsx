@@ -1,7 +1,8 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Text, useFieldEnv, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { BlockScreen, EmptyState, ErrorState, LargeTitleScreen, LoadingState, Text, useFieldEnv, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { PinToSidebar } from "../shell/PinToSidebar";
+import { tableFromRecords } from "../../ui/views/records-table.js";
 import { href, normalize, parse } from "../../../../lib/tags.js";
 
 /** /u/tags/<tag>: everything with this tag, one list per record type that carries tags (projects, chats, contacts, tasks ...). Pin it and it is a saved tag filter in the sidebar (R031-02). */
@@ -25,7 +26,7 @@ export function TagScreen({ tag }: { tag: string }) {
       {groups.map((g: any) => (
         <View key={g.def.name} className="gap-s2">
           <Text size="caption" tone="label">{viewDefOf(g.def).plural}</Text>
-          <ListView def={g.def} rows={g.rows} env={env} onOpen={(rec: any) => router.push(`/u/record/${rec.id}` as never)} />
+          <BlockScreen screen={{ v: 2, id: `tag-${g.def.name}`, layout: { block: "t" }, blocks: { t: { type: "table", ...tableFromRecords(g.def, g.rows, { env: { actors: world?.actors, links: env.links } }) } } } as never} handlers={{ open: (_k, r) => router.push(`/u/record/${r.id}` as never), openLink: open }} />
         </View>
       ))}
     </LargeTitleScreen>
