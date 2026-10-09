@@ -270,7 +270,6 @@ export class ApiRequests {
    */
   async plan(input, name) {
     const { row, config, secret } = await this.vault.apiCredential(name);
-    if (config.auth.type === "browser") throw bad(`${name} is a website signed in through a browser: its operations run in that browser (the connectors module), never through the vault`);
     const method = String(input.method || "").toUpperCase();
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
@@ -490,6 +489,9 @@ export class ApiRequests {
   async execute(plan, { who, said = null, released = null, raw = false }) {
     let known = [];
     const tag = `${plan.method} ${plan.url.hostname} ${plan.kind}${said ? ` said:${said}` : ""}${released ? ` released:${released}` : ""}`;
+    // A website signed in through a browser has no key here: everything above (the host, the route rules, the class, the Gate's hold and approval) judged this request the same as any other, and
+    // now it goes into the browser that holds the login, which signs it. The request is the operation's virtual address; the connectors module maps it back to the learned operation.
+    if (plan.config.auth.type === "browser") return this.executeBrowser(plan, { who, tag, said, released, raw });
     try {
       const auth = await this.authFor(plan);
       known = auth.known;
@@ -523,6 +525,28 @@ export class ApiRequests {
       const msg = scrub(String(/** @type {Error} */ (e)?.message || e), known);
       this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
       throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed", ...(/** @type {any} */ (e)?.retryAfter ? { retryAfter: /** @type {any} */ (e).retryAfter } : {}) });
+    }
+  }
+
+  /**
+   * The browser's turn: a request to a site Connection's virtual address, run in the browser that is signed in. `approved` says the person's yes already covers this exact call (a Gate release,
+   * or their own words): an outward operation is made only then, and a read always. The answer is the operation's extracted data, shaped like any reply.
+   * @param {any} plan @param {{ who: string, tag: string, said: string | null, released: string | null, raw: boolean }} o
+   */
+  async executeBrowser(plan, { who, tag, said, released, raw }) {
+    const run = this.deps.siteRun;
+    try {
+      if (typeof run !== "function") throw bad(`${plan.name} is a website signed in through a browser, and no browser is connected to run it`, "unavailable");
+      if (plan.kind !== "read" && !(released || said)) throw bad("an outward call to a website waits for the person's yes", "denied");
+      const out = await run({ credential: plan.name, method: plan.method, path: plan.url.pathname, query: Object.fromEntries(plan.url.searchParams), ...(plan.body !== undefined ? { body: plan.body } : {}), approved: Boolean(released || said), who });
+      const body = Buffer.from(JSON.stringify(out && out.data !== undefined ? out.data : null));
+      const reply = { status: Number(out && out.status) || 200, headers: { "content-type": "application/json" }, body, truncated: false };
+      this.vault.audit("api-request", plan.name, who, reply.status < 500, `${tag} ${reply.status}`);
+      return raw ? this.rawShape(reply, []) : this.shape(reply, []);
+    } catch (e) {
+      const msg = scrub(String(/** @type {Error} */ (e)?.message || e), []);
+      this.vault.audit("api-request", plan.name, who, false, `${tag}: ${printable(msg, 160)}`);
+      throw Object.assign(new Error(msg), { code: /** @type {any} */ (e)?.code || "failed" });
     }
   }
 

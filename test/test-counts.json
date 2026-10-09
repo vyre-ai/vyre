@@ -728,7 +728,7 @@
  "local/hands-chrome-mac/host.test.js": 8,
  "local/hands-chrome-mac/install.test.js": 10,
  "local/hands-chrome-mac/learn-switch.test.js": 4,
- "local/hands-chrome-mac/module.test.js": 37,
+ "local/hands-chrome-mac/module.test.js": 38,
  "local/hands-chrome-mac/outbound.test.js": 7,
  "local/hands-chrome-mac/oversight.test.js": 16,
  "local/hands-chrome-mac/redact-hostile.test.js": 3,

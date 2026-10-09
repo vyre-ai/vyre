@@ -266,7 +266,7 @@ export default {
      * is for the Gate's release, which is the person's approval of an act already judged.
      * @param {string} op @param {any} input @param {any} meta @param {{ tool?: string, map?: (r: any) => any }} [o]
      */
-    async function dispatch(op, input, meta, o = {}) {
+    async function dispatch(op, input, meta, o = /** @type {any} */ ({})) {
       return via.run(meta || {}, async () => {
         const agent = agentOf(meta.caller, meta);
         const args = { ...input };
@@ -295,7 +295,8 @@ export default {
           // agent's, or the model's in a Claude session, may not: the extension holds those.
           // The person's own list of white-label GoHighLevel hosts (standalone: `config ghl-host`); always sent, so removing one takes effect.
           if (cfg.ghlHosts !== undefined) args.ghlHosts = typeof cfg.ghlHosts === "function" ? cfg.ghlHosts() : cfg.ghlHosts;
-          trust.asked = PEOPLE.includes(callerKind(meta.caller)) && !agent;
+          // `o.asked`: the person's yes already covers exactly this call (a Flow's approved send, released by the kernel); only code in this module sets it.
+          trust.asked = (PEOPLE.includes(callerKind(meta.caller)) && !agent) || o.asked === true;
           // Scripts, API calls, replays and automations are hands-free after the grant. The extension
           // holds only a request that SENDS something as the person (a message, a post, a payment)
           // when `asked` is false, judged by method and endpoint (extension/shared/outbound.js).
@@ -539,6 +540,16 @@ export default {
         kind: { type: "string", enum: ["read", "draft", "change", "send", "spend", "delete"], description: "For learn. Default read." }, trigger: { type: "object", description: "For learn: { url (with {input} slots), steps?: [{action: click|fill|press|wait|goto, selector, value}] } that makes the page send the request." },
         examples: { description: "For learn: two objects of different input values. For scout: one object." }, match: { type: "object" }, id: int, draft: str, inputs: { type: "object" }, verify: { type: "object", description: "For save: inputs that were not an example." }, version: int, heal: bool, force: bool, limit: int }, ["action"]),
       (i, m) => opsTool.run(i, m));
+    // The connectors module's way in (a Connection to a website, run from a Flow, a watcher or a view): the operation by site and name, as the person's signed-in Chrome runs it. A read runs at once;
+    // an outward one only when `approved` says the kernel has the person's yes for exactly this call (the vault passes it). Nothing else may call it.
+    ctx.tool("chrome.op.run", {
+      internal: true, callers: ["module"],
+      description: "Run one learned operation of a site in the person's Chrome, for the connectors module: { site, name, inputs, approved? } -> the operation's answer (ok, class, data, next). Never called directly.",
+      input: obj({ site: str, name: str, inputs: { type: "object" }, approved: bool, check: bool }, ["site", "name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        if (!m || m.caller !== "module:connectors") throw denied("denied", "only the connectors module runs a site's operation");
+        return opsTool.callStored({ origin: originOf(String(i.site || "")), name: String(i.name || ""), inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, meta: m, asked: i.approved === true, check: i.check === true });
+      } });
     tool("chrome.ghl", "GoHighLevel in the person's own Chrome. context: which sub-account and section the open tab is on. section: go to Contacts, Workflows, Conversations and so on in the tab already open (it never opens another). flows: the ready-made automations. run: do one end to end, either a named flow with params or your own steps, as ONE batch inside the browser, and get back how long it took. save: press Save and verify it saved (toast, disabled Save, URL change or list item); a save that cannot be confirmed is an error. Every result carries a trace, and a failure's error carries the page's host and path and a small masked snippet of the page.",
       obj({ action: { type: "string", enum: Object.keys(GHL_OPS) }, tab, section: str, locationId: str, landmark: str, via: { ...str, description: "For section: nav (default, click the left nav) or url." }, expect: { type: "object", description: "For save: {toast, listItem, status} to check besides the built-in evidence." }, name: str, identifier: str, flow: str, params: { type: "object" }, steps: { type: "array", items: { type: "object" } }, timeoutMs: timeout }, ["action"]),
       (i, m) => { const { action, ...rest } = i; return dispatch(/** @type {Record<string,string>} */ (GHL_OPS)[action], { ...rest, action }, m); });

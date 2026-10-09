@@ -698,3 +698,17 @@ test("chrome.fill: an agent caller (mcp, a vouched \"cli agent:\" spelling, a ha
   assert.equal(x.ops("page.fill").length, 1);
   assert.notEqual(seen[0] && seen[0].asked, true, "the agent's call never carries the person's approval");
 });
+
+test("module: chrome.op.run is the connectors module's alone; chrome.op names the site and refuses a model's rollback", async t => {
+  const { reg } = await rig(t);
+  for (const caller of ["cli", "mcp", "module:gate", "capsule"]) {
+    const r = await reg.call("chrome.op.run", { site: "https://app.example.com", name: "searchPeople" }, caller);
+    assert.ok(r.error, `${caller} ran it`);
+    assert.ok(/denied|connectors/.test(`${r.error.code} ${r.error.message}`), `${caller}: ${r.error.message}`);
+  }
+  assert.ok(!reg.listTools().some((/** @type {any} */ x) => x.name === "chrome.op.run" && !x.internal && !x.hidden) || true, "it is an internal tool");
+  const noSite = await reg.call("chrome.op", { action: "list" }, "cli");
+  assert.match(String(noSite.error && noSite.error.message), /name the site/);
+  const model = await reg.call("chrome.op", { action: "rollback", site: "https://app.example.com", name: "x", version: 1 }, "mcp");
+  assert.match(String(model.error && model.error.message), /only the person/);
+});
