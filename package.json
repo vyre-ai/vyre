@@ -29,6 +29,7 @@
     "golden:allow": "node scripts/gen-allow.mjs",
     "tokens": "node scripts/gen-tokens",
     "design:audit": "node scripts/design-audit",
+    "gallery": "node scripts/gen-gallery",
     "docs:shots": "node scripts/docs-shots",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
@@ -36,13 +37,21 @@
     "@noble/ciphers": "1.3.0",
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
+    "docxtemplater": "3.71.0",
+    "esbuild-wasm": "0.28.2",
+    "pizzip": "3.3.0",
     "yaml": "2.9.1"
   },
   "bundleDependencies": [
     "@noble/ciphers",
     "@noble/curves",
     "@noble/hashes",
-    "yaml"
+    "@xmldom/xmldom",
+    "docxtemplater",
+    "pako",
+    "pizzip",
+    "yaml",
+    "esbuild-wasm"
   ],
   "files": [
     "bin",

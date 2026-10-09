@@ -78,8 +78,7 @@ jobs:
         run: |
           # The timeout counts a whole test FILE as one test: core/sessions/sessions.test.js runs over a hundred tests in a row and passed all of them in
           # a hosted run (36922363851) before hitting 120 s as a file. Ten minutes covers a slow runner; the job's own limit is 30.
-          # the files on test/known-red.json are left out, as the main suite's runner leaves them out (each is listed there with its owner and its reason)
-          files=$(node -e 'const fs = require("fs"), cp = require("child_process"); const kr = JSON.parse(fs.readFileSync("test/known-red.json", "utf8")); const all = cp.execSync("ls core/sessions/*.test.js core/switchboard/*.test.js core/agents/*.test.js core/learn/*.test.js; find harness -name \"*.test.js\"").toString().trim().split("\n"); console.log(all.filter(f => f && !kr[f]).join(" "))')
+          files=$(ls core/sessions/*.test.js core/switchboard/*.test.js core/agents/*.test.js core/learn/*.test.js; find harness -name "*.test.js")
           echo "files: $files"
           # shellcheck disable=SC2086 # one file per word
           node --test --test-reporter=spec --test-timeout=600000 $files

@@ -268,6 +268,28 @@ export const PROJECT_TEMPLATE = {
 };
 
 /**
+ * A skill or plugin of the Space's library, one record per version (R031-18): `level` and `scope` say whose it is (space; personal: a person; agent: an agent; project: a project's short name), `state` which
+ * version is in use (one approved at most; a draft waits for the level's owner), `kind` skill (a SKILL.md in `body`) or plugin (JSON in `body`). core/skills keeps these; lib/skill-library.js says what a body holds.
+ */
+export const SKILL = {
+  name: "skill", label: "Skill", icon: "IconBulb",
+  fields: [
+    text("name", "Name", { required: true }),
+    choice("level", "Level", ["space", "personal", "agent", "project"], { required: true }),
+    text("scope", "Whose (a person, an agent or a project; blank for the Space)"),
+    f("number", "version", "Version", { required: true }),
+    choice("state", "State", ["draft", "approved", "retired"], { required: true }),
+    choice("kind", "Kind", ["skill", "plugin"], { required: true }),
+    text("body", "The skill (SKILL.md) or the plugin (JSON)", { required: true }),
+    text("hash", "Hash of the body"),
+    text("owner", "Whose yes it needs (a person; blank means an owner or an admin)"),
+    text("proposer", "Who drafted it (person:..., agent:..., learn)"),
+    text("note", "What changed"),
+    TAGS,
+  ],
+};
+
+/**
  * A Chat: one record per chat (its type is `chat-record`, because the kernel's own chat events are `chat.created` and `chat.changed` and a Records type named `chat` would write events of the same names) (team/0.3/DESIGN-one-chat.md, CONTRACT-one-chat.md), linked to its Project. Anyone with Records read on the project can query this type, so it holds only what an admin may
  * see: that a chat exists, its name, who is in it, when, and where it lives. Never messages, transcripts, models, providers or a summary: those are the engine's, returned to participants by `work.chat.get`.
  * `chat` is the kernel's chat id (unique, never changes); `people` and `agents` mirror the kernel's list and are put back if edited (kernel membership never changes because of a put-back).
@@ -277,6 +299,8 @@ export const CHAT = {
   fields: [
     text("title", "Title"),
     f("link", "project", "Project", { to: "project", inverse: { name: "chats", label: "Chats" } }),
+    f("link", "about", "About"),   // any record this chat is about (no target type, no inverse); a record's timeline finds the chat through it
+    f("boolean", "shared", "Shown on the timeline to everyone who can see the record"),   // a chat is private to its people until they share it
     text("chat", "Chat id", { unique: true }),
     text("people", "People"),
     text("agents", "Agents"),
@@ -296,4 +320,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, CHAT, TASK].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, SKILL, CHAT, TASK].map((t) => Object.freeze(t)));

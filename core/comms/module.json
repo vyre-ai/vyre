@@ -1,0 +1,79 @@
+{
+  "name": "comms",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Send an email or a text message as you, held at the Gate for your yes and logged on the client it went to.",
+  "roles": [
+    "box"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "comms.send",
+        "outward": true,
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "comms.release",
+        "reach": "modules"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "comms.held",
+      "comms.sent"
+    ]
+  },
+  "shows": {},
+  "needs": {
+    "vault": [
+      "per-connection"
+    ],
+    "credentials": [
+      {
+        "id": "twilio",
+        "kind": "api-key",
+        "provider": "twilio",
+        "purpose": "Send text messages through your Twilio account"
+      }
+    ]
+  },
+  "teaches": {},
+  "flow": {
+    "steps": [
+      {
+        "name": "comms.send",
+        "label": "Send an email or a text",
+        "outward": true,
+        "inputs": {
+          "via": "string",
+          "to": "string",
+          "subject": "string",
+          "body": "string"
+        },
+        "outputs": {
+          "held": "string"
+        }
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "comms.sms",
+      "group": "comms",
+      "label": "Text messages through Twilio",
+      "help": "Your Twilio account number (starts with AC) and the number texts come from: { \"account\": \"AC...\", \"from\": \"+15555550123\" }. Your Twilio key goes in the Vault. Every text waits for your yes.",
+      "type": "object",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "comms.sms"
+      }
+    }
+  ]
+}

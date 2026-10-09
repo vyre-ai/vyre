@@ -333,6 +333,16 @@ it off the box:
 cd /srv/vyre && docker compose cp vyre:/home/vyre/vyre-backup-2026-09-27.vyre .
 ```
 
+**The Space's members, grants and sealed values** come back too, once you have given your recovery code a single time (the `spaces.bundle.enrol` tool, or ask your assistant to set up the Space bundle). From then on Vyre writes `space-bundle.vyb` into the home by itself, every hour, with no further asking, and every `vyre backup` carries it. The bundle holds the Space's id, its members and grants, and each sealed value (an SSN, a bank number) sealed under a key that only your recovery code opens. None of the old box's own keys is in it, and nothing in it is readable without the code.
+
+On a fresh box, restore the backup and the Space in one step:
+
+```
+vyre restore vyre-backup-2026-10-10.vyre --force --recovery-code <your code>
+```
+
+The Space keeps its id, so every link and record reference still works. Its sealed values are sealed again under the new box's own keys. Your members are back with their roles, and the log says the Space was restored and from what point. What a member sealed on their own device (their vault, their chats' keys) is carried as ciphertext, never re-keyed: it opens again when that person's device next connects to the restored Space. The old log itself is not carried, only where it ended.
+
 **Everything**, Claude Code's sign-in and transcripts, and your projects in `/work`, from the Mac:
 
 ```

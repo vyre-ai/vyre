@@ -14,7 +14,7 @@ import { readDraft, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
-export type Person = { name: string; family: "person" | "assistant" };
+export type Person = { name: string; family: "person" | "assistant"; doing?: string };
 /** A record the # picker offers: its urn goes to the box beside the words; `sealed` is how many of its fields are sealed (the assistant sees those only as placeholders). */
 export type RecordPick = { name: string; type: string; sealed: number; urn?: string; kind?: string };
 export type PickedMention = { kind: string; id: string; name: string };
@@ -91,7 +91,7 @@ export function ChatComposer(p: ComposerProps) {
   const options = useMemo(() => {
     if (!trig) return [];
     if (trig.kind === "command") return rankCommands(COMMANDS, trig.range.query).slice(0, 6).map((c) => ({ key: c.name, label: "/" + c.name, sub: c.description, pick: c.name }));
-    if (trig.kind === "person") return rankByName(p.people ?? [], trig.range.query).slice(0, 6).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? "Assistant" : "Person", pick: x.name, avatar: x }));
+    if (trig.kind === "person") return rankByName(p.people ?? [], trig.range.query).slice(0, 6).map((x) => ({ key: x.name, label: x.name, sub: x.family === "assistant" ? (x.doing || "Assistant") : "Person", pick: x.name, avatar: x }));
     return rankByName(p.records ?? [], trig.range.query).slice(0, 6).map((r) => ({ key: r.urn ?? r.name, label: r.name, sub: r.type, pick: r.name, chip: sealedChip(r), urn: r.urn, kind: r.kind }));
   }, [trig, p.people, p.records]);
 

@@ -266,6 +266,10 @@
         "reach": "modules"
       },
       {
+        "name": "threads.key-release",
+        "reach": "modules"
+      },
+      {
         "name": "threads.watch",
         "reach": "anyone",
         "effect": "write"

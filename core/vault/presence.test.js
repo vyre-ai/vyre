@@ -39,7 +39,7 @@ const NO_PRESENCE = ["vault.provider.status", "vault.list", "vault.revoke", "vau
   "vault.connections.list", "vault.connections.get", "vault.connections.revoke", "vault.connections.sync",
   "vault.connections.register", "vault.connections.unregister", "vault.connections.allowed",
   // a module asks whether it holds a grant: a boolean about its own grant, no value (module-only)
-  "vault.granted", "vault.mcp.status", "vault.mcp.base"];
+  "vault.granted", "vault.mcp.status", "vault.mcp.base", "vault.connections.lend", "vault.connections.end"];
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

@@ -26,6 +26,8 @@ import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { wallSteps, wallUninstallSteps } from "../../../lib/sandbox/index.js";
+import { restoreBundle } from "../../../lib/space-bundle.js";
+import { startSealer } from "../../../kernel/seal/client.js";
 import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
 import { hiddenPrompt } from "../../vault/cli-io.js";
 import { probe as probeBox } from "../probe.js";
@@ -537,9 +539,9 @@ export default [
     },
   },
   {
-    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]", summary: "put a backup back (vyred must be stopped)",
+    name: "restore", order: 81, hidden: true, usage: "vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR] [--recovery-code CODE]", summary: "put a backup back (vyred must be stopped); --recovery-code brings the Space back too",
     async run(args) {
-      const { flags, rest } = parse(args, ["user", "connect", "work-to"]);
+      const { flags, rest } = parse(args, ["user", "connect", "work-to", "recovery-code"]);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       const file = path.resolve(rest[0]);
       let v2 = false;
@@ -570,7 +572,18 @@ export default [
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
       finally { passphrase = ""; }
-      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made" });
+      // The Space bundle (lib/space-bundle.js): its members, grants and sealed values come back with the owner's recovery code, on this box's own sealing keys
+      let spaceBack = null;
+      if (fs.existsSync(path.join(config.home(), "space-bundle.vyb"))) {
+        let code = typeof flags["recovery-code"] === "string" ? String(flags["recovery-code"]) : process.env.VYRE_RECOVERY_CODE || "";
+        if (!code && process.stdin.isTTY && !json()) { try { code = await readPassphrase("recovery code (Enter to leave the Space for later): "); } catch { code = ""; } }
+        if (code) {
+          try { spaceBack = await restoreBundle({ root: config.home(), code, startSealer: (dir) => startSealer({ dir, dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}), ...(process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}) }) }); }
+          catch (e) { out(`  the Space was not brought back: ${String(/** @type {Error} */ (e).message)}`); }
+        } else if (!json()) out(dim("  this backup carries a Space bundle: vyre restore <file> --force --recovery-code <code> brings its members and sealed values back"));
+      }
+      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made", ...(spaceBack ? { space: spaceBack.space } : {}) });
+      if (spaceBack) out(`  the Space ${spaceBack.space} is back: its ${spaceBack.sealed} sealed value${spaceBack.sealed === 1 ? "" : "s"} are under this box's own keys`);
       out("  restored · vyre up to start");
       if (r.restored && r.restored.includes("data")) out(dim("  artifacts are back with their versions; public links return as they were when the backup was made, so a link that was on then is on again"));
       return 0;

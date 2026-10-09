@@ -33,10 +33,8 @@ const ALLOWED = {
     // The Capsule's one fallback pair when sessions.models.get is missing (ModelFallback; CapsuleModel.models).
     "local/capsule/native/Sources/Vyred/Route.swift": 2,
   },
-  policy: {
-    "apps/app/src/auth/person.ts": 2, // debt: mobile, after 0.1.0
-    "web/js/api.js": 1,
-  },
+  // (the app's and the Deck's copies of the box's presence lists are gone: no client mirrors the floor's list any more, the box names the moment in its refusal)
+  policy: {},
 };
 
 /** @param {string} dir @returns {string[]} */

@@ -1,16 +1,121 @@
 {
   "name": "skills",
   "version": "0.1.0",
-  "description": "The skills a session may use, found by what it is about to do. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, the person's learned ones, a project's, an agent's. What a caller sees is cut by the permission system: it never sees a skill it may not use.",
-  "roles": ["box", "local"],
+  "description": "The skills a session may use, found by what it is about to do, and the library they come from. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, or from the library at four levels (space, personal, agent, project), drafted by anyone and approved by the level's owner. What a caller sees is cut by the permission system: it never sees a skill it may not use.",
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "reads": ["skills.list", "skills.find", "skills.get"], "tools": [{ "name": "skills.list", "effect": "read", "reach": "anyone", "projectArg": "project" }, { "name": "skills.find", "effect": "read", "reach": "anyone", "projectArg": "project" }, { "name": "skills.get", "effect": "read", "reach": "anyone" }] },
-  "watches": { "emits": [] },
-  "shows": { "cli": [] },
-  "needs": { "tools": ["projects.reach"] },
+  "does": {
+    "reads": [
+      "skills.list",
+      "skills.find",
+      "skills.get",
+      "skills.versions"
+    ],
+    "tools": [
+      {
+        "name": "skills.list",
+        "effect": "read",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "skills.find",
+        "effect": "read",
+        "reach": "anyone",
+        "projectArg": "project"
+      },
+      {
+        "name": "skills.get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.draft",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.draft.learned",
+        "effect": "write",
+        "reach": "modules"
+      },
+      {
+        "name": "skills.approve",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.rollback",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.versions",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "skills.change.draft",
+        "reach": "modules"
+      },
+      {
+        "name": "skills.change.title",
+        "reach": "modules"
+      },
+      {
+        "name": "skills.change.apply",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "skills.materialise",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "skills.hook.run",
+        "reach": "modules",
+        "effect": "write"
+      }
+    ]
+  },
+  "watches": {
+    "emits": []
+  },
+  "shows": {
+    "cli": []
+  },
+  "needs": {
+    "tools": [
+      "projects.reach"
+    ],
+    "kernel": {
+      "membership": true,
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update"
+      ]
+    }
+  },
   "teaches": {
     "tips": [
-      { "id": "skills-find", "text": "Ask which skill fits: `vyre call skills.find '{\"query\":\"keep a password out of a file\"}'` ranks the skills you may use.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.3.1", "command": "vyre call skills.find", "docs": "using/docs-tool.md", "about": "skills" }
+      {
+        "id": "skills-find",
+        "text": "Ask which skill fits: `vyre call skills.find '{\"query\":\"keep a password out of a file\"}'` ranks the skills you may use.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.3.1",
+        "command": "vyre call skills.find",
+        "docs": "using/docs-tool.md",
+        "about": "skills"
+      }
     ]
   }
 }

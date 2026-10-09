@@ -1,5 +1,5 @@
 // @ts-check
-// Whether Vyre for Chrome learns each site's structure. ON by default (the user's ruling, 1 Oct 2026); off when the person turns
+// Whether Vyre Computer learns each site's structure. ON by default (the user's ruling, 1 Oct 2026); off when the person turns
 // the memory.site.learn setting off, or when config says learn: false. Config can only turn learning off: `learn: true` in config
 // never overrides an off setting (standalone has no settings tool, so its config default of true is what stands there). The setting
 // is read through settings.get and kept for 10 s. A read that fails keeps the last answer and, with none yet, stays off (the same rule as memory.site.put, which refuses

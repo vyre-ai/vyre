@@ -6,7 +6,7 @@
 // connected (peercred.js): a uid other than the owner's is refused before any route. A write
 // carries a proof core checks against its OWN keys, in its OWN db under its data directory. The
 // methods it takes are the ones it can check itself: a Capsule, device or passkey signature, a
-// one-time code only the installer can mint, and a session core itself opened. Never touchid (that
+// one-time code only the installer can mint, and nothing else (core opens no sessions any more). Never touchid (that
 // is vyred trusting its own dialog helper) and never tty (a same-uid process can read the tty).
 //
 // Protocol: HTTP over the unix socket, JSON in and out, { data } or { error }.
@@ -17,7 +17,6 @@
 //     presence.challenge {tool, input}     read: a passkey challenge core issued for that exact call
 //     presence.verify {tool, input, proof} read: does this proof (a header string) prove that call?
 //     presence.enroll / presence.remove    write: needs a proof over this exact input
-//     presence.session.open                write: after a capsule, device or passkey proof only
 //     presence.enroll.capsule              write: a SERVER's Capsule key (firstkey.js): the setup key signs the hand-over once, in the first key's hour, and is removed
 //     presence.enroll.first                write: a SERVER's first key only (firstkey.js): the key the install line named, within the hour, from outside every Claude session
 //     keys.exists/ensure/box.pub/box.dh/route.pub/route.sign, keys.device.exists/ensure/pub/dh   the relay's keys (phase 5), never a private half
@@ -36,9 +35,7 @@ import { enrollFirst, enrollCapsule, migrateFirstKey } from "./firstkey.js";
 
 export const PROTOCOL = 1;
 /** The proofs core can check itself. */
-export const CORE_METHODS = new Set(["capsule", "device", "passkey", "code", "session"]);
-/** The proofs a core session may open from: a live key, never a code or another session. */
-const SESSION_OPENERS = new Set(["capsule", "device", "passkey"]);
+export const CORE_METHODS = new Set(["capsule", "device", "passkey", "code"]);
 const MAX_BODY = 256 * 1024;
 const CODE_MISSES = 5;
 /** The installer's one-time code, handed to the Capsule over an inherited fd: 2 minutes. */
@@ -220,12 +217,6 @@ export async function startCore(o) {
   const WRITE = {
     "presence.enroll": async input => presence.enroll(input),
     "presence.remove": async input => ({ removed: presence.remove(String(input.id || "")) }),
-    "presence.session.open": async (_input, proved, at) => {
-      if (!SESSION_OPENERS.has(proved.method)) throw Object.assign(new Error("a session opens only after a Capsule, device or passkey proof"), { code: "presence_required" });
-      // Only the Capsule holds a core session, bound to its own process.
-      if (!at.capsule) throw Object.assign(new Error("only the Capsule vyre-core signed holds a session"), { code: "not_capsule" });
-      return presence.openSession({ method: proved.method, keyId: proved.keyId, peer: at.peer });
-    },
   };
 
   const send = (res, status, body) => {
@@ -311,7 +302,7 @@ export async function startCore(o) {
         // A plain value leaves core only for the Capsule core signed, to show, copy or type.
         if (!(await capsuleFrom(c.pid))) return send(res, 403, { error: { code: "not_capsule", message: "on a vyre-core Mac, only the Capsule shows, copies or types a value" } });
         const at = { peer: { stableId: peerKey(c.pid) } };
-        const p = await prove(tool, input, header, { caller: "capsule", def: { presence: { session: vaults.sessionOk } }, peer: at.peer });
+        const p = await prove(tool, input, header, { caller: "capsule", peer: at.peer });
         if (!p.ok) return refused(p);
         log(`vyre-core: ${tool} ${String(input.name || "")} for the Capsule (pid ${c.pid}), proved by ${p.method}`);
         return send(res, 200, { data: await vaults.plain[tool](input, "capsule") });

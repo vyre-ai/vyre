@@ -12,11 +12,12 @@ import { AGENT_ACTIONS } from "../../kernel/seal/uses.js";
 
 export const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 
-/** @param {{ clock?: () => number, agents?: Record<string, string>, people?: string[] }} [o] */
+/** @param {{ clock?: () => number, agents?: Record<string, string>, people?: string[], projects?: Record<string, string>, call?: (tool: string, input: any) => Promise<any> | any }} [o] */
 export async function kernelRig(o = {}) {
   let T = Date.now();
   const clock = o.clock || (() => ++T);
   const agents = o.agents || { kit: "agt_kit", juno: "agt_juno" };
+  const projects = o.projects || {};
   const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), clock, is_person: () => true });
   const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
   const person = (/** @type {string} */ who) => chains.fromFacts({ kind: "device", device_key_id: `d-${who}`, person: who, path: "direct" });
@@ -40,6 +41,9 @@ export async function kernelRig(o = {}) {
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; }
+    if (tool === "agents.list") return { data: Object.entries(agents).map(([name, uid]) => ({ uid, name, kind: name === "assistant" ? "assistant" : "agent" })) };
+    if (tool === "projects.record") return projects[input.project] ? { data: { urn: `vyre://${SPACE}/project/${projects[input.project]}` } } : { error: { code: "not_found", message: "no project" } };
     if (tool !== "agents.uid") return { error: { code: "no_such_tool", message: tool } };
     if (input.uid !== undefined) return { data: { name: Object.keys(agents).find(n => agents[n] === input.uid) || null } };
     return agents[input.name] ? { data: { uid: agents[input.name] } } : { error: { code: "not_found", message: `no agent ${input.name}` } };

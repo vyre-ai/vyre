@@ -1,7 +1,7 @@
 // The web build of notify.ts: the browser's own Notification API, shown only while a tab is open.
 // No service-worker push, no token. Where the browser has none, it says so.
 
-import { shell } from "../shell/shell";
+import { shell } from "../shell/shell.ts";
 import { cleanNotice, nullTransport, SAY, type Notice, type NotifyState, type PushTransport } from "./notify-model.ts";
 
 export type { Notice, NotifyState, PushTransport } from "./notify-model.ts";

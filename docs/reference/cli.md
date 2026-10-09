@@ -770,7 +770,7 @@ vyre voice [talk [--send <thread>] | status | key [provider] [--stdin]] [--json]
 The Vyre MCP server on stdio, for plain claude.
 
 ```
-vyre mcp [serve | install [--yes]] [--json]
+vyre mcp [serve | design | install [--yes]] [--json]
 ```
 
 ### vyre update
@@ -933,7 +933,7 @@ These work, but `vyre help` leaves them out: they are for the box's service mana
 | Command | What it does |
 | --- | --- |
 | [`vyre home`](#vyre-home) | your projects, a new session, and your agents |
-| [`vyre restore`](#vyre-restore) | put a backup back (vyred must be stopped) |
+| [`vyre restore`](#vyre-restore) | put a backup back (vyred must be stopped); --recovery-code brings the Space back too |
 | [`vyre uninstall`](#vyre-uninstall) | remove the systemd units (the data stays unless --purge) |
 | [`vyre daemon`](#vyre-daemon) | run vyred in the foreground (what systemd runs) |
 
@@ -947,10 +947,10 @@ vyre home
 
 ### vyre restore
 
-Put a backup back (vyred must be stopped).
+Put a backup back (vyred must be stopped); --recovery-code brings the Space back too.
 
 ```
-vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR]
+vyre restore <file> [--force] [--skip-projects] [--skip-transcripts] [--work-to DIR] [--recovery-code CODE]
 ```
 
 ### vyre uninstall

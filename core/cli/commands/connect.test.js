@@ -5,6 +5,11 @@
 
 import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+// This file ran past the 300 s per-file limit (every case starts the real vyre binary a few times). The cases are dealt out to 4 files (connect.test.js and its -b.. siblings, which set VYRE_CONNECT_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 4;
+const SHARD = Number(process.env.VYRE_CONNECT_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -72,7 +77,7 @@ async function vyred(t) {
   return { root, d, cli, put };
 }
 
-test("connect: add, list, test and remove MCP servers, granting their vault items on the way", async t => {
+shardTest("connect: add, list, test and remove MCP servers, granting their vault items on the way", async t => {
   const v = await vyred(t);
   const gh = fake("gh"), token = fake("tracker");
   await v.put("gh-token", { value: gh });
@@ -128,7 +133,7 @@ test("connect: add, list, test and remove MCP servers, granting their vault item
   for (const r of [added, web, list, tested, removed]) for (const s of [gh, token]) assert.ok(!r.all.includes(s), "a value reached the terminal");
 });
 
-test("connect --json: list, add, test and remove print one JSON value; --json after -- is the server's", async t => {
+shardTest("connect --json: list, add, test and remove print one JSON value; --json after -- is the server's", async t => {
   const v = await vyred(t);
   const token = fake("tracker");
   await v.put("tracker-token", { value: token });
@@ -178,7 +183,7 @@ test("connect --json: list, add, test and remove print one JSON value; --json af
   for (const r of [web, list, tested]) assert.ok(!r.all.includes(token), "a value reached the terminal");
 });
 
-test("connect: a Google account with domain-wide delegation, and the scopes Workspace refused", async t => {
+shardTest("connect: a Google account with domain-wide delegation, and the scopes Workspace refused", async t => {
   const S_READ = [S + "calendar.readonly", S + "gmail.readonly"];
   const g = await startFakeGoogle(t, { allowedScopes: S_READ });
   const v = await vyred(t);
@@ -208,10 +213,10 @@ test("connect: a Google account with domain-wide delegation, and the scopes Work
   for (const line of sa.split("\n")) if (line.length > 24) assert.ok(!(added.all + list.all).includes(line), "a key line reached the terminal");
 });
 
-test("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the line and runs claude only with --yes", async t => {
+shardTest("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the line and runs claude only with --yes", async t => {
   const v = await vyred(t);
   const help = await vyre(v.root, ["help"]);
-  assert.match(help.out, /vyre mcp \[serve \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
+  assert.match(help.out, /vyre mcp \[serve \| design \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
   assert.match(help.out, /vyre connect/);
 
   // A fake claude that writes down what it was asked to do.
@@ -231,6 +236,7 @@ test("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the l
   assert.equal(fs.readFileSync(said, "utf8").trim(), "mcp add -s user vyre -- vyre mcp");
 
   const p = spawn(process.execPath, [BIN, "mcp"], { env: { ...process.env, VYRE_HOME: v.root, VYRE_AGENT: "", VYRE_AGENT_KEY: "" } });
+  t.after(() => p.kill()); // a failed assertion below must not leave the server running and the file open
   let raw = "";
   const replies = new Map();
   p.stdout.on("data", c => {
@@ -243,14 +249,16 @@ test("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the l
   const rpc = (id, method, params) => new Promise(r => { replies.set(id, r); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
   assert.equal((await rpc(1, "initialize", { protocolVersion: "2025-06-18" })).result.serverInfo.name, "vyre");
   const tools = (await rpc(2, "tools/list", {})).result.tools;
-  assert.ok(tools.some(x => x.name === "system_echo"));
+  // only a short core is listed, beside tools_find and tools_call, which reach every other tool (harness/mcp/core-tools.js)
+  assert.ok(tools.some(x => x.name === "tools_find") && tools.some(x => x.name === "tools_call"));
+  assert.ok(!tools.some(x => x.name === "system_echo"));
   const exit = new Promise(r => p.on("close", r));
   p.stdin.end();
   assert.equal(await exit, 0, "it ends when stdin closes");
   for (const l of all.split("\n").filter(Boolean)) assert.equal(JSON.parse(l).jsonrpc, "2.0", `not JSON-RPC on stdout: ${l.slice(0, 80)}`);
 });
 
-test("connect: Sign in with Google from the terminal, over the loopback", async t => {
+shardTest("connect: Sign in with Google from the terminal, over the loopback", async t => {
   const g = await startFakeGoogle(t);
   const v = await vyred(t);
   const client = g.oauthClient();
@@ -271,7 +279,7 @@ test("connect: Sign in with Google from the terminal, over the loopback", async 
   for (const s of [client.client_secret, ...g.issued.keys()]) assert.ok(!r.all.includes(s), "a value reached the terminal");
 });
 
-test("connect: Sign in with Google on another device, by pasting the address it landed on", async t => {
+shardTest("connect: Sign in with Google on another device, by pasting the address it landed on", async t => {
   const g = await startFakeGoogle(t);
   const v = await vyred(t);
   await v.put("bakery-client", g.oauthClient(), "env-set");
@@ -290,7 +298,7 @@ test("connect: Sign in with Google on another device, by pasting the address it 
   assert.ok(!r.all.includes(new URL(back).searchParams.get("code") || "-"), "the code reached the terminal");
 });
 
-test("connect: Sign in with Google without a client item says how to put one, and does nothing else", async t => {
+shardTest("connect: Sign in with Google without a client item says how to put one, and does nothing else", async t => {
   const v = await vyred(t);
   const r = await vyre(v.root, ["connect", "add", "google", "home", "--sign-in"], { VYRE_NO_DIALOGS: "1" });
   assert.equal(r.code, 1, r.all);
@@ -303,7 +311,7 @@ test("connect: Sign in with Google without a client item says how to put one, an
   assert.equal((await v.cli("google.accounts")).data.length, 0);
 });
 
-test("connect: --sign-in refuses --email, --item and --dwd, and --client needs --sign-in", async t => {
+shardTest("connect: --sign-in refuses --email, --item and --dwd, and --client needs --sign-in", async t => {
   const v = await vyred(t);
   for (const extra of [["--email", "alex@example.com"], ["--item", "work-google"], ["--dwd"]]) {
     const r = await vyre(v.root, ["connect", "add", "google", "home", "--sign-in", ...extra]);
@@ -317,7 +325,7 @@ test("connect: --sign-in refuses --email, --item and --dwd, and --client needs -
   assert.match(help.out, /vyre connect add google <name> --sign-in \[--client <vault item>\]/);
 });
 
-test("connect: Ctrl-C cancels an open sign-in and stores nothing", async t => {
+shardTest("connect: Ctrl-C cancels an open sign-in and stores nothing", async t => {
   const g = await startFakeGoogle(t);
   const v = await vyred(t);
   await v.put("google-oauth-client", g.oauthClient(), "env-set");
@@ -337,7 +345,7 @@ test("connect: Ctrl-C cancels an open sign-in and stores nothing", async t => {
   assert.equal((await v.cli("google.accounts")).data.length, 0);
 });
 
-test("connect: an empty stdin that is not a terminal does not cancel; the loopback still finishes the sign-in", async t => {
+shardTest("connect: an empty stdin that is not a terminal does not cancel; the loopback still finishes the sign-in", async t => {
   const g = await startFakeGoogle(t);
   const v = await vyred(t);
   await v.put("google-oauth-client", g.oauthClient(), "env-set");
@@ -355,7 +363,7 @@ test("connect: an empty stdin that is not a terminal does not cancel; the loopba
   assert.match(r.out, /ok home/);
 });
 
-test("connect rm: the short name for remove, a usage mistake without a name, and a second rm finds nothing", async t => {
+shardTest("connect rm: the short name for remove, a usage mistake without a name, and a second rm finds nothing", async t => {
   const v = await vyred(t);
   const added = await vyre(v.root, ["connect", "add", "mcp", "northwind", "--", process.execPath, FAKE, "--stdio"]);
   assert.equal(added.code, 0, added.all);
@@ -382,7 +390,7 @@ test("connect rm: the short name for remove, a usage mistake without a name, and
   assert.match(again.out, /nothing connected is named northwind · vyre connect list/);
 });
 
-test("connect: vyre commands lists every verb run() handles; help is reachable as vyre help connect and as a table", async t => {
+shardTest("connect: vyre commands lists every verb run() handles; help is reachable as vyre help connect and as a table", async t => {
   const root = tempHome(t);
   const verbs = JSON.parse((await vyre(root, ["commands", "connect", "--json"])).out).commands[0].verbs;
   assert.deepEqual(verbs.map(v => [v.verb, v.aliases || []]), [["list", []], ["apps", []], ["add", []], ["remove", ["rm"]], ["test", []], ["help", []]]);

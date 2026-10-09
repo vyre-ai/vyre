@@ -5,6 +5,11 @@
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+// This file ran 100 s on an idle machine and past the 290 s limit under load. The cases are dealt out to 2 files (module.test.js and its -b.. siblings, which set VYRE_VAULT_MODULE_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 2;
+const SHARD = Number(process.env.VYRE_VAULT_MODULE_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -52,7 +57,7 @@ async function boot(t, vault = { keystore: "file" }, { keep } = {}) {
   return { root, d, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
 
-test("vault: put, list, grant, fetch through a real module, revoke", async t => {
+shardTest("vault: put, list, grant, fetch through a real module, revoke", async t => {
   const { d, as } = await boot(t);
   t.after(() => d.stop());
   const cli = as("cli");
@@ -102,7 +107,7 @@ test("vault: put, list, grant, fetch through a real module, revoke", async t => 
   for (const ty of ["vault.item-added", "vault.granted", "vault.released", "vault.revoked"]) assert.ok(types.includes(ty), `no ${ty}`);
 });
 
-test("vault: login fields, TOTP, generate, env-set and delete", async t => {
+shardTest("vault: login fields, TOTP, generate, env-set and delete", async t => {
   const { d, as } = await boot(t);
   t.after(() => d.stop());
   const cli = as("cli");
@@ -132,7 +137,7 @@ test("vault: login fields, TOTP, generate, env-set and delete", async t => {
   assert.ok(!(await cli("vault.list")).data.items.some(i => i.name === "new-pass"));
 });
 
-test("vault: Claude is never the channel for a value, and cannot give access on its own", async t => {
+shardTest("vault: Claude is never the channel for a value, and cannot give access on its own", async t => {
   const { root, d, as } = await boot(t);
   t.after(() => d.stop());
   const cli = as("cli"), mcp = as("mcp");
@@ -165,7 +170,7 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
   assert.equal(spoof.error.code, "no_such_tool");
 });
 
-test("vault: the passphrase keystore stays locked until unlocked", async t => {
+shardTest("vault: the passphrase keystore stays locked until unlocked", async t => {
   const { d, as } = await boot(t, { keystore: "passphrase" });
   t.after(() => d.stop());
   const cli = as("cli");
@@ -181,13 +186,13 @@ test("vault: the passphrase keystore stays locked until unlocked", async t => {
   assert.ok((await cli("probe.use", { name: "api-token" })).data.sha);
 });
 
-test("vault: under tests, the keychain keystore refuses the real login keychain", async t => {
+shardTest("vault: under tests, the keychain keystore refuses the real login keychain", async t => {
   const { d, as } = await boot(t, { keystore: "keychain" });
   t.after(() => d.stop());
   assert.match((await as("cli")("vault.put", { name: "a", fields: { value: "x" } })).error.message, /temporary keychain/);
 });
 
-test("vault: the keychain keystore, in a temporary keychain, survives a restart", { skip: process.platform !== "darwin" }, async t => {
+shardTest("vault: the keychain keystore, in a temporary keychain, survives a restart", { skip: process.platform !== "darwin" }, async t => {
   const kc = await tempKeychain(t);
 
   const value = fake("kc");
@@ -230,7 +235,7 @@ function mcpList(root) {
   });
 }
 
-test("vault: no value appears in events, logs, listings, the MCP server, the HTTP API or any file", async t => {
+shardTest("vault: no value appears in events, logs, listings, the MCP server, the HTTP API or any file", async t => {
   const { root, d, lines, as } = await boot(t);
   const cli = as("cli"), mcp = as("mcp");
   const values = [];
@@ -296,7 +301,7 @@ test("vault: no value appears in events, logs, listings, the MCP server, the HTT
   assert.equal(values.length, 6);
 });
 
-test("vault: a module may put its own items and grant them, and nothing else", async t => {
+shardTest("vault: a module may put its own items and grant them, and nothing else", async t => {
   const { root, d, as } = await boot(t);
   t.after(() => d.stop());
   writeModule(path.join(root, "modules"), "stash", { does: { tools: ["stash.store"] } }, `export default { async start(ctx) {
@@ -324,7 +329,7 @@ test("vault: a module may put its own items and grant them, and nothing else", a
   assert.match((await cli("vault.put", { name: "q", value: "y", grants: ["probe"] })).error.message, /people use vault.grant/);
 });
 
-test("vault: a per-agent module fetches dynamic names, still only with a grant per item", async t => {
+shardTest("vault: a per-agent module fetches dynamic names, still only with a grant per item", async t => {
   const { root, d } = await boot(t);
   writeModule(path.join(root, "modules"), "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) {
     ctx.tool("roster.fetch", { input: { type: "object", properties: { name: { type: "string" } } },
@@ -342,7 +347,7 @@ test("vault: a per-agent module fetches dynamic names, still only with a grant p
   assert.deepEqual((await cli("roster.fetch", { name: "juno-setup-token" })).data, { length: token.length });
 });
 
-test("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
+shardTest("vault: behind tailscale serve, a relayed pass answers only its holder's Tailscale login", async t => {
   const token = fake("token");
   const api = http.createServer((req, res) => { res.end(JSON.stringify({ ok: req.headers.authorization === `Bearer ${token}` })); });
   await new Promise(r => api.listen(0, "127.0.0.1", () => r(undefined)));
@@ -385,7 +390,7 @@ test("vault: behind tailscale serve, a relayed pass answers only its holder's Ta
   assert.ok(trail.some(e => e.action === "relay" && e.ok && /as mate@example\.com/.test(e.why)));
 });
 
-test("vault: on the box (identity whois), a relay ignores the identity header and refuses non-tailnet peers", async t => {
+shardTest("vault: on the box (identity whois), a relay ignores the identity header and refuses non-tailnet peers", async t => {
   const token = fake("token");
   const free = await new Promise(r => { const s = http.createServer().listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => r(p)); }); });
   // The relay is on loopback here, so every peer is off the tailnet and whois is never asked.

@@ -41,6 +41,12 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     for (let n = 1; n < 1000; n++) { const s = n === 1 ? base : `${base}-${n}`; if (!(await find(PROJECT, "slug", s))) return s; }
     throw Object.assign(new Error("could not find a free short name for this project"), { code: "conflict" });
   }
+  /** The Project's owner field for the person it is made for: the named owner, else the first hop of the caller's chain when that is a person. @param {any} caller @param {string} [named] */
+  const ownerOf = (caller, named) => {
+    const h = caller && Array.isArray(caller.hops) ? caller.hops[0] : null;
+    const id = named || (h && h.actor && h.actor.kind === "person" ? h.actor.id : null);
+    return id ? { actor: { kind: "person", id: String(id), space: kernel.space } } : null;
+  };
   /** @param {any} caller the chain the record is made under (the person's own); the folder marker is the service's */
   async function createProject(caller, { name, repo, client, slug, personal_of, owner }) {
     const nm = String(name || "").trim();
@@ -48,7 +54,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (slug !== undefined && !(typeof slug === "string" && SLUG_RE.test(slug))) throw Object.assign(new Error("the short name is lower case letters, numbers and dashes"), { code: "bad_input" });
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
-    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
+    const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}), ...(personal_of ? { personal_of: String(personal_of) } : {}),
+      // the person who makes a project owns it: the Project's own files open for its owner and its team (kernel/gateway/project-members.js), so a project nobody owned would have files nobody could open
+      ...(ownerOf(caller, owner) ? { owner: ownerOf(caller, owner) } : {}) }, ...(owner ? [{ attrs: { owner: String(owner) } }] : []));
     // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
     // project. With a Drive, the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
     const plain = !kernel.drive;
@@ -307,6 +315,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /** A chat's name changed somewhere: the record's title and every run's thread name agree. @param {any} rec the chat record @param {string} title @param {"record" | "thread"} from @param {string} [except] the run the change came from */
+  /** The chat record's link to a record and whether it is shown on that record's timeline (the person has been checked to be in the chat). @param {any} rec @param {{ about?: string | null, shared?: boolean }} patch */
+  async function setChatFields(rec, patch) { return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version); }
   async function renameChat(rec, title, from, by = chain(), except) {
     const t = String(title || "").trim().slice(0, 120);
     if (!t) return rec;
@@ -386,5 +396,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

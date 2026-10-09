@@ -148,7 +148,7 @@ export async function createKernel(cfg) {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
     // Only a module that declared `needs.kernel` is made a service of the Space (one sealed event each); the rest get a handle that can do nothing.
-    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
+    const installed = m.needs && m.needs.kernel ? grantsStore.installModule(m.name, { actions: Array.isArray(needs.actions) ? needs.actions : [], prefixes: Array.isArray(needs.prefixes) ? needs.prefixes : undefined, mints: needs.mints, ...(Array.isArray(needs.grants) ? { grants: needs.grants.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)) } : {}) }) : Promise.resolve();
     // On a Basic device only the fixed personal types exist: a module's other types are not made (its tools answer the Cloud line when they reach for one).
     const wanted = Array.isArray(needs.types) ? (cfg.basic ? needs.types.filter((/** @type {any} */ t) => cfg.basic.allow.has(String(t && t.name))) : needs.types) : [];
     const ready = Promise.all([installed, wanted.length ? store.define({ add_types: wanted }) : Promise.resolve()]);
@@ -226,6 +226,10 @@ export async function createKernel(cfg) {
        */
       // Whether a named agent, acting for this Space's owner, may do a READ-risk act on a resource: the answer only. The agent's chain is built here and never leaves the kernel, so no module can mint an
       // agent chain; a chain of [owner, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. Used by the projects module for "may this agent reach this project".
+      // R031-83, the `spaces` module's Space bundle (lib/space-bundle.js): only what it needs of the kernel. The grants as data, the log's head, this Space's sealed values sealed under a bundle key, and the bundle key's own two sealed entries.
+      ...(needs.bundle === true && cfg.sealer ? { bundle: Object.freeze({ state: () => grantsStore.state(), head: () => ({ seq: log.latestSeq(), hash: log.head() }), dump: (/** @type {Uint8Array} */ bk) => cfg.sealer.spaceDump({ space: cfg.space, bk }),
+        keep: (/** @type {string} */ w, /** @type {string} */ v) => (w === "key" || w === "code" ? cfg.sealer.service.put({ name: `spaces.${cfg.space}.bundle${w}`, value: v }) : Promise.reject(new KernelError("bad_input", "key or code"))),
+        take: (/** @type {string} */ w) => (w === "key" || w === "code" ? cfg.sealer.service.get({ name: `spaces.${cfg.space}.bundle${w}` }) : Promise.reject(new KernelError("bad_input", "key or code"))) }) } : {}),
       ...(needs.reach === true ? {
         agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
           if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
@@ -305,6 +309,7 @@ export async function createKernel(cfg) {
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
+      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); } }) } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
@@ -414,6 +419,8 @@ export async function createKernel(cfg) {
     const e = all[all.length - 1];
     return e ? { ...e.data, unverified: !checkpoint } : null;
   }
+  // A stored grant wider than its parent (made before containment compared every dimension) is cut at every boot, and the cut is logged.
+  if (grantsStore && cfg.bootstrap !== false && !fresh && typeof grantsStore.containmentPass === "function") await grantsStore.containmentPass();
   // The check a restart makes (incremental): the last signed checkpoint against the event at its position, then the chain from there to the head, not from event zero. Reported
   // for the daemon to act on (`boot.tamper`); it never throws here.
   // The log anchor (BL-2): the sealing process keeps the newest (seq, head) it was shown outside the database; the restart compares the log with it, which the log's own checkpoints cannot do.

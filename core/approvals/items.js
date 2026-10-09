@@ -12,6 +12,26 @@ const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
 
+/**
+ * What a surface needs beyond a card's title, taken from the owner's own row: who asked and where (agent, thread and its name, project), what a draft is (kind, via, where it goes, its summary), the
+ * questions and their choices, and what answering takes. A NAMED list, not the row: the agent's reasons, a draft's words and an ask's anchors never ride on a card (test/waiting). The same
+ * fields the same surfaces already get from gate.held and threads.asks. Dropped when settled.
+ */
+const pick = (/** @type {any} */ row, /** @type {string[]} */ keys) => Object.fromEntries(keys.filter(k => row && row[k] !== undefined && row[k] !== null).map(k => [k, row[k]]));
+const questionsOf = (/** @type {any} */ qs) => (Array.isArray(qs) ? qs.slice(0, 8).map(q => ({ question: clean(q && q.question, 300), header: clean(q && q.header, 60), multiSelect: Boolean(q && q.multiSelect),
+  options: (Array.isArray(q && q.options) ? q.options : []).slice(0, 12).map((/** @type {any} */ o) => ({ label: clean(o && (o.label ?? o), 120), ...opt("description", clean(o && o.description, 200)) })) })) : undefined);
+const ASK_FACTS = ["id", "kind", "tool", "summary", "destination", "thread", "thread_name", "agent", "project", "at", "presence", "state", "decision", "source", "machine", "always", "always_project"];
+const GATE_FACTS = ["id", "kind", "via", "to", "summary", "agent", "thread", "project", "at", "presence", "error"];
+/** @param {any} row @param {"ask"|"gate"} kind */
+const factsOf = (row, kind) => {
+  try {
+    const f = pick(row, kind === "ask" ? ASK_FACTS : GATE_FACTS);
+    if (kind === "ask" && Array.isArray(row.questions)) f.questions = questionsOf(row.questions);
+    for (const k of ["summary", "destination", "thread_name", "agent", "error"]) if (typeof f[k] === "string") f[k] = clean(f[k], 300);
+    return { facts: f };
+  } catch { return {}; }
+};
+
 /** threads.asks rows. A question is answered with a decision and its answers; a permission with a decision. */
 export const fromAsks = rows => rows.map(a => {
   const question = a.kind === "question";
@@ -23,7 +43,7 @@ export const fromAsks = rows => rows.map(a => {
   const mac = a.source === "mac";
   const machine = mac && a.machine ? clean(a.machine, 80) : "";
   return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
-    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
+    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads", ...factsOf(a, "ask"),
     answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
       : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
 });
@@ -35,7 +55,7 @@ export const fromHeld = rows => rows.map(h => {
   const title = clean(h.summary) || `A ${clean(h.kind, 20) || "draft"}${via ? ` via ${via}` : ""}`;
   const detail = clean([via, to && `to ${to}`].filter(Boolean).join(" "), DETAIL_MAX);
   return { id: `gate:${h.id}`, kind: "draft", title, ...opt("detail", detail), ...opt("project", h.project), ...opt("thread", h.thread),
-    at: at(h.at), source: "gate", answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
+    at: at(h.at), source: "gate", ...factsOf(h, "gate"), answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
 });
 
 const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 4).map(x => clean(x && typeof x === "object" ? x.name : x, 60)).filter(Boolean).join(", ");
@@ -50,6 +70,10 @@ export const fromVault = (/** @type {any} */ p) => {
     ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
     ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, clean(s.by, 40) && `asked by ${clean(s.by, 40)}`].filter(Boolean).join(", "), s.created)),
     ...list(p && p.people).map(x => row(x.id, `Trust the card for ${clean(x.name, 60)}`, x.fingerprint ? `fingerprint ${clean(x.fingerprint, 40)}` : "", x.at)),
+    // the Vault MCP's reveal ask: the pass's agent asked to see one item once. Two answers: Allow once (a yes: vault.mcp.reveal.allow is a vault moment) and Decline.
+    ...list(p && p.mcpReveals).map(x => ({ id: `vault:${x.id}`, kind: "access", title: clean(`Let ${clean(x.pass, 40)}'s agent see "${clean(x.item, 60)}" once?`) || "An agent asks to see a vault item", ...opt("detail", clean(x.why, DETAIL_MAX)), at: at(x.at), source: "vault",
+      answer: { tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] },
+      answers: [{ label: "Allow once", tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] }, { label: "Decline", tool: "vault.mcp.reveal.clear", input: { id: x.id }, fill: [] }] })),
     ...list(p && p.accepts).map(x => row(x.id, `Accept a pass from ${clean(x.owner, 60)}`, x.items ? names(x.items) : "", x.at)),
   ];
 };
@@ -98,7 +122,7 @@ export const OWNERS = [
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
-    ["vault.granted", null], ["vault.revoked", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
+    ["vault.granted", null], ["vault.revoked", null], ["vault.reveal-asked", null], ["vault.revealed-to-pass", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
 ];
 
 /**
@@ -128,7 +152,8 @@ export function createItems({ call, on, now, log = () => {}, emit = () => {}, ex
       const live = new Set(rows.map(r => r.id));
       for (const [id, card] of open) if (card.source === o.name && !live.has(id)) {
         open.delete(id);
-        recent.set(id, { ...card, state: "settled", outcome: hints.get(id) || "settled", settled_at: t });
+        const { facts: _f, ...bare } = card;
+        recent.set(id, { ...bare, state: "settled", outcome: hints.get(id) || "settled", settled_at: t });
         hints.delete(id);
       }
       for (const r of rows) open.set(r.id, { ...(open.get(r.id) || {}), ...r, state: "waiting" });

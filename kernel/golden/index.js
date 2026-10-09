@@ -3,20 +3,34 @@
 // retrofit must reproduce it cell for cell.
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const GOLDEN_FILE = path.join(here, "golden.json");
 
 /** Boot today's registry and record every decision. Throws with the child's stderr tail on failure. */
-export function record({ gates = false, generated = false } = {}) {
-  const r = spawnSync(process.execPath, [path.join(here, "dump.mjs"), ...(gates ? ["--gates"] : []), ...(generated ? ["--generated"] : [])], { encoding: "utf8", timeout: 480_000, maxBuffer: 256 << 20, env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" } });
+export function record({ gates = false, generated = false, role = "", callers = "" } = {}) {
+  const r = spawnSync(process.execPath, [path.join(here, "dump.mjs"), ...(gates ? ["--gates"] : []), ...(generated ? ["--generated"] : []), ...(role ? [`--role=${role}`] : []), ...(callers ? [`--callers=${callers}`] : [])], { encoding: "utf8", timeout: 480_000, maxBuffer: 256 << 20, env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" } });
   if (r.status !== 0) throw new Error(`golden dump failed: ${String(r.stderr).slice(-400)}`);
   return JSON.parse(r.stdout);
 }
 
+/** The same recording without blocking, so a test that needs two can run them side by side. @param {{ gates?: boolean, generated?: boolean, role?: string, callers?: string }} [o] @returns {Promise<any>} */
+export function recordAsync({ gates = false, generated = false, role = "", callers = "" } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(here, "dump.mjs"), ...(gates ? ["--gates"] : []), ...(generated ? ["--generated"] : []), ...(role ? [`--role=${role}`] : []), ...(callers ? [`--callers=${callers}`] : [])], { env: { PATH: process.env.PATH, VYRE_NO_DIALOGS: "1" }, stdio: ["ignore", "pipe", "pipe"] });
+    /** @type {Buffer[]} */ const out = [], err = [];
+    child.stdout.on("data", d => out.push(d)); child.stderr.on("data", d => err.push(d));
+    const timer = setTimeout(() => child.kill("SIGKILL"), 480_000);
+    child.on("close", code => { clearTimeout(timer); if (code !== 0) return reject(new Error(`golden dump failed: ${Buffer.concat(err).toString().slice(-400)}`)); try { resolve(JSON.parse(Buffer.concat(out).toString())); } catch (e) { reject(e); } });
+  });
+}
+
 export const load = () => JSON.parse(fs.readFileSync(GOLDEN_FILE, "utf8"));
+
+/** The stored set with one role only, to compare with a recording of that role. @param {string} role */
+export const loadRole = role => { const g = load(); return { ...g, roles: { [role]: g.roles[role] } }; };
 
 /**
  * Cell-level differences between two golden sets: [{ role, tool, caller, world, was, now }]. A tool that is new in `b` is not a difference (new
@@ -24,14 +38,16 @@ export const load = () => JSON.parse(fs.readFileSync(GOLDEN_FILE, "utf8"));
  */
 export function diff(a, b) {
   const out = [];
+  // a cell is one letter of its set's own legend (a one-role recording numbers its letters in the order it met the refusals): equal letters mean equal decisions only under one legend
+  const sameLegend = JSON.stringify(a.legend) === JSON.stringify(b.legend);
   for (const role of Object.keys(a.roles)) {
     const ra = a.roles[role].rows, rb = (b.roles[role] || { rows: {} }).rows;
     for (const tool of new Set([...Object.keys(ra), ...Object.keys(rb)])) {
       const x = ra[tool], y = rb[tool];
-      if (x === y) continue;
+      if (sameLegend && x === y) continue;
       if (!x && y) continue;
       if (!x || !y) { out.push({ role, tool, caller: "*", world: "*", was: x ? "present" : "absent", now: y ? "present" : "absent" }); continue; }
-      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) {
+      for (let i = 0; i < x.length; i++) if ((a.legend[x[i]] || x[i]) !== (b.legend[y[i]] || y[i])) {
         out.push({ role, tool, caller: a.callers[Math.floor(i / a.worlds.length)], world: a.worlds[i % a.worlds.length], was: a.legend[x[i]] || x[i], now: (b.legend[y[i]] || y[i]) });
       }
     }

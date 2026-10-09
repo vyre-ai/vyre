@@ -25,7 +25,8 @@
       { "name": "watchers.duty.update", "reach": "modules" },
       { "name": "watchers.duty.delete", "reach": "modules" },
       { "name": "watchers.duty.run", "reach": "modules" },
-      { "name": "watchers.duty.resume", "reach": "modules" }
+      { "name": "watchers.duty.resume", "reach": "modules" },
+      { "name": "watchers.hook.run", "reach": "modules" }
     ]
   },
   "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted", "watcher.woke", "watcher.schedule-moved"] },

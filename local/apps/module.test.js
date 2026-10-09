@@ -191,25 +191,16 @@ test("module: expired targets go when a new entry is written, and an act on an a
   assert.equal(asked, 5, "targets were served from before the act");
 });
 
-test("module: a presence session proves apps.send; a session never proves a tool off the floor's list", async t => {
+test("module: apps.send is an outward moment: it needs the person's yes on every call, and a session no longer stands in for it", async t => {
   const chat = chatApp();
   const { reg } = await start(t, { apps: { adapters: [chat.adapter] }, presence: true });
-  const presence = /** @type {Presence} */ (reg.deps.presence);
   const input = { app: "Chatter", action: "message", args: { to: "kit", text: "on my way" } };
-  assert.equal((await reg.call("apps.send", input, "capsule")).error.code, "presence_required");
-  const s = presence.openSession({ method: "capsule", keyId: "k1" });
-  const proof = { method: "session", id: s.session, secret: s.secret };
-  const sent = await reg.call("apps.send", input, "capsule", { proof });
-  assert.equal(sent.data && sent.data.said, "Sent to kit", JSON.stringify(sent));
-  assert.equal((await reg.call("apps.send", { ...input, args: { to: "juno", text: "and you" } }, "capsule", { proof })).data.said, "Sent to juno");
-  assert.equal(chat.sent.length, 2);
-  const wrong = await reg.call("apps.send", input, "capsule", { proof: { ...proof, secret: "not-it" } });
-  assert.equal(wrong.error.code, "presence_required");
-  // A tool that says yes to sessions but is not on SESSIONABLE (vault.put; gate.approve now is) is still refused.
-  const other = await presence.verify({ tool: "vault.put", input: {}, caller: "capsule", proof, def: { presence: { session: () => true } } });
-  assert.equal(other.ok, false);
-  assert.match(other.message, /needs its own proof/);
-  assert.equal(chat.sent.length, 2);
+  const r = await reg.call("apps.send", input, "capsule");
+  assert.equal(r.error.code, "presence_required");
+  assert.equal(r.error.moment, "outward");
+  const old = await reg.call("apps.send", input, "capsule", { proof: { method: "session", id: "s1", secret: "x" } });
+  assert.equal(old.error.code, "presence_required", "the old session proof is not a yes");
+  assert.equal(chat.sent.length, 0);
 });
 
 test("module: apps.route routes words by rules with the module's clock and zone, and runs nothing", async t => {

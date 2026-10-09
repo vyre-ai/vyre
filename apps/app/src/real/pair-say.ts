@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 import { deviceKind, pairSayFor } from "../../screens/install/first-run.js";
-import { shell } from "../shell/shell";
+import { shell } from "../shell/shell.ts";
 
 /** This device's kind: iPhone, Android, the Mac app's window, or a browser. */
 export const deviceKindHere = () => deviceKind(Platform.OS, !!shell());

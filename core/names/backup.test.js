@@ -1,6 +1,11 @@
 // @ts-check
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+// This file ran 130 s on an idle machine and past the 290 s limit under load. The cases are dealt out to 5 files (backup.test.js and its -b.. siblings, which set VYRE_BACKUP_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 5;
+const SHARD = Number(process.env.VYRE_BACKUP_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -58,7 +63,7 @@ function unpack(t, home, file, passphrase = PASSPHRASE) {
   return plain;
 }
 
-test("backup: is sealed under a passphrase, includes the state, leaves out models/logs/pid, and is 0600", async t => {
+shardTest("backup: is sealed under a passphrase, includes the state, leaves out models/logs/pid, and is 0600", async t => {
   const home = tempHome(t);
   const root = path.join(home, "box"); fs.mkdirSync(root);
   seed(root);
@@ -76,7 +81,7 @@ test("backup: is sealed under a passphrase, includes the state, leaves out model
   assert.deepEqual(fs.readdirSync(path.join(home, "out")).filter(n => !n.startsWith("unpacked-")), ["b.tar.gz"], "no temp file left");
 });
 
-test("backup: refuses a short passphrase, and refuses to open with the wrong one", async t => {
+shardTest("backup: refuses a short passphrase, and refuses to open with the wrong one", async t => {
   const home = tempHome(t);
   const root = path.join(home, "box"); fs.mkdirSync(root);
   seed(root);
@@ -86,7 +91,7 @@ test("backup: refuses a short passphrase, and refuses to open with the wrong one
   assert.throws(() => [...readRecords(file, "not the right passphrase")], /does not open/);
 });
 
-test("backup: uses an open database handle when given one", async t => {
+shardTest("backup: uses an open database handle when given one", async t => {
   const home = tempHome(t);
   const db = new DatabaseSync(path.join(home, "vyre.db"));
   db.exec("CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('live');");
@@ -95,7 +100,7 @@ test("backup: uses an open database handle when given one", async t => {
   assert.deepEqual(r.included, ["vyre.db"]);
 });
 
-test("backup: leaves provider sign-ins out of the vault by default (R8), and can include them", async t => {
+shardTest("backup: leaves provider sign-ins out of the vault by default (R8), and can include them", async t => {
   const home = tempHome(t);
   const root = path.join(home, "box"); fs.mkdirSync(root);
   seed(root);
@@ -124,7 +129,7 @@ test("backup: leaves provider sign-ins out of the vault by default (R8), and can
   db2.close();
 });
 
-test("restore: round-trips into an empty root", async t => {
+shardTest("restore: round-trips into an empty root", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), b = path.join(home, "b");
   fs.mkdirSync(a); seed(a);
@@ -142,7 +147,7 @@ test("restore: round-trips into an empty root", async t => {
   assert.ok(!fs.readdirSync(b).some(n => n.startsWith(".restore-")), "staging removed");
 });
 
-test("restore: refuses the wrong passphrase before touching anything on disk", async t => {
+shardTest("restore: refuses the wrong passphrase before touching anything on disk", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), b = path.join(home, "b");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(b);
@@ -152,7 +157,7 @@ test("restore: refuses the wrong passphrase before touching anything on disk", a
   assert.ok(!fs.existsSync(path.join(b, "vyre.db")), "nothing written on a failed open");
 });
 
-test("restore: refuses to replace a store without force, and replaces it with force", async t => {
+shardTest("restore: refuses to replace a store without force, and replaces it with force", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"); fs.mkdirSync(a); seed(a);
   const file = path.join(home, "b.tar.gz");
@@ -169,7 +174,7 @@ test("restore: refuses to replace a store without force, and replaces it with fo
   db.close();
 });
 
-test("restore: refuses while vyred is alive", async t => {
+shardTest("restore: refuses while vyred is alive", async t => {
   const home = tempHome(t);
   // A live process that is not this one stands in for vyred.
   const other = spawn("sleep", ["30"], { stdio: "ignore" });
@@ -181,7 +186,7 @@ test("restore: refuses while vyred is alive", async t => {
   await assert.rejects(restore({ root: home, file: path.join(home, "none.tar.gz"), passphrase: PASSPHRASE }), /vyred is running/);
 });
 
-test("restore: a stale pid file naming the restore itself is not a running vyred", async t => {
+shardTest("restore: a stale pid file naming the restore itself is not a running vyred", async t => {
   // A container killed with vyred as pid 7 leaves 7 behind, and the one-off container that
   // runs the restore gives its own CLI pid 7 too.
   const home = tempHome(t);
@@ -194,7 +199,7 @@ test("restore: a stale pid file naming the restore itself is not a running vyred
   assert.ok(r.restored.includes("config.json"));
 });
 
-test("restore: rejects a file that is not a sealed vyre backup at all", async t => {
+shardTest("restore: rejects a file that is not a sealed vyre backup at all", async t => {
   const home = tempHome(t);
   const src = path.join(home, "src"); fs.mkdirSync(src);
   fs.writeFileSync(path.join(src, "x"), "x");
@@ -204,7 +209,7 @@ test("restore: rejects a file that is not a sealed vyre backup at all", async t 
   await assert.rejects(restore({ root, file, passphrase: PASSPHRASE, alive: dead }), /not a sealed vyre backup/);
 });
 
-test("restore: rejects archives with absolute, escaping or unknown entries, even sealed under the right passphrase", async t => {
+shardTest("restore: rejects archives with absolute, escaping or unknown entries, even sealed under the right passphrase", async t => {
   assert.throws(() => checkEntries("./vault/../../etc/passwd\n"), /unsafe/);
   assert.throws(() => checkEntries("/etc/passwd\n"), /unsafe/);
   assert.throws(() => checkEntries("./.bashrc\n"), /unsafe/);
@@ -222,7 +227,7 @@ test("restore: rejects archives with absolute, escaping or unknown entries, even
   assert.ok(!fs.existsSync(path.join(root, "evil")));
 });
 
-test("restore: rejects an archive that carries a symlink, even sealed under the right passphrase", async t => {
+shardTest("restore: rejects an archive that carries a symlink, even sealed under the right passphrase", async t => {
   const home = tempHome(t);
   const src = path.join(home, "src"); fs.mkdirSync(path.join(src, "vault"), { recursive: true });
   fs.symlinkSync("/etc", path.join(src, "vault", "out"));
@@ -235,7 +240,7 @@ test("restore: rejects an archive that carries a symlink, even sealed under the 
   assert.ok(!fs.existsSync(path.join(root, "vault")));
 });
 
-test("backup: a new account's sign-in (named in sessions_accounts) is left out, and its value is not in the file's free pages", async t => {
+shardTest("backup: a new account's sign-in (named in sessions_accounts) is left out, and its value is not in the file's free pages", async t => {
   const home = tempHome(t);
   const root = path.join(home, "box"); fs.mkdirSync(root);
   const scratch = path.join(home, "scratch"); fs.mkdirSync(scratch);
@@ -287,7 +292,7 @@ const tree = dir => {
   walk(dir, ""); return out;
 };
 
-test("export: sizes are known up front, project files go by default, links stay out, and it restores to a chosen folder", async t => {
+shardTest("export: sizes are known up front, project files go by default, links stay out, and it restores to a chosen folder", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -312,7 +317,7 @@ test("export: sizes are known up front, project files go by default, links stay 
   await assert.rejects(restore({ root: path.join(home, "c"), file, passphrase: PASSPHRASE, workTo: { work: back }, alive: dead }), /already exists; pass force/);
 });
 
-test("export: skipping project files leaves them out, and restore can skip them too", async t => {
+shardTest("export: skipping project files leaves them out, and restore can skip them too", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -326,7 +331,7 @@ test("export: skipping project files leaves them out, and restore can skip them 
   assert.deepEqual(out.projects, []);
 });
 
-test("export: a damaged, cut-short or reordered file is refused before anything is restored", async t => {
+shardTest("export: a damaged, cut-short or reordered file is refused before anything is restored", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -346,7 +351,7 @@ test("export: a damaged, cut-short or reordered file is refused before anything 
   await tryRestore("noend", noEnd, /cut short|does not open/);
 });
 
-test("export: an interrupted export resumes where it stopped, and the result restores identically", async t => {
+shardTest("export: an interrupted export resumes where it stopped, and the result restores identically", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -366,7 +371,7 @@ test("export: an interrupted export resumes where it stopped, and the result res
   assert.deepEqual(tree(back), want);
 });
 
-test("export: a resume with changed project files starts that project again and says so; the wrong passphrase starts over", async t => {
+shardTest("export: a resume with changed project files starts that project again and says so; the wrong passphrase starts over", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -391,7 +396,7 @@ test("export: a resume with changed project files starts that project again and 
   await restore({ root: path.join(home, "b2"), file: f2, passphrase: "second passphrase here", workTo: { work: path.join(home, "back2") }, alive: dead });
 });
 
-test("export: a large tree (240 MB of incompressible files) streams in bounded memory, resumes after a cut, and restores byte for byte", { timeout: 240_000 }, async t => {
+shardTest("export: a large tree (240 MB of incompressible files) streams in bounded memory, resumes after a cut, and restores byte for byte", { timeout: 240_000 }, async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(path.join(work, "northwind-site", "media"), { recursive: true });
@@ -441,7 +446,7 @@ function nonces(file) {
   return out;
 }
 
-test("export: a resume that rewinds never reuses an AES-GCM nonce, not within the file and not with the records it replaced", async t => {
+shardTest("export: a resume that rewinds never reuses an AES-GCM nonce, not within the file and not with the records it replaced", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -466,7 +471,7 @@ test("export: a resume that rewinds never reuses an AES-GCM nonce, not within th
   assert.deepEqual(tree(back), want);
 });
 
-test("export: an unfinished file that is a link or a folder is refused, never written through", async t => {
+shardTest("export: an unfinished file that is a link or a folder is refused, never written through", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"); fs.mkdirSync(a); seed(a);
   const victim = path.join(home, "victim.txt"); fs.writeFileSync(victim, "keep me");
@@ -479,14 +484,14 @@ test("export: an unfinished file that is a link or a folder is refused, never wr
   await assert.rejects(backup({ root: a, file, passphrase: PASSPHRASE, ...FAST }), /not a regular file/);
 });
 
-test("export: a header naming a chunk bigger than 16 MiB is refused before anything is allocated", () => {
+shardTest("export: a header naming a chunk bigger than 16 MiB is refused before anything is allocated", () => {
   const line = JSON.stringify({ v: 2, kdf: "scrypt", N: 1024, r: 8, p: 1, chunk: MAX_CHUNK + 1, at: 0, salt: "AAAAAAAAAAAAAAAAAAAAAA==" });
   assert.throws(() => inspectStream(Buffer.from(`vyre-box-backup:v2:${line}\n`)), /not a sealed vyre backup/);
   const ok = JSON.stringify({ v: 2, kdf: "scrypt", N: 1024, r: 8, p: 1, chunk: MAX_CHUNK, at: 0, salt: "AAAAAAAAAAAAAAAAAAAAAA==" });
   assert.equal(inspectStream(Buffer.from(`vyre-box-backup:v2:${ok}\n`)).header.chunk, MAX_CHUNK);
 });
 
-test("restore: not enough room on the disk is said before anything is written", async t => {
+shardTest("restore: not enough room on the disk is said before anything is written", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -502,7 +507,7 @@ test("restore: not enough room on the disk is said before anything is written", 
   } finally { fs.statfsSync = real; }
 });
 
-test("restore: project files go back where they came from only under the project folder; anywhere else must be named", async t => {
+shardTest("restore: project files go back where they came from only under the project folder; anywhere else must be named", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -520,7 +525,7 @@ test("restore: project files go back where they came from only under the project
   assert.deepEqual(out.projects, []);
 });
 
-test("restore: a link inside either tar is refused before any project folder or the box's data is touched", async t => {
+shardTest("restore: a link inside either tar is refused before any project folder or the box's data is touched", async t => {
   const home = tempHome(t);
   const evil = (name, where) => {
     const tarDir = path.join(home, `src-${name}`); fs.mkdirSync(tarDir, { recursive: true });
@@ -551,7 +556,7 @@ test("restore: a link inside either tar is refused before any project folder or 
   }
 });
 
-test("export: session transcripts ride along as their own kind, restore to where they came from, and either kind can be left out", async t => {
+shardTest("export: session transcripts ride along as their own kind, restore to where they came from, and either kind can be left out", async t => {
   const home = tempHome(t);
   const a = path.join(home, "a"), work = path.join(home, "work"), claude = path.join(home, "claude", "projects");
   fs.mkdirSync(a); seed(a); fs.mkdirSync(work); seedWork(work);
@@ -577,7 +582,7 @@ test("export: session transcripts ride along as their own kind, restore to where
   assert.deepEqual(skipped.projects.map(p => p.name), ["work"]);
 });
 
-test("backup: tar that has closed its output but not yet exited is waited for, never killed into an exit of null", async t => {
+shardTest("backup: tar that has closed its output but not yet exited is waited for, never killed into an exit of null", async t => {
   // A fake tar: writes its bytes, closes stdout, and takes a moment to exit, as a busy machine's tar does.
   const dir = fs.mkdtempSync(path.join(SCRATCH, "fake-tar-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -592,7 +597,7 @@ test("backup: tar that has closed its output but not yet exited is waited for, n
   assert.deepEqual(warnings, []);
 });
 
-test("backup: a tar that closes its output and then hangs is stopped with a plain error, not waited on forever", async t => {
+shardTest("backup: a tar that closes its output and then hangs is stopped with a plain error, not waited on forever", async t => {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "fake-tar-hang-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const pidFile = path.join(dir, "pid");

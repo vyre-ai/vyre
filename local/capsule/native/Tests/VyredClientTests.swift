@@ -35,13 +35,14 @@ let vyredClientSuite = Suite("vyred client") { t in
         if case .failure(let code, _)? = slow { t.eq(code, "timeout") } else { t.ok(false, "a slow tool times out") }
     }
 
-    t.test("a presence call is refused here, in words, and never sent") {
+    t.test("a presence call to a tool that needs no yes goes straight through, with no card asked") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.tool("vault.fill") { _ in ["filled": true] }
         let c = VyredClient(socket: v.socket)
         let r = t.wait { await c.call("vault.fill", [:], presence: true) }
-        if case .failure(let code, let message)? = r { t.eq(code, "presence"); t.eq(message, presenceNotBuilt) } else { t.ok(false) }
-        t.eq(v.callsOf("vault.fill").count, 0)
+        t.eq(r?.error, nil)
+        t.eq(v.callsOf("vault.fill").count, 1)
+        t.eq(v.callsOf("approvals.ask").count, 0)
     }
 
     t.test("vyred not running is unreachable, not a crash") {

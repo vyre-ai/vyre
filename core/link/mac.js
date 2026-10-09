@@ -28,10 +28,12 @@ import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
-import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
-import { checkAnswer, Nonces, NONCES_FILE } from "./assert.js";
+import { ALLOW, WRITE, CALL, FOLLOWED, ASKS } from "./allow.js";
+import { CLASSES, classOf, engineFor } from "../../lib/computer-classes.js";
+import { allowed as filesAllowed, only as filesOnly, saveName as filesSaveName } from "../../lib/computer-files.js";
+import { checkAnswer, checkCall, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
-import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
 import { agentClaim, callerKind } from "../modules/index.js";
@@ -54,7 +56,7 @@ const BATCH = 500;
 /**
  * @param {any} ctx the module's context
  * @param {{ verify?: (ip: string) => Promise<any>, insecure?: boolean, heartbeat?: number, pollMs?: number,
- *   hostname?: string, timeout?: number, ttl?: number, hold?: number, health?: { check: (which: any) => Promise<any> } }} seam test seams; production passes nothing
+ *   hostname?: string, timeout?: number, ttl?: number, hold?: number, health?: { check: (which: any) => Promise<any> }, yesWaitMs?: number, yesPollMs?: number }} seam test seams; production passes nothing
  */
 export function macSide(ctx, seam = {}) {
   const file = path.join(ctx.paths.root, "link.json");
@@ -169,20 +171,34 @@ export function macSide(ctx, seam = {}) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
       }
       extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
-      // A human-only tool also needs a proof the box can check: this Mac's Secure Enclave key,
-      // enrolled on the box at sign-in, signs this exact call after Touch ID (ADR 0032 part 2c).
-      if (human) {
-        if (!person.human || !person.human.key) return { error: { code: "presence_required", message: `${tool} needs your passkey on the box, or sign this Mac in again (vyre link signin) to use Touch ID here` } };
-        const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
-        const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`);
-        let sig;
-        try { sig = await se.sign(person.human.handle, msg, `Vyre: ${tool} on your box`); }
-        catch (e) { return { error: { code: /** @type {any} */ (e).code || "presence_required", message: /** @type {Error} */ (e).message } }; }
-        extra["x-vyre-presence"] = `device key=${person.human.key} ts=${ts} nonce=${nonce} sig=${sig}`;
-      }
+      // A human-only tool that is one of the three moments needs the person's yes: no proof is made here (0.3.1 has no device-key header); the box names what must be approved and the yes goes by a card
+      // the owner's phone answers (askYes below).
     }
     if (!state.reachable && Date.now() < state.nextTry) return { error: { code: "box_unreachable", message: state.error || "the box is not reachable" } };
-    return boxCall(tool, input, conn, { headers: extra });
+    const r = await boxCall(tool, input, conn, { headers: extra });
+    if (human && r.error && r.error.code === "presence_required" && r.error.moment && r.error.request && saved.person) return askYes(tool, input, extra, r.error, saved.person);
+    return r;
+  }
+
+  /**
+   * The yes for a moment the box refused: ask a card for exactly the request the box named (as this Mac's signed-in person), wait while the owner's phone answers, and call again with the approved card
+   * (x-vyre-approval). The old Secure Enclave device-key proof this Mac used to send is gone (0.3.1).
+   */
+  async function askYes(tool, input, extra, refused, person) {
+    const as = (t, i, more = {}) => boxCall(t, i, conn, { headers: { ...personHeaders(person, "/v1/tools/" + encodeURIComponent(t), i), ...more } });
+    const reuse = ["vault.reveal", "vault.copy", "vault.totp"].includes(tool);
+    const asked = await as("approvals.ask", { moment: refused.moment, request: refused.request, ...(reuse ? { reuse: true } : {}) });
+    if (asked.error) return asked;
+    const id = asked.data.id;
+    const end = Date.now() + (seam.yesWaitMs ?? 5 * 60_000);
+    while (Date.now() < end) {
+      await new Promise(res => setTimeout(res, seam.yesPollMs ?? 1500));
+      const st = await as("approvals.status", { id });
+      if (st.error) return st;
+      if (st.data.state === "approved") return boxCall(tool, input, conn, { headers: { ...extra, "x-vyre-approval": id } });
+      if (st.data.state !== "waiting") return { error: { code: "presence_required", message: "that was not approved" } };
+    }
+    return { error: { code: "presence_required", message: "nobody approved it in time; ask again" } };
   }
 
   async function hello() {
@@ -316,6 +332,74 @@ export function macSide(ctx, seam = {}) {
     return write("threads.answer", input);
   }
 
+  // The learned website operations the person let the box run in their Chrome here: [{ site, name }], in a file of their own beside link.json.
+  const opsFile = path.join(ctx.paths.root, "link-ops.json");
+  /** @returns {{ site: string, name: string }[]} */
+  const loadOps = () => { try { const v = JSON.parse(fs.readFileSync(opsFile, "utf8")); return Array.isArray(v) ? v.filter(o => o && typeof o.site === "string" && typeof o.name === "string") : []; } catch { return []; } };
+  /** @param {{ site: string, name: string }[]} list */
+  const saveOps = list => { const tmp = `${opsFile}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 }); fs.renameSync(tmp, opsFile); };
+
+  // The classes of Vyre Computer work the person let the box do here (look, act, files), in a file of their own beside link.json.
+  const computerFile = path.join(ctx.paths.root, "link-computer.json");
+  /** @returns {string[]} */
+  const loadComputer = () => { try { const v = JSON.parse(fs.readFileSync(computerFile, "utf8")); return Array.isArray(v) ? v.filter(c => CLASSES.includes(c)) : []; } catch { return []; } };
+  const saveComputer = (/** @type {string[]} */ list) => { const tmp = `${computerFile}.${process.pid}.tmp`; fs.writeFileSync(tmp, JSON.stringify(list), { mode: 0o600 }); fs.renameSync(tmp, computerFile); };
+
+  /**
+   * One Vyre Computer action for the box, run on this Mac by the Mac's own engines. Only a class the person allowed for the box (link.computer.allow); the engine's own floor, indicator, Gate and stop
+   * key still apply, and a send it holds waits for the person here. Anything else is refused here, whatever the box says.
+   * @param {any} q the box's request
+   */
+  async function callComputer(q) {
+    const input = q.input && typeof q.input === "object" ? q.input : {};
+    const action = String(input.action || "");
+    const cls = classOf(action);
+    if (!cls) return { error: { code: "denied", message: `${action.slice(0, 40)} is not something the box may ask this Mac to do` } };
+    if (input.approved === true) return { error: { code: "denied", message: "nothing the box asks of this Mac is pre-approved" } };
+    if (!loadComputer().includes(cls)) return { error: { code: "denied", message: `the person has not allowed the box to ${cls === "look" ? "look at" : cls === "act" ? "act on" : "find files on"} this Mac (link.computer.allow ${cls})` } };
+    // Files: the person's Downloads, Desktop and Documents only (lib/computer-files.js), on top of the files module's own guard. A search is cut to them; a chunk is read from a path inside them.
+    if (cls === "files") {
+      const home = ctx.config && ctx.config.computer && typeof ctx.config.computer.home === "string" ? ctx.config.computer.home : os.homedir();
+      const a = input.args && typeof input.args === "object" ? input.args : {};
+      if (action === "find") {
+        const r = await ctx.call("files.search", { q: String(a.q || ""), limit: Math.min(200, Number(a.limit) || 50), where: "here" });
+        return r.error ? r : { data: { results: filesOnly(r.data && r.data.results, home).slice(0, 50) } };
+      }
+      let real;
+      try { real = fs.realpathSync(String(a.path || "")); } catch { return { error: { code: "not_found", message: "no such file in Downloads, Desktop or Documents" } }; }
+      if (!filesAllowed(String(a.path || ""), home) || !filesAllowed(real, fs.realpathSync(home))) return { error: { code: "denied", message: "the box may bring files only from Downloads, Desktop and Documents" } };
+      const r = await ctx.call("files.fetch", { path: real, offset: Math.max(0, Number(a.offset) || 0), length: Math.min(1024 * 1024, Math.max(1, Number(a.length) || 1024 * 1024)) });
+      return r.error ? r : { data: { path: r.data.path, name: filesSaveName(real), size: r.data.size, mtime: r.data.mtime, offset: r.data.offset, length: r.data.length, base64: r.data.base64, done: r.data.done } };
+    }
+    const app = typeof input.app === "string" ? input.app.slice(0, 120) : undefined;
+    const engine = engineFor("here", action, { app, screen: input.screen === true });
+    if (!engine) return { error: { code: "unsupported", message: `${action} is not something this Mac does${app ? " in an app" : " on a page"}` } };
+    // The Mac's own engines run it as the link: the person's class allowlist above is their grant for the box, and an engine still holds a send for the person here.
+    const r = await ctx.call(engine, { ...(input.args && typeof input.args === "object" ? input.args : {}), ...(app ? { app } : {}) });
+    return r.error ? r : { data: { engine, ...(r.data && typeof r.data === "object" ? r.data : { result: r.data }) } };
+  }
+
+  /**
+   * One learned website operation for the box, run in this Mac's own Chrome. Only an operation the person approved for the box (link.ops.allow); a read runs at once; an outward one only with an
+   * assertion the box signed for exactly this site, operation and inputs (assert.js checkCall). Anything else is refused here, whatever the box says.
+   * @param {any} q the box's request
+   */
+  async function callOp(q) {
+    const input = q.input && typeof q.input === "object" ? q.input : {};
+    const site = String(input.site || ""), name = String(input.name || "");
+    if (!loadOps().some(o => o.site === site && o.name === name)) return { error: { code: "denied", message: `the person has not allowed the box to run ${name.slice(0, 40)} on ${site.slice(0, 80)} here (link.ops.allow)` } };
+    const send = q.tool === "chrome.op.send";
+    // A call that submits is a send, always signed; a call that reads never carries an approval. Each is asked for by its own name, and the Mac holds the box to it.
+    if (send !== (input.approved === true)) return { error: { code: "denied", message: send ? "chrome.op.send carries the box's signed approval" : "chrome.op.call runs a read; an operation that submits goes through chrome.op.send" } };
+    let approved = false;
+    if (send) {
+      const c = checkCall({ assertion: q.assertion, call: { site, name, inputs: input.inputs }, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces, now: seam.now ? seam.now() : Date.now() });
+      if (!c.ok) return { error: { code: "denied", message: `the box's outward call was refused: ${c.reason}` } };
+      approved = true;
+    }
+    return ctx.call(send ? "chrome.op.send" : "chrome.op.call", { site, name, inputs: input.inputs && typeof input.inputs === "object" ? input.inputs : {}, ...(send ? { approved } : {}) });
+  }
+
   /**
    * threads.send for the person at the box: as "link:box", its surface marked as the box's, with
    * the thread followed while it runs and after, if it succeeded.
@@ -370,6 +454,8 @@ export function macSide(ctx, seam = {}) {
           ? (q.as !== "person" ? { error: { code: "denied", message: `${q.tool} is answered through the link only for the person` } }
             : q.tool === "threads.answer" ? await answer(q) : await write(q.tool, input))
           : ALLOW.includes(q.tool) ? await ctx.call(q.tool, input)
+          : q.tool === "computer.call" ? await callComputer(q)
+          : CALL.includes(q.tool) ? await callOp(q)
           : { error: { code: "denied", message: `${q.tool} is not answered through the link` } };
         if (!live()) return;
         const sent = await boxCall("link.reply", { key, id: q.id, result: result.error ? { error: result.error } : { data: result.data } }, c, { signal: ac.signal });
@@ -509,6 +595,55 @@ export function macSide(ctx, seam = {}) {
       setTimeout(stop, 10 * 60_000).unref();
       return { url, expires };
     },
+  });
+
+  ctx.tool("link.ops.allow", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Let the paired box run one learned website operation in your Chrome on this Mac: { site, name }. A read then runs when the box asks; an outward one (a message, a post) still needs the person's yes on the box, signed for that exact call. Your own act.",
+    input: { type: "object", properties: { site: { type: "string" }, name: { type: "string" } }, required: ["site", "name"] },
+    run: async ({ site, name }) => {
+      let origin; try { origin = new URL(String(site)).origin; } catch { throw Object.assign(new Error("site is an origin such as https://app.example.com"), { code: "bad_input" }); }
+      if (!/^[a-z][A-Za-z0-9_]{0,63}$/.test(String(name))) throw Object.assign(new Error("name is the learned operation's name, such as searchPeople"), { code: "bad_input" });
+      const list = loadOps();
+      if (!list.some(o => o.site === origin && o.name === name)) { list.push({ site: origin, name: String(name) }); saveOps(list.slice(-200)); }
+      return { allowed: true, site: origin, name: String(name) };
+    },
+  });
+  ctx.tool("link.ops.revoke", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Stop the box from running a learned website operation in your Chrome here: { site, name }.",
+    input: { type: "object", properties: { site: { type: "string" }, name: { type: "string" } }, required: ["site", "name"] },
+    run: async ({ site, name }) => { const list = loadOps(); const next = list.filter(o => !(o.site === String(site) && o.name === String(name))); saveOps(next); return { revoked: next.length !== list.length }; },
+  });
+  ctx.tool("link.ops.list", {
+    effect: "read", callers: ["cli", "local", "capsule", "deck"],
+    description: "The learned website operations the box may run in your Chrome on this Mac: { operations: [{ site, name }] }.",
+    input: { type: "object", properties: {} },
+    run: async () => ({ operations: loadOps() }),
+  });
+
+  ctx.tool("link.computer.allow", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Let the paired box use this Mac as a computer: { class } is look (read pages and apps), act (open, click, type, fill) or files (find and bring files from the folders you chose). Off until you turn each one on here.",
+    input: { type: "object", properties: { class: { type: "string", enum: [...CLASSES] } }, required: ["class"] },
+    run: async ({ class: cls }) => {
+      if (!CLASSES.includes(cls)) throw Object.assign(new Error(`class is one of ${CLASSES.join(", ")}`), { code: "bad_input" });
+      const list = loadComputer();
+      if (!list.includes(cls)) saveComputer([...list, cls]);
+      return { allowed: true, class: cls, classes: loadComputer() };
+    },
+  });
+  ctx.tool("link.computer.revoke", {
+    effect: "write", callers: ["cli", "local", "capsule"],
+    description: "Stop the box using this Mac for one kind of work: { class }, or every kind when none is named.",
+    input: { type: "object", properties: { class: { type: "string", enum: [...CLASSES] } } },
+    run: async ({ class: cls }) => { const list = loadComputer(); const next = cls ? list.filter(c => c !== cls) : []; saveComputer(next); return { revoked: next.length !== list.length, classes: next }; },
+  });
+  ctx.tool("link.computer.list", {
+    effect: "read", callers: ["cli", "local", "capsule", "deck"],
+    description: "What the box may do with this Mac as a computer: { classes: [look | act | files] }.",
+    input: { type: "object", properties: {} },
+    run: async () => ({ classes: loadComputer() }),
   });
 
   ctx.tool("link.signout", {

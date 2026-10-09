@@ -1,23 +1,25 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
 import { writeDraft } from "../../src/chat/drafts";
-import { getAgreeKey } from "../../src/crypto/agree-key";
-import { holdersFor, newChatRing } from "../../src/crypto/chat-ring.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { SURFACE } from "../../src/state/live";
 import { tool } from "../../src/real/box";
 import { agentChoices, chatIdOf, createInput } from "../../src/state/new-chat-model.js";
+import { ringForNewChat } from "../../src/state/chat-start";
 
 /** /u/chats/new: pick who to talk to (your assistant is the default and is never listed), say what you want first if you like, and start. work.chat.create makes the chat; it opens with your first words ready to send. */
 export default function NewChatScreen() {
   const router = useRouter();
+  // "Chat about this": a record or project opens a new chat with its urn and name; the chat is linked to it, and the first words name it so the assistant can read it
+  const { about, name } = useLocalSearchParams<{ about?: string; name?: string }>();
+  const aboutUrn = typeof about === "string" && about.startsWith("vyre://") ? about : "";
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): ` : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [loadErr, setLoadErr] = useState("");
@@ -33,26 +35,16 @@ export default function NewChatScreen() {
     })();
     return () => { live = false; };
   }, []);
-  // Every chat is private: this device makes the ring (the server never makes a key). It does not start the chat quietly short of that: no key on this device, this device's agree point not yet published on its
-  // identity list, or a participant whose devices cannot agree each stop it with a plain line.
-  const ringFor = async (): Promise<{ id: string; ring: unknown } | { say: string }> => {
-    const me = await getAgreeKey();
-    if (!me) return { say: "This device can't start private chats yet." };
-    const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
-    if (!who?.person) return { say: "Vyre could not tell who you are, so the chat did not start." };
-    const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
-    if (!r.listed) return { say: "This device isn't ready for private chats yet." };
-    if (r.without.length) return { say: "Some devices can't open private chats yet." };
-    return newChatRing(`chat_${newUuid()}`, r.holders);
-  };
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
     setBusy(true); setErr("");
     try {
-      const made = await ringFor();
+      const made = await ringForNewChat();
       if ("say" in made) { setErr(made.say); return; }
       const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...made }));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
+      // linked to the record it is about; private to its people until they share it on the record's timeline
+      if (aboutUrn) await tool("work.chat.link", { chat: id, record: aboutUrn }).catch(() => undefined);
       // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
       if (text.trim()) {
         const first = await tool("stream.send", { chat: id, text: text.trim(), message: newUuid(), surface: SURFACE }).then(() => null).catch((e: Error) => e);
@@ -75,6 +67,7 @@ export default function NewChatScreen() {
                 </View>
               ))}
             </Card>
+            {aboutUrn ? <Banner tone="plain"><Text>{`This chat is about ${typeof name === "string" && name ? name : "that record"}. It stays private to the people in it until you share it on the timeline.`}</Text></Banner> : null}
             <Field label="First message (optional)" value={text} onChangeText={setText} placeholder="What do you want to work on?" multiline />
             {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
             <View className="flex-row"><Button kind="primary" label={busy ? "Starting" : "Start chat"} disabled={!pick || busy} onPress={() => void start()} /></View>

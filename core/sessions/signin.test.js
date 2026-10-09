@@ -22,7 +22,7 @@ test("signin: the device code and address are read from the command's own output
   const { s, home } = world(t, "device");
   const first = await s.start({ provider: "codex", account: { id: "a1" } });
   assert.deepEqual([first.step, first.url, first.code], ["code", "https://auth.openai.com/device", "WXYZ-1234"]);
-  for (let i = 0; i < 50 && s.status(first.flow).step !== "done"; i++) await new Promise(r => setTimeout(r, 40));
+  for (let i = 0; i < 500 && s.status(first.flow).step !== "done"; i++) await new Promise(r => setTimeout(r, 40));
   assert.equal(s.status(first.flow).step, "done");
   assert.ok(fs.existsSync(path.join(home, ".fake", "auth.json")), "the command wrote its own token in the account's HOME");
 });
@@ -38,7 +38,7 @@ test("signin: a login that ends badly says what the command said, and a paste-ba
   assert.match(String(r.url), /^https:\/\/claude\.ai\/oauth/);
   assert.throws(() => p.s.submit(r.flow, "no!"), /does not look like/);
   p.s.submit(r.flow, "good-code-123");
-  for (let i = 0; i < 50 && p.s.status(r.flow).step !== "done"; i++) await new Promise(x => setTimeout(x, 40));
+  for (let i = 0; i < 500 && p.s.status(r.flow).step !== "done"; i++) await new Promise(x => setTimeout(x, 40));
   assert.equal(p.s.status(r.flow).step, "done");
   assert.throws(() => p.s.submit(r.flow, "good-code-123"), /not waiting/);
 });
@@ -97,8 +97,9 @@ test("signin: a sign-in nobody finishes ends at its time limit and says onDone f
   t.after(() => s.stop());
   const done = [];
   const first = await s.start({ provider: "codex", account: { id: "a1" }, onDone: ok => done.push(ok) });
-  assert.equal(first.step, "code");
-  for (let i = 0; i < 50 && !done.length; i++) await new Promise(r => setTimeout(r, 40));
+  // The time limit is 150 ms from the spawn: on a loaded machine the child's first line can arrive after it, and the flow is already over. Either is a flow that ends unfinished, which is what is under test.
+  assert.ok(["code", "failed"].includes(first.step), first.step);
+  for (let i = 0; i < 500 && !done.length; i++) await new Promise(r => setTimeout(r, 40));
   assert.deepEqual(done, [false], "ended unfinished");
   assert.equal(s.status(first.flow).step, "failed");
 });

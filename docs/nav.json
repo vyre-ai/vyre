@@ -19,7 +19,7 @@
       "using/claude-code.md",
       "using/sessions.md",
       "using/local-runner.md",
-      "using/projects-and-threads.md",
+      "using/projects-and-threads.md", "using/project-templates.md", "using/skills-library.md",
       "using/teammates.md",
       "using/flows.md",
       "using/agents.md",
@@ -30,6 +30,8 @@
       "using/watchers.md",
       "using/planner.md",
       "using/connectors.md",
+      "using/computer.md",
+      "using/documents.md",
       "using/mobile.md",
       "using/windows.md",
       "using/box-care.md", "using/tips.md", "using/docs-tool.md"

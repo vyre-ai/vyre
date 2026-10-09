@@ -8,6 +8,34 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (destructive)"
  },
  {
+  "tool": "appmods.card",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.card opened to a model or a module in 428bfeb0b (4 Oct 2026); the body decides: read-only: the install card of one catalog app, built from its manifest alone"
+ },
+ {
+  "tool": "appmods.catalog",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.catalog opened to a model or a module in 428bfeb0b (4 Oct 2026); the body decides: read-only: the apps this build can install, from its own signed catalog (names, versions, the card)"
+ },
+ {
+  "tool": "appmods.connection",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.connection opened to a model or a module in ce0e2bacf (4 Oct 2026); the body decides: read-only: the Connection an installed app declares (label, how it signs in, operations) with the NAME of the Vault item that holds its key, never the key"
+ },
+ {
+  "tool": "appmods.hosts",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.hosts opened to a model or a module in aaf71dbd9 (4 Oct 2026); the body decides: read-only: the host names of the installed running apps, which the public gate needs; they are public names under the box's own"
+ },
+ {
+  "tool": "appmods.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.list opened to a model or a module in 428bfeb0b (4 Oct 2026); the body decides: read-only: the apps installed on this server and their state"
+ },
+ {
+  "tool": "appmods.screens",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.screens opened to a model or a module in 428bfeb0b (4 Oct 2026); the body decides: read-only: the names of an installed app's own screens, no address and no ticket (opening one is appmods.open, person only)"
+ },
+ {
+  "tool": "appmods.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.status opened to a model or a module in 428bfeb0b (4 Oct 2026); the body decides: read-only: one installed app's state and whether it answers; no key, no address of a secret"
+ },
+ {
   "tool": "apps.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; apps.list opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)"
  },
@@ -30,6 +58,26 @@
  {
   "tool": "artifacts.public.set",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: publishes an artifact)"
+ },
+ {
+  "tool": "ask.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state and answers of a question card the agent made"
+ },
+ {
+  "tool": "ask.many",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes"
+ },
+ {
+  "tool": "brand.draft",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns a web page the caller fetched into a draft brand profile; it keeps nothing and sends nothing"
+ },
+ {
+  "tool": "brand.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the space's brand profile (names, colours, fonts, logos), which the space already shows on everything it makes"
+ },
+ {
+  "tool": "brand.resolve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what to use by default for this space: names, the theme colour as drawn in each scheme, fonts, logos and letterhead"
  },
  {
   "tool": "bridges.get",
@@ -213,23 +261,23 @@
  },
  {
   "tool": "connectors.connection.check",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.check opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.check opened to a model or a module in 3e523101d (4 Oct 2026); the body decides: read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
  },
  {
   "tool": "connectors.connection.export",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.export opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: callers list and scope: writes nothing, and the template it returns carries the app's address and operations but never the person's key item or values"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.export opened to a model or a module in 498b073eb (4 Oct 2026); the body decides: callers list and scope: writes nothing, and the template it returns carries the app's address and operations but never the person's key item or values"
  },
  {
   "tool": "connectors.connection.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.get opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: one Connection's declaration, never the key (callers list)"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.get opened to a model or a module in 3e523101d (4 Oct 2026); the body decides: read-only: one Connection's declaration, never the key (callers list)"
  },
  {
   "tool": "connectors.connection.import",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.import opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: callers list and scope: text becomes a draft that is never saved or called; by address is the person's act, refused for a model before anything is fetched"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.import opened to a model or a module in 43f3ae8e1 (4 Oct 2026); the body decides: callers list and scope: text becomes a draft that is never saved or called; by address is the person's act, refused for a model before anything is fetched"
  },
  {
   "tool": "connectors.connection.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.list opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: id, label, host, light and operations, never the key (callers list)"
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.list opened to a model or a module in 3e523101d (4 Oct 2026); the body decides: read-only: id, label, host, light and operations, never the key (callers list)"
  },
  {
   "tool": "connectors.connection.propose",
@@ -242,6 +290,42 @@
  {
   "tool": "connectors.logging",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+ },
+ {
+  "tool": "connectors.operation.run",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.operation.run opened to a model or a module in 1d1318369 (4 Oct 2026); the body decides: callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
+ },
+ {
+  "tool": "design.catalogue",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the design language's block catalogue: names, props and sample data, nothing of the person's"
+ },
+ {
+  "tool": "design.css",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the custom CSS in force, which the web app draws"
+ },
+ {
+  "tool": "design.css.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): files custom CSS for a screen or the space as pending; only the Engineer proposes it, it must pass the linter, and the owner sees it before and after"
+ },
+ {
+  "tool": "design.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): files a proposed screen as pending; nothing changes on any screen until the screen's owner says yes, and the proposal lists every tool it reads and every button runs"
+ },
+ {
+  "tool": "design.screens",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the space's own screens as data (layout and blocks); the data they show is fetched as the viewer"
+ },
+ {
+  "tool": "design.validate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): checks a screen against the design language and answers the problems; it keeps nothing"
+ },
+ {
+  "tool": "docs.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; docs.find opened to a model or a module in 92291f02c (4 Oct 2026); the body decides: read-only: ranks pages of the docs tree for an intent; a person's own surface gets the human docs, any other caller gets the human and the agent docs (the agent docs are not secret, the code is open source); nothing here writes, sends or reaches the network (core/docs/index.js)"
+ },
+ {
+  "tool": "docs.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; docs.read opened to a model or a module in 92291f02c (4 Oct 2026); the body decides: read-only: returns a docs page or one section within a token budget; the same two sets as docs.find, chosen by who is calling; nothing here writes, sends or reaches the network (core/docs/index.js)"
  },
  {
   "tool": "files.deliver",
@@ -640,6 +724,38 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; presence.remove opened to a model or a module in 235da322d (4 Oct 2026); the body decides: a presence proof is required (HUMAN_ONLY); module callers need the tool"
  },
  {
+  "tool": "previews.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one preview by title and state, never an address or ticket"
+ },
+ {
+  "tool": "previews.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the previews of a chat or project by title and state, never an address or ticket"
+ },
+ {
+  "tool": "previews.open",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for"
+ },
+ {
+  "tool": "previews.operator",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it"
+ },
+ {
+  "tool": "previews.run-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state of a run the agent started and what the person typed when it was stuck"
+ },
+ {
+  "tool": "previews.signin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page"
+ },
+ {
+  "tool": "previews.signin-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether the person finished a sign-in the agent asked for"
+ },
+ {
+  "tool": "previews.step",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): words for the status line of the agent's own card"
+ },
+ {
   "tool": "projects.access.pending",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; projects.access.pending opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: callers limited in code to capsule, cli, deck, local; read only"
  },
@@ -778,6 +894,18 @@
  {
   "tool": "sidebar.team",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (changes what everyone in the Space sees in their sidebar: held for an owner or admin's yes)"
+ },
+ {
+  "tool": "skills.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.find opened to a model or a module in 08ccfca4c (4 Oct 2026); the body decides: read-only: ranks only the skills the caller may use; the project reach is projects.reach (the one door memory, recall and files ask) and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
+ },
+ {
+  "tool": "skills.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.get opened to a model or a module in 08ccfca4c (4 Oct 2026); the body decides: read-only: one skill's SKILL.md, only when the caller may use it; a skill the caller may not use does not exist for them (the same door as skills.list, core/skills/index.js)"
+ },
+ {
+  "tool": "skills.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; skills.list opened to a model or a module in 08ccfca4c (4 Oct 2026); the body decides: read-only: lists only the skills the caller may use; the project reach is projects.reach and projectArg holds an agent to its granted projects; a caller that cannot be placed gets Vyre's own skills and nothing private (core/skills/index.js)"
  },
  {
   "tool": "spaces.assess-computer",
@@ -1060,6 +1188,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer"
  },
  {
+  "tool": "views.show",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a read-only card of a module screen in their chat; the module's tool runs as the asking agent, and an action in it opens the full screen"
+ },
+ {
   "tool": "voice.listen",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a one-use 30 second ticket for the voice listen socket"
  },
@@ -1074,6 +1206,10 @@
  {
   "tool": "voice.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the speech provider, whether its key is saved (never the key) and whether replies are spoken"
+ },
+ {
+  "tool": "vyre.core",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vyre.core opened to a model or a module in cb8fd02ae (4 Oct 2026); the body decides: read-only: the module index joined from the generated architecture map and the daemon's own module list (name, group, folder, where it runs, state, version); no data of the person's, nothing here writes (core/vyre-index/index.js)"
  },
  {
   "tool": "watchers.delete",

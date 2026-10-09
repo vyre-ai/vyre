@@ -36,6 +36,7 @@ import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
+import * as agentFillTools from "./tools/agent-fill.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
@@ -95,6 +96,8 @@ export default {
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
     // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
+    // The older credential scopes become grants once (agents start after the vault: until they answer it is tried again at the first model call).
+    if (vault.access) vault.access.convertScopes(true).catch(e => ctx.log(`vault: credential scopes were not converted yet: ${/** @type {Error} */ (e).message}`));
     if (vault.access) vault.access.carry().catch(e => ctx.log(`vault: agent logins were not carried over yet: ${/** @type {Error} */ (e).message}`));
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
@@ -200,19 +203,23 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), (input, { caller, project, agentKind }) => {
+      obj({ filter: str, kind: str, host: str }), async (input, { caller, project, agent, agentKind }) => {
         const r = cli.list(vault.list(input), input);
-        // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
-        // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
-        // never matched against a module name. "Granted to that agent" means one key: the agent's verified project scope (meta.project)
-        // equals a grant's project. An agent with no project sees nothing.
+        // A model (a named agent or the assistant) sees only the credentials it holds a grant for, by the same check a call makes, and only their names and kinds (reviewer-2 L-V3; the one grant model).
+        const model = /^mcp(:|$)/.test(String(caller));
+        if (!model || !r || !Array.isArray(r.items)) return r;
+        if (vault.access && vault.access.K) {
+          const mine = await vault.access.listFor(vault.access.modelName({ agent }, String(caller)));
+          return { ...r, items: mine };
+        }
+        // SHIM(no kernel): the older rule, an agent sees what is granted to its project.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
-        if (!who || !r || !Array.isArray(r.items)) return r;
+        if (!who) return r;
         // The person's own assistant keeps its reach through vault.request (api-request: the assistant is not asked for a scope), so it is shown the credentials it can call: the name, kind,
         // description and hosts of each api-credential, never a value and never another kind of item. Without this it reads an empty vault and gives up on a credential it may use.
         const mine = g => Boolean(project) && g.project === project;
         // An api-credential is listed exactly when vault.request would let this caller read through it (modelMayRead: the one check), never more.
-        return (async () => {
+        return await (async () => {
           const callable = [];
           for (const i of r.items.filter(x => x.kind === "api-credential")) {
             let config; try { config = (await vault.apiCredential(i.name)).config; } catch { continue; }
@@ -256,7 +263,7 @@ export default {
         if (r && String(r.vault).startsWith("shared:") && slash > 0) return vault.shared.deleteItem({ vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         return vault.remove(input, caller);
       },
-      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
+      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`, { when: ({ name }) => { const r = vault.row(name); return Boolean(r && r.vault !== "personal"); } }));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
@@ -355,15 +362,37 @@ export default {
 
     // Preview opens the file and the existing logins, so it asks for the same presence as import
     // (ADR 0028, decision 1). It returns names and counts, never a value.
-    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
-      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.importPreview(input, caller),
-      presence("Preview a file for import", ({ file }) => `Preview the items in ${path.resolve(String(file))}`));
+    // The app sends the bytes of the file the person picked (`content`, base64, with its `filename`); an assistant never does, so a value cannot pass through Claude.
+    const noContentFromClaude = (input, caller) => { if (input.content !== undefined && callerKind(caller) === "mcp") throw new Error("Claude reads a file by its path on this machine; the bytes are never passed through Claude"); };
+    const what = ({ file, filename }) => (file ? path.resolve(String(file)) : String(filename || "the exported file"));
+    tool("vault.import.preview", [...SURFACES, ...PHONE, "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
+      obj({ file: str, format: str, content: str, filename: str }), (input, { caller }) => { noContentFromClaude(input, caller); if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content"); return vault.importPreview(input, caller); },
+      presence("Preview a file for import", input => `Preview the items in ${what(input)}`));
 
-    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.",
-      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" } }, ["file"]), (input, { caller }) => vault.import(input, caller),
-      presence("Import a file into the vault", ({ file, rewrite }) => `Import the items in ${path.resolve(String(file))} into the vault${rewrite ? " and rewrite its .env files to vault references" : ""}`));
+    // Several .env files in one call, so one yes covers a whole scan (vault.env.scan lists them). Each is imported on its own and the answers are merged; a file that fails is reported, and the rest still go.
+    const importMany = async (input, caller) => {
+      const files = input.files;
+      if (!Array.isArray(files) || !files.length || files.length > 100 || !files.every(f => typeof f === "string" && path.isAbsolute(f))) throw new Error("files is a list of up to 100 absolute paths");
+      const out = { format: "env", added: [], updated: [], same: [], conflicts: [], renamed: [], skipped: [], rewritten: [], unchanged: [], committed: [] };
+      for (const file of files) {
+        try {
+          const r = await vault.import({ file, format: "env", conflicts: input.conflicts, rewrite: input.rewrite }, caller);
+          for (const k of Object.keys(out)) if (Array.isArray(r[k])) out[k].push(...r[k]);
+        } catch (e) { out.skipped.push(`${path.basename(path.dirname(file))}/${path.basename(file)}: ${e.message}`); out.unchanged.push(file); }
+      }
+      return out;
+    };
+    tool("vault.import", [...SURFACES, ...PHONE, "mcp"], "Import a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and the other managers vyred reads. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored. `files` imports several .env files at once, under one yes.",
+      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" }, content: str, filename: str, files: strs }),
+      (input, { caller }) => {
+        noContentFromClaude(input, caller);
+        if (input.files !== undefined) return importMany(input, caller);
+        if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content");
+        return vault.import(input, caller);
+      },
+      presence("Import a file into the vault", input => Array.isArray(input.files) ? `Import ${input.files.length} .env file${input.files.length === 1 ? "" : "s"} into the vault${input.rewrite ? " and rewrite them to vault references" : ""}` : `Import the items in ${what(input)} into the vault${input.rewrite ? " and rewrite its .env files to vault references" : ""}`));
 
-    tool("vault.env.scan", SURFACES, "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
+    tool("vault.env.scan", [...SURFACES, ...PHONE], "The .env files in your project folders that hold secrets: which project, how many secrets, what kinds, whether git tracks the file, and the command that imports it. Names and counts only, never a value. Import each with vault.import and rewrite, which swaps the values for vault references.",
       obj({ roots: strs }), async ({ roots }) => {
         /** @type {{ project?: string, dir: string }[]} */
         let dirs = [];
@@ -465,6 +494,9 @@ export default {
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
     const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
+    // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
+    agentFillTools.register({ ctx, vault, said, tool });
+    try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 

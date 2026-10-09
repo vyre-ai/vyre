@@ -1,3 +1,4 @@
+import type * as React from "react";
 import { View } from "react-native";
 import { Avatar, AvatarStack, type AvatarRef } from "./Avatar";
 import { Icon } from "./Icon";
@@ -11,7 +12,7 @@ import { px } from "../lib/measure";
  * three, the title on one line (headline role, truncated) and one context line under it (caption, truncated: "Jane Doe · Juniper Studio"). No chips, no actions, no
  * status. Top-level pages (Now, Chat, Projects) keep the large title instead. `onPress` makes the whole header open the About sheet, only where a page has one.
  */
-export function PageHeader({ title, context, faces = [], onBack, onPress }: { title: string; context?: string; faces?: AvatarRef[]; onBack?: () => void; onPress?: () => void }) {
+export function PageHeader({ title, context, faces = [], onBack, onPress, actions }: { title: string; context?: string; faces?: AvatarRef[]; onBack?: () => void; onPress?: () => void; /** Buttons at the right end of the header (a page's own action, such as Chat about this). */ actions?: React.ReactNode }) {
   const { map, phone } = useUiTheme();
   const height = px(map, "--s-12") + px(map, "--s-2");
   const emblem = faces.length === 1 && (faces[0].kind === "project" || faces[0].kind === "space");
@@ -40,6 +41,7 @@ export function PageHeader({ title, context, faces = [], onBack, onPress }: { ti
       ) : (
         <View className="min-w-0 flex-1 flex-row items-center gap-s3">{marks}{text}</View>
       )}
+      {actions ? <View className="flex-none flex-row items-center gap-s2">{actions}</View> : null}
     </View>
   );
 }

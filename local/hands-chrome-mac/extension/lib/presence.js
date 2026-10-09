@@ -213,7 +213,7 @@ export function createPresence({ chrome, cdp, onStop = () => {}, now = Date.now,
       if (a.setBadgeBackgroundColor) await safe(() => a.setBadgeBackgroundColor({ color: COLORS.bone }));
       if (a.setBadgeTextColor) await safe(() => a.setBadgeTextColor({ color: COLORS.ink }));
     }
-    if (a.setTitle) await safe(() => a.setTitle({ title: run ? `Vyre for Chrome: ${text()}` : "Vyre for Chrome" }));
+    if (a.setTitle) await safe(() => a.setTitle({ title: run ? `Vyre Computer: ${text()}` : "Vyre Computer" }));
     await retitle();
   }
 

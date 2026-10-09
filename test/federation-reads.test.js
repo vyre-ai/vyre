@@ -98,7 +98,7 @@ test("federation reads: the person on the box reads both machines, every row lab
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: home(s.boxWork, "harlow") })).error);
   assert.ok(!(await s.macCall("projects.create", { name: "Northwind Bakery", home: home(s.macWork, "northwind") })).error);
   const projects = await asBox(s, "projects.list", {});
-  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["General", "box", "testbox"], ["Harlow Legal", "box", "testbox"], ["General", "mac", "test-mac"], ["Northwind Bakery", "mac", "test-mac"]], "every Space has its General project");
+  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["Harlow Legal", "box", "testbox"], ["Personal", "box", "testbox"], ["Northwind Bakery", "mac", "test-mac"], ["Personal", "mac", "test-mac"]], "every Space has its owner's Personal project");
   assert.deepEqual(projects.sources, [{ source: "box", machine: "testbox", ok: true }, { source: "mac", machine: "test-mac", ok: true }]);
   assert.deepEqual(projects.problems, []);
 });

@@ -200,12 +200,22 @@ export function createFlowsHost(o) {
       mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
       apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("work.template.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
     };
+    /** A skill or plugin draft approved (R031-20): the same card; the level's owner (a plugin with code is approved with the acknowledgement of exactly what it declares). */
+    const skillKind = {
+      draft: async (/** @type {any} */ _chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const r = await callModule("skills.change.draft", { name: String(spec.name || ""), level: String(spec.level || ""), scope: String(spec.scope ?? ""), version: Number(spec.version), proposer: proposer.id });
+        return { form: { draft: r.id, hash: r.hash, owner: r.owner || null, ...(r.ack ? { ack: r.ack, declares: r.declares } : {}) }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("skills.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => (f.owner ? checker.id === f.owner || isAdminOf(checker) : isAdminOf(checker)),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("skills.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id, ...(f.ack ? { ack: f.ack } : {}) }),
+    };
     const proposals = {
       chain: flowsChain,
       isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
       // the agents are this home's own: only the home's Space takes a change to one
-      kinds: { template: templateKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
+      kinds: { template: templateKind, skill: skillKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
@@ -229,8 +239,11 @@ export function createFlowsHost(o) {
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
     flows.attachStages(stages);
+    // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
+    const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); if (o.publish && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+      if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;
@@ -254,7 +267,7 @@ export function createFlowsHost(o) {
       personChain: () => personChain(ownerOf()),
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
-      stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
+      stop: () => { stopped = true; if (timer) clearTimeout(timer); if (typeof offDevice === "function") offDevice(); } });
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }

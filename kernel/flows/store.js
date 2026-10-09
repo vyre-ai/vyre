@@ -23,7 +23,7 @@ import { newPrefixedId } from "../../lib/id.js";
  *   started_at: number, updated_at: number, finished_at?: number,
  *   steps: Record<string, { status: 'started'|'waiting'|'done'|'skipped'|'failed'|'failed_handled', output?: any, error?: { code: string, message: string }, at: number, wait?: any, task?: string, tries?: number, last_error?: any, attempts_log?: { at: number, code: string }[], handling?: boolean, started_at?: number, finished_at?: number, verify?: { ok: boolean, say?: string }, skipped_by?: string|null, skipped_at?: number, substitute?: boolean, [k: string]: any }>,
  *   queued?: { reason: 'concurrency'|'box_limit'|'lock'|'paused'|'draining'|'flow_paused', since: number, seq?: number }, lock_key?: string,
- *   attention?: { kind: 'failed'|'stuck'|'stale'|'verify'|'paused', step?: string, code?: string, message: string, since: number },
+ *   attention?: { kind: 'failed'|'stuck'|'stale'|'verify'|'paused'|'device', step?: string, code?: string, message: string, since: number },
  *   failing?: { step: string, code: string, message: string }, failing_done?: boolean, failing_error?: { code: string, message: string }, cancelled?: { by: string|null, at: number, reason?: string },
  *   gate?: { key: string, urn: string, type: string, record: string, stage: string, next: string | null, owner: string | null, tasks: { id: string, title: string, required: boolean }[] },  a stage gate (s1): a run with no stored Flow
  *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },

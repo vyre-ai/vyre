@@ -176,7 +176,8 @@ test("the real runner on a lent computer, ports from the lender host over the re
 });
 
 import mod, { resolveAgent } from "./index.js";
-test("the runner module on a computer whose host gives only its identity: ready, and a Space whose home is another computer is reached through ctx.kernel.for(space).call (the one remote path)", async t => {
+// (readiness needs the sandbox tools too, so these two skip where the real runner does: bubblewrap and gocryptfs are not on every CI machine)
+test("the runner module on a computer whose host gives only its identity: ready, and a Space whose home is another computer is reached through ctx.kernel.for(space).call (the one remote path)", { skip: SKIP_RUN }, async t => {
   const r = await rig(t, { keyIsDevice: true });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map(); const events = [];
@@ -193,7 +194,7 @@ test("the runner module on a computer whose host gives only its identity: ready,
   await assert.rejects(tools.get("runner.place").run({ space: "spc_hostedhere01" }, {}), e => e.code === "unavailable", "a Space this computer hosts itself is not lent over a wire");
 });
 
-test("a host with no device identity yet: the module loads and says so, and a call is refused as not connected", async t => {
+test("a host with no device identity yet: the module loads and says so, and a call is refused as not connected", { skip: SKIP_RUN }, async t => {
   const r = await rig(t);
   /** @type {Map<string, any>} */ const tools = new Map();
   const ctx = { paths: { root: path.join(r.dir, "mod2") }, events: { emit() {}, on: () => () => {} }, tool: (n, d) => tools.set(n, d),

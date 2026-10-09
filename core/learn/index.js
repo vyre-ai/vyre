@@ -41,6 +41,7 @@ import path from "node:path";
 import { distill, fromEdit, invalid, atStop, atTool, weakens, sentBack, held, reply, loosens, fileOf, commandPattern, LEVELS, MAX_BLOCKS, CODE, TESTS } from "./checks.js";
 import { writeSnapshot, drain, SNAPSHOT } from "./offline.js";
 import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
+import { toLibrary } from "./to-library.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
 import * as sig from "./signals.js";
@@ -661,6 +662,8 @@ export default {
       }
       return runs.length ? evidenceOf(runs) : null;
     };
+    /** A learn skill proposal, also drafted into the skills library for the person's one approval (core/learn/to-library.js). */
+    const proposeSkill = (/** @type {any} */ c, /** @type {any} */ o) => { const sk = skills.propose(c, o); void toLibrary((input) => ctx.call("skills.draft.learned", input), sk, ctx.log); return sk; };
     const skillCandidates = async () => {
       const c = skills.candidates({ min: 3 })[0];
       if (!c) return;
@@ -670,7 +673,7 @@ export default {
       const job = /** @type {any} */ (db.prepare("SELECT status FROM learn_jobs WHERE key = ? ORDER BY id DESC LIMIT 1").get(key));
       if (job && ["queued", "running"].includes(String(job.status))) return;
       if (!job && await switchboard()) { jobs.enqueue("skill", key, { candidate: c }); return; }
-      skills.propose(c);                                                // no Switchboard, or the draft failed: the template
+      proposeSkill(c);                                                  // no Switchboard, or the draft failed: the template
     };
 
     // ---- Jobs: distilling off the path (ADR 0007, decision 7) -------------------------------
@@ -689,7 +692,7 @@ export default {
       handle: async (job, v) => {
         if (job.kind === "skill") {
           if (typeof v.body !== "string" || v.body.length > 20_000) throw new Error("no body");
-          return { skill: skills.propose(job.input.candidate, { body: v.body }).id };
+          return { skill: proposeSkill(job.input.candidate, { body: v.body }).id };
         }
         if (v.rule === null) return { note: "not a rule" };
         const change = { rule: v.rule, level: v.level === "ask" ? "ask" : "remind", check: v.check ?? null };

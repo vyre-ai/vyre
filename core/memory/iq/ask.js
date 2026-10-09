@@ -174,7 +174,7 @@ export function asker({ db, answer, retrieve, site = null, runner = null, model 
   return async function ask({ question, project_cwds = [], personal: sees = false, siteOk = false, thread = null, stage = () => {}, screen = null, writes = null, draft = null }) {
     const t0 = performance.now();
     const q = String(question || "").trim();
-    // A site Vyre for Chrome learned, when the question names it ("what do you know about GoHighLevel?"), is worked out in code,
+    // A site Vyre Computer learned, when the question names it ("what do you know about GoHighLevel?"), is worked out in code,
     // for the person's own surfaces only. It never decides anything: the normal answer always runs, and what it finds answers alone; the
     // site summary answers only when nothing else did.
     const siteAns = site && siteOk && q ? await Promise.resolve(site(q)).catch(() => null) : null;

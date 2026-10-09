@@ -94,8 +94,10 @@ export async function bootHomeKernel(cfg) {
         projectFiles: true,
         keysFor: (/** @type {string} */ chat) => { if (chat.startsWith("project-files:")) return pfKeys(chat); const k = chatKeys.get(chat); return k && chatGrants && k.epoch >= chatGrants.chats.epoch(chat) ? k : null; },
         sealed: (/** @type {string} */ chat) => Boolean(chatGrants && chatGrants.chats.epoch(chat) > 0),
-        projectKeysFor: () => null,
+        projectKeysFor: (/** @type {string} */ project) => pfKeys(`project-files:${project}`),
       }) : undefined;
+      // what was shared to a project is found again after a restart: each project's sealed share index is read back (kernel/storage/sealed-drive.js)
+      if (base && drive) for (const f of await base.list("Projects")) { const m = /^Projects\/([^/]+)\/\.shared$/.exec(f.path); if (m) await drive.loadShared(m[1]); }
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
   // The inference door (contract 8.4): every model call, and the ledger a reveal records what a person was shown in. Built here, over the sealing process this home runs, with the kernel's own isChain;
@@ -239,5 +241,8 @@ export async function bootHomeKernel(cfg) {
   hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
   // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
   { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  // R031-83: a Space restored from a bundle (lib/space-bundle.js) leaves its grants in kernel/restore.json: they go onto this Space once, under this seal, and the log says so (the old log is not carried, only its head)
+  { const rf = path.join(cfg.root, "kernel", "restore.json"); let r = null; try { r = JSON.parse(fs.readFileSync(rf, "utf8")); } catch { /* no restore waiting */ }
+    if (r && r.grants) { await k.grants.adopt(r.grants); k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "space.restored", sv: 1, subject: `vyre://${id.space}/space/${id.space}`, data: { head: r.head, bundle_hash: r.bundle_hash }, vis: "owner", red: "internal" }); fs.rmSync(rf, { force: true }); } }
+  return Object.freeze({ ...k, spaces, sealer, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

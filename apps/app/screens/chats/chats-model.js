@@ -3,7 +3,7 @@
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
 
-/** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean }} ChatRow */
+/** @typedef {{ pinned?: "" | "assistant" | "engineer", id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean }} ChatRow */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 /** A list the box sends as an array, or (work.chat.list) as one comma-joined string. */
@@ -31,7 +31,7 @@ export function chatsFrom(data) {
     out.push({
       id, title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
       providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
-      last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
+      pinned: d.pinned === "assistant" || d.pinned === "engineer" ? d.pinned : "", last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });
   }
   return out;
@@ -52,10 +52,13 @@ export function chatSub(c) {
   return [c.asks > 0 ? `${c.asks} waiting on you` : "", names, c.project, c.line].filter(Boolean).join(" · ");
 }
 
-/** Chats that need you first, then running, then the rest by last activity. @param {readonly ChatRow[]} list */
+/** The Chats list drops the Engineer's chat (it is reached from Settings, for an owner or an admin) and puts your assistant's pinned chat first, always. @param {readonly ChatRow[]} list */
+export const chatsShown = (list) => list.filter((c) => c.pinned !== "engineer");
+
+/** Your assistant's pinned chat first, then the chats that need you, then running, then the rest by last activity. @param {readonly ChatRow[]} list */
 export function chatsOrdered(list) {
   const rank = { "needs-you": 0, failed: 1, running: 2, done: 3 };
-  return [...list].sort((a, b) => rank[chatState(a)] - rank[chatState(b)] || b.last - a.last);
+  return [...list].sort((a, b) => (b.pinned === "assistant" ? 1 : 0) - (a.pinned === "assistant" ? 1 : 0) || rank[chatState(a)] - rank[chatState(b)] || b.last - a.last);
 }
 
 /** The three scripted chats of the sample world (CONTRACT-one-chat.md section 4): a solo chat, a three-model chat, a people-only chat and one where the assistant acted for the person. @param {number} now @returns {ChatRow[]} */

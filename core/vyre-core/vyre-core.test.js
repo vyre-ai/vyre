@@ -155,9 +155,9 @@ test("vyre-core: a write is proved by an enrolled key over that exact input, onc
   assert.deepEqual(ok.data, { removed: true });
   assert.match((await coreTool("presence.remove", { id: other }, { socket: c.socket, coreUid: uid, presence: header })).error.message, /nonce was already used/);
 
-  // A session from a live key, never from a code.
+  // core has no presence sessions any more: that tool does not exist.
   const s = await coreTool("presence.session.open", {}, { socket: c.socket, coreUid: uid, presence: phone.sign("presence.session.open", {})(id) });
-  assert.ok(s.data && s.data.session && s.data.secret, JSON.stringify(s));
+  assert.ok(s.error, JSON.stringify(s));
 });
 
 test("vyre-core: presence.verify answers for another tool's call without trusting the asker", async t => {
@@ -290,8 +290,6 @@ test("vyre-core: without dev set on purpose, the stand-in Capsule check says no,
   const c = await core(t, { peerCred: async () => ({ pid: process.pid, uid }), dev: false });
   const phone = deviceKey();
   const id = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: phone.pub, alg: -7 }).id;
-  const s = await coreTool("presence.session.open", {}, { socket: c.socket, coreUid: uid, presence: phone.sign("presence.session.open", {})(id) });
-  assert.equal(s.error && s.error.code, "not_capsule");
   const r = await coreTool("vault.reveal", { name: "x" }, { socket: c.socket, coreUid: uid, presence: phone.sign("vault.reveal", { name: "x" })(id) });
   assert.equal(r.status, 403);
   // The installer's code is refused the same way, on a core with no key yet.

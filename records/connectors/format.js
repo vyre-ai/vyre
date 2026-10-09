@@ -48,13 +48,13 @@ export function checkFixedHeaders(h) {
 
 /** @typedef {{ type: string, required?: boolean, enum?: any[], max?: number, items?: Shape, fields?: Record<string, Shape> }} Shape */
 /** @typedef {{ params?: Record<string, Shape>, query?: Record<string, Shape>, body?: Record<string, Shape>, headers?: Record<string, Shape>, encoding?: "json" | "form" }} OpInput */
-/** @typedef {{ method: string, path: string, kind: string, label?: string, relabeled?: true, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
+/** @typedef {{ method: string, path: string, kind: string, label?: string, relabeled?: true, site?: { name: string }, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
  *   readback?: { op: string, args: Record<string, string>, compare?: Record<string, string> }, wrap?: string }} Op */
 /** @typedef {{ op: string, items?: string, id: string, at?: string, title?: string, args?: { query?: Record<string, any>, params?: Record<string, string> }, since?: { lookback_days?: number },
  *   expand?: { op: string, args: Record<string, string>, query?: Record<string, any> }, map: Record<string, any>, every_minutes?: number, label?: string }} Poll */
 /** The host name a Connection to an app on this machine is given, so every address the vault builds for it is one nothing on the internet answers; the vault swaps in the app's real local origin. @param {string} app */
 export const appHost = app => `${app}.app.invalid`;
-/** @typedef {{ id: string, label: string, version: number, base_url?: string, app?: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
+/** @typedef {{ id: string, label: string, version: number, transport?: "site", base_url?: string, app?: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
  *   ops: Record<string, Op>, headers?: Record<string, string>, poll?: Record<string, Poll>, inbound?: { webhook: { events: string[], emits: string } }, deny?: { method?: string, path: string }[] }} Declaration */
 
 /** @param {any} s @param {string} path @param {string[]} out */
@@ -98,8 +98,17 @@ export function checkDeclaration(d) {
     if (host.includes("*") || !host.includes(".")) throw new Error("x");
   } catch { out.push("base_url: one exact https host with no path, such as https://api.example.com"); }
   const a = d.auth;
-  if (!isObj(a) || !["bearer", "api-key", "basic", "oauth", "service-account", "google"].includes(a.type)) out.push("auth.type: bearer, api-key, basic, oauth, service-account or google");
-  else {
+  // A website signed in through a browser (learned operations, lib/siteops): the host is the site, the login lives in that browser, and each operation names the learned operation it runs.
+  const site = d.transport === "site";
+  if (d.transport !== undefined && !site) out.push('transport: "site", or left out');
+  if (site) {
+    if (d.app !== undefined) out.push("transport: a site's connection has no app");
+    if (!isObj(a) || a.type !== "browser" || Object.keys(a).length !== 1) out.push('auth: { type: "browser" } is how a site signs in: the login stays in the browser');
+    if (d.inbound !== undefined) out.push("inbound: not for a site's connection");
+    if (isObj(d.ops)) for (const [n, o] of Object.entries(/** @type {Record<string, any>} */ (d.ops))) if (!isObj(o) || !isObj(o.site) || typeof o.site.name !== "string" || !/^[a-z][A-Za-z0-9_]{0,63}$/.test(o.site.name)) out.push(`ops.${n}.site.name: the learned operation this runs`);
+  } else if (isObj(a) && a.type === "browser") out.push('auth.type: "browser" is for a site\'s connection (transport: "site")');
+  if (!isObj(a) || !["bearer", "api-key", "basic", "oauth", "service-account", "google", ...(site ? ["browser"] : [])].includes(a.type)) out.push("auth.type: bearer, api-key, basic, oauth, service-account or google");
+  else if (a.type !== "browser") {
     if (a.type === "oauth" && (typeof a.authorize_uri !== "string" || !a.authorize_uri.startsWith("https://") || typeof a.token_uri !== "string" || !a.token_uri.startsWith("https://"))) out.push("auth: oauth names https authorize_uri and token_uri");
     if ((a.type === "oauth" || a.type === "service-account" || a.type === "google") && a.scopes !== undefined && !(Array.isArray(a.scopes) && a.scopes.every((/** @type {any} */ x) => typeof x === "string"))) out.push("auth.scopes: a list of strings");
     if ((a.type === "service-account" || (a.also !== undefined && a.type === "oauth")) && !(Array.isArray(a.scopes) && a.scopes.length)) out.push("auth.scopes: a service account names the scopes it acts with");
@@ -187,6 +196,8 @@ export function defineConnector(d) {
 
 /** @param {Op} op */
 export const isOutward = op => OUTWARD_KINDS.includes(op.kind);
+/** The kinds the Gate holds for a yes. */
+export const kindsOutward = () => [...OUTWARD_KINDS];
 /** The path pattern the vault's rules read: each {param} one whole segment. @param {string} path */
 /** @param {any} spec @param {any} raw @param {Record<string, any>} [vars] one field of a poll's mapping, evaluated (for the poll's id) */
 export const mapped = (spec, raw, vars = {}) => mapField(raw, spec, vars);

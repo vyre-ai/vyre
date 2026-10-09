@@ -66,10 +66,14 @@ export { nowCount } from "./tasks/model";
 export { Select } from "./components/Select";
 export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS, filterOps, matches, sortKey, sortRows, kindLabel } from "./fields/registry";
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
-export { ListView, BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam } from "./views";
+export { BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
 export { Ring } from "./components/Ring";
 export { FlowCanvas } from "./canvas/FlowCanvas";
 export type { CanvasNode, CanvasEdge, NodeState } from "./canvas/FlowCanvas";
 export { Meter } from "./components/Meter";
+
+// The design language: a resolved screen drawn from blocks (lib/views/blocks.js).
+export { BlockScreen, ChatCard, DRAWN_TYPES, registerBlock } from "./blocks";
+export type { Screen as BlockScreenData, Handlers as BlockHandlers } from "./blocks";

@@ -4,7 +4,7 @@ summary: What a skill is in Vyre, where skills come from, and how permission dec
 audience: agents
 owner: docs
 status: stable
-tokens: 520
+tokens: 600
 when: You are looking for a ready-made way to do a kind of task, need to find the right skill, or a skill is offered or refused.
 ---
 
@@ -15,7 +15,7 @@ A skill is a short, tested set of instructions for one kind of task: how to use 
 ## Where they come from
 
 - Vyre's own skills ship in the plugin (the harness): `use-the-vault`, `work-in-a-project`, `write-a-watcher`.
-- A person's own skills and a project's skills appear when they are installed for that project or account.
+- The Space's library holds approved skills at four levels: space, personal, agent and project. A person's own skills and a project's skills also appear when they are installed for that project or account.
 - A module can teach a skill about its own tools.
 
 ## Which you may use
@@ -29,6 +29,10 @@ Read the skill first, once. Follow it, and say you did. If it conflicts with wha
 ## Finding one
 
 `skills.find` ranks the skills you may use for what you are about to do, in plain words, and `skills.list` lists them. `tools_call skills.get` reads one by its id. Each result says what the skill is for and what reading it costs. A skill you may not use is not listed, not ranked and not readable.
+
+## Writing one
+
+`tools_call skills.draft` stores a skill or plugin as a draft at a level (space, personal, agent, project). A draft is used by no one. The level's owner approves it, or you ask for their yes with `tools_call flows.propose { what: "skill", ... }`. You never approve. A key never goes into a skill.
 
 ## Skills Vyre learned from your repeats
 

@@ -21,7 +21,8 @@ import { signedIn } from "../core/cli/commands/link.js";
  */
 const enrolled = new Map();
 const proving = {
-  required: (tool, def) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence),
+  // pairing the Mac is the harness's own step (its yes is walked in test/one-yes-floor.test.js); this test is about the person session
+  required: (tool, def) => tool !== "link.pair.approve" && (HUMAN_ONLY.has(tool) || Boolean(def && def.presence)),
   verify: async ({ tool, input, proof }) => {
     if (!proof || proof.method !== "device") return { ok: true, method: "passkey", keyId: "k1" };
     const pub = enrolled.get(proof.key);
@@ -50,7 +51,7 @@ const get = url => new Promise((resolve, reject) => {
 
 test("link: a Mac answers on the box only once the person signs it in, and only for the person's callers", async t => {
   const enclave = softEnclave();
-  const s = await pair(t, { router: true, boxPresence: proving, macSeam: { secureEnclave: enclave } });
+  const s = await pair(t, { router: true, boxPresence: proving, macSeam: { secureEnclave: enclave, yesWaitMs: 400, yesPollMs: 20 } });
 
   // Not signed in: the person's action never rides the link, whoever asks.
   const before = await s.macCall("link.call", { tool: "agents.create", input: { name: "kit" } });
@@ -95,15 +96,17 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
     const refusedHere = ["mcp", "mcp:agent:kit", "anonymous"].includes(caller);
     assert.equal(r.error && r.error.code, refusedHere ? "denied" : "person_session_required", caller);
   }
-  // Human-only: the Mac's Secure Enclave key, enrolled at sign-in, signs this exact call (Touch ID).
+  // A moment (presence.code adds a device): the Mac makes no device-key proof any more (0.3.1). The box names what must be approved, the Mac asks a card as its signed-in person and waits for the owner's phone.
   assert.equal((await s.macCall("link.status")).data.signedIn.touchId, true);
-  const opened = await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "cli");
-  assert.ok(!opened.error, JSON.stringify(opened.error));
-  assert.equal(enclave.signed, 1, "one Touch ID for one human-only call");
+  const opened = await s.macCall("link.call", { tool: "presence.code", input: {} }, "cli");
+  assert.equal(opened.error?.code, "presence_required", JSON.stringify(opened));
+  assert.match(opened.error.message, /nobody approved it in time/);
+  assert.equal(enclave.signed, 0, "no Touch ID signature rides the call");
+  assert.ok((await s.boxCall("approvals.pending", {})).data.approvals.some(a => a.moment === "pair" && a.request.op === "presence.code"), "the card is waiting on the owner's phone");
   // Never for a model or a module: no signature is even asked for.
-  assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "mcp")).error.code, "denied");
-  assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "cli:agent:kit")).error.code, "person_session_required");
-  assert.equal(enclave.signed, 1);
+  assert.equal((await s.macCall("link.call", { tool: "presence.code", input: {} }, "mcp")).error.code, "denied");
+  assert.equal((await s.macCall("link.call", { tool: "presence.code", input: {} }, "cli:agent:kit")).error.code, "person_session_required");
+  assert.equal(enclave.signed, 0);
   // The box lists the Mac's session, pinned to the Mac's node.
   const list = (await s.boxCall("presence.person.sessions")).data.sessions;
   assert.deepEqual(list.map(x => [x.kind, x.node]), [["bearer", MAC.stableId]]);

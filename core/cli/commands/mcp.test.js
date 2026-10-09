@@ -22,11 +22,11 @@ const run = (root, args, env = {}) => new Promise(resolve =>
 
 const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
 
-test("mcp: vyre commands lists serve and install, the verbs run() handles; any other is a usage mistake", async t => {
+test("mcp: vyre commands lists serve, design and install, the verbs run() handles; any other is a usage mistake", async t => {
   const root = tempHome(t);
   const verbs = JSON.parse((await run(root, ["commands", "mcp", "--json"])).stdout).commands[0].verbs;
-  assert.deepEqual(verbs.map(v => v.verb), ["serve", "install"]);
-  assert.deepEqual(verbs[1].flags.map(f => f.name), ["yes", "json"]);
+  assert.deepEqual(verbs.map(v => v.verb), ["serve", "design", "install"]);
+  assert.deepEqual(verbs[2].flags.map(f => f.name), ["yes", "json"]);
   const bad = await run(root, ["mcp", "frob"]);
   assert.equal(bad.code, 2, bad.all);
   assert.match(bad.all, /vyre mcp frob: not a verb/);

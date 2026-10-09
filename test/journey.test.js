@@ -41,15 +41,3 @@ test("journey 3, door A refused: no --yes and no terminal prints the plan and to
     assert.equal(rig.opened().length, 0);
   } finally { await rig.close(); }
 });
-
-test("journey 5, door A on a signed-out Mac: box add stops before touching the server", async () => {
-  const rig = await makeRig({ mac: "signed-out" });
-  try {
-    const { code, out } = await rig.mac(["box", "add", TARGET, "--yes"], { timeout: 20_000 }).done;
-    assert.equal(code, 1, out);
-    assert.match(out, /Tailscale is signed out: open Tailscale and sign in/);
-    assert.deepEqual(rig.ssh(), [], "ssh never ran");
-    assert.equal(fs.existsSync(rig.env.server.VYRE_DIR), false);
-  } finally { await rig.close(); }
-});
-

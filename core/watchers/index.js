@@ -17,6 +17,10 @@ import { isAgent, isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
 import { Runtime, MIGRATIONS } from "./runtime.js";
+import { runOnce } from "./run.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { createDefs, MIGRATIONS as DEF_MIGRATIONS } from "./defs.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 
@@ -56,6 +60,9 @@ function dutyCaller(caller) {
 const named = { type: "object", required: ["name"], properties: { name: str } };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** Test seams for the hook sandbox, keyed by the home: a wall that opens, or the net options a test needs. */
+export const hookSeams = new Map();
+
 export default {
   async start(ctx) {
     ctx.store.migrate([...MIGRATIONS, ...DEF_MIGRATIONS]);
@@ -149,6 +156,18 @@ export default {
       run: async (i, { caller } = {}) => { dutyCaller(caller); return rt.updateDuty(i); },
     });
     tool("watchers.duty.delete", { description: "Stop and forget a teammate's duty; its folder goes and its filed items stay. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.remove(name); } });
+    // A plugin's hook (core/skills): its script runs once in the watchers' sandbox, with no credentials, and only the hosts the plugin declared. The skills module asks; it does not import the runner.
+    ctx.tool("watchers.hook.run", { description: "Run one approved plugin hook's script once in the watchers' sandbox: no credentials, only the declared hosts. The skills module's call.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["script"], properties: { script: { type: "string", maxLength: 200000 }, payload: {}, hosts: { type: "array", maxItems: 20, items: { type: "string", maxLength: 255 } } } },
+      run: async (/** @type {any} */ i) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-hook-"));
+        try {
+          fs.writeFileSync(path.join(dir, "watch.js"), String(i.script));
+          const seam = hookSeams.get(String((ctx.paths && ctx.paths.root) || "")) || {};
+          const r = await runOnce({ dir, needs: [], since: null, hook: i.payload || null, timeoutMs: 8000, fetch: async () => { throw new Error("a hook handles no credentials"); }, hosts: Array.isArray(i.hosts) ? i.hosts : [], ...(seam.wall !== undefined ? { wall: seam.wall } : {}), ...(seam.findWall ? { findWall: seam.findWall } : {}), ...(seam.netOptions ? { netOptions: seam.netOptions } : {}) });
+          return { ok: !r.error, ...(r.error ? { error: r.error } : {}), result: r.items[0] || null, logs: r.logs.slice(0, 20) };
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      } });
     ctx.tool("watchers.duty.run", { description: "Run a teammate's turned-on duty now and return what happened. The teammates module's call.", input: named, run: async ({ name }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.run(name); } });
     ctx.tool("watchers.duty.resume", { description: "Resume a paused duty of a teammate that a person turned on. The teammates module's call.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { dutyCaller(caller); dutyName(name); return rt.resume(name, { hash: hash || null }); } });
     tool("watchers.delete", { description: "Stop and forget a watcher; a duty's folder goes too and its filed items stay.", input: named, run: async ({ name }, { caller } = {}) => { owned(name, caller); return rt.remove(name); } });

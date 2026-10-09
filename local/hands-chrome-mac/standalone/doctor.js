@@ -128,7 +128,7 @@ export async function doctor({ dataDir, appDir, extensionId, selftest = true, pl
     const sockPath = platform === "win32" ? "" : path.join(dataDir, "run", "chrome.sock");
     const listening = sockPath && fs.existsSync(sockPath) && await new Promise(res => { const s = net.connect(sockPath); s.once("connect", () => { s.destroy(); res(true); }); s.once("error", () => res(false)); });
     add(listening ? { name: "server", level: "warn", text: "something is listening on the connector socket but wrote no status" }
-      : { name: "server", level: "info", text: "no Vyre for Chrome server is running right now (Claude Code starts it when a session uses the tools)" });
+      : { name: "server", level: "info", text: "no Vyre Computer server is running right now (Claude Code starts it when a session uses the tools)" });
   }
 
   // 7. Which browsers are running, and did any of them start a connector process?
@@ -138,7 +138,7 @@ export async function doctor({ dataDir, appDir, extensionId, selftest = true, pl
     const running = names.filter(([, re]) => ps.split("\n").some(l => /** @type {RegExp} */ (re).test(l) && !/Helper|crashpad|--type=/.test(l))).map(([n]) => n);
     const hosts = ps.split("\n").filter(l => /native-host\/host\.js|run-host\.sh/.test(l) && !/doctor|--selftest/.test(l)).length;
     add({ name: "browsers", level: "info", text: running.length ? `running now: ${running.join(", ")}` : "no supported browser is running right now" });
-    add(running.length && !hosts ? { name: "connector-process", level: "warn", text: "a browser is running but has started no connector process", fix: "Check chrome://extensions: Vyre for Chrome must be loaded and enabled; click its toolbar icon for the reason. If it is, quit and reopen the browser once." }
+    add(running.length && !hosts ? { name: "connector-process", level: "warn", text: "a browser is running but has started no connector process", fix: "Check chrome://extensions: Vyre Computer must be loaded and enabled; click its toolbar icon for the reason. If it is, quit and reopen the browser once." }
       : { name: "connector-process", level: hosts ? "ok" : "info", text: hosts ? `${hosts} connector process(es) running: a browser started the connector` : "no connector process is running" });
   }
 

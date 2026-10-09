@@ -123,7 +123,8 @@ test("the amount is the payment, not a guess: no sealed value or card data ever 
 });
 
 test("a failing store makes Stripe retry (500), and the retry then finishes the job", async () => {
-  const { store, send } = await setup();
+  const { store, send, host } = await setup();
+  host.flows.runner.retryCap = 1; // the runner itself retries a write that failed for a moment (flows f1, f2); this case is the store staying down for the whole delivery
   const real = store.create.bind(store);
   let fail = true;
   store.create = async (t, id, d) => { if (t === "matter" && fail) { fail = false; throw Object.assign(new Error("store down"), { code: "unavailable" }); } return real(t, id, d); };
@@ -135,6 +136,7 @@ test("a failing store makes Stripe retry (500), and the retry then finishes the 
 
 test("fail the first run, redeliver: one event, one run, one matter", async () => {
   const { store, host, send, events } = await setup();
+  host.flows.runner.retryCap = 1; // as above: no in-run retry, so the failed run waits for the redelivery
   const real = store.create.bind(store);
   let fail = true;
   store.create = async (t, id, d) => { if (t === "matter" && fail) { fail = false; throw Object.assign(new Error("store down"), { code: "unavailable" }); } return real(t, id, d); };

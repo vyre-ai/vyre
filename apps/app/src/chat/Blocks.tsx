@@ -13,6 +13,10 @@ import { tokens } from "../theme/tokens";
 import { ANSI_BLOCK as ANSI } from "../terminal/palettes";
 import { parseAnsi, stripAnsi } from "./ansi.js";
 import { readSelection } from "./highlight.js";
+import { PreviewCard } from "./PreviewCard";
+import { QuestionsCard } from "./QuestionsCard";
+import { OperatorCard } from "./OperatorCard";
+import { SigninCard } from "./SigninCard";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
 
 const TERM_RULE = tokens.color.dark.rule;
@@ -308,10 +312,11 @@ export function SealedChip({ f }: { f: Extract<RecordField, { sealed: true }> })
 }
 
 /** A cited field in a reply, drawn for this viewer: the value, or a chip that says something is there (sealed, or kept from their role). Never a value it was not sent. */
-export function FieldChip({ block }: { block: Extract<Block, { block: "field" }> }) {
+export function FieldChip({ block, ctx }: { block: Extract<Block, { block: "field" }>; ctx?: BlockCtx }) {
   if (block.state === "sealed") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, sealed" : "not set, sealed"}`}</Chip>;
   if (block.state === "hidden") return <Chip tone="sealed" icon="shield">{`${block.label}: ${block.present ? "on file, not shown to you" : "not shown to you"}`}</Chip>;
-  return <Chip>{`${block.label}: ${block.value}`}</Chip>;
+  const open = block.urn && ctx?.onOpenRecord ? () => ctx.onOpenRecord?.(block.urn!) : undefined;
+  return <Chip onPress={open}>{`${block.label}: ${block.value}`}</Chip>;
 }
 
 export function RecordCard({ block, ctx }: { block: Extract<Block, { block: "record" }>; ctx: BlockCtx }) {
@@ -455,11 +460,15 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "diff": return <DiffBlock block={block} ctx={ctx} />;
     case "record": return <RecordCard block={block} ctx={ctx} />;
     case "task": return <TaskCard block={block} ctx={ctx} decided={extra.decided} />;
-    case "field": return <FieldChip block={block} />;
+    case "field": return <FieldChip block={block} ctx={ctx} />;
     case "draft": return <DraftBlock block={block} ctx={ctx} />;
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;
     case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
+    case "preview": return <PreviewCard block={block as never} />;
+    case "questions": return <QuestionsCard block={block as never} />;
+    case "operator": return <OperatorCard block={block as never} />;
+    case "signin": return <SigninCard block={block as never} />;
     default: return <TextBlock block={block} />;
   }
 }

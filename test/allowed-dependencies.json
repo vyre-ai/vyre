@@ -5,6 +5,9 @@
    "@noble/ciphers": "AES-GCM for the one sealing format (lib/databox.js) that runs unchanged on the server, the phone and the browser; node:crypto cannot run on the phone",
    "@noble/curves": "P-256 and X25519 key agreement in files shared with the phone (lib/keywrap.js, relay/client); node:crypto cannot run on the phone",
    "@noble/hashes": "sha256, hmac, hkdf in files shared with the phone and browser (databox, keywrap, kernel canonical JSON)",
+   "docxtemplater": "fills a Word template's placeholders (Documents, R032-01): Word splits one placeholder across runs of text and nothing else here reads .docx; MIT",
+   "pizzip": "reads and writes the .docx zip for docxtemplater, with fixed dates so the same input gives the same bytes; node has no zip of its own",
+   "esbuild-wasm": "turns a preview's .jsx, .tsx or .ts file into the JavaScript a browser runs, so a React artifact written for Claude runs in a Vyre preview (core/previews/jsx.js, loaded only then; the WebAssembly build, so one portable package, no native binaries). No other tool here compiles JSX",
    "yaml": "reads a YAML API description for the connector import; nothing else parses YAML (loaded only then, records/connectors/import-spec.js)"
   },
   "tools/wrangler/package.json": {
@@ -32,6 +35,7 @@
    "expo-camera": "scan a pairing QR on iOS (Android uses modules/vyre-scan)",
    "expo-clipboard": "copy and paste",
    "expo-constants": "expo peer: app config",
+   "expo-document-picker": "choose a password export from Files on a phone (nothing else in the app opens the system file picker)",
    "expo-font": "expo peer: fonts",
    "expo-haptics": "touch feedback",
    "expo-linking": "deep links for pairing",

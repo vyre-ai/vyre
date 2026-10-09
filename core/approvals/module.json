@@ -27,6 +27,10 @@
         "reach": "modules"
       },
       {
+        "name": "approvals.local-yes", "effect": "write",
+        "reach": "person"
+      },
+      {
         "name": "approvals.pending", "effect": "read",
         "reach": "person"
       },
@@ -58,7 +62,10 @@
         "name": "approvals.status", "effect": "read",
         "reach": "person"
       },
-      "approvals.items"
+      {
+        "name": "approvals.items", "effect": "read",
+        "reach": "anyone"
+      }
     ]
   },
   "watches": {

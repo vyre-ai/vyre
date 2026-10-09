@@ -14,7 +14,7 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
-test("HD-2: a session's threads.start cannot resume another live thread, fork it, or borrow an agent; the person's surface still can", { timeout: 90_000 }, async t => {
+test("HD-2: a session's threads.start cannot resume another live thread, fork it, or borrow an agent; the person's surface still can", async t => {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
   const transcripts = path.join(root, "transcripts");

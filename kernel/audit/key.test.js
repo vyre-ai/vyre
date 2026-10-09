@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import * as C from "../identity/chain.js";
-import { endorse, verifyEndorsement, sealerKey, publicKeyOf } from "./key.js";
+import { endorse, sealerKey } from "./key.js";
+import { verifyEndorsement, publicKeyOf } from "./verify.js";
 import { createCheckpointer, createDeviceCheckpoints, verifyLog } from "./index.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
@@ -82,7 +83,8 @@ test("the key id the sealing process reports is the one the endorsement check re
   assert.equal(crypto.createHash("sha256").update(Buffer.from(k.pub, "base64")).digest("hex").slice(0, 16), k.key_id);
 });
 
-import { revokeKey, verifyRevocation } from "./key.js";
+import { verifyRevocation } from "./key.js";
+import { revokeKey } from "./verify.js";
 test("any owner revokes the checkpoint key through the chain; a device then refuses it, and notices a home gone quiet", async () => {
   const w = await world();
   const k = crypto.generateKeyPairSync("ed25519");

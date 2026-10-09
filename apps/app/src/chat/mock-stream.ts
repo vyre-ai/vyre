@@ -271,6 +271,19 @@ export function assistantScript(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: [a, k].flatMap((c) => c.steps).sort((x, y) => x.at - y.at) }];
 }
 
+/** The previews scenario (/chat-demo?scenario=previews): the assistant starts something on a port and a live preview card lands in the chat, between two of its own messages. */
+export function previewsScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 80;
+  const c = new Clock();
+  c.push("status", { state: "working", turn: "turn-1" });
+  c.push("user-message", { message: "m1", text: "Build me a small intake form I can show Maria this afternoon, and let me look at it.", state: "sent" }, 40);
+  c.say("a1", "I built the form with the three questions you listed and started it on a port. It validates the date and keeps nothing until you press send.", tps, 200);
+  c.push("tool-finished", { tool_id: "preview:0a1b2c3d", ok: true, result: { block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "port", mode: "session", access: "me", thumb: 1 } }, 300);
+  c.say("a2", "It ends with this chat. If you want it there tomorrow, tap Keep it running and I will leave it to Vyre.", tps, 200);
+  c.push("status", { state: "waiting", turn: "turn-1" }, 60);
+  return [{ gate: null, steps: c.steps }];
+}
+
 /** The activity scenario (/chat-demo?scenario=activity): a thought, a step, a hand-off to a teammate with the teammate's own steps nested under it, the report-back, the reply. */
 export function activityScript(o: { tps?: number } = {}): Segment[] {
   const tps = o.tps ?? 60;
@@ -296,7 +309,7 @@ export function activityScript(o: { tps?: number } = {}): Segment[] {
 
 export type MockOptions = {
   /** "group": two people, two assistants, a fan-out (groupScript). */
-  scenario?: "group" | "models" | "people" | "assistant" | "activity";
+  scenario?: "group" | "models" | "people" | "assistant" | "activity" | "previews";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -315,7 +328,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
+  const segments = opts.scenario === "previews" ? previewsScript({ tps: opts.tps }) : opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();

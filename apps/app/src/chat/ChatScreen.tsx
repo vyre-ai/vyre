@@ -30,14 +30,20 @@ import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, ty
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
+import { LinkSuggestion } from "../../screens/chat-tools/LinkSuggestion";
+import { FilesPane } from "../../screens/chat-tools/FilesPane";
 import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
+import { PreviewPane } from "./PreviewPane";
+import { usePreviewPane } from "./previewPane";
+import { MovedLines, PlacementChip, usePlacement } from "./placement";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
+import { secureSecrets } from "./secure-paste.js";
 import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
@@ -100,12 +106,19 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
+  const placed = usePlacement(p.sessionId, !allowsMock());
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
   const [note, setNote] = useState<string | null>(null);
+  // A key in the message is on its way into the Vault: the label of the one being secured now.
+  const [securing, setSecuring] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // On a wide window the chat's files sit in a pane beside it (you keep working while it is open); on a phone they are a page of the tools sheet
+  const [filesOpen, setFilesOpen] = useState(false);
+  // the person's latest message, for "Link this chat to Northwind?"
+  const lastUserText = useMemo(() => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].kind === "user") return String(store.item(rows[i].key)?.text ?? ""); return ""; }, [rows, store]);
   // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
   const [draftN, setDraftN] = useState(0);
   // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
@@ -192,6 +205,8 @@ export function ChatScreen(p: ChatScreenProps) {
       // A draft that is a held send links to its item, where it is read in full, edited and sent.
       heldFor: (d: { subject?: string | null; body?: string }) => (allowsMock() ? null : heldFor(d, needs, chatId)),
       onOpenHeld: (id: string) => router.push({ pathname: "/need/[id]", params: { id } }),
+      // a cited field opens the record it was read from
+      onOpenRecord: (urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never),
       onReplyTo: (message: string, name: string, text?: string) => setReplyTo({ message, name, text: text ?? "" }),
       flash,
       onJumpTo: (message: string) => {
@@ -209,8 +224,13 @@ export function ChatScreen(p: ChatScreenProps) {
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched, needs, chatId, router],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
+    async (typed: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
+      // A key in the words goes to the Vault first; what is sent holds a reference, so the assistant and the transcript never hold the value.
+      const safe = await secureSecrets(typed, { list: async () => ((await tool<{ items?: { name: string }[] }>("vault.list")).items ?? []).map((i) => i.name), put: (input) => tool("vault.put", input), onSecuring: setSecuring });
+      setSecuring(null);
+      if ("error" in safe) { setNote(safe.error); return; }
+      const text = safe.text;
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
         if (!r.ok) setNote(r.reason);
@@ -252,10 +272,11 @@ export function ChatScreen(p: ChatScreenProps) {
     ? found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }))
     : allowsMock() ? [] : here.slots.map((x) => ({ id: x.id, label: x.name, provider: null as string | null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
-  return (
+  const paneOpen = usePreviewPane();
+  const body = (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
@@ -276,6 +297,8 @@ export function ChatScreen(p: ChatScreenProps) {
 
       {p.belowHeader}
 
+      <View style={{ flex: 1, minHeight: 0, flexDirection: "row" }}>
+      <View style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
       {findOpen ? (
         <View accessibilityLabel="Find in this conversation" style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: phone ? 12 : 20, borderBottomWidth: 1, borderBottomColor: color.edge, backgroundColor: color["surface-2"] }}>
           <Icon name="search" tone="label" />
@@ -328,6 +351,11 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      {securing ? (
+        <View accessibilityRole="alert" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
+          <Chip tone="ok" icon="shield">{`Securing your ${securing} in the Vault`}</Chip>
+        </View>
+      ) : null}
       {note ? (
         <View accessibilityRole="alert" style={{ width: "100%", maxWidth: 860, alignSelf: "center", paddingHorizontal: phone ? 16 : 24, paddingTop: 6 }}>
           <Text size="caption" tone="muted">{note}</Text>
@@ -335,6 +363,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       <StatusLine
+        place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         presence={group.presenceLine()}
         state={meta.state}
         busy={meta.busy}
@@ -366,6 +395,8 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {realComposer ? <GroupApprovals /> : null}
+      {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
+      <MovedLines lines={placed.lines} />
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
@@ -379,7 +410,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
+          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant", doing: "Waiting on your answer" }, { name: "kit", family: "assistant", doing: "Working on Northwind Bakery" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
           records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Juniper Studio intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this Mac", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
@@ -390,6 +421,11 @@ export function ChatScreen(p: ChatScreenProps) {
           {...p.composer}
         />
       </View>
+      </View>
+      {filesOpen && !phone ? <FilesPane chat={p.sessionId} onClose={() => setFilesOpen(false)} /> : null}
+      </View>
     </View>
   );
+  // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
+  return paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
 }

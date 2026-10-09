@@ -1,0 +1,83 @@
+{
+  "name": "documents",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Make documents from Word templates and your records, deterministic, and file them. A value that is missing stops the document and names itself.",
+  "roles": [
+    "box"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "documents.template.add",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.template.list",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.template.get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.generate",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.signing.flow",
+        "effect": "read",
+        "reach": "anyone"
+      }
+    ]
+  },
+  "watches": {},
+  "shows": {},
+  "needs": {},
+  "teaches": {},
+  "flow": {
+    "steps": [
+      {
+        "name": "documents.generate",
+        "label": "Make a document from a template",
+        "inputs": {
+          "template": "string",
+          "values": "object",
+          "records": "object",
+          "name": "string",
+          "project": "string",
+          "contact": "string",
+          "format": "string"
+        },
+        "outputs": {
+          "path": "string",
+          "size": "number",
+          "sha256": "string",
+          "format": "string",
+          "record": "string"
+        }
+      }
+    ]
+  },
+  "settings": [
+    {
+      "key": "documents.pdf",
+      "group": "documents",
+      "label": "Address of the PDF converter",
+      "help": "Documents turns a filled Word file into a PDF through Gotenberg, which runs beside Vyre. Give its address (such as http://127.0.0.1:3000). Left empty, a PDF is refused in plain words and the Word file is still made.",
+      "type": "string",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "documents.pdf"
+      }
+    }
+  ]
+}

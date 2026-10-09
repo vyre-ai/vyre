@@ -26,7 +26,27 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "ask.many": "puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes",
+  "ask.get": "reads the state and answers of a question card the agent made",
+  "previews.operator": "shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it",
+  "previews.step": "words for the status line of the agent's own card",
+  "previews.run-get": "reads the state of a run the agent started and what the person typed when it was stuck",
+  "previews.signin": "asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page",
+  "previews.signin-get": "reads whether the person finished a sign-in the agent asked for",
+  "previews.open": "shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for",
+  "previews.list": "lists the previews of a chat or project by title and state, never an address or ticket",
+  "previews.get": "reads one preview by title and state, never an address or ticket",
   "views.list": "lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer",
+  "design.catalogue": "reads the design language's block catalogue: names, props and sample data, nothing of the person's",
+  "design.validate": "checks a screen against the design language and answers the problems; it keeps nothing",
+  "design.screens": "reads the space's own screens as data (layout and blocks); the data they show is fetched as the viewer",
+  "design.propose": "files a proposed screen as pending; nothing changes on any screen until the screen's owner says yes, and the proposal lists every tool it reads and every button runs",
+  "design.css.propose": "files custom CSS for a screen or the space as pending; only the Engineer proposes it, it must pass the linter, and the owner sees it before and after",
+  "design.css": "reads the custom CSS in force, which the web app draws",
+  "brand.get": "reads the space's brand profile (names, colours, fonts, logos), which the space already shows on everything it makes",
+  "brand.resolve": "reads what to use by default for this space: names, the theme colour as drawn in each scheme, fonts, logos and letterhead",
+  "brand.draft": "turns a web page the caller fetched into a draft brand profile; it keeps nothing and sends nothing",
+  "views.show": "shows the person a read-only card of a module screen in their chat; the module's tool runs as the asking agent, and an action in it opens the full screen",
   "views.get": "reads one screen a module declares; the data it shows is fetched as the viewer, under the viewer's own grants",
   "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
   "spaces.storage.get": "reads the caller's own per-member storage; the kernel's grants decide",
@@ -197,6 +217,11 @@ export const DECLARED = Object.freeze({
   "recall.links": "e8a4645fd",
   "recall.pointers": "e8a4645fd",
   "recall.turn": "e8a4645fd",
+  // the 0.3.1 integration (main green): the agent's small always-loaded core (docs, skills, the module index), the app modules' read tools and the Connection tools; each guard is its reach-anyone reason
+  "appmods.card": "428bfeb0b", "appmods.catalog": "428bfeb0b", "appmods.list": "428bfeb0b", "appmods.screens": "428bfeb0b", "appmods.status": "428bfeb0b", "appmods.connection": "ce0e2bacf", "appmods.hosts": "aaf71dbd9",
+  "connectors.connection.check": "3e523101d", "connectors.connection.get": "3e523101d", "connectors.connection.list": "3e523101d", "connectors.connection.export": "498b073eb", "connectors.connection.import": "43f3ae8e1",
+  "connectors.connection.propose": "565e81d11", "connectors.operation.run": "1d1318369",
+  "docs.find": "92291f02c", "docs.read": "92291f02c", "skills.find": "08ccfca4c", "skills.get": "08ccfca4c", "skills.list": "08ccfca4c", "vyre.core": "cb8fd02ae",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
@@ -331,15 +356,52 @@ export const PRESENCE_RULINGS = Object.freeze({
   }),
 });
 
+/**
+ * A tool a PERSON does, newly open to the surfaces they use (the Deck, the Capsule, the phone and the paired computer): a cell that was `denied` because the tool listed other callers, now a person-surface caller
+ * that still has to pass the tool's own presence floor. Narrow like a presence removal: one tool, the person callers, the one refusal it replaced, and the person's ruling. Never a model, guest, MCP or harness
+ * caller. Written into kernel/golden/presence.json beside the presence rulings.
+ */
+export const SURFACE_RULINGS = Object.freeze({
+  "vault.import": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "the app imports the export a person picked (its bytes), or the .env files a scan found, into their own Vault; it asks the person's presence on that exact import, and an assistant still cannot pass bytes",
+  }),
+  "vault.import.preview": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "the app previews the export a person picked, by name and count only, before it imports; it asks the person's presence",
+  }),
+  "vault.env.scan": Object.freeze({
+    ruling: "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
+    commit: "work/vault-ux-031",
+    was: "denied",
+    callers: Object.freeze(["mobile"]),
+    note: "the phone app lists the .env files in the person's projects that hold keys: names and counts, never a value",
+  }),
+});
+
 /** @returns {{ tool: string, was: string, callers: string[], ruling: string, reason: string }[]} */
 export function generatePresence() {
   const RISKY = /agent|^tailnet-guest|^mcp|^harness/;
-  return Object.entries(PRESENCE_RULINGS).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([tool, r]) => {
-    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
-    if (!/CHAT\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a presence removal names its CHAT.md ruling`);
-    if (!r.callers.length || r.callers.some(c => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a presence removal names person callers only, never a model, guest, MCP or harness caller`);
+  const person = (/** @type {string} */ tool, /** @type {any} */ r) => {
+    if (!/(CHAT|ROADMAP)\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a ruled change names its CHAT.md or ROADMAP.md ruling`);
+    if (!r.callers.length || r.callers.some((/** @type {string} */ c) => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a ruled change names person callers only, never a model, guest, MCP or harness caller`);
     return { tool, was: r.was, callers: [...r.callers], ruling: r.ruling, reason: `${r.ruling}; ${tool} changed in ${r.commit}: ${r.note}` };
+  };
+  const presence = Object.entries(PRESENCE_RULINGS).map(([tool, r]) => {
+    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
+    return person(tool, r);
   });
+  const surfaces = Object.entries(SURFACE_RULINGS).map(([tool, r]) => {
+    if (r.was !== "denied") throw new Error(`gen-allow: ${tool}: a surface ruling is for a denied cell`);
+    return person(tool, r);
+  });
+  return [...presence, ...surfaces].sort((a, b) => (a.tool < b.tool ? -1 : 1));
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

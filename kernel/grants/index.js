@@ -13,7 +13,7 @@ import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
-import { ROLE_IDS } from "../contracts/index.js";
+import { ROLE_IDS, ROLE_DEMOTE_TO } from "../contracts/index.js";
 import { ACCESS_LEVELS, SURFACE_GROUPS } from "../seal/uses.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
@@ -143,6 +143,7 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  /** @type {Map<string, { prefix: string, actions: string[] }[]>} what each first-party module may mint for others: its manifest's `needs.kernel.mints`, set at install */ const mints = new Map();
   /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
   /** @type {Map<string, any>} rules a Kit proposed: no effect until an owner accepts */ const proposals = new Map();
@@ -495,7 +496,7 @@ export function createGrantsStore(cfg) {
     async transferOwner(chain, t, o = {}) {
       const issuer = person(chain);
       const demote = (t && t.demote_to) || "admin";
-      if (!t || typeof t.to !== "string" || !t.to || t.to === issuer.id || !["admin", "manager", "member"].includes(demote)) throw new KernelError("bad_input", "name the member to hand the Space to, and the role you keep (admin, manager or member: a temp role needs a scope and an end date, which a hand-over does not carry)");
+      if (!t || typeof t.to !== "string" || !t.to || t.to === issuer.id || !ROLE_DEMOTE_TO.includes(demote)) throw new KernelError("bad_input", "name the member to hand the Space to, and the role you keep (admin, manager or member: a temp role needs a scope and an end date, which a hand-over does not carry)");
       const d = await gate(chain, "grants.role", urn("member", t.to), { transfer: { to: t.to, demote_to: demote } }, o.presence);
       if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner hands the Space on");
       if (!memberOk({ kind: "person", id: t.to, space: cfg.space })) throw new KernelError("not_found", "no such member");
@@ -799,6 +800,7 @@ export function createGrantsStore(cfg) {
      */
     async installModule(name, needs) {
       const k = kernelChain(), actor = { kind: "service", id: name, space: cfg.space };
+      mints.set(name, Array.isArray(needs.mints) ? needs.mints.filter((/** @type {any} */ e) => e && typeof e.prefix === "string" && Array.isArray(e.actions)).map((/** @type {any} */ e) => ({ prefix: e.prefix, actions: e.actions.map(String) })) : []);
       if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", name), { actor }); }
       // What the module is given: `needs.grants` is a list of { prefix, actions } (each prefix its own actions, so a service can be narrowed to its own types); the older `actions` with `prefixes` gives every
       // prefix the same actions. A change to either replaces the module's grants.
@@ -819,16 +821,16 @@ export function createGrantsStore(cfg) {
     },
     /**
      * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these three shapes): an agent's login (`vault.fill` on one item at one exact origin), a module's
-     * release (`vault.release` on one item, for a watcher or a project when named) or an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
+     * release (`vault.release` on one item, for a watcher or a project when named) an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate) the same for an agent or a project (a credential's older scope, carried over once), or an agent's lease of a Connection for one task (`task`, until its expiry). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
      */
     async carryOver(module, rows) {
       const k = kernelChain(), made = [], pv = await personalOf(), home = urn("vault", pv.id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
       for (const r of rows) {
-        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
-        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
-        if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
-        const resource = { prefix: rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(pass ? { parent: [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home).id } : {}), source: rel ? `install:${r.who}:vault` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
+        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass" || r.kind === "scope" || r.kind === "lease", grp = String(r.who).startsWith("project:"), actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (r.kind === "lease" && !/^[A-Za-z0-9_.-]{1,80}$/.test(String(r.task))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        if (!grp && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
+        const resource = { prefix: r.kind === "lease" ? `${home}/connection/${r.item}` : rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: grp ? { kind: "group", id: String(r.who) } : { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(pass ? { parent: [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home).id } : {}), source: rel ? `install:${r.who}:vault` : r.kind === "scope" ? "vault:scope" : r.kind === "lease" ? `vault:lease:${r.task}` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
         grants.set(g.id, g); made.push(g.id);
         await note(k, "grant.created", urn("grant", g.id), { grant: g });
       }
@@ -837,7 +839,27 @@ export function createGrantsStore(cfg) {
     /** The vault module ending what it lent (by id, or all under an address), and what was handed on from it: only grants it made (`vault:` but not the maker's own `manage`). Taking access away needs no person. @param {{ id?: string, prefix?: string, reason?: string }} q */
     async takeBack(q) {
       const out = [], why = String(q.reason || "taken back");
-      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.source ? g.source === q.source : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      return out;
+    },
+    /**
+     * A first-party module making a grant for someone else (a device it paired, a deployment's secret): only for the actions and under the address prefixes its signed manifest lists in `needs.kernel.mints`,
+     * from a `source` of its own name, never wider; the kernel refuses anything else. The module checks its own person's yes before it calls. @param {string} module @param {{ subject: any, actions: string[], resource: { prefix: string }, conditions?: any, source: string, reason?: string }} i
+     */
+    async mint(module, i) {
+      const acts = Array.isArray(i.actions) ? i.actions.map(String) : [], res = i.resource && i.resource.prefix, list = mints.get(module) || [];
+      if (!acts.length || typeof res !== "string" || !String(i.source).startsWith(`${module}:`) || !list.some(e => acts.every(a => e.actions.includes(a)) && containedPrefix(res, `vyre://${cfg.space}/${e.prefix}`))) throw new KernelError("not_allowed", `${module} may not make that grant`);
+      if (!i.subject || !["actor", "group"].includes(i.subject.kind)) throw new KernelError("bad_input", "a made grant has an actor or a group for its subject");
+      const k = kernelChain(), actor = i.subject.actor;
+      if (actor && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: i.subject, actions: acts, action_set_version: version, resource: i.resource, conditions: i.conditions || {}, issuer: { kind: "service", id: module, space: cfg.space }, source: i.source, ...(i.reason ? { reason: String(i.reason).slice(0, 200) } : {}), status: "active", created_at: clock() });
+      grants.set(g.id, g); await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      return g.id;
+    },
+    /** A module ending grants it made (by id, or by `source`): only those whose source carries its name. @param {string} module @param {{ id?: string, source?: string, reason?: string }} q */
+    async unmint(module, q) {
+      const out = [];
+      for (const g of [...grants.values()]) if (g.source.startsWith(`${module}:`) && (q.id ? g.id === q.id : q.source && g.source === q.source)) out.push(...await killTree(kernelChain(), g, String(q.reason || "taken back")));
       return out;
     },
     personalVault: async () => (await personalOf()).id,
@@ -1273,8 +1295,18 @@ export function createGrantsStore(cfg) {
      * The whole state as one sealed event: what a migration from an older key writes, and what rebuild can start from. Kernel-only.
      * A snapshot is a point the log can be read from: events before it are not needed once it exists.
      */
+    /** The whole state as plain data, what a snapshot holds: a Space bundle carries it, and `adopt` puts it back. */
+    state() { return { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()], teams: [...teams.values()], vaults: [...vaults.values()] };
+    },
+    /** Restore a bundle's state onto a Space that has none (its first owner only): it is loaded and written as a snapshot under THIS seal, so authority again rests on events this store sealed. Kernel-only, once. @param {any} st */
+    async adopt(st) {
+      if (memberships.size > 1 || !st || !Array.isArray(st.grants) || !Array.isArray(st.memberships)) throw new KernelError("bad_input", "a Space bundle's grants go onto a Space with no members but its owner");
+      grants.clear(); memberships.clear(); actors.clear(); offers.clear(); invites.clear(); chats.clear(); rules.clear(); proposals.clear(); teams.clear(); vaults.clear();
+      loadState(st);
+      return api.snapshot();
+    },
     async snapshot() {
-      const state = { adopted, grants: [...grants.values()], memberships: [...memberships.values()], actors: [...actors], offers: [...offers.values()], invites: [...invites.values()], chats: [...chats.values()], rules: [...rules.values()], proposals: [...proposals.values()], teams: [...teams.values()], vaults: [...vaults.values()] };
+      const state = api.state();
       await note(kernelChain(), "grants.snapshot", urn("grant", "snapshot"), { state });
       snapAt = gseq;
       return { grants: state.grants.length, memberships: state.memberships.length };
@@ -1346,18 +1378,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "chat.changed") { const c = chats.get(d.id); if (c) chats.set(d.id, freeze({ ...c, people: [...d.people], assistants: [...d.assistants], ver: d.ver ?? (c.ver || 1) + 1, h: [...(c.h || [{ ver: c.ver || 1, people: c.people }]), { ver: d.ver ?? (c.ver || 1) + 1, people: [...d.people] }].slice(-HISTORY), ...(d.ring ? { ring: structuredClone(d.ring) } : {}) })); }
       };
       if (snap) {
-        const st = snap.core.state;
-        adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
-        for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
-        for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
-        for (const a of st.actors) actors.add(a);
-        for (const o of st.offers) offers.set(o.id, freeze(structuredClone(o)));
-        for (const v of st.invites) invites.set(v.id, freeze(structuredClone(v)));
-        for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
-        for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.teams || []) teams.set(x.id, freeze(structuredClone(x)));
-        for (const x of st.vaults || []) vaults.set(x.id, freeze(structuredClone(x)));
+        loadState(snap.core.state);
         nextN = /** @type {number} */ (snap.n) + 1; nextPrev = sha256(snap.mac);
       } else {
         // 3a. Events an older key sealed, in log order, each position-bound under a legacy key.
@@ -1383,6 +1404,20 @@ export function createGrantsStore(cfg) {
   };
 
   /** The whole in-memory state, by reference (every record in it is frozen), so a failed call can put it back even when the log cannot be read. */
+  /** Put a state (a snapshot's, or a bundle's) into the maps. @param {any} st */
+  const loadState = (st) => {
+    adopted = st.adopted && typeof st.adopted.to === "string" ? freeze({ from: st.adopted.from, to: st.adopted.to }) : null;
+    for (const g of st.grants) grants.set(g.id, freeze(structuredClone(g)));
+    for (const m of st.memberships) memberships.set(m.person, freeze(structuredClone(m)));
+    for (const a of st.actors || []) actors.add(a);
+    for (const o of st.offers || []) offers.set(o.id, freeze(structuredClone(o)));
+    for (const v of st.invites || []) invites.set(v.id, freeze(structuredClone(v)));
+    for (const c of st.chats || []) chats.set(c.id, freeze(structuredClone(c)));
+    for (const x of st.rules || []) rules.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.proposals || []) proposals.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.teams || []) teams.set(x.id, freeze(structuredClone(x)));
+    for (const x of st.vaults || []) vaults.set(x.id, freeze(structuredClone(x)));
+  };
   const capture = () => ({ adopted, grants: new Map(grants), memberships: new Map(memberships), actors: new Set(actors), offers: new Map(offers), invites: new Map(invites), chats: new Map(chats), rules: new Map(rules), proposals: new Map(proposals), teams: new Map(teams), vaults: new Map(vaults), gseq, gprev });
   const restore = (/** @type {any} */ c) => {
     adopted = c.adopted || null;

@@ -1,0 +1,19 @@
+{
+ "_comment": "Exact versions of the libraries a React preview may import. build.mjs installs them into a scratch folder, bundles them into ../vendor and records each file's sha256 in ../vendor/manifest.json. Not a package manifest on purpose: these are browser code the box serves, not dependencies of the server.",
+ "versions": {
+  "react": "18.3.1",
+  "react-dom": "18.3.1",
+  "recharts": "2.15.0",
+  "lucide-react": "0.263.1",
+  "d3": "7.9.0",
+  "lodash": "4.17.21",
+  "papaparse": "5.4.1",
+  "mathjs": "12.4.2",
+  "three": "0.160.0",
+  "chart.js": "4.4.3",
+  "date-fns": "3.6.0",
+  "xlsx": "0.18.5",
+  "@tailwindcss/browser": "4.1.11",
+  "esbuild-wasm": "0.28.2"
+ }
+}
