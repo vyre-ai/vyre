@@ -4,7 +4,7 @@
   "core/connectors/index.js": {
    "count": 4,
    "owner": "site-ops",
-   "note": "reviewed (9 Oct): forwarding wrappers over literal tool names (madeConnections' call, the site runner's recordOps, siteEntriesFrom); each runs as the person who asked or the module"
+   "note": "reviewed (10 Oct): forwarding wrappers over literal tool names (madeConnections' call, the site runner's recordOps, siteEntriesFrom); each runs as the person who asked or the module"
   },
   "lib/views/engine.js": {
    "count": 1,
@@ -199,7 +199,17 @@
   "core/connectors/site.js": {
    "count": 1,
    "owner": "site-ops",
-   "note": "reviewed (9 Oct): the one forwarding wrapper (call) the site runner uses; every name it passes is a literal in site.js (memory.site.*, link.macs.call, chrome.op.run)"
+   "note": "reviewed (10 Oct): the one forwarding wrapper (call) the site runner uses; every name it passes is a literal in site.js (memory.site.*, link.macs.call, chrome.op.run)"
+  },
+  "local/hands-chrome-mac/index.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
+  },
+  "core/approvals/index.js": {
+   "count": 1,
+   "owner": "session-transfer",
+   "note": "reviewed (10 Oct, connect-anything): a forwarder (createItems' call) over the literal tools named in core/approvals/items.js (threads.asks, gate.held, vault.pending and the answering tools); it runs as the approvals module"
   },
   "core/computer/index.js": {
    "count": 2,
@@ -210,11 +220,6 @@
    "count": 1,
    "owner": "site-ops",
    "note": "reviewed (9 Oct): the call wrapper handed to agentFill, which names only computers.fill.begin and computers.fill.end (both vault-only)"
-  },
-  "local/hands-chrome-mac/index.js": {
-   "count": 1,
-   "owner": "site-ops",
-   "note": "reviewed (9 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
   }
  }
 }

@@ -37,7 +37,7 @@ export default function TemplateScreen() {
   });
   const tree = cur?.body ? treeOf(cur.body) : [];
   return (
-    <Frame back="/u/templates" title={cur?.name || "Template"} sub={cur ? `Version ${cur.version}, ${stateWord(cur.state).toLowerCase()}${cur.owner ? `. Owner ${cur.owner}` : ""}` : undefined}
+    <Frame back="/u/templates" title={cur?.name || "Template"} sub={cur ? `Version ${cur.version}, ${stateWord(cur.state).toLowerCase()}` : undefined}
       actions={cur ? <><Button kind="ghost" size="sm" label="Test mode" loading={busy === "test"} onPress={() => void doTest()} />{cur.state === "draft" ? <Button kind="primary" size="sm" label="Go live" loading={busy === "live"} onPress={() => void goLive()} /> : null}<Button kind="ghost" size="sm" label={edit == null ? "Edit" : "Close editor"} onPress={() => setEdit(edit == null ? bodyText(cur.body!) : null)} /></> : undefined}>
       {err ? <Card flush><ErrorState title="That template did not load" reason={err} retry={load} /></Card> : null}
       {!cur && !err ? <LoadingState rows={4} /> : null}

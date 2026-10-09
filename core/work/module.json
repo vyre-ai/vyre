@@ -323,6 +323,36 @@
         "summary": "put the version live on the owner's yes (proposals path)",
         "reach": "modules",
         "effect": "write"
+      },
+      {
+        "name": "work.chat.persistent",
+        "summary": "your pinned assistant or Engineer chat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.file.share",
+        "summary": "share one file of a chat with its project",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.file.unshare",
+        "summary": "take a shared file back",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.pinned",
+        "summary": "which pinned chat a chat is for a person (the daemon's question when it opens a session)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.pin",
+        "summary": "make a chat your pinned assistant or Engineer chat",
+        "reach": "anyone",
+        "effect": "write"
       }
     ]
   },

@@ -70,3 +70,15 @@ test("unread is a count on the row when the box sends one, and nothing when it d
   const rows = chatsFrom({ chats: [{ chat: "c1", title: "a", unread: 3, open: true }, { chat: "c2", title: "b", open: true }, { chat: "c3", title: "c", unread: "x", open: true }, { chat: "c4", title: "d", unread: 0, open: true }] });
   assert.deepEqual(rows.map((r) => r.unread), [3, 0, 0, 0]);
 });
+
+test("your assistant's pinned chat is always first and the Engineer's chat is not in the list (R031-94)", async () => {
+  const { chatsFrom, chatsOrdered, chatsShown } = await import("./chats-model.js");
+  const rows = chatsFrom({ chats: [
+    { chat: "c1", title: "Needs you", asks: 2, last_active: "3", open: true },
+    { chat: "c2", title: "Assistant", pinned: "assistant", last_active: "1", open: true },
+    { chat: "c3", title: "@Engineer", pinned: "engineer", last_active: "9", open: true },
+    { chat: "c4", title: "Newest", last_active: "8", open: true },
+  ] });
+  assert.deepEqual(chatsOrdered(chatsShown(rows)).map((r) => r.id), ["c2", "c1", "c4"]);
+  assert.equal(rows.find((r) => r.id === "c3")?.pinned, "engineer");
+});

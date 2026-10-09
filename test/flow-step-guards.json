@@ -1,4 +1,8 @@
 {
  "_comment": "Every tool that declares flow.steps (a Flow's call step may run it), with the guard it relies on inside the tool: the check it makes on the person's chain (ctx.kernel.chain(meta)). The runner does not ask the kernel about a Flow tool, so the tool must gate itself. A flow step with no line here, a line that names no guard, or a stale line fails test/flow-step-guards.test.js.",
- "tools": {}
+ "tools": {
+  "work.start-project": {
+   "reason": "runs under the Flow person's own chain (ctx.kernel.chainFor): the project is made, updated and its team added with that person's grants, a draft or retired template version cannot be started, and the first stage's tasks are made by the stage module as that person's service"
+  }
+ }
 }

@@ -11,6 +11,7 @@
 
 import { isPerson } from "../../lib/caller.js";
 import { httpFetch } from "../../lib/http.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { normalizeApi, mergeSource, joinOpenRouter, ageMissing, proposeEvals, EVAL_TYPES, keyOf, PROVIDERS } from "../../lib/model-registry.js";
 
 const DAY = 24 * 3600_000;
@@ -19,7 +20,7 @@ const MIN_ASK_MS = 60_000;
 const str = { type: "string" };
 /** Who may read the registry: the person's surfaces, a module (the approvals queue reads the proposals) and an assistant. Answering a proposal is a person's surface only. */
 const WHO = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "device"];
+const PEOPLE = [...PERSON_SURFACES, "device"];
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const MIGRATIONS = [
   `CREATE TABLE models_entries (k TEXT PRIMARY KEY, body TEXT NOT NULL)`,
@@ -44,7 +45,7 @@ export default {
     const noteSource = (/** @type {string} */ name, /** @type {boolean} */ ok, /** @type {string | null} */ error, /** @type {number} */ rows, /** @type {any} */ body) =>
       db.prepare("INSERT INTO models_sources (name, at, ok, error, rows, body) VALUES (?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET at = excluded.at, ok = excluded.ok, error = excluded.error, rows = excluded.rows, body = COALESCE(excluded.body, body)")
         .run(name, now(), ok ? 1 : 0, error, rows, body === undefined ? null : JSON.stringify(body));
-    const callOk = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { try { const r = await ctx.call(tool, input); return r && !r.error ? r.data : null; } catch { return null; } };
+    const quiet = async (/** @type {() => Promise<any>} */ go) => { try { const r = await go(); return r && !r.error ? r.data : null; } catch { return null; } };
     const openrouterUrl = () => (process.env.VYRE_OPENROUTER_API || "https://openrouter.ai/api/v1").replace(/\/$/, "") + "/models";
 
     const minAsk = ctx.config && ctx.config.models && Number.isFinite(Number(ctx.config.models.min_ask_ms)) ? Number(ctx.config.models.min_ask_ms) : MIN_ASK_MS;
@@ -63,14 +64,14 @@ export default {
         for (const row of rows) seen.add(keyOf(provider, row.id));
       };
       // cli: what each provider's sessions reported
-      const snap = await callOk("sessions.providers.snapshot");
+      const snap = await quiet(() => ctx.call("sessions.providers.snapshot", {}));
       if (Array.isArray(snap)) {
         let n = 0;
         for (const p of snap) { if (!p || !PROVIDERS.hasOwnProperty(String(p.id))) continue; const rows = (Array.isArray(p.models) ? p.models : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id).slice(0, 120), label: String(m.label || m.id).slice(0, 120), context: null, price: null, capabilities: null })); if (rows.length) { merge(String(p.id), "cli", rows); n += rows.length; } }
         noteSource("cli", true, null, n, undefined);
       } else noteSource("cli", false, "the sessions module did not answer", 0, undefined);
       // api: each provider's own list, fetched where the key is
-      const fetched = await callOk("threads.models-fetch");
+      const fetched = await quiet(() => ctx.call("threads.models-fetch", {}));
       if (Array.isArray(fetched)) {
         let n = 0; const errors = [];
         for (const f of fetched) {
@@ -96,7 +97,7 @@ export default {
       if (orRows && orRows.length) entries = joinOpenRouter(entries, orRows, at);
       // fallback: only when nothing else knows a model
       if (!entries.size) {
-        const aliases = await callOk("sessions.models");
+        const aliases = await quiet(() => ctx.call("sessions.models", {}));
         const rows = (Array.isArray(aliases) ? aliases : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id), context: null, price: null, capabilities: null }));
         if (rows.length) { const r = mergeSource(entries, "claude", "fallback", rows, at); entries = r.entries; added = []; noteSource("fallback", true, null, rows.length, undefined); }
       }

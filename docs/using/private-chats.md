@@ -26,6 +26,12 @@ Each chat and its files are encrypted to the people in that chat. A space's owne
 
 Sharing a file to a project is a grant for that one file, not a copy: the file's key is wrapped to the project's key. A project member who is not in the chat can open that file and nothing else in the chat. Unsharing takes the grant back at once and rotates the file's key.
 
+## Sharing one file with the project
+
+A person in the chat can share one file with the chat's project. The project's members then open that file and nothing else in the chat. The file's key is wrapped for the project, not copied, so the chat's other files and its name list stay private.
+
+Taking a share back stops the project opening the file at once. The file's key is then changed, so the share cannot be used again. If nobody in the chat has it unlocked at that moment, the change is owed: the file is already closed to the project, and the first person in the chat who opens it does the change automatically. Nothing needs remembering.
+
 ## What it does not hide
 
 While an agent works in a chat on a server, that server's operator could see that chat in use. To avoid that, run the agent on your own computer or your own server. See [Your private network](../concepts/network.md) for how devices reach each other.

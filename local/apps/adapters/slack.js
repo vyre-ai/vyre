@@ -169,8 +169,9 @@ const canon = (/** @type {any} */ v) => Array.isArray(v) ? v.map(canon) : v && t
  * @param {import("../env.js").Env} env @param {string} server @param {string} tool @param {Record<string, any>} args
  */
 async function alreadyHeld(env, server, tool, args) {
-  const list = await env.call("gate.held", {});
-  const held = Array.isArray(list && list.data) ? list.data : [];
+  const list = await env.call("approvals.items", {});
+  const cards = list && list.data && Array.isArray(list.data.items) ? list.data.items : [];
+  const held = cards.filter((/** @type {any} */ c) => c && c.source === "gate" && c.facts).map((/** @type {any} */ c) => c.facts);
   for (const it of held) {
     if (!it || it.via !== `mcp:${server}`) continue;
     const full = await env.call("gate.get", { id: it.id });
