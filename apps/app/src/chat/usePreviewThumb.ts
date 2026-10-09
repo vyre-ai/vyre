@@ -11,7 +11,7 @@ export function usePreviewThumb(id: string, taken: number): string | null {
   useEffect(() => {
     if (allowsMock() || id === "00000000") { setSrc(allowsMock() ? SAMPLE : null); return; }
     let dead = false;
-    tool<{ image: string | null }>("previews.thumb", { id }).then((r) => { if (!dead && r.image) setSrc(`data:image/png;base64,${r.image}`); }).catch(() => {});
+    tool<{ image: string | null; svg?: string }>("previews.thumb", { id }).then((r) => { if (dead) return; if (r.image) setSrc(`data:image/png;base64,${r.image}`); else if (r.svg) setSrc(`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(r.svg)))}`); }).catch(() => {});
     return () => { dead = true; };
   }, [id, taken]);
   return src;

@@ -17,6 +17,7 @@ import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
 import { createBridge } from "./bridge.js";
 import { findChrome, capture } from "./thumb.js";
+import { poster } from "./poster.js";
 import os from "node:os";
 import { createDocs } from "./docs.js";
 import { mayOpen, mayManage, ACCESS } from "./access.js";
@@ -125,10 +126,31 @@ export default {
     const shoot = seam.capture || capture;
     /** @type {Set<string>} */ const shooting = new Set();
     /** Take the preview's picture: its own address on this machine, one screenshot, the last good one kept. Quiet when there is no Chrome, or the page does not come up. @param {string} id */
+    const posterFile = (/** @type {string} */ id) => path.join(thumbDir, `${id}.svg`);
+    /** The page's own source for a poster: a files preview's entry, or what a port answers at its root. Empty when it cannot be read. @param {any} r */
+    const sourceOf = async r => {
+      try {
+        if (r.source === "files") {
+          const root = r.root || ""; const file = r.file ? path.resolve(root, r.file) : "";
+          const f = file && fs.existsSync(file) && fs.statSync(file).isFile() ? file : path.join(root, "index.html");
+          return fs.readFileSync(f, "utf8").slice(0, 200_000);
+        }
+        if (r.upstream) {
+          const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 3000);
+          try { const res = await fetch(`http://127.0.0.1:${r.upstream}/`, { signal: ac.signal, headers: { accept: "text/html" } }); return (await res.text()).slice(0, 200_000); } finally { clearTimeout(t); }
+        }
+      } catch { /* the poster falls back to the preview's own name */ }
+      return "";
+    };
+    const drawPoster = async (/** @type {any} */ r) => {
+      fs.writeFileSync(posterFile(r.id), poster({ html: await sourceOf(r), title: r.title }), { mode: 0o600 });
+      db.prepare("UPDATE previews_items SET thumb = ? WHERE id = ?").run(now(), r.id); card(row(r.id));
+    };
     const takeThumb = async id => {
-      if (!chrome || shooting.has(id)) return;
+      if (shooting.has(id) || !thumbsOn) return;
       const r = row(id);
       if (!r || r.state !== "live") return;
+      if (!chrome) { shooting.add(id); try { await drawPoster(r); } catch (e) { ctx.log.warn(`previews: no poster for ${id}: ${/** @type {Error} */ (e).message}`); } finally { shooting.delete(id); } return; }
       const url = r.source === "files" ? `http://pv-${id}.localhost:${staticPort()}/` : r.upstream ? `http://127.0.0.1:${r.upstream}/` : "";
       if (!url) return;
       shooting.add(id);
@@ -316,7 +338,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
         sup.forget(r.id);
-        try { fs.rmSync(thumbFile(r.id), { force: true }); } catch { /* none */ }
+        try { fs.rmSync(thumbFile(r.id), { force: true }); fs.rmSync(posterFile(r.id), { force: true }); } catch { /* none */ }
         bridge.forget(r.id);
         void docs.purge(r.id).catch(() => {});
         db.prepare("DELETE FROM previews_grants WHERE preview = ?").run(r.id);
@@ -337,12 +359,13 @@ export default {
     });
 
     ctx.tool("previews.thumb", {
-      description: "The picture on a preview's card: { image (base64 PNG), at }, or { image: null } when none has been taken (no browser on this machine, or it is not up yet). A person who may open the preview.",
+      description: "The picture on a preview's card: { image (base64 PNG), at }, or { image: null, svg } with a poster drawn from the page's own title, heading and colour where this machine has no browser, or { image: null } before it is up. A person who may open the preview.",
       input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
         if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
-        try { return { image: fs.readFileSync(thumbFile(r.id)).toString("base64"), at: r.thumb || 0 }; } catch { return { image: null }; }
+        try { return { image: fs.readFileSync(thumbFile(r.id)).toString("base64"), at: r.thumb || 0 }; } catch { /* no screenshot: the drawn poster, if there is one */ }
+        try { return { image: null, svg: fs.readFileSync(posterFile(r.id), "utf8"), at: r.thumb || 0 }; } catch { return { image: null }; }
       },
     });
 
