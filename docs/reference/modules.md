@@ -27,10 +27,9 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 40 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
-| [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
@@ -50,7 +49,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 36 | 22 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 33 | 22 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
@@ -95,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 148 | 53 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 145 | 53 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -232,7 +231,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [41](tools.md#chrome), 5 of them only for other modules
+- Tools: [40](tools.md#chrome), 4 of them only for other modules
 - Emits: [16 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -242,7 +241,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [6](tools.md#chrome), 5 of them only for other modules
+- Tools: [6](tools.md#chrome), 4 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -257,18 +256,6 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Tools: [1](tools.md#commands)
 - Emits: no events
 - Shows on: no surface
-
-## computer
-
-Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.
-
-- Folder: `core/computer`, version 0.1.0
-- Runs on: `box`, `local`
-- Requires: none
-- Tools: [2](tools.md#computer)
-- Emits: no events
-- Shows on: no surface
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## computers
 
@@ -490,7 +477,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [36](tools.md#link), 5 of them only for other modules
+- Tools: [33](tools.md#link), 5 of them only for other modules
 - Emits: [22 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1005,7 +992,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [148](tools.md#vault), 21 of them only for other modules
+- Tools: [145](tools.md#vault), 21 of them only for other modules
 - Emits: [53 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`

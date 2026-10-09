@@ -748,7 +748,7 @@ Listens for: `link.unpaired`
 | `vault.emergency-released` | `person` |
 | `vault.emergency-removed` | `person` |
 | `vault.emergency-requested` | `opens`, `person` |
-| `vault.filled` | `name`; sometimes `agent`, `app`, `device`, `origin`, `surface`, `what` |
+| `vault.filled` | `name`; sometimes `app`, `device`, `surface`, `what` |
 | `vault.granted` | none; sometimes `description`, `input`, `internal`, `module`, `name`, `project`, `run`, `watcher` |
 | `vault.item-added` | `kind`, `name` |
 | `vault.item-changed` | `kind`, `name`; sometimes `stale` |
