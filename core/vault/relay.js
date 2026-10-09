@@ -30,6 +30,7 @@ import http from "node:http";
 import { sign, verify, canonical } from "./crypto.js";
 import { capValues } from "../link/transport.js";
 import { isLoopbackHost } from "../../lib/netguard.js";
+import { scrub } from "../../lib/scrub.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -39,7 +40,6 @@ const CARD_TAG = "vyre-card-v2";
 const TICKET_TAG = "vyre-ticket-v1";
 const ENVELOPE_TAG = "vyre-relay-v2";
 const ENVELOPE_V = 2;
-const CONCEALED = "<concealed by vyre>";
 const SKEW_MS = 60_000;
 const SEEN_TTL_MS = 120_000;
 
@@ -384,25 +384,6 @@ export function substitute(request, fields, defaultField, { body = false } = {})
   return { request: out, values: [...values] };
 }
 
-/**
- * Replace every occurrence of each value, and of its base64, base64url and URL-encoded forms,
- * with a marker. Values shorter than 4 characters are skipped: scrubbing them would shred text.
- * @param {string} text @param {string[]} values
- */
-export function scrub(text, values) {
-  let out = String(text ?? "");
-  const forms = new Set();
-  for (const v of values || []) {
-    if (typeof v !== "string" || v.length < 4) continue;
-    const b = Buffer.from(v, "utf8");
-    for (const f of [v, b.toString("base64"), b.toString("base64").replace(/=+$/, ""), b.toString("base64url"), encodeURIComponent(v), encodeURIComponent(v).replace(/%20/g, "+")]) {
-      if (f.length >= 4) forms.add(f);
-    }
-  }
-  // Longest first, so a form that contains another is replaced whole.
-  for (const f of [...forms].sort((a, b) => b.length - a.length)) out = out.split(f).join(CONCEALED);
-  return out;
-}
 
 /**
  * Send a request the way a relay must: redirects off, a timeout, and a cap on the response size.
@@ -541,3 +522,5 @@ export async function callRelay(relayUrl, env, { timeoutMs = 45000, route = "/v1
   } catch {}
   return { error: { code: "bad_response", message: `the owner's Vyre answered ${res.status} with something that is not a relay reply` } };
 }
+
+export { scrub };

@@ -26,7 +26,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { scrub } from "./scrub.js";
+import { scrub } from "../../lib/scrub.js";
 
 export const API = "https://api.github.com";
 /** Requested once, at sign-in: full read/write on every repo the account can reach. GitHub's

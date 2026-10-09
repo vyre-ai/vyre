@@ -13,12 +13,13 @@
 // - Origins match exactly: scheme, host and port. A wildcard is a way to reach a host you control.
 // - No CR or LF in a mail header. A newline in a subject is how one email becomes two.
 // This file deliberately does not import core/vault (modules never import each other's files),
-// so it keeps its own small substitute and scrub.
+// so it keeps its own small substitute. Scrubbing is lib/scrub.js, shared.
+
+import { scrub, scrubAll } from "../../lib/scrub.js";
 
 const EMAIL = /^[^\s@<>,;"]+@[^\s@<>,;"]+\.[^\s@<>,;"]+$/;
 const PLACEHOLDER = /\{\{\s*vault(?:\.([A-Za-z0-9_-]+))?\s*\}\}/g;
 const HAS_PLACEHOLDER = /\{\{\s*vault(?:\.[A-Za-z0-9_-]+)?\s*\}\}/;
-const CONCEALED = "<concealed by vyre>";
 const TIMEOUT_MS = 30_000;
 const MAX_BYTES = 2_000_000;
 
@@ -33,26 +34,6 @@ const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 const isStr = v => typeof v === "string";
 const noBreak = (v, what) => { if (/[\r\n]/.test(v)) throw new Error(`${what} cannot contain a line break`); };
 
-/**
- * Replace every occurrence of each value, and of its base64, base64url and URL-encoded forms,
- * with a marker. Values under 4 characters are skipped: scrubbing them would shred text.
- * @param {string} text @param {string[]} values
- */
-export function scrub(text, values) {
-  let out = String(text ?? "");
-  const forms = new Set();
-  for (const v of values || []) {
-    if (!isStr(v) || v.length < 4) continue;
-    const b = Buffer.from(v, "utf8");
-    for (const f of [v, b.toString("base64"), b.toString("base64").replace(/=+$/, ""), b.toString("base64url"),
-      encodeURIComponent(v), encodeURIComponent(v).replace(/%20/g, "+")]) if (f.length >= 4) forms.add(f);
-  }
-  for (const f of [...forms].sort((a, b) => b.length - a.length)) out = out.split(f).join(CONCEALED);
-  return out;
-}
-
-/** Scrub every string inside a JSON-able value. */
-const scrubAll = (v, values) => JSON.parse(scrub(JSON.stringify(v ?? null), values));
 
 /** True only when `url` is http(s) and its origin is exactly one of `hosts`. */
 export function allowedOrigin(url, hosts) {
@@ -239,3 +220,5 @@ export function problem(name, s) {
 }
 
 export { scrubAll };
+
+export { scrub };

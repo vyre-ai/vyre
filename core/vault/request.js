@@ -41,6 +41,7 @@ import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
   readerMayRead, scopeAllows,
 } from "./api-request.js";
+import { scrub, scrubAll } from "../../lib/scrub.js";
 
 const GATE_SENDER = "vault-api";
 const GATE_KINDS = { send: "send", spend: "spend", delete: "delete" };
@@ -55,7 +56,6 @@ const MAX_HOPS = 5;
 const MAX_WAIT_MS = 30_000, MAX_RETRY_AFTER_MS = 30_000, MAX_429_RETRIES = 2;
 const EARLY_MS = 60_000;
 const JWT_BEARER = "urn:ietf:params:oauth:grant-type:jwt-bearer";
-const CONCEALED = "<concealed by vyre>";
 /** Response headers worth handing back. Never a cookie, never anything that authenticates. */
 const KEEP_HEADERS = ["content-type", "content-length", "etag", "last-modified", "retry-after", "x-request-id", "request-id", "x-ms-request-id", "x-goog-request-id", "ratelimit-remaining"];
 
@@ -83,32 +83,7 @@ const bad = (msg, code = "bad_input") => Object.assign(new Error(msg), { code })
 const printable = (s, n) => String(s).replace(/[^\x20-\x7e]/g, "?").slice(0, n);
 const b64url = s => Buffer.from(s).toString("base64url");
 
-// ---- scrubbing (the connectors' own copy: modules never import each other's files) ----
 
-/** @param {unknown} text @param {string[]} values */
-export function scrub(text, values) {
-  let out = String(text ?? "");
-  const forms = new Set();
-  for (const v of values) {
-    if (!isStr(v) || v.length < 4) continue;
-    const b = Buffer.from(v, "utf8");
-    for (const f of [v, b.toString("base64"), b.toString("base64").replace(/=+$/, ""), b.toString("base64url"), encodeURIComponent(v),
-      encodeURIComponent(v).replace(/%20/g, "+"), JSON.stringify(v).slice(1, -1)]) if (f.length >= 4) forms.add(f);
-  }
-  for (const f of [...forms].sort((a, b) => b.length - a.length)) out = out.split(f).join(CONCEALED);
-  return out;
-}
-
-/** Every string inside a JSON-able value, keys included; walks the value so a PEM key with newlines still matches. */
-function scrubAll(v, values) {
-  const walk = x => {
-    if (isStr(x)) return scrub(x, values);
-    if (Array.isArray(x)) return x.map(walk);
-    if (isObj(x)) return Object.fromEntries(Object.entries(x).map(([k, val]) => [scrub(k, values), walk(val)]));
-    return x;
-  };
-  return walk(v);
-}
 
 /** A secret and, for a PEM key, its body lines, so a partial leak is caught too. */
 function forms(v) {
@@ -867,3 +842,5 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   api.offerSoon().catch(() => {});
   return api;
 }
+
+export { scrub };

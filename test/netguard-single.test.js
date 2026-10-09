@@ -5,10 +5,6 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { execFileSync } from "node:child_process";
 import { classifyAddress, isPublicAddress, isTailnet, isLoopbackHost } from "../lib/netguard.js";
 import { classify } from "../lib/api-endpoint.js";
 import { addressBlocked } from "../core/vault/api-request.js";
@@ -20,8 +16,7 @@ import { isTailnetIp } from "../core/wink/node/core.js";
 import { isLoopback as vaultLoopback } from "../core/vault/relay.js";
 import { publicIpv4, tailnetIp as workerTailnetIp } from "../names/worker/index.js";
 import { tailnetIp as rulesTailnetIp } from "../core/names/rules.js";
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+import { findInSource } from "./source-files.js";
 
 const TABLE = [
   "8.8.8.8", "93.184.216.34", "1.1.1.1", "100.63.255.255", "100.128.0.1", "172.15.0.1", "172.32.0.1", "2606:4700:4700::1111", "::ffff:8.8.8.8", "::ffff:808:808", "64:ff9b::808:808", "2002:808:808::",
@@ -75,27 +70,7 @@ const ALLOWED = new Map([
 ]);
 const PATTERNS = [/\b192\b.*\b168\b/, /\b169\b.*\b254\b/, /\b172\b.*\b31\b/, /\b100\b.*\b127\b/, /V4_BLOCKED|PRIVATE_HOST|TAILNET4/, /fd7a:115c/i];
 
-/** Every tracked file (git), or every file under the root when this is not a git checkout (a copied tree). */
-function sourceFiles() {
-  try { const out = execFileSync("git", ["ls-files"], { cwd: ROOT, maxBuffer: 1 << 28, stdio: ["ignore", "pipe", "ignore"] }).toString().split("\n").filter(Boolean); if (out.length > 100) return out; } catch { /* not a checkout */ }
-  /** @type {string[]} */ const out = [];
-  const walk = (/** @type {string} */ dir) => { for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) { if (e.name === "node_modules" || e.name === ".git") continue; const rel = dir ? `${dir}/${e.name}` : e.name; if (e.isDirectory()) walk(rel); else out.push(rel); } };
-  walk("");
-  return out;
-}
-
 test("no other source file writes a private-range list of its own", () => {
-  const files = sourceFiles()
-    .filter(f => /\.(js|mjs|cjs|ts|tsx)$/.test(f) && !/(^|\/)test\/|\.test\.|^site\/|\/vendor\/|^docs\/|\/fixtures\/|legacy-fixture|^scripts\/|^examples\/|^apps\/app\/(ui\/marks|src\/terminal\/xterm)\//.test(f));
-  const found = [];
-  for (const f of files) {
-    if (ALLOWED.has(f)) continue;
-    let text; try { text = fs.readFileSync(path.join(ROOT, f), "utf8"); } catch { continue; }
-    text.split("\n").forEach((l, i) => {
-      if (/^\s*(\*|\/\/|\/\*)/.test(l)) return;
-      const code = l.replace(/\s\/\/.*$/, "");
-      if (PATTERNS.some(r => r.test(code))) found.push(`${f}:${i + 1}: ${l.trim().slice(0, 100)}`);
-    });
-  }
+  const found = findInSource(PATTERNS, ALLOWED);
   assert.deepEqual(found, [], "an address range written outside lib/netguard.js; call classifyAddress, isPublicAddress, isTailnet or isPrivateNetwork instead");
 });

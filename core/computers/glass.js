@@ -20,6 +20,7 @@ import { STOPPED, UNKNOWN } from "./pool.js";
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
 import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { scrub as scrubText } from "../../lib/scrub.js";
 
 /** @param {import("node:net").Socket} socket @param {number} status @param {string} reason */
 function reject(socket, status, reason) {
@@ -41,11 +42,7 @@ export function closeWith(socket, code, reason) {
 }
 
 /** Never let a password or token ride an error message up to a log line. */
-function scrub(msg, ...secrets) {
-  let s = String(msg == null ? "an error" : msg);
-  for (const secret of secrets) if (secret) s = s.split(String(secret)).join("[redacted]");
-  return s;
-}
+function scrub(msg, ...secrets) { return scrubText(msg == null ? "an error" : msg, secrets.filter(Boolean).map(String), { marker: "[redacted]", min: 1 }); }
 
 /** How often a viewer on a slow link may ask for an incremental update: every 200 ms, 5 fps. */
 export const SLOW_EVERY = 200;
