@@ -74,3 +74,54 @@ test("the model call: a string or messages, the consent first, the limit, and th
   const me = await b.run(row, { w: "per_a", r: "owner" }, "user.info", {}).catch((e) => /** @type {any} */ (e).code);
   assert.equal(me, "not_granted", "user was not declared by this page");
 });
+
+/** An in-memory stand-in for the Records-backed document store: the same calls. */
+const memDocs = () => {
+  /** @type {Map<string, any>} */ const m = new Map();
+  const key = (/** @type {string} */ p, /** @type {string} */ path) => `${p}|${path}`;
+  return {
+    get: async (/** @type {string} */ p, /** @type {string} */ path) => m.get(key(p, path)) || null,
+    set: async (/** @type {string} */ p, /** @type {string} */ path, /** @type {any} */ data, /** @type {string} */ owner) => { const s = path.split("/"); m.set(key(p, path), { path, id: s[s.length - 1], data, owner, updated: 1, _p: p, _c: s.slice(0, -1).join("/") }); },
+    update: async () => {}, del: async () => {}, count: async () => 0, purge: async () => {},
+    list: async (/** @type {string} */ p, /** @type {string} */ c) => [...m.values()].filter(d => d._p === p && d._c === c),
+  };
+};
+
+test("one viewer cannot read or write another's data/users subtree, and a preview's documents are its own", async () => {
+  const docs = memDocs();
+  const A = { id: "0a1b2c3d", title: "A", created_by: "per_maker", caps: JSON.stringify({ db: {}, user: {} }) };
+  const B = { id: "1b2c3d4e", title: "B", created_by: "per_maker", caps: JSON.stringify({ db: {}, user: {} }) };
+  /** @type {Map<string, number>} */ const g = new Map();
+  const bridge = createBridge({ row: (id) => (id === A.id ? A : B), docs, key: "k".repeat(64), nameOf: async () => "Someone", call: async () => ({ data: {} }),
+    grants: { get: (i, w, c) => (g.has(i + w + c) ? /** @type {number} */ (g.get(i + w + c)) : null), set: (i, w, c, a) => { g.set(i + w + c, a ? 1 : 0); } } });
+  const alice = { w: "per_alice", r: "member" }, bob = { w: "per_bob", r: "member" };
+  for (const w of ["per_alice", "per_bob"]) for (const r of [A, B]) await bridge.run(r, { w, r: "member" }, "permissions.grant", { names: ["db", "user"], allow: true });
+  const aliceId = selfId(A.id, "per_alice"), bobId = selfId(A.id, "per_bob");
+  // each writes under their own id
+  await bridge.run(A, alice, "db.set", { path: `data/users/${aliceId}/profile`, data: { secret: "alice's" } });
+  await bridge.run(A, bob, "db.set", { path: `data/users/${bobId}/profile`, data: { secret: "bob's" } });
+  assert.deepEqual((await bridge.run(A, alice, "db.get", { path: `data/users/${aliceId}/profile` })).data, { secret: "alice's" });
+  // bob cannot read alice's: it reads as not there, in a get and in a query; and cannot write into it
+  assert.deepEqual(await bridge.run(A, bob, "db.get", { path: `data/users/${aliceId}/profile` }), { exists: false });
+  assert.deepEqual((await bridge.run(A, bob, "db.query", { path: `data/users/${aliceId}`, query: {} })).docs, []);
+  await assert.rejects(bridge.run(A, bob, "db.set", { path: `data/users/${aliceId}/profile`, data: { x: 1 } }), (e) => /** @type {any} */ (e).code === "invalid_argument");
+  assert.deepEqual((await bridge.run(A, alice, "db.get", { path: `data/users/${aliceId}/profile` })).data, { secret: "alice's" }, "unchanged");
+  // not even the maker (owner) reads a member's private subtree
+  const maker = { w: "per_maker", r: "owner" };
+  await bridge.run(A, maker, "permissions.grant", { names: ["db"], allow: true });
+  assert.deepEqual(await bridge.run(A, maker, "db.get", { path: `data/users/${aliceId}/profile` }), { exists: false });
+  // a preview's documents are its own: B holds nothing of A's at the same path
+  await bridge.run(A, alice, "db.set", { path: "notes/n1", data: { in: "A" } });
+  assert.deepEqual(await bridge.run(B, alice, "db.get", { path: "notes/n1" }), { exists: false });
+  assert.deepEqual((await bridge.run(B, alice, "db.query", { path: "notes", query: {} })).docs, []);
+});
+
+test("a collection past the ceiling says so plainly instead of returning part of it", async () => {
+  const { createDocs, MAX_COLLECTION } = await import("./docs.js");
+  const rows = Array.from({ length: MAX_COLLECTION + 1 }, (_, i) => ({ id: `r${i}`, version: 1, data: { preview: "p", path: `c/d${i}`, collection: "c", docid: `d${i}`, data: "{}", owner: "", updated: 1, gone: 0 } }));
+  const store = { query: async (_c, _t, opts) => { const at = opts.page.cursor ? Number(opts.page.cursor) : 0; const page = rows.slice(at, at + 200); return { rows: page, next_cursor: at + 200 < rows.length ? String(at + 200) : null }; } };
+  const docs = createDocs({ store, chain: () => ({}) });
+  await assert.rejects(docs.list("p", "c"), (e) => /** @type {any} */ (e).code === "resource_exhausted" && /5,000 documents/.test(/** @type {Error} */ (e).message));
+  const ok = createDocs({ store: { query: async () => ({ rows: rows.slice(0, 10), next_cursor: null }) }, chain: () => ({}) });
+  assert.equal((await ok.list("p", "c")).length, 10);
+});

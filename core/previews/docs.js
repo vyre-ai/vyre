@@ -7,6 +7,8 @@
 export const TYPE = "preview_doc";
 export const MAX_DOC_BYTES = 256 * 1024;
 export const MAX_DOCS = 25_000;
+/** The most documents one collection may hold for a query to read it: the filter and the order run in memory, so past this it says so plainly and never returns a part. */
+export const MAX_COLLECTION = 5000;
 const SEG = /^[A-Za-z0-9_\-.~:@+]{1,200}$/;
 
 /** A document path (an even number of segments) or a collection path (odd); null for neither, with the reason. @param {string} p */
@@ -85,15 +87,16 @@ export function createDocs(o) {
         catch (e) { if (!/** @type {any} */ (e) || /** @type {any} */ (e).code !== "version_conflict" || n === 3) throw e; }
       }
     },
-    /** Every document directly in a collection (up to 1000), for a query to filter and order in memory. @param {string} preview @param {string} collection */
+    /** Every document directly in a collection, for a query to filter and order in memory. A collection past MAX_COLLECTION is refused with a plain error naming the limit, never cut short. @param {string} preview @param {string} collection */
     async list(preview, collection) {
       /** @type {any[]} */ const out = [];
       let cursor;
       do {
         const r = await o.store.query(o.chain(), TYPE, { ...q(preview, [{ field: "collection", op: "eq", value: collection }]), page: { limit: 200, ...(cursor ? { cursor } : {}) } });
         out.push(...r.rows.map(shape));
+        if (out.length > MAX_COLLECTION) throw Object.assign(new Error(`"${collection}" holds more than ${MAX_COLLECTION.toLocaleString("en-US")} documents, which is more than a query can read here: keep fewer documents in one collection, or read single documents by path`), { code: "resource_exhausted" });
         cursor = r.next_cursor || undefined;
-      } while (cursor && out.length < 1000);
+      } while (cursor);
       return out;
     },
     /** How many documents a preview holds (for the quota). @param {string} preview */
