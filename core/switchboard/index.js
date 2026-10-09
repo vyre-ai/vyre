@@ -1320,16 +1320,17 @@ export class Switchboard {
   }
 
   /**
-   * The approved skills and plugins of the Space's library as a Claude plugin folder for this thread (R031-19): the Space's, the person's, this agent's and this project's, written once per content by the
+   * The approved skills and plugins of the Space's library as a plugin folder for this thread (R031-19): Claude's `--plugin-dir`, or for Codex the folder its per-session CODEX_HOME links (`VYRE_SKILLS_DIR`, core/sessions/drivers/codex.js): the Space's, the person's, this agent's and this project's, written once per content by the
    * skills module. Null for a job or lean thread that names its own plugins, for another provider's thread (it is given the same library in its own layout), or when nothing is approved.
    * @param {any} rec @param {any} o
    */
   async libraryPlugin(rec, o) {
-    if (o.plugin === false || (rec.provider && rec.provider !== "claude")) return null;
+    const ai = o.provider || rec.provider || "claude";
+    if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai: "claude", ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const r = await this.deps.call("skills.materialise", { ai, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
-      return dir && fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json")) ? dir : null;
+      return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
   }
 
@@ -1340,6 +1341,8 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
+    // another provider's session is told where its skills were written (its driver links them into the home it runs with)
+    if (o.libraryPlugin && o.provider && o.provider !== "claude") env.VYRE_SKILLS_DIR = o.libraryPlugin;
     // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
     // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
     // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
@@ -1370,7 +1373,7 @@ export class Switchboard {
     if (sock) delete env.VYRE_HOME;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
-    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugin === false || !o.libraryPlugin ? [] : [o.libraryPlugin]), ...(o.plugins || [])];
+    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugin === false || !o.libraryPlugin || (o.provider && o.provider !== "claude") ? [] : [o.libraryPlugin]), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
     // "Doesn't ask": nothing reaches a question, so the floor also runs here, in process, on every
     // call (the plugin's PreToolUse hook runs it too; this one needs no vyred round trip).
