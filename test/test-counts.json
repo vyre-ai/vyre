@@ -222,7 +222,7 @@
  "core/learn/offline.test.js": 14,
  "core/learn/signals.test.js": 26,
  "core/learn/skills.test.js": 16,
- "core/link/assert.test.js": 8,
+ "core/link/assert.test.js": 10,
  "core/link/companion.test.js": 11,
  "core/link/health.test.js": 5,
  "core/link/peers.test.js": 6,
