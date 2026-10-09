@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1506,"event":500,"config":282,"env":267,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1509,"event":500,"config":282,"env":267,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1144,6 +1144,7 @@
     {"kind":"event","name":"preview.opened","definedIn":"core/previews/index.js","page":"reference/events.md#previews","module":"previews","mentions":[]},
     {"kind":"event","name":"preview.removed","definedIn":"core/previews/index.js","page":"reference/events.md#previews","module":"previews","mentions":[]},
     {"kind":"event","name":"preview.state","definedIn":"core/previews/index.js","page":"reference/events.md#previews","module":"previews","mentions":[]},
+    {"kind":"tool","name":"previews.frame","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsframe","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.get","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsget","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.keep","definedIn":"core/previews/index.js","page":"reference/tools.md#previewskeep","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.list","definedIn":"core/previews/index.js","page":"reference/tools.md#previewslist","module":"previews","mentions":[]},
@@ -1151,8 +1152,10 @@
     {"kind":"tool","name":"previews.open","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsopen","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.operator","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsoperator","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.remove","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsremove","module":"previews","mentions":[]},
+    {"kind":"tool","name":"previews.reply","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsreply","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.resolve","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsresolve","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.restart","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsrestart","module":"previews","mentions":[]},
+    {"kind":"tool","name":"previews.run-get","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsrun-get","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.share","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsshare","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.signin","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssignin","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.signin-done","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssignin-done","module":"previews","mentions":[]},

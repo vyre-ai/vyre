@@ -720,6 +720,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it"
  },
  {
+  "tool": "previews.run-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state of a run the agent started and what the person typed when it was stuck"
+ },
+ {
   "tool": "previews.signin",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page"
  },
