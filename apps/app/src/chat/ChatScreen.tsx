@@ -30,6 +30,7 @@ import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, ty
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
+import { LinkSuggestion } from "../../screens/chat-tools/LinkSuggestion";
 import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
@@ -109,6 +110,8 @@ export function ChatScreen(p: ChatScreenProps) {
   const [securing, setSecuring] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [toolsOpen, setToolsOpen] = useState(false);
+  // the person's latest message, for "Link this chat to Northwind?"
+  const lastUserText = useMemo(() => { for (let i = rows.length - 1; i >= 0; i--) if (rows[i].kind === "user") return String(store.item(rows[i].key)?.text ?? ""); return ""; }, [rows, store]);
   // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
   const [draftN, setDraftN] = useState(0);
   // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
@@ -381,6 +384,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       {realComposer ? <GroupApprovals /> : null}
+      {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer

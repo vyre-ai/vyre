@@ -613,14 +613,6 @@
    "class": "own",
    "why": "starts a project as the person the call carries; the chain decides who may"
   },
-  "work.file.share": {
-   "class": "own",
-   "why": "a share record as the person the call carries; it opens a file only if that person is in the chat"
-  },
-  "work.file.unshare": {
-   "class": "own",
-   "why": "removes shares the person the call carries may remove (their own, or any for an admin)"
-  },
   "vault.agent.fill": {
    "class": "refused",
    "why": "refused in the body for a session that names no agent; a named agent signs in its own computer only, with a login lent to it at that origin"

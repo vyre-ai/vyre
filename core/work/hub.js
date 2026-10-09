@@ -315,6 +315,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /** A chat's name changed somewhere: the record's title and every run's thread name agree. @param {any} rec the chat record @param {string} title @param {"record" | "thread"} from @param {string} [except] the run the change came from */
+  /** The chat record's link to a record and whether it is shown on that record's timeline (the person has been checked to be in the chat). @param {any} rec @param {{ about?: string | null, shared?: boolean }} patch */
+  async function setChatFields(rec, patch) { return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version); }
   async function renameChat(rec, title, from, by = chain(), except) {
     const t = String(title || "").trim().slice(0, 120);
     if (!t) return rec;
@@ -394,5 +396,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }
