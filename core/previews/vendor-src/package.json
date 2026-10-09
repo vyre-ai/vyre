@@ -1,0 +1,21 @@
+{
+  "name": "vyre-preview-libs",
+  "private": true,
+  "description": "The libraries a React preview may import. Built into ../vendor by build.mjs; the built files and their hashes are committed and ship with the release, so a viewer's browser never fetches code from anyone else.",
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.15.0",
+    "lucide-react": "0.263.1",
+    "d3": "7.9.0",
+    "lodash": "4.17.21",
+    "papaparse": "5.4.1",
+    "mathjs": "12.4.2",
+    "three": "0.160.0",
+    "chart.js": "4.4.3",
+    "date-fns": "3.6.0",
+    "xlsx": "0.18.5",
+    "@tailwindcss/browser": "4.1.11",
+    "esbuild-wasm": "0.28.2"
+  }
+}
