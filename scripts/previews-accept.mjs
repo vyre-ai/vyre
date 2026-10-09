@@ -45,12 +45,20 @@ try {
     page.on("response", (r) => { if (process.env.ACCEPT_DEBUG) console.log("http:", r.status(), r.url().replace(/\?t=.*/, "")); });
     await page.goto(scheme === "light" ? url : `${ticket.origin}/`, { waitUntil: "networkidle" });
     if (scheme === "dark") { /* a second context has no session: the preview is closed to it */ assert.equal(await page.locator("body").innerText(), "not found"); await ctx.close(); continue; }
-    // the viewer is asked, in the page's own words, before stored data starts
-    const allow = page.getByRole("button", { name: "Allow" });
-    await allow.waitFor({ timeout: 15000 });
-    assert.match(await page.locator("[role=dialog]").innerText(), /store and share its own data/);
-    if (out) await page.screenshot({ path: path.join(out, `consent-${scheme}.png`) });
-    await allow.click();
+    // the viewer is asked, in plain words, before anything starts: each capability the page uses asks at its first use, and Allow lets it through
+    const asked = [];
+    const answer = async (name = "Allow", ms = 8000) => {
+      const dlg = page.locator("[role=dialog]");
+      try { await dlg.waitFor({ timeout: ms }); } catch { return false; }
+      asked.push(await dlg.innerText());
+      if (out && asked.length === 1) await page.screenshot({ path: path.join(out, `consent-${scheme}.png`) });
+      await page.getByRole("button", { name }).click();
+      return true;
+    };
+    while (await answer("Allow", asked.length >= 2 ? 1500 : 15000)) { /* until the page has what it needs */ }
+    assert.ok(asked.some((t) => /store and share its own data/.test(t)), `stored data was asked for: ${JSON.stringify(asked)}`);
+    assert.ok(asked.some((t) => /know who you are/.test(t)), "who is looking was asked for");
+    await page.getByText(/Signed in as/).waitFor();
     // add tasks: they appear live
     await page.getByLabel("New task").fill("Call the client");
     await page.getByRole("button", { name: "Add" }).click();
@@ -58,9 +66,6 @@ try {
     await page.getByRole("button", { name: "Add" }).click();
     await page.getByText("File the motion").waitFor();
     assert.equal(await page.locator("li").count(), 2);
-    // the user capability asks too, on first use, in its own words; the page greets by name
-    const userAllow = page.getByRole("button", { name: "Allow" });
-    if (await userAllow.count()) { assert.match(await page.locator("[role=dialog]").innerText(), /know who you are/); await userAllow.click(); await page.getByText(/Signed in as/).waitFor(); }
     await page.getByLabel("Done: Call the client").check();
     await page.locator("li.done").waitFor();
     if (out) await page.screenshot({ path: path.join(out, `tasks-${scheme}.png`), fullPage: true });
@@ -72,17 +77,16 @@ try {
     // a download is offered and the viewer confirms it
     const dl = page.waitForEvent("download");
     await page.getByRole("button", { name: "Export CSV" }).click();
-    const dlAllow = page.getByRole("button", { name: "Allow" });
-    if (await dlAllow.count()) await dlAllow.click();
-    await page.getByRole("button", { name: "Save" }).click();
+    assert.ok(await answer("Allow", 4000), "downloads asked");
+    assert.ok(await answer("Save", 4000), "and the viewer confirmed the file");
     const file = await dl;
     assert.equal(file.suggestedFilename(), "tasks.csv");
     assert.match(fs.readFileSync(await file.path(), "utf8"), /"Call the client",true\n"File the motion",false/);
     // the model: this daemon has no model, so the page's own error path runs, unchanged
     await page.getByRole("button", { name: "Summarize" }).click();
-    const sampleAllow = page.getByRole("button", { name: "Allow" });
-    if (await sampleAllow.count()) await sampleAllow.click();
+    assert.ok(await answer("Allow", 4000), "the model asked");
     await page.locator("#summary").waitFor();
+    assert.match(await page.locator("#summary").innerText(), /could not answer: (unavailable|not_granted)/);
     assert.deepEqual(errors, [], "the page had no errors of its own");
     await ctx.close();
   }
