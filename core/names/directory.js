@@ -9,6 +9,7 @@
 // so the route key is not a general signing oracle. `fetch` is injectable for tests.
 
 import crypto from "node:crypto";
+import { httpFetch } from "../../lib/http.js";
 
 export const AUTH_TAG = "vyre-names-v1";
 export const DEFAULT_BASE = "https://names.vyre.run";
@@ -21,7 +22,7 @@ export const authMessage = m => Buffer.from(`${AUTH_TAG}\n${m.route}\n${m.ts}\n$
  * @typedef {{ identity(): Promise<{ route: string, pub: Buffer }>, sign(message: Buffer): Promise<Buffer> }} Signer
  * @param {{ base?: string, signer: Signer, fetch?: typeof globalThis.fetch, now?: () => number, timeoutMs?: number }} o
  */
-export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetch, now = Date.now, timeoutMs = 20_000 }) {
+export function directory({ base = DEFAULT_BASE, signer, fetch = httpFetch, now = Date.now, timeoutMs = 20_000 }) {
   const root = String(base).replace(/\/+$/, "");
   if (!/^https?:\/\//.test(root)) throw new Error("the directory address must be http(s)");
   /** @param {string} method @param {string} target path and query @param {object} [body] @param {boolean} [sign] */
@@ -30,7 +31,7 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     // runner, or VYRE_TEST, the real fetch refuses any host but loopback. A test passes a fake URL
     // on 127.0.0.1, or its own `fetch`. Checked at the call, not at construction, so a daemon test
     // that merely starts the names module still starts.
-    if ((process.env.NODE_TEST_CONTEXT || process.env.VYRE_TEST) && fetch === globalThis.fetch && !LOOPBACK.has(new URL(root).hostname)) {
+    if ((process.env.NODE_TEST_CONTEXT || process.env.VYRE_TEST) && fetch === httpFetch && !LOOPBACK.has(new URL(root).hostname)) {
       throw Object.assign(new Error(`tests never call the hosted name directory (${new URL(root).hostname}); pass a fake URL on 127.0.0.1 or your own fetch`), { code: "test_guard" });
     }
     const text = body === undefined ? "" : JSON.stringify(body);
@@ -43,7 +44,7 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
       Object.assign(headers, { "x-vyre-route": route, "x-vyre-pub": Buffer.from(pub).toString("base64url"), "x-vyre-ts": String(ts), "x-vyre-nonce": nonce, "x-vyre-sig": Buffer.from(sig).toString("base64url") });
     }
     let res;
-    try { res = await fetch(root + target, { method, headers, body: text || undefined, signal: AbortSignal.timeout(timeoutMs) }); }
+    try { res = await fetch(root + target, { method, headers, body: text || undefined, signal: AbortSignal.timeout(timeoutMs), allow: LOOPBACK.has(new URL(root).hostname) ? "any" : "public" }); }
     catch (e) { throw Object.assign(new Error(`the name directory is not reachable (${/** @type {any} */ (e).cause?.code || /** @type {Error} */ (e).name || "network error"})`), { code: "unreachable", status: 0 }); }
     let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }

@@ -4,9 +4,8 @@
 // S3 and any S3-compatible bucket, SeaweedFS and Garage included, signed with AWS Signature V4 using only node built-ins.
 import crypto from "node:crypto";
 import fs from "node:fs";
-import http from "node:http";
-import https from "node:https";
 import path from "node:path";
+import { userHostFetch } from "../../lib/http.js";
 
 export function memoryBackend({ free = Infinity } = {}) {
   const m = new Map(), b = { m, down: false, free,
@@ -44,14 +43,13 @@ export function signV4({ method, host, path: p, query = "", headers = {}, payloa
   return h;
 }
 export function s3Backend({ endpoint, bucket, key, secret, region = "us-east-1", prefix = "", timeoutMs = 30_000, maxBytes = 8 * 1024 * 1024 }) {
-  const u = new URL(endpoint), lib = u.protocol === "https:" ? https : http;
-  const call = (method, objKey, body) => new Promise((resolve, reject) => {
+  const u = new URL(endpoint);
+  // The bucket's address is the person's own (a LAN SeaweedFS or Garage as often as AWS), so the address rule is theirs; the rest (deadline, size cap, no retry of a signed call) is lib/http.js.
+  const call = async (method, objKey, body) => {
     const p = `/${bucket}${objKey ? `/${prefix}${objKey}` : ""}`, ph = sha(body ?? ""), hd = signV4({ method, host: u.host, path: p, payloadHash: ph, region, key, secret, headers: body ? { "content-length": body.length } : {} });
-    const r = lib.request({ method, hostname: u.hostname, port: u.port || undefined, path: p.split("/").map(enc).join("/"), headers: hd, timeout: timeoutMs }, res => {
-      const parts = []; let n = 0; res.on("data", d => { n += d.length; if (n > maxBytes) r.destroy(new Error("too big")); else parts.push(d); }); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(parts) }));
-    });
-    r.on("timeout", () => r.destroy(new Error("timeout"))); r.on("error", reject); r.end(body);
-  });
+    const res = await userHostFetch(`${u.origin}${p.split("/").map(enc).join("/")}`, { method, headers: hd, body, timeoutMs, maxBytes, retries: 0, redirect: "manual" });
+    return { status: res.status, body: Buffer.from(await res.arrayBuffer()) };
+  };
   return {
     async put(k, v) { const r = await call("PUT", safe(k), Buffer.from(v)); if (r.status >= 300) throw new Error(`s3 put ${r.status}`); },
     async get(k) { const r = await call("GET", safe(k)); if (r.status === 404) return null; if (r.status >= 300) throw new Error(`s3 get ${r.status}`); return r.body; },

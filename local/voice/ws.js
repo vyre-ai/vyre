@@ -14,6 +14,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import https from "node:https";
+import { pin } from "../../lib/http.js";
 import { acceptKey, encodeFrame, upgradeHead, FrameParser as BaseParser } from "../../lib/ws.js";
 
 /** One message larger than this is not speech control or a transcript; refuse to buffer it. */
@@ -166,12 +167,15 @@ export function connect(url, { headers = {}, timeout = 8000, socketPath } = {}) 
   const lib = u.protocol === "wss:" ? https : http;
   const key = crypto.randomBytes(16).toString("base64");
   return new Promise(resolve => {
-    let done = false;
+    let done = false, timer;
     const finish = v => { if (!done) { done = true; clearTimeout(timer); resolve(v); } };
-    const where = socketPath ? { socketPath } : { host: u.hostname, port: u.port || (u.protocol === "wss:" ? 443 : 80) };
+    // The provider's address is checked like any other request that leaves the machine (lib/http.js pin): a public address, and the connection goes to the address that was checked.
+    const dial = socketPath ? Promise.resolve(null) : pin(new URL(url.replace(/^ws/, "http")), {});
+    dial.then(address => {
+    const where = socketPath ? { socketPath } : { host: u.hostname, port: u.port || (u.protocol === "wss:" ? 443 : 80), ...(address ? { lookup: (_h, o, cb) => (o && o.all ? cb(null, [{ address, family: address.includes(":") ? 6 : 4 }]) : cb(null, address, address.includes(":") ? 6 : 4)) } : {}) };
     const req = lib.request({ ...where, path: u.pathname + u.search, method: "GET", agent: false,
       headers: { ...headers, connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": key } });
-    const timer = setTimeout(() => { req.destroy(); finish({ unreachable: "timeout" }); }, timeout);
+    timer = setTimeout(() => { req.destroy(); finish({ unreachable: "timeout" }); }, timeout);
     req.on("upgrade", (res, socket, head) => {
       if (res.headers["sec-websocket-accept"] !== acceptKey(key)) { socket.destroy(); finish({ status: 502 }); return; }
       finish({ peer: new Peer(socket, { client: true, head }) });
@@ -187,5 +191,6 @@ export function connect(url, { headers = {}, timeout = 8000, socketPath } = {}) 
     });
     req.on("error", e => finish({ unreachable: /** @type {any} */ (e).code || "error" }));
     req.end();
+    }, e => finish({ unreachable: /** @type {any} */ (e).code || "not_public" }));
   });
 }

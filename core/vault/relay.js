@@ -31,6 +31,7 @@ import { sign, verify, canonical } from "./crypto.js";
 import { capValues } from "../link/transport.js";
 import { isLoopbackHost } from "../../lib/netguard.js";
 import { scrub } from "../../lib/scrub.js";
+import { httpFetch } from "../../lib/http.js";
 
 const CARD_V1 = "vyre-card:v1:";
 const CARD_PREFIX = "vyre-card:v2:";
@@ -399,7 +400,7 @@ export async function send(request, { timeoutMs = 30000, maxBytes = 5_000_000 } 
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, timeoutMs);
   try {
-    const res = await fetch(u, { method: (request.method || "GET").toUpperCase(), headers: request.headers, body: request.body ?? undefined, redirect: "manual", signal: ctl.signal });
+    const res = await httpFetch(u, { method: (request.method || "GET").toUpperCase(), headers: request.headers, body: request.body ?? undefined, redirect: "manual", signal: ctl.signal, allow: "any", retries: 0, maxBytes: 32 * 1024 * 1024 });   // the target was checked before it got here (checkTarget); the cap below still truncates
     /** @type {{ "content-type"?: string, location?: string }} */
     const headers = {};
     const ct = res.headers.get("content-type"); if (ct) headers["content-type"] = ct;
@@ -509,7 +510,7 @@ export async function callRelay(relayUrl, env, { timeoutMs = 45000, route = "/v1
   let res;
   const target = new URL(route, relayUrl);
   try {
-    res = await fetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(env), redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
+    res = await httpFetch(target, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(env), redirect: "manual", signal: AbortSignal.timeout(timeoutMs), allow: "any", retries: 0 });   // another person's Vyre: public, a tailnet address or this machine
   } catch (e) {
     const why = e?.name === "TimeoutError" ? `no answer within ${timeoutMs} ms` : (e?.cause?.code || e?.message || "connection failed");
     return { error: { code: "unreachable", message: `the owner's Vyre at ${target.origin} did not answer (${why})` } };

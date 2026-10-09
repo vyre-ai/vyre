@@ -1,3 +1,4 @@
+import { httpFetch } from "../../lib/http.js";
 // @ts-check
 // Pull request reads and the two outward writes (merge, review), over GitHub's REST API with the
 // project's own recorded account token. `prView` maps GitHub's answers to the payload the Deck's
@@ -8,7 +9,7 @@ const H = token => ({ authorization: `Bearer ${token}`, accept: "application/vnd
 const err = (msg, code, detail) => Object.assign(new Error(msg), { code, ...(detail ? { detail } : {}) });
 
 async function gh(token, method, path, body) {
-  const res = await fetch(`${API}${path}`, {
+  const res = await httpFetch(`${API}${path}`, {
     method, headers: { ...H(token), ...(body ? { "content-type": "application/json" } : {}) },
     body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20_000),
   });

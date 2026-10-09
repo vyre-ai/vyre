@@ -5,6 +5,10 @@
 
 import crypto from "node:crypto";
 import { isPrivateNetwork } from "../../../lib/netguard.js";
+import { guardedFetch } from "../../../lib/http.js";
+
+/** The endpoint is the person's own (checkEndpoint below), and an object can be large: every rule but the public-address one, and a 512 MB cap. */
+const s3Fetch = guardedFetch({ allow: "any", maxBytes: 512 * 1024 * 1024 });
 
 const hmac = (/** @type {crypto.BinaryLike | crypto.KeyObject} */ k, /** @type {string} */ d) => crypto.createHmac("sha256", /** @type {any} */ (k)).update(d).digest();
 const hex = (/** @type {string | Buffer} */ d) => crypto.createHash("sha256").update(d).digest("hex");
@@ -75,7 +79,7 @@ export function whyFailed(status, code) {
 /**
  * @param {{ fetch?: typeof fetch, now?: () => number, timeoutMs?: number }} [o]
  */
-export function createS3({ fetch: f = globalThis.fetch, now = Date.now, timeoutMs = 10_000 } = {}) {
+export function createS3({ fetch: f = s3Fetch, now = Date.now, timeoutMs = 10_000 } = {}) {
   return {
     /**
      * Does this login work on this bucket? One ListObjectsV2 with max-keys 1.

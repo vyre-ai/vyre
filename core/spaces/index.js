@@ -80,6 +80,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { httpFetch } from "../../lib/http.js";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
@@ -140,7 +141,7 @@ export default {
     const mono = () => (lastTs = Math.max(now(), lastTs + 1));
     const base = (ctx.config && ctx.config.names && ctx.config.names.directory) || DEFAULT_BASE;
     const seen = seenStore(db);
-    const dir = idDirectory({ base, fetch: hooks.fetch || globalThis.fetch, now: mono, seen });
+    const dir = idDirectory({ base, fetch: hooks.fetch || httpFetch, now: mono, seen });
 
     const identity = fileIdentityStore(root);
     const idops = createIdentityOps({ store: identity, dir, seen, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
@@ -435,7 +436,7 @@ export default {
       spaces.patch(spaceId, { warnings: [...row.warnings, w] }, now());
       emit("space.warning", { spaceId, code: w.code, message: w.message });
     };
-    const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
+    const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || httpFetch }) });
     /** Is this server already paired to this person (the pairing proved it)? Wink answers from the identity's own list (wink.server.paired); no answer means no, and the typed code step runs. @param {string} id */
     /** Who may call a modules-only tool: the registry names a module caller `module:<name>` from the module it verified; only these first-party modules (and the daemon) are admitted, whatever a module's declaration says. @param {any} meta @param {string[]} names */
     const onlyModules = (meta, names) => {

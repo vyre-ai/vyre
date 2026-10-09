@@ -388,7 +388,7 @@ test("the relay's trouble is named: unreachable says the relay could not be reac
   const tools = new Map();
   const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit() {} }, tool: (n, d) => tools.set(n, d) };
   const p = createPairing({ ctx, now: () => 1, identity: async () => ME, space: async () => HARLOW, directory: { memberships: async () => [] },
-    ports: { typist: async a => { const r = await a.fetch("http://relay.test/v1/wink/code"); return { ok: false, reason: r.status === 200 ? "ok" : "refused" }; } },
+    ports: { typist: async a => { const r = await a.fetch("https://relay.test/v1/wink/code"); return { ok: false, reason: r.status === 200 ? "ok" : "refused" }; } },
     openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, relayUrl: async () => "ws://relay.test" });
   const real = globalThis.fetch;
   globalThis.fetch = async () => new Response("upgrade required", { status: 426 });

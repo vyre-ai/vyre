@@ -28,7 +28,7 @@
       { "name": "watchers.duty.resume", "reach": "modules" }
     ]
   },
-  "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted", "watcher.woke"] },
+  "watches": { "emits": ["watcher.created", "watcher.fired", "watcher.failed", "watcher.paused", "watcher.resumed", "watcher.deleted", "watcher.woke", "watcher.schedule-moved"] },
   "shows": { "deck": ["panel:watchers"], "capsule": [], "cli": ["watchers"] },
   "needs": { "vault": ["per-watcher"], "kernel": { "actions": ["records.read", "records.create", "records.update", "records.remove"], "types": [
     { "name": "def-watcher", "label": "Watcher", "icon": "IconEye", "fields": [

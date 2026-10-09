@@ -8,6 +8,7 @@ import dns from "node:dns/promises";
 import https from "node:https";
 import { KernelError } from "../core/errors.js";
 import { isPublicAddress, isTunnelAddress } from "../../lib/netguard.js";
+import { requestOnce } from "../../lib/http.js";
 
 const MAX_BODY = 1 << 20, MAX_REDIRECTS = 3, TIMEOUT_MS = 15_000;
 const BAD_HEADERS = new Set(["cookie", "authorization", "proxy-authorization", "host", "connection", "upgrade", "content-length", "transfer-encoding"]);
@@ -25,22 +26,10 @@ export function privateAddress(/** @type {string} */ ip) { return !isPublicAddre
  * @param {{ request?: typeof https.request }} [o]
  */
 export function pinnedFetch(o = {}) {
-  const request = o.request || https.request;
-  return (/** @type {string} */ url, /** @type {any} */ init) => new Promise((resolve, reject) => {
-    const u = new URL(url), pinned = String(init.pinned), family = net.isIP(pinned);
-    const lookup = (/** @type {string} */ _h, /** @type {any} */ opts, /** @type {any} */ cb) => (opts && opts.all ? cb(null, [{ address: pinned, family }]) : cb(null, pinned, family));
-    const req = request({ protocol: "https:", hostname: u.hostname, port: u.port || 443, path: u.pathname + u.search, method: init.method, headers: init.headers, servername: net.isIP(u.hostname) ? undefined : u.hostname, lookup, agent: false, timeout: TIMEOUT_MS }, res => {
-      const chunks = []; let n = 0;
-      res.on("data", (/** @type {Buffer} */ c) => { n += c.length; if (n > MAX_BODY + 1) { req.destroy(new Error("too large")); } else chunks.push(c); });
-      res.on("end", () => resolve({ status: res.statusCode || 0, headers: Object.fromEntries(Object.entries(res.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : String(v)])), body: new Uint8Array(Buffer.concat(chunks)) }));
-    });
-    // The socket that actually connected must be the pinned address, whatever resolved it: checked again before the request is written.
-    req.on("socket", (/** @type {any} */ sock) => { const check = () => { if (sock.remoteAddress && (sock.remoteAddress !== pinned && sock.remoteAddress.replace(/^::ffff:/, "") !== pinned || privateAddress(sock.remoteAddress))) req.destroy(new Error("connected to an address that was not checked")); }; if (sock.connecting) sock.once("connect", check); else check(); });
-    req.on("timeout", () => req.destroy(new Error("timeout")));
-    req.on("error", reject);
-    if (init.body !== undefined) req.write(init.body);
-    req.end();
-  });
+  return async (/** @type {string} */ url, /** @type {any} */ init) => {
+    const res = await requestOnce(new URL(url), { method: init.method, headers: new Headers(init.headers || {}), ...(init.body !== undefined ? { body: Buffer.from(init.body) } : {}), signal: AbortSignal.timeout(TIMEOUT_MS), address: String(init.pinned), maxBytes: MAX_BODY, request: o.request });
+    return { status: res.status, headers: Object.fromEntries(res.headers.entries()), body: new Uint8Array(await res.arrayBuffer()) };
+  };
 }
 
 /**

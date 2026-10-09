@@ -85,11 +85,13 @@ export const MIGRATIONS = [`
   CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `, `
   CREATE TABLE watchers_wakes (watcher TEXT NOT NULL, day TEXT NOT NULL, posts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
+`, `
+  CREATE TABLE watchers_state (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `];
 
 /**
  * @typedef {{ db: import("node:sqlite").DatabaseSync, dir: string,
- *   emit: (type: string, payload: object, where?: object) => any,
+ *   emit: (type: string, payload: object, where?: object) => any, notice?: (text: string) => any,
  *   call: (tool: string, input: object) => Promise<{ data?: any, error?: any }>,
  *   fetch: (name: string, watcher: string, field?: string) => Promise<string>,
  *   teach: (kind: string, fact: object) => Promise<boolean>,
@@ -397,9 +399,40 @@ export class Runtime {
   tick() {
     if (this.stopping) return [];
     const now = this.now();
+    this.zoneCheck(now);
     const due = this.db.prepare(`SELECT name FROM watchers_watchers WHERE enabled = 1 AND paused = 0
       AND next_at IS NOT NULL AND next_at <= ?`).all(now);
     return due.map(r => this.kick(String(r.name), "schedule")).filter(Boolean);
+  }
+
+  /**
+   * Schedules ran in the machine's local time before they ran in the Space's zone. Once, when the zone a watcher's cron runs in changes (the first tick after the upgrade included), every enabled
+   * cron watcher is re-aimed at its next time in the new zone, and the person is told which ones actually fire at a different moment (an event, and a to-do in the planner).
+   * @param {number} now
+   */
+  zoneCheck(now) {
+    const zone = this.zone();
+    const row = this.db.prepare("SELECT v FROM watchers_state WHERE k = 'cron_zone'").get();
+    const before = row ? String(row.v) : systemZone();
+    if (before === zone && row) return;
+    this.db.prepare("INSERT INTO watchers_state (k, v) VALUES ('cron_zone', ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(zone);
+    if (before === zone) return;
+    const fmt = (/** @type {number|null} */ t) => (t == null ? null : new Date(t).toISOString());
+    /** @type {{ name: string, schedule: string, was: string|null, now: string|null }[]} */ const moved = [];
+    for (const r of this.db.prepare("SELECT name, schedule FROM watchers_watchers WHERE enabled = 1 AND paused = 0").all()) {
+      const schedule = String(r.schedule);
+      if (PUSHED.has(schedule)) continue;
+      let c; try { c = cron.parse(schedule); } catch { continue; }
+      const was = cron.next(c, now, before), next = cron.next(c, now, zone);
+      this.db.prepare("UPDATE watchers_watchers SET next_at = ? WHERE name = ?").run(next, String(r.name));
+      if (was !== next) moved.push({ name: String(r.name), schedule, was: fmt(was), now: fmt(next) });
+    }
+    if (!moved.length) return;
+    this.d.emit("watcher.schedule-moved", { zone_before: before, zone_now: zone, watchers: moved });
+    if (this.d.notice) {
+      const list = moved.slice(0, 10).map(m => `${m.name} (${cron.describe(m.schedule, zone)})`).join("; ");
+      Promise.resolve(this.d.notice(`Watcher schedules now follow the Space's time zone (${zone}), not this machine's (${before}). ${moved.length} fire at a different time than before: ${list}${moved.length > 10 ? " and more" : ""}.`)).catch(() => {});
+    }
   }
 
   /**
