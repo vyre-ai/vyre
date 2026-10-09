@@ -997,5 +997,7 @@
  "test/space-bundle-restore.test.js": 1,
  "kernel/seal/space-bundle.test.js": 1,
  "kernel/grants/adopt.test.js": 1,
- "apps/app/screens/settings/backups.test.js": 2
+ "apps/app/screens/settings/backups.test.js": 2,
+ "core/vault/health-summary.test.js": 2,
+ "apps/app/screens/now/vault-health.test.js": 1
 }
