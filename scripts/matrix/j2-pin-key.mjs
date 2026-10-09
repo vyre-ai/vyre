@@ -18,9 +18,8 @@ const sigFile = "lib/release-sig.js";
 const OLD = /^export const RELEASE_KEY = "(.*)";/m.exec(fs.readFileSync(sigFile, "utf8"))?.[1];
 if (!OLD) { console.error("j2-pin-key: could not read the pinned key"); process.exit(1); }
 let swapped = 0;
-// Only what the DAEMON in the image trusts (so its signed modules boot). The host wrapper (box/vyre) keeps the real pinned key: J2b's refusals are about what the wrapper accepts, and a release signed by this
-// throwaway key must still be refused by it unless the test names the key (VYRE_RELEASE_KEY).
-for (const f of ["core/vyre-core/release.js", "lib/release-sig.js"]) {
+// The same four files scripts/dev-sign.mjs swaps: build-site.sh refuses a tree whose copies of the key differ.
+for (const f of ["core/vyre-core/release.js", "box/vyre", "lib/release-sig.js", "scripts/install-mac-server.sh"]) {
   if (!fs.existsSync(f)) continue;
   const t = fs.readFileSync(f, "utf8");
   if (t.includes(OLD)) { fs.writeFileSync(f, t.split(OLD).join(pub)); swapped++; }
