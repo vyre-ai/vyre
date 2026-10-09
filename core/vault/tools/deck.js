@@ -40,6 +40,36 @@ export function register({ ctx, vault, fetch = httpFetch }) {
     },
   });
 
+  // Vault health for Now (the one calm row): what the daily Watchtower run found and the person has not yet fixed, read from the reminders it keeps. It decrypts nothing and writes nothing, so it can be asked often.
+  const HEALTH_FIX = ["reused", "breached", "weak"], HEALTH_ROTATE = ["rotate", "expiring", "expired", "old"];
+  ctx.tool("vault.health.summary", {
+    callers: ["cli", "local", "deck", "capsule", "mobile", "device", "tailnet", "module"],
+    description: "How many vault items need attention (to rotate, to fix) from the last Watchtower run, counts only, never a name or a value; zero while the person has dismissed it. For the Now screen's one row.",
+    input: obj({}),
+    run: () => {
+      const db = ctx.store.db;
+      const has = (/** @type {string} */ t) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(t));
+      if (!has("vault_reminders")) return { total: 0, rotate: 0, fix: 0, counts: {}, dismissed_until: null };
+      const until = has("vault_jobs") ? /** @type {any} */ (db.prepare("SELECT at FROM vault_jobs WHERE name = 'health-dismiss'").get()) : null;
+      if (until && Number(until.at) > Date.now()) return { total: 0, rotate: 0, fix: 0, counts: {}, dismissed_until: Number(until.at) };
+      /** @type {Record<string, number>} */ const counts = {};
+      for (const r of /** @type {any[]} */ (db.prepare("SELECT reason, COUNT(*) AS n FROM vault_reminders WHERE state = 'open' GROUP BY reason").all())) if ([...HEALTH_FIX, ...HEALTH_ROTATE].includes(String(r.reason))) counts[String(r.reason)] = Number(r.n);
+      const sum = (/** @type {string[]} */ xs) => xs.reduce((n, k) => n + (counts[k] || 0), 0);
+      return { total: sum([...HEALTH_FIX, ...HEALTH_ROTATE]), rotate: sum(HEALTH_ROTATE), fix: sum(HEALTH_FIX), counts, dismissed_until: null };
+    },
+  });
+  ctx.tool("vault.health.dismiss", {
+    callers: PEOPLE,
+    description: "Hide the vault health row on Now for a while (default a week). The next Watchtower run after that raises it again if items still need attention.",
+    input: obj({ days: { type: "integer", minimum: 1, maximum: 90 } }),
+    run: (/** @type {any} */ i) => {
+      const db = ctx.store.db, days = Math.min(90, Math.max(1, Math.trunc(Number(i && i.days) || 7))), until = Date.now() + days * 86400_000;
+      db.exec("CREATE TABLE IF NOT EXISTS vault_jobs (name TEXT PRIMARY KEY, at INTEGER NOT NULL)");
+      db.prepare("INSERT OR REPLACE INTO vault_jobs (name, at) VALUES ('health-dismiss', ?)").run(until);
+      return { dismissed_until: until };
+    },
+  });
+
   ctx.tool("vault.health", {
     // It decrypts every item to judge it and says so in vault_audit, so it is a write; no model has a reason to trigger it.
     callers: ["cli", "local", "deck", "capsule", "mobile", "device", "tailnet", "module"],

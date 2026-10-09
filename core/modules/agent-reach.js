@@ -250,6 +250,7 @@ export const PERSON_ONLY = new Map([
   ["spaces.bundle.enrol", "the owner gives their recovery code: a code is the person's own secret, never a model's"],
   ["spaces.bundle.export", "writes the Space bundle, which holds every sealed value of the Space under the owner's key: the owner's own act"],
   ["spaces.bundle.status", "tells whether the Space bundle is set up: the owner's own view"],
+  ["vault.health.dismiss", "hides the vault health row on Now: the person's own say over what they are nagged about"],
   ["spaces.identity.alias", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.identity.alias.add", "needs the person's Face ID or presence: identity list and recovery changes"],
   ["spaces.identity.code.replace", "needs the person's Face ID or presence: identity list and recovery changes"],

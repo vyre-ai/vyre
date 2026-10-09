@@ -26,7 +26,7 @@ import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { wallSteps, wallUninstallSteps } from "../../../lib/sandbox/index.js";
-import { restoreBundle } from "../../../lib/space-bundle.js";
+import { restoreAll, bundlesIn } from "../../../lib/space-bundle.js";
 import { startSealer } from "../../../kernel/seal/client.js";
 import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
 import { hiddenPrompt } from "../../vault/cli-io.js";
@@ -572,18 +572,18 @@ export default [
         return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
       }
       finally { passphrase = ""; }
-      // The Space bundle (lib/space-bundle.js): its members, grants and sealed values come back with the owner's recovery code, on this box's own sealing keys
-      let spaceBack = null;
-      if (fs.existsSync(path.join(config.home(), "space-bundle.vyb"))) {
-        let code = typeof flags["recovery-code"] === "string" ? String(flags["recovery-code"]) : process.env.VYRE_RECOVERY_CODE || "";
-        if (!code && process.stdin.isTTY && !json()) { try { code = await readPassphrase("recovery code (Enter to leave the Space for later): "); } catch { code = ""; } }
-        if (code) {
-          try { spaceBack = await restoreBundle({ root: config.home(), code, startSealer: (dir) => startSealer({ dir, dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}), ...(process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}) }) }); }
-          catch (e) { out(`  the Space was not brought back: ${String(/** @type {Error} */ (e).message)}`); }
-        } else if (!json()) out(dim("  this backup carries a Space bundle: vyre restore <file> --force --recovery-code <code> brings its members and sealed values back"));
+      // The Space bundles (lib/space-bundle.js): every Space whose owner turned on backups comes back with that owner's recovery code, on this box's own sealing keys
+      let spacesBack = null;
+      const bundles = bundlesIn(config.home());
+      if (bundles.length) {
+        const given = typeof flags["recovery-code"] === "string" ? String(flags["recovery-code"]) : process.env.VYRE_RECOVERY_CODE || "";
+        try {
+          spacesBack = await restoreAll({ root: config.home(), codes: async (space) => given || (process.stdin.isTTY && !json() ? await readPassphrase(`recovery code of the owner of ${space} (Enter to leave it for later): `).catch(() => "") : ""), startSealer: (dir) => startSealer({ dir, dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}), ...(process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}) }) });
+        } catch (e) { out(`  the Spaces were not brought back: ${String(/** @type {Error} */ (e).message)}`); }
+        if (spacesBack && spacesBack.skipped.length && !json()) out(dim(`  left for later (vyre restore <file> --force --recovery-code <code>): ${spacesBack.skipped.join(", ")}`));
       }
-      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made", ...(spaceBack ? { space: spaceBack.space } : {}) });
-      if (spaceBack) out(`  the Space ${spaceBack.space} is back: its ${spaceBack.sealed} sealed value${spaceBack.sealed === 1 ? "" : "s"} are under this box's own keys`);
+      if (json()) return emit({ restored: path.resolve(rest[0]), projects: r.projects, publicLinks: "as they were when the backup was made", ...(spacesBack ? { spaces: spacesBack.restored.map((x) => x.space) } : {}) });
+      if (spacesBack) for (const x of spacesBack.restored) out(`  the Space ${x.space} is back: its ${x.sealed} sealed value${x.sealed === 1 ? "" : "s"} are under this box's own keys`);
       out("  restored · vyre up to start");
       if (r.restored && r.restored.includes("data")) out(dim("  artifacts are back with their versions; public links return as they were when the backup was made, so a link that was on then is on again"));
       return 0;

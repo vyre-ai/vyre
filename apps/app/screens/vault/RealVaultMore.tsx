@@ -152,7 +152,7 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
           <Segmented label="For" value="agent" onChange={(v) => { if (v === "vyre") setAgent(false); }} options={[["vyre", "Another Vyre"], ["agent", "An outside agent"]]} />
           <Field label="Name" value={m.name} onChangeText={(name) => setM({ ...m, name })} help="Who or what it is for, such as Dana's Claude." />
           <Text size="caption" strong tone="label">Ends after</Text>
-          <Segmented label="Ends after" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
+          <Segmented label="Ends after" value={String(m.days)} onChange={(d) => setM({ ...m, days: Number(d) as 7 | 30 | 90 })} options={MCP_DAYS.map(([d, l]): [string, string] => [String(d), l])} />
           <View className="gap-s1">
             <Text size="caption" strong tone="label">Credentials</Text>
             <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <PickChip key={r.name} on={m.items.includes(r.name)} label={r.name} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })} />)}</View>

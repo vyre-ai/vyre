@@ -167,7 +167,8 @@ export class Sealer {
       const ct = Buffer.concat([c.update(v.plaintext, "utf8"), c.final()]);
       items.push({ meta: v.meta, iv: iv.toString("base64"), ct: ct.toString("base64"), tag: c.getAuthTag().toString("base64") });
     }
-    return { items };
+    // the Space's drive pool key too (a derived key, not the master): the Drive's chunks are sealed under it, so a restored Space reads its files again
+    return { items, pool: this.store.poolKey(r.space).toString("base64") };
   }
   spaceRestore(r) {
     need(/^spc_[a-z0-9]{8,40}$/.test(r.space) && typeof r.bk === "string" && Buffer.from(r.bk, "base64").length === 32 && Array.isArray(r.items) && r.items.length <= 100_000, "bad_input");
@@ -179,6 +180,7 @@ export class Sealer {
       try { const d = crypto.createDecipheriv("aes-256-gcm", bk, Buffer.from(it.iv, "base64")); d.setAAD(Buffer.from(`vyre:space-bundle:v1:${it.meta.ref}:${r.space}`)); d.setAuthTag(Buffer.from(it.tag, "base64")); plaintext = Buffer.concat([d.update(Buffer.from(it.ct, "base64")), d.final()]).toString("utf8"); } catch { throw err("bad_input"); }
       this.store.write("values", { ...it.meta, blind: this.store.blind(r.space, it.meta.field, it.meta.class, compact(plaintext)) }, plaintext); n++;
     }
+    if (typeof r.pool === "string" && Buffer.from(r.pool, "base64").length === 32) this.store.write("values", serviceMeta(`pool.override.${r.space}`), r.pool);
     return { restored: n };
   }
   open(ctx, ref) { const v = this.store.read("values", ref, ctx.space); need(v, "not_found"); return v; }
@@ -395,7 +397,7 @@ export class Sealer {
       case "kernel.verify": { need(!req.ctx?.model_originated && /^[a-z0-9_.-]{1,40}$/.test(req.purpose) && typeof req.data === "string" && req.data.length <= 2_000_000 && typeof req.mac === "string", "bad_input"); const a = Buffer.from(this.store.kernelMac(req.purpose, req.data)), b = Buffer.from(req.mac); return { ok: a.length === b.length && crypto.timingSafeEqual(a, b) }; }
       case "space.dump": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceDump(req); }
       case "space.restore": { need(!req.ctx?.model_originated, "bad_input"); return this.spaceRestore(req); }
-      case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); return { key: this.store.poolKey(req.owner).toString("base64") }; }
+      case "pool.key": { need(!req.ctx?.model_originated && /^(per|spc)_[a-z0-9]{8,40}$/.test(req.owner), "bad_input"); const o = this.store.read("values", serviceMeta(`pool.override.${req.owner}`).ref, "_service"); return { key: o ? o.plaintext : this.store.poolKey(req.owner).toString("base64") }; }
       // Service credentials the kernel's own modules hold (a Space's Twenty API key): sealed here instead of in a 0600 file any same-uid process can read, read back at the
       // point of use over the kernel's own channel. A name is `<module>.<space>.<what>`; a call that says a model started it is refused; nothing is ever returned by another op.
       case "service.put": { need(!req.ctx?.model_originated && SERVICE_NAME.test(req.name) && typeof req.value === "string" && req.value.length > 0 && req.value.length <= 16_384, "bad_input"); this.store.write("values", serviceMeta(req.name), req.value); return { stored: true, event: { type: "service.stored", name: req.name } }; }
