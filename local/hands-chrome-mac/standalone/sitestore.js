@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow, applyRung } from "../extension/shared/sk/site-knowledge.js";
+import { sanitize, emptyRecord, mergeRecord, arrivalCard, keyOk, heal, itemId, testNow, applyRung, rollbackOp } from "../extension/shared/sk/site-knowledge.js";
 
 /** @param {{ dataDir: string, now?: () => number }} o */
 export function createSiteStore({ dataDir, now: clock = Date.now, env = process.env }) {
@@ -37,6 +37,8 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
       const rec = read(key);
       if (!rec) return { data: { origin: null, rev: 0 } };
       if (Number.isInteger(i.since_rev) && /** @type {number} */ (i.since_rev) >= rec.rev) return { data: { not_modified: true, rev: rec.rev } };
+      // The parts asked for in full (the operations a tool calls by name); otherwise the small arrival card.
+      if (Array.isArray(i.parts) && i.parts.length) return { data: { origin: Object.fromEntries(i.parts.map((/** @type {string} */ p) => [p, p === "wall" ? rec.login.wall : p === "signedIn" ? rec.login.signedIn : rec[p]]).filter((/** @type {any} */ [, v]) => v !== undefined)), rev: rec.rev } };
       return { data: { origin: arrivalCard(rec, { now: now() }), rev: rec.rev } };
     },
     /** Merge a patch, never replace. @param {{ origin: string, target?: string, patch: any }} i */
@@ -70,6 +72,16 @@ export function createSiteStore({ dataDir, now: clock = Date.now, env = process.
       rec.rev = (rec.rev || 0) + 1; rec.updated = new Date(now()).toISOString();
       write(rec);
       return { data: { known: true, conf: list[at].conf, misses: list[at].misses || 0, quarantined: !!list[at].qAt } };
+    },
+    /** Put an operation back to an earlier version it still holds. @param {{ origin: string, name: string, version: number }} i */
+    rollback(i) {
+      const key = String(i && i.origin || "");
+      if (!keyOk(key)) return { error: { code: "bad_request", message: "not an origin" } };
+      const rec = read(key);
+      const next = rec && rollbackOp(rec, String(i.name || ""), Number(i.version), now());
+      if (!next) return { data: { rolledBack: false } };
+      write(next);
+      return { data: { rolledBack: true, version: next.ops.find((/** @type {any} */ x) => x.name === i.name).version } };
     },
     /** What is known, by origin. */
     list() {

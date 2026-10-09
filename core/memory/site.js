@@ -15,7 +15,7 @@ import os from "node:os";
 import nodePath from "node:path";
 import { answerSite, neededKeys } from "./site-answer.js";
 import {
-  sanitize, testNow, applyRung, canonTemplate, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS,
+  sanitize, testNow, applyRung, canonTemplate, emptyRecord, mergeRecord, mergeFamily, union, arrivalCard, heal, itemId, keyOk, isFamilyKey, isQuarantined, readConf, LIMITS, opsOnly, rollbackOp,
 } from "../../lib/site-knowledge.js";
 
 import { current as whoNow } from "./who.js";
@@ -26,7 +26,7 @@ const PERSON_LABEL = /^(?:tailnet:(?!agent:)|device:)\S+$/;
 const GONE_MS = 365 * 24 * 3_600_000;
 const UNDO_MS = 24 * 3_600_000;
 const EVENTS_PER_KEY = 200;
-const PARTS = ["frames", "controls", "api", "flows", "notes", "ready", "wall", "signedIn"];
+const PARTS = ["frames", "controls", "api", "ops", "flows", "notes", "ready", "wall", "signedIn"];
 
 /** Tables this part of memory owns, for memory.wipe and memory.export when they land. */
 export const SITE_TABLES = Object.freeze(["memory_site", "memory_site_events", "memory_site_forgotten", "memory_site_gone", "memory_site_forgotten_items"]);
@@ -101,7 +101,7 @@ export function register(ctx, { denied }) {
     return card;
   };
   const event = (/** @type {string} */ key, /** @type {string} */ kind, item = null, outcome = null) => { q.ev.run(key, now(), kind, item, outcome); q.trim.run(key, key, EVENTS_PER_KEY); };
-  const counts = (/** @type {any} */ r) => ({ controls: r.controls.length, api: r.api.length, flows: r.flows.length, notes: r.notes.length, frames: r.frames.length });
+  const counts = (/** @type {any} */ r) => ({ controls: r.controls.length, api: r.api.length, ops: (r.ops || []).length, flows: r.flows.length, notes: r.notes.length, frames: r.frames.length });
   const familyKey = (/** @type {string} */ id) => `family:${id}`;
   const cardFor = (/** @type {string} */ key) => { const r = /** @type {any} */ (q.cardOf.get(key)); return r ? { card: JSON.parse(r.card), rev: Number(r.rev) } : null; };
   /** Forgotten records leave the disk after 24 hours, whenever the store is used, not only at start. */
@@ -164,7 +164,8 @@ export function register(ctx, { denied }) {
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
       if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
-      if (!(await setting("memory.site.learn"))) return { accepted: false, learning: false };
+      // Teaching an operation is deliberate work, not noticing: the learn switch governs only what Chrome notices on its own.
+      if (!opsOnly(i.patch) && !(await setting("memory.site.learn"))) return { accepted: false, learning: false };
       const target = i.target === "family" ? "family" : "origin";
       const own = load(i.origin);
       let key = i.origin;
@@ -203,7 +204,7 @@ export function register(ctx, { denied }) {
     run: async (i, { caller, ...meta } = {}) => {
       if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
       if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
-      if (!(await setting("memory.site.learn"))) return { conf: null, learning: false };
+      if (i.part !== "ops" && !(await setting("memory.site.learn"))) return { conf: null, learning: false };
       const own = load(i.origin);
       if (i.rung != null) {
         // Which rung of the page ladder worked on this page: the count is the store's, never a number the client sends.
@@ -230,6 +231,22 @@ export function register(ctx, { denied }) {
       save(rec);
       event(key, "report", `${i.part}:${String(i.id).slice(0, 60)}`, i.outcome);
       return { conf: list[at].conf, quarantined: isQuarantined(list[at]) };
+    },
+  });
+
+  ctx.tool("memory.site.rollback", {
+    effect: "write",
+    callers: SITE_CALLERS,
+    description: "Put a learned website operation back to an earlier version it still holds: { origin, name, version } -> { rolledBack, version }. The version it replaces becomes the newest entry of the history, so a rollback can itself be undone.",
+    input: { type: "object", required: ["origin", "name", "version"], properties: { origin: { type: "string" }, name: { type: "string" }, version: { type: "integer" } } },
+    run: async (i, { caller, ...meta } = {}) => {
+      if (!chrome(caller, meta)) throw denied("site knowledge is for the person's own surfaces and Chrome's bridge");
+      if (!keyOk(i.origin) || isFamilyKey(i.origin)) throw bad("origin is a scheme and host, like https://app.example");
+      const rec = load(i.origin);
+      const next = rec && rollbackOp(rec, String(i.name || ""), Number(i.version), now());
+      if (!next) return { rolledBack: false };
+      save(next); event(i.origin, "rollback", `ops:${String(i.name).slice(0, 60)}`, null);
+      return { rolledBack: true, version: next.ops.find((/** @type {any} */ x) => x.name === i.name).version };
     },
   });
 

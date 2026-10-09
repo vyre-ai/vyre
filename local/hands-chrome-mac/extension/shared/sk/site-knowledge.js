@@ -786,6 +786,18 @@ export function mergeFamily(origin, family) {
 }
 
 /**
+ * Is this patch only about the person's own taught operations (ops, and the removal of ops)? Teaching one is deliberate work, not passive observation, so the "learn" switch (which
+ * governs what Chrome notices on its own) does not stop it.
+ * @param {any} patch
+ */
+export function opsOnly(patch) {
+  const o = obj(patch); if (!o) return false;
+  const keys = Object.keys(o).filter(k => k !== "key" && k !== "origin" && !(Array.isArray(o[k]) && o[k].length === 0));
+  if (!keys.length || !keys.every(k => k === "ops" || k === "remove")) return false;
+  return !Array.isArray(o.remove) || o.remove.every((/** @type {any} */ r) => r && r.part === "ops");
+}
+
+/**
  * Roll an operation back to an earlier version it still holds: the current one becomes the newest entry of the history, so a rollback can itself be undone. Returns the new record, or null
  * when the operation or that version is not held.
  * @param {any} rec @param {string} name @param {number} version @param {number} [now]

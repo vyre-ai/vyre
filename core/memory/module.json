@@ -200,6 +200,7 @@
       "memory.site.put",
       "memory.site.report",
       "memory.site.restore",
+      "memory.site.rollback",
       "memory.site.sync"
     ]
   },
