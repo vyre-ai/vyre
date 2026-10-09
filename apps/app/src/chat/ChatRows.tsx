@@ -265,12 +265,7 @@ function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
 /** "3 files, 4 commands, 1 min" under a turn: opens the changes panel, every file the turn touched with its diff. */
 function TurnChip({ it, ctx }: { it: any; ctx: BlockCtx }) {
   const [open, setOpen] = useState(false);
-  const diff = useMemo(() => {
-    const files = (it.blocks as unknown[]).flatMap((b) => { const n = normalizeBlock(b); return n.block === "diff" ? n.files : []; });
-    const seen = new Map<string, (typeof files)[number]>();
-    for (const f of files) seen.set(f.path, f);
-    return { block: "diff" as const, files: [...seen.values()] };
-  }, [it.blocks]);
+  const diff = useMemo(() => { const n = normalizeBlock({ block: "files", files: it.diffs }); return n.block === "diff" ? n : { block: "diff" as const, files: [] }; }, [it.diffs]);
   const has = diff.files.length > 0;
   return (
     <View>

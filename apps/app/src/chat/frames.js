@@ -368,7 +368,7 @@ export function createFolder() {
         else if (status.state === "working" && state !== "working" && turnFrom >= 0) {
           const sum = turnSummary(rows.slice(turnFrom).map((r) => items.get(r.key)), turnAt && f.time ? f.time - turnAt : 0);
           turnFrom = -1;
-          if (sum) { const key = "u:" + f.cur; put(key, "turnsummary", { key, kind: "turnsummary", ...sum }); out.layout = true; touch(key); }
+          if (sum) { const key = "z:" + f.cur; put(key, "turnsummary", { key, kind: "turnsummary", ...sum }); out.layout = true; touch(key); }
         }
         sawStatus = true;
         status.state = state;

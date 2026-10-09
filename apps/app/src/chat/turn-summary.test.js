@@ -13,7 +13,8 @@ test("a turn's line counts its files and commands once each and says how long it
   assert.equal(s?.line, "2 files, 2 commands, 2 min");
   assert.deepEqual(s?.files.map((f) => f.path), ["a.js", "b.js"]);
   assert.equal(s?.files[0].add, 3, "both edits of a file add up");
-  assert.equal(s?.blocks.length, 3);
+  assert.deepEqual(s?.diffs.map((d) => d.path), ["a.js", "b.js"]);
+  assert.match(s?.diffs[0].diff ?? "", /^@@\n-a\n\+b\n@@\n-a\n\+c\n\+d$/, "both edits of a file are one diff");
 });
 
 test("a turn that changed no file and ran no command has no line, and a quick one omits the time", () => {

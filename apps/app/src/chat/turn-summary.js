@@ -23,19 +23,29 @@ function filesOf(b) {
   return [];
 }
 
+/** The unified text of one edit's hunks, so the panel's diff view can draw it. @param {any} b */
+function unified(b) {
+  if (b && b.block === "diff" && Array.isArray(b.hunks)) {
+    return b.hunks.map((/** @type {any} */ h) => "@@\n" + String((h && h.del) || "").split("\n").filter((/** @type {string} */ l, /** @type {number} */ i, /** @type {string[]} */ a) => l || a.length > 1).map((/** @type {string} */ l) => `-${l}`).join("\n") + "\n" + String((h && h.add) || "").split("\n").map((/** @type {string} */ l) => `+${l}`).join("\n")).join("\n");
+  }
+  return "";
+}
+
 /**
  * @param {readonly any[]} items the items of one turn, in order
  * @param {number} ms how long the turn took (0 when not known)
- * @returns {{ files: { path: string, op: string, add: number, del: number }[], blocks: any[], commands: number, ms: number, line: string } | null}
+ * @returns {{ files: { path: string, op: string, add: number, del: number }[], diffs: { path: string, op: string, diff: string }[], commands: number, ms: number, line: string } | null}
  */
 export function turnSummary(items, ms = 0) {
   /** @type {Map<string, { path: string, op: string, add: number, del: number }>} */ const files = new Map();
-  /** @type {any[]} */ const blocks = [];
+  /** @type {Map<string, { path: string, op: string, diff: string }>} */ const diffs = new Map();
   let commands = 0;
   for (const it of items) {
     if (!it || (it.kind !== "tool" && it.kind !== "block")) continue;
     if (it.block && (it.block.block === "diff" || it.block.block === "files")) {
-      blocks.push(it.block);
+      const hunksText = unified(it.block);
+      if (it.block.block === "files") for (const f of it.block.files || []) { if (f && typeof f.path === "string") { const had = diffs.get(f.path); diffs.set(f.path, { path: f.path, op: String(f.op || "edit"), diff: (had ? had.diff + "\n" : "") + String(f.diff || "") }); } }
+      else if (it.block.path) { const had = diffs.get(it.block.path); diffs.set(it.block.path, { path: it.block.path, op: "edit", diff: (had ? had.diff + "\n" : "") + hunksText }); }
       for (const f of filesOf(it.block)) { const had = files.get(f.path); files.set(f.path, had ? { ...had, add: had.add + f.add, del: had.del + f.del } : f); }
     } else if (it.tool === "file" && it.summary) { const had = files.get(it.summary); if (!had) files.set(it.summary, { path: it.summary, op: "edit", add: 0, del: 0 }); }
     else if (SHELL.has(String(it.toolKind)) || SHELL.has(String(it.tool)) || (it.block && it.block.block === "terminal")) commands++;
@@ -46,5 +56,5 @@ export function turnSummary(items, ms = 0) {
   if (commands) parts.push(count(commands, "command"));
   const t = took(ms);
   if (t) parts.push(t);
-  return { files: [...files.values()], blocks, commands, ms, line: parts.join(", ") };
+  return { files: [...files.values()], diffs: [...diffs.values()], commands, ms, line: parts.join(", ") };
 }
