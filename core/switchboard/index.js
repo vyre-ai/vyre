@@ -12,6 +12,7 @@
 //   child's stdout --translate--> thread.* / ask.* events --> /v1/events/stream --> every surface
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
+import { capsFromInit } from "../../lib/harness-caps.js";
 import { newId } from "../../lib/id.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -1425,6 +1426,8 @@ export class Switchboard {
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (t.media && rec) this.saveMedia(id, rec, t.media).catch(() => {});
+    // What the harness showed about itself at start (R031-85): its capabilities, stored per harness, replaced at every start.
+    if (m && m.type === "system" && m.subtype === "init" && rec && rec.provider) { const hc = capsFromInit(rec.provider, m); if (hc) this.deps.call("sessions.harness.learn", hc).catch(() => {}); }
     if (t.providerMeta && rec && rec.provider && rec.provider !== "claude") this.deps.call("sessions.providers.learn", { provider: rec.provider, ...(rec.account ? { account: rec.account } : {}), ...t.providerMeta }).catch(() => {});
     if (t.model) {
       // What the provider says it runs is the truth (the record held what was asked for, an alias or an account default): the row follows it and a changed
@@ -4627,6 +4630,29 @@ export default {
     // For recall: who really started a session under an account's folder, from this record and never
     // from what the transcript says about itself. No record, or an agent's or a job's: not a person's.
     // For github's Undo, which stops the turn first (a person pressing stop) and then resets the worktree.
+    // R031-84: each API-key account's own model list, for the model registry (core/models). The key is taken the way a launch takes it, used for one request to the provider's own list and never
+    // returned; the answer is the provider's JSON. Internal: only a module may ask.
+    ctx.tool("threads.models-fetch", {
+      description: "Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const { fetchModels, MODEL_LISTING_PROVIDERS } = await import("../../lib/model-endpoints.js");
+        const { httpFetch } = await import("../../lib/http.js");
+        /** @type {any[]} */ const out = [];
+        for (const provider of MODEL_LISTING_PROVIDERS) {
+          const l = /** @type {any} */ (await ctx.call("sessions.accounts.list", { provider }).catch(() => null));
+          const rows = l && !l.error && Array.isArray(l.data) ? l.data : [];
+          for (const a of rows.filter((/** @type {any} */ x) => x && x.kind === "api-key")) {
+            try {
+              const c = await accountEnv(a);
+              const key = Object.values(c.env || {}).find((v) => typeof v === "string" && v);
+              out.push(key ? await fetchModels(a, String(key), { fetch: httpFetch, hostSafe }) : { provider, account: String(a.id), ok: false, error: "no key" });
+            } catch (e) { out.push({ provider, account: String(a.id), ok: false, error: e instanceof Error ? e.message.slice(0, 100) : "no key" }); }
+          }
+        }
+        return out;
+      },
+    });
     ctx.tool("threads.interrupt-in", {
       description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
       input: { type: "object", required: ["cwd"], properties: { cwd: str } },

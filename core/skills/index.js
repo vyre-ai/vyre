@@ -21,6 +21,7 @@ import { isPerson, agentName } from "../../lib/caller.js";
 import { frontMatter } from "../../lib/docs-corpus.js";
 import { buildIndex, search } from "../../lib/docs-rank.js";
 import { tokens } from "../../lib/tokens.js";
+import { fit } from "../../lib/harness-caps.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -40,7 +41,8 @@ function readDir(dir, where) {
     try { const st = fs.statSync(path.join(dir, name, "SKILL.md")); if (!st.isFile() || st.size > MAX_BODY) continue; text = fs.readFileSync(path.join(dir, name, "SKILL.md"), "utf8"); } catch { continue; }
     const { data, body } = frontMatter(text);
     const id = [where.level, ...(where.scope ? [where.scope] : []), name].join("/");
-    out.push({ id, name: String(data.name || name), level: where.level, scope: where.scope, description: String(data.description || "").replace(/\s+/g, " ").slice(0, 600), text, body, tokens: tokens(text) });
+    const needs = (Array.isArray(data.needs) ? data.needs : String(data.needs || "").split(",")).map((/** @type {any} */ x) => String(x).trim()).filter(Boolean).slice(0, 12);
+    out.push({ id, name: String(data.name || name), level: where.level, scope: where.scope, description: String(data.description || "").replace(/\s+/g, " ").slice(0, 600), text, body, tokens: tokens(text), ...(needs.length ? { needs, degrade: String(data.degrade || "").slice(0, 200) } : {}) });
   }
   return out;
 }
@@ -70,7 +72,21 @@ export function sourcesOf(c) {
 }
 
 /** @param {any} s */
-const shown = (s) => ({ id: s.id, name: s.name, level: s.level, ...(s.scope ? { scope: s.scope } : {}), description: s.description, tokens: s.tokens });
+const shown = (s) => ({ id: s.id, name: s.name, level: s.level, ...(s.scope ? { scope: s.scope } : {}), description: s.description, tokens: s.tokens, ...(s.needs ? { needs: s.needs } : {}) });
+/**
+ * Which of these skills work on a harness (R031-85): each is annotated `works: "degraded"` with its reason, or left out and named in `hidden` with the reason, by the one rule (lib/harness-caps.js fit).
+ * A harness nobody has started has no caps and hides nothing. @param {any[]} rows the shown rows @param {Map<string, any>} byId the skills by id @param {Record<string, boolean | null> | null} caps @param {string} harness
+ */
+function forHarness(rows, byId, caps, harness) {
+  /** @type {any[]} */ const kept = [], hidden = [];
+  for (const r of rows) {
+    const s = byId.get(r.id);
+    const f = fit(s && s.needs, caps, { harness, degrade: s && s.degrade });
+    if (f.works === false) hidden.push({ id: r.id, reason: f.reason });
+    else kept.push(f.works === "degraded" ? { ...r, works: "degraded", reason: f.reason } : r);
+  }
+  return { skills: kept, ...(hidden.length ? { hidden } : {}) };
+}
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -109,26 +125,35 @@ export default {
       return list;
     };
 
+    /** What a harness showed it can do (sessions.harness.get), or null when no session of it has started. @param {string} harness */
+    const harnessCaps = async (harness) => {
+      try { const r = await ctx.call("sessions.harness.get", { provider: String(harness) }); const h = r && !r.error && r.data && Array.isArray(r.data.harnesses) ? r.data.harnesses[0] : null; return h ? h.caps : null; } catch { return null; }
+    };
+
     ctx.tool("skills.list", {
       effect: "read",
       description: "The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre (Vyre's own), account (the person's installed skills), project or agent. Narrow with `project` or `level`. Nothing you may not use is listed. skills.find ranks them for what you are about to do.",
-      input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
+      input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 }, harness: { type: "string", maxLength: 20 } } },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const list = await visible(meta, { project: input.project, level: input.level });
-        return { skills: list.slice(0, input.limit || 100).map(shown), total: list.length };
+        const rows = list.slice(0, input.limit || 100).map(shown);
+        if (!input.harness) return { skills: rows, total: list.length };
+        return { ...forHarness(rows, new Map(list.map((/** @type {any} */ s) => [s.id, s])), await harnessCaps(input.harness), String(input.harness)), total: list.length };
       },
     });
 
     ctx.tool("skills.find", {
       effect: "read",
       description: "The skills that fit what you are about to do, best first: { id, name, level, description, tokens }. `query` is plain words (\"keep a password out of a file\"). Only skills you may use are ranked. Read one with tools_call skills.get.",
-      input: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 }, project: { type: "string", maxLength: 64 } }, required: ["query"] },
+      input: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 }, project: { type: "string", maxLength: 64 }, harness: { type: "string", maxLength: 20 } }, required: ["query"] },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const list = await visible(meta, { project: input.project });
         if (!list.length) return { skills: [] };
         const index = buildIndex(list.map((s) => ({ path: s.id, title: s.name, when: s.description, summary: "", headings: [], body: s.body, ref: s })));
         const hits = search(index, String(input.query), { limit: input.limit || 5 });
-        return { skills: hits.map((h) => shown(/** @type {any} */ (h.page).ref)) };
+        const rows = hits.map((h) => shown(/** @type {any} */ (h.page).ref));
+        if (!input.harness) return { skills: rows };
+        return forHarness(rows, new Map(list.map((/** @type {any} */ s) => [s.id, s])), await harnessCaps(input.harness), String(input.harness));
       },
     });
 

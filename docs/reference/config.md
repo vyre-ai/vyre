@@ -133,6 +133,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_NPM_BIN` | The `npm` that `vyre update` installs a release with. Tests point it at a fake. | `core/cli/commands/update.js` |
 | `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
+| `VYRE_OPENROUTER_API` | Not described yet. | `core/models/index.js` |
 | `VYRE_OPENROUTER_URL` | Not described yet. | `core/sessions/index.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/up.js`, `core/cli/kit.js` |
 | `VYRE_OTHER_VPN_BIN` | Not described yet. | `core/network/other-vpn.js` |
