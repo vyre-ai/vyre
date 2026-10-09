@@ -45,8 +45,9 @@ test("the credential holds the host and the rules and no key; the catalog lists 
   assert.deepEqual(Object.keys(cat["conn-linkedin"].operations).sort(), ["search_people", "send_message"]);
   assert.equal(cat["conn-linkedin"].operations.search_people.site.name, "searchPeople");
   assert.ok(!JSON.stringify(cat).includes("app.example.com") && !JSON.stringify(cat).includes(F.CSRF));
-  const item = (await m.v.list({}, "cli")).find((/** @type {any} */ x) => x.name === "conn-linkedin");
-  assert.equal(item.kind, "api-credential");
+  const { config } = await m.v.apiCredential("conn-linkedin");
+  assert.deepEqual(config.auth, { type: "browser" });
+  assert.deepEqual(config.hosts, ["app.example.com"]);
 });
 
 test("a read goes to the browser, not the network: the call is judged like any request, run at once, and its answer comes back as a provider's would", async t => {
@@ -81,11 +82,11 @@ test("a send waits for the approval, is made once with it, and a replay gets the
   assert.equal(asked.length, 1, "never a second send");
 });
 
-test("a failure in the browser comes back as the status it says; a missing browser is a plain refusal", async t => {
+test("a failure in the browser comes back as the status it says; with nothing to run it the call is refused, not sent anywhere", async t => {
   const m = await mk(t, async () => ({ status: 401, data: { error: { class: "auth", reason: "sign in again" } } }));
   const r = await m.run("vault.service.forward", { connector: "conn-linkedin", request: { method: "GET", path: "/ops/search_people", query: { query: "gamma labs" } } });
   assert.equal(r.status, 401);
   assert.equal(body(r).error.class, "auth");
   const none = await mk(t, /** @type {any} */ (undefined));
-  await assert.rejects(none.run("vault.service.forward", { connector: "conn-linkedin", request: { method: "GET", path: "/ops/search_people", query: { query: "gamma labs" } } }), /no browser is connected/);
+  await assert.rejects(none.run("vault.service.forward", { connector: "conn-linkedin", request: { method: "GET", path: "/ops/search_people", query: { query: "gamma labs" } } }), /no such tool/);
 });
