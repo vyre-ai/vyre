@@ -3,11 +3,13 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { poster, readPage, colour } from "./poster.js";
 import { start } from "../daemon/index.js";
 import { tempHome, present, asOwner } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
+
+process.env.VYRE_SEAL_DEV = "1";
 
 test("a poster says the page's own title and heading on the page's own colour", () => {
   const html = `<!doctype html><html><head><title>Quarterly intake</title><meta name="theme-color" content="#102a43"></head><body><h1>Cases <b>this</b> week</h1></body></html>`;
@@ -46,7 +48,7 @@ test("with no browser on the machine the card still gets a poster drawn from the
   asOwner(d, root);
   t.after(() => d.stop());
   const call = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, "cli");
-  const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-poster-")));
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-poster-")));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, "index.html"), "<!doctype html><title>Sam's intake board</title><h1>Open matters</h1>");
   const id = (await call("previews.open", { title: "Board", path: dir })).data.id;
