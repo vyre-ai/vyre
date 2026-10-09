@@ -63,5 +63,21 @@
         }
       }
     ]
-  }
+  },
+  "settings": [
+    {
+      "key": "documents.pdf",
+      "group": "documents",
+      "label": "Address of the PDF converter",
+      "help": "Documents turns a filled Word file into a PDF through Gotenberg, which runs beside Vyre. Give its address (such as http://127.0.0.1:3000). Left empty, a PDF is refused in plain words and the Word file is still made.",
+      "type": "string",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "documents.pdf"
+      }
+    }
+  ]
 }

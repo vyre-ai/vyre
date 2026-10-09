@@ -59,5 +59,21 @@
         }
       }
     ]
-  }
+  },
+  "settings": [
+    {
+      "key": "comms.sms",
+      "group": "comms",
+      "label": "Text messages through Twilio",
+      "help": "Your Twilio account number (starts with AC) and the number texts come from: { \"account\": \"AC...\", \"from\": \"+15555550123\" }. Your Twilio key goes in the Vault. Every text waits for your yes.",
+      "type": "object",
+      "levels": [
+        "account"
+      ],
+      "apply": "restart",
+      "store": {
+        "config": "comms.sms"
+      }
+    }
+  ]
 }

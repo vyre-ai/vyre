@@ -2,7 +2,7 @@
 title: Vyre Computer
 summary: Let an agent work on a computer by name, the cloud computer by default or one of your Macs, with a Connection or a learned operation tried before the screen and a login typed in by the Vault.
 audience: users, builders
-owner: computer
+owner: connectors
 status: draft
 ---
 
