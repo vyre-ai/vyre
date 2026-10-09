@@ -1960,11 +1960,13 @@ export class Switchboard {
       if (managed) receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
-        this.deps.call("gate.held", { thread }).catch(() => null),
+        this.deps.call("approvals.items", {}).catch(() => null),
       ]);
       const writes = w && !w.error && w.data && Array.isArray(w.data.writes) ? w.data.writes : [];
       facts = writes.filter((/** @type {any} */ x) => x && x.state !== "forgotten" && x.from && x.from.thread === thread && x.text).map((/** @type {any} */ x) => `${x.kind || "fact"}: ${x.text}`).slice(0, ROLL.ledgerFacts);
-      const items = g && !g.error && g.data && Array.isArray(g.data.held) ? g.data.held : Array.isArray(g.data) ? g.data : [];
+      // The drafts this thread has waiting at the Gate, from the one waiting list: each card carries the Gate's own row as `facts`.
+      const cards = g && !g.error && g.data && Array.isArray(g.data.items) ? g.data.items : [];
+      const items = cards.filter((/** @type {any} */ c) => c && c.source === "gate" && c.facts && c.facts.thread === thread).map((/** @type {any} */ c) => c.facts);
       waiting = items.map((/** @type {any} */ x) => `${x.id || ""} ${x.summary || x.kind || ""}`.trim()).filter(Boolean);
     }
     // R031-00u: the reference sheet, off unless VYRE_ROLLOVER_SHEET=on (or the managed-context switch above): on by default only if the eval (R031-00v) shows it helps. Pointers come from Recall's

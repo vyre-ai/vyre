@@ -204,6 +204,11 @@ test("approvals.items: a held draft is a card, the owner's settling closes it, a
   assert.equal(next.recent[0].state, "settled");
   assert.ok(!JSON.stringify(open).includes("the client asked"), "nothing from the draft beyond its summary");
   assert.equal((await w.call("approvals.items", {}, "mcp")).error.code, "denied", "a model does not read the queue");
+  // A model in a session, proven by its own socket (a thread, an agent, the assistant), is refused as well as the bare label: the queue holds drafts and where they go.
+  for (const [caller, meta] of [["mcp:thread:t-harlow", { thread: "t-harlow" }], ["mcp:agent:kit", { thread: "t-harlow", agent: "kit", agentKind: "agent" }], ["mcp:agent:juno", { thread: "t-harlow", agent: "juno", agentKind: "assistant" }], ["harness", { thread: "t-harlow" }]]) {
+    const r = await w.reg.call("approvals.items", {}, caller, meta);
+    assert.equal(r.error?.code, "denied", `${caller} must not read the approval queue: ${JSON.stringify(r).slice(0, 120)}`);
+  }
 });
 
 test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
