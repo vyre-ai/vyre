@@ -154,7 +154,7 @@ export function checkView(key, e, c) {
   if (e.forms !== undefined && !isObj(e.forms)) out.push(`${at}.forms must be an object of forms`);
   const fc = { ...c, forms: new Set(Object.keys(forms)) };
   for (const [name, f] of Object.entries(forms)) { if (!ID.test(name)) out.push(`${at}.forms "${name}" must be lowercase letters, digits and dashes`); checkForm(`${at}.forms.${name}`, f, c, out); }
-  if ((e.list === undefined) === (e.form === undefined)) out.push(`${at} needs exactly one of list or form`);
+  if (e.screen === undefined && (e.list === undefined) === (e.form === undefined)) out.push(`${at} needs exactly one of list or form`);
   if (e.form !== undefined && (typeof e.form !== "string" || !fc.forms.has(e.form))) out.push(`${at}.form "${e.form}" is not one of its forms`);
   if (e.list !== undefined) {
     const l = e.list, la = `${at}.list`;
@@ -162,7 +162,8 @@ export function checkView(key, e, c) {
     else {
       checkTool(`${la}.tool`, l.tool, c, out);
       if (l.input !== undefined && !isObj(l.input)) out.push(`${la}.input must be an object`);
-      checkMap(la, l.map, ["rows", "id", "title", "subtitle", "accessory", "icon", "group", "url"], out);
+      checkMap(la, l.map, ["rows", "id", "title", "subtitle", "accessory", "icon", "group", "url", "tone"], out);
+      if (l.tones !== undefined && (!isObj(l.tones) || Object.keys(l.tones).length > 20 || Object.values(l.tones).some(v => !["plain", "ok", "warn", "err", "accent"].includes(/** @type {string} */ (v))))) out.push(`${la}.tones must map up to 20 values to plain, ok, warn, err or accent`);
       if (l.empty !== undefined && (typeof l.empty !== "string" || l.empty.length > 200)) out.push(`${la}.empty must be a short sentence`);
       if (l.detail !== undefined) {
         if (!isObj(l.detail)) out.push(`${la}.detail must be an object`);

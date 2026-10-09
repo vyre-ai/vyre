@@ -33,6 +33,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`design`](#design) | `core/design` | `box`, `local` | 7 | 2 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
@@ -93,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 143 | 50 | capsule, cli, deck |
-| [`views`](#views) | `core/views` | `box`, `local` | 3 | 0 | cli |
+| [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
@@ -285,6 +286,17 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Requires: none
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
+- Shows on: cli
+
+## design
+
+The design language's keeper: the block catalogue and a screen checker for anyone who designs (the Engineer, Claude Code, Codex), the space's own screens, and the proposals to change them. An agent proposes a screen; the screen's owner sees it before and after and says yes or no.
+
+- Folder: `core/design`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [7](tools.md#design)
+- Emits: [2 events](events.md#design)
 - Shows on: cli
 
 ## docs
@@ -980,7 +992,7 @@ A module's screens, described and drawn by Vyre: the lists, boards, summaries, d
 - Folder: `core/views`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [3](tools.md#views)
+- Tools: [6](tools.md#views)
 - Emits: no events
 - Shows on: cli
 

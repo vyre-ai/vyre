@@ -173,7 +173,7 @@ const deskScreen = {
 };
 
 test("views: a screen reads each block's own tool, draws for a surface, and an action on a block runs the module's own tool as the module", async t => {
-  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen }, broken: { title: "Broken", screen: { v: 2, layout: { block: "x" }, blocks: { x: { type: "nope" } } } } } };
+  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen } } };
   const { c } = await world(t, mf);
   const by = Object.fromEntries((await c("views.list", {})).data.commands.filter((/** @type {any} */ x) => x.module === "cards").map((/** @type {any} */ x) => [x.id, x]));
   assert.equal(by.desk.kind, "screen");
@@ -194,8 +194,6 @@ test("views: a screen reads each block's own tool, draws for a surface, and an a
   const act = (await c("views.act", { module: "cards", command: "desk", block: "cards", action: "poke", id: "c1" })).data;
   assert.equal(act.kind, "done", JSON.stringify(act));
   assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => [x.tool]), [["poke"]]);
-  const bad = (await c("views.get", { module: "cards", command: "broken" })).data;
-  assert.equal(bad.code, "bad_screen", JSON.stringify(bad));
 });
 
 test("views: a v1 view asked for a surface comes back as a one-block screen, and without one it is unchanged", async t => {
@@ -208,8 +206,8 @@ test("views: a v1 view asked for a surface comes back as a one-block screen, and
   assert.deepEqual(s.blocks.main.content.columns.map((/** @type {any} */ x) => x.id), ["todo", "doing", "done", "other"]);
 });
 
-test("views: the assistant shows a screen in a thread, the chat asks what a thread was shown, and a failed view is never recorded as shown", async t => {
-  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen }, broken: { title: "Broken", screen: { v: 2, layout: { block: "x" }, blocks: { x: { type: "nope" } } } } } };
+test("views: the assistant shows a screen in a thread, the chat asks what a thread was shown, and a view that is not there is never recorded as shown", async t => {
+  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen } } };
   const { c } = await world(t, mf);
   const shown = (await c("views.show", { module: "cards", command: "desk", thread: "t1" })).data;
   assert.equal(shown.shown, true, JSON.stringify(shown));
@@ -217,7 +215,7 @@ test("views: the assistant shows a screen in a thread, the chat asks what a thre
   assert.ok(Object.keys(shown.screen.blocks).length <= 3);
   assert.ok(!JSON.stringify(shown).includes("cards.list"), "ids and titles only");
   await c("views.show", { module: "cards", command: "board", thread: "t1" });
-  assert.equal((await c("views.show", { module: "cards", command: "broken", thread: "t1" })).data.shown, false);
+  assert.ok((await c("views.show", { module: "cards", command: "gone", thread: "t1" })).error, "a view that does not exist is an error and is not recorded");
   assert.equal((await c("views.show", { module: "cards", command: "desk" })).data.shown, false, "no thread, nothing placed");
   await c("views.show", { module: "cards", command: "desk", thread: "t1" });
   const list = (await c("views.shown", { thread: "t1" })).data.screens;

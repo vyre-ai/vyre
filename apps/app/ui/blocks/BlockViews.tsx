@@ -40,7 +40,7 @@ export function ListBlock({ k, b, h }: P) {
         {r.map((x, i) => (
           <View key={x.id ?? i}>
             {i > 0 ? <Divider /> : null}
-            <Row title={x.title} sub={x.subtitle} end={x.accessory ? <Chip>{String(x.accessory)}</Chip> : undefined} onPress={h.open ? () => h.open!(k, x) : undefined} />
+            <Row title={x.title} sub={x.subtitle} end={x.accessory ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined} onPress={h.open ? () => h.open!(k, x) : undefined} />
           </View>
         ))}
       </Card>

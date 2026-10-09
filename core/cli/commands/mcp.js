@@ -19,14 +19,16 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, fail, usage } from "../kit.js";
 
 const SERVER = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "harness", "mcp", "server.js");
+/** The Design and Module MCP: added when the work is design or building a module (harness/mcp/design-serve.js). */
+const DESIGN = path.join(path.dirname(SERVER), "design-serve.js");
 /** What `claude mcp add` is given, word by word. */
 export const INSTALL = ["mcp", "add", "-s", "user", "vyre", "--", "vyre", "mcp"];
 export const INSTALL_LINE = ["claude", ...INSTALL].join(" ");
 
 /** Serve until stdin closes, the way Claude Code ends a stdio server. */
-async function serve() {
+async function serve(server = SERVER) {
   const closed = new Promise(resolve => { process.stdin.once("end", resolve); process.stdin.once("close", resolve); });
-  await import(pathToFileURL(SERVER).href);
+  await import(pathToFileURL(server).href);
   await closed;
   return 0;
 }
@@ -34,6 +36,7 @@ async function serve() {
 /** Every verb run() handles, for `vyre commands --json`. `vyre mcp` alone serves too. */
 export const VERBS = [
   { verb: "serve", summary: "the MCP server on stdio, which Claude Code starts (vyre mcp alone is the same)", usage: "" },
+  { verb: "design", summary: "the Design and Module MCP on stdio: blocks, screen checks, pictures, proposals, and the module kit", usage: "" },
   { verb: "install", summary: "print the claude mcp add line; --yes runs it", usage: "[--yes] [--json]" },
 ];
 
@@ -68,7 +71,7 @@ async function install(flags) {
 }
 
 export default {
-  name: "mcp", order: 72, usage: "vyre mcp [serve | install [--yes]] [--json]",
+  name: "mcp", order: 72, usage: "vyre mcp [serve | design | install [--yes]] [--json]",
   summary: "the Vyre MCP server on stdio, for plain claude",
   verbs: VERBS,
   /** @param {string[]} args */
@@ -80,6 +83,10 @@ export default {
       if (json()) return usage("vyre mcp serves MCP on stdio for Claude Code; it has no --json", "vyre mcp install --json");
       if (rest.length) return usage(`vyre mcp serve takes no arguments (got ${rest[0]})`);
       return serve();
+    }
+    if (verb === "design") {
+      if (json()) return usage("vyre mcp design serves MCP on stdio; it has no --json");
+      return serve(DESIGN);
     }
     if (verb === "install") return install(rest);
     return usage(`vyre mcp ${verb}: not a verb`, "vyre mcp to serve, vyre mcp install to add it to Claude Code");

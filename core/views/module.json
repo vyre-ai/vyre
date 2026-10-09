@@ -11,7 +11,8 @@
       { "name": "views.get", "reach": "person", "effect": "read" },
       { "name": "views.act", "reach": "person", "effect": "write" },
       { "name": "views.show", "reach": "anyone", "effect": "read" },
-      { "name": "views.shown", "reach": "person", "effect": "read" }
+      { "name": "views.shown", "reach": "person", "effect": "read" },
+      { "name": "views.preview", "reach": "person", "effect": "read" }
     ]
   },
   "watches": { "emits": [] },

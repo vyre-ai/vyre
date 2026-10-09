@@ -27,6 +27,10 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
   "views.list": "lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer",
+  "design.catalogue": "reads the design language's block catalogue: names, props and sample data, nothing of the person's",
+  "design.validate": "checks a screen against the design language and answers the problems; it keeps nothing",
+  "design.screens": "reads the space's own screens as data (layout and blocks); the data they show is fetched as the viewer",
+  "design.propose": "files a proposed screen as pending; nothing changes on any screen until the screen's owner says yes, and the proposal lists every tool it reads and every button runs",
   "views.show": "shows the person a read-only card of a module screen in their chat; the module's tool runs as the asking agent, and an action in it opens the full screen",
   "views.get": "reads one screen a module declares; the data it shows is fetched as the viewer, under the viewer's own grants",
   "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
