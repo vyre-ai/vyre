@@ -10,11 +10,11 @@
 // does, and nothing in it is ever promoted to a personal fact. Forgetting in a project drops that
 // link; the row is forgotten with its last link; nothing is deleted, so every forget can be undone.
 
-import crypto from "node:crypto";
 import { current as whoNow } from "./who.js";
 import { contentWords } from "./iq/retrieve.js";
 import { scrubbed } from "./sealed.js";
 import { finders } from "../../lib/credential-shapes.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -121,7 +121,7 @@ export function writeStore({ db, now = () => Date.now() }) {
           follow(same.id);
           return { id: String(same.id), linked: true, fresh: true };
         }
-        const id = `mw_${crypto.randomBytes(8).toString("hex")}`;
+        const id = newPrefixedId("mw");
         q.insert.run(id, w.kind, scrubbed(w.text), w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
           w.from.thread ?? null, Number.isInteger(w.from.seq) ? w.from.seq : null, w.untrusted ? 1 : 0, t, t);
         q.addLink.run(id, w.project, t);

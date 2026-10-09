@@ -22,11 +22,11 @@
 // Everything this file needs from vyred comes in as a function, so it can be tested alone.
 
 import { spawn } from "node:child_process";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { scrub } from "../../lib/scrub.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const API = "https://api.github.com";
 /** Requested once, at sign-in: full read/write on every repo the account can reach. GitHub's
@@ -204,7 +204,7 @@ export function connector(deps) {
       const gh = resolveGh(deps.gh);
       if (!gh) throw fail("Sign-in needs the GitHub CLI (gh), which is not installed here. Install it, or add a fine-grained token instead.", "gh_missing");
       const dir = fs.mkdtempSync(path.join(deps.tmpRoot || os.tmpdir(), "vyre-gh-"));
-      const id = `gh_${crypto.randomBytes(9).toString("base64url")}`;
+      const id = newPrefixedId("gh");
       const drop = () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} };
       let child;
       try {
@@ -252,7 +252,7 @@ export function connector(deps) {
       if (typeof token !== "string" || !/^[A-Za-z0-9_\-]{20,255}$/.test(token.trim())) throw fail("that does not look like a GitHub token (letters, digits, - and _ only, no spaces)");
       const clean = token.trim();
       if (await deps.taken(name)) throw fail(`an account named ${name} is already connected; remove it first or choose another name`, "exists");
-      const flow = /** @type {Flow} */ ({ id: `gh_${crypto.randomBytes(9).toString("base64url")}`, name, dir: "", child: null, expires: 0, values: [clean], timer: null, output: "", gh: "", pasted: true });
+      const flow = /** @type {Flow} */ ({ id: newPrefixedId("gh"), name, dir: "", child: null, expires: 0, values: [clean], timer: null, output: "", gh: "", pasted: true });
       try { await complete(flow, clean); }
       catch (e) { const clean2 = scrub(String(/** @type {any} */ (e)?.message || e), [clean]); throw Object.assign(new Error(clean2), { code: typeof /** @type {any} */ (e)?.code === "string" ? /** @type {any} */ (e).code : "failed" }); }
       // What the token can really reach is GitHub's to say: one cheap call (a page of one repo and

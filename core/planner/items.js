@@ -2,7 +2,7 @@
 // The planner's item vocabulary: its kinds and states, the one name for a ring (`planner-<item>-<due>`), short ids for rings, and how a row is shown by the tools.
 // The data itself lives in the Space's records (records.js).
 
-import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event", "task"];
 export const STATES = ["open", "done", "cancelled"];
@@ -20,7 +20,7 @@ export const readKey = key => {
 };
 
 /** Short random ids: i_ for items, f_ for firings. */
-export const newId = prefix => `${prefix}_${crypto.randomBytes(6).toString("base64url")}`;
+export const newId = prefix => newPrefixedId(prefix);
 
 /** A row as the tools show it: JSON parsed, flags as booleans. */
 export function shape(r) {

@@ -45,6 +45,7 @@ import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
+import { newId as newUuid } from "../../lib/id.js";
 
 /**
  * A module grant may name the one project it is good for, so the same module (a shared teammate,
@@ -208,7 +209,7 @@ const IDENTITY = "identity";
 const IDENTITY_AT = { vault: "agents", kv: 1, id: IDENTITY, ver: 1, name: IDENTITY };
 
 const now = () => Date.now();
-const newId = () => crypto.randomBytes(9).toString("base64url");
+const newId = () => newUuid();
 // Binds an import preview to the file it read. Random per process and never stored, so a token is
 // not forgeable from vyre.db and says nothing about the file's contents (ADR 0028, decision 1).
 const IMPORT_TOKEN_KEY = crypto.randomBytes(32);

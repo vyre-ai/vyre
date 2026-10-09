@@ -35,6 +35,7 @@ import path from "node:path";
 import { sealItemV2, openItemV2 } from "./crypto.js";
 import { writeSealed, readSealed, removeSealed } from "./store.js";
 import * as relay from "./relay.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const EMERGENCY_MIGRATION = `CREATE TABLE vault_emergency (
      id TEXT PRIMARY KEY, person TEXT NOT NULL, wait_ms INTEGER NOT NULL, items TEXT, created INTEGER NOT NULL,
@@ -227,7 +228,7 @@ export class Emergency {
       list = JSON.stringify([...new Set(items)]);
     }
     const t = this.now();
-    const id = "e_" + crypto.randomBytes(12).toString("base64url");
+    const id = newPrefixedId("e");
     this.db.prepare("INSERT INTO vault_emergency (id, person, wait_ms, items, created, refreshed) VALUES (?,?,?,?,?,?)").run(id, p.name, wait_ms, list, t, t);
     this.vault.sign("vault_emergency", id);
     let built;

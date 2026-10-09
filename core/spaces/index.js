@@ -79,6 +79,7 @@ import { spaceFiles } from "./host.js";
 import fs from "node:fs";
 import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
@@ -698,7 +699,7 @@ export default {
       obj({ name: str, deviceLabel: str }, ["name"]), async i => {
         try {
           const b = await idops.beginContactRecovery({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
-          const requestId = `rec_${crypto.randomBytes(9).toString("base64url")}`;
+          const requestId = newPrefixedId("rec");
           recoveries.set(requestId, { request: b.request, key: b.key });
           if (recoveries.size > 8) recoveries.delete(/** @type {string} */ (recoveries.keys().next().value));
           return { requestId, request: b.request, contacts: b.contacts };

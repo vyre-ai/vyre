@@ -13,8 +13,8 @@
 // quiet (`idleMs`, 30 min with no new turn).
 
 import fs from "node:fs";
-import crypto from "node:crypto";
 import { follow, followState, settle, eachLine } from "../transcripts/index.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** Replaying from an old turn sends at most this many, the newest. */
 export const REPLAY_MAX = 500;
@@ -79,7 +79,7 @@ export class Watches {
       // Another watcher already follows this file: replay reads only up to where it has got.
       before = this.scan(found.file, entry.offset, true).turns;
     }
-    const id = `w_${crypto.randomBytes(8).toString("hex")}`;
+    const id = newPrefixedId("w");
     this.watches.set(id, { id, session: entry.session, file: found.file, renewed: now, started: now });
     entry.watchers.add(id);
     this.arm();

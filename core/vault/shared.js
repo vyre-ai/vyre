@@ -33,6 +33,7 @@ import { canonical, sign, verify, sealFor, openFrom, keyObject, newVaultKey, sea
 import { writeSealed, removeSealed } from "./store.js";
 import { fingerprint } from "./share.js";
 import * as relay from "./relay.js";
+import { newId as newUuid } from "../../lib/id.js";
 
 export const SHARED_MIGRATIONS = [
   `CREATE TABLE vault_shared (
@@ -61,7 +62,7 @@ const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const ITEM_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 const now = () => Date.now();
-const newId = () => crypto.randomBytes(9).toString("base64url");
+const newId = () => newUuid();
 const hash = v => crypto.createHash("sha256").update(canonical(v)).digest("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 export const classOf = id => `shared:${id}`;

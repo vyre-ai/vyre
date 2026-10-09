@@ -16,6 +16,7 @@ import { transcriptFolders, claudeHome } from "../config/index.js";
 import { scan } from "./scan.js";
 import { agentHomes, formatFor } from "./formats/index.js";
 import { folderName } from "./formats/shared.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** Only the person's own surfaces read what is on their disk. "onboard" is the onboarding page on the machine's own loopback, reached only with the one-time link the person was given: its history step is this module's first screen. */
 const PEOPLE = ["cli", "local", "deck", "capsule", "onboard"];
@@ -88,7 +89,7 @@ export default {
           const bySource = under(f.file, include) && !under(f.file, exclude) && !(f.cwd && under(f.cwd, exclude));
           return byFolder || bySource;
         });
-        const id = "plan_" + crypto.randomBytes(6).toString("hex");
+        const id = newPrefixedId("plan");
         const plan = { at: t, files: chosen.map(f => f.file), items: chosen.map(f => ({ path: f.file, rel: f.format ? `${folderName(f.cwd)}/${f.id}.jsonl` : `${path.basename(path.dirname(f.file))}/${f.id}.jsonl`, bytes: f.bytes, ...(f.format ? { format: f.format, home: f.home, cwd: f.cwd } : {}) })),
           hash: crypto.createHash("sha256").update(chosen.map(f => f.file).sort().join("\n")).digest("hex"), sessions: chosen.length, bytes: chosen.reduce((n, f) => n + f.bytes, 0),
           folders: [...new Set(chosen.map(f => f.cwd).filter(Boolean))].sort() };
@@ -184,7 +185,7 @@ export default {
         const c = await consent({ machine: m, on: true, planHash: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
         await ctx.call("memory.pace", { pace });
-        const id = "imp_" + crypto.randomBytes(6).toString("hex");
+        const id = newPrefixedId("imp");
         ctx.store.db.prepare("INSERT INTO import_runs (id, at, machine, plan_hash, mode, pace, state, of) VALUES (?,?,?,?,?,?,'sending',?)").run(id, Date.now(), m, p.hash, mode, pace, p.items.length);
         current = { id, stop: false, done: null };
         current.done = send(id, p.items, mode).catch(e => ctx.log(`import ${id} failed: ${e.message}`));

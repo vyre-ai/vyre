@@ -9,6 +9,7 @@
 
 import crypto from "node:crypto";
 import { flowHash, canonical } from "./schema.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /**
  * @typedef {{ kind: string, id: string, space?: string }} ActorRef
@@ -28,7 +29,7 @@ import { flowHash, canonical } from "./schema.js";
  */
 
 /** A new random id with a prefix: `fl_`, `run_`. @param {string} prefix */
-export const newId = prefix => prefix + crypto.randomBytes(10).toString("base64url").toLowerCase().replace(/[^a-z0-9]/g, "x");
+export const newId = prefix => newPrefixedId(prefix.replace(/_$/, ""));
 
 /** The deterministic id of a run: the same (flow, trigger key) is the same run, however many times the trigger is delivered. @param {string} flow @param {string} key */
 export const runIdFor = (flow, key) => "run_" + crypto.createHash("sha256").update(flow + "\n" + key).digest("base64url").slice(0, 22).toLowerCase().replace(/[^a-z0-9]/g, "x");

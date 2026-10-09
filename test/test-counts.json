@@ -834,6 +834,7 @@
  "test/guests.test.js": 9,
  "test/harness.test.js": 15,
  "test/held-approve-retry.test.js": 1,
+ "test/ids-single.test.js": 2,
  "test/import-e2e.test.js": 2,
  "test/install-box-look.test.js": 4,
  "test/install-box-v2.test.js": 40,
