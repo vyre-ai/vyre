@@ -821,7 +821,8 @@ update() {
   # The daemon is stopped, the signed release files are replaced as a folder, and only then the new container starts: a running vyred never sees
   # the new module list against the old tree (or the reverse), and a restart verifies one consistent release.
   compose stop vyre >/dev/null 2>&1 || true
-  rm -f "$UPD_PRIV/release.swapped"
+  # (an update the person runs does not own this folder: root's publish_release, asked through sudo, clears the mark itself)
+  rm -f "$UPD_PRIV/release.swapped" 2>/dev/null || true
   publish_release "$tmp" || roll_back
   compose up -d || roll_back
   ready || roll_back
