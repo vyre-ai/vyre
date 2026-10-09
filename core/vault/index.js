@@ -36,6 +36,7 @@ import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
+import * as agentFillTools from "./tools/agent-fill.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
 import * as requestTools from "./request.js";
@@ -262,7 +263,7 @@ export default {
         if (r && String(r.vault).startsWith("shared:") && slash > 0) return vault.shared.deleteItem({ vault: String(input.name).slice(0, slash), name: String(input.name).slice(slash + 1) }, caller);
         return vault.remove(input, caller);
       },
-      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
+      presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`, { when: ({ name }) => { const r = vault.row(name); return Boolean(r && r.vault !== "personal"); } }));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
@@ -493,6 +494,9 @@ export default {
     /** A tool only other modules can call, as vault.release is. */
     const internal = (name, description, input, run) => ctx.tool(name, { internal: true, description, input, run });
     const said = saidTools.register({ vault, internal, tool, emit: (t, p) => ctx.events.emit(t, p) });
+    // vault.agent.fill signs an agent in on its own computer; vault.tagged / vault.untag show and end what a # tag has lent. A # tag ends with its conversation.
+    agentFillTools.register({ ctx, vault, said, tool });
+    try { ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const t = String((e && e.payload && (e.payload.thread || e.payload.uuid || e.payload.id)) || (e && e.thread) || ""); if (t) said.dropThread(t, "module:vault"); }); } catch { /* no event bus in a bare test */ }
     // A vendor API call with an api-credential: reads run, asked-for sends run, the rest hold at the Gate.
     const requests = requestTools.register({ vault, tool, internal, said, call: ctx.call ? (name, input) => ctx.call(name, input) : undefined, log: ctx.log });
 

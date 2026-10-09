@@ -79,7 +79,7 @@ export function makeBox(platform: () => Promise<Platform>, peer?: PeerRoute) {
       return socketOn(path);
     },
     /** A read, now. */
-    async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string; kernelProof?: string; approval?: string }): Promise<Result<T>> {
+    async call<T = unknown>(tool: string, input: Record<string, unknown> = {}, o?: { presence?: string; kernelProof?: string; approval?: string; yes?: string }): Promise<Result<T>> {
       if (peer?.wanted()) return viaPeer<T>(tool, input);
       return (await client()).call<T>(tool, input, o);
     },

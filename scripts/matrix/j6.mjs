@@ -1,4 +1,4 @@
-// J6 (agent half): Vyre for Chrome against a fake GoHighLevel page, on a CI runner. It reuses the standalone
+// J6 (agent half): Vyre Computer against a fake GoHighLevel page, on a CI runner. It reuses the standalone
 // harness (local/hands-chrome-mac/standalone/harness/real.mjs: the built package, the real extension and native
 // host in a temp Chrome profile, an MCP client over stdio, and the bench's GoHighLevel-shaped fixture) and folds
 // its stages into the matrix's results by journey step. Then step 6.7: install and uninstall in a temp home and

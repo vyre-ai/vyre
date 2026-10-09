@@ -15,7 +15,7 @@ tool, your calendar or your mail. Vyre connects these:
 - **Google accounts**, for Calendar and Gmail.
 - **Apps from the catalog**, which run on their vendor's own hosted server: `vyre connect apps`.
 - **GitHub accounts**, so a session can clone your repos and commit as you.
-- **Your own Chrome**, through Vyre for Chrome, on a Mac.
+- **Your own Chrome**, through Vyre Computer, on a Mac.
 
 The first three keep the same promises. A connection names [vault](vault.md) items and never
 holds a value. Anything that goes out as you waits at the Gate until you approve it.
@@ -219,7 +219,7 @@ lock: a session can change its own git settings.
 
 ## Your own Chrome
 
-Vyre for Chrome lets Claude work in the Chrome you already have open, signed in as you, on a
+Vyre Computer lets Claude work in the Chrome you already have open, signed in as you, on a
 Mac. It reads a page in one call, fills forms, clicks, and reads the page's DevTools. It works in
 Chrome, Brave, Edge, Chromium, Arc and Dia. Vyre sets up the connector for you (`chrome.install`
 registers it with each browser it finds), and then you load the extension in `chrome://extensions`
@@ -241,7 +241,7 @@ with Developer mode on. Click its toolbar icon to see whether it is connected.
   `document.write`, can get around those two. A script that builds code from text, or starts a
   worker some other way, cannot be held. Only the main page and open shadow DOM are reachable, so
   cross-origin iframes are not.
-- **Site learning is on by default.** Vyre for Chrome remembers each site's layout, how to find
+- **Site learning is on by default.** Vyre Computer remembers each site's layout, how to find
   its buttons, how to tell the page is ready or that you must sign in, and the flows that worked,
   so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens.
   See and forget any of it in the Vyre app under Memory, Sites; each forget can be undone for a day.

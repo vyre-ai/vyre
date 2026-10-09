@@ -70,6 +70,10 @@ export const fromVault = (/** @type {any} */ p) => {
     ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
     ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, clean(s.by, 40) && `asked by ${clean(s.by, 40)}`].filter(Boolean).join(", "), s.created)),
     ...list(p && p.people).map(x => row(x.id, `Trust the card for ${clean(x.name, 60)}`, x.fingerprint ? `fingerprint ${clean(x.fingerprint, 40)}` : "", x.at)),
+    // the Vault MCP's reveal ask: the pass's agent asked to see one item once. Two answers: Allow once (a yes: vault.mcp.reveal.allow is a vault moment) and Decline.
+    ...list(p && p.mcpReveals).map(x => ({ id: `vault:${x.id}`, kind: "access", title: clean(`Let ${clean(x.pass, 40)}'s agent see "${clean(x.item, 60)}" once?`) || "An agent asks to see a vault item", ...opt("detail", clean(x.why, DETAIL_MAX)), at: at(x.at), source: "vault",
+      answer: { tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] },
+      answers: [{ label: "Allow once", tool: "vault.mcp.reveal.allow", input: { id: x.id }, fill: [] }, { label: "Decline", tool: "vault.mcp.reveal.clear", input: { id: x.id }, fill: [] }] })),
     ...list(p && p.accepts).map(x => row(x.id, `Accept a pass from ${clean(x.owner, 60)}`, x.items ? names(x.items) : "", x.at)),
   ];
 };
@@ -118,7 +122,7 @@ export const OWNERS = [
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },
   { name: "vault", tool: "vault.pending", map: fromVault, watch: [
-    ["vault.granted", null], ["vault.revoked", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
+    ["vault.granted", null], ["vault.revoked", null], ["vault.reveal-asked", null], ["vault.revealed-to-pass", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
 ];
 
 /**

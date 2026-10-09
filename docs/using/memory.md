@@ -221,7 +221,7 @@ menu and choose **Where this came from** to see its source turns.
 
 ## See what Vyre has learned about a site
 
-When Vyre for Chrome learns how a website works, the Vyre app lists it under **Memory**, on the
+When Vyre Computer learns how a website works, the Vyre app lists it under **Memory**, on the
 **Sites** tab. Open a site to see what Vyre kept: the flows that worked, the controls it knows how
 to find, the site's own API calls and its notes. Each row has **Wrong?**, which forgets just that
 item. **Forget** on a site removes everything Vyre learned about it. Neither asks first, because

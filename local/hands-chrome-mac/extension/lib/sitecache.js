@@ -1,5 +1,5 @@
 // @ts-check
-// sitecache: what Vyre for Chrome knows about the sites it works on, kept on this device and never waited for (team/0.2/chrome-learning-plan.md).
+// sitecache: what Vyre Computer knows about the sites it works on, kept on this device and never waited for (team/0.2/chrome-learning-plan.md).
 //
 //   arrive(url)   the card for a page's origin, from memory, else from chrome.storage.local; nothing on a first visit. A miss asks the server once a minute.
 //   learn(...)    an op that finished teaches something (observe.js); it is queued per origin.

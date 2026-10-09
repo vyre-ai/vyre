@@ -77,6 +77,10 @@
    "module": "appmods",
    "reason": "read-only: one installed app's state and whether it answers; no key, no address of a secret"
   },
+  "approvals.items": {
+   "module": "approvals",
+   "reason": "read-only; callers limited in code to capsule, cli, deck, device, local, mobile, module"
+  },
   "artifacts.activity": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
@@ -2220,6 +2224,42 @@
   "connectors.site.rows": {
    "module": "connectors",
    "reason": "read-only: one row per website operation for a view (callers list)"
+  },
+  "computer.targets": {
+   "module": "computer",
+   "reason": "read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
+  },
+  "computer.use": {
+   "module": "computer",
+   "reason": "guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
+  },
+  "vault.agent.fill": {
+   "module": "vault",
+   "reason": "guard: a vouched agent signs in on its own computer only, with a login lent to it at that exact origin (a grant or a # tag in this conversation); the value is typed by vyred and never returned; Vyre Computer alone may call it for an agent (callers list, check, owner)"
+  },
+  "documents.template.add": {
+   "module": "documents",
+   "reason": "guard: runs under the caller's own chain in the Space (a call that proved no person is refused) and only the Drive's grants decide; writes one Word file under Templates/ (callers list, check, owner)"
+  },
+  "documents.template.get": {
+   "module": "documents",
+   "reason": "read-only: a template's name, version and the names it asks for, under the caller's own grants (callers list)"
+  },
+  "documents.template.list": {
+   "module": "documents",
+   "reason": "read-only: the template names in the Drive under the caller's own grants (callers list)"
+  },
+  "documents.generate": {
+   "module": "documents",
+   "reason": "guard: under the caller's own chain (a call that proved no person is refused); the kernel's Drive and records grants decide what it may read and file, a missing value refuses by name, nothing leaves the Space (callers list, check, owner)"
+  },
+  "comms.send": {
+   "module": "comms",
+   "reason": "held: outward, so the registry holds it as a card for the person's yes and the message waits at the Gate for the final words; nothing is sent from here (callers list, gate)"
+  },
+  "documents.signing.flow": {
+   "module": "documents",
+   "reason": "read-only: returns a Flow definition and creates nothing (callers list)"
   }
  }
 }

@@ -34,7 +34,7 @@ async function fakeVyred(t) {
       calls.push({ tool, body });
       if (tool === "presence.keys") return send(200, { data: { keys } });
       // A code needs a person: this fake asks for one, as vyred does without a proof.
-      if (tool === "presence.code") return send(403, { error: { code: "presence_required", message: "presence.code needs you", methods: ["tty"] } });
+      if (tool === "presence.code") return send(403, { error: { code: "presence_required", message: "presence.code needs your yes", methods: ["tty"], moment: "pair", request: { op: "presence.code", fields: {} } } });
       if (tool === "presence.remove") {
         const i = keys.findIndex(k => k.id === body.id);
         if (i < 0) return send(400, { error: { code: "bad_input", message: `no key ${body.id}` } });

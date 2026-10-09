@@ -5,14 +5,15 @@
 
 import { call } from "../api/box";
 import { peerCall, peerWanted } from "./peer";
-import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
 import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, heldAsk, phoneRoute, proofHeader, askYes } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
-import { passkeyProof, PresenceError } from "./presence";
 import { withSpace } from "./with-space.js";
+import { phoneSigner } from "./phone-signer";
+import { payloadHash } from "./payload-hash.js";
+import { loadIdentity } from "../identity/store";
 import { useSpaces } from "../../screens/shell/state";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
@@ -27,6 +28,8 @@ export class BoxError extends Error {
 }
 
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
+/** A reveal, a copy or a code asks for the five-minute reuse (lib/one-yes.js REUSE_OPS). */
+const REUSE_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
@@ -59,8 +62,25 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
       r = await call<T>(name, input, { kernelProof: proofHeader(out.proof) }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
     } finally { useApproval.getState().hide(); }
   }
-  // A browser that cannot prove the yes itself asks the phone, then sends the act again with the approval id in the x-vyre-approval header (never inside the tool's own input).
-  if (r.error && (claimBlocked() || r.error.code === "held")) {
+  // On the phone, whose own key is the person's: a signed yes over exactly the act the box named (x-vyre-yes). A device cannot answer its own card, so the phone says yes itself. The key asks Face ID or the
+  // fingerprint; a reveal, a copy or a code signs the wish to reuse it for five minutes too.
+  if (r.error?.code === "presence_required" && Platform.OS !== "web") {
+    const sg = (r.error as { sign?: { op: string; space: string; fields: Record<string, unknown> } }).sign;
+    const signer = sg ? await phoneSigner() : null;
+    const person = signer ? (await loadIdentity())?.id : undefined;
+    if (signer && sg && person) {
+      const fields = REUSE_TOOLS.has(name) ? { ...sg.fields, reuse: true } : sg.fields;
+      let header: string;
+      try {
+        const proof = await signer.signPresence({ op: sg.op, space: sg.space, fields: fields as Record<string, any>, payload_hash: payloadHash(sg.op, sg.space, fields), prompt: actWords(name), person });
+        header = proofHeader(proof);
+      } catch (e) { throw new BoxError("cancelled", (e as Error).message || "Nothing was approved."); }
+      r = await call<T>(name, input, { yes: header }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
+    }
+  }
+  // An act that needs the person's yes (the box answers presence_required with the moment and the exact request): ask a card, the person's phone (or this device's passkey, or this computer's Touch ID)
+  // says yes, then the act is sent again with the approval id in the x-vyre-approval header (never inside the tool's own input).
+  if (r.error && (r.error.code === "held" || r.error.code === "presence_required")) {
     const held = heldAsk(r.error, name, input);
     if (held) {
       const raw = async (t: string, i?: Record<string, unknown>) => { const x = await call<any>(t, i ?? {}); if (x.error) throw Object.assign(new Error(x.error.message), { code: x.error.code }); return x.data; };
@@ -69,16 +89,6 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   }
   // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
   if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
-  // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
-  if (r.error && wantsPasskey(r.error)) {
-    try {
-      const proof = await passkeyProof(name, input);
-      r = await call<T>(name, input, { presence: proof }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
-    } catch (e) {
-      if (e instanceof PresenceError) throw new BoxError(e.code, e.message);
-      throw e;
-    }
-  }
   // A presence proof made with a software key (a computer's key file) is refused on a release server: the person approves it on their phone, in our words.
   if (r.error?.code === "software_key") throw new BoxError("software_key", softwareKeyLine());
   // A refused proof on an approval says why in error.detail.reason (expired, replayed, wrong request...): each has its own sentence.
@@ -100,12 +110,17 @@ async function answerWithPasskey(ask: (tool: string, input?: Record<string, unkn
   await passkeySelf(ask, id);
 }
 
+/** On the person's own computer (the Mac window), Touch ID gives the yes at once; anywhere else this refuses and the card stays for the phone. */
+async function answerHere(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, id: string): Promise<void> {
+  await ask("approvals.local-yes", { id }).catch(() => {});
+}
+
 /** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
 async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, retry: (approval: string) => Promise<T>): Promise<T> {
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
-    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onAsked: (id) => answerWithPasskey(ask, id), onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onAsked: async (id) => { await answerHere(ask, id); await answerWithPasskey(ask, id); }, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
     if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
     return await retry(out.approval);
   } catch (e) {

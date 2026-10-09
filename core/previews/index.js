@@ -89,16 +89,8 @@ export default {
       get: (/** @type {string} */ id, /** @type {string} */ who, /** @type {string} */ cap) => { const g = db.prepare("SELECT allowed FROM previews_grants WHERE preview = ? AND who = ? AND cap = ?").get(id, who, cap); return g ? Number(g.allowed) : null; },
       set: (/** @type {string} */ id, /** @type {string} */ who, /** @type {string} */ cap, /** @type {boolean} */ allowed) => { db.prepare("INSERT INTO previews_grants (preview, who, cap, allowed, at) VALUES (?,?,?,?,?) ON CONFLICT (preview, who, cap) DO UPDATE SET allowed = excluded.allowed, at = excluded.at").run(id, who, cap, allowed ? 1 : 0, now()); },
     };
-    /** The name a person goes by in this Space, for the `user` capability; "Someone" when it is not known. @param {string} who */
-    const nameOf = async who => {
-      try {
-        const r = await ctx.call("spaces.members.list", {});
-        const list = r && r.data && (r.data.members || r.data);
-        const m = (Array.isArray(list) ? list : []).find((/** @type {any} */ x) => x && (x.person === who || x.id === who));
-        if (m && typeof m.name === "string" && m.name) return m.name;
-      } catch { /* the generic name */ }
-      return "Someone";
-    };
+    /** The name a page's `user` capability shows for a person: not yet known to this module (spaces.members.list is for a person's own call, not a module's), so "Someone". @param {string} _who */
+    const nameOf = async _who => "Someone";
     const bridge = createBridge({ row: (/** @type {string} */ id) => row(id), grants, docs, call: (/** @type {string} */ t, /** @type {any} */ i) => ctx.call(t, i), key: viewerKey, nameOf, log: (/** @type {string} */ m) => ctx.log.warn(m) });
 
     // ---- files: the container -----------------------------------------------------------------------------------------------------------------------------------------------------------------

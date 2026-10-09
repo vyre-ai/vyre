@@ -37,13 +37,19 @@
     "@noble/ciphers": "1.3.0",
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
+    "docxtemplater": "3.71.0",
     "esbuild-wasm": "0.28.2",
+    "pizzip": "3.3.0",
     "yaml": "2.9.1"
   },
   "bundleDependencies": [
     "@noble/ciphers",
     "@noble/curves",
     "@noble/hashes",
+    "@xmldom/xmldom",
+    "docxtemplater",
+    "pako",
+    "pizzip",
     "yaml",
     "esbuild-wasm"
   ],

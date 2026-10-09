@@ -13,6 +13,7 @@ import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
+import { signingBrand } from "../../lib/brand/profile.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -327,7 +328,12 @@ export default {
       dropName: (/** @type {string} */ n) => { db.prepare("DELETE FROM appmods_sessions WHERE name = ?").run(n); },
       sweep: (/** @type {number} */ t) => { db.prepare("DELETE FROM appmods_sessions WHERE exp < ?").run(t); },
     } });
+    // The look a public signing page takes from the space's brand (core/brand): the profile resolved into a stylesheet, or nothing when there is no brand or no brand module.
+    const brandCss = async () => {
+      try { const r = await ctx.call("brand.resolve", {}); return r && !r.error && r.data ? signingBrand(r.data) : ""; } catch { return ""; }
+    };
     const hostProxy = createHostProxy({
+      brand: brandCss,
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
@@ -340,7 +346,7 @@ export default {
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
         if (!m) return null;
-        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [],
+        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [], ...(m.app.signing ? { signing: m.app.signing } : {}),
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
     });

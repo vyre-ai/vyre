@@ -144,7 +144,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     const p = await macCall("link.pair", { box: address });
     assert.ok(!p.error, JSON.stringify(p.error));
     code = p.data.code;
-    assert.ok(!(await boxCall("link.pair.approve", { code })).error);
+    { const a = await boxCall("link.pair.approve", { code }); assert.ok(!a.error, JSON.stringify(a.error)); }
     await until(async () => (await macCall("link.status")).data.linked);
   }
   return { box, mac, net, macCall, boxCall, boxWork, macWork, macRoot, boxRoot, address, code,

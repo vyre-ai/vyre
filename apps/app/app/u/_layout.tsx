@@ -4,6 +4,8 @@ import { Stack, usePathname } from "expo-router";
 import { ThemeProvider, useReducedMotion, useUiTheme } from "@vyre/ui";
 import "../../src/api/store-link";
 import { UiShell } from "../../screens/shell/UiShell";
+import { CustomCss } from "../../screens/shell/CustomCss";
+import { BrandTheme } from "../../screens/shell/BrandTheme";
 
 function UiStack() {
   const { color } = useUiTheme();
@@ -18,6 +20,8 @@ function UiStack() {
 export default function UiLayout() {
   return (
     <ThemeProvider>
+      <BrandTheme />
+      <CustomCss />
       <UiStack />
     </ThemeProvider>
   );

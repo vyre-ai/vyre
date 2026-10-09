@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Vyre for Chrome (`vyre-chrome`): control your own Chrome from Claude Code, with no Vyre server.
+// Vyre Computer (`vyre-chrome`): control your own Chrome from Claude Code, with no Vyre server.
 //   vyre-chrome install [--browsers chrome,brave]   register the native host, print the extension folder
 //   vyre-chrome uninstall [--purge]                 remove the host registration (--purge: also the logs)
 //   vyre-chrome mcp                                 the stdio MCP server Claude Code runs
@@ -55,7 +55,7 @@ async function liveCheck({ dataDir, sock, extensionId, seconds, hostRegistered }
   }
   const stats = bridge.stats();
   await bridge.close();
-  if (info) { out(`Connected: Vyre for Chrome is talking to your browser (extension ${info.version || "?"}). You are done with Chrome; add it to Claude Code (below) if you have not.`); return true; }
+  if (info) { out(`Connected: Vyre Computer is talking to your browser (extension ${info.version || "?"}). You are done with Chrome; add it to Claude Code (below) if you have not.`); return true; }
   let d = diagnoseConnection({ connected: false, hostRegistered, stats });
   if (listenErr) { try { const j = JSON.parse(fs.readFileSync(statusFile, "utf8")); if (j && j.problem) d = { stage: j.stage, problem: j.problem, fix: j.fix }; } catch { /* keep ours */ } }
   out(`Not connected yet after ${seconds} s: ${d ? d.problem : "unknown"}.`);
@@ -63,7 +63,7 @@ async function liveCheck({ dataDir, sock, extensionId, seconds, hostRegistered }
   return false;
 }
 
-const HELP = `Vyre for Chrome ${version} (vyre-chrome): control your own Chrome from Claude Code
+const HELP = `Vyre Computer ${version} (vyre-chrome): control your own Chrome from Claude Code
 
   vyre-chrome install [--browsers chrome,brave]   register the connector; prints what to do next
   vyre-chrome uninstall [--purge]                 remove the connector (--purge also deletes the logs)
@@ -131,7 +131,7 @@ async function main() {
     }
     const regd = r.written.map((/** @type {any} */ w) => w.browser);
     const notRegd = Object.keys(nativeHost.BROWSERS).filter(b => nativeHost.available(/** @type {any} */ (b), process.platform) && !regd.includes(b));
-    out(`Vyre for Chrome is installed. Registered the connector for: ${regd.join(", ")}.`);
+    out(`Vyre Computer is installed. Registered the connector for: ${regd.join(", ")}.`);
     if (notRegd.length) out(`Not registered (not found on this computer): ${notRegd.join(", ")}. If you use one of them, run: vyre-chrome install --browsers <name>`);
     const open = runningBrowsers().filter(b => regd.some(r => new RegExp(r === "chrome" ? "chrome" : r, "i").test(b.name)));
     if (open.length) out(`${open.map(b => b.name).join(" and ")} ${open.length > 1 ? "are" : "is"} already running (since ${new Date(Math.min(...open.map(b => b.startedAt))).toLocaleString()}). A browser that was open before the connector was registered may not see it until you quit it completely and open it again once. The check at the end tells you whether that is needed.`);

@@ -1955,6 +1955,72 @@
     }
    }
   },
+  "block-records": {
+   "title": "records",
+   "screens": {
+    "full": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "block": "b"
+     },
+     "blocks": {
+      "b": {
+       "type": "records",
+       "content": {},
+       "data": {
+        "records": {
+         "type": "matter"
+        }
+       }
+      }
+     },
+     "surface": "app"
+    },
+    "compact": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "block": "b"
+     },
+     "blocks": {
+      "b": {
+       "type": "records",
+       "content": {},
+       "data": {
+        "records": {
+         "type": "matter"
+        }
+       }
+      }
+     },
+     "surface": "phone"
+    },
+    "glance": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "col": [
+       {
+        "block": "b"
+       }
+      ]
+     },
+     "blocks": {
+      "b": {
+       "type": "text",
+       "content": {
+        "text": "matter records are in the app."
+       },
+       "props": {
+        "style": "note"
+       }
+      }
+     },
+     "surface": "chat"
+    }
+   }
+  },
   "block-filter": {
    "title": "filter",
    "screens": {
@@ -3011,6 +3077,349 @@
     }
    }
   },
+  "typed": {
+   "title": "Matters",
+   "screens": {
+    "full": {
+     "v": 2,
+     "id": "typed",
+     "title": "Matters",
+     "layout": {
+      "block": "t"
+     },
+     "blocks": {
+      "t": {
+       "type": "table",
+       "props": {
+        "controls": true,
+        "sort": "_title"
+       },
+       "content": {
+        "total": 3,
+        "columns": [
+         {
+          "id": "_title",
+          "title": "Matter",
+          "sortLabel": "Title",
+          "kind": "title",
+          "role": "title",
+          "sort": true
+         },
+         {
+          "id": "client",
+          "title": "Client",
+          "kind": "link",
+          "role": "line",
+          "sort": true,
+          "f": {
+           "name": "client",
+           "label": "Client",
+           "kind": "link",
+           "to": "contact"
+          }
+         },
+         {
+          "id": "stage",
+          "title": "Stage",
+          "kind": "stage",
+          "role": "line",
+          "sort": true,
+          "filter": true,
+          "options": [
+           "Intake",
+           "Signing",
+           "Closed"
+          ],
+          "f": {
+           "name": "stage",
+           "label": "Stage",
+           "kind": "stage",
+           "options": [
+            "Intake",
+            "Signing",
+            "Closed"
+           ]
+          }
+         },
+         {
+          "id": "fee",
+          "title": "Fee",
+          "kind": "money",
+          "role": "end",
+          "sort": true,
+          "f": {
+           "name": "fee",
+           "label": "Fee",
+           "kind": "money"
+          }
+         },
+         {
+          "id": "owner",
+          "title": "Owner",
+          "kind": "actor",
+          "role": "col",
+          "sort": true,
+          "f": {
+           "name": "owner",
+           "label": "Owner",
+           "kind": "actor"
+          }
+         },
+         {
+          "id": "ssn",
+          "title": "SSN",
+          "kind": "sealed",
+          "role": "col",
+          "sort": false,
+          "f": {
+           "name": "ssn",
+           "label": "SSN",
+           "kind": "sealed"
+          }
+         },
+         {
+          "id": "due",
+          "title": "Closing",
+          "kind": "date",
+          "role": "endDate",
+          "f": {
+           "name": "due",
+           "label": "Closing",
+           "kind": "date"
+          }
+         }
+        ],
+        "rows": [
+         {
+          "id": "1",
+          "urn": "urn:m/1",
+          "cells": {
+           "_title": {
+            "k": "title",
+            "v": "Ortiz power of attorney",
+            "id": "1",
+            "s": "ortiz power of attorney"
+           },
+           "client": {
+            "k": "link",
+            "v": "urn:c/1",
+            "link": {
+             "title": "Lena Ortiz",
+             "type": "contact"
+            },
+            "s": "lena ortiz"
+           },
+           "stage": {
+            "k": "stage",
+            "v": "Signing",
+            "s": "Signing"
+           },
+           "fee": {
+            "k": "money",
+            "v": 800,
+            "s": 800
+           },
+           "owner": {
+            "k": "actor",
+            "v": "a1",
+            "who": {
+             "id": "a1",
+             "name": "Alex Rivera",
+             "family": "person"
+            },
+            "s": "alex rivera"
+           },
+           "ssn": {
+            "k": "sealed",
+            "on": true
+           },
+           "due": {
+            "k": "date",
+            "v": "2026-10-05",
+            "s": 1791158400000
+           }
+          }
+         },
+         {
+          "id": "2",
+          "urn": "urn:m/2",
+          "cells": {
+           "_title": {
+            "k": "title",
+            "v": "Doe trust",
+            "id": "2",
+            "s": "doe trust"
+           },
+           "client": {
+            "k": "link",
+            "v": "urn:c/2",
+            "link": {
+             "title": "Marcus Doe",
+             "type": "contact"
+            },
+            "s": "marcus doe"
+           },
+           "stage": {
+            "k": "stage",
+            "v": "Intake",
+            "s": "Intake"
+           },
+           "fee": {
+            "k": "money",
+            "v": 3900,
+            "s": 3900
+           },
+           "owner": {
+            "k": "actor",
+            "v": "a2",
+            "who": {
+             "id": "a2",
+             "name": "Chris Park",
+             "family": "person"
+            },
+            "s": "chris park"
+           },
+           "ssn": {
+            "k": "sealed",
+            "on": false
+           },
+           "due": {
+            "k": "date",
+            "v": "2026-10-09",
+            "s": 1791504000000
+           }
+          }
+         },
+         {
+          "id": "3",
+          "urn": "urn:m/3",
+          "cells": {
+           "_title": {
+            "k": "title",
+            "v": "Shah will update",
+            "id": "3",
+            "s": "shah will update"
+           },
+           "client": {
+            "k": "link",
+            "v": "urn:c/3",
+            "link": {
+             "title": "Priya Shah",
+             "type": "contact"
+            },
+            "s": "priya shah"
+           },
+           "stage": {
+            "k": "stage",
+            "v": "Closed",
+            "s": "Closed"
+           },
+           "fee": {
+            "k": "money",
+            "v": 1200,
+            "s": 1200
+           },
+           "owner": {
+            "k": "actor",
+            "v": "a1",
+            "who": {
+             "id": "a1",
+             "name": "Alex Rivera",
+             "family": "person"
+            },
+            "s": "alex rivera"
+           },
+           "ssn": {
+            "k": "sealed",
+            "on": true
+           },
+           "due": {
+            "k": "date",
+            "v": "2026-10-20",
+            "s": 1792454400000
+           }
+          }
+         }
+        ]
+       }
+      }
+     },
+     "surface": "app"
+    },
+    "compact": {
+     "v": 2,
+     "id": "typed",
+     "title": "Matters",
+     "layout": {
+      "block": "t"
+     },
+     "blocks": {
+      "t": {
+       "type": "list",
+       "props": {},
+       "content": {
+        "rows": [
+         {
+          "id": "1",
+          "title": "Ortiz power of attorney",
+          "subtitle": "Lena Ortiz · Signing"
+         },
+         {
+          "id": "2",
+          "title": "Doe trust",
+          "subtitle": "Marcus Doe · Intake"
+         },
+         {
+          "id": "3",
+          "title": "Shah will update",
+          "subtitle": "Priya Shah · Closed"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "phone"
+    },
+    "glance": {
+     "v": 2,
+     "id": "typed",
+     "title": "Matters",
+     "layout": {
+      "col": [
+       {
+        "block": "t"
+       }
+      ]
+     },
+     "blocks": {
+      "t": {
+       "type": "list",
+       "props": {},
+       "content": {
+        "rows": [
+         {
+          "id": "1",
+          "title": "Ortiz power of attorney",
+          "subtitle": "Lena Ortiz · Signing"
+         },
+         {
+          "id": "2",
+          "title": "Doe trust",
+          "subtitle": "Marcus Doe · Intake"
+         },
+         {
+          "id": "3",
+          "title": "Shah will update",
+          "subtitle": "Priya Shah · Closed"
+         }
+        ]
+       }
+      }
+     },
+     "surface": "chat"
+    }
+   }
+  },
   "numbers": {
    "title": "This month",
    "screens": {
@@ -3329,6 +3738,20 @@
       }
      },
      "surface": "chat"
+    }
+   }
+  },
+  "design-changes": {
+   "title": "Design changes",
+   "screens": {
+    "full": {
+     "component": "design-changes"
+    },
+    "compact": {
+     "component": "design-changes"
+    },
+    "glance": {
+     "component": "design-changes"
     }
    }
   }

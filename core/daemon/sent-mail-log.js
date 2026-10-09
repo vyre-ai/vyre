@@ -3,7 +3,7 @@
 // belong to (by main address, then by contact point), with the subject and the first words of the body; the body itself is not copied. It is the same record the "Log communications" Flow
 // files for mail it reads, keyed on the Gate item, so a sent message is logged once however many times this runs. It reads the Gate item for what went out and writes records under the
 // Space owner's chain; it sends nothing.
-import { logCommunication, normalizeEmail } from "../../records/comms/log.js";
+import { logCommunication, normalizeEmail, normalizePhone } from "../../records/comms/log.js";
 
 /** The recipients of an email from what the Gate finally sent: the approved `to` first, then cc and bcc as written. @param {string[]} dest @param {any} final */
 export function recipientsOf(dest, final) {
@@ -55,6 +55,8 @@ export async function logSent(d, released) {
   const r = await d.call("gate.get", { id: released.id });
   const item = r && r.data;
   if (!item || item.state !== "sent") return null;
+  // a text goes to numbers with only a body (Comms, via comms:sms)
+  if (String(item.via || released.via || "") === "comms:sms") return logText(d, released, item);
   // an email has a subject and a body and goes to addresses; a payment or a post does not
   const mail = emailOf(item, Array.isArray(item.to) ? item.to : released.to || []);
   if (!mail) return null;
@@ -67,6 +69,17 @@ export async function logSent(d, released) {
   const done = await logCommunication(d.kernel, d.chain(), { kind: "email", direction: "outbound", at, subject: final.subject.slice(0, 300), ...(excerpt ? { excerpt } : {}), source_key: `gate:${released.id}`,
     ...(via ? { mailbox: via } : {}), people });
   return { id: released.id, logged: done.participants.filter(p => p.contact).length, of: people.length, communication: done.communication && done.communication.urn };
+}
+
+/** One sent text, filed on the contacts whose numbers it went to; the words are kept as the excerpt and the number as written. @param {any} d @param {any} released @param {any} item */
+async function logText(d, released, item) {
+  const final = item.final || item.draft || {};
+  const body = typeof final.body === "string" ? final.body : "";
+  const to = (Array.isArray(item.to) ? item.to : released.to || []).map((/** @type {any} */ x) => normalizePhone(String(x))).filter((/** @type {string} */ x) => /^\+?\d{7,15}$/.test(x));
+  if (!body || !to.length) return null;
+  const at = new Date((d.now || Date.now)()).toISOString();
+  const done = await logCommunication(d.kernel, d.chain(), { kind: "text", direction: "outbound", at, subject: "", excerpt: body.replace(/\s+/g, " ").trim().slice(0, 240), source_key: `gate:${released.id}`, mailbox: "comms:sms", people: to.map((/** @type {string} */ address) => ({ address, how: "to" })) });
+  return { id: released.id, logged: done.participants.filter((/** @type {any} */ p) => p.contact).length, of: to.length, communication: done.communication && done.communication.urn };
 }
 
 /**

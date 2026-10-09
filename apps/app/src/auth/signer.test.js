@@ -111,20 +111,6 @@ test("jwkFromXY: the JWK the box takes, from base64url coordinates", { skip: !st
   assert.throws(() => jwkFromXY(j.x, ""), /32-byte/);
 });
 
-test("toolOf and HUMAN_ONLY: the tool a URL calls, and the box's floor list mirrored", { skip: !strip }, async () => {
-  const { toolOf, HUMAN_ONLY } = await load();
-  assert.equal(toolOf(`${BOX}/v1/tools/${encodeURIComponent("gate.approve")}`), "gate.approve");
-  assert.equal(toolOf(`${BOX}/v1/tools/vault.reveal?x=1`), "vault.reveal");
-  assert.equal(toolOf(`${BOX}/v1/events/stream`), null);
-  let box;
-  try {
-    box = (await import("../../../../core/presence/index.js")).HUMAN_ONLY;
-  } catch {
-    return; // the box's code is not beside this app (an extracted copy): nothing to compare
-  }
-  assert.deepEqual([...HUMAN_ONLY].sort(), [...box].sort(), "person.ts HUMAN_ONLY has drifted from core/presence/index.js");
-});
-
 /** A Signer the way the phone's is: the private key signs DER, and derToP1363 converts it. */
 async function derSigner() {
   const { derToP1363, jwkFromXY } = await load();

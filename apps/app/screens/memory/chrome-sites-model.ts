@@ -1,5 +1,5 @@
 // The pure half of Memory's Sites tab on a real vyred: what memory.site.list and memory.site.detail answer, as the lines the screen shows.
-// What Vyre for Chrome learned about each website. Never a selector, a value or a page's text: names, counts, how sure it is and when it last checked.
+// What Vyre Computer learned about each website. Never a selector, a value or a page's text: names, counts, how sure it is and when it last checked.
 
 export const PARTS: [string, string][] = [["flows", "Flows"], ["controls", "Controls"], ["api", "API calls"], ["notes", "Notes"], ["frames", "Frames"]];
 

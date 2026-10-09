@@ -94,8 +94,10 @@ export async function bootHomeKernel(cfg) {
         projectFiles: true,
         keysFor: (/** @type {string} */ chat) => { if (chat.startsWith("project-files:")) return pfKeys(chat); const k = chatKeys.get(chat); return k && chatGrants && k.epoch >= chatGrants.chats.epoch(chat) ? k : null; },
         sealed: (/** @type {string} */ chat) => Boolean(chatGrants && chatGrants.chats.epoch(chat) > 0),
-        projectKeysFor: () => null,
+        projectKeysFor: (/** @type {string} */ project) => pfKeys(`project-files:${project}`),
       }) : undefined;
+      // what was shared to a project is found again after a restart: each project's sealed share index is read back (kernel/storage/sealed-drive.js)
+      if (base && drive) for (const f of await base.list("Projects")) { const m = /^Projects\/([^/]+)\/\.shared$/.exec(f.path); if (m) await drive.loadShared(m[1]); }
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
   // The inference door (contract 8.4): every model call, and the ledger a reveal records what a person was shown in. Built here, over the sealing process this home runs, with the kernel's own isChain;

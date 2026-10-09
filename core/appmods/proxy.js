@@ -9,10 +9,15 @@
 import http from "node:http";
 import net from "node:net";
 import crypto from "node:crypto";
+import { matcher, dress, publicHeaders, signerCookies, handOn, CREDIT_CSS } from "./signing.js";
 
 export const ENTER = "/__vyre/enter";
 export const COOKIE = "vyre_app";
+/** The stylesheet that dresses a public signing page, served from the app's own origin. */
+export const BRAND_CSS = "/__vyre/brand.css";
 const MAX_BODY = 64 * 1024 * 1024;
+/** What a stranger may send: a signature image and a few fields. */
+const PUBLIC_BODY = 20 * 1024 * 1024;
 const TICKET_MS = 60_000;
 const SESSION_MS = 8 * 3_600_000;
 const HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "cookie", "authorization"]);
@@ -112,8 +117,8 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, credentials: () => Promise<Record<string, string>> }>,
- *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void }} o
+ * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[] }, credentials: () => Promise<Record<string, string>> }>,
+ *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string> }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
 export function createHostProxy(o) {
@@ -169,36 +174,77 @@ export function createHostProxy(o) {
       return true;
     }
     const sid = /(?:^|;\s*)vyre_app=([A-Za-z0-9_-]+)/.exec(String(req.headers.cookie || ""));
-    const open = ["GET", "HEAD"].includes(String(req.method)) && Array.isArray(app.public) && app.public.includes(url.pathname);
-    if (!open && !o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return plain(404, "not found");
+    const method = String(req.method);
+    const sign = app.signing ? matcher(app.signing) : null;
+    const ticketed = o.tickets.valid(sid ? sid[1] : undefined, mh.name, host);
+    // A signer's way in: the pretty link goes to the page (no ticket, nothing of the app touched), and the stylesheet that dresses the pages is ours.
+    if (sign && !ticketed && ["GET", "HEAD"].includes(method)) {
+      const to = sign.redirect(url.pathname);
+      if (to) { res.writeHead(302, { location: to, ...publicHeaders(false) }); res.end(); return true; }
+      if (url.pathname === BRAND_CSS) {
+        const css = CREDIT_CSS + (o.brand ? await o.brand().catch(() => "") : "");
+        res.writeHead(200, { "content-type": "text/css; charset=utf-8", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+        res.end(method === "HEAD" ? undefined : css);
+        return true;
+      }
+    }
+    const exact = ["GET", "HEAD"].includes(method) && Array.isArray(app.public) && app.public.includes(url.pathname);
+    const signing = Boolean(sign && sign.open(method, url.pathname));
+    const open = exact || signing;
+    // Anyone without a ticket on a SIGNING route is a signer, not the owner: the app sees them as it sees a stranger, never as the install's admin. (The few static paths in `public` are served as before.)
+    const stranger = signing && !exact && !ticketed;
+    if (!open && !ticketed) return plain(404, "not found");
     if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(String(req.method))) return plain(405, "method not allowed");
     try {
-      if (!(await ensure(mh.name, app))) return plain(502, "Vyre could not sign in to the app. Try again in a minute.");
+      if (!stranger && !(await ensure(mh.name, app))) return plain(502, "Vyre could not sign in to the app. Try again in a minute.");
       /** @param {boolean} retry */
       const once = async retry => {
         /** @type {Record<string, string>} */ const h = {};
         for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !k.startsWith("x-vyre-") && typeof v === "string") h[k] = v;
         const jar = jars.get(mh.name);
-        if (jar && jar.size) h.cookie = cookieHeader(jar);
+        if (stranger) {
+          // only the signer's own cookies for the app; never the install's session, never ours; an uncompressed answer so a page can be dressed
+          const c = signerCookies(req.headers.cookie);
+          if (c) h.cookie = c;
+          h["accept-encoding"] = "identity";
+        } else if (jar && jar.size) h.cookie = cookieHeader(jar);
         // A preview is a whole app of its own on its own origin: its cookies are its own, so they go through (never Vyre's session cookie, which is only this proxy's).
         if (app.passCookies) { const mine = String(req.headers.cookie || "").split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) h.cookie = mine; else delete h.cookie; }
-        if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > MAX_BODY) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
+        if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > (stranger ? PUBLIC_BODY : MAX_BODY)) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
         if (req.headers["transfer-encoding"]) h["transfer-encoding"] = String(req.headers["transfer-encoding"]);
         // A preview's own dev server answers only to its own address (Vite's allowed hosts, a framework's host check): it is sent that, and told the host the person is on.
         if (app.viewerKey) { const w = o.tickets.whoOf(sid ? sid[1] : undefined); if (w) h["x-vyre-viewer"] = viewerHeader(app.viewerKey, w); else delete h["x-vyre-viewer"]; }
         if (app.rewriteHost) { const u = new URL(app.origin); h["x-forwarded-host"] = host; h["x-forwarded-proto"] = secure ? "https" : "http"; h.host = u.host; delete h.origin; delete h.referer; }
         const r = await upstream(app.origin, String(req.method), url.pathname + url.search, h, { body: ["GET", "HEAD"].includes(String(req.method)) ? null : req });
         // The app lost our session (it restarted, it expired): sign in again, once, and repeat a request that has no body to repeat.
-        if (!retry && app.login && jars.has(mh.name) && String(r.headers.location || "").includes(app.login.path) && ["GET", "HEAD"].includes(String(req.method))) { await readAll(r).catch(() => {}); jars.delete(mh.name); if (!(await ensure(mh.name, app, true))) throw Object.assign(new Error("sign in"), { code: "login" }); return once(true); }
+        if (!retry && !stranger && app.login && jars.has(mh.name) && String(r.headers.location || "").includes(app.login.path) && ["GET", "HEAD"].includes(String(req.method))) { await readAll(r).catch(() => {}); jars.delete(mh.name); if (!(await ensure(mh.name, app, true))) throw Object.assign(new Error("sign in"), { code: "login" }); return once(true); }
         return r;
       };
       const r = await once(false);
-      const jar = jars.get(mh.name) || new Map();
-      keepCookies(jar, r.headers["set-cookie"]);
-      if (app.login) jars.set(mh.name, jar);
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || (k === "set-cookie" && !app.passCookies) || v === undefined) continue; out[k] = /** @type {any} */ (v); }
       if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
+      if (stranger) {
+        // the signer's cookies go back to the signer, not into the install's jar
+        const sc = r.headers["set-cookie"];
+        if (sc) out["set-cookie"] = (Array.isArray(sc) ? sc : [sc]).map(handOn);
+        const isHtml = /^text\/html/i.test(String(r.headers["content-type"] || ""));
+        Object.assign(out, publicHeaders(isHtml));
+        if (isHtml && (r.statusCode || 0) === 200 && method === "GET") {
+          const page = (await readAll(r, 4 * 1024 * 1024)).toString("utf8");
+          const body = Buffer.from(dress(page, BRAND_CSS), "utf8");
+          out["content-length"] = String(body.length);
+          res.writeHead(200, out);
+          res.end(body);
+          return true;
+        }
+        res.writeHead(r.statusCode || 502, out);
+        if (method === "HEAD") { r.resume(); res.end(); } else r.pipe(res);
+        return true;
+      }
+      const jar = jars.get(mh.name) || new Map();
+      keepCookies(jar, r.headers["set-cookie"]);
+      if (app.login) jars.set(mh.name, jar);
       // A preview is the owner's own, shown in Vyre's own app: the page's own wish not to be framed does not apply to Vyre, so the headers that say it are dropped (only for a preview).
       if (app.allowEmbed) { delete out["x-frame-options"]; if (typeof out["content-security-policy"] === "string") out["content-security-policy"] = out["content-security-policy"].replace(/(^|;)\s*frame-ancestors[^;]*/gi, "$1").replace(/^\s*;\s*/, ""); }
       res.writeHead(r.statusCode || 502, out);

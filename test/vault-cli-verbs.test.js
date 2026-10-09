@@ -185,7 +185,7 @@ test("vault verbs: kit needs a Secret Key, then gives a one-load page; migrate-k
   assert.match((await vyre(h, ["vault", "audit", "--limit", "50"])).out, /migrate-key/);
 });
 
-test("vault verbs: with the real verifier and no terminal, approve, share, move, kit and migrate-key exit 3", async t => {
+test("vault verbs: with the real verifier and no terminal, approve, share and kit exit 3 (move and migrate-key need the person and no yes)", async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "owner-box", transcripts: [], vault: { keystore: "file" } }));
   const d = await start({ root, log: () => {}, person: async () => null, presence: deps => new Presence({ ...deps,
@@ -200,9 +200,7 @@ test("vault verbs: with the real verifier and no terminal, approve, share, move,
   const cases = [
     ["vault", "approve", "g_fixture"],
     ["vault", "share", "api-token", "--with", "kit", "--card", "vyre-card:v2:e30"],
-    ["vault", "move", "api-token", "harlow-legal"],
     ["vault", "kit"],
-    ["vault", "migrate-key"],
   ];
   for (const args of cases) {
     const r = await vyre(root, args, undefined, { detached: true });
@@ -210,7 +208,7 @@ test("vault verbs: with the real verifier and no terminal, approve, share, move,
     assert.match(r.all, /needs a person at a terminal/, `vyre ${args.join(" ")}: ${r.all}`);
   }
   // --json says the same as one line, with the same exit code.
-  const j = await vyre(root, ["vault", "migrate-key", "--json"], undefined, { detached: true });
+  const j = await vyre(root, ["vault", "kit", "--json"], undefined, { detached: true });
   assert.equal(j.code, 3);
   assert.equal(one(j).error.code, "no_terminal");
   // pending and revoke are not gated: they answer without a person.

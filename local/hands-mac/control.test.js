@@ -162,12 +162,15 @@ test("commit: through the Registry it is marked presence, refused without proof,
   const held = await reg.call("hands.act", input, KIT);
   assert.equal(held.data.held, true);
   const refused = await reg.call("hands.commit", input, KIT);
-  assert.equal(refused.error?.code, "presence_required");
+  assert.equal(refused.error?.code, "presence_required", "an agent is never the person");
+  // The person's own commit takes their yes (a send as the person is the outward moment); here the old header stands in for it and the fake verifier says no, then yes.
+  const denied = await reg.call("hands.commit", input, "cli", { proof: { method: "tty" } });
+  assert.equal(denied.error?.code, "presence_required");
   assert.equal(counts(f.calls, "act"), 0, "commit acted without a person");
   assert.equal(shown[0], `Press "Send" in Messages, window "juno"`);
 
   allow = true;
-  const done = await reg.call("hands.commit", input, KIT);
+  const done = await reg.call("hands.commit", input, "cli", { proof: { method: "tty" } });
   assert.equal(done.data?.verified, true, JSON.stringify(done));
   assert.equal(counts(f.calls, "act"), 1);
 });

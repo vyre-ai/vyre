@@ -1,5 +1,5 @@
 // @ts-check
-// frames-suite (standalone harness): the proof that Vyre for Chrome works on the app the way GoHighLevel really renders it.
+// frames-suite (standalone harness): the proof that Vyre Computer works on the app the way GoHighLevel really renders it.
 // GoHighLevel's Workflows UI (list and builder) is an IFRAME on another site than the shell, and its network traffic belongs to that
 // frame. The fixture (bench/fixtures/ghl-shell.html, ghl-app.html, frames-world.mjs) is built the same way: a shell on a.localhost embeds
 // the app on b.localhost, which stays blank until the shell posts it {type:"auth", token}, calls its own API with a bearer header and

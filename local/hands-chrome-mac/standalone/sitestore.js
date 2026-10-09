@@ -1,5 +1,5 @@
 // @ts-check
-// sitestore: Vyre for Chrome's site knowledge as files, for a person with no Vyre server (team/0.2/chrome-learning-plan.md, section 7).
+// sitestore: Vyre Computer's site knowledge as files, for a person with no Vyre server (team/0.2/chrome-learning-plan.md, section 7).
 //
 // One JSON record per origin at <dataDir>/sites/<sha256(origin)[0:16]>.json, written atomically. The same pure code as Vyre Memory does the cleaning
 // and merging (extension/shared/sk/site-knowledge.js), so a record means the same thing in both and a box can later take these files as a replica

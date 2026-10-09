@@ -1,4 +1,4 @@
-# Vyre for Chrome
+# Vyre Computer
 
 The package and the command are called `vyre-chrome`.
 
@@ -82,3 +82,5 @@ The report prints the slowest steps, failures by kind and the fallback rate, and
 - The connector name is shared with the Vyre app: installing one replaces the other's registration in Chrome.
 - Only the main page and open shadow DOM are reachable; cross-origin iframes are not.
 - Windows: `install` writes the registry key; the same four steps apply. Linux is untested outside CI.
+
+Note: this is the Chrome part of Vyre Computer. The package and the `vyre-chrome` command keep their names for now.

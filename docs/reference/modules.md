@@ -20,22 +20,25 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 18 | 6 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 12 | 1 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 16 | 6 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 13 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
-| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
-| [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
-| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 40 | 16 | none |
+| [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
+| [`comms`](#comms) | `core/comms` | `box` | 2 | 2 | none |
+| [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
-| [`design`](#design) | `core/design` | `box`, `local` | 7 | 2 | cli |
+| [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
+| [`documents`](#documents) | `core/documents` | `box` | 5 | 0 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
@@ -50,7 +53,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 33 | 22 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 36 | 22 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 71 | 17 | capsule, cli, deck |
@@ -62,8 +65,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
-| [`previews`](#previews) | `core/previews` | `box` | 20 | 6 | cli |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
@@ -81,7 +83,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`skills`](#skills) | `core/skills` | `box`, `local` | 12 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 13 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 112 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -96,7 +98,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 145 | 53 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 148 | 53 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -104,7 +106,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 53 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
 ## about
 
@@ -148,7 +150,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [18](tools.md#appmods)
+- Tools: [16](tools.md#appmods)
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`
@@ -162,7 +164,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [12](tools.md#approvals), 3 of them only for other modules
+- Tools: [13](tools.md#approvals), 3 of them only for other modules
 - Emits: [1 events](events.md#approvals)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -186,22 +188,11 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Folder: `core/artifacts`, version 0.2.0
 - Runs on: `box`
 - Requires: none
-- Tools: [29](tools.md#artifacts), 1 of them only for other modules
+- Tools: [28](tools.md#artifacts)
 - Emits: [10 events](events.md#artifacts)
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
 - Needs tools: `threads.get`, `agents.list`
-
-## ask
-
-One card for every question: several clarifications an agent needs, asked together, each with choices and room to type your own, answered once.
-
-- Folder: `core/ask`, version 0.1.0
-- Runs on: `box`
-- Requires: none
-- Tools: [4](tools.md#ask)
-- Emits: [2 events](events.md#ask)
-- Shows on: cli
 
 ## assistant
 
@@ -212,6 +203,17 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Requires: none
 - Tools: [8](tools.md#assistant)
 - Emits: [3 events](events.md#assistant)
+- Shows on: cli
+
+## brand
+
+The space's brand profile: logo, colours, fonts, density and the company's name, legal name, address, phone and letterhead. It is the default for artifacts, previews, documents, signing pages and screens unless a document says otherwise. All of it is optional, and a colour is never used raw: it is pulled to the nearest one that keeps text readable.
+
+- Folder: `core/brand`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#brand)
+- Emits: [1 events](events.md#brand)
 - Shows on: cli
 
 ## bridges
@@ -244,7 +246,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `local/hands-chrome-mac`, version 0.1.0
 - Runs on: `local`
 - Requires: none
-- Tools: [40](tools.md#chrome), 4 of them only for other modules
+- Tools: [41](tools.md#chrome), 5 of them only for other modules
 - Emits: [16 events](events.md#chrome)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -254,7 +256,7 @@ Deep control of your own Chrome through the Vyre extension: read a page in one c
 - Folder: `modules/hands-chrome`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [6](tools.md#chrome), 4 of them only for other modules
+- Tools: [6](tools.md#chrome), 5 of them only for other modules
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
@@ -269,6 +271,31 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Tools: [1](tools.md#commands)
 - Emits: no events
 - Shows on: no surface
+
+## comms
+
+Send an email or a text message as you, held at the Gate for your yes and logged on the client it went to.
+
+- Folder: `core/comms`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [2](tools.md#comms), 1 of them only for other modules
+- Emits: [2 events](events.md#comms)
+- Shows on: no surface
+- Needs credentials: `[object Object]`
+- Needs vault: `per-connection`
+
+## computer
+
+Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.
+
+- Folder: `core/computer`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#computer)
+- Emits: no events
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## computers
 
@@ -309,8 +336,8 @@ The design language's keeper: the block catalogue and a screen checker for anyon
 - Folder: `core/design`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#design)
-- Emits: [2 events](events.md#design)
+- Tools: [11](tools.md#design)
+- Emits: [3 events](events.md#design)
 - Shows on: cli
 
 ## docs
@@ -324,6 +351,17 @@ The docs, found and read from inside Vyre: docs.find takes an intent in plain wo
 - Emits: no events
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
+
+## documents
+
+Make documents from Word templates and your records, deterministic, and file them. A value that is missing stops the document and names itself.
+
+- Folder: `core/documents`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [5](tools.md#documents)
+- Emits: no events
+- Shows on: no surface
 
 ## events
 
@@ -490,7 +528,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [33](tools.md#link), 5 of them only for other modules
+- Tools: [36](tools.md#link), 5 of them only for other modules
 - Emits: [22 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -623,22 +661,10 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [21](tools.md#presence), 5 of them only for other modules
+- Tools: [20](tools.md#presence), 6 of them only for other modules
 - Emits: [7 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
-
-## previews
-
-Live previews: a server an agent started on a port becomes a card in its chat, opened on its own address, kept running by Vyre, and shared the way you share a document.
-
-- Folder: `core/previews`, version 0.1.0
-- Runs on: `box`
-- Requires: none
-- Tools: [20](tools.md#previews)
-- Emits: [6 events](events.md#previews)
-- Shows on: cli
-- Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`
 
 ## projects
 
@@ -845,7 +871,7 @@ The skills a session may use, found by what it is about to do, and the library t
 - Folder: `core/skills`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [12](tools.md#skills), 5 of them only for other modules
+- Tools: [13](tools.md#skills), 6 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update"]}`
@@ -1017,7 +1043,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [145](tools.md#vault), 21 of them only for other modules
+- Tools: [148](tools.md#vault), 21 of them only for other modules
 - Emits: [53 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
@@ -1117,8 +1143,8 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [53](tools.md#work), 4 of them only for other modules
+- Tools: [59](tools.md#work), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"work":true,"attrs":true,"actions":["drive.read","drive.write","events.read","grants.list","records.create","records.read","records.remove","records.update","tasks.request"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact","inverse":{"name":"projects","label":"Projects"}},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"},{"name":"template","kind":"text","label":"Template it started from (blank when none)"},{"name":"template_version","kind":"text","label":"Template version it started from"},{"name":"lead","kind":"text","label":"Project lead (an agent of the Space; a template may name one)"},{"name":"template_stage","kind":"text","label":"Stage it is in (a template project)"},{"name":"template_snapshot","kind":"text","label":"The template's stages as they were when it started (JSON)"},{"name":"personal_of","kind":"text","label":"The person whose private Personal project this is (blank for every other project)"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"chat-record","label":"Chat","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project","inverse":{"name":"chats","label":"Chats"}},{"name":"chat","kind":"text","label":"Chat id","unique":true},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"former","kind":"text","label":"Former participants (people and agents who could not move with it)"},{"name":"started","kind":"datetime","label":"Started"},{"name":"last_active","kind":"datetime","label":"Last active"},{"name":"status","kind":"choice","label":"Status","options":["working","idle","stopped","failed"]},{"name":"drive","kind":"text","label":"Project Drive folder"},{"name":"location","kind":"text","label":"This chat's Drive folder"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"file-share","label":"Shared file","icon":"IconShare","fields":[{"name":"path","kind":"text","label":"File path","required":true}]}]}`
+- Needs kernel: `{"work":true,"attrs":true,"actions":["drive.read","drive.write","events.read","grants.list","records.create","records.read","records.remove","records.update","tasks.request"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact","inverse":{"name":"projects","label":"Projects"}},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"},{"name":"template","kind":"text","label":"Template it started from (blank when none)"},{"name":"template_version","kind":"text","label":"Template version it started from"},{"name":"lead","kind":"text","label":"Project lead (an agent of the Space; a template may name one)"},{"name":"template_stage","kind":"text","label":"Stage it is in (a template project)"},{"name":"template_snapshot","kind":"text","label":"The template's stages as they were when it started (JSON)"},{"name":"personal_of","kind":"text","label":"The person whose private Personal project this is (blank for every other project)"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"chat-record","label":"Chat","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project","inverse":{"name":"chats","label":"Chats"}},{"name":"about","kind":"link","label":"About"},{"name":"shared","kind":"boolean","label":"Shown on the timeline to everyone who can see the record"},{"name":"chat","kind":"text","label":"Chat id","unique":true},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"former","kind":"text","label":"Former participants (people and agents who could not move with it)"},{"name":"started","kind":"datetime","label":"Started"},{"name":"last_active","kind":"datetime","label":"Last active"},{"name":"status","kind":"choice","label":"Status","options":["working","idle","stopped","failed"]},{"name":"drive","kind":"text","label":"Project Drive folder"},{"name":"location","kind":"text","label":"This chat's Drive folder"},{"name":"tags","kind":"text","label":"Tags"}]},{"name":"file-share","label":"Shared file","icon":"IconShare","fields":[{"name":"path","kind":"text","label":"File path","required":true}]}]}`

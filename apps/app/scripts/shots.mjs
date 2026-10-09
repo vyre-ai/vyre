@@ -12,6 +12,7 @@ const dist = path.resolve(flag("--dist", "dist"));
 const widths = flag("--w", "390,1280").split(",").map(Number);
 const themes = flag("--theme", "dark,paper").split(",");
 const height = Number(flag("--h", "860"));
+const reduce = flag("--reduce", "") === "1"; // reduced motion: a screen with entrance animations is shot settled, so two builds compare
 const fixed = flag("--fixed", "") === "1"; // keep the viewport height: a screen with its own scroller (chat) is shot as a phone shows it
 const [out, ...routes] = args;
 fs.mkdirSync(out, { recursive: true });
@@ -31,7 +32,7 @@ const browser = await chromium.launch();
 let bad = 0;
 try {
   for (const w of widths) for (const theme of themes) {
-    const ctx = await browser.newContext({ viewport: { width: w, height }, colorScheme: theme === "paper" ? "light" : "dark", deviceScaleFactor: 1 });
+    const ctx = await browser.newContext({ viewport: { width: w, height }, colorScheme: theme === "paper" ? "light" : "dark", reducedMotion: reduce ? "reduce" : "no-preference", deviceScaleFactor: 1 });
     const page = await ctx.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(String(e)));

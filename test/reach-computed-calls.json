@@ -1,16 +1,6 @@
 {
  "_comment": "Files that call a tool through ctx.call or use with a computed name. Each runs as a module caller, so the callee's reach must allow modules; the owner reviews and lowers the count or documents it. test/reach-module-calls.test.js fails on a new one.",
  "files": {
-  "core/connectors/index.js": {
-   "count": 4,
-   "owner": "site-ops",
-   "note": "reviewed (10 Oct): forwarding wrappers over literal tool names (madeConnections' call, the site runner's recordOps, siteEntriesFrom); each runs as the person who asked or the module"
-  },
-  "lib/views/engine.js": {
-   "count": 1,
-   "owner": "watch-restart",
-   "note": "reviewed (9 Oct, connect-anything): a view runs the tool its declaration names, as the asking person for a first-party module or as module:<name> for an added one; Registry.capsuleMayCall refuses any tool the module did not declare in that view (or list in needs.tools)"
-  },
   "core/about/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -21,6 +11,11 @@
    "owner": "sessions",
    "note": "reviewed (sessions, 1 Oct): use() calls threads.launch, send, list, usage, history, stop, none asked or person; all reach anyone or modules"
   },
+  "core/approvals/index.js": {
+   "count": 1,
+   "owner": "session-transfer",
+   "note": "reviewed (10 Oct, connect-anything): a forwarder (createItems' call) over the literal tools named in core/approvals/items.js (threads.asks, gate.held, vault.pending and the answering tools); it runs as the approvals module"
+  },
   "core/assistant/index.js": {
    "count": 5,
    "owner": "module's own team",
@@ -30,6 +25,26 @@
    "count": 1,
    "owner": "windows",
    "note": "call() runs as module:bridges and names spaces.membership and spaces.merge-list (modules-only, built) and spaces.policy and spaces.ask (not built yet: a missing tool is tolerated and the share is refused or held)"
+  },
+  "core/comms/index.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): the one forwarding wrapper (use) over literal names: mail.send, gate.request, gate.get"
+  },
+  "core/computer/index.js": {
+   "count": 2,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the `ask` helper over literal names, and ctx.call(engine) where engine comes from lib/computer-classes.js engineFor (chrome.*, hands.*, hands-desktop.*, files.*), run for the caller's own agent or a person; each engine checks the caller itself"
+  },
+  "core/connectors/index.js": {
+   "count": 4,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): forwarding wrappers over literal tool names (madeConnections' call, the site runner's recordOps, siteEntriesFrom); each runs as the person who asked or the module"
+  },
+  "core/connectors/site.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): the one forwarding wrapper (call) the site runner uses; every name it passes is a literal in site.js (memory.site.*, link.macs.call, chrome.op.run)"
   },
   "core/flows/index.js": {
    "count": 1,
@@ -62,9 +77,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/link/mac.js": {
-   "count": 2,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "count": 4,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): ctx.call(q.tool) for the allowlisted reads, ctx.call(engine) for a Vyre Computer action whose engine is chosen from lib/computer-classes.js after the person's class allowlist, and the chrome.op.call / chrome.op.send choice in callOp, each a literal pair"
   },
   "core/mail/index.js": {
    "count": 2,
@@ -91,6 +106,11 @@
    "owner": "windows",
    "note": "reviewed (windows, 5 Oct): the registry's own relay (`ctx.call(tool, input, { relay: true })`) calls a tool by a computed name only after RELAY_ALLOWED (core/modules/index.js) lists that exact name or prefix for the calling first-party module (spaces to the chat and memory upgrade tools, memory and work to spaces.storage.); anything else is refused before the call. callInSpace calls a tool that declares crossSpace in its manifest."
   },
+  "core/modules/sandbox-ctx.js": {
+   "count": 2,
+   "owner": "lead",
+   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
+  },
   "core/names/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -100,6 +120,21 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+  },
+  "core/previews/bridge.js": {
+   "count": 2,
+   "owner": "watch-restart",
+   "note": "reviewed (10 Oct): both matches are the words `claude.use(name)` in comments about the page's runtime; the file calls no registry tool by a computed name"
+  },
+  "core/previews/client/claude.js": {
+   "count": 2,
+   "owner": "watch-restart",
+   "note": "reviewed (10 Oct): browser code served to a page, not a server module; the matches are its own use(name), which picks a namespace of the page's bridge and calls no registry tool"
+  },
+  "core/previews/index.js": {
+   "count": 1,
+   "owner": "watch-restart",
+   "note": "reviewed (10 Oct): the bridge's call seam, which passes only the fixed table of tool names in bridge.js, as the previews module"
   },
   "core/publish/index.js": {
    "count": 1,
@@ -146,6 +181,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/vault/tools/agent-fill.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the call wrapper handed to agentFill, which names only computers.fill.begin and computers.fill.end (both vault-only)"
+  },
   "core/vault/tools/connections.js": {
    "count": 1,
    "owner": "module's own team",
@@ -156,15 +196,20 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/wink/index.js": {
+   "count": 1,
+   "owner": "network",
+   "note": "reviewed (network, 5 Oct): dirCall reaches only names.directory.acme, acme-clear and publish, which the names module restricts to module:wink"
+  },
   "core/work/index.js": {
    "count": 2,
    "owner": "chat",
    "note": "reviewed (chat, 5 Oct): the hub's port (hubOf) passes literal names from core/work/hub.js through one ctx.call: projects.of, projects.list, projects.rename, projects.adopt (modules), recall.sessions, threads.chat-of, threads.of-chat (module-only), threads.rename; every one is reach anyone or modules (the two person-reach projects.add-threads and remove-threads calls were dead behind a module caller and are gone). The move's memory port passes memory.offer, export, import and forget (the memory module's own calls, one per move id) through the second."
   },
-  "core/wink/index.js": {
+  "lib/views/engine.js": {
    "count": 1,
-   "owner": "network",
-   "note": "reviewed (network, 5 Oct): dirCall reaches only names.directory.acme, acme-clear and publish, which the names module restricts to module:wink"
+   "owner": "watch-restart",
+   "note": "reviewed (9 Oct, connect-anything): a view runs the tool its declaration names, as the asking person for a first-party module or as module:<name> for an added one; Registry.capsuleMayCall refuses any tool the module did not declare in that view (or list in needs.tools)"
   },
   "local/apps/index.js": {
    "count": 1,
@@ -181,6 +226,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "local/hands-chrome-mac/index.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (10 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
+  },
   "local/screen-mac/index.js": {
    "count": 1,
    "owner": "module's own team",
@@ -190,21 +240,6 @@
    "count": 1,
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
-  },
-  "core/modules/sandbox-ctx.js": {
-   "count": 2,
-   "owner": "lead",
-   "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
-  },
-  "core/connectors/site.js": {
-   "count": 1,
-   "owner": "site-ops",
-   "note": "reviewed (10 Oct): the one forwarding wrapper (call) the site runner uses; every name it passes is a literal in site.js (memory.site.*, link.macs.call, chrome.op.run)"
-  },
-  "local/hands-chrome-mac/index.js": {
-   "count": 1,
-   "owner": "site-ops",
-   "note": "reviewed (10 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
   }
  }
 }

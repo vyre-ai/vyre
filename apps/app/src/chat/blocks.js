@@ -19,7 +19,8 @@
  *  | { block: "operator", run: string, computer: string, title: string, state: "working" | "done" | "stuck" | "paused", line: string, ask: string, steps: { line: string, state: string }[] }
  *  | { block: "signin", id: string, computer: string, site: string, why: string, state: "waiting" | "done" | "cancelled" | "expired" }
  *  | { block: "questions", id: string, title: string, state: "waiting" | "answered" | "cancelled" | "expired", questions: { id: string, prompt: string, choices: { label: string, detail?: string }[], allowText: boolean, optional: boolean }[], answers: Record<string, { choice?: string, text?: string }> | null }
- *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
+
+ *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean, urn?: string }
  *  | { block: "text", text: string }} Block
  * @typedef {{ path: string, op: string, diff: string, add: number, del: number }} DiffFile
  */
@@ -98,7 +99,8 @@ export function normalizeBlock(raw, fallback = "Done") {
         return { block: "field", label, kind: sealed ? "sealed" : str(v && v.kind, 20) || str(o.kind, 20) || "text", state: sealed ? "sealed" : "hidden", value: "", cls: sealed ? str(v && v.sealed, 60) || label : "", present: v && typeof v.present === "boolean" ? v.present : false };
       }
       const value = typeof o.value === "string" ? o.value : typeof o.value === "number" || typeof o.value === "boolean" ? String(o.value) : v && typeof v.amount === "number" ? `${v.currency ?? ""} ${v.amount}`.trim() : "";
-      return { block: "field", label, kind: str(o.kind, 20) || "text", state: "value", value: value.slice(0, 300), cls: "", present: value !== "" };
+      const urn = typeof o.record === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(o.record) ? o.record : "";
+      return { block: "field", label, kind: str(o.kind, 20) || "text", state: "value", value: value.slice(0, 300), cls: "", present: value !== "", ...(urn ? { urn } : {}) };
     }
     case "screen": {
       const frames = arr(o.frames).filter((f) => typeof f === "string").slice(-4);

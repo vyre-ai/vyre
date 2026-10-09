@@ -287,7 +287,7 @@ function raw(socketPath, pathname, payload, headers) {
 
 test("daemon: vyred checks presence, so a forged caller cannot run a human-only tool, and a Capsule signature can", async t => {
   const root = tempHome(t);
-  writeModule(path.join(root, "modules"), "held", { does: { tools: ["held.release"] } },
+  writeModule(path.join(root, "modules"), "held", { does: { tools: [{ name: "held.release", outward: true }] } },
     `export default { async start(ctx) { ctx.tool("held.release", { effect: "read", presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());

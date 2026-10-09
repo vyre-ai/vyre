@@ -16,6 +16,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { PKG_ROOT } from "../../kernel/devbuild.js";
 import { isPerson, agentName } from "../../lib/caller.js";
 import { frontMatter } from "../../lib/docs-corpus.js";
@@ -219,11 +220,19 @@ export default {
       description: "Write a skill or a plugin into the library as a DRAFT: nothing uses it until the level's owner approves (skills.approve, or flows.propose { what: \"skill\" } for a card in Now). kind skill: body is a SKILL.md with name and description in its front matter. kind plugin: body is JSON { name, description, skills?, commands?, hooks?, mcp? }; one with a hook or an MCP server has code and its draft says what it declares. level: space, personal, agent or project.",
       input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string" }, note: { type: "string" } }, ["name", "level", "body"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.draft(await need(meta), i) });
-    ctx.tool("skills.approve", { effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space"],
+    // A lesson (a procedure the person keeps repeating, learn's proposal) is drafted for the install's owner, at the project level when it is a project's, else their own. A draft only: approving is the person's.
+    ctx.tool("skills.draft.learned", { effect: "write", internal: true, callers: ["module"],
+      description: "Draft a skill learn proposed from a repeated procedure, for the owner of this install: at the project level when it names a project, else the owner's own. A draft; the owner approves it.",
+      input: obj({ name: { type: "string" }, body: { type: "string" }, project: { type: "string" } }, ["name", "body"]),
+      run: async (/** @type {any} */ i) => {
+        if (!kernelOk()) throw err("unavailable", "the kernel is not wired on this box yet");
+        return lib.draftFor(String(ctx.kernel.owner), { name: i.name, body: i.body, level: i.project ? "project" : "personal", scope: i.project || "", note: "Drafted from a procedure you repeated.", proposer: "learn" });
+      } });
+    ctx.tool("skills.approve", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Say yes to a draft: it becomes the version in use at its level and the one before is retired. Only the level's owner: you for a personal skill, an agent's owner, a project's owner, an owner or an admin for the Space. A plugin with code needs ack: the value skills.draft gave, which is the hash of exactly what it declares.",
       input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "version"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.approve(await need(meta), i) });
-    ctx.tool("skills.rollback", { effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space"],
+    ctx.tool("skills.rollback", { effect: "write", callers: [...PERSON_SURFACES, "tailnet", "device", "space"],
       description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",
       input: obj({ ...common, to: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "to"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.rollback(await need(meta), i) });

@@ -38,6 +38,11 @@
         "reach": "anyone"
       },
       {
+        "name": "skills.draft.learned",
+        "effect": "write",
+        "reach": "modules"
+      },
+      {
         "name": "skills.approve",
         "effect": "write",
         "reach": "anyone"

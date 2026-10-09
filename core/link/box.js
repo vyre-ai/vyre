@@ -441,6 +441,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (!write && !callOp && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
       // A learned website operation: a read is asked as it is; an outward one only from the connectors module, which has the kernel's approval for exactly that call, and it is signed below.
       if (callOp && input && input.approved === true && !(meta && meta.caller === "module:connectors")) throw Object.assign(new Error(`${tool} runs an outward operation on a Mac only for the connectors module, with the person's approval`), { code: "denied" });
+      // A learned operation that submits goes as chrome.op.send, always with the person's approval; chrome.op.call never carries one.
+      if (tool === "chrome.op.send" && !(input && input.approved === true)) throw Object.assign(new Error("chrome.op.send runs an operation that submits, and only with the person's approval"), { code: "denied" });
+      if (tool === "chrome.op.call" && input && input.approved === true) throw Object.assign(new Error("chrome.op.call runs a read; an operation that submits goes through chrome.op.send"), { code: "denied" });
+      // Vyre Computer asks a Mac to look, act or find files only through its own module; the Mac checks the person's allowlist again.
+      if (tool === "computer.call" && !(meta && meta.caller === "module:computer")) throw Object.assign(new Error("computer.call is sent to a Mac only by Vyre Computer"), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
       // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) —
@@ -467,7 +472,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         timer.unref();
         // The person's answer, signed for this Mac alone: its node, the ask, the exact input.
         let assertion;
-        if (callOp && input && input.approved === true) {
+        if (callOp && tool === "chrome.op.send" && input && input.approved === true) {
           if (!m.stable_id) { clearTimeout(timer); return resolve({ ...who, ok: false, error: { code: "denied", message: `the Mac "${m.name}" paired without its node known; pair it again to run an outward operation there` } }); }
           assertion = signCall(assertKey().privateKey, { mac: m.stable_id, call: { site: String(input.site), name: String(input.name), inputs: input.inputs }, caller: String((meta && meta.caller) || "unknown"), now: now() });
         }

@@ -69,9 +69,11 @@ test("a cited field the server did not resolve is a chip, never a value; a resol
   const mk = (/** @type {string[]} */ roles) => ({ id: "p", roles, resolve: async () => spec });
   const mgr = /** @type {any} */ (await resolveRefs(f, mk(["manager"]))).data.blocks[0];
   assert.deepEqual([mgr.block, mgr.label, mgr.value], ["field", "Fee", { amount: 4200 }]);
+  assert.equal(mgr.record, "vyre://spc/matter/1", "the record a readable field came from rides with it, so a tap opens the record");
   const mem = /** @type {any} */ (await resolveRefs(f, mk(["member"]))).data.blocks[0];
   assert.equal(mem.placeholder, true);
   assert.ok(!JSON.stringify(mem).includes("4200"));
+  assert.equal(mem.record, undefined, "a field the viewer cannot read names no record");
   assert.equal(/** @type {any} */ (f).data.blocks[0].block, "field-ref", "the shared frame is not mutated");
   const gone = /** @type {any} */ (await resolveRefs(f, { id: "p", roles: ["manager"], resolve: async () => { throw new Error("x"); } })).data.blocks[0];
   assert.equal(gone.placeholder, true, "a failed lookup is a chip");

@@ -65,9 +65,11 @@ async function world(t, lines, config = {}) {
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${SESSION}.jsonl`);
   fs.writeFileSync(file, lines.join("\n") + "\n");
+  // the line the notice is told at is the setting `sessions.rollover_at` (default 80); these cases are written for a 60 percent line
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "transcripts")], recall: { every: 0, vectors: false }, vault: { keystore: "file" }, ...config }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  assert.equal((await call("settings.set", { key: "sessions.rollover_at", value: 60 }, { root, caller: "cli" })).error, undefined);
   const enrich = (input, caller = "harness", meta) => d.registry.call("harness.enrich", { prompt: "carry on", cwd: "/work/app", session: SESSION, transcript: file, ...input }, caller, meta);
   return { d, file, enrich, root };
 }

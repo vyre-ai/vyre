@@ -24,11 +24,11 @@ import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } f
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/module-sdk/manifest.js";
-import { isPerson, deviceIdOf } from "../../lib/caller.js";
+import { isPerson, deviceIdOf, yesDeviceOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
-import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
+import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, AGENT_PENDS } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
@@ -40,6 +40,8 @@ const LOADER_FEATURES = ["modules.status"];
 // wink.server.adopt, wink.server.release and wink.phone.wait are the pairing steps a device takes before it has any person session: each checks its own caller and the owner's presence (core/wink/pairing.js).
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
+/** The sign-in tools: they authenticate a person (a passkey or the device's own key) and open a person session; the presence verifier still checks that proof. */
+const SIGN_IN = new Set(["presence.person.start"]);
 export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
@@ -655,6 +657,9 @@ export class Registry {
     this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
     this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
+    /** The five-minute reuse windows a yes opened (lib/one-yes.js createReuse), and the old header methods already logged as deprecated. */
+    this.reuse = createReuse();
+    /** @type {Set<string>} */ this.legacySaid = new Set();
     // How often each module's tools were used by a person, a surface or a model (never by another
     // module or a webhook), and when last: what the hub and `vyre modules` show beside each one.
     // Kept in memory, loaded from and written to one kernel table. The loader owns it, so it is
@@ -1331,6 +1336,8 @@ export class Registry {
         ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
+      // the presence module confirms a local yes with the daemon's own verifier (Touch ID, the terminal code), the one the registry's floor already holds
+      ...(m.name === "presence" && (/** @type {any} */ (this.deps)).presence ? { verifier: (/** @type {any} */ (this.deps)).presence } : {}),
       ...(m.name === "relay" || m.name === "wink" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
@@ -1477,7 +1484,7 @@ export class Registry {
   return { error: { code: "held_unavailable", message: `${tool} acts as you outside. A call from anyone but you is held at the Gate, and that routing lands with the Gate wiring; until then it runs only from your own surface.` } };
   }
 
-  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, yes: yesProof = null, terminal = null, idempotencyKey = undefined, door = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
@@ -1667,12 +1674,14 @@ export class Registry {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
     }
-    // A human-only tool needs a proof that a person is there, whatever the caller claims
-    // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
+    // The one yes (DESIGN-one-yes, inventory item 4 step B). A tool the floor guards is one of two kinds. One of the THREE MOMENTS (momentOf: pairing or widening reach, a vault secret, an outward send)
+    // takes a yes, and nothing else: an approved card, a device's signed yes, a reuse window a yes opened, or a 0.3.0 client's old header turned into a card at the edge (admitLegacy). Every other tool the floor
+    // used to guard needs the PERSON and no proof: the callers list and the person-session checks above are what judge that, and an agent, a module acting for one or a guest is refused here.
     const presence = this.deps.presence;
+    const isOut = (/** @type {string} */ n) => Boolean((this.tools.get(n) || {}).outward);
+    const moment = momentOf(tool, isOut);
     // The person's own switch (Settings > Privacy: confirm.pairing, confirm.vault, confirm.outward, on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
     // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
-    const moment = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward));
     const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && this.deps.config.confirm[{ pair: "pairing", vault: "vault", outward: "outward" }[moment]] === false);
     if (switchedOff) meta = { ...meta, presence: { method: "switch", keyId: null } };
     // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
@@ -1681,31 +1690,21 @@ export class Registry {
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
     } else if (presence && !switchedOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
-      // One yes: a floor-bearing tool that is one of the three moments (vault, pairing a device, an outward send) also takes the owner's approval of exactly this call: a card the phone answered, bound to the
-      // asking device taken from the verified caller (never from input), spent once. Everything else, and everything that is not an approved card, goes on to the old proof check below.
-      /** @type {{ method: string, keyId: null } | null} */ let approved = null;
-      if (approval && !String(caller).startsWith("module:")) {
-        const mo = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward)), dev = deviceIdOf(String(caller)), plain = plainFieldsOf(input);
-        if (mo && dev && plain) { const r = await yes(mo, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) approved = { method: "approval", keyId: null }; }
-      }
-      // One yes, the direct form: `x-vyre-presence: yes proof=<base64url of the owner key's proof>` over exactly this call (the act word and fields signOf gives it, in the owner's chain). yes() asks the sealing process,
-      // which takes a software key on a development build only; a release build answers software_key and nothing runs. Only the tools MOMENT_OPS lists, never from a module, and only for the home's owner.
-      if (!approved && proof && proof.method === "yes" && !String(caller).startsWith("module:") && typeof this.deps.ownerChain === "function") {
-        const mo = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward)), plain = plainFieldsOf(input);
-        /** @type {any} */ let decoded = null;
-        try { decoded = JSON.parse(Buffer.from(String(proof.proof || ""), "base64url").toString("utf8")); } catch { /* not a proof */ }
-        if (mo && plain && decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
-          const r = await yes(mo, { chain: await this.deps.ownerChain(), op: tool, fields: plain }, decoded);
-          if (r.ok) approved = { method: r.strength === "real" ? "yes" : "software", keyId: null };
-          else return { error: { code: r.reason === "software_key" ? "software_key" : "presence_required", message: r.reason === "software_key" ? "this key is software; approve this in Vyre on your phone" : `that approval does not stand (${r.reason})`, methods: [] } };
-        }
-      }
-      if (approved) meta = { ...meta, presence: approved };
-      else {
-      const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
-      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
-      // The tool learns how the person proved it (and with which enrolled key), never the proof.
-      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+      if (SIGN_IN.has(tool)) {
+        // Signing in is authentication, not one of the three moments: the passkey or device key that opens a person session is checked by the presence verifier, as before (BACKLOG 0.3.2: move sign-in to the yes form too).
+        const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
+        if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
+        meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+      } else if (!moment) {
+        if (!isPerson(String(caller))) return { error: { code: "presence_required", message: `${tool} is the person's own action`, methods: [] } };
+        meta = { ...meta, presence: { method: "person", keyId: null } };
+      } else if (AGENT_PENDS.includes(tool) && !isPerson(String(caller))) {
+        // an agent asking for a grant or a pass only files a request: the tool keeps it pending for a person, whose approval (vault.approve) is the moment
+        meta = { ...meta, presence: { method: "pending", keyId: null } };
+      } else {
+        const got = await this.yesFloor({ tool, moment, caller, meta, input, approval, proof, yesProof, presence, def });
+        if (got.error) return got;
+        meta = { ...meta, presence: got.presence };
       }
     }
     // One yes: any other caller of a tool marked `outward: true` (an agent, a model, the harness, a module acting for one, a guest) is HELD as a card in the one approvals queue and the tool runs only when
@@ -1777,15 +1776,61 @@ export class Registry {
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
-    // keep: the person asked that this proof also open a presence session on their device, so
-    // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
-    // proof opens one (presence.openSession refuses the rest); the secret goes back once, and a
-    // replayed answer never carries one (it is outside what the idempotency record keeps).
-    if (keep && !result.error && presence && meta.presence && meta.presence.method !== "session") {
-      try { return { ...result, session: presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer || null }) }; }
-      catch { /* a code or tty proof: the call still succeeded, with no session */ }
-    }
     return result;
+  }
+
+  /**
+   * The yes for one of the three moments, from whichever form it came in (the order is the order they are tried): an approved card (`approval`), a device's signed yes (`yesProof`, or a 0.3.0 client's
+   * `x-vyre-presence: yes proof=`), a reuse window an earlier yes opened (five minutes, one device, a reveal, a copy or a code), and a 0.3.0 client's old header (`proof`), which is turned into an approved card
+   * at the edge (admitLegacy, deprecated, deleted in 0.3.2) so that yes() is the only thing that ever says ok. Answers { presence } for the tool to read, or { error }.
+   * @param {{ tool: string, moment: "pair" | "vault" | "outward", caller: string, meta: any, input: any, approval: string | null, proof: any, yesProof: any, presence: any, def: any }} a
+   */
+  async yesFloor({ tool, moment, caller, meta, input, approval, proof, yesProof, presence, def }) {
+    const c = String(caller);
+    const plain = yesFieldsOf(input);
+    const dev = yesDeviceOf(c);
+    const person = String((meta.person && meta.person.id) || "owner");
+    const isOut = (/** @type {string} */ n) => Boolean((this.tools.get(n) || {}).outward);
+    const agent = !isPerson(c);
+    const open = (/** @type {any} */ r, /** @type {string} */ method) => {
+      // a yes that asked for it (a card or a signed request carrying reuse) opens the five-minute window for this device and person, for a reveal, a copy or a code only
+      if (r.reuse === true && dev && REUSE_OPS.includes(tool) && !agent) this.reuse.grant(dev, person);
+      return { presence: { method, keyId: null } };
+    };
+    // `sign`: the exact act (name, Space, fields) a device's key signs for a direct yes (x-vyre-yes); only where this home has a Space and the call's fields are plain
+    const sign = plain && typeof this.deps.homeSpace === "string" ? (() => { const g = signOf(moment, { op: tool, fields: plain }); return { op: g.op, space: this.deps.homeSpace, fields: g.fields }; })() : null;
+    const refuse = async (/** @type {string} */ message, code = "presence_required") => ({ error: { code, message, methods: presence && typeof presence.methods === "function" ? await presence.methods().catch(() => []) : [], moment, ...(plain ? { request: { op: tool, fields: plain } } : {}), ...(sign ? { sign } : {}) } });
+    if (c.startsWith("module:") || !plain) return refuse(`${tool} needs your yes, and this call cannot carry one`);
+    // 1. a card the person's phone or this device's own confirmation approved
+    if (approval && dev) { const r = await yes(moment, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) return open(r, "approval"); }
+    // 2. a device's signed yes over exactly this call, in the owner's chain (a development build takes a software key; a release build answers software_key)
+    let signed = yesProof;
+    if (!signed && proof && proof.method === "yes" && proof.proof) signed = String(proof.proof);
+    if (signed && typeof this.deps.ownerChain === "function") {
+      /** @type {any} */ let decoded = null;
+      try { decoded = JSON.parse(Buffer.from(String(signed), "base64url").toString("utf8")); } catch { /* not a proof */ }
+      if (decoded && typeof decoded === "object" && !Array.isArray(decoded)) {
+        const chain = await this.deps.ownerChain();
+        let r = await yes(moment, { chain, op: tool, fields: plain }, decoded);
+        let reuse = false;
+        // the same yes, signed over the call AND the wish to reuse it: the signed fields say so, so a replayed plain yes can never open a window
+        if (!r.ok && REUSE_OPS.includes(tool)) { r = await yes(moment, { chain, op: tool, fields: { ...plain, reuse: true } }, decoded); reuse = r.ok; }
+        if (r.ok) return open({ ...r, reuse }, r.strength === "real" ? "yes" : "software");
+        return { error: { code: r.reason === "software_key" ? "software_key" : "presence_required", message: r.reason === "software_key" ? "this key is software; approve this in Vyre on your phone" : `that approval does not stand (${r.reason})`, methods: [], moment } };
+      }
+    }
+    // 3. the reuse window
+    if (dev && !agent && this.reuse.ok(dev, person, tool)) return { presence: { method: "reuse", keyId: null } };
+    // 4. a 0.3.0 client's old header: verified by the old verifier, then admitted as a card and redeemed through yes() like any other
+    if (proof && proof.method !== "yes" && presence && dev) {
+      const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: null });
+      if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods, moment } };
+      if (!this.legacySaid.has(v.method)) { this.legacySaid.add(v.method); this.deps.log?.(`presence: a client sent the old x-vyre-presence header (${v.method}); it is turned into a yes at the edge and will stop working in 0.3.2`); }
+      const id = admitCard({ moment, op: tool, fields: plain, device: dev });
+      const r = await yes(moment, { op: tool, fields: plain, device: dev }, { card: id });
+      if (r.ok) return { presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+    }
+    return refuse(`${tool} needs your yes: approve it in Vyre on your phone, or confirm it on this computer`);
   }
 
   /** @param {any} def @param {any} input @param {any} meta */

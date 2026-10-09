@@ -200,7 +200,7 @@ test("ask: the screen helps understand a question that points at it, and is neve
 
 test("ask: a site the question names never decides: what the normal answer finds answers alone; the site summary answers only when nothing else does", async t => {
   const d = db(t);
-  const SITE = { answer: "From what Vyre for Chrome learned: GoHighLevel (app.ghl.example). Last worked 30 Sep.", confidence: 0.9, sources: [{ session: "site:https://app.ghl.example", seq: 0, role: "site", name: "GoHighLevel", site: "https://app.ghl.example" }] };
+  const SITE = { answer: "From what Vyre Computer learned: GoHighLevel (app.ghl.example). Last worked 30 Sep.", confidence: 0.9, sources: [{ session: "site:https://app.ghl.example", seq: 0, role: "site", name: "GoHighLevel", site: "https://app.ghl.example" }] };
   const fact = { answer: async () => ({ answer: "Your wife is Jordan.", kind: "fact", confidence: 0.9, facts: [{ id: "f1" }], sources: [{ session: "told:1", seq: 0, name: "told to memory" }] }) };
   const none = { answer: async () => ({}), retrieve: async () => ({ passages: [] }) };
   const withSite = (deps, site = async () => SITE) => asker({ db: d, site, ...deps });

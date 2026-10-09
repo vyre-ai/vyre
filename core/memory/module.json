@@ -399,7 +399,7 @@
       "key": "memory.site.learn",
       "group": "memory",
       "label": "Learn how each website works",
-      "help": "Vyre for Chrome remembers each site's layout, how to find its buttons, how to tell it is ready or that you must sign in, and the flows that worked, so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens. You can see and forget any of it.",
+      "help": "Vyre Computer remembers each site's layout, how to find its buttons, how to tell it is ready or that you must sign in, and the flows that worked, so the next visit is faster. It keeps structure only, never what you typed, cookies or tokens. You can see and forget any of it.",
       "type": "bool",
       "default": true,
       "levels": [
@@ -410,8 +410,8 @@
     {
       "key": "memory.site.sync",
       "group": "memory",
-      "label": "Bring in what Vyre for Chrome learned on its own",
-      "help": "Standalone Vyre for Chrome keeps what it learned on this computer. With this on, it is folded into your Vyre Memory once your box is reachable, and the other way round.",
+      "label": "Bring in what Vyre Computer learned on its own",
+      "help": "Standalone Vyre Computer keeps what it learned on this computer. With this on, it is folded into your Vyre Memory once your box is reachable, and the other way round.",
       "type": "bool",
       "default": true,
       "levels": [

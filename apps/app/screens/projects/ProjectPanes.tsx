@@ -71,3 +71,26 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
     </View>
   );
 }
+
+type Entry = { type: string; id: string; urn: string; title: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
+const dayOf = (ms: number) => (ms ? new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "");
+
+/** Everything that links to this project, newest first (work.timeline): tasks, files, messages, documents and chats. A chat shows when it is the viewer's or its people shared it, by title only. */
+export function TimelinePane({ slug }: { slug: string }) {
+  const router = useRouter();
+  const [rows, setRows] = useState<Entry[] | null>(null);
+  useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 100 }).then((r) => setRows(r.error ? [] : r.data?.entries ?? [])); }, [slug]);
+  if (rows === null) return <LoadingState rows={3} />;
+  if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Tasks, files, messages and shared chats linked to this project show here, newest first." />;
+  return (
+    <Card flush>
+      {rows.map((e, i) => (
+        <View key={e.urn}>
+          {i ? <Divider /> : null}
+          <Row title={e.title} sub={`${e.type === "chat" ? "Chat" : e.type}${e.at ? ` \u00B7 ${dayOf(e.at)}` : ""}`} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
+            onPress={() => router.push((e.type === "chat" ? (e.chat ? `/u/chats/${e.chat}` : `/u/record/${e.id}`) : `/u/record/${e.id}`) as never)} />
+        </View>
+      ))}
+    </Card>
+  );
+}

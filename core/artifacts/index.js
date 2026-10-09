@@ -34,6 +34,7 @@ import { KINDS, MAIN_FILE, DATA_FILE, MAX_BYTES, BY_EXTENSION, page, pageHeaders
 import { MEDIA, MAX_MEDIA, mediaFormatOf, isMediaFormat, parseRange } from "./media.js";
 import { probe } from "./probe.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { artifactBrand } from "../../lib/brand/profile.js";
 
 export const MIGRATIONS = [
   `
@@ -155,6 +156,16 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const data = ctx.paths.data || path.join(ctx.paths.root, "data", "artifacts");
+    // The space's brand (core/brand) is the default look of an artifact the person sees (their private view and a download); a public share is stripped of who and where, so it takes none.
+    /** @type {{ at: number, v: { css: string, header: string } | null }} */
+    let brandCache = { at: 0, v: null };
+    const brandOf = async () => {
+      if (Date.now() - brandCache.at < 30_000) return brandCache.v;
+      let v = null;
+      try { const r = await ctx.call("brand.resolve", {}); if (!r.error && r.data) { const b = artifactBrand(r.data); if (b.css || b.header) v = b; } } catch { /* no brand module: the plain look */ }
+      brandCache = { at: Date.now(), v };
+      return v;
+    };
     const store = openStore(path.join(data, "store"));
     const publicDir = path.join(data, "public");
     // Shared with the share server's own user through the folder's group (the box image sets it).
@@ -1065,7 +1076,7 @@ export default {
         const { v, files } = await filesAt(r, i.version);
         const base = r.title.replace(/[^A-Za-z0-9 _-]+/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || r.id;
         // Opened from Downloads a page has no server headers, so it carries its own network ban (reviewer-2 L2).
-        if ((i.as || "page") === "page") return { name: `${base}.html`, type: "text/html", version: v.n, body: withMetaCsp(page({ title: r.title, format: r.format, files }).html) };
+        if ((i.as || "page") === "page") return { name: `${base}.html`, type: "text/html", version: v.n, body: withMetaCsp(page({ title: r.title, format: r.format, files, brand: await brandOf() }).html) };
         const main = MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)];
         return { name: `${base}${path.extname(main)}`, type: "text/plain", version: v.n, body: files[main], ...(r.format === "chart" ? { data: files[DATA_FILE] } : {}) };
       },
@@ -1336,7 +1347,7 @@ export default {
       const n = url.searchParams.get("v") ? Number(url.searchParams.get("v")) : r.head;
       let files;
       try { files = (await filesAt(r, n)).files; } catch { return no(404, "not found"); }
-      const { html, scripts } = page({ title: r.title, format: r.format, files });
+      const { html, scripts } = page({ title: r.title, format: r.format, files, brand: await brandOf() });
       const body = Buffer.from(html, "utf8");
       res.writeHead(200, { ...pageHeaders({ scripts, framedBy: "self" }), "content-length": body.length });
       res.end(req.method === "HEAD" ? undefined : body);

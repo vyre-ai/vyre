@@ -73,7 +73,7 @@ test("a box's read runs in the Mac's own Chrome once the person allowed that ope
 test("an outward operation runs on the Mac only with the box's signed assertion for exactly that call, from the connectors module alone, and once", { timeout: 120_000 }, async t => {
   const s = await world(t);
   await s.macCall("link.ops.allow", { site: ORIGIN, name: "sendMessage" });
-  const call = { tool: "chrome.op.call", input: { site: ORIGIN, name: "sendMessage", inputs: { recipient: "alan-turing", text: "a fresh note" }, approved: true } };
+  const call = { tool: "chrome.op.send", input: { site: ORIGIN, name: "sendMessage", inputs: { recipient: "alan-turing", text: "a fresh note" }, approved: true } };
   // only the connectors module may ask for an approved call; any other module, a model or the person's label is refused on the box
   for (const caller of ["module:flows", "mcp", "deck"]) assert.ok((await s.boxCall("link.macs.call", call, caller)).error, `${caller} may not ask for an approved outward call`);
   s.seen.length = 0;
@@ -83,10 +83,28 @@ test("an outward operation runs on the Mac only with the box's signed assertion 
   assert.ok(sent, JSON.stringify(s.seen.map(x => x.op)));
   assert.equal(sent.trust && sent.trust.asked, true, "the yes was given on the box and signed for this call");
   assert.deepEqual(sent.args.inputs, { recipient: "alan-turing", text: "a fresh note" });
-  // without the approval flag the same call is held, as any send is, and never runs here
+  // chrome.op.send without the approval is refused on the box, and with a forged one (no signature) on the Mac; neither runs
   s.seen.length = 0;
-  await s.boxCall("link.macs.call", { tool: "chrome.op.call", input: { ...call.input, approved: false } }, "module:connectors");
-  assert.ok(!s.seen.some(x => x.op === "ops.call" && x.trust && x.trust.asked === true));
+  assert.ok((await s.boxCall("link.macs.call", { tool: "chrome.op.send", input: { ...call.input, approved: false } }, "module:connectors")).error, "a send carries the approval");
+  assert.ok(!s.seen.some(x => x.op === "ops.call"));
+});
+
+test("an operation that submits is refused through chrome.op.call, which points to chrome.op.send; a read through chrome.op.send is refused too", { timeout: 120_000 }, async t => {
+  const s = await world(t);
+  await s.macCall("link.ops.allow", { site: ORIGIN, name: "sendMessage" });
+  await s.macCall("link.ops.allow", { site: ORIGIN, name: "searchPeople" });
+  s.seen.length = 0;
+  const viaCall = await s.boxCall("link.macs.call", { tool: "chrome.op.call", input: { site: ORIGIN, name: "sendMessage", inputs: { recipient: "alan-turing", text: "a fresh note" } } }, "module:connectors");
+  assert.equal(viaCall.data[0].ok, false);
+  assert.match(JSON.stringify(viaCall), /chrome\.op\.send/);
+  assert.ok(!s.seen.some(x => x.op === "ops.call"), "nothing ran in the page");
+  // an approval on chrome.op.call is refused on the box before it is sent
+  assert.ok((await s.boxCall("link.macs.call", { tool: "chrome.op.call", input: { site: ORIGIN, name: "sendMessage", inputs: {}, approved: true } }, "module:connectors")).error);
+  // a read through chrome.op.send (signed) is turned back on the Mac: reads go through chrome.op.call
+  const readViaSend = await s.boxCall("link.macs.call", { tool: "chrome.op.send", input: { site: ORIGIN, name: "searchPeople", inputs: { query: "x" }, approved: true } }, "module:connectors");
+  assert.equal(readViaSend.data[0].ok, false);
+  assert.match(JSON.stringify(readViaSend), /chrome\.op\.call/);
+  assert.ok(!s.seen.some(x => x.op === "ops.call"));
 });
 
 test("with the Mac off the box says it needs the person's Chrome, plainly, and the Connection's light and an event say so", { timeout: 120_000 }, async t => {
