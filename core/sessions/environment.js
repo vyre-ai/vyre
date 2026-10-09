@@ -28,7 +28,7 @@ export const FAMILIES = {
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
   settings: { more: true }, sidebar: { more: true }, views: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
   context: { more: true }, import: { more: true }, mentions: { more: true }, modules: { more: true }, presence: { more: true }, push: { more: true }, releases: { more: true }, rules: { more: true },
-  signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
+  docs: { more: true }, skills: { more: true }, vyre: { more: true }, signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
 };
 
 /** The family of a tool name. @param {string} name */
@@ -136,7 +136,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
 
   const more = [...new Set(families.filter(f => (FAMILIES[f] || {}).more).map(f => f))];
   add("learn", 99, [
-    "To learn more, ask: work.tools (what you may use), records.types (the data), tools_call work.situation (where you are and what waits), and read the tool list your MCP server offers. The list is short on purpose: tools_find finds any other tool you may use and tools_call runs it. Do not assume a tool exists that tools_find does not return.",
+    "To learn more, ask: work.tools (what you may use), records.types (the data), tools_call work.situation (where you are and what waits), docs_find for how Vyre works, skills_find for a skill that fits the job, vyre_core for its modules, and read the tool list your MCP server offers. The list is short on purpose: tools_find finds any other tool you may use and tools_call runs it. Do not assume a tool exists that tools_find does not return.",
     more.length ? `Also reachable: ${some(more, 16, "the tool list")}.` : "",
   ], true);
 
