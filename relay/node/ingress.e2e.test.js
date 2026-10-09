@@ -38,7 +38,7 @@ test("ingress: a signer outside reaches the dressed signing page through the rel
   await new Promise(r => other.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => other.close());
 
   const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: { cert, key }, upstream: { port: /** @type {any} */ (other.address()).port },
-    ingress: { hooks: () => null, share: () => null, apps: () => ({ port: /** @type {any} */ (front.address()).port, hosts: [APP_HOST] }) } });
+    ingress: { hooks: () => null, share: () => null, appsSuffix: `.${NAME}`, apps: () => ({ port: /** @type {any} */ (front.address()).port, hosts: [APP_HOST] }) } });
   const at = await gate.listen(); t.after(() => gate.close());
 
   // the directory's answer, as names/worker resolves it: declared hosts only, with a suspend switch
