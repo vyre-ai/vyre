@@ -29,7 +29,7 @@ const SEED = "JBSWY3DPEHPK3PXP";
 /** One headless Chrome with its own profile; resolves to its DevTools port. */
 async function chrome(t) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-fill-chrome-"));
-  const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", "about:blank"], { stdio: "ignore", detached: true });
+  const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", ...CHROME_SAFE, `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", "--disable-extensions", ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
   t.after(async () => { try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch {} await new Promise(r => setTimeout(r, 200)); try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {} });
   for (let i = 0; i < 400; i++) {
     try { const port = Number(fs.readFileSync(path.join(dir, "DevToolsActivePort"), "utf8").split("\n")[0]); if (port && (await fetch(`http://127.0.0.1:${port}/json/version`)).ok) return port; } catch {}
