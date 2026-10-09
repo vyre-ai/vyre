@@ -993,5 +993,8 @@
  "scripts/eval/assistant-fit/engineer.test.js": 7,
  "scripts/eval/assistant-fit/native.test.js": 5,
  "core/learn/to-library.test.js": 2,
- "test/learned-skills-daemon.test.js": 1
+ "test/learned-skills-daemon.test.js": 1,
+ "test/space-bundle-restore.test.js": 1,
+ "kernel/seal/space-bundle.test.js": 1,
+ "kernel/grants/adopt.test.js": 1
 }

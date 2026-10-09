@@ -24,14 +24,8 @@ import { derive, utf8 } from "../../../lib/databox.js";
 // The recovery code wrap. It is the IDENTITY's recovery code (the 26 base32 characters of core/spaces/recovery.js, with the optional recovery password), not a second one: the same stretch of the same input
 // (kernel/identity/stretch.js: Argon2id, STRETCH parameters, STRETCH_SALT) that makes the identity's recovery key, then HKDF to a key of its own for this wrap, so the identity's signing seed is never used as an
 // encryption key. It is the way back into the memory and the backup when every device is lost: a new device that recovered into the identity with the code opens the home with the same code.
-const normalizeCode = (/** @type {unknown} */ code) => String(code ?? "").toLowerCase().replace(/[\s-]/g, "");
-export const codeLooksRight = (/** @type {unknown} */ code) => /^[a-z2-7]{26}$/.test(normalizeCode(code));
-const codeSecret = (/** @type {string} */ code, /** @type {string} */ password) => {
-  if (!codeLooksRight(code)) throw Object.assign(new Error("that is not a recovery code"), { code: "bad_code" });
-  return derive(argon2id(utf8(`${normalizeCode(code)}\n${String(password ?? "").normalize("NFKC")}`), STRETCH_SALT, STRETCH), "vyre-identity-home-code-wrap-v1");
-};
-export const wrapWithCode = (/** @type {Uint8Array} */ key, /** @type {string} */ code, /** @type {string} */ aad, password = "") => { const b = seal(key, codeSecret(code, password), aad); return { v: 2, iv: b.iv, ct: b.ct, tag: b.tag }; };
-export const unwrapWithCode = (/** @type {any} */ w, /** @type {string} */ code, /** @type {string} */ aad, password = "") => open({ v: 1, iv: w.iv, ct: w.ct, tag: w.tag }, codeSecret(code, password), aad);
+import { wrapWithCode, unwrapWithCode, codeLooksRight } from "../../../lib/code-wrap.js";
+export { wrapWithCode, unwrapWithCode, codeLooksRight };
 
 /** An unlocked key lives in the assistant's process until it is locked, revoked or the process ends: there is no timer that asks the person again (the no-nagging rule). */
 export const LEASE_MS = Infinity;
