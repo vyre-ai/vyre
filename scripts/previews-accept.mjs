@@ -108,7 +108,30 @@ try {
     await ctx.close();
     host.close();
   }
-  console.log("ok: a Claude-style artifact page ran unchanged in a Vyre preview, and in a frame of another origin");
+  // a React page (core/previews/testing/artifact-react.jsx: state, a chart, an icon, stored data) built by the box and run in the browser; its libraries come from the pinned list
+  {
+    const rdir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-accept-react-"));
+    fs.copyFileSync(path.join(here, "../core/previews/testing/artifact-react.jsx"), path.join(rdir, "App.jsx"));
+    const rp = await call("previews.open", { title: "React tasks", path: rdir, capabilities: { db: {} } });
+    assert.ok(rp.data, JSON.stringify(rp));
+    const ru = new URL((await call("previews.url", { id: rp.data.id, origin: `http://localhost:${frontPort}` })).data.url);
+    const ctx = await browser.newContext({ viewport: { width: 520, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+    await page.goto(ru.href, { waitUntil: "networkidle" });
+    await page.getByRole("heading", { name: "React tasks" }).waitFor({ timeout: 60000 });
+    await page.getByRole("button", { name: "Allow" }).click({ timeout: 15000 });
+    await page.getByLabel("New task").fill("From React");
+    await page.getByRole("button", { name: "Add" }).click();
+    await page.getByText("From React").waitFor({ timeout: 15000 });
+    await page.locator(".recharts-bar-rectangle").first().waitFor({ timeout: 15000 });
+    if (out) await page.screenshot({ path: path.join(out, "react-tasks.png"), fullPage: true });
+    assert.deepEqual(errors, [], "the React page had no errors of its own");
+    await ctx.close();
+    fs.rmSync(rdir, { recursive: true, force: true });
+  }
+  console.log("ok: a Claude-style artifact page, and a React one, ran unchanged in a Vyre preview, and in a frame of another origin");
 } catch (e) {
   console.error("FAILED:", e && e.message ? e.message : e);
   process.exitCode = 1;
