@@ -5,7 +5,7 @@ import { ChatFiles } from "./ChatFiles";
 
 export function FilesPane({ chat, onClose }: { chat: string; onClose: () => void }) {
   return (
-    <View accessibilityLabel="Files in this chat" style={{ width: 400, flexShrink: 0, borderLeftWidth: 1, borderLeftColor: "rgba(127,127,127,0.25)" }} className="min-h-0">
+    <View accessibilityLabel="Files in this chat" style={{ width: 440, flexShrink: 0, borderLeftWidth: 1, borderLeftColor: "rgba(127,127,127,0.25)" }} className="min-h-0">
       <View className="flex-row items-center justify-between px-s4 pt-s3 pb-s2">
         <Text strong>Files</Text>
         <Button kind="ghost" size="sm" label="Close" onPress={onClose} />
