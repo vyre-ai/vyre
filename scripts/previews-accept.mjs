@@ -84,6 +84,9 @@ try {
     await ctx.close();
   }
   console.log("ok: a Claude-style artifact page ran unchanged in a Vyre preview");
+} catch (e) {
+  console.error("FAILED:", e && e.message ? e.message : e);
+  process.exitCode = 1;
 } finally {
   if (browser) await browser.close();
   await d.stop();
