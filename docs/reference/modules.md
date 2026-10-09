@@ -102,7 +102,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 52 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 53 | 0 | cli |
 
 ## about
 
@@ -1092,7 +1092,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [52](tools.md#work), 3 of them only for other modules
+- Tools: [53](tools.md#work), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`
