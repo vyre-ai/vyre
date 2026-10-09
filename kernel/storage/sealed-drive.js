@@ -8,6 +8,7 @@ import { Readable } from "node:stream";
 import { namer, sealFile, openFile, openShared, shareFile, unshareFile } from "../../lib/chat-keys.js";
 import { seal, open } from "../../lib/keywrap.js";
 
+const FILES = /^Projects\/([^/]+)\/files(?:\/(.*))?$/;
 const FOLDER = /^Projects\/([^/]+)\/(chat|made)\/([^/]+)(?:\/(.*))?$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message = code) => Object.assign(new Error(message), { code });
 const NAMES = ".names";
@@ -16,11 +17,17 @@ const enc = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
 
 /**
  * @param {any} drive the Drive underneath
- * @param {{ keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null, sealed?: (chat: string) => boolean }} src what this process holds: a chat's keys when it is unlocked; `sealed(chat)` says whether the chat keeps its folders sealed (a chat with no ring does not, and its paths pass straight through)
+ * @param {{ projectFiles?: boolean, keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null, sealed?: (chat: string) => boolean }} src what this process holds: a chat's keys when it is unlocked; `sealed(chat)` says whether the chat keeps its folders sealed (a chat with no ring does not, and its paths pass straight through)
  */
 export function sealedDrive(drive, src) {
   /** @param {string} p */
-  const parse = p => { const m = FOLDER.exec(String(p).replace(/\/{2,}/g, "/")); return m && (!src.sealed || src.sealed(m[3])) ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null; };
+  const parse = p => {
+    const q = String(p).replace(/\/{2,}/g, "/");
+    // a project's own file area is sealed like a chat folder, under the project's server-held key (its "chat" id is `project-files:<project>`, so the one code path below serves both)
+    const f = src.projectFiles ? FILES.exec(q) : null;
+    if (f) return { project: f[1], kind: "files", chat: `project-files:${f[1]}`, rest: f[2] === undefined || f[2] === "" ? null : f[2], root: `Projects/${f[1]}/files` };
+    const m = FOLDER.exec(q); return m && (!src.sealed || src.sealed(m[3])) ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null;
+  };
   const keysOf = (/** @type {string} */ chat) => { const k = src.keysFor(chat); if (!k) throw err("unavailable", "this chat's key is not unlocked here"); return k; };
   /** @param {string} p */
   /** A file shared to a project is found through the PROJECT's ring alone (a member who is not in the chat never holds the chat's name key): the project's sealed index of what was shared, kept in memory

@@ -116,3 +116,24 @@ test("memory: nothing crosses Spaces: a fact filed in one Space is not recalled 
   await assert.rejects(() => a.M.recall(agentOf(b.k, "research"), {}), { code: "not_found" }, "a chain built in B asks A: absence");
   await assert.rejects(() => a.M.file(agentOf(b.k, "research"), { text: "x", source: "session:s1" }), { code: "not_found" });
 });
+
+test("R031-08: what an agent learns travels with it, what happens in a project stays in it: a fact filed in project A is not read in project B by the same agent, and another agent never reads this one's own", async () => {
+  const { k, M, grant } = await rig();
+  for (const id of ["research", "intake"]) await grant(id, ["memory.file", "memory.read"]);
+  await grant("research", ["project.reach"], `vyre://${SPACE}/project/*`);
+  await grant("intake", ["project.reach"], `vyre://${SPACE}/project/a`);
+  const research = agentOf(k, "research"), intake = agentOf(k, "intake");
+  const file = (who, text, scope) => M.file(who, { text, source: "session:s1", ...(scope ? { scope } : {}) });
+  await file(research, "the court closes at four", undefined);
+  await file(research, "open every letter with the client's first name", "agent");
+  await file(research, "Rivera wants calls after five", "project:a");
+  await file(research, "Harlow wants email only", "project:b");
+  const texts = async (who, project) => (await M.recall(who, { limit: 50, ...(project ? { project } : {}) })).map(f => f.text).sort();
+  assert.deepEqual(await texts(research, "a"), ["Rivera wants calls after five", "open every letter with the client's first name", "the court closes at four"].sort(), "in A: the Space, its own lessons and A");
+  assert.deepEqual(await texts(research, "b"), ["Harlow wants email only", "open every letter with the client's first name", "the court closes at four"].sort(), "in B: B's fact and not A's; its lessons came along");
+  assert.deepEqual(await texts(research), ["open every letter with the client's first name", "the court closes at four"].sort(), "in no project: no project's facts");
+  assert.deepEqual(await texts(intake, "a"), ["Rivera wants calls after five", "the court closes at four"].sort(), "another agent reads A's fact but never research's own lessons");
+  assert.deepEqual(await texts(intake, "b"), ["the court closes at four"], "and nothing of B, which it may not reach");
+  await assert.rejects(() => file(intake, "Secret", "project:b"), { code: "not_found" }, "it cannot file into a project it may not reach");
+  await assert.rejects(() => file(research, "x", "space"), { code: "bad_input" });
+});
