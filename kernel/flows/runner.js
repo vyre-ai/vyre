@@ -22,7 +22,7 @@ import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /**
  * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
  * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
@@ -58,6 +58,11 @@ function failOf(e) {
   const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
   return { code, message: e instanceof Error ? e.message : String(e) };
 }
+/** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
+class Hold extends Error {
+  /** @param {string} reason */
+  constructor(reason) { super(reason); this.name = "Hold"; this.reason = reason; }
+}
 class PauseFlow extends Error {
   /** @param {string} reason */
   constructor(reason) { super(reason); this.name = "PauseFlow"; this.reason = reason; }
@@ -80,6 +85,7 @@ class PauseFlow extends Error {
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
  *     model?: { provider: string, model: string },
  *   },
+ *   settings?: (key: string) => Promise<any>,
  *   policy?: Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>,
  *   limits?: Partial<typeof LIMITS>,
  * }} RunnerOptions
@@ -100,6 +106,17 @@ export class FlowRunner {
     /** @type {Map<string, number>} */ this.lastFire = new Map();
     /** @type {{ at: number, flows: any[] } | null} */ this.cache = null;
     /** @type {Set<Promise<any>>} */ this.inflight = new Set();
+    /** Who is executing a slice now: the box, each Flow, each lock key. A run holds a place only while it executes, never while it waits for a person or a timer. */
+    this.slots = { box: /** @type {Set<string>} */ (new Set()), byFlow: /** @type {Map<string, Set<string>>} */ (new Map()), locks: /** @type {Map<string, string>} */ (new Map()) };
+    /** The Space's switch (running, paused, draining), cached a few seconds. @type {{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }} */ this.ctl = { mode: "running" };
+    this.ctlAt = -Infinity;
+    /** @type {Map<string, number>} runs the watchdog already ran once more, and when */ this.reexec = new Map();
+    /** Arrival order for held runs that were held in the same millisecond. */ this.seq = 0;
+    /** The run objects being executed now, so the watchdog can flag one that is silent without waiting behind it. @type {Map<string, Run>} */ this.live = new Map();
+    /** @type {Promise<void> | null} */ this.queueRun = null; this.queueAgain = false;
+    /** Reads the Space's settings (flows.concurrency, ...); the host gives it. @type {((key: string) => Promise<any>) | null} */ this.settingsFn = o.settings || null;
+    this.settingsAt = -Infinity;
+    /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
   }
 
   // ------------------------------------------------------------------ definitions
@@ -136,17 +153,236 @@ export class FlowRunner {
     return flows;
   }
 
+  /** The Flows a trigger may reach: the active ones, and the paused ones (flagged `paused`), so what arrives for a paused Flow is held, in order, and not lost. */
+  async #triggerFlows() {
+    const active = await this.#activeFlows();
+    if (!this.store.pausedFlows) return active;
+    const paused = await this.store.pausedFlows().catch(() => []);
+    return paused.length ? [...active, ...paused] : active;
+  }
+
   /** @param {string} id @param {string} reason */
   async pauseFlow(id, reason) { await this.store.pause(id, reason, this.now()); this.cache = null; }
-  /** @param {string} id */
-  async resumeFlow(id) { await this.store.resume(id); this.cache = null; }
+  /**
+   * Resume a paused Flow. What arrived while it was paused and was held runs now, in order (`backlog: "run"`, the default), or is dropped and counted (`"drop"`).
+   * @param {string} id @param {{ backlog?: 'run'|'drop', by?: string|null }} [o]
+   */
+  async resumeFlow(id, o = {}) {
+    await this.store.resume(id); this.cache = null;
+    const dropped = o.backlog === "drop" ? await this.#dropHeld((r) => r.flow === id && r.queued !== undefined && r.queued.reason === "flow_paused", o.by || null) : 0;
+    await this.#drainQueue();
+    return { ok: true, dropped_now: dropped };
+  }
+
+  // ------------------------------------------------------------------ the switch, the queue, concurrency and locks (f5, f6, f7)
+
+  /** The limits the Space's settings give, read at most every 30 seconds. A setting that is missing or not a number leaves the default. */
+  async #refreshSettings() {
+    if (!this.settingsFn || this.now() - this.settingsAt < 30_000) return;
+    this.settingsAt = this.now();
+    const pick = async (/** @type {string} */ key, /** @type {number} */ scale, /** @type {number} */ lo, /** @type {number} */ hi) => { try { const v = Number(await /** @type {any} */ (this.settingsFn)(key)); return Number.isFinite(v) && v >= lo && v <= hi ? v * scale : undefined; } catch { return undefined; } };
+    const set = (/** @type {string} */ k, /** @type {number|undefined} */ v) => { if (v !== undefined) /** @type {any} */ (this.limits)[k] = v; };
+    set("concurrency", await pick("flows.concurrency", 1, 1, 32));
+    set("box_concurrency", await pick("flows.concurrency_box", 1, 1, 256));
+    set("stuck_ms", await pick("flows.stuck_minutes", 60_000, 1, 1440));
+    set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
+    set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
+    const cap = await pick("flows.retry_attempts", 1, 1, 8);
+    if (cap !== undefined) this.retryCap = cap;
+  }
+
+  /** The Space's switch. @returns {Promise<{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }>} */
+  async #control() {
+    if (this.now() - this.ctlAt < 5000) return this.ctl;
+    this.ctlAt = this.now();
+    try { const c = this.store.getControl ? await this.store.getControl() : null; this.ctl = c && c.mode ? c : { mode: "running" }; } catch { /* the last known switch stands */ }
+    return this.ctl;
+  }
+
+  /** @param {{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }} c */
+  async #putControl(c) { this.ctl = c; this.ctlAt = this.now(); if (this.store.putControl) await this.store.putControl(c); }
+
+  /**
+   * Pause every Flow at once, or drain. Paused: nothing new starts (a trigger that arrives is held, in order, and runs when the switch is released) and a run in flight stops at its next step boundary.
+   * Draining: nothing new starts, and the runs already going finish. A person's own.
+   * @param {{ reason?: string, by?: string|null, drain?: boolean }} [o]
+   */
+  async pauseAll(o = {}) {
+    const prev = await this.#control();
+    await this.#putControl({ mode: o.drain ? "draining" : "paused", reason: String(o.reason || "").slice(0, 200), since: this.now(), by: o.by || null, dropped: prev.dropped || {} });
+    return this.controlState();
+  }
+
+  /**
+   * Release the switch. What was held while it was on runs now, in the order it came (`backlog: "run"`, the default), or is dropped and counted (`"drop"`).
+   * @param {{ backlog?: 'run'|'drop', by?: string|null }} [o]
+   */
+  async resumeAll(o = {}) {
+    const prev = await this.#control();
+    await this.#putControl({ mode: "running", since: this.now(), by: o.by || null, dropped: prev.dropped || {} });
+    const dropped = o.backlog === "drop" ? await this.#dropHeld((r) => r.queued.reason === "paused" || r.queued.reason === "draining", o.by || null) : 0;
+    await this.#drainQueue();
+    return { ...(await this.controlState()), dropped_now: dropped };
+  }
+
+  /** The switch, and what waits behind it, for a line a person reads first: how many runs are held and why, and how many events were dropped past the cap. */
+  async controlState() {
+    const c = await this.#control();
+    const held = await this.store.listRuns({ state: "queued", limit: 5000 });
+    const byReason = /** @type {Record<string, number>} */ ({});
+    for (const r of held) if (r.queued) byReason[r.queued.reason] = (byReason[r.queued.reason] || 0) + 1;
+    return { mode: c.mode, ...(c.reason ? { reason: c.reason } : {}), ...(c.since ? { since: c.since } : {}), ...(c.by ? { by: c.by } : {}), held: held.length, held_by: byReason, dropped: Object.values(c.dropped || {}).reduce((a, b) => a + b, 0) };
+  }
+
+  /** Mark queued runs cancelled (a person chose not to run what was held) and count them. @param {(r: Run) => boolean} pick @param {string|null} by */
+  async #dropHeld(pick, by) {
+    let n = 0;
+    for (const r of await this.store.listRuns({ state: "queued", limit: 5000 })) {
+      if (!r.queued || !pick(r)) continue;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "queued") return;
+        cur.state = "cancelled"; cur.finished_at = this.now(); cur.updated_at = cur.finished_at; cur.queued = undefined; cur.cancelled = { by, at: cur.finished_at, reason: "dropped when the backlog was released" };
+        await this.store.putRun(cur);
+        n++;
+      });
+    }
+    return n;
+  }
+
+  /** @param {Run} run @param {string} why */
+  async #queue(run, why) {
+    const was = run.state;
+    run.state = "queued"; run.queued = { reason: /** @type {any} */ (why), since: run.queued ? run.queued.since : this.now(), seq: run.queued ? run.queued.seq : ++this.seq }; run.updated_at = this.now();
+    await this.store.putRun(run);
+    if (was !== "queued") this.#emit("flow.queued", { run: run.id, flow: run.flow, reason: why }, run, `vyre://${run.space}/flow-run/${run.id}`);
+  }
+
+  /** The most runs of this Flow at once. @param {any} flow */
+  #flowLimit(flow) { return Math.min(flow && flow.concurrency ? flow.concurrency : this.limits.concurrency, this.limits.box_concurrency); }
+
+  /** A lock key from the Flow's expression, once per run. @param {Run} run @param {any} flow @returns {string|null} */
+  #lockKey(run, flow) {
+    if (!flow || typeof flow.lock !== "string") return null;
+    if (run.lock_key !== undefined) return run.lock_key || null;
+    let key = "";
+    try { const v = evaluate(parse(flow.lock), this.#scope({ run }, {})); key = v === null || v === undefined || v === "" ? "" : String(typeof v === "object" ? JSON.stringify(v) : v).slice(0, 200); } catch { key = ""; }
+    run.lock_key = key;
+    return key || null;
+  }
+
+  /**
+   * Take a place to execute: one of the Flow's, one of the box's, and the lock key if the Flow has one. Returns null when taken, else why not (the run is then queued).
+   * @param {Run} run @param {any} flow @returns {string | null}
+   */
+  #acquire(run, flow) {
+    if (this.slots.box.has(run.id)) return null;
+    if (this.slots.box.size >= this.limits.box_concurrency) return "box_limit";
+    const set = this.slots.byFlow.get(run.flow) || new Set();
+    if (set.size >= this.#flowLimit(flow)) return "concurrency";
+    const key = this.#lockKey(run, flow);
+    if (key) { const holder = this.slots.locks.get(key); if (holder && holder !== run.id) return "lock"; }
+    this.slots.box.add(run.id); set.add(run.id); this.slots.byFlow.set(run.flow, set);
+    if (key) this.slots.locks.set(key, run.id);
+    return null;
+  }
+
+  /** @param {Run} run */
+  #release(run) {
+    this.slots.box.delete(run.id);
+    const set = this.slots.byFlow.get(run.flow);
+    if (set) { set.delete(run.id); if (!set.size) this.slots.byFlow.delete(run.flow); }
+    if (run.lock_key && this.slots.locks.get(run.lock_key) === run.id) this.slots.locks.delete(run.lock_key);
+  }
+
+  /** Start what was held and can go now, oldest first. One pass at a time; a request that comes in during a pass makes another pass, and none is lost. */
+  #drainQueue() {
+    this.queueAgain = true;
+    if (this.queueRun) return this.queueRun;
+    /** @type {Promise<void>} */ const p = (async () => {
+      try { while (this.queueAgain) { this.queueAgain = false; await this.#drainOnce(); } }
+      catch { /* the next request tries again */ }
+      finally { this.queueRun = null; this.inflight.delete(p); }
+    })();
+    this.queueRun = p; this.inflight.add(p);
+    return p;
+  }
+
+  async #drainOnce() {
+    const c = await this.#control();
+    if (c.mode !== "running") return;
+    const held = (await this.store.listRuns({ state: "queued", limit: 5000 })).filter(r => r.queued).sort((a, b) => /** @type {any} */ (a.queued).since - /** @type {any} */ (b.queued).since || (/** @type {any} */ (a.queued).seq || 0) - (/** @type {any} */ (b.queued).seq || 0) || (a.id < b.id ? -1 : 1));
+    /** @type {Map<string, number>} */ const launched = new Map();
+    let box = this.slots.box.size;
+    for (const r of held) {
+      const f = await this.store.active(r.flow);
+      if (!f) continue;                                           // the Flow is paused or off: its runs wait with it
+      const view = await this.store.getVersion(r.flow, r.version);
+      const flow = view ? view.flow : f.flow;
+      const mine = (this.slots.byFlow.get(r.flow) ? this.slots.byFlow.get(r.flow)?.size || 0 : 0) + (launched.get(r.flow) || 0);
+      if (box >= this.limits.box_concurrency || mine >= this.#flowLimit(flow)) continue;
+      const key = this.#lockKey(r, flow);
+      if (key && this.slots.locks.has(key) && this.slots.locks.get(key) !== r.id) continue;
+      launched.set(r.flow, (launched.get(r.flow) || 0) + 1); box++;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "queued") return;
+        cur.state = "running"; cur.queued = undefined; cur.updated_at = this.now();
+        await this.store.putRun(cur);
+      });
+      void this.#exec(r.id);
+    }
+  }
+
+  /**
+   * A run that stopped moving is never silent (f5). A run that says it is running but has not written to its ledger for `stuck_after_ms` is run once more (the ledger makes that safe, it is
+   * what a restart does) and, if it still does not move, flagged `stuck`. A run waiting for a person past `stale_after` is flagged `stale`, and left waiting: a person may simply be slow.
+   * Only the scheduler's own tick calls this, so there is no timer of its own.
+   */
+  async #watchdog() {
+    const now = this.now();
+    const stuckOf = async (/** @type {Run} */ r) => { const v = await this.store.getVersion(r.flow, r.version); return v && v.flow && v.flow.stuck_after_ms ? v.flow.stuck_after_ms : this.limits.stuck_ms; };
+    for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) {
+      if (now - r.updated_at < await stuckOf(r)) continue;
+      if (r.attention && r.attention.kind === "stuck") continue;
+      const going = this.locks.has(r.id);
+      const again = this.reexec.get(r.id);
+      if (!going && (again === undefined || again < r.updated_at)) { this.reexec.set(r.id, now); void this.#exec(r.id); continue; }
+      // A run that is executing but silent cannot be written behind its own lock (that lock is held by the step that hangs): the flag goes on the live run, and the run's next write keeps it.
+      const live = this.live.get(r.id);
+      if (!live && !going) {                                  // run once more already and still not moving, with nothing executing it
+        await this.#locked(r.id, async () => {
+          const cur = await this.store.getRun(r.id);
+          if (!cur || cur.state !== "running" || cur.attention) return;
+          this.#attend(cur, { kind: "stuck", step: cur.error ? cur.error.step : "", message: "this run has not moved for a while" });
+          await this.store.putRun(cur);
+          this.#emit("flow.stuck", { run: cur.id, flow: cur.flow, step: cur.error ? cur.error.step : "" }, cur, `vyre://${cur.space}/flow-run/${cur.id}`);
+        });
+        continue;
+      }
+      if (!live || live.state !== "running") continue;
+      this.#attend(live, { kind: "stuck", step: live.error ? live.error.step : "", message: "this run has not moved for a while" });
+      await this.store.putRun(live);
+      this.#emit("flow.stuck", { run: live.id, flow: live.flow, step: live.error ? live.error.step : "" }, live, `vyre://${live.space}/flow-run/${live.id}`);
+    }
+    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
+      if (!r.waiting || r.waiting.kind !== "task" || r.attention || now - r.updated_at < this.limits.stale_ms) continue;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "waiting" || cur.attention) return;
+        this.#attend(cur, { kind: "stale", step: cur.waiting ? cur.waiting.step : "", message: "a person has not answered yet" });
+        await this.store.putRun(cur);
+        this.#emit("flow.stale", { run: cur.id, flow: cur.flow }, cur, `vyre://${cur.space}/flow-run/${cur.id}`);
+      });
+    }
+  }
 
   // ------------------------------------------------------------------ triggers
 
   /** An event from the log. Starts runs for matching Flows and resumes runs waiting on it. @param {any} env */
   async onEvent(env) {
     const work = [];
-    for (const f of await this.#activeFlows()) {
+    for (const f of await this.#triggerFlows()) {
       if (!triggerScope(f.flow.trigger, env)) continue;
       work.push(this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env));
     }
@@ -178,6 +414,7 @@ export class FlowRunner {
    * the server was off runs ONCE when it comes back, with `caught_up` and how many times it skipped; never once per missed tick.
    */
   async tick() {
+    await this.#refreshSettings();
     const now = this.now();
     const cat = await this.catalogFn();
     const work = [];
@@ -206,7 +443,10 @@ export class FlowRunner {
       const dl = w.kind === "time" ? w.wake_at : w.deadline;
       if (dl !== undefined && dl <= now) work.push(this.#resume(r.id, { timeout: true }));
     }
-    return Promise.all(work);
+    const out = await Promise.all(work);
+    await this.#drainQueue();
+    await this.#watchdog();
+    return out;
   }
 
   /** The earliest time anything needs waking, so the host sets one timer and never polls. @returns {Promise<number|null>} */
@@ -223,7 +463,8 @@ export class FlowRunner {
       else if (t.every_ms !== undefined) take(last + t.every_ms);
       else if (t.at !== undefined && t.at > now) take(t.at);
     }
-    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline);
+    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) { take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline); if (r.waiting.kind === "task" && !r.attention) take(r.updated_at + this.limits.stale_ms); }
+    for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) if (!r.attention) take(r.updated_at + this.limits.stuck_ms);
     return best;
   }
 
@@ -239,7 +480,7 @@ export class FlowRunner {
     const trust = w.trust || "external";
     const itemKey = w.key || (w.item.id !== undefined ? `${w.watcher}/${String(w.item.id)}` : `${w.watcher}/${crypto.createHash("sha256").update(canonicalOf(w.item)).digest("hex").slice(0, 24)}`);
     const out = [];
-    for (const f of await this.#activeFlows()) {
+    for (const f of await this.#triggerFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "watcher" || t.watcher !== w.watcher) continue;
       const scope = { trigger: { watcher: w.watcher, item: w.item, at: this.now() } };
@@ -256,7 +497,7 @@ export class FlowRunner {
    * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted' }} [req]
    */
   async handleWeb(path, req = {}) {
-    const f = (await this.#activeFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
+    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
     if (!f) throw Object.assign(new Error("no Flow answers that address"), { code: "not_found" });
     const trust = req.trust || "untrusted";
     return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path }, { trust, data: req.body ?? {} });
@@ -282,6 +523,7 @@ export class FlowRunner {
   /** Pick up after a restart: re-run what was mid-flight, and apply task results that arrived while we were down. */
   async recover() {
     for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) await this.#exec(r.id);
+    await this.#drainQueue();                                  // what was held when the server stopped goes on, if the switch is off
     const waiting = await this.store.listRuns({ state: "waiting", limit: 1000 });
     if (waiting.some(r => r.waiting && r.waiting.kind === "task")) {
       const chain = this.chains.forFlow({ flow: "system", space: waiting[0].space, approver: waiting[0].approver, tainted: false, run: "recover", source_spaces: [waiting[0].space] });
@@ -310,15 +552,35 @@ export class FlowRunner {
     const stamps = (this.rate.get(f.id) || []).filter(t => now - t < 60_000);
     if (stamps.length >= this.limits.rate_per_minute) { await this.#runaway(f, `it started more than ${this.limits.rate_per_minute} times in a minute`); return { run: null, refused: "rate" }; }
     stamps.push(now); this.rate.set(f.id, stamps);
+    // A paused Flow, a paused or draining Space: the trigger is held as a queued run (so a restart keeps it) and runs when the switch is released. Held runs are bounded per Flow; past the cap an event is
+    // dropped, counted, and the owner sees the count first (controlState).
+    const ctl = await this.#control();
+    const hold = f.paused ? "flow_paused" : ctl.mode !== "running" ? ctl.mode : null;
+    if (hold) {
+      const queued = await this.store.listRuns({ flow: f.id, state: "queued", limit: this.limits.backlog + 1 });
+      if (queued.length >= this.limits.backlog) {
+        const dropped = { ...(ctl.dropped || {}) }; dropped[f.id] = (dropped[f.id] || 0) + 1;
+        await this.#putControl({ ...ctl, dropped });
+        this.emitFn("flow.dropped", { flow: f.id, reason: hold, dropped: dropped[f.id] }, { chain: null, subject: `vyre://${f.space}/flow/${f.id}`, corr: "" });
+        return { run: null, refused: "backlog" };
+      }
+    }
     const trust = src && (src.trust || (src.data !== undefined ? "member" : undefined));
     const sourceSpaces = (src && src.source_spaces) || [f.space];
     const tainted = trust === "external" || trust === "untrusted" || sourceSpaces.length > 1;
     /** @type {Run} */
     const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver };
+    if (hold) {
+      run.state = "queued"; run.queued = { reason: /** @type {any} */ (hold), since: now, seq: ++this.seq };
+      await this.store.putRun(run);
+      this.#emit("flow.queued", { run: id, flow: f.id, reason: hold }, run, `vyre://${f.space}/flow-run/${id}`);
+      return { run: id, queued: true };
+    }
     await this.store.putRun(run);
     this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow-run/${id}`);
-    await this.#execLocked(id);
+    // The run executes on its own: a trigger's delivery is not held up by a slow step (one slow Flow must not stop the others' events), and the concurrency gate is what bounds how many go at once.
+    void this.#exec(id);
     return { run: id };
   }
 
@@ -469,6 +731,10 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const caps = Array.isArray(view.flow.caps) ? view.flow.caps : deriveCaps(view.flow, cat);
     const ctx = { run, flow: view.flow, view, cat, caps, dry: false, count: 0, runnerPaused: false };
+    // A place to execute: the Flow's, the box's and the lock's. Without one the run is held, in order, and starts when a place frees.
+    const why = this.#acquire(run, view.flow);
+    if (why) { await this.#queue(run, why); return; }
+    this.live.set(run.id, run);
     try {
       // A Flow-level failure path was started before a restart: carry on with it, not with the steps that failed.
       if (run.failing) throw new StepFail(run.failing.code, run.failing.message);
@@ -477,6 +743,7 @@ export class FlowRunner {
       if (run.attention && run.attention.kind !== "verify") run.attention = undefined;
       await this.#finish(run);
     } catch (e) {
+      if (e instanceof Hold) { await this.#queue(run, e.reason); return; }
       if (e instanceof Suspend) { run.state = "waiting"; run.updated_at = this.now(); await this.store.putRun(run); return; }
       if (e instanceof PauseFlow) {
         run.state = "paused"; run.error = { step: run.error ? run.error.step : "", code: "paused", message: e.reason }; run.updated_at = this.now();
@@ -505,6 +772,10 @@ export class FlowRunner {
       run.state = "failed";
       this.#attend(run, { kind: "failed", step: run.error.step, code: f.code, message: f.message });
       await this.#finish(run);
+    } finally {
+      this.live.delete(run.id);
+      this.#release(run);
+      void this.#drainQueue();
     }
   }
 
@@ -527,6 +798,7 @@ export class FlowRunner {
    */
   async #walk(ctx, steps, suffix, locals) {
     for (const s of steps) {
+      if (!ctx.dry && this.ctl.mode === "paused") throw new Hold("paused");
       if (++ctx.count > this.limits.steps_per_run) throw new StepFail("too_many_steps", `the run took more than ${this.limits.steps_per_run} steps`);
       await this.#step(ctx, s, s.id + suffix, suffix, locals);
     }
@@ -547,6 +819,7 @@ export class FlowRunner {
     const run = ctx.run;
     run.steps[key] = { ...(run.steps[key] || {}), at: this.now(), ...patch };
     run.updated_at = this.now();
+    if (run.attention && (run.attention.kind === "stuck" || run.attention.kind === "stale")) run.attention = undefined;   // it moved
     if (!ctx.dry) await this.store.putRun(run);
   }
 
@@ -637,7 +910,7 @@ export class FlowRunner {
         if (bad) throw new StepFail("verify_failed", bad);
         return { out };
       } catch (e) {
-        if (e instanceof Suspend || e instanceof PauseFlow) throw e;
+        if (e instanceof Suspend || e instanceof PauseFlow || e instanceof Hold) throw e;
         const f = failOf(e);
         led = this.#led(ctx, key);
         const tries = ((led && led.tries) || 0) + 1;
@@ -668,7 +941,7 @@ export class FlowRunner {
   #policyOf(ctx, s) {
     const base = this.policy[s.kind] || {};
     const read = s.kind === "service" && ["GET", "HEAD"].includes(String(s.method || "GET").toUpperCase());
-    let attempts = read && base.readAttempts ? base.readAttempts : base.attempts ?? 1;
+    let attempts = Math.min(read && base.readAttempts ? base.readAttempts : base.attempts ?? 1, this.retryCap);
     let backoff = base.backoff_ms || [];
     let on = new Set(RETRY_CODES);
     if (s.retry === false) attempts = 1;
@@ -685,7 +958,7 @@ export class FlowRunner {
   #withTimeout(ms, fn, s) {
     if (!ms) return fn();
     /** @type {any} */ let timer;
-    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); })]).finally(() => clearTimeout(timer));
+    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); if (timer.unref) timer.unref(); })]).finally(() => clearTimeout(timer));
   }
 
   /**

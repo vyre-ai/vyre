@@ -55,7 +55,7 @@ function personOf(chain) {
  */
 export function createFlows(o) {
   const store = o.store || new MemoryFlowStore();
-  const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits });
+  const runner = new FlowRunner({ kernel: o.kernel, store, catalog: o.catalog, chains: o.chains, clock: o.clock, emit: o.emit, ports: o.ports, limits: o.limits, policy: o.policy, settings: o.settings });
   const kits = new KitManager({ kernel: o.kernel, runner, store: o.kitStore || new MemoryKitStore(), catalog: o.catalog, chains: o.chains, clock: o.clock, installerRole: o.installerRole, ports: o.ports });
   const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit }) : null;
   const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
@@ -109,8 +109,20 @@ export function createFlows(o) {
       return runner.simulate(flow, { approver, since: i.since, until: i.until, samples: i.samples, limit: i.limit });
     },
     "flows.start": async (chain, i) => runner.start(i.id, i.input, chain, i.key),
-    "flows.pause": async (chain, i) => { personOf(chain); await runner.pauseFlow(i.id, i.reason || "paused by a person"); return { ok: true }; },
-    "flows.resume": async (chain, i) => { personOf(chain); await runner.resumeFlow(i.id); return { ok: true }; },
+    // pause: one Flow (id), or everything (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held and runs on resume (backlog: "run", the default) or is
+    // dropped and counted (backlog: "drop"). The answer says the state first: the switch, what is held, what was dropped.
+    "flows.pause": async (chain, i) => {
+      const who = personOf(chain);
+      if (i && (i.all === true || i.drain === true)) return { ok: true, control: await runner.pauseAll({ reason: i.reason, by: who.id, drain: i.drain === true }) };
+      await runner.pauseFlow(i.id, i.reason || "paused by a person"); return { ok: true, control: await runner.controlState() };
+    },
+    "flows.resume": async (chain, i) => {
+      const who = personOf(chain);
+      const o = { by: who.id, ...(i && i.backlog === "drop" ? { backlog: /** @type {'drop'} */ ("drop") } : {}) };
+      if (i && i.all === true) return { ok: true, control: await runner.resumeAll(o) };
+      const r = await runner.resumeFlow(i.id, o); return { ...r, control: await runner.controlState() };
+    },
+    "flows.control": async () => runner.controlState(),
     "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
     "flows.run": async (chain, i) => { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.

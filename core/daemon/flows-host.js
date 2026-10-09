@@ -176,7 +176,7 @@ export function createFlowsHost(o) {
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
-    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals });
+    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
