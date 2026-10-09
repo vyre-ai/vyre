@@ -222,9 +222,10 @@ export class ApiRequests {
    * A public document by its https address, for a person who pointed at it (an API description to import): a plain GET with no credential and no cookie, the address resolved and checked against
    * private, loopback, link-local and metadata ranges at every hop, the connection pinned to the address that was checked, at most 3 redirects (each checked the same way), a size cap, and a timeout.
    * It sends nothing of the person's. The caller decides who may ask (the connectors module, for a person's own import).
-   * @param {string} rawUrl @param {number} [maxBytes]
+   * `raw`: a non-2xx answer is returned as it is ({ status, body, type }) instead of refused, for a caller that judges the answer itself (a learned website operation).
+   * @param {string} rawUrl @param {number} [maxBytes] @param {{ raw?: boolean }} [o]
    */
-  async fetchPublic(rawUrl, maxBytes = 5_000_000) {
+  async fetchPublic(rawUrl, maxBytes = 5_000_000, o = {}) {
     let url = String(rawUrl || "");
     for (let hops = 0; ; hops++) {
       let host;
@@ -240,7 +241,7 @@ export class ApiRequests {
         continue;
       }
       if (r.truncated) throw bad(`that file is larger than ${Math.round(maxBytes / 1_000_000)} MB`, "too_large");
-      if (!(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
+      if (!o.raw && !(r.status >= 200 && r.status < 300)) throw bad(`the address answered ${r.status}`, "not_found");
       return { status: r.status, body: Buffer.from(r.body).toString("utf8"), type: String(r.headers["content-type"] || "") };
     }
   }
@@ -856,10 +857,10 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
     (input, meta) => api.request(input, meta));
 
   internal("vault.fetch.public", "A person's import of an API description by its address: { url, max_bytes? } -> { status, body, type }. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped). Only the connectors module asks, and it asks only for a person's own act.",
-    obj({ url: str, max_bytes: { type: "integer" } }, ["url"]),
-    async ({ url, max_bytes }, { caller }) => {
+    obj({ url: str, max_bytes: { type: "integer" }, raw: { type: "boolean" } }, ["url"]),
+    async ({ url, max_bytes, raw }, { caller }) => {
       if (caller !== "module:connectors") throw bad("only the connectors module fetches a description for a person's import", "denied");
-      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)));
+      return api.fetchPublic(String(url), Math.min(5_000_000, Math.max(1000, Number(max_bytes) || 5_000_000)), { raw: raw === true });
     });
 
   internal("vault.api.send", "The Gate calls this with { id } once a person approves a held vault.request, and it runs exactly the request the person saw, re-checked. Offered to the Gate as the vault-api sender.",

@@ -982,5 +982,6 @@
  "records/connectors/site.test.js": 5,
  "core/vault/service-site.test.js": 4,
  "core/connectors/site-daemon.test.js": 6,
- "kernel/flows/site-flow.test.js": 3
+ "kernel/flows/site-flow.test.js": 3,
+ "core/connectors/site-runner.test.js": 3
 }

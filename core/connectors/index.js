@@ -216,7 +216,7 @@ export default {
     // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
     /** @type {ReturnType<typeof createSiteRunner>} */ let siteRunner;
     const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), siteCheck: id => siteRunner.check(id), siteEntries: siteEntriesFrom((tool, input) => ctx.call(tool, input)) });
-    siteRunner = createSiteRunner({ call: (tool, input, opts) => ctx.call(tool, input, opts), made, emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x) });
+    siteRunner = createSiteRunner({ call: (tool, input, opts) => ctx.call(tool, input, opts), made, emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), entries: siteEntriesFrom((tool, input) => ctx.call(tool, input)), role: String((ctx.config && ctx.config.role) || "local") });
     const yours = (/** @type {any} */ meta, /** @type {string} */ what) => {
       const who = String(meta && meta.caller || "");
       if (!isPerson(who)) throw fail(`only you ${what}, from your own screen`, "denied");

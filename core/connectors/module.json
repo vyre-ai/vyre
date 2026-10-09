@@ -61,7 +61,8 @@
       "connectors.connection-deleted",
       "connectors.connection-received",
       "connectors.connection-proposed",
-      "connectors.site-needs-signin"
+      "connectors.site-needs-signin",
+      "connectors.site-ran"
     ]
   },
   "shows": {

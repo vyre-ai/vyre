@@ -8,6 +8,8 @@
 // that holds the login) and runs the operation there. Rung "page" is the person's own Chrome on this machine (chrome.op.run).
 
 import { operationOf } from "../../records/connectors/site.js";
+import { runOperation } from "../../lib/siteops/run.js";
+import { readOnly } from "../../lib/siteops/spec.js";
 
 /** @typedef {import("../../records/connectors/format.js").Declaration} Declaration */
 
@@ -31,9 +33,10 @@ export function lightFor(cls, host, reason) {
 
 /**
  * The runner: picks a rung and runs one operation there.
- * @param {{ call: (tool: string, input: any, opts?: any) => Promise<any>, made: any, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void }} deps
+ * @param {{ call: (tool: string, input: any, opts?: any) => Promise<any>, made: any, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void,
+ *   entries?: (origin: string, names?: string[]) => Promise<{ name: string, kind: string, op: any }[]>, role?: string }} deps
  */
-export function createSiteRunner({ call, made, emit = () => {}, log = () => {} }) {
+export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, entries, role = "local" }) {
   /** One rung. Today: this machine's Chrome. @param {string} origin @param {string} name @param {Record<string, any>} inputs @param {boolean} approved @param {boolean} [check] */
   async function pageRung(origin, name, inputs, approved, check = false) {
     const r = await call("chrome.op.run", { site: origin, name, inputs, approved, ...(check ? { check: true } : {}) });
@@ -43,6 +46,28 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {} }
       return { class: "error", reason: String(r.error.message || code) };
     }
     return r.data;
+  }
+
+  /**
+   * Rung "public": a plain GET from here, for an operation that needs no login (public data). Runs 24/7 with no browser. The vault fetches it (private ranges refused at every hop, a size cap, no
+   * cookie, no credential of ours), and the same run, classify, extract and cap as any rung judges the answer.
+   * @param {any} op @param {Record<string, any>} inputs
+   */
+  async function publicRung(op, inputs) {
+    return runOperation(op, inputs, { send: async req => {
+      const r = await call("vault.fetch.public", { url: req.url, raw: true });
+      if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+      return { status: r.data.status, headers: { "content-type": r.data.type || "" }, body: r.data.body };
+    } });
+  }
+
+  /** Which rungs this machine can try for an operation, cheapest first: public (no browser, any time), then a browser that holds the login. @param {any} op */
+  function ladder(op) {
+    const allowed = Array.isArray(op && op.rungs) && op.rungs.length ? op.rungs : ["page"];
+    /** @type {string[]} */ const out = [];
+    if (allowed.includes("public") && op.login === false && readOnly(op) && String(op.request.method).toUpperCase() === "GET") out.push("public");
+    if (allowed.includes("page") && role !== "box") out.push("page");
+    return out;
   }
 
   /**
@@ -58,8 +83,19 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {} }
     const op = operationOf(decl, q);
     if (!op) return { status: 404, data: { error: { class: "input", reason: "that route is not one of the Connection's operations" } } };
     const host = new URL(/** @type {string} */ (decl.base_url)).hostname;
-    const res = await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true);
+    // the rungs, cheapest that works first; a rung that cannot serve (no browser, not allowed here) hands on to the next, and the event says which one answered
+    const entry = entries ? (await entries(/** @type {string} */ (decl.base_url), [op.name]).catch(() => [])).find(e => e.name === op.name) : undefined;
+    const rungs = entry ? ladder(entry.op) : ["page"];
+    /** @type {any} */ let res = null; let rung = "";
+    for (const r of rungs.length ? rungs : ["page"]) {
+      rung = r;
+      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true);
+      // a rung that has no browser to offer, or a public fetch the site refused, is not the answer while another rung remains
+      if (res && (res.class === "no_browser" || (r === "public" && !res.ok && (res.class === "auth" || res.class === "blocked")))) continue;
+      break;
+    }
     const cls = res && res.ok ? "ok" : String((res && res.class) || "error");
+    emit("connectors.site-ran", { id, op: op.name, rung, class: cls });
     if (cls !== "held") {
       const l = lightFor(cls, host, res && res.reason);
       made.touch(id, l.light, l.words);
