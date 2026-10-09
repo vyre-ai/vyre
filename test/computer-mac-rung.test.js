@@ -80,7 +80,7 @@ test("files: the box finds and brings a file from Downloads, Desktop or Document
   fs.writeFileSync(path.join(home, ".ssh", "key"), "PRIVATE");
   fs.symlinkSync(path.join(home, "Library", "report-secret.txt"), path.join(home, "Downloads", "report-link.txt"));
   fs.writeFileSync(path.join(home, "Downloads", "huge-report.bin"), Buffer.alloc(9 * 1024 * 1024));
-  const s = await world(t, { computer: { home }, files: { roots: [home] } });
+  const s = await world(t, { computer: { home }, files: { roots: ["Downloads", "Documents", "Library"].map(d => path.join(home, d)) } });
   const find = (/** @type {string} */ q) => s.boxCall("computer.use", { do: "find", on: s.name, args: { q } }, KIT);
   const get = (/** @type {string} */ p) => s.boxCall("computer.use", { do: "get", on: s.name, args: { path: p } }, KIT);
   assert.match(JSON.stringify(await find("report")), /link\.computer\.allow files|has not allowed/, "off until the person allows files");
