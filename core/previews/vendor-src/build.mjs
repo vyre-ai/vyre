@@ -1,15 +1,22 @@
 // Builds the libraries a React preview may import into ../vendor (one ES module each, react shared through the page's import map) and writes
-// ../vendor/manifest.json with each file's sha256. Run on a build machine: `cd core/previews/vendor-src && npm ci && node build.mjs`.
+// ../vendor/manifest.json with each file's sha256. Run on a build machine: `node core/previews/vendor-src/build.mjs` (needs node and npm; installs into a scratch folder).
 // The built files are committed; the server checks every file against the manifest before it serves it.
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import * as esbuild from "esbuild-wasm";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const out = path.join(here, "..", "vendor");
+
+const src = path.dirname(fileURLToPath(import.meta.url));
+const out = path.join(src, "..", "vendor");
+// the exact versions are installed into a scratch folder, so no package manifest sits in the repo
+const here = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-preview-libs-"));
+const wanted = JSON.parse(fs.readFileSync(path.join(src, "versions.json"), "utf8")).versions;
+fs.writeFileSync(path.join(here, "package.json"), JSON.stringify({ private: true, dependencies: wanted }));
+execFileSync("npm", ["install", "--no-audit", "--no-fund", "--ignore-scripts"], { cwd: here, stdio: "inherit" });
 const require = createRequire(path.join(here, "package.json"));
 const pkgVersion = n => JSON.parse(fs.readFileSync(path.join(here, "node_modules", n, "package.json"), "utf8")).version;
 
@@ -37,6 +44,8 @@ const fileOf = name => name.replace(/[\/]/g, "__") + ".js";
 
 fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
+const esbuildNs = await import(path.join(here, "node_modules", "esbuild-wasm", "lib", "main.js"));
+const esbuild = esbuildNs.default || esbuildNs;
 await esbuild.initialize({});
 const files = {};
 for (const [name, lib] of Object.entries(LIBS)) {
