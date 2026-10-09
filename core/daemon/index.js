@@ -1218,7 +1218,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
   // A named agent with no row is granted nothing.
   if (via.agent) {
-    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    const g = await registry.call("agents.scope", { name: via.agent, ...(via.thread ? { thread: via.thread } : {}) }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
     if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
