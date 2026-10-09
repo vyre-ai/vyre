@@ -660,6 +660,22 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for"
  },
  {
+  "tool": "previews.operator",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it"
+ },
+ {
+  "tool": "previews.signin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page"
+ },
+ {
+  "tool": "previews.signin-get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether the person finished a sign-in the agent asked for"
+ },
+ {
+  "tool": "previews.step",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): words for the status line of the agent's own card"
+ },
+ {
   "tool": "projects.access.pending",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; projects.access.pending opened to a model or a module in lead-0.2.9 (4 Oct 2026); the body decides: callers limited in code to capsule, cli, deck, local; read only"
  },

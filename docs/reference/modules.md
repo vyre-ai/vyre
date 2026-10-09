@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 7 | capsule, cli, deck |
-| [`previews`](#previews) | `core/previews` | `box` | 11 | 4 | cli |
+| [`previews`](#previews) | `core/previews` | `box` | 16 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
@@ -611,8 +611,8 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/previews`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [11](tools.md#previews), 1 of them only for other modules
-- Emits: [4 events](events.md#previews)
+- Tools: [16](tools.md#previews), 1 of them only for other modules
+- Emits: [6 events](events.md#previews)
 - Shows on: cli
 
 ## projects
