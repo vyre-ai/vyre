@@ -64,6 +64,7 @@ test("ingress: a signer outside reaches the dressed signing page through the rel
   assert.ok(!/private/.test(/** @type {any} */ (await visit(tlsPort, cert, APP_HOST, "/")).body), "the rest of the box's loopback is not reachable");
 
   // a host the box did not declare is refused at the relay: no box is told, no byte goes down
+  for (let i = 0; i < 50 && relay.stats().conns; i++) await new Promise(r => setTimeout(r, 20));
   const before = relay.stats().conns;
   const stranger = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "evil.vyre.run", rejectUnauthorized: false }); stranger.on("error", () => {});
   await new Promise(r => stranger.once("close", r));
