@@ -52,7 +52,7 @@ export function registerOutside(ctx, seam = {}) {
   // ---- reach: what a person gives, as kernel grants ---------------------------------------------------------------------------------------------------------------------------------
   /** The person must hold what they give: delegation only narrows. */
   const mayGive = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource) => {
-    const d = await K.authorize({ chain, action, resource });
+    const d = await K.authorize({ chain, action, resource, probe: true });
     if (!d || d.effect !== "allow") throw fail(`you do not hold that access yourself, so you cannot give it (${action}${d && d.reason ? `: ${d.reason}` : ""})`, "denied");
   };
   const mint = (/** @type {any} */ agent, /** @type {string[]} */ actions, /** @type {string} */ prefix, /** @type {number} */ until, /** @type {string} */ reason) => K.mint.make({
@@ -81,8 +81,8 @@ export function registerOutside(ctx, seam = {}) {
       if (missing.length) throw fail(`${missing[0].slice(0, 60)} is not a record type here`, "not_found");
       const write = what.write === true;
       for (const t of types) {
-        await mayGive(chain, "records.read", u(t));
-        if (write) { await mayGive(chain, "records.create", u(t)); await mayGive(chain, "records.update", u(t)); }
+        await mayGive(chain, "records.read", u(`${t}/*`));
+        if (write) { await mayGive(chain, "records.create", u(`${t}/*`)); await mayGive(chain, "records.update", u(`${t}/*`)); }
       }
       for (const t of types) grants.push(await mint(agent, write ? ["records.read", "records.create", "records.update"] : ["records.read"], u(t), until, `outside agent ${agent.name}: records of ${t}`));
       const spec = { types, write, defs: defs.map((/** @type {any} */ t) => ({ name: t.name, label: t.label || t.name, fields: (t.fields || []).map((/** @type {any} */ f) => ({ name: f.name, label: f.label || f.name, kind: f.kind })) })) };
