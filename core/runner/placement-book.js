@@ -119,10 +119,10 @@ export function createPlacementBook(o = {}) {
      * @param {string} session @param {string} reason one of REASONS @param {{ auto?: boolean }} [opt]
      */
     toServer(session, reason, opt = {}) {
+      if (!REASONS.includes(reason)) throw bad("that reason is not one the chat knows", "bad_input");
       const r = rows.get(String(session));
       if (!r) return { changed: false, why: "unknown" };
       if (r.where === "server") return { changed: false, why: "there", row: copy(r) };
-      if (!REASONS.includes(reason)) throw bad("that reason is not one the chat knows", "bad_input");
       const t = now();
       if (opt.auto && r.movedAt !== null && t - r.movedAt < cooldown) return { changed: false, why: "cooldown", row: copy(r) };
       r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.facts = undefined;
