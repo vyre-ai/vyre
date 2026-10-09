@@ -6,6 +6,11 @@
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
+// This file has 38 cases that took 108 s on an idle machine and past the 300 s per-file limit under load. The cases are dealt out to 2 files (relay.test.js and its -b.. siblings, which set VYRE_RELAY_SHARD and import this module), each well inside the per-file limit even on a loaded machine.
+const SHARDS = 2;
+const SHARD = Number(process.env.VYRE_RELAY_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (/** @type {any[]} */ ...a) => (dealt++ % SHARDS === SHARD ? /** @type {any} */ (test)(...a) : undefined);
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -117,7 +122,7 @@ const firstPairing = async d => {
   return r.data.url;
 };
 
-test("relay: the first device pairs during onboarding and reaches the box's router as device:<id>", async t => {
+shardTest("relay: the first device pairs during onboarding and reaches the box's router as device:<id>", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
@@ -139,7 +144,7 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   assert.equal(events.connected, true);
 });
 
-test("relay: a pairing that asks for it is handed the one-time enrolment grant for the box's address, the same {grant, expires, rpId} as the setup claim", async t => {
+shardTest("relay: a pairing that asks for it is handed the one-time enrolment grant for the box's address, the same {grant, expires, rpId} as the setup claim", async t => {
   const { d } = await world(t);
   // No address yet: nothing to enroll at, so no grant, whatever the hello says.
   const bare = await phone(await firstPairing(d), { hello: { enroll: true } });
@@ -163,7 +168,7 @@ test("relay: a pairing that asks for it is handed the one-time enrolment grant f
   assert.equal(noAsk.enroll, null);
 });
 
-test("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
+shardTest("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   // ADR 0032: without a person session, even a presence proof is not enough.
@@ -181,7 +186,7 @@ test("relay: a relayed device is a device; a person's action needs its person se
   assert.ok(parsePairUrl(proved.data.url));
 });
 
-test("relay: the QR code works once; a stranger's key and a reused code are refused", async t => {
+shardTest("relay: the QR code works once; a stranger's key and a reused code are refused", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
@@ -193,7 +198,7 @@ test("relay: the QR code works once; a stranger's key and a reused code are refu
   assert.equal(again.reply.paired, undefined);
 });
 
-test("relay: the first-device path closes once a person exists", async t => {
+shardTest("relay: the first-device path closes once a person exists", async t => {
   const { d } = await world(t);
   await phone(await firstPairing(d));
   const r = await d.registry.call("relay.pair.first", {}, "onboard", PROOF);
@@ -202,7 +207,7 @@ test("relay: the first-device path closes once a person exists", async t => {
   assert.equal((await d.registry.call("relay.pair.first", {}, "cli", PROOF)).error?.code, "denied");
 });
 
-test("relay: removing a device closes its connection at once with 4401 'device removed', and it is refused on the same code when it comes back", async t => {
+shardTest("relay: removing a device closes its connection at once with 4401 'device removed', and it is refused on the same code when it comes back", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
@@ -221,7 +226,7 @@ test("relay: removing a device closes its connection at once with 4401 'device r
   await assert.rejects(phone(url, { keys: keyPair(), pair: false }), /box closed the connection/, "a stranger's key just gets the relay's generic close");
 });
 
-test("relay: the shared client stops for good when the owner removes its device, in a 'relay_removed' state (the relay's word, not the box's), and does not redial", async t => {
+shardTest("relay: the shared client stops for good when the owner removes its device, in a 'relay_removed' state (the relay's word, not the box's), and does not redial", async t => {
   const { d } = await world(t);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const keyStore = fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -243,7 +248,7 @@ test("relay: the shared client stops for good when the owner removes its device,
   void status;
 });
 
-test("relay: taking a device's presence key away removes the device the same way", async t => {
+shardTest("relay: taking a device's presence key away removes the device the same way", async t => {
   const { d } = await world(t);
   const url = await firstPairing(d);
   const p = await phone(url);
@@ -257,14 +262,14 @@ test("relay: taking a device's presence key away removes the device the same way
   assert.equal(((await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).some(x => x.id === p.reply.device), false, "and it is gone from the list");
 });
 
-test("relay: a socket client cannot claim to be a device", async t => {
+shardTest("relay: a socket client cannot claim to be a device", async t => {
   const { d } = await world(t);
   await phone(await firstPairing(d));
   const { socketCaller } = await import("../core/daemon/index.js");
   assert.equal(socketCaller({ headers: { "x-vyre-caller": "device:abcdefghijklmnop" } }), "anonymous");
 });
 
-test("relay: an event stream stays open and delivers events through the channel", async t => {
+shardTest("relay: an event stream stays open and delivers events through the channel", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   const s = p.channel.open({ method: "GET", path: "/v1/events/stream", headers: { accept: "text/event-stream" } });
@@ -280,7 +285,7 @@ test("relay: an event stream stays open and delivers events through the channel"
   s.reset("done");
 });
 
-test("relay: an untrusted browser asks to be trusted once, about itself only, and the owner's relay.devices.trust is the approval", async t => {
+shardTest("relay: an untrusted browser asks to be trusted once, about itself only, and the owner's relay.devices.trust is the approval", async t => {
   const { d } = await world(t);
   const asked = [];
   d.events.on("device.trust-asked", e => asked.push(e.payload || e.data || e));
@@ -324,7 +329,7 @@ test("relay: an untrusted browser asks to be trusted once, about itself only, an
   assert.equal(asked.length, 2);
 });
 
-test("relay: a browser from the web app is a web device, limited until trusted from another device", async t => {
+shardTest("relay: a browser from the web app is a web device, limited until trusted from another device", async t => {
   const { d } = await world(t);
   const seen = [];
   d.events.on("device.paired", e => seen.push(e));
@@ -359,7 +364,7 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   assert.equal(lifted.error && lifted.error.code, "no_such_tool", JSON.stringify(lifted));
 });
 
-test("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {
+shardTest("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {
   const { d } = await world(t, { web_expiry_days: 1e-8 });
   const p = await phone(await firstPairing(d));
   await p.signIn(d);
@@ -372,7 +377,7 @@ test("relay: a web device unused past relay.web_expiry_days is removed at its ne
   assert.deepEqual(ids, [p.reply.device], "the phone, an app device, never expires");
 });
 
-test("relay: the web app's loader asks the box which build to load, and the owner can pin one", async t => {
+shardTest("relay: the web app's loader asks the box which build to load, and the owner can pin one", async t => {
   const { d, root } = await world(t);
   const list = path.join(root, "releases.json");
   const rel = (release, c) => ({ release, sha: c.repeat(40), manifest: c.repeat(64) });
@@ -396,7 +401,7 @@ test("relay: the web app's loader asks the box which build to load, and the owne
   assert.deepEqual([pinned.release, pinned.pinned], ["0.4.2", true]);
 });
 
-test("relay: a device reports its path; the box measures the relay round trip", async t => {
+shardTest("relay: a device reports its path; the box measures the relay round trip", async t => {
   const { d } = await world(t);
   const moves = [];
   d.events.on("device.moved", e => moves.push(e.payload));
@@ -413,7 +418,7 @@ test("relay: a device reports its path; the box measures the relay round trip", 
   // The tailnet half of this test (a node linked by its code, a "direct" path from a tailnet caller) went with Tailscale: the registry no longer has a tailnet caller, a device's direct path is Wink's.
 });
 
-test("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
+shardTest("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   const id = p.reply.device;
@@ -425,7 +430,7 @@ test("relay: relay.device.presence names the key a device enrolled, for modules 
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
 });
 
-test("relay: relay.devices.node answers a paired device's own Noise identity, for modules only, and its tailnet node once it has reported one", async t => {
+shardTest("relay: relay.devices.node answers a paired device's own Noise identity, for modules only, and its tailnet node once it has reported one", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
   const id = p.reply.device;
@@ -438,7 +443,7 @@ test("relay: relay.devices.node answers a paired device's own Noise identity, fo
   assert.deepEqual((await d.registry.call("relay.devices.node", { id: "nobody" }, "module:link")).data, { stableId: null, staticKey: null, name: null, node: null });
 });
 
-test("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {
+shardTest("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
@@ -453,7 +458,7 @@ test("relay: the pairing offer names the box as configured, never the machine's 
   }
 });
 
-test("relay: loads on a Solo Mac (role local) but opens no connection until the person enables it", async t => {
+shardTest("relay: loads on a Solo Mac (role local) but opens no connection until the person enables it", async t => {
   // Widened to roles ["box", "local"] for a phone joining a Solo Mac (28 Sep 2026). The module
   // must not go near the network just from loading: settings().enabled defaults to false, and
   // start() only calls startLink() when it is already true. No injected WebSocket seam here on
@@ -475,7 +480,7 @@ test("relay: loads on a Solo Mac (role local) but opens no connection until the 
   assert.deepEqual(events, [], "no connection attempt just from loading, disabled by default");
 });
 
-test("relay: relay.join redeems a code minted on another box, and this device shows up there", async t => {
+shardTest("relay: relay.join redeems a code minted on another box, and this device shows up there", async t => {
   // Two real vyred instances, one real local relay/node/server between them (the same fixture
   // relay every other test in this file uses) -- the box mints a code (relay.pair.first, as
   // onboarding does for the very first device), the device (role local, relay's own module
@@ -520,7 +525,7 @@ test("relay: relay.join redeems a code minted on another box, and this device sh
   assert.equal(flip.data.device, r.data.device);
 });
 
-test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, before any handshake", async t => {
+shardTest("relay: relay.join refuses a guest, an agent's own claim, and a bad code, before any handshake", async t => {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
@@ -540,7 +545,7 @@ test("relay: relay.join refuses a guest, an agent's own claim, and a bad code, b
   assert.equal((await d.registry.call("relay.join", { url: bogus }, "hook", PROOF)).error.code, "no_such_tool");
 });
 
-test("relay: relay.join's presence prompt names the box, its relay host and a key fingerprint; a garbage url refuses before any prompt at all", async t => {
+shardTest("relay: relay.join's presence prompt names the box, its relay host and a key fingerprint; a garbage url refuses before any prompt at all", async t => {
   const { d } = await world(t);
   const def = d.registry.tools.get("relay.join");
   const goodUrl = pairUrl({ relay: "wss://relay.example.com", route: "a".repeat(26), box: Buffer.alloc(32, 7), secret: "s", name: "Northwind Bakery" });
@@ -589,7 +594,7 @@ test("relay: relay.join's presence prompt names the box, its relay host and a ke
   assert.ok(hostPart.length <= 64, hostPart);
 });
 
-test("relay: relay.join is not available on a Mac without vyre-core to hold its device key", async t => {
+shardTest("relay: relay.join is not available on a Mac without vyre-core to hold its device key", async t => {
   // A pure function of an explicit platform (like installCommand/operator elsewhere), so this
   // does not depend on the OS running the suite: darwin always refuses, every other platform
   // (this test box's own linux included) never does.
@@ -615,7 +620,7 @@ test("relay: relay.join is not available on a Mac without vyre-core to hold its 
   assert.equal(r.error.code, "not_available_here");
 });
 
-test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and redeems it, and only device.paired + relay.paired fire", async t => {
+shardTest("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and redeems it, and only device.paired + relay.paired fire", async t => {
   const { d } = await world(t);
   const seen = [];
   d.events.on("device.paired", e => seen.push(["device.paired", e.payload || e]));
@@ -649,7 +654,7 @@ test("relay: relay.pair.ticket mints a Vyre-code ticket, a phone resolves and re
     /expired or was already used/);
 });
 
-test("relay: a computer that chose its own ticket has the box register it; the record carries the box's own origin, own domain included, and no origin when there is none", async t => {
+shardTest("relay: a computer that chose its own ticket has the box register it; the record carries the box's own origin, own domain included, and no origin when there is none", async t => {
   const { d } = await world(t);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const seed = crypto.randomBytes(16);
@@ -692,7 +697,7 @@ test("relay: a computer that chose its own ticket has the box register it; the r
   void minted;
 });
 
-test("relay: an older relay that never answers a registration still gets a usable, unconfirmed ticket; a refusal from a current one is still a failure", async t => {
+shardTest("relay: an older relay that never answers a registration still gets a usable, unconfirmed ticket; a refusal from a current one is still a failure", async t => {
   const { d } = await world(t, {}, {}, { legacyNoAck: true });
   const seed = crypto.randomBytes(16);
   const minted = await d.registry.call("relay.pair.ticket", { seed: seed.toString("base64url") }, "cli", PROOF);
@@ -704,13 +709,13 @@ test("relay: an older relay that never answers a registration still gets a usabl
   assert.equal(resolved.offer.route, status.route, "the older relay did store it");
 });
 
-test("relay: a relay that says it answers registrations but does not is a failure, not an older relay", async t => {
+shardTest("relay: a relay that says it answers registrations but does not is a failure, not an older relay", async t => {
   const { d } = await world(t, {}, {}, { dropAck: true });
   const r = await d.registry.call("relay.pair.ticket", { seed: crypto.randomBytes(16).toString("base64url") }, "cli", PROOF);
   assert.equal(r.error && r.error.code, "unavailable", JSON.stringify(r));
 });
 
-test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {
+shardTest("relay: resolveTicket confirms who a ticket pairs with, before pairing, so a phone can show and pairOffer separately", async t => {
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -730,7 +735,7 @@ test("relay: resolveTicket confirms who a ticket pairs with, before pairing, so 
   await assert.rejects(() => resolveTicket(fromBase64url(minted.ticket), { relay: status.url, crypto: nodeCrypto() }), /expired or was already used/);
 });
 
-test("relay: resolveTicket refuses a record whose own expiry has passed, even with a valid MAC", async t => {
+shardTest("relay: resolveTicket refuses a record whose own expiry has passed, even with a valid MAC", async t => {
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -747,7 +752,7 @@ test("relay: resolveTicket refuses a record whose own expiry has passed, even wi
   assert.equal(record.handle, "alex", "the claimed handle travels in the record, covered by the same MAC");
 });
 
-test("relay: resolveTicket/pairOffer throw stable .code values, not just messages", async t => {
+shardTest("relay: resolveTicket/pairOffer throw stable .code values, not just messages", async t => {
   const { d } = await world(t);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const gone = await resolveTicket(Buffer.alloc(8, 1), { relay: status.url, crypto: nodeCrypto() }).catch(e => e);
@@ -779,7 +784,7 @@ test("relay: resolveTicket/pairOffer throw stable .code values, not just message
   assert.equal(limited.code, "rate_limited");
 });
 
-test("relay: resolveTicket's handle is null when no vyre.run name is claimed, not a guess", async t => {
+shardTest("relay: resolveTicket's handle is null when no vyre.run name is claimed, not a guess", async t => {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
@@ -795,7 +800,7 @@ test("relay: resolveTicket's handle is null when no vyre.run name is claimed, no
   assert.equal(resolved.name, "Vyre box", "boxName()'s own fallback, unaffected by the missing handle");
 });
 
-test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" + owner.id).slice(0,8), covered by the MAC", async t => {
+shardTest("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" + owner.id).slice(0,8), covered by the MAC", async t => {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
@@ -812,7 +817,7 @@ test("relay: resolveTicket's identity fingerprint is sha256(\"vyre:person:v1:\" 
   assert.equal(resolved.identity, "WrNLxox2PS8", "lib/identity.js's own worked vector for this id");
 });
 
-test("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {
+shardTest("relay: a device's own name at ticket pairing is sanitised and capped like the box's own name", async t => {
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
@@ -825,7 +830,7 @@ test("relay: a device's own name at ticket pairing is sanitised and capped like 
   assert.doesNotMatch(row.name, /[\u0007‮]/);
 });
 
-test("relay: the relay never learns the pairing secret or reads the record, and a tampered record fails the phone's MAC check", async t => {
+shardTest("relay: the relay never learns the pairing secret or reads the record, and a tampered record fails the phone's MAC check", async t => {
   const { ticketDerive, ticketSeal, ticketOpen } = await import("../core/relay/wire.js");
   const { d } = await world(t);
   const minted = (await d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data;
@@ -857,7 +862,7 @@ test("relay: the relay never learns the pairing secret or reads the record, and 
     /does not check out/);
 });
 
-test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, the same as relay.join", async t => {
+shardTest("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, the same as relay.join", async t => {
   const refusal = macCoreRefusal("darwin");
   assert.equal(refusal.code, "not_available_here");
   const real = Object.getOwnPropertyDescriptor(process, "platform");
@@ -870,7 +875,7 @@ test("relay: relay.pair.ticket refuses on darwin, before any Touch ID prompt, th
   assert.equal(r.error.code, "not_available_here");
 });
 
-test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end to end through core's dh and signature, and no key file is written", async t => {
+shardTest("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end to end through core's dh and signature, and no key file is written", async t => {
   assert.equal(macCoreRefusal("darwin", true), null);
   assert.equal(macCoreRefusal("darwin", false).code, "not_available_here");
   const real = Object.getOwnPropertyDescriptor(process, "platform");
@@ -893,7 +898,7 @@ test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end
   assert.equal(j.error.code, "bad_input");
 });
 
-test("relay: /v1/pair is rate-limited per IP", async t => {
+shardTest("relay: /v1/pair is rate-limited per IP", async t => {
   const { d } = await world(t);
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   const base = status.url.replace(/^ws/, "http");
@@ -902,7 +907,7 @@ test("relay: /v1/pair is rate-limited per IP", async t => {
   assert.equal(last.status, 429);
 });
 
-test("relay.status and the device list are the owner's: a bare model session, the harness, a Vyre session and a thread claim are refused; the person's surfaces are not", async t => {
+shardTest("relay.status and the device list are the owner's: a bare model session, the harness, a Vyre session and a thread claim are refused; the person's surfaces are not", async t => {
   const { d } = await world(t);
   for (const caller of ["mcp", "harness", "session:s1", "mcp:thread:t1", "cli:thread:t1", "mcp:agent:kit", "anonymous", "hook", "tailnet-guest:sam@harlow.example"]) {
     const r = await d.registry.call("relay.status", {}, caller);

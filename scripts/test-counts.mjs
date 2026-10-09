@@ -36,6 +36,21 @@ export function problems(ran, recorded, { full }) {
   return out;
 }
 
+/** What kept a hung file's processes open: the live libuv handles of every diagnostic report in the folder, one line each. @param {string} dir */
+function openHandles(dir) {
+  /** @type {string[]} */ const lines = [];
+  let names = []; try { names = fs.readdirSync(dir).filter(n => n.endsWith(".json")); } catch { /* no report was written */ }
+  for (const n of names) {
+    try {
+      const r = JSON.parse(fs.readFileSync(path.join(dir, n), "utf8"));
+      const live = (r.libuv || []).filter((/** @type {any} */ h) => h.is_active && !["signal", "async", "check", "prepare", "idle"].includes(h.type));
+      lines.push(`  process ${r.header && r.header.processId} (${String((r.header && r.header.commandLine || []).slice(-1)[0] || "").slice(-70)}): ${live.length} live handle(s)` + live.slice(0, 8).map((/** @type {any} */ h) => `\n    ${h.type}${h.remoteEndpoint ? " to " + JSON.stringify(h.remoteEndpoint) : ""}${h.localEndpoint ? " on " + JSON.stringify(h.localEndpoint) : ""}${h.path ? " " + h.path : ""}${h.pid ? " pid " + h.pid : ""}`).join(""));
+      const st = r.javascriptStack && r.javascriptStack.stack; if (st && st.length) lines.push("    at " + st.slice(0, 4).join("\n       "));
+    } catch { /* an unreadable report */ }
+  }
+  return lines.length ? "\n----- what kept it open (node diagnostic report):\n" + lines.join("\n") + "\n" : "\n----- no diagnostic report was written\n";
+}
+
 /** @param {string} countsFile @param {boolean} full */
 function check(countsFile, full) {
   const ran = readJson(countsFile), recorded = fs.existsSync(RECORD) ? readJson(RECORD) : {};
@@ -82,10 +97,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       for (let i = next++; i < files.length; i = next++) {
         const f = files[i], out = path.join(dir, `${i}.json`);
         await new Promise(done => {
+          // The file runs in its own process group with node's diagnostic report armed on SIGUSR2: a file that keeps the process open after its tests is not only named, the report lists the handles that kept it open.
+          const rep = path.join(dir, `rep-${i}`);
+          fs.mkdirSync(rep, { recursive: true });
           const child = spawn(process.execPath, ["--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
-            { cwd: REPO, env: { ...process.env, VYRE_TEST_COUNTS_OUT: out } });
+            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, NODE_OPTIONS: `${process.env.NODE_OPTIONS || ""} --report-on-signal --report-signal=SIGUSR2 --report-directory=${rep}`.trim() } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
-          let timedOut = false; const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, limit);
+          const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };
+          let timedOut = false;
+          const timer = setTimeout(() => {
+            timedOut = true; signalGroup("SIGUSR2");
+            setTimeout(() => { buf += openHandles(rep); signalGroup("SIGKILL"); }, 2500);
+          }, limit);
           child.on("close", code => {
             clearTimeout(timer);
             if (fs.existsSync(out)) Object.assign(ran, readJson(out)); else ran[f] ??= 0;
