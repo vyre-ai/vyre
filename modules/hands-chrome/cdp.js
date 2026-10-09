@@ -17,6 +17,8 @@ export class CdpPool {
     this.onEvent = o.onEvent || (() => {});
     /** @type {Map<string, Cdp>} */
     this.byAgent = new Map();
+    /** @type {Map<string, string>} the tab to prefer for an agent whose connection is not made yet */
+    this.wanted = new Map();
   }
 
   /** @param {string} agent @param {string} cdpUrl @param {string} [token] */
@@ -29,9 +31,18 @@ export class CdpPool {
     if (!c) {
       c = new Cdp({ cdpUrl, token, WebSocket: this.WS, fetch: this.fetchImpl, onEvent: m => this.onEvent(agent, m) });
       this.byAgent.set(agent, c);
+      const want = this.wanted.get(agent);
+      if (want) { c.prefer = want; this.wanted.delete(agent); }
     }
     await c.connect();
     return c;
+  }
+
+  /** The tab the hands should work in from now on (the one a Vault sign-in earned a session in); the next page() attaches to it if it is still there. @param {string} agent @param {string} targetId */
+  prefer(agent, targetId) {
+    const c = this.byAgent.get(agent);
+    if (!c) { this.wanted.set(agent, targetId); return; }
+    c.prefer = targetId; c.sessionId = null;
   }
 
   /** @param {string} agent */
