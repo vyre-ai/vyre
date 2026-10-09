@@ -20,6 +20,11 @@ test("a route pattern matches exactly: :name is one segment, a trailing /* is th
   assert.ok(compile("/file/:id/*").test("/file/xyz/signed/Contract.pdf"));
   assert.ok(!compile("/file/:id/*").test("/file/xyz/../etc"));
   assert.ok(!compile("/file/:id/*").test("/file/xyz"));
+  assert.ok(!compile("/file/:id/*").test("/file/xyz/./a") && !compile("/file/:id/*").test("/file/xyz/a/.."));
+  assert.ok(compile("/file/:id/*").test("/file/xyz/My%20Contract.v2.pdf"));
+  // an encoded dot, slash, backslash or NUL never passes the matcher, whatever the pattern says
+  const enc = matcher({ routes: [{ methods: ["GET"], path: "/file/:id/*" }] });
+  for (const p of ["/file/xyz/%2e%2e/admin", "/file/xyz/a%2Fb", "/file/xyz/a%5cb", "/file/xyz/a%00b", "/file/xyz/%2E%2E/x"]) assert.ok(!enc.open("GET", p), p);
   for (const bad of ["s/x", "/s/../x", "/a//b", "/a/*/b", "/a/:Bad", "/s/:slug;x"]) assert.throws(() => compile(bad), /not a signing route|may only end/, bad);
 });
 

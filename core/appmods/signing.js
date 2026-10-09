@@ -5,7 +5,7 @@
 
 const SEG = "[A-Za-z0-9_-]{1,80}";
 /** The characters of a file path below a prefix (a signed file's name): letters, digits and a few marks, never a dot-dot. */
-const REST = "[A-Za-z0-9_.~%-]+(?:/[A-Za-z0-9_.~%-]+)*";
+const REST = "(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.~%-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.~%-]+)*";
 
 /**
  * A route pattern as a regular expression: `:name` is one path segment, a trailing `/*` is the rest of the path. Anything else must match as written.
@@ -31,7 +31,7 @@ export function matcher(signing) {
   const redirects = ((signing && signing.redirects) || []).map(r => ({ re: compile(r.from), from: r.from, to: r.to }));
   return {
     /** @param {string} method @param {string} pathname */
-    open: (method, pathname) => routes.some(r => r.methods.has(String(method).toUpperCase()) && r.re.test(pathname)),
+    open: (method, pathname) => !/%(?:2e|2f|5c|00)/i.test(pathname) && routes.some(r => r.methods.has(String(method).toUpperCase()) && r.re.test(pathname)),
     /** @param {string} pathname @returns {string | null} */
     redirect(pathname) {
       for (const r of redirects) {
