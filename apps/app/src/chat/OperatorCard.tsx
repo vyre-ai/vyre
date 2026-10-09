@@ -11,7 +11,8 @@ import { dots, runWord, stillWord } from "./screen-model.js";
 
 type Op = { block: "operator"; run: string; computer: string; title: string; state: "working" | "done" | "stuck" | "paused"; line: string; ask?: string; steps: { line: string; state: string }[] };
 
-export function OperatorCard({ block }: { block: Op }) {
+/** `sample` is a stand-in picture for the sample world (the shots); a real card asks the box. */
+export function OperatorCard({ block, sample }: { block: Op; sample?: string }) {
   const { color } = useUiTheme();
   const [watch, setWatch] = useState(false);
   const [big, setBig] = useState(false);
@@ -19,8 +20,10 @@ export function OperatorCard({ block }: { block: Op }) {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
   const busyState = block.state === "working" || block.state === "stuck";
-  const still = useStill(block.run, `${block.line}|${block.state}`, busyState && !watch);
-  const bigStill = useStill(block.run, big ? block.line : "off", big && busyState, 1280);
+  const real = useStill(block.run, `${block.line}|${block.state}`, busyState && !watch && !sample);
+  const still = sample ? { src: sample, why: undefined } : real;
+  const bigReal = useStill(block.run, big && !sample ? block.line : "off", big && busyState && !sample, 1280);
+  const bigStill = sample ? { src: sample, why: undefined } : bigReal;
   const track = dots(block.steps);
   const ink = (s: string) => (s === "done" ? color.ok : s === "stuck" ? color.warn : s === "paused" ? color.label : color.accent);
   const web = Platform.OS === "web";
