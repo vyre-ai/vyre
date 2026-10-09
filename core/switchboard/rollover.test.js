@@ -29,25 +29,25 @@ test("context: the agent's own report wins; with none the conversation's charact
   assert.ok(Math.abs(est.share - (100_000 + ROLL.baseline) / 258_400) < 1e-9);
 });
 
-test("decide: nothing below the threshold; at it, roll when nothing is running; wait for a running tool at most 3 turns; force at 75 percent; never twice in 10 turns", () => {
+test("decide: nothing below the threshold; at it, roll when nothing is running; wait for a running tool at most 3 turns; line at 80, force at 90 percent; never twice in 10 turns", () => {
   const at = (share, extra = {}) => decide({ ctx: { share, source: "reported" }, ...extra });
-  assert.equal(at(0.5).roll, false);
-  assert.deepEqual(at(0.6), { roll: true, why: "at the threshold" });
+  assert.equal(at(0.7).roll, false);
+  assert.deepEqual(at(0.8), { roll: true, why: "at the threshold" });
   const busy = { blocked: "a tool is running" };
-  assert.deepEqual(at(0.65, busy), { roll: false, why: "waiting for: a tool is running", wait: true });
-  assert.equal(at(0.65, { ...busy, waited: 2 }).roll, false);
-  assert.match(at(0.65, { ...busy, waited: 3 }).why, /waited 3 turns/);
-  assert.equal(at(0.65, { ...busy, waited: 3 }).roll, true);
-  assert.deepEqual(at(0.75, busy), { roll: true, why: "forced (a tool is running)" });
+  assert.deepEqual(at(0.85, busy), { roll: false, why: "waiting for: a tool is running", wait: true });
+  assert.equal(at(0.85, { ...busy, waited: 2 }).roll, false);
+  assert.match(at(0.85, { ...busy, waited: 3 }).why, /waited 3 turns/);
+  assert.equal(at(0.85, { ...busy, waited: 3 }).roll, true);
+  assert.deepEqual(at(0.9, busy), { roll: true, why: "forced (a tool is running)" });
   // The loop guard: a window that is still over the line right after a roll does not roll again.
-  assert.equal(at(0.9, { sinceRoll: 3 }).roll, false);
-  assert.match(at(0.9, { sinceRoll: 3 }).why, /rolled 3 turns ago/);
-  assert.equal(at(0.9, { sinceRoll: 10 }).roll, true);
-  assert.equal(at(0.9, { sinceRoll: null }).roll, true);
+  assert.equal(at(0.95, { sinceRoll: 3 }).roll, false);
+  assert.match(at(0.95, { sinceRoll: 3 }).why, /rolled 3 turns ago/);
+  assert.equal(at(0.95, { sinceRoll: 10 }).roll, true);
+  assert.equal(at(0.95, { sinceRoll: null }).roll, true);
   // A count made from characters errs early: at 5/6 of the line.
   const est = (share) => decide({ ctx: { share, source: "estimated" } });
-  assert.equal(est(0.49).roll, false);
-  assert.equal(est(0.51).roll, true);
+  assert.equal(est(0.66).roll, false);
+  assert.equal(est(0.68).roll, true);
   // A setting moves the line.
   assert.equal(decide({ ctx: { share: 0.45, source: "reported" }, at: 0.4 }).roll, true);
 });

@@ -46,7 +46,8 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { ROLL, contextOf, decide as rollDecide, seedOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
+import { tokensOfChars } from "../../lib/tokens.js";
+import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js";
@@ -1833,6 +1834,33 @@ export class Switchboard {
   }
 
   /**
+   * The hard guard (R031-00u): before a message goes to an idle session, if the window used plus this message would reach ROLL.guard, roll first, so one turn cannot overflow the window.
+   * It follows the same rules as rollCheck (a conversation Vyre runs, the setting on, nothing running, not within the gap of the last roll). Claude Code's own compaction is never turned off:
+   * it stays the backstop for whatever this does not catch.
+   * @param {string} id @param {string} text
+   */
+  async rollGuard(id, text) {
+    const st0 = this.live.get(id);
+    if (!st0 || st0.turn || st0.stopping || st0.switching || this.rolling.has(id) || this.switches.has(id) || this.once.has(id)) return;
+    const L = st0.launch || {};
+    if (L.once || L.quick || L.rolls === false) return;
+    const rec0 = this.record(id);
+    if (!rec0 || (rec0.purpose && !["chat", "project", "agent"].includes(String(rec0.purpose)))) return;
+    const cfg = await this.rollSettings(rec0.project);
+    if (!cfg.enabled) return;
+    const st = this.live.get(id);
+    if (st !== st0 || st.turn || st.stopping || st.switching || this.rolling.has(id) || this.switches.has(id)) return;
+    const rec = this.record(id);
+    if (!rec) return;
+    const ctx = contextOf({ used: st.used || 0, window: st.window || 0, chars: st.used ? 0 : this.rollChars(id), model: rec.model, provider: rec.provider });
+    const share = ctx.share + tokensOfChars([...String(text || "")].length) / ctx.window;
+    if (share < ROLL.guard * (ctx.source === "estimated" ? 5 / 6 : 1)) return;
+    const last = /** @type {any} */ (this.db.prepare("SELECT turn FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 1").get(id));
+    if (last && Math.max(0, (Number(rec.turns) || 0) - Number(last.turn || 0)) < ROLL.gap) return;
+    await this.startRoll(id, { reason: "window", why: `this message would take the window to ${Math.round(share * 100)}%`, ctx }).catch(() => {});
+  }
+
+  /**
    * Begin a rollover, now: it is held in this.rolling so a person's message to the thread waits for it. Returns the promise (a manual roll waits for the answer).
    * @param {string} id @param {{ reason: string, why?: string, ctx?: any }} o
    */
@@ -1922,8 +1950,9 @@ export class Switchboard {
     /** @type {string[]} */ let waiting = [];
     // The receipts and the ledger are OFF unless VYRE_MANAGED_CONTEXT=on (lead ruling, 9 Oct, after token proof round 5): no valid long-session run has shown they help (the long task is one turn, and a
     // rollover only happens between turns, so none fired). They come back on by default when a multi-turn run shows a seed with them beats one without.
-    if (thread && process.env.VYRE_MANAGED_CONTEXT === "on") {
-      receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
+    const managed = process.env.VYRE_MANAGED_CONTEXT === "on";
+    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET === "on"))) {
+      if (managed) receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
         this.deps.call("gate.held", { thread }).catch(() => null),
@@ -1933,10 +1962,19 @@ export class Switchboard {
       const items = g && !g.error && g.data && Array.isArray(g.data.held) ? g.data.held : Array.isArray(g.data) ? g.data : [];
       waiting = items.map((/** @type {any} */ x) => `${x.id || ""} ${x.summary || x.kind || ""}`.trim()).filter(Boolean);
     }
+    // R031-00u: the reference sheet, off unless VYRE_ROLLOVER_SHEET=on (or the managed-context switch above): on by default only if the eval (R031-00v) shows it helps. Pointers come from Recall's
+    // index of the windows, one read; a moment it cannot place simply has no pointer.
+    let sheet = "";
+    if (thread && kind === "roll" && (process.env.VYRE_ROLLOVER_SHEET === "on" || managed)) {
+      const calls = sheetCalls(this.deps.ofThread(thread, { types: ["thread.tool"] })).slice(-400);
+      const m = calls.length ? await this.deps.call("recall.marks", { sessions: chain, at: calls.map(c => c.at) }).catch(() => null) : null;
+      const ptrs = m && !m.error && m.data && Array.isArray(m.data.marks) ? m.data.marks : [];
+      sheet = sheetOf({ calls, ptrs, facts, decisions: decisions.map((/** @type {any} */ d) => `${d.topic ? d.topic + ": " : ""}${d.text || d.value}`), held: waiting }).text;
+    }
     const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
     const moved = kind !== "roll" && thread;
     const tail = moved ? this.rollTurns(thread, 400, since) : held ? held.tail : thread ? this.rollTurns(thread) : [];
-    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
+    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, windows: kind === "roll" ? chain : [], sheet, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
   }
 
   /**
@@ -1992,10 +2030,7 @@ export class Switchboard {
     this.db.prepare(`INSERT INTO threads_rolls (thread, at, reason, native_from, native_to, provider, model, used, win, share, source, turn, seed_chars, seed_tail)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, Date.now(), why ? `${reason}: ${why}` : reason, from, to, provider, rec.model || null, ctx ? Math.round(ctx.used) : null, ctx ? Math.round(ctx.window) : null,
       ctx ? Math.round(ctx.share * 1000) / 1000 : null, ctx ? ctx.source : null, Number(row && row.turns) || 0, seed.chars, seed.tail);
-    const pct = ctx ? Math.round(ctx.share * 100) : null;
-    const line = `Continued in a fresh session${pct !== null ? ` (the window was ${ctx.source === "estimated" ? "about " : ""}${pct}% full)` : ""}. It has the files as they are, your decisions, a plan, an index of what came before and the last turns word for word; every earlier turn is stored and one search away.`;
-    this.emit("thread.text", { message: "vyre", text: line, done: true, notice: true }, id, rec.project);
-    this.emit("thread.rolled", { thread: id, from, to, reason, ...(ctx ? { used: Math.round(ctx.used), window: Math.round(ctx.window), share: Math.round(ctx.share * 1000) / 1000, source: ctx.source } : {}), seed_chars: seed.chars, seed_tail: seed.tail, text: line }, id, rec.project);
+    this.emit("thread.rolled", { thread: id, from, to, reason, ...(ctx ? { used: Math.round(ctx.used), window: Math.round(ctx.window), share: Math.round(ctx.share * 1000) / 1000, source: ctx.source } : {}), seed_chars: seed.chars, seed_tail: seed.tail, quiet: true }, id, rec.project);
     // The seed rides in front of the next message (write() takes it); set before the launch, which hands over any queued words at once.
     this.carry.set(id, seed.text);
     // An agent's thread comes back with the agent's own credentials and scope, which only the agents module can give it (as sendOne does); the thread's saved options carry the fresh window.
@@ -2349,6 +2384,8 @@ export class Switchboard {
         || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
       if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
     }
+    // The window would overflow with this message: roll first, so it goes to a fresh session with the seed (R031-00u).
+    await this.rollGuard(id, text); given();
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session. (A duplicate was answered above, before anything is opened.)
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
