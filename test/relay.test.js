@@ -256,7 +256,8 @@ shardTest("relay: taking a device's presence key away removes the device the sam
   assert.ok(key, "the phone enrolled a presence key at pairing");
   const r = await d.registry.call("presence.remove", { id: key }, "cli", PROOF);
   assert.ok(r.data || !r.error, JSON.stringify(r));
-  await new Promise(res => setTimeout(res, 150));
+  // the channel closes as the removal commits, on the event loop's next turns (a fixed 150 ms was a race on a loaded machine): wait for it, bounded
+  for (let i = 0; i < 200 && !p.closed(); i++) await new Promise(res => setTimeout(res, 50));
   assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" });
   await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/);
   assert.equal(((await d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).some(x => x.id === p.reply.device), false, "and it is gone from the list");

@@ -938,8 +938,6 @@
  "test/vault-devices.test.js": 1,
  "test/vault-shared.test.js": 1,
  "test/windows-sums-vector.test.js": 5,
- "test/wink-paired-2.test.js": 34,
- "test/wink-paired.test.js": 30,
  "test/workflows-yaml.test.js": 3,
  "test/ws-single.test.js": 5,
  "web/js/api.test.js": 13,
