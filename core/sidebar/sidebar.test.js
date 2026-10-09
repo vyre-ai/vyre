@@ -144,3 +144,20 @@ test("sidebar: the hub reads and writes the two settings, and a stored list is c
   assert.deepEqual((await c("sidebar.get", {})).data.default.map(keyOf), ["place:drive"]);
   assert.equal((await c("settings.set", { key: "sidebar.default", level: "account", value: { "not a space!": [{ kind: "place", id: "drive" }] } })).error !== undefined, true, "a key that is not a Space is refused");
 });
+
+test("R031-48: pin anything: a project, a Flow, a Connection and a records list land in the caller's own list as views, once, and unpin takes them off", async t => {
+  const { c } = await world(t);
+  const pins = [["project", "p1", "Northwind", "/u/project/p1"], ["flow", "fl_1", "Intake", "/u/flows/fl_1"], ["connection", "orbit", "Orbit CRM", "/u/connections"], ["records", "matter", "Matters", "/u/records/matter"]];
+  for (const [what, id, label] of pins) assert.equal((await c("sidebar.pin", { what, id, label })).data.ok, true);
+  assert.equal((await c("sidebar.pin", { what: "flow", id: "fl_1", label: "Intake" })).data.ok, true, "twice is fine");
+  const mine = (await c("sidebar.get", {})).data.mine;
+  const views = mine.filter((/** @type {any} */ e) => e.kind === "view");
+  assert.deepEqual(views.map((/** @type {any} */ e) => [e.id, e.label, e.href]), pins.map(([w, id, l, h]) => [`${w}-${id}`, l, h]));
+  assert.equal((await c("sidebar.unpin", { what: "flow", id: "fl_1" })).data.ok, true);
+  assert.ok(!(await c("sidebar.get", {})).data.mine.some((/** @type {any} */ e) => e.id === "flow-fl_1"));
+  const bad = await c("sidebar.pin", { what: "flow", id: "not a slug!" });
+  assert.match(bad.error.message, /cannot pin that/);
+  const view = await c("sidebar.pin", { what: "view", id: "open-matters", label: "Open matters", href: "/u/records/matter?view=open" });
+  assert.equal(view.data.ok, true);
+  assert.match((await c("sidebar.pin", { what: "view", id: "x", href: "https://evil.example" })).error.message, /cannot pin that/);
+});
