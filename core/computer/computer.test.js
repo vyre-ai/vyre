@@ -100,7 +100,8 @@ test("signin goes to the Vault with the agent and conversation the registry vouc
   assert.deepEqual(r.filled, ["username", "password"]);
   const c = b.calls.find(c => c.tool === "vault.agent.fill");
   assert.deepEqual(c.input, { item: "Harlow-Test", origin: "https://app.harlow.test", agent: "kit", thread: "t-9", lineage: undefined });
-  await assert.rejects(b.run({ do: "signin", login: "x", on: "my Mac" }, "mcp agent:kit"), /asked|offline|unsupported|signing in from a Vault login/);
+  const m = await boot({ macs: [{ mac: "m1", name: "Alex's MacBook", online: true }] });
+  await assert.rejects(m.run({ do: "signin", login: "x", on: "my Mac" }, "mcp agent:kit"), /signing in from a Vault login is done on the cloud computer/);
 });
 
 test("the Mac's own side: only the link may run an action for the box", async () => {

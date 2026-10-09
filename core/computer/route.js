@@ -36,6 +36,13 @@ export function resolveTarget(on, targets) {
     if (hit.length === 1) return { ok: true, target: hit[0] };
     if (hit.length > 1) return { ok: false, ask: { why: "ambiguous", question: `Which one is "${want}"?`, choices: hit.map(t => t.name) } };
   }
+  // A word that names a kind of computer, not one of them ("mac", "laptop"): every computer of that kind, and one only if there is one.
+  const GENERIC = new Set(["mac", "macs", "macbook", "computer", "laptop", "desktop", "pc", "machine", "here"]);
+  if (GENERIC.has(core(want)) || !core(want)) {
+    const kinds = all.filter(t => t.kind !== "cloud");
+    if (kinds.length === 1) return { ok: true, target: kinds[0] };
+    if (kinds.length > 1) return { ok: false, ask: { why: "ambiguous", question: `Which one is "${want}"?`, choices: kinds.map(t => t.name) } };
+  }
   // A word of the name that only one target has: "office" for "Office Mac mini".
   const words = core(want).split(" ").filter(w => w.length > 2);
   const byWord = all.filter(t => words.length && words.every(w => labels(t).some(l => norm(l).split(" ").includes(w))));
