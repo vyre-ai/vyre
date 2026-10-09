@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1388,"event":472,"config":270,"env":257,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1389,"event":473,"config":270,"env":257,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -51,10 +51,12 @@
     {"kind":"tool","name":"approvals.answer-group","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsanswer-group","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.ask","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsask","module":"approvals","mentions":[{"page":"architecture/map.md","line":197,"anchor":"13-one-request-end-to-end"}]},
     {"kind":"tool","name":"approvals.card-input","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalscard-input","module":"approvals","mentions":[]},
+    {"kind":"event","name":"approvals.changed","definedIn":"core/approvals/items.js","page":"reference/events.md#approvals","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.cover","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalscover","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.edit-item","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsedit-item","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.hold","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalshold","module":"approvals","mentions":[{"page":"architecture/map.md","line":197,"anchor":"13-one-request-end-to-end"}]},
     {"kind":"tool","name":"approvals.item-view","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsitem-view","module":"approvals","mentions":[]},
+    {"kind":"tool","name":"approvals.items","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsitems","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.pending","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalspending","module":"approvals","mentions":[{"page":"architecture/map.md","line":197,"anchor":"13-one-request-end-to-end"}]},
     {"kind":"tool","name":"approvals.request","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsrequest","module":"approvals","mentions":[]},
     {"kind":"tool","name":"approvals.status","definedIn":"core/approvals/index.js","page":"reference/tools.md#approvalsstatus","module":"approvals","mentions":[]},
