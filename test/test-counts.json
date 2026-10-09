@@ -976,5 +976,6 @@
  "lib/siteops/extract.test.js": 6,
  "lib/siteops/learn.test.js": 10,
  "lib/siteops/store.test.js": 7,
- "lib/siteops/run.test.js": 5
+ "lib/siteops/run.test.js": 5,
+ "local/hands-chrome-mac/ext-ops.test.js": 7
 }

@@ -22,6 +22,7 @@ import frames from "./frames.js";
 import devtools from "./devtools.js";
 import net from "./net.js";
 import api from "./api.js";
+import ops from "./ops.js";
 import ghl from "./ghl.js";
 import login from "./login.js";
 import site from "./site.js";
@@ -32,7 +33,7 @@ import { TRUST_KEYS, cleanTrust, trustKeyIn } from "../shared/trust.js";
 export { TRUST_KEYS, cleanTrust, trustKeyIn };
 /** @typedef {import("../shared/trust.js").Trust} Trust */
 
-export const OPTIONAL = ["devtools", "net", "api", "ghl"];
+export const OPTIONAL = ["devtools", "net", "api", "ops", "ghl"];
 
 /** @type {Map<string, { cap: any, handler: (args: any, ctx: any) => Promise<any> }>} */
 const ops = new Map();
@@ -66,7 +67,7 @@ const loadedFiles = new Set();
  * @param {(name: string) => Promise<any>} [importer]
  * @param {string[]} [names] file names under caps/ to try
  */
-const STATIC = { devtools, net, api, ghl };
+const STATIC = { devtools, net, api, ops, ghl };
 
 export async function loadOptional(importer = async name => ({ default: /** @type {any} */ (STATIC)[name] }), names = OPTIONAL) {
   for (const name of names) {
