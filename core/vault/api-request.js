@@ -260,6 +260,17 @@ export function scopeAllows(config, { agent, project }) {
 }
 
 /**
+ * May a model call read through this credential? The one answer vault.request acts on and vault.list shows, so a list never offers what a request would refuse (and never hides what it allows).
+ * The person's own session and the assistant keep their reach; a named agent, or a session bound to a project, needs the credential's scope.
+ * @param {{ scope?: any }} config @param {{ agent?: string, project?: string, agentKind?: string }} who
+ */
+export function modelMayRead(config, { agent, project, agentKind }) {
+  if (agentKind === "assistant") return true;
+  if (!agent && !project) return true;
+  return scopeAllows(config, { agent, project });
+}
+
+/**
  * `readers`: the modules the person let read through this credential, each for named paths only
  * (a calendar, not a mailbox). Written with the credential, which only a person's own surface can
  * do, so it is the person's own act and needs no second grant. A reader may only make calls the

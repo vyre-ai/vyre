@@ -14320,7 +14320,9 @@ Put a teammate (core/team) on a Project's team as a team-member record, or take 
 
 ### `work.tools`
 
-The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.
+The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do: name, what it does and its risk. A tool the caller cannot use is not listed. Give `tool` for one tool with its input shape, or `schemas: true` for every shape.
 
-- Input: none
+- Input:
+  - `schemas` boolean
+  - `tool` string
 - Callers: any caller
