@@ -112,9 +112,45 @@ export function registerDocuments(ctx) {
     },
   });
 
+  /** One tool of another module, its refusal made ours. */
+  const use = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    const r = await ctx.call(tool, input);
+    if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+    return r.data;
+  };
+  const address = (/** @type {any} */ i) => { const e = String(i.email || "").trim(); if (!e) throw refuse("email is the signer's address, such as dana@example.com", "bad_input"); return e; };
+
+  ctx.tool("documents.send", {
+    description: "Send a document for signature: { template_id, email, signer? (their name), subject? } -> { submission, slug, url, sent }. Makes the signing request and emails the signer their link through Comms; one yes covers both. Outward.",
+    input: obj({ space: str, template_id: { type: "integer" }, email: str, signer: str, subject: str }, ["template_id", "email"]),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const email = address(i);
+      const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) });
+      const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `Your document is ready to sign: ${asked.url}`, why: "signing request" });
+      return { ...asked, sent };
+    },
+  });
+
+  ctx.tool("documents.send-signed", {
+    description: "Email the signer their signed copy: { slug, email, days? (1 to 30) } -> { url, expires, sent }. Makes the expiring link to the finished file and sends it through Comms; one yes covers both. Outward.",
+    input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const email = address(i), slug = String(i.slug || "");
+      if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw refuse("slug is the signer's code from the signing request", "bad_input");
+      const link = await use("appmods.signed.link", { name: "documents", slug, ...(i.days !== undefined ? { days: i.days } : {}) });
+      const days = Math.max(1, Math.round((link.expires - Date.now()) / 86_400_000));
+      const sent = await use("comms.send", { via: "email", to: email, subject: "Your signed copy", body: `Thank you for signing. Your signed copy is here, and the link works for ${days} days (reply if you need a new one): ${link.url}`, why: "signed copy" });
+      return { ...link, sent };
+    },
+  });
+
   ctx.tool("documents.signing.flow", {
-    description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, base, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. When a record of that type enters out_stage it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (held for your yes), waits for the signature and moves the record to signed_stage. Nothing is created: define it with the Flows tools.",
-    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, base: str, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id", "base"]),
+    description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. A record entering out_stage is sent for signature (one yes), waits, moves to signed_stage when signed, and the signer is emailed the signed copy (one yes). Nothing is created: define it with the Flows tools.",
+    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),
   });

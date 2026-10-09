@@ -14,7 +14,7 @@ import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { signingBrand } from "../../lib/brand/profile.js";
-import { mintLink, SIGNED, MAX_LINK_DAYS } from "./signing.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -446,6 +446,23 @@ export default {
         const expires = Date.now() + days * 86_400_000;
         let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
         return { url: `${originFor(name, baseHost())}${SIGNED}${token}`, expires };
+      },
+    });
+    ctx.tool("appmods.signing.request", {
+      internal: true, callers: ["module"],
+      description: "Ask a running signing app for one signature, with no email from the app: { name, template_id, email, signer? } -> { submission, slug, url }. Only the app's own module asks (documents for Documents). Nothing leaves this server; the link is the signer's page.",
+      input: obj({ name: str, template_id: { type: "integer" }, email: str, signer: str }, ["name", "template_id", "email"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks for a signature", "denied");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running", "not_found");
+        if (!(known(name).app || {}).signing) throw refuse("that app does not collect signatures", "unsupported");
+        let body; try { body = requestBody(Number(i.template_id), String(i.email || ""), i.signer); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+        const res = await fetch(`${r.origin}/api/submissions`, { method: "POST", headers: { "content-type": "application/json", "x-auth-token": await secret(name, "api-token") }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw refuse(`${name} would not make the signing request (${res.status}); check that template ${body.template_id} exists`, "app_refused");
+        const got = readRequest(await res.json().catch(() => null));
+        if (!got) throw refuse(`${name} answered, but not with a signing request`, "app_refused");
+        return { ...got, url: `${originFor(name, baseHost())}/sign/${got.submission}/${got.slug}` };
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({

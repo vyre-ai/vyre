@@ -39,6 +39,20 @@
         "outward": true,
         "effect": "write",
         "reach": "anyone"
+      },
+      {
+        "name": "documents.send",
+        "outward": true,
+        "covers": ["comms.send", "mail.send"],
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.send-signed",
+        "outward": true,
+        "covers": ["comms.send", "mail.send"],
+        "effect": "write",
+        "reach": "anyone"
       }
     ]
   },
@@ -74,6 +88,36 @@
         "outward": true,
         "inputs": {
           "slug": "string",
+          "days": "number"
+        },
+        "outputs": {
+          "url": "string",
+          "expires": "number"
+        }
+      },
+      {
+        "name": "documents.send",
+        "label": "Send a document for signature",
+        "outward": true,
+        "inputs": {
+          "template_id": "number",
+          "email": "string",
+          "signer": "string",
+          "subject": "string"
+        },
+        "outputs": {
+          "submission": "number",
+          "slug": "string",
+          "url": "string"
+        }
+      },
+      {
+        "name": "documents.send-signed",
+        "label": "Email the signer their signed copy",
+        "outward": true,
+        "inputs": {
+          "slug": "string",
+          "email": "string",
           "days": "number"
         },
         "outputs": {

@@ -120,3 +120,17 @@ export function filePaths(v) {
   walk(v);
   return [...new Set(out)];
 }
+
+/** The body that asks the signing app for one signature and tells it to send nothing itself: the person's own words go out through Comms. @param {number} templateId @param {string} email @param {string} [name] */
+export function requestBody(templateId, email, name) {
+  if (!Number.isInteger(templateId) || templateId < 1) throw new Error("template_id is the number of the signing template in Documents");
+  if (!/^[^\s@<>,;]{1,64}@[^\s@<>,;]{1,255}$/.test(email)) throw new Error("email is the signer's address");
+  return { template_id: templateId, send_email: false, submitters: [{ email, ...(name ? { name: String(name).slice(0, 120) } : {}) }] };
+}
+
+/** The signer's submission number and slug in the app's answer to a request, or null. @param {unknown} json @returns {{ submission: number, slug: string } | null} */
+export function readRequest(json) {
+  const first = Array.isArray(json) ? json[0] : json && typeof json === "object" && Array.isArray(/** @type {any} */ (json).submitters) ? /** @type {any} */ (json).submitters[0] : null;
+  const n = first && Number(first.submission_id), slug = first && first.slug;
+  return Number.isInteger(n) && n > 0 && typeof slug === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(slug) ? { submission: n, slug } : null;
+}
