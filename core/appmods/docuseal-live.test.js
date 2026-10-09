@@ -186,16 +186,24 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
       /** @type {{ url: string, status: number }[]} */ const resp = []; /** @type {string[]} */ const failed = [];
       cdp.on(m => { if (m.sessionId !== sessionId) return; if (m.method === "Network.responseReceived") resp.push({ url: m.params.response.url, status: m.params.response.status }); if (m.method === "Network.loadingFailed" && !m.params.canceled) failed.push(`${m.params.errorText} ${m.params.requestId}`); });
       await cdp.send("Network.enable", {}, sessionId); await cdp.send("Page.enable", {}, sessionId); await cdp.send("Runtime.enable", {}, sessionId);
+      // the space's brand, as saved by the owner: the signing page must wear it
+      const saved = await d.registry.call("brand.set", { profile: { name: "Harlow Legal", colors: { primary: "#3A5BA0" } } }, "cli", { ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
+      assert.ok(!saved.error, JSON.stringify(saved));
       const loaded = cdp.waitFor(m => m.sessionId === sessionId && m.method === "Page.loadEventFired", 30_000);
       await cdp.send("Page.navigate", { url: `http://${H}/sign/${subId}/${slug}` }, sessionId);
       await loaded; await new Promise(r => setTimeout(r, 4000));
       const bad = resp.filter(r => r.status >= 400);
       const text = (await cdp.send("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }, sessionId)).result.value || "";
       try { fs.writeFileSync(`/tmp/sign-page-requests-${process.pid}.json`, JSON.stringify(resp, null, 1)); } catch { /* no copy */ }
+      const look = (await cdp.send("Runtime.evaluate", { expression: "JSON.stringify({ band: getComputedStyle(document.body, '::before').content, p: getComputedStyle(document.documentElement).getPropertyValue('--p').trim() })", returnByValue: true }, sessionId)).result.value;
       await cdp.close();
       assert.deepEqual(bad, [], `a real browser on the signing page got errors: ${JSON.stringify(bad).slice(0, 400)}`);
       assert.deepEqual(failed, [], "no request failed");
       assert.ok(text.includes("Signatures by"), "the credit shows in the page");
+      const seenLook = JSON.parse(look);
+      assert.equal(seenLook.band, '"Harlow Legal"', `the brand's name is on the page: ${look}`);
+      assert.match(seenLook.p, /^\d+ \d+% \d+%$/, `the brand's colour is the page's primary: ${look}`);
+
       console.log(`browser: ${resp.length} requests, none refused`);
     }
   }
