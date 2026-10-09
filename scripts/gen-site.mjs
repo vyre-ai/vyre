@@ -449,17 +449,14 @@ const homeBody = `
   <div class="wrap">
     <div class="sec-head rv">
       ${eyebrow('Where Vyre is going.')}
-      <h2 id="dir-h" class="h2">Direction. <b>Not a promise of dates.</b></h2>
-      <p class="lead">This is direction, not a promise of dates. What is in 0.2.9, what comes next, and what comes later.</p>
+      <h2 id="dir-h" class="h2">A workplace for your team <b>and its AI agents.</b></h2>
+      <p class="lead">This is direction, not a promise of dates.</p>
     </div>
     <div class="pieces rv" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Spaces</h3><p>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</p></div>
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Records</h3><p>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</p></div>
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Chats</h3><p>One place for you, your team and every AI model, with each chat encrypted to the people in it.</p></div>
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>A built-in network</h3><p>Pair a device with one typed code, with no VPN to install.</p></div>
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Lend a computer</h3><p>Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.</p></div>
-      <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
-      <div class="piece"><span class="num">Later</span><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
+      <div class="piece"><span class="num">Now &middot; 0.3.0</span><h3>Agents that work together</h3><p>Hand-offs you can watch, one yes for a group of messages, any app connected through your vault, signatures inside Vyre, and modules that look like part of Vyre.</p></div>
+      <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Projects with AI teammates</h3><p>Templates with stages and tasks, an Engineer that sets things up with you, skills for every AI, live previews.</p></div>
+      <div class="piece"><span class="num">After that &middot; 0.3.2</span><h3>Documents, messages, publishing</h3><p>Documents made from your templates (signing already works), email and texts from your accounts, sites on your own domain.</p></div>
+      <div class="piece"><span class="num">Later</span><h3>Screen Share and more</h3><p>Watch and take over your agents\' computers, the iPhone App Store app, and a hosted option.</p></div>
     </div>
     <div class="btn-row"><a class="btn" href="/direction/">Read the direction</a></div>
   </div>
@@ -649,7 +646,7 @@ devicePage({
     `<b>Confirm the words.</b> The phone and the computer show the same words. Say yes only if they match.`,
   ] },
   needs: [['Phone', 'An Android phone, or an iPhone and a Mac with Xcode'], ['Server', 'A Vyre server'], ['Account', 'Your own address, such as you.vyre.run']],
-  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications to a closed phone app are not set up: Apple and Google push accounts are needed. Open the app to see what is waiting.', 'Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.'],
+  gapList: ['Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.', 'Notifications to a closed phone app are not set up: Apple and Google push accounts are needed. Open the app to see what is waiting.', 'Screen Share (live view and computer use) comes later; Chrome control works today.'],
   faq: [
     ['Is there an App Store app?', 'Not yet. On Android you install the APK from the release page; on iPhone you build the app and install it with Xcode. Both are sideloaded.'],
     ['Does the phone need a VPN?', 'No. The phone reaches your server through Vyre’s own network, and where a direct path is not possible, through the relay. Your identity on the phone is a key that Face ID unlocks, so there is no separate login to the server.'],
@@ -663,18 +660,26 @@ const DIR = `
 <section class="phead">
   <div class="wrap">
     <p class="crumbs"><a href="/">Vyre</a> / Direction</p>
-    ${eyebrow('Where Vyre is going.')}
-    <h1 class="display">Where Vyre <b>is going.</b></h1>
-    <p class="lead">This page is direction, not a promise of dates. It is what we are building toward, in the order we expect to build it.</p>
+    ${eyebrow('Where Vyre is, and where it is going.')}
+    <h1 class="display">A workplace for your team <b>and its AI agents.</b></h1>
+    <p class="lead">AI tools are brilliant in a chat window and lost everywhere else: they don\'t know your clients, can\'t pick up a colleague\'s task, can\'t safely use your company\'s accounts, and nothing they do is checked before it goes out. Vyre is the place where they can, on a server you own.</p>
   </div>
 </section>
-<section class="sec" style="padding-top:64px" aria-labelledby="road-h">
+<section class="sec" style="padding-top:64px" aria-labelledby="now-h">
   <div class="wrap">
-    <h2 id="road-h" class="lbl" style="margin-bottom:28px">The road from ${VERSION}</h2>
+    <h2 id="now-h" class="lbl" style="margin-bottom:28px">Where Vyre is today &middot; ${VERSION}</h2>
     <div class="road">
-      <div class="stop now rv"><p class="ver">${VERSION} &middot; Now</p><h3>The first release of the 0.3 work</h3><p>0.2.9 is the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.</p><ul><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, with each chat encrypted to the people in it.</li><li><b>A built-in network</b>Pair a device with one typed code, with no VPN to install.</li><li><b>Lend a computer</b>Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.</li></ul></div>
-      <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
-      <div class="stop rv"><p class="ver">Later</p><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
+      <div class="stop now rv"><p class="ver">Released</p><h3>What you can use now</h3><ul><li><b>Set up in minutes</b>Reserve your name, install the app on your Mac or Windows PC, and add a server: a Linux server or a Mac mini that stays on. Add your Android phone from the app.</li><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with automations and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, on your own subscriptions.</li><li><b>A built-in network</b>Your devices reach your server with no VPN to install.</li><li><b>One yes before anything goes out</b>When an assistant wants to send something, it waits for your approval on your phone.</li><li><b>Watch the work</b>See what an assistant is doing as it happens: its latest thought, each step, and a note when it hands a job to a teammate. The teammate\'s steps and report come back into the same conversation.</li><li><b>One yes for a group</b>When an assistant holds several things, such as three emails, they arrive as one card. You read each item\'s exact words, drop or edit any, and say yes once. A sent email is logged on the matching client.</li><li><b>Connect any app that has an API</b>Use a key already in your vault, or import the app\'s API description and approve the connection Vyre drafts. Reading is free; sending, changing and deleting wait for your yes. It works in Flows, watchers and your assistants\' tools.</li><li><b>Signatures inside Vyre</b>Install Documents to send documents for signature on your own server. A signed document is filed on the client and saved to Drive.</li><li><b>Modules that feel built in</b>A module\'s screens, records, steps and triggers show up in Vyre\'s own look, and you arrange your own sidebar. Modules you add cannot pair devices or reach another machine.</li><li><b>Back online by itself</b>A Mac server comes back after a power cut, and the app tells you plainly when it cannot reach your server.</li><li><b>Backups, with one gap</b><code>vyre backup</code> carries your vault, settings and files, not the Space\'s records yet. Keep the server\'s disk backed up too. That comes in 0.3.1.</li></ul></div>
+    </div>
+  </div>
+</section>
+<section class="sec" aria-labelledby="road-h">
+  <div class="wrap">
+    <h2 id="road-h" class="lbl" style="margin-bottom:28px">Where Vyre is going</h2>
+    <div class="road">
+      <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Projects with AI teammates</h3><ul><li><b>Projects</b>A simple project with chats and files, or one made from a template with stages, tasks and AI teammates that do the work and report back.</li><li><b>An Engineer in every workspace</b>Set up templates, automations, screens and connections by talking to it. Every change waits for your approval and can be undone.</li><li><b>Skills and plugins</b>Install a skill once and every AI and agent in your workspace can use it.</li><li><b>Live previews</b>When an agent builds something, a live preview appears in the conversation; share it in one click.</li><li><b>Automations you can trust</b>Every step can prove it worked; failures land in one place with Retry, Skip and Stop.</li><li><b>One timeline</b>Every conversation, email, document and automation that touched a client, in one place.</li><li><b>Backups that carry your records</b>Moving a Space\'s records safely needs a re-key step you approve on a device.</li><li><b>Your own app modules</b>Add your own app as a module, with one approval on your device.</li><li><b>Agents and sessions in one view</b>The chat view in the app matching Lumen everywhere.</li></ul></div>
+      <div class="stop rv"><p class="ver">After that &middot; 0.3.2</p><h3>Documents, messages and publishing</h3><ul><li><b>Documents</b>Generate documents from your own templates, filled from your records. Sending for signature already works.</li><li><b>Messages</b>Email and text messages from your own accounts, logged on the client.</li><li><b>Publish</b>Put a website or app online on your own domain, with every version kept and one-tap rollback.</li></ul></div>
+      <div class="stop rv"><p class="ver">Later</p><h3>And beyond</h3><ul><li><b>Screen Share</b>Watch and take over your agents\' computers and browsers from any device.</li><li><b>iPhone App Store</b>The iPhone app from the App Store, with notifications.</li><li><b>A hosted option</b>A Vyre-hosted home for people without a server.</li></ul></div>
     </div>
   </div>
 </section>
@@ -690,9 +695,9 @@ const DIR = `
 <section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Start with <b>what works today.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
 page({
   slug: 'direction', path: '/direction/',
-  title: 'Where Vyre is going: the direction',
-  desc: 'The direction for Vyre from 0.2.9: spaces, records, chats, a built-in network and lending a computer, then Screen Share, then a Vyre-hosted home. Direction, not a promise of dates.',
-  ogTitle: 'Where Vyre is going.', ogSub: 'Spaces, records, chats, a built-in network, then Screen Share. Direction, not a promise of dates.',
+  title: 'Where Vyre is, and where it is going',
+  desc: 'Vyre is becoming a workplace where your team and its AI agents do real work together, on a server you own: where it is today and where it is going. Direction, not a promise of dates.',
+  ogTitle: 'Where Vyre is going.', ogSub: 'A workplace for your team and its AI agents, on a server you own.',
   body: DIR, ld: [crumbs([['Vyre', `${SITE}/`], ['Direction', `${SITE}/direction/`]])],
 });
 
@@ -729,7 +734,7 @@ ${term('curl -fsSL vyre.run/i | VYRE_CODE=… VYRE_STORE=auto sh', 'curl -fsSL v
 ${part('06', 'phone', 'Add your phone', `<p>From the app, choose <strong>Add your phone</strong>. On Android, download <a href="https://github.com/vyre-ai/vyre/releases/latest">Vyre-android.apk</a> on the phone and open it; allow installs from your browser or Files app when Android asks. On iPhone there is no App Store app yet: you build the app and install it with Xcode. Scan the code from your computer and check that both screens show the same words. More on the <a href="/phone/">phone page</a>.</p>`)}
 ${part('!', 'not-finished', 'What is not in ' + VERSION, `<ul>
 <li><strong>Real devices.</strong> Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.</li>
-<li><strong>Screen Share.</strong> Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.</li>
+<li><strong>Screen Share.</strong> Screen Share (live view and computer use) comes later; Chrome control works today.</li>
 <li><strong>Mac server.</strong> The Mac server installer has not run on a real Mac yet.</li>
 <li><strong>Home routers.</strong> Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.</li>
 <li><strong>Phone notifications.</strong> Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.</li>
@@ -928,13 +933,15 @@ Sessions, memory and the vault stay on your machines. vyre.run holds your name's
 ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
 ## Direction (not a promise of dates)
-- Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.
-- Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
+- Now, 0.3.0: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends. Watch an assistant's work as it happens. One yes for a group of held messages, each read in full. Connect any app that has an API from a key in your Vault. Signatures inside Vyre (Documents). Modules that look and act like part of Vyre. A Mac server that comes back after a power cut. Backups carry your vault, settings and files, not the Space's records yet.
+- Next, 0.3.1: projects with AI teammates, backups that carry your records, your own app modules.
+- After that, 0.3.2: documents made from your templates, messages from your own accounts, publishing.
+- Later: Screen Share (watch and take over your agents' computers and Chrome, on every device).
 - Later: a Vyre-hosted home for people without a server.
 
 ## Known gaps in ${VERSION}
 - Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe.
-- Screen Share (live view and computer use) comes in 0.3.1; Chrome control works today.
+- Screen Share (live view and computer use) comes later; Chrome control works today.
 - The Mac server installer has not run on a real Mac yet.
 - Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
 - Notifications when the phone app is closed: only web push today. Native push needs Apple and Google push accounts, which are not set up.

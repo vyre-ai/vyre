@@ -77,6 +77,9 @@ export const PERSON_ONLY = new Map([
   ["approvals.ask", "asks the person's phone to approve an act the asking session cannot prove: the person's own surfaces only"],
   ["approvals.pending", "what is waiting for the person's approval, shown on their phone"],
   ["approvals.answer", "the person's own answer, with their proof"],
+  ["approvals.answer-group", "the person's own answer to a group of held calls, each approved item with its own proof"],
+  ["approvals.item-view", "the person reads every value of one held call, in pages, before approving it"],
+  ["approvals.edit-item", "the person changes the words of one held call before approving it"],
   ["approvals.status", "hands the approving proof back to the session that asked, once"],
   ["modules.list.reset", "drops the accepted first-party module list for a rollback: the owner with their presence"],
   ["modules.list.reset.ask", "asks the owner's phone to approve a rollback"],
@@ -157,6 +160,20 @@ export const PERSON_ONLY = new Map([
   ["computers.tailnet.set", "controls the person's own machine: its network and hand-back"],
   ["connectors.scope", "widens what a connector may reach"],
   ["connectors.declare", "makes a vault credential: the person's own act, with their own key"],
+  ["appmods.install", "installing or running third-party code on the server is the owner's act"],
+  ["appmods.remove", "installing or running third-party code on the server is the owner's act"],
+  ["appmods.start", "installing or running third-party code on the server is the owner's act"],
+  ["appmods.stop", "installing or running third-party code on the server is the owner's act"],
+  ["appmods.open", "gives a browser a signed-in session on the app"],
+  ["appmods.logs", "an app's logs can carry its users' data"],
+  ["views.act", "a view action is the person's click; its outward acts are still held"],
+  ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
+  ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
+  ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
+  ["connectors.connection.approve", "the person's yes to a proposed Connection: makes it"],
+  ["connectors.connection.decline", "the person's no to a proposed Connection"],
+  ["connectors.connection.rebuild", "rewrites the Connection's vault credential from its record: the person's own act"],
+  ["connectors.connection.delete", "removes a Connection and its vault credential: the person's own act"],
   ["gate.said.add", "would let an assistant widen its own authority: records the person's own words as approval"],
   ["github.connect", "needs the person's Face ID or presence: signs an account in or out"],
   ["github.connect.cancel", "needs the person's Face ID or presence: signs an account in or out"],
@@ -174,6 +191,7 @@ export const PERSON_ONLY = new Map([
   ["link.pair.deny", "needs the person's Face ID or presence: pairing and devices"],
   ["link.signout", "needs the person's Face ID or presence: pairing and devices"],
   ["link.unpair", "needs the person's Face ID or presence: pairing and devices"],
+  ["sidebar.stored", "the settings hub's own store for the sidebar lists: the person's settings act"],
   ["names.serve", "needs the person's Face ID or presence: the person's name and domain"],
   ["names.unserve", "needs the person's Face ID or presence: the person's name and domain"],
   ["presence.person.revoke", "needs the person's Face ID or presence: ends or revokes the person's own sessions"],
@@ -289,6 +307,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",
@@ -429,6 +448,7 @@ export const OPEN = new Set([
 
 /** @type {ReadonlyMap<string, string>} */
 export const ASK_FIRST = new Map([
+  ["stream.second-opinion", "adds a paid model to the chat and spends on the person's account"],
   ["artifacts.public.set", "leaves the Space: publishes an artifact"],
   ["files.deliver", "leaves the Space: delivers a file"],
   ["files.drive.offer", "leaves the Space: offers a file"],
@@ -436,6 +456,7 @@ export const ASK_FIRST = new Map([
   ["files.drive.url", "leaves the Space: makes a link"],
   ["files.send", "leaves the Space: sends a file"],
   ["agents.delete", "destructive"],
+  ["sidebar.team", "changes what everyone in the Space sees in their sidebar: held for an owner or admin's yes"],
   ["files.drive.link.create", "leaves the Space: makes a link that gives outsiders access to a file"],
   ["threads.delete", "destructive: deletes a thread for good"],
   ["threads.rewind", "destructive: rewinds a thread, and with restore its files, to an earlier turn"],

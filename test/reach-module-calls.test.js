@@ -25,6 +25,9 @@ const PERSON_PROXY = new Set([
   // core/wink/serverlink.js askApproval / approvalStatus: a paired device asks for its owner's yes over its own peer-wire session (sessionFor), the person's own device calling as itself, not a module.
   "wink:approvals.ask",
   "wink:approvals.status",
+  // core/appmods relays the person who installs or removes an app to that app's own Connection (ctx.call as: meta.caller; the registry limits it to connectors.connection.create and .delete, checkRelayTool): the person calling, not a module.
+  "appmods:connectors.connection.create",
+  "appmods:connectors.connection.delete",
 ]);
 
 /** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */

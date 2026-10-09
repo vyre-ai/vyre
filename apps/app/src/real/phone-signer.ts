@@ -6,9 +6,9 @@ import { loadIdentity } from "../identity/store";
 export async function phoneSigner(): Promise<Signer | null> {
   if (Platform.OS === "web") return null;
   try {
-    const m = (await import("../../modules/vyre-signer")) as unknown as { signPresence?: Signer["signPresence"]; setPersonProvider?: (f: () => Promise<string | null>) => void };
+    const m = (await import("../../modules/vyre-signer")) as unknown as { signPresence?: Signer["signPresence"]; signPresenceMany?: (cards: Parameters<Signer["signPresence"]>[0][]) => Promise<unknown[] | null>; setPersonProvider?: (f: () => Promise<string | null>) => void };
     // The proof's chain names the person: this device's identity id (the id the box adopts as its owner).
     m.setPersonProvider?.(async () => (await loadIdentity())?.id ?? null);
-    return typeof m.signPresence === "function" ? { signPresence: m.signPresence } : null;
+    return typeof m.signPresence === "function" ? { signPresence: m.signPresence, ...(m.signPresenceMany ? { signMany: m.signPresenceMany } : {}) } : null;
   } catch { return null; }
 }

@@ -1,4 +1,4 @@
-import { View } from "react-native";
+import { Linking, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, Row, Segmented, Switch, Text, allowsMock, showToast } from "@vyre/ui";
 import { RealNotifications, RealUpdates } from "./RealMore";
@@ -42,7 +42,7 @@ function SampleAboutScreen() {
   return (
     <Page title="About Vyre" sub={`Version ${VERSION}.`} back="/u/settings">
       <Group title="Open-source credits">
-        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} /></View>)}</Card>
+        <Card flush>{CREDITS.map((c, i) => <View key={c.name}>{i ? <Divider /> : null}<Row title={<Text strong>{c.name}</Text>} sub={<Text size="caption" tone="label">{c.line}</Text>} {...(c.href ? { onPress: () => void Linking.openURL(c.href as string) } : {})} /></View>)}</Card>
       </Group>
       <Text size="caption" tone="label">Vyre itself is Apache 2.0.</Text>
     </Page>

@@ -66,6 +66,7 @@ function all(/** @type {string} */ space) {
     { title: "You", rows: [
       ["Account and recovery", "Sign-in, recovery code", "/u/settings/account", "faceid"],
       ["Appearance", "Theme, accent, density, font", "/u/appearance", "settings"],
+      ["Sidebar", "Arrange your places", "/u/sidebar", "list"],
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "key"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],

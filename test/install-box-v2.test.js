@@ -658,3 +658,20 @@ test("install-box.sh: a site that does not list VERSION cannot confirm a named v
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /does not say which version it serves/);
 });
+
+test("install-box.sh v2: Docker is made to start at boot when it is not, so the restart policy brings the server back after a reboot or a power cut", t => {
+  const b = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  // a systemctl that knows docker and containerd, says they are disabled, and records what it is told
+  const sc = (state) => `echo "systemctl $*" >>"${b.log}"\ncase "$1" in cat) exit 0 ;; is-enabled) echo ${state}; exit 0 ;; enable) exit 0 ;; esac; exit 0`;
+  fs.writeFileSync(path.join(b.base, "bin", "systemctl"), `#!/bin/sh\n${sc("disabled")}\n`, { mode: 0o755 });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(b.calls(), /systemctl enable docker/);
+  assert.match(b.calls(), /systemctl enable containerd/);
+  // already enabled: nothing is changed
+  const b2 = box(t, { docker: 'case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; esac; exit 0' });
+  fs.writeFileSync(path.join(b2.base, "bin", "systemctl"), `#!/bin/sh\necho "systemctl $*" >>"${b2.log}"\ncase "$1" in is-enabled) echo enabled ;; esac\nexit 0\n`, { mode: 0o755 });
+  const r2 = run({ ...b2.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_VERIFY_TRIES: "1" }, ["--yes", "--from", REPO]);
+  assert.equal(r2.status, 0, r2.stdout + r2.stderr);
+  assert.doesNotMatch(b2.calls(), /systemctl enable/);
+});

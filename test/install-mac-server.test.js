@@ -799,3 +799,43 @@ test("install-mac-server.sh: the node program comes from the signed release's ow
   assert.match(src, /HEADSCALE_SHA256_ARM64=b5cfd0f81caaa1e8f71f830fd89fdf86a8719bb6e9f9a2ec5b47d9426c96986e/);
   assert.match(src, /HEADSCALE_SHA256_AMD64=06e4c94a8b9397ed8c2714a4cd484c998604dc884e9b5d4a186aef05f14047b1/);
 });
+
+// FileVault on: a Mac waits at the login window after a power cut and runs nothing, so a server on it is offline until someone is there. The installer stops and asks (never changes FileVault).
+const FV_WORDS = /FileVault is on\. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then\. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again\. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1\./;
+function fdesetup(m, text) { const f = path.join(m.base, "fdesetup-stub"); fs.writeFileSync(f, `#!/bin/sh\n[ "$1" = status ] && echo "${text}"\nexit 0\n`, { mode: 0o755 }); return f; }
+
+test("install-mac-server.sh: with FileVault on, a server install stops before it changes anything, says why, and says how to go on", t => {
+  const m = sys(t);
+  const r = run({ ...m.env, VYRE_CODE: CODE, VYRE_FDESETUP: fdesetup(m, "FileVault is On.") }, ["--system"]);
+  assert.notEqual(r.status, 0, "it stopped");
+  assert.match(r.stdout, FV_WORDS);
+  assert.match(r.stderr, /stopped before installing anything: FileVault is on/);
+  assert.ok(!/^sudo /m.test(m.calls()), "no sudo, no password asked");
+  assert.deepEqual(fs.readdirSync(m.home), [], "nothing was installed");
+});
+
+test("install-mac-server.sh: with FileVault on, VYRE_ACCEPT_FILEVAULT=1 goes on and still says the words (--yes alone does not); with FileVault off it says nothing about it", t => {
+  const m = sys(t);
+  const yesOnly = run({ ...m.env, VYRE_CODE: CODE, VYRE_FDESETUP: fdesetup(m, "FileVault is On.") }, ["--yes", "--system"]);
+  assert.notEqual(yesOnly.status, 0, "--yes alone does not accept FileVault");
+  const mA = sys(t);
+  const on = run({ ...mA.env, VYRE_CODE: CODE, VYRE_ACCEPT_FILEVAULT: "1", VYRE_FDESETUP: fdesetup(mA, "FileVault is On.") }, ["--yes", "--system"]);
+  assert.equal(on.status, 0, on.stderr + on.stdout);
+  assert.match(on.stdout, FV_WORDS);
+  assert.match(on.stdout, /going on, because VYRE_ACCEPT_FILEVAULT=1/);
+  const m2 = sys(t);
+  const off = run({ ...m2.env, VYRE_CODE: CODE, VYRE_FDESETUP: fdesetup(m2, "FileVault is Off.") }, ["--yes", "--system"]);
+  assert.equal(off.status, 0, off.stderr + off.stdout);
+  assert.ok(!/FileVault/.test(off.stdout));
+  assert.match(off.stdout, /comes back by itself after a power cut/);
+});
+
+test("install-mac-server.sh: --dry-run with FileVault on prints the words and where it would stop, and the light install never asks", t => {
+  const m = sys(t);
+  const d = run({ ...m.env, VYRE_CODE: CODE, VYRE_FDESETUP: fdesetup(m, "FileVault is On.") }, ["--dry-run", "--system"]);
+  assert.equal(d.status, 0, d.stderr);
+  assert.match(d.stdout, FV_WORDS);
+  assert.match(d.stdout, /would stop here unless VYRE_ACCEPT_FILEVAULT=1/);
+  const l = run({ ...m.env, VYRE_FDESETUP: fdesetup(m, "FileVault is On.") }, ["--dry-run", "--from", m.src]);
+  assert.ok(!/FileVault/.test(l.stdout), "My Home (--login-only) is not a server and does not ask");
+});

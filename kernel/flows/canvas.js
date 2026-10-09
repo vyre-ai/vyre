@@ -50,7 +50,7 @@ export function describeStep(s, cat) {
     case "stage": return `Move the ${typeLabel(cat, s.type)} to ${s.to}`;
     case "classify": return "Sort the text into a label";
     case "extract": return "Read named fields out of the text";
-    case "service": return `Call ${s.connector}${s.method === "GET" || s.method === "HEAD" ? "" : " (needs a yes)"}`;
+    case "service": return `Call ${s.connection ? `${s.connection}: ${s.operation}` : s.connector}${s.method === "GET" || s.method === "HEAD" ? "" : " (needs a yes)"}`;
     case "fn": return "Run a small piece of code";
     default: return s.kind;
   }

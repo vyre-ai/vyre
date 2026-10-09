@@ -124,8 +124,12 @@ export interface Manifest {
   replaces?: string;
   /** Built in only: this module's tools the setup channel may call before sign-in. An added module that declares it fails to load. */
   setupTools?: string[];
-  /** Built in only: what this module offers the # tag picker. `search` and `resolve` are this module's own tools; an added module that declares it fails to load. */
+  /** What this module offers the # tag picker. `search` and `resolve` are this module's own read tools. An added module's `kind` is its own name (or `<name>-...`), and what resolve returns is cut to words: no grant, no hosts, always outside text. */
   mentions?: { kind: string; label: string; icon?: string; search: string; resolve: string }[];
+  /** The screens this module serves, which the app can put in the sidebar. `path` is relative to /m/<module>/. */
+  screens?: { id: string; label: string; path?: string; icon?: string }[];
+  /** The screens this module describes and Vyre draws (list, board, summary, form), by id; no module code runs in the app. */
+  views?: Record<string, { title: string; icon?: string; keywords?: string[]; root?: boolean; arg?: Record<string, unknown>; list?: Record<string, unknown>; board?: Record<string, unknown>; summary?: Record<string, unknown>; forms?: Record<string, unknown> }>;
   does?: {
     /** A name is the built in grace form (reach anyone). Added modules use ToolEntry. */
     tools?: (ToolName | ToolEntry)[];
@@ -149,6 +153,27 @@ export interface Manifest {
     connections?: ToolName;
     /** @planned The tool that answers suggest.query for this module, inside a 25 ms deadline. */
     suggest?: ToolName;
+  };
+  /** What the module adds to Flows. A step is one of its own tools a Flow's call step may run; a trigger is an event it emits or a watcher it hosts, offered by name. */
+  flow?: {
+    steps?: {
+      /** One of its own tools (object form, reach anyone). */
+      name: ToolName;
+      label: string;
+      inputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+      outputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+      /** The step leaves Vyre; the tool must be marked outward too. */
+      outward?: boolean;
+    }[];
+    triggers?: {
+      name: string;
+      label: string;
+      /** An event in watches.emits: the trigger is an `event` trigger on it. */
+      event?: EventType;
+      /** A watcher it hosts: the trigger is a `watcher` trigger on it. */
+      watcher?: string;
+      inputs?: Record<string, "string" | "number" | "boolean" | "object" | "array">;
+    }[];
   };
   watches?: {
     emits?: EventType[];

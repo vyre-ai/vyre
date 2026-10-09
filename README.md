@@ -120,6 +120,20 @@ On our test server the workspace was ready about two minutes after the install f
 | Kit | A ready-made set of record types and stages, for example for a law firm. |
 | Lumen | Vyre on your Mac, opened with Option-Space. |
 
+## Where Vyre is going
+
+Vyre is becoming a workplace where your team and its AI agents do real work together, on a server you own. Today's AI tools are brilliant in a chat window and lost everywhere else; Vyre gives them your clients, your projects, your files and your company's accounts, with a person's yes before anything goes out.
+
+**Today (0.3.0):** set up in minutes on a Mac, a Windows PC, a Linux server or a Mac mini, and add your phone. Every AI in one place on your own subscriptions, switching models mid-conversation. Agents that hand work to each other while you watch each step. One Face ID to approve a batch of messages, with every word shown. Connect any app through a key in your vault. Automations, and modules whose screens look built in. Servers that come back online by themselves.
+
+**Next (0.3.1):** projects, simple or made from templates with stages, tasks and AI teammates; an Engineer agent that sets everything up with you in conversation; skills and plugins for every AI; live previews of what agents build; automations where every step proves it worked; one timeline per client.
+
+**Then (0.3.2):** documents generated from your templates and signed online, email and text messages from your own accounts, and publishing websites and apps to your own domain.
+
+**Later:** Screen Share, the iPhone App Store app, and a hosted option.
+
+This is direction, not a promise of dates. The full list, line by line, is in [docs/roadmap.md](docs/roadmap.md); what is true today is in the [releases](https://github.com/vyre-ai/vyre/releases) and [known gaps](docs/known-gaps.md).
+
 ## Contributing
 
 Vyre needs Node 22.5 or newer, and the server has no build step.

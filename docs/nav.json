@@ -13,6 +13,7 @@
       "using/chat.md",
       "using/private-chats.md",
       "using/spaces.md",
+      "using/sidebar.md",
       "using/time-zones.md",
       "using/cli.md",
       "using/claude-code.md",
@@ -20,6 +21,7 @@
       "using/local-runner.md",
       "using/projects-and-threads.md",
       "using/teammates.md",
+      "using/flows.md",
       "using/agents.md",
       "using/vault.md",
       "using/memory.md",
@@ -99,6 +101,7 @@
       "adr/0039-vyre-anywhere.md",
       "adr/0045-wink.md",
       "adr/0046-relay-introduces-tailscale-carries.md",
+      "adr/0050-built-in-network.md",
       "adr/0047-module-contract-v1.md",
       "adr/0049-deep-chrome-control.md",
       "adr/0051-identity-chain.md",
@@ -204,7 +207,7 @@
       "design/system/components/top-bar.md",
       "design/system/components/turn.md"
     ]},
-    { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
+    { "title": "Status", "pages": ["roadmap.md", "known-gaps.md", "changelog.md"] }
   ],
   "unpublished": ["proposals/", "design/boards/"]
 }

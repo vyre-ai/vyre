@@ -6,6 +6,7 @@
 import { opFor } from "./safe-write.js";
 import { nextCronZoned } from "./zone.js";
 import { triggerScopeNames } from "./triggers.js";
+import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
 
@@ -125,6 +126,12 @@ export function deriveCaps(flow, cat) {
  */
 export function compileFlow(flow, cat) {
   const errors = checkFlow(flow);
+  // A "Call a service" step that names a Connection is written out as the service step it stands for before anything reads it; what is stored is the written-out Flow (connection-step.js).
+  if (!errors.length) {
+    const ex = expandConnections(flow, cat);
+    if (ex.errors.length) return { ok: false, errors: ex.errors, warnings: [], effects: { reads: [], writes: [], outward: [], services: [], code: [], asks: 0, assigns: [], sealed_uses: [], destinations: [], model_steps: [], needs_run_ask: false }, caps: [] };
+    flow = ex.flow;
+  }
   /** @type {{ path: string, message: string }[]} */
   const warnings = [];
   /** @type {Effects} */
@@ -261,7 +268,7 @@ export function compileFlow(flow, cat) {
     warnings.push({ path: "", message: "drafted by a model: a sealed value or a destination read from records needs a person's Ask on every run" });
   }
   if (flow.authorship === "kit") warnings.push({ path: "", message: "from a Kit: its text counts as external until a person has reviewed it" });
-  return { ok: errors.length === 0, errors, warnings, effects, caps };
+  return { ok: errors.length === 0, errors, warnings, effects, caps, flow };
 }
 
 /**

@@ -1370,6 +1370,25 @@ export default { async start(ctx) {
   assert.equal(reg.modules.get("other").state, "failed", "a module that failed for its own reason is not started again");
 });
 
+test("modules: appmods relays an installing person to the app's own Connection and to nothing else; connectors keeps its own two", async () => {
+  const { checkRelayTool } = await import("./index.js");
+  for (const tool of ["connectors.connection.create", "connectors.connection.delete"]) assert.doesNotThrow(() => checkRelayTool("appmods", tool, {}, "deck"));
+  for (const tool of ["vault.put", "vault.delete", "vault.release", "connectors.connection.approve", "connectors.connection.update", "gate.approve", "flows.approve"]) assert.throws(() => checkRelayTool("appmods", tool, {}, "deck"), /appmods may not call/, tool);
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.put", { kind: "api-credential" }, "deck"));
+  // a view over a wrapped app relays one declared operation; the free-form "request" is never relayed
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "templates.list" }, "deck"));
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "request", input: { method: "GET", path: "/" } }, "deck"), /may not call vault.request/);
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "templates.list", method: "POST", url: "https://x.example" }, "deck"), /may not call vault.request/);
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.delete", { name: "conn-docuseal" }, "deck"));
+  assert.throws(() => checkRelayTool("connectors", "vault.delete", { name: "github-token" }, "deck"), /connectors may not call/);
+  assert.throws(() => checkRelayTool("connectors", "vault.put", { kind: "secret" }, "deck"), /connectors may not call/);
+  assert.doesNotThrow(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "submissions.list", input: {} }, "deck"), "a view over a Connection runs its operation as the person");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "github-token", operation: "x" }, "deck"), /connectors may not call/, "not another credential");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", method: "GET", url: "https://evil.example/" }, "deck"), /connectors may not call/, "not a free-form request through a Connection's credential");
+  assert.throws(() => checkRelayTool("connectors", "vault.request", { credential: "conn-docuseal", operation: "x", url: "https://evil.example/" }, "deck"), /connectors may not call/, "nor an operation with a url beside it");
+  assert.doesNotThrow(() => checkRelayTool("mentions", "anything", {}, "deck"), "other modules are checked where they always were");
+});
+
 const NEVER = ["relay.pair.start", "relay.devices.drop", "relay.devices.admit-server", "relay.devices.drop-server", "relay.setup.begin", "link.pair", "wink.approve", "presence.enroll"];
 
 test("modules: an added module can never name a tool that pairs, admits or drops a device or sets the server up: the manifest check refuses it, and a call is denied even if the module slips one in", async t => {

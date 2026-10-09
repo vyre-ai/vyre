@@ -8,6 +8,8 @@ status: stable
 
 # ADR 0046: The relay introduces, Tailscale carries
 
+> **Superseded on 2 Oct 2026 by [ADR 0050, the built-in network](0050-built-in-network.md).** Vyre no longer uses another VPN product to carry its traffic. This record stays as history of how it worked through 0.2.12.
+
 Status: accepted, 28 Sep 2026 (the reviewer's HIGH and two MEDIUMs from the first pass fixed the
 same day, the key never on argv, the box binds a proven stable ID rather than trusting the
 desktop's own report, no `tailnet:<owner>` path for a tagged node) · Workstream: tailnet · Builds on ADR 0002 (network and identity),

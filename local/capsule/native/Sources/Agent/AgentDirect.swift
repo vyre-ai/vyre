@@ -13,6 +13,9 @@ import Foundation
 @MainActor
 public final class Direct: ObservableObject {
     @Published public private(set) var dm: Dm?
+    /// The conversation's live activity feed (thinking, steps, hand-offs); empty until the server has frames for it, and the plain messages show until then.
+    let activity = ActivityLink()
+    private var activitySink: AnyCancellable?
     let vyred: VyredClient
     var projectName: SlugName = { $0 }
     /// Told of every change, so the Capsule redraws and resizes.
@@ -27,6 +30,7 @@ public final class Direct: ObservableObject {
     init(vyred: VyredClient) {
         self.vyred = vyred
         sink = objectWillChange.sink { [weak self] in self?.changed?() }
+        activitySink = activity.objectWillChange.sink { [weak self] in self?.objectWillChange.send() }
     }
 
     public var agent: String? { dm?.agent }
@@ -58,6 +62,7 @@ public final class Direct: ObservableObject {
                 d = VyState.dmCarry(d, cur.messages.filter(\.pending), after: after)
                 for e in heard { d = VyState.applyDm(d, e, name: self.projectName) }
                 self.dm = d
+                if let t = d.thread { self.activity.open(chat: t, vyred: self.vyred) }
             }
         }
     }
@@ -70,6 +75,7 @@ public final class Direct: ObservableObject {
         seq += 1
         subs.forEach { $0.cancel() }; subs = []
         buffer = nil
+        activity.close()
         if dm != nil { dm = nil }
         error = nil
     }
@@ -123,7 +129,7 @@ public final class Direct: ObservableObject {
             if let cur = dm { dm = VyState.dmDrop(cur, key) }
             return .failed(VJ.nonEmpty(x["note"]) ?? "\(d.agent) did not get it.")
         }
-        if let t = VJ.nonEmpty(x["thread"]), dm?.thread == nil, buffer == nil { dm?.thread = t }
+        if let t = VJ.nonEmpty(x["thread"]), dm?.thread == nil, buffer == nil { dm?.thread = t; activity.open(chat: t, vyred: vyred) }
         return .replaceQuery("")
     }
 }

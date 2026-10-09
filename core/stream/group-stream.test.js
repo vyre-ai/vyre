@@ -452,3 +452,61 @@ test("a kernel whose chats cannot stream or gate a reply refuses (unavailable) a
   await assert.rejects(() => port.open({ grp: "g", token: "t" }), /** @param {any} e */ e => e.code === "unavailable");
   assert.equal(port.mayReceive("g", "alex", { kid: "x", ver: 0, cur: 1 }, {}), false);
 });
+
+test("ask another model on an answer: one short line from the person, and the other assistant is given the question, the answer and the earlier turns from the chat's own log", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("c9", ["bob"], ["kit", "juno"]);
+  await r.send("c9", "bob", "q0", "we are talking about the Harlow retainer", ["assistant:kit"]); // cwd /tmp
+  const kit = r.threadOf("c9", "assistant:kit");
+  r.say(kit, "m0", { delta: "Understood." }); r.say(kit, "m0", { done: true });
+  await r.send("c9", "bob", "q1", "what is the fee for the estate plan?", ["assistant:kit"]);
+  r.say(kit, "m1", { delta: "The fee is $4,200 flat, " }); r.say(kit, "m1", { delta: "paid in two parts." }); r.say(kit, "m1", { done: true });
+  await r.groups.idle();
+  const answerId = Object.keys(textsOf(r.logs.get("c9").read(0))).find(k => textsOf(r.logs.get("c9").read(0))[k].includes("$4,200"));
+  assert.ok(answerId, "kit's answer is in the log");
+  const before = r.started.length;
+  const meta = await r.call("c9", "bob");
+  const res = await r.groups.secondOpinion({ chat: "c9", message: answerId, to: "assistant:juno" }, meta);
+  await r.groups.idle();
+  assert.deepEqual(res.routed, ["assistant:juno"]);
+  // what the chat shows is one short line from bob, a reply to kit's answer
+  const um = r.logs.get("c9").read(0).filter(f => f.type === "chat.user-message").pop();
+  assert.equal(um.data.text, "What does juno make of kit's answer?");
+  assert.equal(um.data.reply_to, answerId);
+  // what juno is given carries the question, the whole answer and the turn before
+  const given = r.started.slice(before).find(s => /juno/.test(JSON.stringify(s)) || true);
+  const prompt = String(given.prompt || given.text || JSON.stringify(given));
+  assert.match(prompt, /The question \(.*\):\s*what is the fee for the estate plan\?/);
+  assert.match(prompt, /kit's answer:\s*The fee is \$4,200 flat, paid in two parts\./);
+  assert.match(prompt, /Earlier in this chat:[\s\S]*Harlow retainer/);
+  assert.match(prompt, /Give your own answer to the question from scratch/);
+  // nothing else: the same assistant, a non-assistant, an unknown answer and a person's message are refused
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: answerId, to: "assistant:kit" }, meta), /different assistant/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: answerId, to: "person:bob" }, meta), /not an assistant/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "nope", to: "assistant:juno" }, meta), /not in this chat/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c9", message: "q1", to: "assistant:juno" }, meta), /not in this chat/);
+});
+
+test("ask another model in one tap: a model the chat does not have joins as part of the same act, a name that is no provider does not", async t => {
+  const r = rig(t, PORTS[0]);
+  r.fk.create("c10", ["bob"], ["kit"]);
+  await r.send("c10", "bob", "q1", "what is the fee for the estate plan?", ["assistant:kit"]);
+  const kit = r.threadOf("c10", "assistant:kit");
+  r.say(kit, "m1", { delta: "The fee is $4,200 flat." }); r.say(kit, "m1", { done: true });
+  await r.groups.idle();
+  const answerId = Object.keys(textsOf(r.logs.get("c10").read(0)))[0];
+  const meta = await r.call("c10", "bob");
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c10", message: answerId, to: "nope" }, meta), /not an assistant in this chat/);
+  await assert.rejects(() => r.groups.secondOpinion({ chat: "c10", message: answerId, to: "person:carol" }, meta), /not an assistant in this chat/);
+  const before = r.started.length;
+  const res = await r.groups.secondOpinion({ chat: "c10", message: answerId, to: "grok/grok-4" }, meta);
+  await r.groups.idle();
+  assert.equal(res.routed.length, 1);
+  assert.match(res.routed[0], /^model:grok\/grok-4#[0-9]{6}$/);
+  const joined = r.logs.get("c10").read(0).find(f => f.type === "chat.participant-joined" && f.data.who === res.routed[0]);
+  assert.ok(joined, "it joined the chat as part of the act");
+  assert.match(String(r.started.slice(before).map(s => s.prompt || s.text || "").join("\n")), /kit's answer:\s*The fee is \$4,200 flat\./);
+  // asking the same model again uses the slot it has; it does not join twice
+  const again = await r.groups.secondOpinion({ chat: "c10", message: answerId, to: res.routed[0] }, meta);
+  assert.deepEqual(again.routed, res.routed);
+});

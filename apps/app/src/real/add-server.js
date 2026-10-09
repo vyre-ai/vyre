@@ -51,6 +51,21 @@ export function memoryNote(id, memoryMb) {
   return null;
 }
 
+/**
+ * FileVault warning for the server card (always-online): a Mac server with FileVault on waits at the login window after a power cut and runs nothing until someone signs in. system.info says "on", "off",
+ * "unknown" or null (not a Mac); only "on" is said. Vyre never changes FileVault.
+ * @param {unknown} filevault
+ */
+export function filevaultNote(filevault) {
+  return filevault === "on" ? "FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1." : null;
+}
+
+/** The line that stays on a server card for a server whose Mac has FileVault on. */
+export const FILEVAULT_LASTING = "Stops after a restart until someone signs in.";
+
+/** The notes the server card shows, in one line each: memory first, then FileVault. @param {(string | null)[]} notes */
+export const joinNotes = (...notes) => notes.filter(Boolean).join(" ") || null;
+
 /** Plain words by code; nothing a server or the network says reaches the screen. */
 export const MESSAGES = Object.freeze({
   expired: "The hour for this line ran out. Start again for a new one.",
@@ -161,7 +176,7 @@ export function createAddServer(o) {
     try {
       const me = await o.identity();
       // The memory is a courtesy for the screen: a server that does not say it simply gets no note.
-      try { const info = await chan.call("system.info"); const mb = Number(info && info.memoryMb); if (Number.isFinite(mb) && mb > 0 && mine === run) set({ memoryMb: mb, note: memoryNote(state.choice, mb) }); } catch { /* no note */ }
+      try { const info = await chan.call("system.info"); const mb = Number(info && info.memoryMb); const fv = filevaultNote(info && info.filevault); if (mine === run && ((Number.isFinite(mb) && mb > 0) || fv)) set({ ...(Number.isFinite(mb) && mb > 0 ? { memoryMb: mb } : {}), note: joinNotes(Number.isFinite(mb) && mb > 0 ? memoryNote(state.choice, mb) : null, fv) }); } catch { /* no note */ }
       const offer = await chan.call("wink.server.setup-offer", { identity: me.id });
       qr = String(offer && offer.qr || "");
     } catch { try { chan.close(); } catch { /* gone */ } if (mine === run) stop("pair"); return; }

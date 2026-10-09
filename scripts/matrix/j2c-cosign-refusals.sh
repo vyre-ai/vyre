@@ -27,8 +27,10 @@ rec() { # rec STEP ok|false [why]
 version() { vyre version 2>/dev/null | tr -d ' \r\n'; }
 hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else version; fi; }
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
-mem() { vyre call memory.me '{}' 2>&1 | grep -q 'Robin'; }
+# The seed is two files in the box's home volume (planner and personal memory need the record store and a person, which a bare CI box has not). seen/mem read them back through the container.
+seen() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
+mem() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | grep -q 'Robin'; }
+seedfiles() { docker exec -u vyre vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >/dev/null 2>&1; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
 
@@ -81,9 +83,9 @@ R4="ghcr.io/vyre-ai/vyre@sha256:$(printf '0%.0s' $(seq 1 64))"
 mkrel() { # mkrel NAME REF
   d="$WORK/$1"; rm -rf "$d"; mkdir -p "$d"; cp -R "$BOX"/. "$d"/
   # The released compose.yml is made the way release.yml makes it (scripts/pin-release-compose.mjs): every image line literal and pinned by digest.
-  # The computers image gets a placeholder digest here (nothing pulls it). "unpinned" then puts a moving tag back on the tailscale line.
+  # The computers image gets a placeholder digest here (nothing pulls it). "unpinned" then puts a moving tag on the first image line (the box image; the network product is gone from the compose file).
   node "$HERE/scripts/pin-release-compose.mjs" "$d/compose.yml" "$2" "ghcr.io/vyre-ai/vyre-computer@sha256:$(printf 'b%.0s' $(seq 1 64))" || return 1
-  [ "${3:-}" = unpinned ] && sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$d/compose.yml"
+  [ "${3:-}" = unpinned ] && sed -i '0,/^\([[:space:]]*image: \).*$/s||\1ghcr.io/vyre-ai/vyre:stable|' "$d/compose.yml"
   printf '{"version":"%s","channel":"stable","box":{"ref":"%s"}}\n' "$V0" "$2" >"$d/release.json"
   files=$(awk '{print $2}' "$BOX/SHA256SUMS"; echo release.json)
   (cd "$d" && for f in $(printf '%s\n' $files | sort -u); do sha256sum "$f"; done >SHA256SUMS)
@@ -108,10 +110,9 @@ refused 12-moving-tag "$R1" 'not pinned by digest' unpinned 'Nothing was install
 # the baseline: a real install with data
 serve "$BOX" 18180
 V0=$(tr -d ' \r\n' <"$BOX/VERSION")
-if VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
+if VYRE_STORE=sqlite VYRE_BOX_URL=http://127.0.0.1:18180/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec B1-install ok "$(version)"
 else rec B1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
-vyre call memory.remember '{"text":"My wife is Robin"}' >/dev/null 2>&1
-vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >/dev/null 2>&1
+seedfiles
 seen && mem && rec B2-seed ok || rec B2-seed false "seed not readable"
 SUMS0=$(sha256sum "$DIR/compose.yml" | cut -d' ' -f1)
 
@@ -122,7 +123,9 @@ ST=/var/lib/vyre-update
 docker tag vyre:local ghcr.io/vyre-ai/vyre:latest && docker push -q ghcr.io/vyre-ai/vyre:latest >/dev/null
 sed -i '/^COMPOSE_FILE=.*compose.build.yml/d' "$DIR/.env"
 sudo "$(command -v vyre)" updater install >"$OUT/updater.log" 2>&1; sudo systemctl disable --now vyre-update.path >/dev/null 2>&1
-node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"
+# With J2B_KEYDIR the candidate was pinned to and signed with that key (scripts/matrix/j2-pin-key.mjs), so its modules boot.
+if [ -n "${J2B_KEYDIR:-}" ] && [ -s "$J2B_KEYDIR/good.pem" ]; then cp "$J2B_KEYDIR/good.pem" "$J2B_KEYDIR/good.pub" "$WORK"/
+else node -e 'const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");fs.writeFileSync(process.argv[1]+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));fs.writeFileSync(process.argv[1]+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"; fi
 GOODPUB=$(cat "$WORK/good.pub")
 mkupd() { # mkupd NAME REF: a newer release, signed by the throwaway key, naming REF for the box image
   mkrel "$1" "$2"; d="$WORK/$1"; printf '9.9.9-e2e.1\n' >"$d/VERSION"
@@ -144,8 +147,8 @@ updrefused B3-update-unsigned-digest upd-unsigned "$R1" 'no signatures'
 updrefused B4-update-wrong-identity upd-wrongid "$R2" 'identit'
 updrefused B5-update-key-signature upd-key "$R3" 'no matching signatures|certificate'
 updrefused B6-update-digest-not-held upd-missing "$R4" 'no signatures|manifest|not found'
-# A release that is not pinned by digest at all (tailscale left on its tag) is refused before cosign runs.
-mkupd upd-tag "$R1"; sed -i 's|^\([[:space:]]*image: \)tailscale/tailscale:.*$|\1tailscale/tailscale:stable|' "$WORK/upd-tag/compose.yml"
+# A release that is not pinned by digest at all (the box image left on a moving tag) is refused before cosign runs.
+mkupd upd-tag "$R1"; sed -i '0,/^\([[:space:]]*image: \).*$/s||\1ghcr.io/vyre-ai/vyre:stable|' "$WORK/upd-tag/compose.yml"
 (cd "$WORK/upd-tag" && fl=$(awk '{print $2}' SHA256SUMS | sort -u) && for f in $fl; do sha256sum "$f"; done >SHA256SUMS.new && mv SHA256SUMS.new SHA256SUMS)
 node -e 'const c=require("crypto"),fs=require("fs");const d=process.argv[1];const sums=fs.readFileSync(d+"/SHA256SUMS");fs.writeFileSync(d+"/SHA256SUMS.sig",c.sign(null,Buffer.concat([Buffer.from("vyre-release-sums\n"),sums]),c.createPrivateKey(fs.readFileSync(process.argv[2]))).toString("base64")+"\n");' "$WORK/upd-tag" "$WORK/good.pem"
 askupd upd-tag; ready; v=$(hv)

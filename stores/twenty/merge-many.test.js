@@ -56,5 +56,8 @@ for (const kind of ["sqlite", "twenty"]) {
     assert.equal(back.relinked, 3);
     assert.deepEqual(await urns(m1), [b.urn], "m1 after unmerge");
     assert.deepEqual(await urns(m2), [b.urn, c.urn].sort(), "m2 after unmerge");
+    assert.deepEqual(await urns(m3), [a.urn, b.urn].sort(), "m3 held both before the merge and holds both again: the surviving record's entry is not swapped away");
+    // and the merge cannot be undone twice
+    await assert.rejects(r.unmerge(chain, res.merge_id), /already undone/);
   });
 }

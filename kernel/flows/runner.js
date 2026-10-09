@@ -85,7 +85,7 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings, effects: compiled.effects };
-    const put = await this.store.putVersion(id, flow, by, this.now(), cat.space);
+    const put = await this.store.putVersion(id, compiled.flow || flow, by, this.now(), cat.space);
     return { ok: true, id: put.id, version: put.version, hash: put.hash, same: put.same, warnings: compiled.warnings, effects: compiled.effects, caps: compiled.caps };
   }
 
@@ -538,7 +538,7 @@ export class FlowRunner {
     // An approved act is the task's DOER's to carry out (the approval is a single-use authority for exactly that act, given to the doer: the Flows service under the approver): the run presents the approval
     // as the doer, and this check only looks at it (peek): the act's own gate below it spends the one use.
     const doerChain = approvedTask && this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
-    // A registered tool a Flow may run (the module's `flowAction`, in the catalog with `tool: true`) is not a kernel action: a read runs, an outward one is held for the person's yes and then runs
+    // A registered tool a Flow may run (a module flow.steps entry, in the catalog with `tool: true`) is not a kernel action: a read runs, an outward one is held for the person's yes and then runs
     // with that approval, which the host spends once at the call (the task store's `useApproval`). Anything else asks the kernel.
     const isTool = Boolean((ctx.cat.actions[need.action] || {}).tool);
     const d = isTool ? { effect: risk === "read" ? "allow" : approvedTask ? "allow" : "ask", obligations: [], decision: null, reason: "ok" } : await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });

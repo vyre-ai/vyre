@@ -47,7 +47,7 @@ function release(dir, kp, version, { badSig = false, tamper = false } = {}) {
 
 /** A recording run. state: which dscl records exist, which jobs are loaded. */
 function fakeRun(state = {}) {
-  const st = { user: false, group: false, loaded: new Set(), ...state };
+  const st = { user: false, group: false, loaded: new Set(), power: { autorestart: "0", sleep: "1", disksleep: "10", womp: "0", powernap: "1" }, filevault: "Off", ...state };
   /** @type {{ cmd: string, args: string[] }[]} */ const calls = [];
   const run = (cmd, args) => {
     calls.push({ cmd, args });
@@ -61,6 +61,14 @@ function fakeRun(state = {}) {
       if (args[1] === "-list" && args[2] === "/Groups") return "wheel 0\nstaff 20\n";
       return "";
     }
+    // a server install sets the power settings (lib/online.js): pmset keeps its state, fdesetup and plutil answer like a Mac
+    if (cmd.endsWith("pmset")) {
+      if (args[0] === "-a") { for (let i = 1; i < args.length; i += 2) st.power[args[i]] = args[i + 1]; st.pmsetSet = (st.pmsetSet || 0) + 1; return ""; }
+      return Object.entries(st.power).map(([k, v]) => ` ${k}  ${v}`).join("\n") + "\n";
+    }
+    if (cmd.endsWith("fdesetup")) return args[0] === "status" ? `FileVault is ${st.filevault}.\n` : "true\n";
+    if (cmd.endsWith("plutil")) return "";
+    if (cmd.endsWith("launchctl") && args[0] === "bootstrap") st.loaded.add(`system/${path.basename(args[2], ".plist")}`);
     if (cmd.endsWith("launchctl") && args[0] === "bootout") st.loaded.delete(args[1]);
     if (cmd.endsWith("launchctl") && args[0] === "print") { if (!st.loaded.has(args[1])) throw new Error("not loaded"); return ""; }
     if (cmd.endsWith("sudo") && /\ code( --first-key-fp [0-9a-f]+)?$/.test(line)) return "SEKRET-CODE-42 1999999999\n";
@@ -73,7 +81,7 @@ function fixture(t, version = "1.0.0") {
   const dir = tmp(t);
   const kp = keypair();
   const root = path.join(dir, "root");
-  fs.mkdirSync(root);
+  fs.mkdirSync(root); fs.chmodSync(root, 0o755); // it stands for "/", which is root's and closed to others whatever this machine's umask is
   const node = path.join(dir, "node-bin");
   fs.writeFileSync(node, "#!/bin/sh\n");
   const opts = (rel, extra = {}) => ({ ownerUid: 501, ownerName: "alice", version, release: rel, nodeBinary: node, vyredWrapper: "/Users/alice/.vyre-server/bin/vyred-run", ...extra });
@@ -84,6 +92,7 @@ const walk = (d) => (fs.existsSync(d) ? fs.readdirSync(d, { recursive: true }) :
 test("plan lists the steps in order, verify first, and prints as data", () => {
   const f = { ownerUid: 501, ownerName: "alice", version: "1.0.0", release: { tarball: "a", manifest: "b", sums: "d", sig: "c" }, nodeBinary: "/n", vyredWrapper: "/w" };
   assert.deepEqual(plan(f).map((s) => s.id), ["verify-release", "account", "code-tree", "node", "dirs", "plists", "launchd", "enrol-code"]);
+  assert.deepEqual(plan({ ...f, server: true }).map((s) => s.id), ["verify-release", "account", "code-tree", "node", "dirs", "plists", "launchd", "enrol-code", "power", "boot-test"], "a server also sets its power and tests its boot");
   const withColima = plan({ ...f, colimaAgent: true, colimaProgram: ["/c", "start"] });
   assert.ok(withColima.find((s) => s.id === "launchd")?.detail.some((d) => d.includes("com.vyre.colima")));
   assert.throws(() => plan({ ...f, ownerUid: 0 }), /never root/);
@@ -376,10 +385,11 @@ test("a failed extract leaves the old version current (crash between extract and
 
 test("signCapsule is a no-op hook for now", () => { assert.equal(signCapsule("/nowhere"), undefined); });
 
-test("the produced tree passes strictProblems (ownership modelled from the recorded chowns)", (t) => {
+test("the produced tree passes strictProblems (ownership modelled from the recorded chowns), under the group-writable umask a login shell often has", (t) => {
   const f = fixture(t);
   const r = fakeRun();
-  install(f.opts(f.rel), { run: r.run, root: f.root, key: f.kp.key });
+  const was = process.umask(0o002);
+  try { install(f.opts(f.rel), { run: r.run, root: f.root, key: f.kp.key }); } finally { process.umask(was); }
   // The test OS has no _vyre, so ownership comes from the chown commands we recorded; modes are the real ones on disk.
   const owners = [];
   for (const c of r.calls) if (c.cmd.endsWith("chown") && !c.args.includes("-h")) {
@@ -452,4 +462,25 @@ test("a bundled node that does not match its expected sha256 installs nothing", 
   assert.ok(!fs.existsSync(path.join(f.root, RUNTIME.base)));
   install(f.opts(f.rel, { nodeSha256: good }), { run: fakeRun().run, root: f.root, key: f.kp.key });
   assert.ok(fs.existsSync(path.join(f.root, RUNTIME.node)));
+});
+
+test("a server install sets the power settings, tests the boot, and says plainly when FileVault is on; a light install touches no power setting", (t) => {
+  const f = fixture(t);
+  const r = fakeRun({ filevault: "On" }); const notes = []; const seen = [];
+  install(f.opts(f.rel, { server: true }), { run: r.run, root: f.root, key: f.kp.key, step: (n) => seen.push(n), note: (m) => notes.push(m) });
+  assert.deepEqual(r.st.power, { autorestart: "1", sleep: "0", disksleep: "0", womp: "1", powernap: "0" });
+  assert.equal(r.st.pmsetSet, 1);
+  assert.ok(seen.some((n) => /power cut/.test(n)) && seen.some((n) => /start at boot/.test(n)));
+  assert.deepEqual(notes, ["FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then. For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1."]);
+  const g = fixture(t); const r2 = fakeRun({ filevault: "On" }); const notes2 = [];
+  install(g.opts(g.rel), { run: r2.run, root: g.root, key: g.kp.key, note: (m) => notes2.push(m) });
+  assert.equal(r2.st.pmsetSet, undefined, "no pmset call on a light install");
+  assert.deepEqual(notes2, []);
+});
+
+test("a Mac that will not take its power settings fails the server install with the reason", (t) => {
+  const f = fixture(t);
+  const r = fakeRun();
+  const stubborn = (cmd, args) => (cmd.endsWith("pmset") && args[0] === "-a" ? "" : r.run(cmd, args));
+  assert.throws(() => install(f.opts(f.rel, { server: true }), { run: stubborn, root: f.root, key: f.kp.key }), /would not take its power settings/);
 });

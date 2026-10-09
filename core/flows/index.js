@@ -6,6 +6,7 @@
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
+import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
 const str = { type: "string" };
 const open = { type: "object", additionalProperties: true, properties: { space: str } };
@@ -81,13 +82,21 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" ? [...CALLERS, "module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
           const chain = await chainOf(f, meta);
           if (PERSONAL.has(name) && !(chain.hops.length === 1 && chain.hops[0].actor.kind === "person")) throw refuse(`${name} is a person's own`, "denied");
-          const { space: _space, ...rest } = input || {};
+          const { space: _space, module: fromModule, ...rest } = input || {};
+          // A Kit may be given in the language's stored form as well as the kernel's. One that ships with an added module (`module` names it) is held to what a module may add.
+          if (rest.kit && typeof rest.kit === "object" && /^flows\.kit\.(propose|card|diff)$/.test(name)) {
+            rest.kit = kernelKit(rest.kit);
+            if (typeof fromModule === "string" && fromModule) {
+              const problems = moduleKitProblems(fromModule, rest.kit);
+              if (problems.length) return { ok: false, errors: problems.map(message => ({ path: "kit", message })) };
+            }
+          }
           return f.flows.tools[INNER(name)](chain, rest);
         },
       });

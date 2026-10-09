@@ -96,6 +96,8 @@ export interface TaskTemplateDef {
 export interface StageDef {
   readonly name: string;
   readonly tasks?: readonly TaskTemplateDef[];
+  /** Who answers for the stage ("role:x" or "person:x"): a stage task not done by its due offset is escalated to them (task escalate_to). */
+  readonly owner?: string;
   /** The record can enter this stage only while this Expression, over the record as it would be after the write, is true. */
   readonly enter_if?: string;
 }

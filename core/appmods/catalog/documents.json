@@ -1,0 +1,46 @@
+{
+  "name": "documents",
+  "version": "0.1.0",
+  "vyre": "1",
+  "description": "Send a document to be signed and get the signed copy back in your Drive. It runs on your own server.",
+  "license": "AGPL-3.0",
+  "title": "Documents",
+  "kit": "documents.kit.json",
+  "drive": ["Signed"],
+  "notes": ["You make your document templates in the Documents screen itself: the open-source engine behind it cannot make them through its API.", "Documents has one user here, shared by the owner and the admins, who open it from Vyre without signing in again.", "Documents cannot send e-mail from this server. The signing links it makes use your server's public address, but opening them for people outside your team is not built yet: for now only you and your admins reach Documents."],
+  "source": "https://github.com/docusealco/docuseal",
+  "app": {
+    "image": "docuseal/docuseal:3.3.1@sha256:e171808ce8dabb08491a49a6d8c477670a65ddce5e3de4764904b63a4487940f",
+    "port": 3000,
+    "hookPort": 43001,
+    "volumes": [{ "name": "data", "path": "/data/docuseal" }],
+    "env": { "APP_URL": "{origin}", "FORCE_SSL": "false" },
+    "secrets": [{ "env": "SECRET_KEY_BASE", "generate": "hex32" }],
+    "health": { "path": "/", "ok": [200, 302], "startS": 120 },
+    "limits": { "memoryMb": 1536, "cpus": 1.5, "pids": 512 },
+    "egress": ["vyred"],
+    "public": ["/manifest.json"],
+    "login": { "path": "/sign_in", "token": "authenticity_token", "fields": { "user[email]": "{login_email}", "user[password]": "{login_password}" }, "ok": [302, 303] },
+    "bootstrap": { "exec": ["bin/rails", "runner"], "script": "docuseal-bootstrap.rb", "outputs": [{ "name": "api_token" }, { "name": "login_password" }] }
+  },
+  "connection": {
+    "label": "Documents",
+    "auth": { "kind": "header", "name": "X-Auth-Token" },
+    "credential": "api_token",
+    "check": { "method": "GET", "path": "/api/user" },
+    "operations": [
+      { "name": "templates.list", "label": "List templates", "method": "GET", "path": "/api/templates", "kind": "read", "input": { "query": { "limit": { "type": "number" } } } },
+      { "name": "submissions.list", "label": "Documents sent for signature", "method": "GET", "path": "/api/submissions", "kind": "read", "input": { "query": { "status": { "type": "string", "enum": ["pending", "completed", "declined", "expired"] }, "limit": { "type": "number" } } } },
+      { "name": "submissions.create", "label": "Send a document to be signed", "method": "POST", "path": "/api/submissions", "kind": "send", "input": { "body": { "template_id": { "type": "number", "required": true }, "send_email": { "type": "boolean" }, "submitters": { "type": "array", "required": true, "items": { "type": "object", "fields": { "email": { "type": "email", "required": true }, "name": { "type": "string" }, "role": { "type": "string" } } } } } } },
+      { "name": "submissions.get", "label": "One submission", "method": "GET", "path": "/api/submissions/{id}", "kind": "read", "input": { "params": { "id": { "type": "number", "required": true } } } },
+      { "name": "submissions.documents", "label": "The signed documents of a submission", "method": "GET", "path": "/api/submissions/{id}/documents", "kind": "read", "input": { "params": { "id": { "type": "number", "required": true } } } }
+    ]
+  },
+  "events": [
+    { "webhook": "submission.completed", "event": "documents.signed", "flow": "documents-signed", "data": { "submission": "data.id", "at": "timestamp", "email": "data.submitters[0].email", "template": "data.template.name" }, "files": { "list": "data.documents", "url": "url", "name": "name", "saveTo": "Signed/{submission}-{name}.pdf" } },
+    { "webhook": "form.completed", "event": "documents.form-completed", "data": { "submission": "data.submission.id", "email": "data.email" } }
+  ],
+  "screens": [
+    { "id": "documents", "label": "Signatures", "path": "/", "icon": "signature" }
+  ]
+}

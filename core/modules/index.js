@@ -23,10 +23,11 @@ import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
-import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
+import { toolEntries, checkManifestFull, flowTriggers } from "../../packages/module-sdk/manifest.js";
 import { isPerson, deviceIdOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
-import { createHash } from "node:crypto";
+import { holdFields } from "../../lib/hold-fields.js";
+import { COVERED } from "../../lib/covered.js";
 import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
@@ -75,9 +76,25 @@ export function checkAgentsRelay(tool, as) {
   if (!agentsMayRelay(tool)) throw new Error(`agents may not call ${tool} as ${as}: it relays a person to threads.send and threads.release only`);
 }
 /** @type {Record<string, any>} */
+/**
+ * What a first-party module that relays a person (`as`) may relay: connectors writes a person's api-credential (vault.put), deletes a connection's own (vault.delete of conn-<id>) and runs one of its operations (vault.request by operation); appmods
+ * makes and removes the Connection of an app the person installed or removed (connectors.connection.create and .delete). Anything else is refused. Called before the relayed call is made.
+ * @param {string} module @param {string} tool @param {any} input @param {string} as
+ */
+export function checkRelayTool(module, tool, input, as) {
+  const obj = input && typeof input === "object";
+  if (module === "connectors" && !(tool === "vault.put" && obj && input.kind === "api-credential") && !(tool === "vault.delete" && obj && /^conn-[a-z0-9-]+$/.test(String(input.name)))
+    // and runs one operation of a Connection as the person who asked (a view over a wrapped app): vault.request of that Connection's own credential, by operation. The send/change/delete gate judges the operation there.
+    && !(tool === "vault.request" && obj && /^conn-[a-z0-9-]+$/.test(String(input.credential)) && typeof input.operation === "string" && input.operation !== "request" && input.url === undefined && input.method === undefined)) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential, to vault.delete for a connection's own conn-<id> credential, and to vault.request of a connection's own credential by operation, only`);
+  if (module === "appmods" && !["connectors.connection.create", "connectors.connection.delete"].includes(tool)) throw new Error(`appmods may not call ${tool} as ${as}: it relays an installing person to the app's own Connection (create and delete) only`);
+}
+
 const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["link:box"], settings: ["cli", "local", "deck", "capsule"], mentions: (/** @type {string} */ as) => isPerson(as) || as === "module:sessions" || as === "module:assistant",
   // capsule runs a view's declared tool as the asking person (first party modules) or as the added module itself, never as anyone else.
   capsule: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
+  // appmods relays the person who installed or removed an app to the Connection of that app and to nothing else (connectors.connection.create and .delete: a vault api-credential is a person's to write); checked per call below.
+  appmods: (/** @type {string} */ as) => isPerson(as),
+  views: (/** @type {string} */ as) => isPerson(as) || /^module:[a-z][a-z0-9-]*$/.test(as),
   // connectors relays the person who asked to one thing: writing an api-credential (a module cannot write one on its own); checked per call below.
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
@@ -106,23 +123,7 @@ export function roleBuckets(role, platform = process.platform) {
   if (config.isDevice(role) || (role === "server" && platform === "darwin")) out.push("local");
   return out;
 }
-/** @param {any} v @returns {any} */
-const canonOf = v => (Array.isArray(v) ? v.map(canonOf) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonOf(v[k])])) : v);
-/**
- * What a held outward call's card is bound to: its plain short fields (so the phone can show them) and a digest of the whole input (so the yes covers exactly this call, whatever is long or nested in it).
- * @param {any} input @returns {Record<string, string | number | boolean>}
- */
-export function holdFields(input) {
-  /** @type {Record<string, string | number | boolean>} */ const f = {};
-  if (input && typeof input === "object" && !Array.isArray(input)) {
-    for (const k of Object.keys(input)) {
-      const v = input[k];
-      if (Object.keys(f).length < 10 && /^[a-z][a-z0-9_]{0,31}$/.test(k) && k !== "input_sha256" && (typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) f[k] = v;
-    }
-  }
-  f.input_sha256 = createHash("sha256").update(JSON.stringify(canonOf(input === undefined ? null : input))).digest("hex").slice(0, 32);
-  return f;
-}
+export { holdFields };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 /** Who may call a tool (ADR 0047), and what an outward tool does as the person. */
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
@@ -250,10 +251,6 @@ export function validate(m, { firstParty = false } = {}) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
     if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
-    if (typeof e === "object" && e.flow !== undefined) {
-      if (!e.flow || typeof e.flow !== "object" || !["read", "write", "outward.send"].includes(e.flow.risk)) out.push(`tool "${t}": flow.risk must be read, write or outward.send`);
-      else if (e.reach !== undefined && e.reach !== "anyone") out.push(`tool "${t}": a tool that can be a Flow step must be reach anyone`);
-    }
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -614,6 +611,8 @@ const inRepo = (dir, paths) => {
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
 const IN_SPACE = Symbol("vyre.in_space");
+/** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
+const VIEW_FOR = Symbol("vyre.view_for");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
 const RELAY = Symbol("vyre.relay");
 /**
@@ -626,6 +625,8 @@ const RELAY_ALLOWED = Object.freeze({
   work: ["spaces.storage."],
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
+  // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything
+  appmods: ["flows.kit.propose"],
 });
 
 export class Registry {
@@ -817,7 +818,6 @@ export class Registry {
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
         rec.state = "running"; delete rec.error;
-        await this.registerFlowActions(m);
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
         return;
       }
@@ -825,7 +825,6 @@ export class Registry {
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
       rec.state = "running"; delete rec.error;
-      await this.registerFlowActions(m);
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
@@ -848,13 +847,6 @@ export class Registry {
       const dep = String(/** @type {any} */ (r).error || "").match(/^requires "([^"]+)", which is not running$/);
       if (dep && up.has(dep[1])) await this.startOne({ manifest: r.manifest, dir: r.dir });
     }
-  }
-
-  /** The tools a module marked `flow` become actions of the Space (and the owner and admins may run them from a Flow): the kernel registers them (deps.registerFlowActions). @param {any} m */
-  async registerFlowActions(m) {
-    const defs = toolEntries(m).filter(e => e.flow && typeof e.flow === "object").map(e => ({ action: e.name, risk: e.flow.risk, label: e.flow.label || e.summary || e.name, gloss: e.summary || "" }));
-    if (!defs.length || typeof this.deps.registerFlowActions !== "function") return;
-    try { await this.deps.registerFlowActions(m.name, defs); for (const d of defs) (this.flowActionTools ||= new Set()).add(d.action); } catch (e) { this.deps.log(`warn: module ${m.name}: its Flow actions were not registered: ${/** @type {Error} */ (e).message}`); }
   }
 
   /**
@@ -1228,11 +1220,11 @@ export class Registry {
         const allowed = /** @type {any} */ (CALL_AS)[m.name];
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
-        if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        checkRelayTool(m.name, tool, input, String(as));
         if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
-        if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
+        if ((m.name === "capsule" || m.name === "views") && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
         if (m.name === "mentions" && !this.mentionTools(String(as).startsWith("module:") ? "resolve" : "search").has(tool)) throw new Error(`mentions may not call ${tool} as ${as}: no first-party provider names it`);
         // settings relays a person only to the tools first-party modules declared as their own
         // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
@@ -1243,7 +1235,10 @@ export class Registry {
         // relay without them would be refused for every person who asks an agent from a device.
         const cur = m.name === "agents" && agentsMayRelay(tool) ? currentCall() : null;
         const asked = cur ? { ...(cur.kernelFacts ? { kernelFacts: cur.kernelFacts } : {}), ...(typeof cur.token === "string" ? { token: cur.token } : {}) } : {};
-        return this.call(tool, input, String(as), { ...(m.name === "capsule" && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...relayed, ...asked });
+        // A view the person opened authorises ONE hop: this person may run this module's own tool as the view declares it, so a tool with no declared reach is judged as the person's click and not as a timer
+        // (RG-2). Inside that tool every ctx.call is judged as the module with no person origin: an added module cannot reach a person-only tool through it.
+        const viewFor = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
+        return this.call(tool, input, String(as), { ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -1370,25 +1365,30 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, flowAction: (e && e.flowAction) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
 
-  /** The tools a Flow's call step may run, with their risk: `[{ name, risk: "read" | "outward", summary }]`. Declared by the module (`flowAction`), never by a Flow. */
+  /** The tools a Flow's call step may run, with their risk and typed fields: `[{ name, risk: "read" | "outward", summary, inputs, outputs }]`. Declared by the module (`flow.steps` in its manifest), never by a Flow. */
   flowTools() {
-    return [...this.tools.entries()].filter(([, d]) => d.flowAction && !d.internal).map(([name, d]) => ({ name, risk: d.flowAction.risk, summary: d.description || "" }));
+    return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {} }));
+  }
+
+  /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */
+  flowTriggers() {
+    return [...this.modules.values()].filter(r => r.state === "running" && r.manifest).flatMap(r => flowTriggers(r.manifest));
   }
 
   /**
-   * Run a flowAction tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
+   * Run a flow.steps tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
    * only for a read tool or after it spent the Flow's one approval for exactly this act (the kernel's task approval, bound to the input): the tool's own outward hold is the same yes, never a second.
    * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string }} o
    */
   async callFlow(tool, input, o) {
     const def = this.tools.get(tool);
-    if (!def || !def.flowAction) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
-    if (def.flowAction.risk === "outward" && !def.outward) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
+    if (!def || !def.flowStep) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
+    if (def.flowStep.risk === "outward" && !def.outward && !def.flowStep.forced) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
     if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
     return this.call(tool, input, "module:flows", { origin: "deck", token: o.token });
   }
@@ -1481,6 +1481,7 @@ export class Registry {
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
     delete meta.relayedBy; // set below, by the registry relay alone
+    delete meta[COVERED]; // set below, only by a card this call just redeemed
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1505,8 +1506,10 @@ export class Registry {
     delete meta.standalone;
     // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
+    const viewFor = typeof meta[VIEW_FOR] === "string" && String(caller).startsWith("module:") ? meta[VIEW_FOR] : null;
+    delete meta[VIEW_FOR];
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
-    const gateCaller = hop ? (meta.origin || "module-without-origin") : caller;
+    const gateCaller = hop ? (meta.origin || viewFor || "module-without-origin") : caller;
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.
@@ -1707,17 +1710,32 @@ export class Registry {
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
     if (def.outward === true && !def.asks && !door && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
-      const fields = holdFields(input);
+      let fields = holdFields(input);
       if (approval) {
+        // A card the person EDITED covers the edited call, and that is the call that runs: the approvals queue hands it back only for a card this asker holds for this tool that the phone has already approved.
+        const edited = this.tools.get("approvals.card-input");
+        if (edited) {
+          try {
+            const c = await edited.run({ id: approval, tool, from: asker }, { caller: "module:registry" });
+            if (c && c.input && typeof c.input === "object") {
+              const bad = checkInput(def.input, c.input);
+              if (bad.length) return { error: { code: "bad_input", message: `the edited call is not valid: ${bad.join("; ")}` } };
+              input = c.input; fields = holdFields(input);
+            }
+          } catch { /* the card is the card as it was held */ }
+        }
         const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
         if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
+        // This call is the one the person approved on their phone: the card was bound to exactly this input and was redeemed just now. A first-party module this call files a send through the Gate for carries
+        // the mark, and the Gate checks it with the approvals queue before it skips its own hold (lib/covered.js), so the person is not asked for the same yes twice.
+        meta = { ...meta, [COVERED]: { card: approval, tool, input_sha256: fields.input_sha256, asker } };
       } else {
         const hold = this.tools.get("approvals.hold");
         if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
         let card;
-        try { card = await hold.run({ tool, fields, from: asker }, { caller: "module:registry" }); }
+        try { card = await hold.run({ tool, fields, from: asker, input }, { caller: "module:registry" }); }
         catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
-        return { error: { code: "held_for_approval", approval: card.id, line: card.line, message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
+        return { error: { code: "held_for_approval", approval: card.id, line: card.line, ...(card.group ? { group: card.group } : {}), message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
       }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
@@ -1750,7 +1768,9 @@ export class Registry {
           toInput = r.input; resolvedMeta = { resolved: r.resolved, slots: r.slots, bound: r.bound };
         } catch (e) { return { error: { code: "placeholder_unreadable", message: "a value this action names is not readable by the person it is for, so nothing was sent" } }; }
       }
-      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
+      // a card the running turn spent covers one send a module files for it; the nested call is handed that, by reference, so it can be used once
+      const cur = currentCall();
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
@@ -1791,26 +1811,38 @@ export class Registry {
     if (!named && ["mcp.servers", "mcp.tools", "mcp.call"].includes(tool)) return true;
     for (const [name, r] of this.modules.entries()) {
       if (r.state !== "running" || !r.manifest) continue;
-      const cap = r.manifest.shows && r.manifest.shows.capsule;
-      if (!cap || typeof cap !== "object" || Array.isArray(cap)) continue;
+      const sc = r.manifest.shows && r.manifest.shows.capsule;
+      const cap = sc && typeof sc === "object" && !Array.isArray(sc) ? sc : {};
+      // `views` is the key (the app and the Capsule draw the same declaration); shows.capsule's `view:<id>` entries are the older name for it.
+      const vs = r.manifest.views && typeof r.manifest.views === "object" && !Array.isArray(r.manifest.views) ? r.manifest.views : {};
+      if (!Object.keys(cap).length && !Object.keys(vs).length) continue;
       const fp = this.isFirstParty(r.dir);
       if (named ? named !== name : !fp) continue;
       const declared = new Set();
+      /** @param {any} e */
+      // A view may name a Connection operation where a tool goes (withOperations in core/views/frames.js): that is the one tool connectors.operation.run.
+      const toolOf = (/** @type {any} */ x) => (x && x.tool) || (x && typeof x.connection === "string" && typeof x.operation === "string" ? "connectors.operation.run" : undefined);
+      /** @param {any} e */
+      const viewTools = e => {
+        for (const part of [e.list, e.board, e.summary]) {
+          const l = part || {};
+          if (toolOf(l)) declared.add(toolOf(l));
+          if (l.detail && toolOf(l.detail)) declared.add(toolOf(l.detail));
+          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && toolOf(a)) declared.add(toolOf(a));
+        }
+        for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && toolOf(/** @type {any} */ (f).submit)) declared.add(toolOf(/** @type {any} */ (f).submit));
+      };
       for (const [key, v] of Object.entries(cap)) {
         if (key.startsWith("results:")) declared.add(key.slice(8));
         else if (key.startsWith("action:")) declared.add(key.slice(7).split("#")[0]);
-        else if (key.startsWith("view:") && v && typeof v === "object") {
-          const e = /** @type {any} */ (v), l = e.list || {};
-          if (l.tool) declared.add(l.tool);
-          if (l.detail && l.detail.tool) declared.add(l.detail.tool);
-          for (const a of Array.isArray(l.actions) ? l.actions : []) if (a && a.tool) declared.add(a.tool);
-          for (const f of Object.values(e.forms || {})) if (f && /** @type {any} */ (f).submit && /** @type {any} */ (f).submit.tool) declared.add(/** @type {any} */ (f).submit.tool);
-        }
+        else if (key.startsWith("view:") && v && typeof v === "object") viewTools(/** @type {any} */ (v));
       }
+      for (const v of Object.values(vs)) if (v && typeof v === "object") viewTools(/** @type {any} */ (v));
       if (!declared.has(tool)) continue;
       if (!named) return true;
       const needs = r.manifest.needs && Array.isArray(r.manifest.needs.tools) ? r.manifest.needs.tools : [];
-      if (tool.startsWith(name + ".") || needs.includes(tool)) return true;
+      // connectors.operation.run checks for itself that the module reaches only the Connection of its own app and only that Connection's declared operations.
+      if (tool.startsWith(name + ".") || needs.includes(tool) || tool === "connectors.operation.run") return true;
     }
     return false;
   }
@@ -1819,8 +1851,9 @@ export class Registry {
   mentionTools(which = "search") {
     const out = new Set();
     for (const r of this.modules.values()) {
-      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions) || !this.isFirstParty(r.dir)) continue;
-      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string") out.add(e[which]);
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.mentions)) continue;
+      // An added module offers its own tools too (its manifest check holds them to its own name and to reads); the picker cuts what resolve gives back.
+      for (const e of r.manifest.mentions) if (e && typeof e[which] === "string" && (this.isFirstParty(r.dir) || (e[which].startsWith(`${r.manifest.name}.`) && String(e.kind).startsWith(String(r.manifest.name))))) out.add(e[which]);
     }
     return out;
   }
@@ -1852,6 +1885,13 @@ export class Registry {
         ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
         ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
         ...(Array.isArray(m.mentions) ? { mentions: m.mentions } : {}),
+        ...(Array.isArray(m.screens) ? { screens: m.screens } : {}),
+        ...(() => {
+          // One declaration for the app and the Capsule: `views`, with shows.capsule's `view:<id>` entries (the older name) folded in; `views` wins on an id.
+          const sc = m.shows && m.shows.capsule && typeof m.shows.capsule === "object" && !Array.isArray(m.shows.capsule) ? m.shows.capsule : {};
+          const merged = { ...Object.fromEntries(Object.entries(sc).filter(([k, v]) => k.startsWith("view:") && v && typeof v === "object").map(([k, v]) => [k.slice(5), v])), ...(m.views && typeof m.views === "object" && !Array.isArray(m.views) ? m.views : {}) };
+          return Object.keys(merged).length ? { views: merged } : {};
+        })(),
         firstParty: this.isFirstParty(r.dir),
         ...(m.needs && Array.isArray(m.needs.tools) ? { needsTools: m.needs.tools.filter((/** @type {any} */ t) => typeof t === "string") } : {}),
         ...(m.needs && Array.isArray(m.needs.slots) ? { needsSlots: m.needs.slots.filter((/** @type {any} */ t) => typeof t === "string") } : {}),

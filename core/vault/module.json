@@ -134,6 +134,7 @@
       { "name": "vault.said.revoke", "reach": "modules" },
       { "name": "vault.request", "effect": "write", "reach": "anyone" },
       { "name": "vault.api.send", "asks": true, "outward": true, "reach": "modules" },
+      { "name": "vault.fetch.public", "reach": "modules" },
       { "name": "vault.credential.tokens", "reach": "modules" },
       { "name": "vault.forward", "asks": true, "outward": true, "reach": "modules" },
       { "name": "vault.forward.file", "asks": true, "outward": true, "reach": "modules" },

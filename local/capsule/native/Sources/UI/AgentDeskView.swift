@@ -165,7 +165,7 @@ struct AgentButton: ButtonStyle {
     /// Above the rows in the area: offline, then the conversation.
     @ViewBuilder static func above(_ m: CapsuleModel) -> some View {
         if m.offline { OfflineBanner(model: m); Rule() }
-        if directShown(m) { DirectView(direct: m.direct, desk: m.desk, who: m.identities, assistant: m.catalog.assistant?.name); Rule() }
+        if directShown(m) { DirectView(direct: m.direct, desk: m.desk, who: m.identities, assistant: m.catalog.assistant?.name, openInChat: { m.openDirectInChat() }); Rule() }
     }
 
     /// The next-meeting line shows under an empty box, once there is one.

@@ -132,6 +132,7 @@ export function checkKit(kit) {
     }
     for (const s of [...(t.stages ?? []), ...(t.stage_sets ?? []).flatMap((/** @type {any} */ x) => x.stages)]) {
       if (s.enter_if !== undefined) { checkExpr(`type ${t.name} stage ${s.name}.enter_if`, s.enter_if, t); if (exprNames(parseExpr(s.enter_if)).has(stageField?.name)) err(`type ${t.name} stage ${s.name}.enter_if`, "A stage's entry condition reads the record's other fields, not its stage"); }
+      if (s.owner !== undefined) { const [k, nm] = String(s.owner).split(":"); if (k === "role" && !roleNames.has(nm) && !CORE_ROLES.includes(nm)) err(`type ${t.name} stage ${s.name}`, `${s.owner} is not a role defined in this kit`); }
       for (const task of s.tasks ?? []) {
         const at = `type ${t.name} stage ${s.name} task "${task.title}"`;
         for (const who of [task.doer, task.checker].filter(Boolean)) {

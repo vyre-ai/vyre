@@ -110,7 +110,7 @@ function defineTask(t) {
   return { $: "task", ...ordered(out, ["title", "doer", "checker", "output", "how", "template", "depends_on", "due_offset_ms", "required"]) };
 }
 
-/** One list of stages (the default set or a stage set): names, or `{ name, tasks, enter_if }`. @param {any[]} stages @param {string} where */
+/** One list of stages (the default set or a stage set): names, or `{ name, owner, tasks, enter_if }`. @param {any[]} stages @param {string} where */
 function stageList(stages, where) {
   if (!Array.isArray(stages) || stages.length < 2 || stages.length > 40) bad(where, "A stage list needs 2 to 40 stages");
   const seen = new Set();
@@ -119,11 +119,12 @@ function stageList(stages, where) {
   stages.forEach((s, i) => {
     const path = `${where}[${i}]`;
     if (typeof s === "string") { str(s, path, { max: 80 }); if (seen.has(s)) bad(path, `Two stages are named ${s}`); seen.add(s); list.push({ name: s }); return; }
-    onlyKeys(s, ["name", "tasks", "enter_if"], path);
+    onlyKeys(s, ["name", "tasks", "enter_if", "owner"], path);
+    if (s.owner !== undefined && (typeof s.owner !== "string" || !/^(role|person):[a-z][a-z0-9_.-]*$/.test(s.owner))) bad(`${path}.owner`, 'A stage owner looks like "role:attorney" or "person:alex"');
     const nm = str(s.name, `${path}.name`, { max: 80 }); if (seen.has(nm)) bad(path, `Two stages are named ${nm}`); seen.add(nm);
     const tasks = s.tasks === undefined ? undefined : (Array.isArray(s.tasks) ? s.tasks.map((t, j) => { if (!isObj(t) || t.$ !== "task") bad(`${path}.tasks[${j}]`, "Each entry in tasks must be a defineTask(...) call"); const { $, ...rest } = t; return rest; }) : bad(`${path}.tasks`, "tasks must be a list"));
     if (tasks) { const titles = new Set(); for (const t of tasks) { if (titles.has(t.title)) bad(`${path}.tasks`, `Two tasks in ${nm} are titled ${t.title}`); titles.add(t.title); for (const d of t.depends_on ?? []) if (!titles.has(d) && !titlesBefore(d)) bad(`${path}.tasks`, `Task "${t.title}" depends on "${d}", which is not an earlier task in this or a previous stage`); } }
-    list.push(ordered({ name: nm, enter_if: s.enter_if === undefined ? undefined : expr(s.enter_if, `${path}.enter_if`), tasks: tasks && tasks.length ? tasks : undefined }, ["name", "enter_if", "tasks"]));
+    list.push(ordered({ name: nm, owner: s.owner, enter_if: s.enter_if === undefined ? undefined : expr(s.enter_if, `${path}.enter_if`), tasks: tasks && tasks.length ? tasks : undefined }, ["name", "owner", "enter_if", "tasks"]));
   });
   return list;
 }

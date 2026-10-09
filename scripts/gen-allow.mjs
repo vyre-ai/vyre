@@ -26,6 +26,8 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "views.list": "lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer",
+  "views.get": "reads one screen a module declares; the data it shows is fetched as the viewer, under the viewer's own grants",
   "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
   "spaces.storage.get": "reads the caller's own per-member storage; the kernel's grants decide",
   "spaces.storage.list": "lists the caller's own per-member storage; the kernel's grants decide",

@@ -153,7 +153,6 @@
   "scripts/lib/docs/shots.js",
   "scripts/lib/docs/terms.js",
   "scripts/lib/first-run.mjs",
-  "scripts/matrix/j2c-cosign-refusals.sh",
   "scripts/watcher-wall-proof.sh",
   "test/ancestry-production.test.js",
   "test/box-build-clean.test.js",

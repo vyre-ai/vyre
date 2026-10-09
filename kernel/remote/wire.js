@@ -27,6 +27,8 @@ export const CALLS = Object.freeze({
   // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
   leases: ["issue", "renew", "use", "reinstate"],
   lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"],
+  // The sidebar each member arranges (SPEC-0.3.0 part 9): a SERVICE the home registers (core/sidebar/service.js). A member reads the Space's default with their own list on top and changes their own list; only the Space's owner or admin role changes the default.
+  sidebar: ["get", "edit", "team"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */

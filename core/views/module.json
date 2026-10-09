@@ -1,0 +1,19 @@
+{
+  "name": "views",
+  "version": "0.1.0",
+  "description": "A module's screens, described and drawn by Vyre: the lists, boards, summaries, details and forms an installed module declares under `views`, read from its manifest and answered as small frames for the app to draw in its own components. No module code runs in the app's window.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["views.list", "views.get"],
+    "tools": [
+      { "name": "views.list", "reach": "person", "effect": "read" },
+      { "name": "views.get", "reach": "person", "effect": "read" },
+      { "name": "views.act", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

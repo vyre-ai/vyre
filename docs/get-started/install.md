@@ -16,9 +16,20 @@ terminal is on the server, and only for one line the app gives you.
 - [ ] A Mac or a Windows PC for the app. A phone alone cannot start: you reserve your name on a computer first.
 - [ ] A Claude account (the app offers to connect it during setup), and a ChatGPT (Codex) or Grok account if you want them.
 - [ ] If you will add a server: a Linux server (a cloud machine is fine) or a Mac that stays on, and a terminal on it.
-  With Records, which is the recommended choice, the server needs 8 GB of memory (4 GB is the least).
-  Without Records it needs 2 GB.
+  See [What size of server](#what-size-of-server): 8 GB of memory is recommended, 4 GB is the least, and a small server can run
+  without Records on 2 GB.
 - [ ] If you are joining a team: the invite your team sent you.
+
+## What size of server
+
+Records is where your contacts, projects and tasks live. It is a full database, and by itself it uses about 2.2 GB of memory. Vyre needs room beside it.
+
+| Choice | Memory | Good for |
+| --- | --- | --- |
+| **With Records** | 8 GB recommended, 4 GB at the least | Contacts, projects, tasks, [Flows and Kits](../using/flows.md), a team. |
+| **Without Records** | 2 GB | A small server, or a first try. Vyre keeps your data in a smaller built-in store, so it runs on less. |
+
+On a server with 4 to 6 GB, Vyre uses a smaller Records setup and tells you, when it installs, how many spaces fit. If the server has less than Records needs, the installer says so and uses the small built-in store instead.
 
 ## 1. Reserve your name
 
@@ -100,6 +111,22 @@ Open the app on the phone, scan the code from your computer, and check that both
 
 A Windows PC is a device, not a home: Join a team, or add a server that runs elsewhere. The app and the command line are in
 [Windows](../using/windows.md).
+
+## Your server comes back by itself
+
+A server must be online with nobody at the keyboard: after a restart, a power cut or a logout. Vyre needs no VPN and no login to any other network
+product, on the server or on your computers, so there is no sign-in that can be lost on a restart. The server rejoins the Vyre network on its own.
+
+- **Linux server.** The containers carry a restart policy (`unless-stopped`), and the installer makes sure Docker itself starts at boot.
+  After `sudo reboot` the server is back with no one signed in.
+- **Mac server (a Mac mini that stays on).** The installer sets the Mac to start when power returns and never to sleep
+  (`pmset autorestart 1`, `sleep 0`, `disksleep 0`, `womp 1`, `powernap 0`), and checks that Vyre's system services start at boot and are kept running.
+  `vyre doctor` checks the same settings and `vyre doctor --repair` puts them right (it asks for your Mac password once).
+- **FileVault.** If FileVault is on, a Mac waits at the login window after any unplanned restart, and nothing runs until someone types the password. No service can start before that.
+  The Mac installer checks this before it installs anything and stops: "FileVault is on. After a power cut or a restart this Mac will wait for someone to type the password, and Vyre will be offline until then.
+  For a server, turn FileVault off in System Settings, Privacy and Security, then run this line again. To keep FileVault anyway, run the line with VYRE_ACCEPT_FILEVAULT=1."
+  The app's Add a server shows the same words, and `vyre doctor` reports it ("Stops after a restart until someone signs in"). Vyre never changes FileVault itself.
+  For a planned restart with FileVault on, Vyre uses `fdesetup authrestart` where the Mac supports it, so the Mac comes back to the desktop without a person.
 
 ## Looking after the server
 

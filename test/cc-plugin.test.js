@@ -11,9 +11,10 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
+import { call as daemonCall } from "../core/daemon/client.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
-import { tempHome, writeModule } from "./helpers.js";
+import { tempHome, writeModule, present } from "./helpers.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "harness");
@@ -259,10 +260,17 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
 test("memory: the user's own session's remember is kept pending, not as the person's fact; an agent's session is refused", async t => {
   const { cache, env } = install(t, { withVyre: true });
   const root = tempHome(t);
-  const d = await start({ root, log: () => {} });
+  process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
+  const d = await start({ root, log: () => {}, kernel: true, presence: present, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  // The person has granted Claude Code on this computer its place (pluginagent): the plugin's server then calls as that agent with its key, and vyred binds every call to the agent's own kernel
+  // chain under the owner, which is how personal memory knows whose it is (core/memory/kernel-gate.js). Without the grant a plain "mcp" call carries no chain and memory refuses it.
+  const proof = { root, headers: { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") } };
+  const asked = (await daemonCall("pluginagent.ask", {}, { root, caller: "mcp" })).data;
+  const granted = await daemonCall("pluginagent.grant", { id: asked.id }, proof);
+  assert.ok(!granted.error, JSON.stringify(granted));
   const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
     call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
   const names = own.get(2).result.tools.map(x => x.name);

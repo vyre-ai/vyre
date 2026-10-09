@@ -423,15 +423,30 @@ test("device-first, real daemon, relay and kernel: the pick leaves the device re
   assert.ok(JSON.stringify(members).includes(owner.id), "grants.members.list over the remote kernel names the owner");
 });
 
-test("device-first attacks: a removed device holding a token and a stream is refused at its next call; a replayed start-paired is refused; a stranger never gets a stream", async t => {
+test("device-first attacks: a removed device holding a token and a stream is refused at its next call; a replayed start-paired is refused, a fresh sign-in by its own key replaces the session; a stranger never gets a stream", async t => {
   const f = await pairFreshServer(t);
   const { w, done } = f;
   const links = linksFor(t, f);
   const l = links.sessionFor("srv");
-  await links.startPaired("srv");
+  const first = await links.startPaired("srv");
   await l.call("records.me", {});
-  // a replay of the start-paired the device just made is refused (the grant is one use)
-  await assert.rejects(() => links.startPaired("srv"), e => e.code === "denied");
+  const sessionsNow = async () => ((await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data.sessions || []).filter(x => x.paired).map(x => x.id);
+  assert.deepEqual(await sessionsNow(), [first.id]);
+  // a TRUE replay (the exact signed start-paired message sent again) is refused: the grant is one use
+  const conn = connect({ relay: w.status.url, route: done.route, box: done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks });
+  t.after(() => conn.close());
+  const raw = async (tool, input) => (await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) })).json().catch(() => ({}));
+  const ch = (await raw("presence.person.pair-challenge", {})).data.challenge;
+  const sig = await f.sign(`paired-start\n${done.device}\n${ch}`);
+  const signedIn = await raw("presence.person.start-paired", { sig });
+  assert.ok(signedIn.data && signedIn.data.token, `the device's own key, answering a fresh challenge, signs in: ${JSON.stringify(signedIn)}`);
+  const replayed = await raw("presence.person.start-paired", { sig });
+  assert.equal(replayed.error && replayed.error.code, "denied", "the same signed message again is refused");
+  // a FRESH own-key sign-in is not a replay (#112): it replaces the device's own session, so the earlier one is gone and exactly one is live
+  assert.deepEqual(await sessionsNow(), [signedIn.data.id], "the sign-in with the fresh challenge replaced the first session");
+  const third = await links.startPaired("srv");
+  assert.notEqual(third.id, signedIn.data.id);
+  assert.deepEqual(await sessionsNow(), [third.id], "and so did the next fresh sign-in: one live session, never two");
   // removing the device at the server ends its next call, session and all
   assert.equal((await w.call("wink.remove", { device: done.device }, SCREEN, A)).data.removed, done.device);
   await assert.rejects(() => l.call("records.me", {}), e => /denied|closed|removed|unreachable|paired/.test(`${e.code} ${e.message}`));

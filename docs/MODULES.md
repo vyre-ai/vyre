@@ -137,14 +137,47 @@ Your tool's `run` only ever sees an approved call, and `meta.gate` says how it w
 you add has no other way to act as you, because it never holds your credentials: `ctx.vault.request`
 attaches them outside the sandbox, and a write through it is held at the Gate the same way.
 
-## A tool a Flow may run: `flowAction`
+## What a module adds to Flows: `flow`
 
-A Flow's call step can run a tool only if its module says so: `{ "name": "mail.send", "outward": true, "flowAction": { "risk": "outward" } }`, or `"flowAction": { "risk": "read" }` for a read.
-Only Vyre's own modules offer one for now. The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+A module extends Flows with one declaration, `flow`, beside `does` and `watches`. Nothing else makes a tool a Flow step.
 
-The runner does not ask the kernel's action table about a Flow tool, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
+```json
+"flow": {
+  "steps": [
+    { "name": "mail.send", "label": "Send an email", "inputs": { "to": "string", "subject": "string", "body": "string" }, "outputs": { "id": "string" }, "outward": true },
+    { "name": "mail.find", "label": "Find an email", "inputs": { "query": "string" }, "outputs": { "count": "number" } }
+  ],
+  "triggers": [
+    { "name": "mail.arrived", "label": "An email arrives", "event": "mail.received", "inputs": { "from": "string", "subject": "string" } }
+  ]
+}
+```
+
+A **step** is one of the module's own tools (object form, reach anyone). A Flow's `call` step runs it. An outward step must name an outward tool (`"outward": true` on both), so the Flow holds it for the person's yes exactly as it holds any act that leaves Vyre. `inputs` and `outputs` are field names with a type (`string`, `number`, `boolean`, `object`, `array`) for the Flow editor.
+A **trigger** is a named way to start a Flow: an event the module lists in `watches.emits`, or a watcher it hosts. A Flow stores an `event` or `watcher` trigger, the kinds that already exist; the module's name for it only helps the person find it.
+Added modules may declare both. The install card shows them.
+
+The Flow runs the tool as the person whose Flow it is: the daemon calls it with that person's session, so `ctx.kernel.chain(meta)` is that person.
+The runner does not ask the kernel's action table about a Flow step, so **the tool must gate itself on the person's chain**: read the chain, check the person may read or do this, and refuse
 otherwise. For an outward tool the Flow's one approval is spent at the call (once, for exactly that input), and that is the only gate beside the tool's own. For a read tool nothing else gates it.
-Every `flowAction` tool is listed with the guard it relies on in `test/flow-action-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a read tool with no gate of its own does not pass review.
+Every flow step is listed with the guard it relies on in `test/flow-step-guards.json`; a tool with no line there, or a line that names no guard, fails the test, so a tool with no gate of its own does not pass review.
+A connection to an outside service is not declared here: a Flow runs it with the one "Call a service" step.
+
+## A module ships a Kit: records, fields and a link to projects
+
+A module that keeps records of its own lists the Kit files it ships in its manifest: `"does": { "kits": ["kit.json"] }`. The file is a Kit in the records language's stored form (write `kit.ts` and compile it with `node records/language/cli.js compile kit.ts > kit.json`) or in the kernel's form. When someone adds the module (`vyre module add`), Vyre proposes each Kit file as a card in Now. Nothing is defined until the owner says yes, and the card lists every type and field.
+
+A module's Kit is held to what a module may add. Its id is the module's name. Every record type is named for the module (`tasker_item` for the module `tasker`), so it cannot redefine a core type or another Kit's. It adds no roles and no teammates, because those are abilities and the person gives abilities, and it makes no project type. List the types in `needs.kernel.records` so the module's code may create and list them, as the person who installed it.
+
+To relate an item to a project, give the type a link to `project`:
+
+```ts
+project: defineField.link({ to: "project", label: "Project", inverse: { name: "tasker_items", label: "Items" } }),
+```
+
+The item then shows on the project (`records.linked` on the project lists it), and a Flow can start from it like any record.
+
+**An upgrade keeps everything.** A new version of the module and a new version of its Kit replace the old ones. The module's own tables migrate forward with `ctx.store.migrate`, the Space's records stay as they were and keep their links, and the update card says which types changed and what was removed. Keep the tool names, view names and field names a person has pinned or used in a Flow: removing one hides what depends on it. `test/module-kit-upgrade-daemon.test.js` installs a module, makes records linked to a project, upgrades the module and its Kit, and checks all of it is still there.
 
 ## What a module gets: `ctx`
 
@@ -239,12 +272,12 @@ Your module keeps working when Vyre updates. The rules:
 ## What's built in only, for now
 
 Session providers (`does.providers`), streams (`shows.streams`), raw HTTP routes, raw vault
-values and the `#` picker's kinds (`mentions`) stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
+values stay with Vyre's own modules in 0.2, because each needs a process, a socket or a secret that
 the sandbox withholds. `vyre module check` says so if you use them.
 
 ## The `#` tag: `mentions`
 
-Typing `#` in a chat opens one picker over everything the person may mention. A built in module
+Typing `#` in a chat opens one picker over everything the person may mention. A module
 offers a kind of thing with one entry in `mentions`, and `mentions.search` asks every module that
 does at once.
 
@@ -257,6 +290,33 @@ does at once.
 is typing. Resolve takes `{ id, thread, said }`, runs as sessions or the assistant (never a model), and answers what the tag means for a thread: a `grant` (a use, a
 read) and a `context` (a title, a summary), decided from the person's own turn and never from a
 model. A kind has one provider; a second module that claims it fails to load.
+
+A module you add can offer a kind too, under three limits. The kind is the module's own name (or starts with it and a dash), so nothing poses as `vault` or `drive`. Search and resolve are its own tools and must be reads. And what resolve gives back is cut: no grant, no hosts, and its words always count as outside text (a `note` joins the context), because a tag may only give the module's own reads, never a grant beyond them.
+
+## Views: your screens, drawn by Vyre
+
+A module describes its screens under `views` and Vyre draws them, in the app (web, Mac, Windows, phone) and in the Capsule, in its own components. Nothing from a module runs in Vyre's window. This is the
+Capsule's view language below, promoted to the whole app and extended with a board and a summary; `shows.capsule`'s `view:<id>` entries are the older name for the same declaration, and `views` wins when both name an id.
+
+```json
+"views": {
+  "board": { "title": "Board", "icon": "tray",
+    "board": { "tool": "cards.list", "columns": [{ "id": "todo", "title": "To do" }, "doing", "done"],
+      "map": { "rows": "cards", "id": "id", "title": "name", "subtitle": "who", "column": "status" },
+      "actions": [{ "id": "move", "title": "Move", "tool": "cards.move", "input": { "id": "{id}", "status": "{column}" } }] } },
+  "counts": { "title": "Counts", "summary": { "tool": "cards.count",
+    "map": { "cards": [{ "label": "Open", "path": "open" }], "chart": { "kind": "bar", "rows": "byDay", "label": "day", "value": "n" } } } }
+}
+```
+
+A view is a `list` (with a `detail` and `actions`), a `board`, a `summary` or a `form`. A board groups the rows of its tool into the declared columns by the field `map.column` names; a row whose value is no
+declared column goes to a last column, Other. Dropping a card on a column calls the action with the id `move`, with `{column}` filled in (only a declared column; any other leaves the card where it is). A summary reads
+counts and one small bar or line chart by dotted path. `map` names fields by plain dotted path, templates fill a fixed set of names, an `outward` action shows its exact words first and sends only with the
+preview's own token, and the module's tools run as the module on behalf of the person who opened the view, never as the person. The app asks `views.list`, `views.get` and `views.act`; the Capsule asks
+`capsule.commands`, `capsule.view` and `capsule.act`, and shows only the views it can draw (list, detail, form).
+
+A view is also a sidebar screen: the entry is `{ "kind": "module", "module": "cards", "screen": "board" }` with the view's id as `screen`, and `sidebar.get` marks it `view: true`. A view id a new version drops hides
+the pin; it never deletes it.
 
 ## The Capsule: `view:` entries
 
@@ -293,6 +353,8 @@ tools run as the module, never as you, and its rows say "from" the module. An `o
 exact words first, and a second Enter sends; the preview carries a token good for two minutes that the
 second call must return. Icons are system symbol names from a fixed list, or
 `app:<bundle id>`.
+
+A wrapped app's screens need no tool of their own. Where a view's `list`, `detail`, action or form `submit` names a `tool`, it may name `{ "connection": "docuseal", "operation": "list", "input": { "query": { "status": "pending" } } }` instead: the operation of a Connection (its `input` is `{ params, query, headers, body }`, with the same templates). A module reaches only the Connection of its own app and only the operations that Connection declares; a send, change or delete is held for your yes like any outward call.
 
 The Capsule reads `capsule.commands` for the list of commands, `capsule.view` for a frame and
 `capsule.act` for an action. It sends ids, never tool names. The older `results:<tool>` and

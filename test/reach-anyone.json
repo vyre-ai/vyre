@@ -41,6 +41,34 @@
    "module": "agents",
    "reason": "guard() plus modelMay: only the verified assistant, the person and modules read another agent's conversations, threads or usage; a session or a plain caller is refused"
   },
+  "appmods.card": {
+   "module": "appmods",
+   "reason": "read-only: the install card of one catalog app, built from its manifest alone"
+  },
+  "appmods.catalog": {
+   "module": "appmods",
+   "reason": "read-only: the apps this build can install, from its own signed catalog (names, versions, the card)"
+  },
+  "appmods.connection": {
+   "module": "appmods",
+   "reason": "read-only: the Connection an installed app declares (label, how it signs in, operations) with the NAME of the Vault item that holds its key, never the key"
+  },
+  "appmods.hosts": {
+   "module": "appmods",
+   "reason": "read-only: the host names of the installed running apps, which the public gate needs; they are public names under the box's own"
+  },
+  "appmods.list": {
+   "module": "appmods",
+   "reason": "read-only: the apps installed on this server and their state"
+  },
+  "appmods.screens": {
+   "module": "appmods",
+   "reason": "read-only: the names of an installed app's own screens, no address and no ticket (opening one is appmods.open, person only)"
+  },
+  "appmods.status": {
+   "module": "appmods",
+   "reason": "read-only: one installed app's state and whether it answers; no key, no address of a secret"
+  },
   "artifacts.activity": {
    "module": "artifacts",
    "reason": "read-only, scoped by the module itself: reach() with the read option (own project or a # tag) and only the artifact's own activity rows"
@@ -332,6 +360,34 @@
   "computers.watch": {
    "module": "computers",
    "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
+  },
+  "connectors.connection.check": {
+   "module": "connectors",
+   "reason": "read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
+  },
+  "connectors.connection.export": {
+   "module": "connectors",
+   "reason": "callers list and scope: writes nothing, and the template it returns carries the app's address and operations but never the person's key item or values"
+  },
+  "connectors.connection.get": {
+   "module": "connectors",
+   "reason": "read-only: one Connection's declaration, never the key (callers list)"
+  },
+  "connectors.connection.import": {
+   "module": "connectors",
+   "reason": "callers list and scope: text becomes a draft that is never saved or called; by address is the person's act, refused for a model before anything is fetched"
+  },
+  "connectors.connection.list": {
+   "module": "connectors",
+   "reason": "read-only: id, label, host, light and operations, never the key (callers list)"
+  },
+  "connectors.connection.propose": {
+   "module": "connectors",
+   "reason": "held: only a proposal for the person to approve, nothing is made and nothing is called; the person's yes creates it (callers list)"
+  },
+  "connectors.operation.run": {
+   "module": "connectors",
+   "reason": "callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
   },
   "events.catalog": {
    "module": "events",
@@ -1280,6 +1336,18 @@
   "sessions.usage.get": {
    "module": "sessions",
    "reason": "read-only"
+  },
+  "sidebar.edit": {
+   "module": "sidebar",
+   "reason": "scope check: a change touches only the caller's OWN list (one per person), never the Space default; an assistant may make it for the person, who can undo it; refuses an entry that is not installed"
+  },
+  "sidebar.get": {
+   "module": "sidebar",
+   "reason": "read-only: the Space's default and the caller's own list; nothing of another person's is shown, and a team member reads only through the Space's kernel as themselves"
+  },
+  "sidebar.team": {
+   "module": "sidebar",
+   "reason": "owner/admin ROLE guard: only the Space's owner or admin may set its default, and an assistant's request is held at the Gate for the person's yes (ASK_FIRST), so a plain session cannot change it"
   },
   "sideview.close": {
    "module": "sideview",

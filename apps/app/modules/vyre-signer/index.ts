@@ -49,6 +49,8 @@ type Native = {
   /** Android: the Keystore key's certificate chain (standard base64 DER, leaf first); the attestation extension holds the challenge the key was made with. */
   attestationChain?(alias: string): Promise<string[]>;
   sign(alias: string, message: string, options: { prompt?: string }): Promise<string>;
+  /** iOS: one biometric prompt, then every message signed with that authenticated context. Absent on Android, which prompts per signature. */
+  signMany?(alias: string, messages: string[], options: { prompt?: string }): Promise<string[]>;
   deleteKey(alias: string): Promise<boolean>;
   info(): SignerInfo;
   randomBytes(n: number): string;
@@ -180,6 +182,29 @@ export async function signPresence(card: PresenceCard): Promise<PresenceProof> {
     proof.assertion = b64(fromB64url(await native.appAttestAssert(keyId, b64url(sha256(bytes)))));
   }
   return proof;
+}
+
+/**
+ * Sign several cards with ONE Face ID (a held group): iOS asks once and signs every card's proof bytes with that unlock. A phone whose signer cannot (Android prompts per use of the key) answers
+ * null and the caller signs one at a time.
+ */
+export async function signPresenceMany(cards: PresenceCard[]): Promise<PresenceProof[] | null> {
+  iosOnly();
+  if (!native.signMany || Platform.OS !== "ios") return null;
+  const k = await presenceKey();
+  const keyId = await SecureStore.getItemAsync(APPATTEST_KEY);
+  const bodies = await Promise.all(cards.map(async (card) => {
+    const person = card.person ?? (personProvider ? await personProvider() : null) ?? "";
+    return proofBody({ op: card.op, space: card.space, fields: card.fields as Record<string, unknown>, payload_hash: card.payload_hash, person, home: card.home, challenge: card.challenge }, { keyId: k.key_id, now: Date.now(), nonce: randomBytes(16), signer: signerClass() });
+  }));
+  const ders = await native.signMany(HUMAN, bodies.map((b) => new TextDecoder().decode(proofBytes(b))), cards.length === 1 && cards[0].prompt ? { prompt: cards[0].prompt } : {});
+  const out: PresenceProof[] = [];
+  for (let i = 0; i < cards.length; i++) {
+    const proof: PresenceProof = { ...(bodies[i] as Omit<PresenceProof, "signature" | "assertion">), signature: b64url(p1363FromDer(fromB64url(ders[i]))) };
+    if (keyId && native.appAttestAssert) proof.assertion = b64(fromB64url(await native.appAttestAssert(keyId, b64url(sha256(proofBytes(bodies[i]))))));
+    out.push(proof);
+  }
+  return out;
 }
 
 /** Where each key lives, said honestly: the identity key is a software Ed25519 seed in the Keychain (this device only); the presence key is in the Secure Enclave on a device and a software key in the simulator. */

@@ -29,3 +29,30 @@ export function toKernelKit(kit) {
     },
   };
 }
+
+/** Is this the compiled stored form (records/kits/<id>/kit.json) and not the kernel's? @param {any} kit */
+export const isStoredKit = kit => Boolean(kit && typeof kit === "object" && kit.includes === undefined && Array.isArray(kit.types));
+
+/** The kernel's form of a Kit given in either form. @param {any} kit */
+export const kernelKit = kit => (isStoredKit(kit) ? toKernelKit(kit) : kit);
+
+/**
+ * What a Kit that ships with an ADDED module may be (a module adds data and screens, never people's powers): its id is the module's name, every record type is named for the module
+ * (`<module>` or `<module>_x`, `<module>-x`) so it cannot redefine another Kit's or a core type, no type is a project type, and it carries no roles or teammates (their abilities are the
+ * person's to give). Links to core types (a project, a contact) are free: that is how a module's items show on a project.
+ * @param {string} module @param {any} kit the kernel's form @returns {string[]} the reasons it is refused, empty when it may be proposed
+ */
+export function moduleKitProblems(module, kit) {
+  const out = [];
+  const inc = (kit && kit.includes) || {};
+  if (!kit || kit.id !== module) out.push(`the Kit's id is ${kit && kit.id}, and a module's Kit is named for the module (${module})`);
+  const mine = (/** @type {string} */ n) => n === module || n.startsWith(`${module}_`) || n.startsWith(`${module}-`);
+  for (const t of inc.types || []) {
+    if (!mine(String(t.name))) out.push(`type ${t.name} is not named for the module: a module's types start with ${module}_`);
+    if (t.kind === "project") out.push(`type ${t.name} is a project type; a module relates to projects with a link to project, it does not make one`);
+  }
+  for (const r of inc.roles || []) out.push(`role ${r.name}: a module's Kit adds no roles (a role is abilities, and abilities are the person's to give)`);
+  for (const r of inc.teammates || []) out.push(`teammate ${r.name}: a module's Kit adds no teammates`);
+  for (const t of inc.templates || []) if (!mine(String(t.name))) out.push(`template ${t.name} is not named for the module`);
+  return out;
+}

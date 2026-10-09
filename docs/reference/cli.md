@@ -74,6 +74,7 @@ In the order `vyre help` lists them.
 | [`vyre team`](#vyre-team) | Project teammates: add one, send it work, read what came back |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre spend`](#vyre-spend) | today's spend per provider and its daily cap |
+| [`vyre kit`](#vyre-kit) | the Kits Vyre ships, and putting one on this Space |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
@@ -137,7 +138,7 @@ vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [f
 Check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix.
 
 ```
-vyre doctor [--json]
+vyre doctor [--json] [--repair]
 ```
 
 Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.
@@ -706,7 +707,7 @@ vyre team [add|ask|status|cancel|notes] … [--project slug] [--json]
 
 vyre team                     this project's teammates, states and queues
 vyre team add <role>          add a teammate
-vyre team ask <role> <text>   send it work; --urgent, --wait
+vyre team ask <role> <text>   send it work; --urgent, --wait, --model codex|grok|provider/model
 vyre team status <request>    one request's state and result
 vyre team cancel <request>    cancel a queued request
 vyre team notes <agent>       read its notes
@@ -734,6 +735,19 @@ Change a cap:
   vyre spend raise <provider> +<usd>  add to it
   vyre spend raise <provider> off     no cap
 At a cap the spending thread pauses with one line, and Vyre Memory answers from facts and search.
+
+### vyre kit
+
+The Kits Vyre ships, and putting one on this Space.
+
+```
+vyre kit [deploy <kit>] [--json]
+```
+
+List them:
+  vyre kit                  the Kits on offer, with what each adds and whether it is installed
+Put one on this Space:
+  vyre kit deploy <kit>     propose the Kit, and the Kit it needs first, in one step. Each waits for your yes in Now; nothing installs until you say it (vyre needs).
 
 ### vyre statusline
 

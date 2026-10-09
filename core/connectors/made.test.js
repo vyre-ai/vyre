@@ -1,0 +1,164 @@
+// @ts-check
+// Connections a person made: the row, the derived credential, the check and the light, against a fake vault (the real vault is exercised by the daemon test and request-connection-auth.test.js).
+// What these prove: saving writes one derived credential whose config carries no key; a missing key item stops the save and leaves nothing behind; a check says its answer in plain words and keeps
+// the light; a credential changed behind the record's back shows out of step and does not run; rebuilding fixes it; deleting removes both.
+import "../../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { DatabaseSync } from "node:sqlite";
+import { MIGRATIONS } from "../../lib/connectors/connect.js";
+import { madeConnections } from "./made.js";
+
+function world() {
+  const db = new DatabaseSync(":memory:");
+  for (const m of MIGRATIONS) db.exec(m);
+  let clock = 1000;
+  /** @type {Map<string, any>} */ const items = new Map([["ghl-pat", { name: "ghl-pat", kind: "secret", updated: 1 }]]);
+  const calls = /** @type {any[]} */ ([]);
+  let reply = /** @type {any} */ ({ data: { status: 200, body: {} } });
+  const call = async (tool, input, opts) => {
+    calls.push({ tool, input, opts });
+    if (tool === "vault.list") return { data: { items: [...items.values()] } };
+    if (tool === "vault.put") { items.set(input.name, { name: input.name, kind: input.kind, updated: ++clock, fields: input.fields }); return { data: {} }; }
+    if (tool === "vault.delete") { items.delete(input.name); return { data: {} }; }
+    if (tool === "vault.request") return typeof reply === "function" ? reply(input) : reply;
+    if (tool.startsWith("vault.connections.")) return { data: {} };
+    return { error: { code: "no_such_tool", message: tool } };
+  };
+  const events = /** @type {string[]} */ ([]);
+  const m = madeConnections({ db, call, now: () => ++clock, emit: t => events.push(t) });
+  return { m, db, items, calls, events, setReply: r => { reply = r; } };
+}
+const form = (o = {}) => ({ label: "GoHighLevel Sales", base_url: "https://services.leadconnectorhq.com", send: { how: "bearer" }, credential: { item: "ghl-pat" }, headers: { Version: "2021-07-28" },
+  vars: { locationId: "loc_1" }, check: { path: "/locations/{locationId}" }, ...o });
+
+test("saving writes the row and one derived credential, with no key in it", async () => {
+  const w = world();
+  const r = await w.m.save(form(), { as: "deck" });
+  assert.deepEqual(r, { id: "gohighlevel-sales", credential: "conn-gohighlevel-sales" });
+  const put = w.calls.find(c => c.tool === "vault.put");
+  assert.equal(put.opts.as, "deck", "written as the person");
+  assert.equal(put.input.kind, "api-credential");
+  const cfg = JSON.parse(put.input.fields.config);
+  assert.deepEqual(cfg.hosts, ["services.leadconnectorhq.com"]);
+  assert.deepEqual(cfg.auth, { type: "bearer", item: "ghl-pat" });
+  assert.equal(put.input.fields.secret, undefined, "the key stays in its own Vault item");
+  assert.deepEqual(w.events, ["connectors.connection-created"]);
+  await assert.rejects(() => w.m.save(form(), { as: "deck" }), /already a connection/);
+  const l = (await w.m.list()).connections;
+  assert.equal(l.length, 1); assert.equal(l[0].light, "unknown"); assert.equal(l[0].host, "services.leadconnectorhq.com");
+});
+
+test("a missing key item stops the save and leaves nothing behind", async () => {
+  const w = world();
+  await assert.rejects(() => w.m.save(form({ credential: { item: "nope" } }), { as: "deck" }), /no item named nope/);
+  assert.equal((await w.m.list()).connections.length, 0);
+  assert.ok(!w.items.has("conn-gohighlevel-sales"));
+  w.items.set("a-cred", { name: "a-cred", kind: "api-credential", updated: 1 });
+  await assert.rejects(() => w.m.save(form({ credential: { item: "a-cred" } }), { as: "deck" }), /never hands out/);
+});
+
+test("the check runs through the derived credential and keeps its light in plain words", async () => {
+  const w = world();
+  await w.m.save(form(), { as: "deck" });
+  w.setReply(input => { assert.equal(input.credential, "conn-gohighlevel-sales"); assert.equal(input.method, "GET"); assert.equal(input.url, "https://services.leadconnectorhq.com/locations/loc_1"); return { data: { status: 200 } }; });
+  assert.deepEqual(await w.m.check("gohighlevel-sales"), { id: "gohighlevel-sales", light: "green", words: "connected" });
+  w.setReply({ data: { status: 401 } });
+  assert.equal((await w.m.check("gohighlevel-sales")).words, "the key was refused (401)");
+  w.setReply({ data: { status: 404 } });
+  assert.equal((await w.m.check("gohighlevel-sales")).words, "that id was not found (404)");
+  w.setReply({ error: { code: "failed", message: "request timed out" } });
+  assert.equal((await w.m.check("gohighlevel-sales")).words, "no answer from the host (timeout)");
+  assert.equal((await w.m.list()).connections[0].light, "red");
+  await assert.rejects(() => w.m.check("nope"), /no connection/);
+});
+
+test("a credential changed behind the record's back is out of step, does not run, and rebuilding fixes it", async () => {
+  const w = world();
+  await w.m.save(form(), { as: "deck" });
+  w.setReply({ data: { status: 200 } });
+  assert.equal((await w.m.check("gohighlevel-sales")).light, "green");
+  w.items.get("conn-gohighlevel-sales").updated += 50; // someone put it again by hand
+  assert.equal((await w.m.list()).connections[0].light, "out_of_step");
+  const before = w.calls.filter(c => c.tool === "vault.request").length;
+  const out = await w.m.check("gohighlevel-sales");
+  assert.equal(out.light, "red"); assert.match(out.words, /changed outside/);
+  assert.equal(w.calls.filter(c => c.tool === "vault.request").length, before, "nothing was sent through a credential the record did not write");
+  await w.m.rebuild("gohighlevel-sales", "deck");
+  assert.equal((await w.m.check("gohighlevel-sales")).light, "green");
+  w.items.delete("conn-gohighlevel-sales");
+  assert.equal((await w.m.list()).connections[0].light, "out_of_step", "a missing credential is out of step too");
+});
+
+test("update replaces the record and the credential; delete removes both", async () => {
+  const w = world();
+  await assert.rejects(() => w.m.save(form(), { as: "deck", replace: true }), /no connection/);
+  await w.m.save(form(), { as: "deck" });
+  await w.m.save(form({ headers: { Version: "2022-01-01" } }), { as: "deck", replace: true });
+  assert.equal(JSON.parse(w.items.get("conn-gohighlevel-sales").fields.config).headers.Version, "2022-01-01");
+  assert.equal((await w.m.get("gohighlevel-sales")).declaration.headers.Version, "2022-01-01");
+  assert.deepEqual(await w.m.remove("gohighlevel-sales", "deck"), { id: "gohighlevel-sales", removed: true });
+  assert.ok(!w.items.has("conn-gohighlevel-sales")); assert.ok(w.items.has("ghl-pat"), "the key's own item stays");
+  assert.equal((await w.m.list()).connections.length, 0);
+});
+
+test("a template carries the app and none of the person: no key item, no values, no id, no dates; filled in again it makes a Connection", async () => {
+  const w = world();
+  await w.m.save({ ...form(), operations: [{ name: "contacts.get", method: "GET", path: "/contacts/{id}", input: { params: { id: { type: "string", required: true } } } }] }, { as: "deck" });
+  const t = await w.m.exportTemplate("gohighlevel-sales");
+  assert.equal(t.template, 1);
+  assert.equal(t.credential.item, "");
+  assert.deepEqual(t.vars, { locationId: "{{locationId}}" });
+  assert.equal(t.check.path, "/locations/{locationId}", "the value typed is a hole again");
+  assert.deepEqual(t.headers, { Version: "2021-07-28" });
+  assert.deepEqual(t.operations.map(o => o.name), ["contacts.get"]);
+  const text = JSON.stringify(t);
+  for (const secret of ["ghl-pat", "loc_1", "deck", "created", "light", "gohighlevel-sales"]) assert.ok(!text.includes(secret), `${secret} is not in a template`);
+  // it does not make a Connection until the person fills it in
+  await assert.rejects(() => w.m.save({ ...t, credential: { item: "ghl-pat" } }, { as: "deck" }), /has no value/);
+  await assert.rejects(() => w.m.save({ ...t, vars: { locationId: "loc_9" } }, { as: "deck" }), /credential\.item/);
+  const again = await w.m.save({ ...t, vars: { locationId: "loc_9" }, credential: { item: "ghl-pat" }, label: "GoHighLevel Marketing" }, { as: "deck" });
+  assert.equal(again.id, "gohighlevel-marketing");
+  assert.equal((await w.m.get("gohighlevel-marketing")).check.path, "/locations/loc_9");
+});
+
+test("an assistant's proposal waits for the person: relabeling and kinds are taken out, the key is only named, and nothing exists until the person approves", async () => {
+  const w = world();
+  const ops = [{ name: "contacts.search", method: "POST", path: "/contacts/search", kind: "read", relabeled: true }, { name: "contacts.delete", method: "DELETE", path: "/contacts/{id}", kind: "read", input: { params: { id: { type: "string", required: true } } } }];
+  const p = await w.m.propose({ ...form(), operations: ops }, "mcp", "read the GHL docs");
+  assert.match(p.proposal, /^prop_/);
+  assert.equal(p.card.title, "Connect GoHighLevel Sales?");
+  assert.ok(p.card.lines.some(l => /services\.leadconnectorhq\.com and nothing else/.test(l)));
+  assert.ok(p.card.lines.some(l => /key in your Vault item ghl-pat/.test(l)));
+  assert.ok(p.card.lines.some(l => /^contacts\.search: changes things in/.test(l)), "a POST the assistant called a read is a change on the card");
+  assert.ok(p.card.lines.some(l => /^contacts\.delete: deletes in/.test(l)));
+  assert.equal((await w.m.list()).connections.length, 0, "nothing exists yet");
+  assert.ok(!w.calls.some(c => c.tool === "vault.put"), "nothing was written to the vault");
+  const listed = w.m.proposals();
+  assert.equal(listed.length, 1); assert.equal(listed[0].by, "mcp"); assert.equal(listed[0].why, "read the GHL docs");
+  assert.ok(!JSON.stringify(listed).includes("relabeled"));
+  const made = await w.m.approve(p.proposal, "deck");
+  assert.equal(made.id, "gohighlevel-sales");
+  const d = (await w.m.get("gohighlevel-sales")).declaration;
+  assert.equal(d.ops["contacts.search"].kind, "change"); assert.equal(d.ops["contacts.delete"].kind, "delete");
+  assert.equal((await w.m.get("gohighlevel-sales")).origin, "assistant");
+  assert.equal(w.m.proposals().length, 0);
+  assert.equal(w.calls.find(c => c.tool === "vault.put").opts.as, "deck", "written as the person who approved");
+});
+
+test("a proposal is refused when it cannot work, replaced by the same proposer's newer one, and declined to nothing", async () => {
+  const w = world();
+  await assert.rejects(() => w.m.propose(form({ credential: { item: "nope" } }), "mcp"), /ask the person to save the key there first/);
+  w.items.set("a-cred", { name: "a-cred", kind: "api-credential", updated: 1 });
+  await assert.rejects(() => w.m.propose(form({ credential: { item: "a-cred" } }), "mcp"), /never hands out/);
+  await assert.rejects(() => w.m.propose(form({ base_url: "http://x.example.com" }), "mcp"), /https/);
+  await w.m.propose(form(), "mcp");
+  const second = await w.m.propose(form(), "mcp");
+  assert.deepEqual(w.m.proposals().map(x => x.proposal), [second.proposal], "the same proposer's newer proposal for the same app replaces the old");
+  assert.deepEqual(w.m.decline(second.proposal), { declined: second.proposal });
+  assert.equal(w.m.proposals().length, 0);
+  assert.throws(() => w.m.decline("prop_x"), /no proposal/);
+  await assert.rejects(() => w.m.approve("prop_x", "deck"), /no proposal/);
+  await w.m.save(form(), { as: "deck" });
+  await assert.rejects(() => w.m.propose(form(), "mcp"), /already a connection/);
+});

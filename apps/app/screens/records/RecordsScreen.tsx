@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { PinToSidebar } from "../shell/PinToSidebar";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
@@ -9,14 +10,14 @@ const TABS_MAX = 5;
 const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /** /u/records/<type>: every record of one type, as a list, a board or a calendar, drawn from the type's definition. Nothing here knows Contact or Matter. */
-export function RecordsScreen({ type }: { type: string }) {
+export function RecordsScreen({ type, view: openedView }: { type: string; view?: string }) {
   const router = useRouter();
   const store = useStore();
   const { data: world, loading, error, reload } = useRecordsWorld();
   const { phone } = useUiTheme();
   const [view, setView] = useState<ViewKind>("list");
   // A named view picked from the title menu, and whether this visit has cleared its filter (the view itself is not edited).
-  const [viewName, setViewName] = useState<string | undefined>(undefined);
+  const [viewName, setViewName] = useState<string | undefined>(openedView);
   const [cleared, setCleared] = useState(false);
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
@@ -52,6 +53,7 @@ export function RecordsScreen({ type }: { type: string }) {
       </View>
       {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
       <View className="flex-row gap-s2">
+        <PinToSidebar id={`records-${type}${viewName ? `-${viewName}` : ""}`} label={viewName ? (named.find((n) => n.name === viewName)?.label ?? vd.plural) : vd.plural} href={`/u/records/${type}${viewName ? `?view=${encodeURIComponent(viewName)}` : ""}`} />
         <Button kind="ghost" size="sm" icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
         <Button kind="ghost" size="sm" icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
       </View>

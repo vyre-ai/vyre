@@ -15,6 +15,7 @@ import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
 import { serve, serveWS } from "./server.js";
 import { createGroups } from "./group.js";
+import { createActivity } from "./activity.js";
 import { createAccess } from "./access.js";
 
 export { SessionLog, Logs } from "./log.js";
@@ -113,10 +114,14 @@ export default {
 
     const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
     const access = createAccess({ ctx, groups, logs });
+    // A hand-off to a teammate, and the teammate's steps, in the asker's conversation (team/0.3/IFACE-activity.md).
+    const activity = createActivity({ ctx, logs, groups });
+    const offSummon = ctx.events.on("*", (/** @type {any} */ e) => { if (e && typeof e.type === "string" && e.type.startsWith("summon.")) activity.onSummon(e); });
 
     const off = ctx.events.on("*", (/** @type {any} */ e) => {
       if (!e || !e.thread || !EVENTS.test(e.type)) return;
       if (groups) groups.onEvent(e);
+      activity.onThread(e);
       const waiting = held.get(e.thread);
       if (waiting) { waiting.push(e); return; }
       if (!seen.has(e.thread)) {
@@ -260,6 +265,7 @@ export default {
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
       obj({ chat: str, text: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, mode: { type: "string", enum: ["steer", "queue"] }, reply_to: str, tz: str, as: str, name: str }, ["chat"]), "send");
+    tool("stream.second-opinion", "Ask another assistant or model of this chat for its own answer to the same question, on an answer you are reading: { chat, message, to }. The chat shows one short line from you; the other assistant is also given the question, the answer and the last turns from the chat itself. A model the chat does not have yet (codex, grok, provider/model) joins in the same step.", obj({ chat: str, message: str, to: str, surface: str, as: str }, ["chat", "message", "to"]), "secondOpinion");
     tool("stream.catchup", "What happened in a chat since you last read it: the last messages (who said what), the steps taken, questions still open, who joined or left. Plain facts from the chat's own log; nothing is summarised by a model.", obj({ chat: str, as: str }, ["chat"]), "catchup");
     tool("stream.typing", "Tell the chat you are typing (on: false: you stopped). Others see \"typing\" for a few seconds; nothing is kept.", obj({ chat: str, on: bool, as: str }, ["chat"]), "typing");
     tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ chat: str, message: str, emoji: str, on: bool, as: str }, ["chat", "message", "emoji"]), "react");
@@ -312,6 +318,7 @@ export default {
       setFieldSource(fn) { fieldSource = typeof fn === "function" ? fn : null; },
       async stop() {
         off();
+        offSummon();
         if (groups) groups.stop();
         for (const s of sockets) { try { s.destroy(); } catch {} }
         sockets.clear(); tickets.clear();

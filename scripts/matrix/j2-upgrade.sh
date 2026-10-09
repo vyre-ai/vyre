@@ -8,7 +8,7 @@
 set -u
 OLD=$(cd "$1" && pwd); NEW=$(cd "$2" && pwd); OUT=$3; mkdir -p "$OUT"
 [ -n "${CI:-}" ] || { echo "j2-upgrade.sh: runs on a CI runner only (CI is unset)" >&2; exit 2; }
-DEV=${J2_DEVICE:-linux}; FAILED=0
+DEV=${J2_DEVICE:-linux}; FAILED=0; DIR=/srv/vyre
 rec() { # rec STEP ok|false [why]
   ok=$2; [ "$ok" = ok ] && ok=true || { ok=false; FAILED=$((FAILED + 1)); }
   printf '{"journey":"J2","device":"%s","step":"%s","ok":%s,"why":"%s"}\n' "$DEV" "$1" "$ok" "$(printf %s "${3:-}" | tr -d '"\\' | tr '\n' ' ' | cut -c1-300)" >>"$OUT/results.jsonl"
@@ -31,11 +31,14 @@ if VYRE_BOX_URL=http://127.0.0.1:18081/ VYRE_BUILD=tgz sh "$OLD/install-box.sh" 
 else rec 2.1-install-old false "install or start failed: $(tail -3 "$OUT/install.log")"; exit 1; fi
 
 # 2.2 fill it with a made-up world and read it back
-vyre call memory.remember '{"text":"My wife is Robin"}' >"$OUT/seed-memory.json" 2>&1
-vyre call planner.add '{"kind":"note","text":"Marlow and Finch retainer draft"}' >"$OUT/seed-note.json" 2>&1
-seen() { vyre call planner.list '{}' 2>&1 | grep -q 'retainer draft'; }
-mem() { vyre call memory.me '{}' 2>&1 | tee "$OUT/facts-${1:-x}.json" | grep -q 'Robin'; }
-seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable. note: $(head -c 150 "$OUT/seed-note.json" | tr '\n' ' ') list: $(vyre call planner.list '{}' 2>&1 | head -c 200 | tr '\n' ' ')"
+docker exec -u vyre vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >"$OUT/seed.log" 2>&1
+# The seed is two files in the box's home volume, which an update, a rollback and a refused update must leave as they are. (The old release's planner and memory hold their data in a store the
+# candidate does not read, and the candidate's need the record store and a person, which a bare CI box has not.) seen/mem read the files back through the container.
+seen() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
+mem() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | tee "$OUT/facts-${1:-x}.json" | grep -q 'Robin'; }
+# The updated box runs the candidate on the built-in store: no Records stack on a runner, and the update's module check needs the planner up.
+printf 'VYRE_STORE=sqlite\n' | sudo tee -a "$DIR/vyre.env" >/dev/null
+seen && rec 2.2-seed ok || rec 2.2-seed false "seed not readable: $(head -c 200 "$OUT/seed.log" | tr '\n' ' ')"
 
 mem before && rec 2.2b-memory-seed ok || rec 2.2b-memory-seed false "memory.me does not show the fact: $(head -c 200 "$OUT/facts-before.json" | tr '\n' ' ')"
 

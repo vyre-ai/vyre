@@ -96,7 +96,16 @@ async function main() {
       cleanup.push(() => { page.close(); return fetch(`${base}/json/close/${t.id}`).catch(() => {}); });
       // A new target starts on about:blank, whose readyState is already "complete": waiting on that alone let the script run before the test page
       // had loaded (#14, document.getElementById("m") was null). Wait for the test page's own element.
-      await page.run(`await new Promise((r, j) => { const end = Date.now() + 15000; const tick = () => { if (document.readyState === "complete" && document.getElementById("m")) r(); else if (Date.now() > end) j(new Error("the test page never loaded")); else setTimeout(tick, 20); }; tick(); });`);
+      // The wait itself can start on about:blank and have its context destroyed when the navigation commits (v0.2.13 failed there: "Execution context was destroyed"): ask again in the new page.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await page.run(`await new Promise((r, j) => { const end = Date.now() + 15000; const tick = () => { if (document.readyState === "complete" && document.getElementById("m")) r(); else if (Date.now() > end) j(new Error("the test page never loaded")); else setTimeout(tick, 20); }; tick(); });`);
+          break;
+        } catch (e) {
+          if (attempt >= 5 || !/context was destroyed|Cannot find context|Inspected target navigated/i.test(String(e && e.message))) throw e;
+          await sleep(100);
+        }
+      }
       await page.run(`
         window.__sent = [];
         window.chrome = { runtime: { id: "chip-check", lastError: undefined, sendMessage: (m, cb) => { window.__sent.push(JSON.parse(JSON.stringify(m)));

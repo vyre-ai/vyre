@@ -17,3 +17,13 @@ test("name directory: the gate's acme(name, value) sends the challenge value, no
   assert.deepEqual(calls, [["names.directory.acme", { token: value }], ["names.directory.acme-clear", {}], ["names.directory.publish", {}]]);
   assert.match(calls[0][1].token, /^[A-Za-z0-9_-]{20,128}$/, "the directory's own check for a challenge value");
 });
+
+test("name directory: publish carries `apps: true` only when the gate says the box has an app, and nothing otherwise", async () => {
+  /** @type {[string, any][]} */
+  const calls = [];
+  const dir = nameDirectory(async (tool, input) => { calls.push([tool, input]); return { ok: true }; });
+  await dir.publish("alex", { apps: true });
+  await dir.publish("alex", { apps: false });
+  await dir.publish("alex", /** @type {any} */ ({ apps: "yes" }));
+  assert.deepEqual(calls, [["names.directory.publish", { apps: true }], ["names.directory.publish", {}], ["names.directory.publish", {}]]);
+});

@@ -402,3 +402,12 @@ test("home sandbox (Linux plan): with the egress proxy, the folder of the node t
   const i = p.argv.findIndex((a, k) => a === "--ro-bind" && p.argv[k + 1] === dir && p.argv[k + 2] === dir);
   assert.ok(i >= 0, `node's folder ${dir} is bound: ${p.argv.join(" ").slice(0, 400)}`);
 });
+
+test("home sandbox (macOS plan): the session has a PATH: the program's and interpreter's folders first, the caller's folders, then the system's (a `#!/usr/bin/env node` agent finds node under nvm or Homebrew; issue 109)", async t => {
+  const r = await rig(t);
+  const base = { platform: "darwin", command: "/opt/nvm/versions/node/v22/bin/claude", args: ["--version"], home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent };
+  const bare = planHome({ ...base, pathDirs: ["/opt/nvm/versions/node/v22/bin"] });
+  assert.deepEqual(bare.env.PATH.split(":"), ["/opt/nvm/versions/node/v22/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"], "no caller PATH: the program's folder, then the system's");
+  const withCaller = planHome({ ...base, env: { PATH: "/Users/a/.volta/bin:relative/bin:/usr/bin" }, pathDirs: ["/opt/nvm/versions/node/v22/bin"] });
+  assert.deepEqual(withCaller.env.PATH.split(":"), ["/opt/nvm/versions/node/v22/bin", "/Users/a/.volta/bin", "/usr/bin", "/opt/homebrew/bin", "/usr/local/bin", "/bin"], "the caller's absolute folders are kept, a relative one is dropped, nothing twice");
+});

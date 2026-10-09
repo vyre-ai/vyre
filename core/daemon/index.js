@@ -267,12 +267,11 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const { moduleActionPort } = await import("./module-actions.js");
-    const flowsHost = createFlowsHost({ log, callAction: moduleActionPort({ registry, owner: () => kernel.id.owner }), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
-      // The registered tools a Flow's call step may run (their module said so with flowAction), and the one way to run one: as the person, through the registry.
-      flowTools: () => registry.flowTools(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
+      // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
+      flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
       // The Google accounts the google module holds (a signed-in calendar), read and written through google.api as module:leases (the daemon's own label for the kernel's lease path)
@@ -380,6 +379,12 @@ async function startLocked(opts, root, p, release) {
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
     // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
     stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+    // A sent email is logged on the client it went to: the Gate's release, read back, filed as a Communication on the matching Contacts (core/daemon/sent-mail-log.js).
+    if (!basic) {
+      const { watchSentMail } = await import("./sent-mail-log.js");
+      watchSentMail({ events, kernel: /** @type {any} */ (kernel).gateway, log, call: (tool, input) => registry.call(tool, input, "module:leases"),
+        chain: () => /** @type {any} */ (kernel).chains.fromFacts({ kind: "device", device_key_id: "sent-mail-log", person: kernel.id.owner, path: "direct", session: "sent-mail-log" }) });
+    }
     // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
@@ -440,8 +445,6 @@ async function startLocked(opts, root, p, release) {
         };
       },
     };
-    // A module's tools marked `flow` become actions of the Space, held by the owner and admins (kernel/index.js registerFlowActions).
-    registry.deps.registerFlowActions = (/** @type {string} */ name, /** @type {any[]} */ defs) => kernel.registerFlowActions(name, defs);
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
     db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
@@ -609,7 +612,7 @@ async function startLocked(opts, root, p, release) {
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
       const homeMoves = () => { try { const w = registry.modules.get("wink"); return w && w.handle ? w.handle.homeMoves : null; } catch { return null; } };
       registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer, homeMoves, lent, services: (/** @type {string} */ space, /** @type {any} */ k) => { const h = /** @type {any} */ (registry.modules.get("sidebar") && registry.modules.get("sidebar").handle); return h && typeof h.peerService === "function" ? { sidebar: h.peerService({ space, kernel: k, registry }) } : {}; }, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

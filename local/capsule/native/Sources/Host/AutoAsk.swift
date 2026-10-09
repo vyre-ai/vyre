@@ -229,6 +229,18 @@ extension CapsuleModel {
         search()
     }
 
+    /// ⌘O in a conversation with an agent: its thread in Vyre chat, on the box's Deck.
+    func openDirectInChat() {
+        guard let t = direct.dm?.thread, !t.isEmpty else { return }
+        guard let box = catalog.box, let url = URL(string: box.hasPrefix("http") ? box : "https://" + box)?
+            .appendingPathComponent("chat/thread").appendingPathComponent(t) else {
+            line = "Vyre chat is on your server, and this Mac is not paired with one."
+            return
+        }
+        NSWorkspace.shared.open(url)
+        onClose?(nil)
+    }
+
     /// ⌘O: the answer's thread in Vyre chat, on the box's Deck.
     func openInChat() {
         guard let r = reply, !r.thread.isEmpty else { return }

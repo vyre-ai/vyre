@@ -72,6 +72,21 @@ done
 grep -q 'runatload' "$work/com.vyre.core.print" || grep -q 'RunAtLoad' /Library/LaunchDaemons/com.vyre.core.plist || bad "core does not start at load"
 grep -q 'RunAtLoad' /Library/LaunchDaemons/com.vyre.vyred.plist || bad "vyred does not start at load"
 ok "core, update, vyred and colima are LaunchDaemons in the system domain, started at load"
+# A server comes back by itself (core/vyre-core/online.js): the power settings the installer set, and the boot test of the daemons it wrote. (A hosted runner cannot reboot: this is the state a reboot starts from.)
+pm=$(pmset -g)
+for kv in "autorestart 1" "sleep 0" "disksleep 0" "womp 1" "powernap 0"; do
+  k=${kv% *}; v=${kv#* }
+  line=$(printf '%s\n' "$pm" | awk -v k="$k" '$1 == k { print $2; exit }')
+  # a setting this machine does not show cannot be wrong; one that is shown must be what a server wants
+  [ -z "$line" ] || [ "$line" = "$v" ] || bad "pmset $k is $line, a server wants $v"
+done
+ok "the power settings are a server's: start after a power cut, never sleep ($(printf '%s\n' "$pm" | awk '$1 == "autorestart" || $1 == "sleep" { printf "%s %s ", $1, $2 }'))"
+for l in com.vyre.core com.vyre.vyred com.vyre.colima; do
+  sudo launchctl print "system/$l" >/dev/null 2>&1 || bad "$l is not loaded in launchd"
+  [ "$(plutil -extract RunAtLoad raw -o - "/Library/LaunchDaemons/$l.plist")" = true ] || bad "$l has no RunAtLoad"
+  plutil -extract KeepAlive raw -o - "/Library/LaunchDaemons/$l.plist" >/dev/null 2>&1 || bad "$l has no KeepAlive"
+done
+ok "the boot test: core, vyred and colima are loaded, start at load and are kept alive"
 
 # core answers.
 sock=$(node -p 'JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).socket' "$base/core.json")

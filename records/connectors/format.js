@@ -28,15 +28,34 @@ const ID_RE = /^[a-z][a-z0-9_-]{0,63}$/;
 const OP_RE = /^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*){0,3}$/;
 const TYPES = ["string", "number", "boolean", "object", "array", "time", "email"];
 const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
+/** Names a fixed header can never be: they authenticate, frame or override the request, which vyred alone does. */
+const FIXED_HEADER_FORBIDDEN = /^(authorization|proxy-.*|cookie|set-cookie|host|x-api-key|content-length|content-type|transfer-encoding|connection|origin|referer|if-match|if-none-match|x-http-method.*|x-method-override|x-vyre-.*|.*authorization.*|x-auth.*|x-token.*|x-access-token.*)$/;
+
+/** Problems with a connection's fixed headers (set on every request by vyred), each a plain sentence. @param {any} h @returns {string[]} */
+export function checkFixedHeaders(h) {
+  if (!isObj(h)) return ["headers: an object of header names and values"];
+  /** @type {string[]} */ const out = [];
+  const names = Object.keys(h);
+  if (names.length > 20) out.push("headers: at most 20");
+  for (const k of names) {
+    const name = k.toLowerCase();
+    if (!/^[a-z0-9-]{1,64}$/.test(name)) out.push(`headers.${k.slice(0, 40)}: not a header name`);
+    else if (FIXED_HEADER_FORBIDDEN.test(name)) out.push(`headers.${name}: that header authenticates or frames the request, so only the vault sets it`);
+    if (typeof h[k] !== "string" || !h[k] || h[k].length > 2000 || /[\r\n\0]/.test(h[k])) out.push(`headers.${name}: a single-line value`);
+  }
+  return out;
+}
 
 /** @typedef {{ type: string, required?: boolean, enum?: any[], max?: number, items?: Shape, fields?: Record<string, Shape> }} Shape */
 /** @typedef {{ params?: Record<string, Shape>, query?: Record<string, Shape>, body?: Record<string, Shape>, headers?: Record<string, Shape>, encoding?: "json" | "form" }} OpInput */
-/** @typedef {{ method: string, path: string, kind: string, label?: string, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
+/** @typedef {{ method: string, path: string, kind: string, label?: string, relabeled?: true, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
  *   readback?: { op: string, args: Record<string, string>, compare?: Record<string, string> }, wrap?: string }} Op */
 /** @typedef {{ op: string, items?: string, id: string, at?: string, title?: string, args?: { query?: Record<string, any>, params?: Record<string, string> }, since?: { lookback_days?: number },
  *   expand?: { op: string, args: Record<string, string>, query?: Record<string, any> }, map: Record<string, any>, every_minutes?: number, label?: string }} Poll */
-/** @typedef {{ id: string, label: string, version: number, base_url: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
- *   ops: Record<string, Op>, poll?: Record<string, Poll>, inbound?: { webhook: { events: string[], emits: string } }, deny?: { method?: string, path: string }[] }} Declaration */
+/** The host name a Connection to an app on this machine is given, so every address the vault builds for it is one nothing on the internet answers; the vault swaps in the app's real local origin. @param {string} app */
+export const appHost = app => `${app}.app.invalid`;
+/** @typedef {{ id: string, label: string, version: number, base_url?: string, app?: string, auth: any, rate?: { per_minute: number, retry_after?: boolean }, idempotency?: { header: string },
+ *   ops: Record<string, Op>, headers?: Record<string, string>, poll?: Record<string, Poll>, inbound?: { webhook: { events: string[], emits: string } }, deny?: { method?: string, path: string }[] }} Declaration */
 
 /** @param {any} s @param {string} path @param {string[]} out */
 function checkShape(s, path, out) {
@@ -66,22 +85,30 @@ export function checkDeclaration(d) {
   if (typeof d.label !== "string" || !d.label || d.label.length > 80) out.push("label: a short name");
   if (!Number.isInteger(d.version) || d.version < 1) out.push("version: a whole number from 1");
   let host = "";
-  try {
+  if (d.app !== undefined) {
+    // an app module's own API on this machine: no address of its own, and only the sign-ins that need no browser
+    if (typeof d.app !== "string" || !/^[a-z][a-z0-9-]{1,40}$/.test(d.app)) out.push("app: the module's name, lowercase letters, digits and -");
+    if (d.base_url !== undefined) out.push("base_url: an app's connection has none (the app is reached on this machine)");
+    if (isObj(d.auth) && !["bearer", "api-key", "basic"].includes(d.auth.type)) out.push("auth.type: an app's connection signs in with bearer, api-key or basic");
+    if (d.poll !== undefined || d.inbound !== undefined) out.push("poll, inbound: not for an app's connection yet");
+  } else try {
     const u = new URL(String(d.base_url));
     if (u.protocol !== "https:" || u.username || u.password || u.search || u.hash || (u.pathname !== "/" && u.pathname !== "")) throw new Error("x");
     host = u.hostname;
     if (host.includes("*") || !host.includes(".")) throw new Error("x");
   } catch { out.push("base_url: one exact https host with no path, such as https://api.example.com"); }
   const a = d.auth;
-  if (!isObj(a) || !["bearer", "api-key", "oauth", "service-account", "google"].includes(a.type)) out.push("auth.type: bearer, api-key, oauth, service-account or google");
+  if (!isObj(a) || !["bearer", "api-key", "basic", "oauth", "service-account", "google"].includes(a.type)) out.push("auth.type: bearer, api-key, basic, oauth, service-account or google");
   else {
     if (a.type === "oauth" && (typeof a.authorize_uri !== "string" || !a.authorize_uri.startsWith("https://") || typeof a.token_uri !== "string" || !a.token_uri.startsWith("https://"))) out.push("auth: oauth names https authorize_uri and token_uri");
     if ((a.type === "oauth" || a.type === "service-account" || a.type === "google") && a.scopes !== undefined && !(Array.isArray(a.scopes) && a.scopes.every((/** @type {any} */ x) => typeof x === "string"))) out.push("auth.scopes: a list of strings");
     if ((a.type === "service-account" || (a.also !== undefined && a.type === "oauth")) && !(Array.isArray(a.scopes) && a.scopes.length)) out.push("auth.scopes: a service account names the scopes it acts with");
     if (a.also !== undefined && !(Array.isArray(a.also) && a.also.every((/** @type {any} */ x) => x === "service-account"))) out.push("auth.also: [\"service-account\"], the other way a person may sign in");
-    if (a.type === "api-key" && a.header !== undefined && (typeof a.header !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(a.header))) out.push("auth.header: a header name");
+    if (a.in !== undefined && !(a.type === "api-key" && a.in === "query" && typeof a.param === "string" && /^[A-Za-z0-9_.-]{1,64}$/.test(a.param) && a.header === undefined)) out.push("auth.in: only an api-key may say \"query\", and then names its param (and no header)");
+    if (a.type === "api-key" && a.in === undefined && a.header !== undefined && (typeof a.header !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(a.header))) out.push("auth.header: a header name");
   }
   if (d.rate !== undefined && !(isObj(d.rate) && Number.isInteger(d.rate.per_minute) && d.rate.per_minute >= 1 && d.rate.per_minute <= 6000 && (d.rate.retry_after === undefined || typeof d.rate.retry_after === "boolean"))) out.push("rate: { per_minute: 1 to 6000, retry_after?: true }");
+  if (d.headers !== undefined) out.push(...checkFixedHeaders(d.headers));
   if (d.idempotency !== undefined && !(isObj(d.idempotency) && typeof d.idempotency.header === "string" && /^[A-Za-z0-9-]{1,64}$/.test(d.idempotency.header))) out.push("idempotency: { header: the header the service reads the key from }");
   if (!isObj(d.ops) || !Object.keys(d.ops).length) { out.push("ops: at least one operation"); return out; }
   const seen = new Set();
@@ -92,7 +119,9 @@ export function checkDeclaration(d) {
     if (!METHODS.includes(op.method)) out.push(`${p}.method: ${METHODS.join(", ")}`);
     if (typeof op.path !== "string" || !/^\/[A-Za-z0-9._~\/{}:*-]{0,200}$/.test(op.path) || op.path.split("/").includes("..") || /\*/.test(op.path)) out.push(`${p}.path: starts with /, plain segments and {params}, no wildcard`);
     if (!KINDS.includes(op.kind)) out.push(`${p}.kind: ${KINDS.join(", ")}`);
-    if (op.kind === "read" && !["GET", "HEAD"].includes(op.method)) out.push(`${p}: a read is a GET or HEAD`);
+    // a POST that only reads (a search) is a read when the PERSON said so (`relabeled`); nothing else makes a write a read
+    if (op.kind === "read" && !["GET", "HEAD"].includes(op.method) && op.relabeled !== true) out.push(`${p}: a read is a GET or HEAD (or an operation the person relabeled as a read)`);
+    if (op.relabeled !== undefined && op.relabeled !== true) out.push(`${p}.relabeled: true, or left out`);
     if (op.kind !== "read" && ["GET", "HEAD"].includes(op.method)) out.push(`${p}: a ${op.kind} is not a GET or HEAD`);
     const sig = `${op.method} ${String(op.path).replace(/\{[^}]*\}/g, "*")}`;
     if (seen.has(sig)) out.push(`${p}: ${sig} is declared twice, so a request could not tell which op it is`); seen.add(sig);
@@ -181,7 +210,7 @@ export function toCredentialConfig(d, o = {}) {
     if (!o.client) throw Object.assign(new Error(`${d.id} signs in with an app of the person's own: name the vault item holding its client id and secret (client)`), { code: "bad_input" });
     auth = { type: "oauth", client: typeof o.client === "string" ? { item: o.client } : o.client, authorize_uri: a.authorize_uri, token_uri: a.token_uri, scopes: a.scopes || [] };
   } else {
-    auth = { type: a.type, ...(o.item ? { item: o.item, ...(o.field ? { field: o.field } : {}) } : {}), ...(a.header ? { header: a.header } : {}), ...(a.format ? { format: a.format } : {}) };
+    auth = { type: a.type, ...(o.item ? { item: o.item, ...(o.field ? { field: o.field } : {}) } : {}), ...(a.in ? { in: a.in, param: a.param } : {}), ...(a.header ? { header: a.header } : {}), ...(a.format ? { format: a.format } : {}) };
   }
   return { auth, ...declarationParts(d) };
 }
@@ -195,9 +224,10 @@ export function declarationParts(d) {
   // The vault's classes are read, send, spend and delete; a change in the service is held like a send, and a draft is the one non-read thing that is not held.
   const cls = (/** @type {Op} */ op) => (op.kind === "read" || op.kind === "draft" ? "read" : op.kind === "change" ? "send" : op.kind);
   return {
-    hosts: [new URL(d.base_url).hostname],
+    hosts: [d.app ? appHost(d.app) : new URL(/** @type {string} */ (d.base_url)).hostname], ...(d.app ? { app: d.app } : {}),
     endpoints: Object.values(d.ops).map(op => ({ method: op.method, path: patternOf(op.path), kind: cls(op) })),
     ...(d.rate ? { rate: { per_minute: d.rate.per_minute } } : {}),
+    ...(d.headers && Object.keys(d.headers).length ? { headers: { ...d.headers } } : {}),
     service: serviceOf(d),
   };
 }

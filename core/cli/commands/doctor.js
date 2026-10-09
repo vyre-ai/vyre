@@ -29,6 +29,8 @@ import { progressLine } from "../../recall/progress.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { INSTALL } from "../brand.js";
 import { json, emit, EXIT, viewing } from "../kit.js";
+import { execFileSync, spawnSync } from "node:child_process";
+import { parsePmset, powerDrift, pmsetArgs, fileVault, PMSET } from "../../../lib/online.js";
 
 /** The whole run's budget, and one check's. */
 export const BUDGET_MS = 2000;
@@ -286,7 +288,26 @@ export async function diagnose(deps = {}) {
     return pass("recall", "Search", line || `${Number(r.data.sessions || 0).toLocaleString("en-US")} sessions indexed${r.data.vectors && r.data.vectors.ready ? ", by meaning too" : ""}`);
   }) : Promise.resolve(null);
 
-  const all = [vyred, identity, spaceLink, pathCheck, relayCheck, door, storage, clock, paired, passkey, claude, capsule, modules, recall, onPath, size];
+  // A Mac that is a server (the system service is installed) must come back by itself: after a power cut it boots, it never sleeps (lib/online.js). Not applicable anywhere else.
+  const sysRun = deps.sysRun || ((cmd, args) => execFileSync(cmd, args, { encoding: "utf8", timeout: 1200, stdio: ["ignore", "pipe", "ignore"] }));
+  const macServer = (deps.platform || process.platform) === "darwin" && fs.existsSync(deps.coreJson || "/Library/Application Support/Vyre/core.json");
+  const alwaysOn = !macServer ? Promise.resolve(null) : (async () => {
+    const label = "Comes back after a power cut";
+    let have;
+    try { have = parsePmset(sysRun(PMSET, ["-g"])); } catch { return unknown("always-on", label, "pmset did not answer"); }
+    const drift = powerDrift(have);
+    return drift.length
+      ? failed("always-on", label, drift.map(d => `${d.key} is ${d.have}, should be ${d.want}`).join(", "), "vyre doctor --repair (asks for your Mac password once)")
+      : pass("always-on", label, "starts when power returns, never sleeps");
+  })();
+  const vault = !macServer ? Promise.resolve(null) : (async () => {
+    const label = "FileVault";
+    const f = fileVault(sysRun);
+    if (f === "on") return failed("filevault", label, "on: stops after a restart until someone signs in (after a power cut this Mac waits at the login window and nothing runs)", "turn FileVault off in System Settings, Privacy & Security (Vyre does not change it), or keep it and accept that a power cut leaves this server waiting for someone to sign in");
+    return f === "off" ? pass("filevault", label, "off") : unknown("filevault", label, "fdesetup did not say");
+  })();
+
+  const all = [vyred, identity, spaceLink, pathCheck, relayCheck, door, storage, clock, paired, passkey, claude, capsule, modules, recall, onPath, size, alwaysOn, vault];
   const left = Math.max(100, BUDGET_MS - (Date.now() - t0));
   const named = (c, i) => c && c.id === "?" ? { ...c, id: IDS[i], label: LABELS[i], detail: `no answer in ${BUDGET_MS / 1000} s` } : c;
   // A check that has one line per space or per storage device answers a list; onCheck hears the worst of it, the result has every line.
@@ -298,8 +319,8 @@ export async function diagnose(deps = {}) {
 }
 
 /** Every check's id and short label, in the order diagnose runs them. */
-export const IDS = ["vyred", "identity", "space-link", "path", "relay", "door", "storage", "clock", "paired", "passkey", "claude", "capsule", "modules", "recall", "vyre-on-path", "install"];
-const LABELS = ["vyred", "Signed in to Vyre", "Link to your space", "Path to your server", "Relay", "Server door", "Storage", "Clock", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size"];
+export const IDS = ["vyred", "identity", "space-link", "path", "relay", "door", "storage", "clock", "paired", "passkey", "claude", "capsule", "modules", "recall", "vyre-on-path", "install", "always-on", "filevault"];
+const LABELS = ["vyred", "Signed in to Vyre", "Link to your space", "Path to your server", "Relay", "Server door", "Storage", "Clock", "Paired", "Passkey", "Claude on the box", "The Capsule", "Every module started", "Search", "The vyre on PATH", "Install size", "Comes back after a power cut", "FileVault"];
 
 /**
  * A check as a checks frame's item: ok, failed or unknown, the detail and the fix in the note.
@@ -331,13 +352,22 @@ async function live() {
 }
 
 export default {
-  name: "doctor", order: 12, usage: "vyre doctor [--json]",
+  name: "doctor", order: 12, usage: "vyre doctor [--json] [--repair]",
   summary: "check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix",
   help: "Read-only and under 2 s. ✓ passed, ✗ failed (the line under it is what to do), ? could not be checked.\nExit 0 when nothing failed, 1 when something did. --json: { ok, role, checks: [{ id, label, ok, detail, fix }] }.",
   /** @param {string[]} args */
   async run(args = []) {
     if (viewing()) return live();
-    const r = await diagnose();
+    let r = await diagnose();
+    // --repair: put a Mac server's power settings right (root: one password prompt). FileVault is never changed by Vyre; its line says what to do.
+    if (args.includes("--repair")) {
+      if (r.checks.some(c => c.id === "always-on" && c.ok === false)) {
+        out(dim("  setting this Mac to start after a power cut and never sleep (sudo pmset)..."));
+        const rc = spawnSync("/usr/bin/sudo", [PMSET, ...pmsetArgs()], { stdio: "inherit" });
+        if (rc.status !== 0) out(dim("  the power settings were not changed"));
+        r = await diagnose();
+      } else out(dim("  nothing to repair that Vyre may change"));
+    }
     const ok = r.checks.every(c => c.ok !== false);
     if (json() || args.includes("--json")) { emit({ ok, role: r.role, ms: r.ms, checks: r.checks }); return ok ? EXIT.OK : EXIT.FAILED; }
     out("");
