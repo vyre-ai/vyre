@@ -89,13 +89,22 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     const t = now();
     // the agent whose computer holds the login (a box's rung) is kept across a sync unless a new one is given
     const agent = site.agent !== undefined ? site.agent : had && had.form ? (() => { try { return JSON.parse(had.form).agent; } catch { return undefined; } })() : undefined;
-    const formJson = JSON.stringify({ site: site.origin, ...(agent ? { agent } : {}) });
+    const governor = site.governor !== undefined ? site.governor : had && had.form ? (() => { try { return JSON.parse(had.form).governor; } catch { return undefined; } })() : undefined;
+    const formJson = JSON.stringify({ site: site.origin, ...(agent ? { agent } : {}), ...(governor ? { governor } : {}) });
     if (had) db.prepare("UPDATE connectors_made SET label=?, declaration=?, light='unknown', reason=NULL, updated=?, form=? WHERE id=?").run(declaration.label, JSON.stringify(declaration), t, formJson, id);
     else db.prepare("INSERT INTO connectors_made (id, label, declaration, credential_item, credential_field, check_path, origin, made_by, form, created, updated) VALUES (?,?,?,?,?,?,?,?,?,?,?)").run(id, declaration.label, JSON.stringify(declaration), "", null, "/", "site", o.as, formJson, t, t);
     try { await materialize(row(id), o.as); }
     catch (e) { if (!had) db.prepare("DELETE FROM connectors_made WHERE id = ?").run(id); throw e; }
     emit(had ? "connectors.connection-updated" : "connectors.connection-created", { id });
     return { id, credential: credentialName(id), operations: Object.keys(declaration.ops).length };
+  }
+
+  /** The person's own limits for a website account, kept in the Connection's form (core/connectors/governor.js says what they mean). @param {string} id @param {any} governor */
+  function setGovernor(id, governor) {
+    const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");
+    const f = r.form ? JSON.parse(r.form) : {};
+    if (governor === null) delete f.governor; else f.governor = governor;
+    db.prepare("UPDATE connectors_made SET form = ?, updated = ? WHERE id = ?").run(JSON.stringify(f), now(), id);
   }
 
   /** The light of a Connection, set from what a call or a check found. @param {string} id @param {"green" | "red"} light @param {string} words */
@@ -145,7 +154,7 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   }
 
   return {
-    save, saveSite, touch, check, row,
+    save, saveSite, touch, setGovernor, check, row,
     list: async () => { return { connections: await Promise.all(/** @type {any[]} */ (db.prepare("SELECT * FROM connectors_made ORDER BY label").all()).map(async r => shape(r, await isStale(r)))) }; },
     get: async (/** @type {string} */ id) => {
       const r = row(id); if (!r) throw fail(`no connection ${id}`, "not_found");

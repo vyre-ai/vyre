@@ -46,6 +46,9 @@
       { "name": "connectors.site.list", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.rows", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.rollback", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.limits", "reach": "anyone", "effect": "read" },
+      { "name": "connectors.site.limits.set", "reach": "person", "effect": "write" },
+      { "name": "connectors.site.resume", "reach": "person", "effect": "write" },
       { "name": "connectors.site.run", "reach": "modules", "effect": "write" }
     ]
   },
@@ -63,7 +66,8 @@
       "connectors.connection-proposed",
       "connectors.site-needs-signin",
       "connectors.site-ran",
-      "connectors.site-needs-browser"
+      "connectors.site-needs-browser",
+      "connectors.site-stopped"
     ]
   },
   "shows": {

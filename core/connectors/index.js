@@ -19,6 +19,7 @@ import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 import { toCredentialConfig, isOutward, connectorWatcherName } from "../../records/connectors/format.js";
 import { madeConnections } from "./made.js";
 import { createSiteRunner, registerSiteTools, siteEntriesFrom } from "./site.js";
+import { createGovernor } from "./governor.js";
 import { isPerson } from "../../lib/caller.js";
 import { credentialName } from "../../records/connectors/connection.js";
 import { importSpec } from "../../records/connectors/import-spec.js";
@@ -215,14 +216,18 @@ export default {
     // Connections a person made from any app's API (records/connectors/connection.js, made.js): a row, a derived vault credential and a check. Making, changing, rebuilding and deleting one are
     // the person's own acts (the vault asks them to confirm the credential it writes); a model can read the list and ask for a check, never widen what a Connection reaches.
     /** @type {ReturnType<typeof createSiteRunner>} */ let siteRunner;
+    // how a website account is used (pace, daily caps, quiet hours, stop at a challenge): its day's counts live in this module's own table
+    const gov = createGovernor({ store: {
+      get: id => { const r = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM connectors_site_gov WHERE id = ?").get(id)); return r ? { day: r.day, reads: r.reads, writes: r.writes, last: r.last, stopped_at: r.stopped_at, stopped_reason: r.stopped_reason, cooldown_until: r.cooldown_until } : null; },
+      put: (id, s) => void ctx.store.db.prepare("INSERT INTO connectors_site_gov (id, day, reads, writes, last, stopped_at, stopped_reason, cooldown_until) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT (id) DO UPDATE SET day = excluded.day, reads = excluded.reads, writes = excluded.writes, last = excluded.last, stopped_at = excluded.stopped_at, stopped_reason = excluded.stopped_reason, cooldown_until = excluded.cooldown_until").run(id, s.day, s.reads, s.writes, s.last, s.stopped_at, s.stopped_reason, s.cooldown_until) } });
     const made = madeConnections({ db: ctx.store.db, call: (tool, input, opts) => ctx.call(tool, input, opts), emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), siteCheck: id => siteRunner.check(id), siteEntries: siteEntriesFrom((tool, input) => ctx.call(tool, input)) });
-    siteRunner = createSiteRunner({ call: (tool, input, opts) => ctx.call(tool, input, opts), made, emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), entries: siteEntriesFrom((tool, input) => ctx.call(tool, input)), role: String((ctx.config && ctx.config.role) || "local") });
+    siteRunner = createSiteRunner({ call: (tool, input, opts) => ctx.call(tool, input, opts), made, emit: (type, payload) => ctx.events.emit(type, payload), log: (m, x) => ctx.log(m, x), entries: siteEntriesFrom((tool, input) => ctx.call(tool, input)), role: String((ctx.config && ctx.config.role) || "local"), governor: gov });
     const yours = (/** @type {any} */ meta, /** @type {string} */ what) => {
       const who = String(meta && meta.caller || "");
       if (!isPerson(who)) throw fail(`only you ${what}, from your own screen`, "denied");
       return who;
     };
-    registerSiteTools(ctx, { made, runner: siteRunner, yours, fail, obj, str, people: PEOPLE, readers: [] });
+    registerSiteTools(ctx, { made, runner: siteRunner, governor: gov, yours, fail, obj, str, people: PEOPLE, readers: [] });
     const formShape = obj({ why: str, label: str, id: str, base_url: str, app: str, send: obj({ how: { type: "string", enum: ["bearer", "header", "basic", "query"] }, name: str }, ["how"]), credential: obj({ item: str, field: str }, ["item"]),
       headers: { type: "object" }, vars: { type: "object" }, check: obj({ path: str }, ["path"]), operations: { type: "array" } }, ["label", "send", "credential", "check"]);
     const READERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];

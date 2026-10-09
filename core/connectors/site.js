@@ -8,6 +8,7 @@
 // that holds the login) and runs the operation there. Rung "page" is the person's own Chrome on this machine (chrome.op.run).
 
 import { operationOf } from "../../records/connectors/site.js";
+import { createGovernor, settingsOf, isChallenge } from "./governor.js";
 import { runOperation } from "../../lib/siteops/run.js";
 import { readOnly } from "../../lib/siteops/spec.js";
 
@@ -34,9 +35,17 @@ export function lightFor(cls, host, reason, agent = "") {
 /**
  * The runner: picks a rung and runs one operation there.
  * @param {{ call: (tool: string, input: any, opts?: any) => Promise<any>, made: any, emit?: (type: string, payload: any) => void, log?: (m: string, x?: any) => void,
- *   entries?: (origin: string, names?: string[]) => Promise<{ name: string, kind: string, op: any }[]>, role?: string }} deps
+ *   entries?: (origin: string, names?: string[]) => Promise<{ name: string, kind: string, op: any }[]>, role?: string, governor?: ReturnType<typeof createGovernor>, sleep?: (ms: number) => Promise<void> }} deps
  */
-export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, entries, role = "local" }) {
+export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, entries, role = "local", governor, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+  /** Calls to one account go one at a time, in the order they came. @type {Map<string, Promise<any>>} */
+  const chains = new Map();
+  /** @template T @param {string} id @param {() => Promise<T>} fn @returns {Promise<T>} */
+  const serial = (id, fn) => {
+    const p = (chains.get(id) || Promise.resolve()).catch(() => {}).then(fn);
+    chains.set(id, p);
+    return p.finally(() => { if (chains.get(id) === p) chains.delete(id); });
+  };
   /** One rung. Today: this machine's Chrome. @param {string} origin @param {string} name @param {Record<string, any>} inputs @param {boolean} approved @param {boolean} [check] */
   async function pageRung(origin, name, inputs, approved, check = false, agent = "") {
     // on a box the same tool runs the operation in an agent's own Chrome (rung "box"): `agent` says whose computer holds the login
@@ -98,7 +107,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
    * @param {{ credential: string, method: string, path: string, query?: any, body?: any, approved?: boolean }} q
    * @returns {Promise<{ status: number, data: any }>}
    */
-  async function run(q) {
+  async function runOnce(q) {
     const id = String(q.credential || "").replace(/^conn-/, "");
     const row = made.row(id);
     if (!row) return { status: 404, data: { error: { class: "input", reason: "no such Connection" } } };
@@ -109,14 +118,26 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const host = new URL(/** @type {string} */ (decl.base_url)).hostname;
     // the rungs, cheapest that works first; a rung that cannot serve (no browser, not allowed here) hands on to the next, and the event says which one answered
     const entry = entries ? (await entries(/** @type {string} */ (decl.base_url), [op.name]).catch(() => [])).find(e => e.name === op.name) : undefined;
-    /** @type {{ agent?: string }} */ const form = (() => { try { return JSON.parse(row.form || "{}"); } catch { return {}; } })();
+    /** @type {{ agent?: string, governor?: any }} */ const form = (() => { try { return JSON.parse(row.form || "{}"); } catch { return {}; } })();
     const agent = typeof form.agent === "string" ? form.agent : "";
+    // a watched account is used at a person's pace, within its limits, one call at a time (governor.js); a public fetch touches no account
+    const limits = governor ? settingsOf(host, form.governor) : null;
     const rungs = entry ? ladder(entry.op, agent) : ["page"];
     /** @type {any} */ let res = null; let rung = "";
     if (!rungs.length) res = { class: "no_browser", reason: "no browser that holds this login is reachable from this machine" };
     for (const r of rungs) {
       rung = r;
+      if (limits && governor && r !== "public") {
+        const a = governor.admit({ id, kind: op.kind, settings: limits });
+        if (!a.ok) { res = { class: a.class, reason: a.reason, governed: true }; break; }
+        if (a.waitMs > 0) await sleep(a.waitMs);
+      }
       res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : r === "mac" ? await macRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
+      if (limits && governor && r !== "public" && res) {
+        const rc = res.ok ? "ok" : String(res.class || "error");
+        const rec = governor.record({ id, kind: op.kind, settings: limits, cls: rc, reason: res.reason });
+        if (rec.stopped && isChallenge(rc, res.reason)) emit("connectors.site-stopped", { id, site: decl.base_url, host, reason: String(res.reason || "").slice(0, 160) });
+      }
       // a rung that has no browser to offer, or a public fetch the site refused, is not the answer while another rung remains
       if (res && (res.class === "no_browser" || (r === "public" && !res.ok && (res.class === "auth" || res.class === "blocked")))) continue;
       break;
@@ -135,6 +156,9 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const status = cls === "no_browser" ? 503 : STATUS_OF[cls] || 502;
     return { status, data: { error: { class: cls, reason: res && res.reason ? String(res.reason) : cls, ...(res && res.next ? { next: String(res.next) } : {}) } } };
   }
+
+  /** @param {{ credential: string, method: string, path: string, query?: any, body?: any, approved?: boolean }} q */
+  const run = q => serial(String(q.credential || "").replace(/^conn-/, ""), () => runOnce(q));
 
   /** Can the browser sign for this Connection right now (the right site is open, the references resolve)? @param {string} id */
   async function check(id) {
@@ -179,9 +203,9 @@ export function siteEntriesFrom(call) {
 
 /**
  * The tools of a site Connection. Connecting and syncing widen what a Connection reaches, so they are the person's own acts; the list is open to readers; `run` is the vault's alone.
- * @param {any} ctx @param {{ made: any, runner: ReturnType<typeof createSiteRunner>, yours: (meta: any, what: string) => string, fail: (m: string, c?: string) => Error, obj: Function, str: any, people: string[], readers: string[] }} d
+ * @param {any} ctx @param {{ made: any, runner: ReturnType<typeof createSiteRunner>, governor: ReturnType<typeof createGovernor>, yours: (meta: any, what: string) => string, fail: (m: string, c?: string) => Error, obj: Function, str: any, people: string[], readers: string[] }} d
  */
-export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, people, readers }) {
+export function registerSiteTools(ctx, { made, runner, governor, yours, fail, obj, str, people, readers }) {
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opts) => ctx.call(tool, input, opts);
   /** The entries of the chosen operations, or all. @param {any[]} ops @param {string[] | undefined} names */
   const pick = (ops, names) => {
@@ -279,6 +303,47 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
         }
       }
       return { rows };
+    },
+  });
+
+  ctx.tool("connectors.site.limits", {
+    effect: "read", callers: [...people, "module", "mcp", "harness"],
+    description: "How a website account is used and what has been used today: { id } -> { settings (pace, daily caps, quiet hours, time zone: the profile's, then the person's own), usage: { reads, writes, stopped, stopped_reason, cooldown_until } }. Null settings: nothing governs it.",
+    input: obj({ id: str }, ["id"]),
+    run: async (/** @type {any} */ input) => {
+      const r = made.row(String(input.id));
+      if (!r) throw fail(`no connection ${String(input.id).slice(0, 40)}`, "not_found");
+      const d = JSON.parse(r.declaration);
+      if (d.transport !== "site") throw fail(`${r.id} is not a website connection`, "bad_input");
+      const form = r.form ? JSON.parse(r.form) : {};
+      const settings = settingsOf(new URL(d.base_url).hostname, form.governor);
+      return { id: r.id, settings, ...(settings ? { usage: governor.usage(r.id, settings) } : {}) };
+    },
+  });
+
+  ctx.tool("connectors.site.limits.set", {
+    effect: "write", callers: people,
+    description: "Set the limits of a website account: { id, settings: { profile?: strict | none, reads_per_day?, writes_per_day?, gap_read_s?: [min, max], gap_write_s?: [min, max], quiet?: { from, to } | null, cooldown_min?, tz? } }, or settings null to go back to the site's default. Your own act: these protect your own account.",
+    input: obj({ id: str, settings: {} }, ["id", "settings"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      yours(meta, "change the limits of a website account");
+      const r = made.row(String(input.id));
+      if (!r) throw fail(`no connection ${String(input.id).slice(0, 40)}`, "not_found");
+      if (JSON.parse(r.declaration).transport !== "site") throw fail(`${r.id} is not a website connection`, "bad_input");
+      made.setGovernor(r.id, input.settings === null ? null : input.settings);
+      return { id: r.id, settings: settingsOf(new URL(JSON.parse(r.declaration).base_url).hostname, input.settings === null ? undefined : input.settings) };
+    },
+  });
+
+  ctx.tool("connectors.site.resume", {
+    effect: "write", callers: people,
+    description: "Resume a website account after a challenge: { id }. The account was stopped at the first challenge the site gave (a check, a captcha, a security verification); a person clears it in the browser, then says so here. Nothing resumes by itself.",
+    input: obj({ id: str }, ["id"]),
+    run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+      yours(meta, "resume a stopped website account");
+      const r = made.row(String(input.id));
+      if (!r) throw fail(`no connection ${String(input.id).slice(0, 40)}`, "not_found");
+      return { id: r.id, resumed: governor.resume(r.id) };
     },
   });
 

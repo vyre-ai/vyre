@@ -77,3 +77,78 @@ test("on a box the login lives in an agent's own Chrome: that rung runs it with 
   assert.ok((await noAgent.runner.run(q("search_people"))).status >= 400);
   assert.equal(noAgent.calls.length, 0, "a box with no agent named for the login has no browser rung");
 });
+
+// ---- the governor, wired into the runner ----
+import { createGovernor } from "./governor.js";
+const LI = "https://www.linkedin.com";
+const liDecl = siteDeclaration({ id: "linkedin", label: "LinkedIn", origin: LI, entries });
+
+function governed(/** @type {any} */ o = {}) {
+  /** @type {any[]} */ const calls = [], events = [], sleeps = [];
+  let active = 0, peak = 0;
+  const clock = { t: Date.parse("2026-10-12T10:00:00Z") };
+  const rows = new Map();
+  const store = { get: (/** @type {string} */ id) => rows.get(id) ?? null, put: (/** @type {string} */ id, /** @type {any} */ s) => void rows.set(id, { ...s }) };
+  const governor = createGovernor({ store, now: () => clock.t, random: () => 0.5 });
+  const form = { site: LI, governor: { tz: "UTC", ...(o.limits || {}) } };
+  const made = { row: (/** @type {string} */ id) => (id === "linkedin" ? { id, declaration: JSON.stringify(liDecl), form: JSON.stringify(form) } : null), touch: () => {} };
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    calls.push([tool, input]);
+    if (tool !== "chrome.op.run") return { error: { code: "no_such_tool", message: tool } };
+    active++; peak = Math.max(peak, active);
+    await new Promise(r => setImmediate(r));
+    active--;
+    return { data: o.page ? o.page(input) : { ok: true, class: "ok", data: [{ name: "page one" }] } };
+  };
+  const runner = createSiteRunner({ call, made, emit: (type, p) => events.push([type, p]), entries: async (_o, names) => entries.filter(e => !names || names.includes(e.name)), governor, sleep: async ms => { sleeps.push(ms); clock.t += ms; } });
+  return { runner, calls, events, sleeps, clock, governor, peak: () => peak };
+}
+const lq = (/** @type {string} */ op = "search_people") => ({ credential: "conn-linkedin", method: "GET", path: `/ops/${op}`, query: { query: "gamma labs" } });
+
+test("a watched account is used at a person's pace: the second call waits its turn, one at a time, and the wait is the governor's", async () => {
+  const g = governed({ limits: { quiet: null } });
+  const [a, b, c] = await Promise.all([g.runner.run(lq()), g.runner.run(lq()), g.runner.run(lq())]);
+  assert.deepEqual([a.status, b.status, c.status], [200, 200, 200]);
+  assert.equal(g.peak(), 1, "never two at once on one account");
+  assert.equal(g.sleeps.length, 2, "the first call went at once, the next two waited");
+  assert.ok(g.sleeps.every(ms => ms >= 39_000 && ms <= 41_000), `a person's 20-60 s, here 40: ${g.sleeps}`);
+});
+
+test("the daily cap and the quiet hours refuse before the account is touched, and say why", async () => {
+  const g = governed({ limits: { reads_per_day: 2, gap_read_s: [0, 0], quiet: null } });
+  assert.equal((await g.runner.run(lq())).status, 200); assert.equal((await g.runner.run(lq())).status, 200);
+  const third = await g.runner.run(lq());
+  assert.equal(third.status, 429);
+  assert.match(/** @type {any} */ (third.data).error.reason, /daily limit of 2 reads/);
+  assert.equal(g.calls.filter(c => c[0] === "chrome.op.run").length, 2, "the third never reached the browser");
+  const night = governed({});
+  night.clock.t = Date.parse("2026-10-12T02:00:00Z");
+  const q = await night.runner.run(lq());
+  assert.equal(q.status, 429); assert.match(/** @type {any} */ (q.data).error.reason, /quiet hours: no calls until 07:00/);
+  assert.equal(night.calls.length, 0);
+});
+
+test("the first challenge stops the account for good: nothing more is sent, no other rung is tried, and only a person resumes it", async () => {
+  const g = governed({ limits: { gap_read_s: [0, 0], quiet: null }, page: () => ({ ok: false, class: "blocked", reason: "Checkpoint challenge page (HTTP 200)" }) });
+  const hit = await g.runner.run(lq());
+  assert.equal(hit.status, 403);
+  assert.deepEqual(g.events.find(e => e[0] === "connectors.site-stopped")[1].id, "linkedin");
+  const calls = g.calls.length;
+  const again = await g.runner.run(lq());
+  assert.equal(again.status, 403);
+  assert.match(/** @type {any} */ (again.data).error.reason, /stopped after a challenge/);
+  assert.equal(g.calls.length, calls, "stopped: nothing reached the browser");
+  g.clock.t += 7 * 86_400_000;
+  assert.equal((await g.runner.run(lq())).status, 403, "a week later it is still stopped");
+  assert.equal(g.governor.resume("linkedin"), true);
+  assert.equal(g.governor.admit({ id: "linkedin", kind: "read", settings: /** @type {any} */ ({ tz: "UTC", reads_per_day: 5, writes_per_day: 5, gap_read_s: [0, 0], gap_write_s: [0, 0], quiet: null, cooldown_min: 1 }) }).ok, true);
+});
+
+test("a site nobody watches is not slowed, and a public fetch never counts against an account", async () => {
+  const r = rig();
+  const out = await r.runner.run(q("search_people"));
+  assert.equal(out.status, 200);
+  const g = governed({ limits: { gap_read_s: [0, 0], reads_per_day: 1, quiet: null } });
+  // the public operation (no login) is outside the account's day
+  assert.equal(g.governor.usage("linkedin", /** @type {any} */ ({ tz: "UTC" })).reads, 0);
+});
