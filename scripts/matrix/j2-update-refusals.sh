@@ -28,8 +28,8 @@ hv() { if [ -f "$DIR/VERSION" ]; then tr -d ' \r\n' <"$DIR/VERSION"; else versio
 ready() { i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i + 1)); [ $i -ge 120 ] && return 1; sleep 1; done; }
 # The seed is two files in the box's home volume, which an update (or a refused one) must leave as it is. (Planner and personal memory need the record store and a person's chain,
 # neither of which a bare CI box has, so they cannot be the seed here.) seen/mem read them back through the running container.
-seen() { docker exec -u root vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
-mem() { docker exec -u root vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | grep -q 'Robin'; }
+seen() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-note.txt' 2>/dev/null | grep -q 'retainer draft'; }
+mem() { docker exec -u vyre vyre-vyre-1 sh -c 'cat /home/vyre/j2b-seed-memory.txt' 2>/dev/null | grep -q 'Robin'; }
 statusf() { sudo cat "$ST/status/status.json" 2>/dev/null | tr -d '\n'; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
@@ -88,7 +88,7 @@ serve "$BOX" 18080
 if VYRE_BOX_URL=http://127.0.0.1:18080/ VYRE_BUILD=tgz sh "$BOX/install-box.sh" --yes </dev/null >"$OUT/install.log" 2>&1 && ready; then rec 1-install ok "$(version)"
 else rec 1-install false "install or start failed: $(tail -3 "$OUT/install.log")"; { echo "--- vyre status"; vyre status 2>&1 | head -40; echo "--- container logs"; docker logs --tail 80 vyre-vyre-1 2>&1; } >"$OUT/install-diag.log"; tail -120 "$OUT/install-diag.log" >&2; exit 1; fi
 wdir() { docker inspect -f '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$(docker ps -q --filter name=vyre-vyre | head -1)" 2>/dev/null; }
-docker exec -u root vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >"$OUT/seed.log" 2>&1; cat "$OUT/seed.log" >&2; docker ps --format '{{.Names}} {{.Status}}' >&2
+docker exec -u vyre vyre-vyre-1 sh -c 'echo "My wife is Robin" >/home/vyre/j2b-seed-memory.txt; echo "Marlow and Finch retainer draft" >/home/vyre/j2b-seed-note.txt' >"$OUT/seed.log" 2>&1; cat "$OUT/seed.log" >&2; docker ps --format '{{.Names}} {{.Status}}' >&2
 seen && mem && rec 2-seed ok || { vyre status 2>&1 | head -8 >&2; vyre modules 2>&1 | grep -v running | head -20 >&2; docker logs --tail 40 vyre-vyre-1 2>&1 | grep -iE "planner|memory|not first party|kernel" | head -15 >&2; false; } || rec 2-seed false "seed not readable"
 # 2b where the installer's own first `up` ran compose from: recorded as it is (the installer runs it as the person when they are in the docker
 #    group, so this is the stack folder; root's copies exist only once the updater is installed, which is the next step)
