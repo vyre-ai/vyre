@@ -38,3 +38,18 @@ export function loginsFor(items, site) {
 
 /** What the picture area says when there is no still: by why the box gave none. @param {string | undefined} why */
 export const stillWord = (why) => (why === "mac" ? "The picture stays on your Mac." : why === "none" ? "No picture yet." : "Waiting for a picture.");
+
+/** Does a stuck run's question ask for a one-time code? @param {string} ask */
+export const asksForCode = (ask) => /\b(code|otp|2fa|two[- ]factor|authenticator|verification)\b/i.test(String(ask || ""));
+
+/**
+ * The vault logins that hold a one-time-code seed, for a run that asked for a code: those whose host shows up in what the run has been doing come first. Rows are vault.list's ({ name, kind, fields, hosts }); a seed is
+ * never in them, only that there is one.
+ * @param {{ name: string, kind: string, fields?: string[], hosts?: string[] }[]} rows @param {string[]} lines what the run has said it was doing
+ */
+export function totpLogins(rows, lines) {
+  const said = lines.join(" ").toLowerCase();
+  const near = (/** @type {{ hosts?: string[] }} */ r) => (r.hosts || []).some((h) => { const x = hostOf(h); return x && said.includes(x.replace(/^www\./, "")); });
+  return (Array.isArray(rows) ? rows : []).filter((r) => r && r.kind === "login" && Array.isArray(r.fields) && r.fields.includes("totp"))
+    .sort((a, b) => Number(near(b)) - Number(near(a)) || a.name.localeCompare(b.name)).map((r) => ({ name: r.name, near: near(r) }));
+}

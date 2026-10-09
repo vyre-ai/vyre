@@ -1,13 +1,13 @@
 // The operator card (R031-91, R031-88): a computer at work, in the chat. The picture is the computer's own screen: a still that follows what it does (and refreshes every few seconds while it works), and on the web
 // the live view (Glass) one tap away, where you can take over the keyboard. Under it, one plain sentence of what it is doing now, breathing while it works, and a short track of the last steps. When it is stuck and
 // asked for something (a code), the box to type it is right here; when it is stuck on something else, Take over is. The screen itself is Glass's (LiveScreen), so every rule Glass has holds.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Modal, Platform, Pressable, TextInput, View } from "react-native";
 import { Banner, Button, Chip, Icon, Pulse, Text, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { LiveScreen } from "./LiveScreen";
 import { useStill } from "./useStill";
-import { dots, runWord, stillWord } from "./screen-model.js";
+import { asksForCode, dots, runWord, stillWord, totpLogins } from "./screen-model.js";
 
 type Op = { block: "operator"; run: string; computer: string; title: string; state: "working" | "done" | "stuck" | "paused"; line: string; ask?: string; steps: { line: string; state: string }[] };
 
@@ -25,6 +25,19 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
   const bigReal = useStill(block.run, big && !sample ? block.line : "off", big && busyState && !sample, 1280);
   const bigStill = sample ? { src: sample, why: undefined } : bigReal;
   const track = dots(block.steps);
+  const wantsCode = block.state === "stuck" && !!block.ask && asksForCode(block.ask);
+  const [seeds, setSeeds] = useState<{ name: string; near: boolean }[]>(sample ? [{ name: "GoHighLevel agency login", near: true }] : []);
+  useEffect(() => {
+    if (!wantsCode || sample) return;
+    let dead = false;
+    tool<{ items?: { name: string; kind: string; fields?: string[]; hosts?: string[] }[] }>("vault.list", {}).then((r) => { if (!dead) setSeeds(totpLogins(r.items ?? [], block.steps.map((x) => x.line))); }).catch(() => {});
+    return () => { dead = true; };
+  }, [wantsCode, sample, block.run]);
+  const useSeed = async (name: string) => {
+    setBusy(true); setProblem("");
+    try { const r = await tool<{ code?: string }>("vault.totp", { name }); if (!r.code) throw new Error("The Vault had no code."); await tool("previews.reply", { run: block.run, text: String(r.code) }); }
+    catch (e) { setProblem(e instanceof Error && e.message ? e.message : "The Vault did not give a code."); } finally { setBusy(false); }
+  };
   const ink = (s: string) => (s === "done" ? color.ok : s === "stuck" ? color.warn : s === "paused" ? color.label : color.accent);
   const web = Platform.OS === "web";
   const send = async () => {
@@ -52,6 +65,12 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
             {track.map((s, i) => <View key={i} accessibilityLabel={s.line} style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: i === track.length - 1 && block.state === "working" ? "transparent" : ink(s.state), borderWidth: i === track.length - 1 && block.state === "working" ? 2 : 0, borderColor: ink(s.state) }} />)}
           </View>
         ) : null}
+        {wantsCode && seeds.length ? (
+          <View style={{ gap: 8 }}>
+            {seeds.slice(0, 3).map((x, i) => <View key={x.name} style={{ alignSelf: "flex-start" }}><Button kind={i === 0 ? "primary" : "ghost"} size="sm" icon="key" label={`Use the code from the Vault: ${x.name}`} disabled={busy} onPress={() => useSeed(x.name)} /></View>)}
+            <Text size="caption" tone="label">The Vault gives this computer the six digits, never the secret behind them. Or type it below.</Text>
+          </View>
+        ) : null}
         {block.state === "stuck" && block.ask ? (
           <View style={{ gap: 8 }}>
             <TextInput accessibilityLabel={block.ask} placeholder={block.ask} placeholderTextColor={color.label} value={text} onChangeText={setText} autoCapitalize="none" autoCorrect={false}
@@ -61,9 +80,9 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
           </View>
         ) : null}
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-          {block.state === "stuck" && block.ask ? <Button kind="primary" size="sm" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /> : null}
+          {block.state === "stuck" && block.ask ? <Button kind={wantsCode && seeds.length ? "ghost" : "primary"} size="sm" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /> : null}
           {web ? <Button kind={block.state === "stuck" && !block.ask ? "primary" : "ghost"} size="sm" icon={block.state === "stuck" ? "hand" : "globe"} label={watch ? "Hide the live screen" : block.state === "stuck" && !block.ask ? "Take over" : "Watch live"} onPress={() => setWatch((w) => !w)} /> : null}
-          {!watch ? <Button kind="ghost" size="sm" label="Open larger" onPress={() => setBig(true)} /> : null}
+          {!watch ? <Button kind={web ? "ghost" : "primary"} size="sm" icon={web ? undefined : "globe"} label={web ? "Open larger" : "Watch"} onPress={() => setBig(true)} /> : null}
         </View>
       </View>
       <Modal visible={big} transparent animationType="fade" onRequestClose={() => setBig(false)}>

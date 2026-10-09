@@ -38,3 +38,18 @@ test("the vault's logins for a site: bound to that host or its parent, exact fir
   assert.deepEqual(loginsFor([], "x.test"), []);
   assert.equal(stillWord("mac"), "The picture stays on your Mac.");
 });
+
+test("a run that asks for a code is offered the Vault's seeds, those near what it was doing first, never a seed", async () => {
+  const { asksForCode, totpLogins } = await import("./screen-model.js");
+  assert.equal(asksForCode("The 6-digit code from your phone"), true);
+  assert.equal(asksForCode("Your two-factor code"), true);
+  assert.equal(asksForCode("Which Sam do you mean?"), false);
+  const rows = [
+    { name: "Bank", kind: "login", fields: ["username", "password", "totp"], hosts: ["https://bank.example.test"] },
+    { name: "GHL", kind: "login", fields: ["username", "password", "totp"], hosts: ["https://app.gohighlevel.test"] },
+    { name: "No seed", kind: "login", fields: ["username", "password"], hosts: ["https://app.gohighlevel.test"] },
+    { name: "A key", kind: "api-key", fields: ["value"] },
+  ];
+  assert.deepEqual(totpLogins(rows, ["Opened app.gohighlevel.test", "Typing the password"]), [{ name: "GHL", near: true }, { name: "Bank", near: false }]);
+  assert.deepEqual(totpLogins([], []), []);
+});
