@@ -47,7 +47,7 @@ test("a raw key sent through each surface's chat tools never reaches a turn: a p
   const ids = [];
   for (const caller of ["cli", "local", "deck", "capsule"]) ids.push(heldCard(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller)));
   // the paired phone arrives as its own device (device:<id>) with the owner's verified facts: a person's own surface, so its key message is held as a card too
-  ids.push(heldCard(await kernelCaller(d, root, "device:dphonepaired00001")("threads.send", { thread: id, text: `from the phone: ${KEY}`, surface: "phone" })));
+  ids.push(heldCard(await kernelCaller(d, root, "device:abcdefghijklmnop")("threads.send", { thread: id, text: `from the phone: ${KEY}`, surface: "phone" })));
   const card = (await call("gate.get", { id: ids[0] }, "cli")).data;
   assert.equal(card.state, "held");
   assert.ok(!JSON.stringify(card).includes(KEY), "the Gate's card holds the words with a reference, never the key");
