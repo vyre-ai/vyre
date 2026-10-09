@@ -65,10 +65,13 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
    * repaired once and the repair kept only after a replay answers; a send or change comes back held (unless `asked`: the person's yes already covers this call).
    * @param {{ origin: string, name: string, inputs: Record<string, any>, meta: any, tab?: number, heal?: boolean, maxChars?: number, asked?: boolean, check?: boolean, connection?: boolean }} q
    */
-  async function callStored({ origin, name, inputs, meta: m, tab: tabArg, heal = true, maxChars, asked = false, check = false, connection = false }) {
+  async function callStored({ origin, name, inputs, meta: m, tab: tabArg, heal = true, maxChars, asked = false, check = false, connection = false, only = null }) {
     const { ops } = await stored(origin);
     const entry = ops.find((/** @type {any} */ o) => o.name === name);
     if (!entry) throw denied("not_found", `no operation ${name.slice(0, 40)} for ${origin}; known: ${ops.map((/** @type {any} */ o) => o.name).join(", ") || "none"}`);
+    // `only`: the kind this door may run. chrome.op.call runs a read and says where a submit goes; chrome.op.send runs everything else.
+    if (only === "read" && entry.kind !== "read") throw denied("use_send", `${entry.name} is a ${entry.kind}: it submits, so it goes through chrome.op.send with the person's approval, not chrome.op.call`);
+    if (only === "send" && entry.kind === "read") throw denied("use_call", `${entry.name} is a read: it goes through chrome.op.call`);
     const opts = { ...(asked ? { asked: true } : {}), ...(connection ? { connection: true } : {}) };
     const tab = await tabFor({ tab: tabArg }, origin, m, opts);
     if (check) return dispatch("ops.check", { tab, op: entry.op }, m, opts);

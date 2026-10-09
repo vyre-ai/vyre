@@ -374,13 +374,16 @@ export function macSide(ctx, seam = {}) {
     const input = q.input && typeof q.input === "object" ? q.input : {};
     const site = String(input.site || ""), name = String(input.name || "");
     if (!loadOps().some(o => o.site === site && o.name === name)) return { error: { code: "denied", message: `the person has not allowed the box to run ${name.slice(0, 40)} on ${site.slice(0, 80)} here (link.ops.allow)` } };
+    const send = q.tool === "chrome.op.send";
+    // A call that submits is a send, always signed; a call that reads never carries an approval. Each is asked for by its own name, and the Mac holds the box to it.
+    if (send !== (input.approved === true)) return { error: { code: "denied", message: send ? "chrome.op.send carries the box's signed approval" : "chrome.op.call runs a read; an operation that submits goes through chrome.op.send" } };
     let approved = false;
-    if (input.approved === true) {
+    if (send) {
       const c = checkCall({ assertion: q.assertion, call: { site, name, inputs: input.inputs }, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces, now: seam.now ? seam.now() : Date.now() });
       if (!c.ok) return { error: { code: "denied", message: `the box's outward call was refused: ${c.reason}` } };
       approved = true;
     }
-    return ctx.call("chrome.op.call", { site, name, inputs: input.inputs && typeof input.inputs === "object" ? input.inputs : {}, approved });
+    return ctx.call(send ? "chrome.op.send" : "chrome.op.call", { site, name, inputs: input.inputs && typeof input.inputs === "object" ? input.inputs : {}, ...(send ? { approved } : {}) });
   }
 
   /**

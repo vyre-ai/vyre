@@ -163,7 +163,7 @@ export const callBind = c => ({ site: String(c.site), name: String(c.name), inpu
  * @param {crypto.KeyObject} privateKey @param {{ mac: string, call: { site: string, name: string, inputs?: any }, caller: string, now?: number }} o
  */
 export function signCall(privateKey, { mac, call, caller, now = Date.now() }) {
-  const A = { v: 1, tool: "chrome.op.call", mac, decision: decisionHash(callBind(call)), caller, iat: now, exp: now + TTL, nonce: b64u(crypto.randomBytes(16)) };
+  const A = { v: 1, tool: "chrome.op.send", mac, decision: decisionHash(callBind(call)), caller, iat: now, exp: now + TTL, nonce: b64u(crypto.randomBytes(16)) };
   const bytes = Buffer.from(canonical(A));
   return { a: b64u(bytes), sig: b64u(crypto.sign(null, bytes, privateKey)) };
 }
@@ -184,7 +184,7 @@ export function checkCall({ assertion, call, pinned, self, nonces, now = Date.no
   if (!good) return no("the assertion is not signed by the box this Mac paired with");
   /** @type {any} */ let A;
   try { A = JSON.parse(bytes.toString("utf8")); } catch { return no("the assertion is not readable"); }
-  if (!A || A.v !== 1 || A.tool !== "chrome.op.call") return no("the assertion is not for an operation call");
+  if (!A || A.v !== 1 || A.tool !== "chrome.op.send") return no("the assertion is not for an operation send");
   if (A.mac !== self) return no("the assertion is for another Mac");
   if (A.decision !== decisionHash(callBind(call))) return no("the call is not the one the box signed");
   if (!Number.isFinite(A.iat) || !Number.isFinite(A.exp) || A.exp - A.iat > TTL) return no("the assertion's times are not valid");

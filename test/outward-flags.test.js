@@ -22,7 +22,7 @@ const NOT_OUTWARD = {
   "files.send": "Taildrop from your Mac to your own box",
   "github.session.review": "reads comments on open pull requests; a read",
   "glass.files.upload": "a one-use path for a file into a folder on your own target",
-  "chrome.op.call": "one learned website operation in the person's own Chrome: a read runs at once, and an operation that submits runs only with the box's signed assertion for exactly that site, operation and inputs (core/link/assert.js checkCall, 60 s, once), which is the yes the person gave on the box; the unsigned form is held by the extension. Marking the tool outward would hold reads and ask the yes again (split into a read tool and an outward tool is backlogged for 0.3.2)",
+  "chrome.op.call": "one learned READ in the person's own Chrome for the box: it refuses an operation that submits and points to chrome.op.send, which is marked outward",
   "link.call": "a Mac calls a tool on its own box",
   "link.macs.call": "the box calls a tool on its own paired Mac",
   "link.reply": "a paired Mac answers its own box's question",

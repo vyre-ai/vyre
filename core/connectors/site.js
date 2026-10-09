@@ -63,8 +63,10 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
    * assertion. When no Mac is on, the answer says so and the Connection says it needs the person's Chrome.
    * @param {string} origin @param {string} name @param {Record<string, any>} inputs @param {boolean} approved
    */
-  async function macRung(origin, name, inputs, approved) {
-    const r = await call("link.macs.call", { tool: "chrome.op.call", input: { site: origin, name, inputs, approved }, timeout: 15_000 });
+  async function macRung(origin, name, inputs, approved, kind = "read") {
+    // Only a read goes as chrome.op.call; every other kind goes as chrome.op.send, with the person's approval.
+    const sends = kind !== "read";
+    const r = await call("link.macs.call", { tool: sends ? "chrome.op.send" : "chrome.op.call", input: sends ? { site: origin, name, inputs, approved } : { site: origin, name, inputs }, timeout: 15_000 });
     if (r && r.error) return { class: "no_browser", reason: String(r.error.message || r.error.code) };
     const answers = Array.isArray(r.data) ? r.data : [];
     const ok = answers.find((/** @type {any} */ a) => a && a.ok);
@@ -132,7 +134,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
         if (!a.ok) { res = { class: a.class, reason: a.reason, governed: true }; break; }
         if (a.waitMs > 0) await sleep(a.waitMs);
       }
-      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : r === "mac" ? await macRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
+      res = r === "public" && entry ? await publicRung(entry.op, op.inputs) : r === "mac" ? await macRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, op.kind) : await pageRung(/** @type {string} */ (decl.base_url), op.name, op.inputs, q.approved === true, false, r === "box" ? agent : "");
       if (limits && governor && r !== "public" && res) {
         const rc = res.ok ? "ok" : String(res.class || "error");
         const rec = governor.record({ id, kind: op.kind, settings: limits, cls: rc, reason: res.reason });
