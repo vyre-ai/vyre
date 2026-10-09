@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { devNet, withDevNet } from "../core/vault/request.js";
 import { TASKS, toolOf, used, passed, parseStream, summarize, estimate } from "../scripts/lib/token-proof.js";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -81,5 +82,19 @@ test("only the token proof's own world sets the development network seam of the 
   const walk = (/** @type {string} */ dir) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (e.name === "node_modules" || e.name === ".git") continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p); else if (/\.(js|mjs)$/.test(e.name) && /devNet/.test(fs.readFileSync(p, "utf8"))) found.push(path.relative(ROOT, p)); } };
   for (const d of ["core", "kernel", "lib", "scripts", "harness", "local", "modules"]) walk(path.join(ROOT, d));
   assert.deepEqual(found.sort(), ["core/vault/request.js", "scripts/token-proof-world.mjs"]);
-  assert.match(fs.readFileSync(path.join(ROOT, "core/vault/request.js"), "utf8"), /devNet\.deps && process\.env\.VYRE_SEAL_DEV === "1"/);
+  assert.match(fs.readFileSync(path.join(ROOT, "core/vault/request.js"), "utf8"), /withDevNet\(deps\)/);
+});
+
+test("the development network seam is refused unless VYRE_SEAL_DEV=1, so no production path reaches it", () => {
+  const fake = { transport: async () => { throw new Error("must not run"); }, lookup: async () => [] };
+  const before = devNet.deps;
+  devNet.deps = fake;
+  try {
+    const given = { now: () => 1 };
+    assert.equal(withDevNet(given, {}), given, "no switch: the dependencies come back untouched");
+    assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "0" }), given);
+    assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "true" }), given);
+    assert.equal(withDevNet(given, { VYRE_SEAL_DEV: "1" }).transport, fake.transport, "only the development switch lays it over");
+  } finally { devNet.deps = before; }
+  assert.equal(withDevNet({}, { VYRE_SEAL_DEV: "1" }) && Object.keys(withDevNet({}, { VYRE_SEAL_DEV: "1" })).length, 0, "nothing set: nothing laid over");
 });

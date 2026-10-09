@@ -805,6 +805,9 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
  */
 export const devNet = { deps: null };
 
+/** The request dependencies, with the development network seam laid over them only while VYRE_SEAL_DEV=1; anywhere else they come back exactly as given. @param {RequestDeps} deps @param {Record<string, string | undefined>} [env] */
+export const withDevNet = (deps, env = process.env) => (devNet.deps && env.VYRE_SEAL_DEV === "1" ? { ...deps, ...devNet.deps } : deps);
+
 /**
  * @param {{ vault: import("./vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void,
@@ -812,7 +815,7 @@ export const devNet = { deps: null };
  *   call?: (tool: string, input: any) => Promise<any>, said?: any, deps?: RequestDeps, log?: (m: string) => void }} o
  */
 export function register({ vault, tool, internal, call, said, deps = {}, log }) {
-  const api = new ApiRequests(vault, { call, said, log, ...deps, ...(devNet.deps && process.env.VYRE_SEAL_DEV === "1" ? devNet.deps : {}) });
+  const api = new ApiRequests(vault, { call, said, log, ...withDevNet(deps) });
 
   internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),
