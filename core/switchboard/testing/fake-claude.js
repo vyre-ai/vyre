@@ -476,6 +476,17 @@ async function turn(prompt, uuid = null) {
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
     await say("done"); return result(true, "done");
   }
+  // "tooluse-ask <name>": the same, but Claude Code first asks the host whether it may (a can_use_tool control request), as it does for a Vyre MCP tool in a real thread. Nothing answers it
+  // unless the host does, and a tool nobody answers for ends as the real one does: "Tool permission request failed", an error result and a run with no usage. The token proof's stand-in uses it.
+  const toolAsk = /^tooluse-ask (\S+)$/.exec(p);
+  if (toolAsk) {
+    out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: toolAsk[1], input: {} }] } });
+    const r = await Promise.race([permission(toolAsk[1], {}, "tu-x"), sleep(Number(process.env.FAKE_CLAUDE_ASK_WAIT_MS) || 20000).then(() => null)]);
+    const ok = r && r.behavior === "allow";
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: ok ? "ok" : "Tool permission request failed: AbortError: Tool permission stream closed before response received", is_error: !ok }] } });
+    if (!ok) return result(false, "the tool was not allowed");
+    await say("done"); return result(true, "done");
+  }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {
     out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });

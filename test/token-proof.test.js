@@ -121,3 +121,20 @@ test("the development network seam is refused unless VYRE_SEAL_DEV=1, so no prod
   } finally { devNet.deps = before; fs.rmSync(rel, { recursive: true, force: true }); }
   assert.equal(withDevNet({}, { VYRE_SEAL_DEV: "1" }) && Object.keys(withDevNet({}, { VYRE_SEAL_DEV: "1" })).length, 0, "nothing set: nothing laid over");
 });
+
+test("a run with no result event still gives its usage and cost, from each message's last message_delta, and its answer from the last assistant words", () => {
+  const ev = (/** @type {any} */ e) => JSON.stringify(e);
+  const out = [
+    ev({ type: "stream_event", event: { type: "message_start", message: { id: "m1" } } }),
+    ev({ type: "stream_event", event: { type: "message_delta", usage: { input_tokens: 2, output_tokens: 10, cache_creation_input_tokens: 40000, cache_read_input_tokens: 0, cost: 0.25 } } }),
+    ev({ type: "stream_event", event: { type: "message_delta", usage: { input_tokens: 2, output_tokens: 620, cache_creation_input_tokens: 40000, cache_read_input_tokens: 0, cost: 0.27 } } }),
+    ev({ type: "stream_event", event: { type: "message_start", message: { id: "m2" } } }),
+    ev({ type: "stream_event", event: { type: "message_delta", usage: { input_tokens: 5, output_tokens: 30, cache_creation_input_tokens: 0, cache_read_input_tokens: 40000, cost: 0.02 } } }),
+    ev({ type: "assistant", message: { content: [{ type: "text", text: "Added it." }] } }),
+  ].join("\n");
+  const r = parseStream(out);
+  assert.deepEqual(r.usage, { input: 7, output: 650, cacheRead: 40000, cacheWrite: 40000 });
+  assert.equal(Math.round(r.usd * 1000) / 1000, 0.29, "a message's deltas are cumulative: its last one counts once");
+  assert.equal(r.text, "Added it.");
+  assert.equal(r.noResult, true);
+});

@@ -141,9 +141,29 @@ await seeded("teammate: backend on northwind", async () => {
   return `${r.agent} ${r.state}`;
 });
 
+/**
+ * The person at the Deck. A real Vyre thread asks the person before an agent uses a tool (Claude Code's can_use_tool, raised by the switchboard as an ask), and the person answers allow.
+ * In the proof nobody is at the Deck, so this answers for them: allow the Vyre tools the task needs, refuse anything else. Without it the run ends at the first tool call with "Tool permission
+ * request failed" and no usage. It answers only asks of the proof's own thread, as the owner, the way the Deck's button does; the model has no way to answer.
+ */
+const answered = new Set(); let allowed = 0, refused = 0;
+const person = setInterval(async () => {
+  try {
+    const r = await call("threads.asks", {});
+    for (const a of Array.isArray(r.data) ? r.data : []) {
+      const id = a.id || a.ask; if (!id || answered.has(id)) continue;
+      answered.add(id);
+      const mine = a.kind === "permission" && /^mcp__[a-z_]*vyre[a-z_]*__/.test(String(a.tool || ""));
+      await call("threads.answer", mine ? { ask: id, decision: "allow" } : { ask: id, decision: "deny", message: "not part of the proof" });
+      if (mine) allowed++; else refused++;
+    }
+  } catch { /* the next tick tries again */ }
+}, 150);
+person.unref();
+
 // ------------------------------------------------------------------ the paid round
 if (cmd === "run") {
-  if (process.env.VYRE_PROOF_PAID !== "yes") { console.error("refused: a paid round needs VYRE_PROOF_PAID=yes (the product owner's go)"); await d.stop(); process.exit(2); }
+  if (process.env.VYRE_PROOF_PAID !== "yes" && !args.includes("--stand-in")) { console.error("refused: a paid round needs VYRE_PROOF_PAID=yes (the product owner's go)"); await d.stop(); process.exit(2); }
   const cap = Number(flag("max-usd"));
   if (!(cap > 0)) { console.error("refused: --max-usd is required"); await d.stop(); process.exit(2); }
   const ARMS = Object.fromEntries(Object.entries(ARM_ENV).map(([k, v]) => [k, v.env]));
@@ -168,7 +188,7 @@ if (cmd === "run") {
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
   }
-  console.log("\n" + JSON.stringify(summarize(rows), null, 1) + `\nrows: ${path.join(out, "rows.json")}`);
+  console.log("\n" + JSON.stringify(summarize(rows), null, 1) + `\nrows: ${path.join(out, "rows.json")}\npermission asks answered for the person: ${allowed} allowed, ${refused} refused`);
   vendor.close(); await d.stop(); process.exit(0);
 }
 

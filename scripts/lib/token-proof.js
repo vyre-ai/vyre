@@ -32,16 +32,16 @@ export const used = (calls, names) => expand(calls).some((c) => c.ok !== false &
 /** The world the tasks run in is seeded on the box before a round (scripts/token-proof.mjs seed): `seed` names what each task needs there. */
 /** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, batch?: boolean, tools: string[], answer?: RegExp, seed: string }[]} */
 export const TASKS = [
-  { id: "recall", standIn: "tooluse mcp__plugin_vyre_vyre__memory_search", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
-  { id: "todo", standIn: "tooluse mcp__plugin_vyre_vyre__planner_add", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
-  { id: "record", standIn: "tooluse mcp__plugin_vyre_vyre__work_call", prompt: "Find the client record for Dana Whitfield in Vyre and tell me her case type.", tools: ["work.call", "records.list", "records.get"], answer: /probate/i, seed: "a client record: Dana Whitfield, case type probate" },
+  { id: "recall", standIn: "tooluse-ask mcp__plugin_vyre_vyre__memory_search", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
+  { id: "todo", standIn: "tooluse-ask mcp__plugin_vyre_vyre__planner_add", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
+  { id: "record", standIn: "tooluse-ask mcp__plugin_vyre_vyre__work_call", prompt: "Find the client record for Dana Whitfield in Vyre and tell me her case type.", tools: ["work.call", "records.list", "records.get"], answer: /probate/i, seed: "a client record: Dana Whitfield, case type probate" },
   { id: "flow", prompt: "Run the Flow called intake-welcome in Vyre with the input {\"name\": \"Test Client\"} and tell me its run status.", tools: ["flows.start"], seed: "an approved Flow named intake-welcome" },
   { id: "connection", prompt: "Using the Stripe connection in Vyre, list the customers (limit 1) and tell me how many came back.", tools: ["vault.request", "mcp.call", "work.call"], seed: "a Stripe Connection with a test key" },
-  { id: "vault", standIn: "tooluse mcp__plugin_vyre_vyre__vault_request", prompt: "Without showing me the key, call the Acme API at /v1/status with the stored Acme key and tell me the HTTP status.", tools: ["vault.request"], answer: /\b(200|ok)\b/i, seed: "a vault api-credential named acme for a local stand-in host" },
-  { id: "file", standIn: "tooluse mcp__plugin_vyre_vyre__files_search", prompt: "Find the file called engagement-letter in my projects folder with Vyre and show me its first line.", tools: ["files.search", "files.preview"], answer: /engagement/i, seed: "a file engagement-letter.txt in a project folder" },
-  { id: "teammate", standIn: "tooluse mcp__plugin_vyre_vyre__team_ask", prompt: "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.", tools: ["team.ask", "agents.ask"], seed: "a project with a backend teammate" },
-  { id: "doc", standIn: "tooluse mcp__plugin_vyre_vyre__docs_find", prompt: "Using Vyre, find the docs page that explains how to pair a phone and give me its path.", tools: ["docs.find"], answer: /\.md/, seed: "none (the docs ship with Vyre)" },
-  { id: "skill", standIn: "tooluse mcp__plugin_vyre_vyre__skills_find", prompt: "Using Vyre, find the skill that helps keep a password out of a file and give me its id.", tools: ["skills.find", "skills.list"], answer: /vyre\/|use-the-vault/i, seed: "none (Vyre's own skills ship with it)" },
+  { id: "vault", standIn: "tooluse-ask mcp__plugin_vyre_vyre__vault_request", prompt: "Without showing me the key, call the Acme API at /v1/status with the stored Acme key and tell me the HTTP status.", tools: ["vault.request"], answer: /\b(200|ok)\b/i, seed: "a vault api-credential named acme for a local stand-in host" },
+  { id: "file", standIn: "tooluse-ask mcp__plugin_vyre_vyre__files_search", prompt: "Find the file called engagement-letter in my projects folder with Vyre and show me its first line.", tools: ["files.search", "files.preview"], answer: /engagement/i, seed: "a file engagement-letter.txt in a project folder" },
+  { id: "teammate", standIn: "tooluse-ask mcp__plugin_vyre_vyre__team_ask", prompt: "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.", tools: ["team.ask", "agents.ask"], seed: "a project with a backend teammate" },
+  { id: "doc", standIn: "tooluse-ask mcp__plugin_vyre_vyre__docs_find", prompt: "Using Vyre, find the docs page that explains how to pair a phone and give me its path.", tools: ["docs.find"], answer: /\.md/, seed: "none (the docs ship with Vyre)" },
+  { id: "skill", standIn: "tooluse-ask mcp__plugin_vyre_vyre__skills_find", prompt: "Using Vyre, find the skill that helps keep a password out of a file and give me its id.", tools: ["skills.find", "skills.list"], answer: /vyre\/|use-the-vault/i, seed: "none (Vyre's own skills ship with it)" },
   // The three tasks that need R031-00o (many steps in one call) and R031-00p (results by reference). They are not part of the first ten, so the first ten are the control.
   { id: "chain", batch: true, prompt: "In Vyre, find the client Dana Whitfield, look up her matters, and tell me how many of them are still open (not Closed).", tools: ["work.call", "records.list"], answer: /\b(2|two)\b/i, seed: "Dana Whitfield with three matters: two Open, one Closed" },
   { id: "biglist", batch: true, prompt: "In Vyre, list all the clients and tell me the names of the three that come first alphabetically.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*Aaron Abbott)(?=[\s\S]*Aaron Acosta)(?=[\s\S]*Aaron Adair)/, seed: "215 clients; the first three alphabetically are Aaron Abbott, Aaron Acosta, Aaron Adair" },
@@ -82,12 +82,48 @@ export function parseStream(out) {
     }
     if (e.type === "result") result = e;
   }
-  const u = (result && result.usage) || {};
+  // The final result event can be missing (a run cut off, or a gateway that does not send it): the totals are then summed from the usage on each message_delta and the cost from its price fields.
+  let u = (result && result.usage) || {}; let usdSum = 0, deltas = 0;
+  if (!result) {
+    const seen = new Map();                                              // message id -> its last usage (a message's deltas are cumulative)
+    let cur = "";
+    for (const line of out.split("\n")) {
+      let e; try { e = JSON.parse(line); } catch { continue; }
+      if (e.type !== "stream_event" || !e.event) continue;
+      if (e.event.type === "message_start" && e.event.message) cur = e.event.message.id || cur;
+      if (e.event.type === "message_delta" && e.event.usage) seen.set(cur, e.event.usage);
+    }
+    u = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+    deltas = seen.size;
+    for (const m of seen.values()) { u.input_tokens += Number(m.input_tokens) || 0; u.output_tokens += Number(m.output_tokens) || 0; u.cache_read_input_tokens += Number(m.cache_read_input_tokens) || 0; u.cache_creation_input_tokens += Number(m.cache_creation_input_tokens) || 0; usdSum += Number(m.cost) || 0; }
+  }
   return {
-    calls: calls.map(({ name, input, ok }) => ({ name, input, ok })), mcpToolsListed: listed, text: String((result && result.result) || ""), error: !result || Boolean(result.is_error),
+    firstTurnIn: firstTurn(out),
+    calls: calls.map(({ name, input, ok }) => ({ name, input, ok })), mcpToolsListed: listed, text: result ? String(result.result || "") : lastText(out), error: result ? Boolean(result.is_error) : deltas === 0, noResult: !result,
     usage: { input: Number(u.input_tokens) || 0, output: Number(u.output_tokens) || 0, cacheRead: Number(u.cache_read_input_tokens) || 0, cacheWrite: Number(u.cache_creation_input_tokens) || 0 },
-    usd: Number(result && result.total_cost_usd) || 0, ms: Number(result && result.duration_ms) || 0, turns: Number(result && result.num_turns) || 0,
+    usd: Number(result && result.total_cost_usd) || usdSum, ms: Number(result && result.duration_ms) || 0, turns: Number(result && result.num_turns) || 0,
   };
+}
+
+/** What the first model turn read in all (fresh + cache written + cache read): Claude Code's own prompt plus the tool listing, before any work. @param {string} out */
+function firstTurn(out) {
+  for (const line of out.split("\n")) {
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    const u = e.type === "stream_event" && e.event && e.event.type === "message_delta" && e.event.usage;
+    if (u) return (Number(u.input_tokens) || 0) + (Number(u.cache_creation_input_tokens) || 0) + (Number(u.cache_read_input_tokens) || 0);
+  }
+  return 0;
+}
+
+/** The words of the last assistant message that has any: the answer, when no result event closed the run. @param {string} out */
+function lastText(out) {
+  let text = "";
+  for (const line of out.split("\n")) {
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    const t = e.type === "assistant" && e.message && Array.isArray(e.message.content) ? e.message.content.filter((/** @type {any} */ c) => c.type === "text").map((/** @type {any} */ c) => c.text).join("") : "";
+    if (t) text = t;
+  }
+  return text;
 }
 
 /** The numbers per arm over a set of runs: [{ arm, task, pass, usage, usd, ms, turns, calls }]. @param {any[]} rows */
@@ -96,7 +132,7 @@ export function summarize(rows) {
   for (const r of rows) {
     const a = arms.get(r.arm) || { arm: r.arm, runs: 0, pass: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, usd: 0, ms: 0, turns: 0, calls: 0 };
     a.runs++; a.pass += r.pass ? 1 : 0; a.input += r.usage.input; a.output += r.usage.output; a.cacheRead += r.usage.cacheRead; a.cacheWrite += r.usage.cacheWrite;
-    a.usd += r.usd; a.ms += r.ms; a.turns += r.turns; a.calls += r.calls.length; arms.set(r.arm, a);
+    a.usd += r.usd; a.firstTurnIn = (a.firstTurnIn || 0) + (r.firstTurnIn || 0); a.ms += r.ms; a.turns += r.turns; a.calls += r.calls.length; arms.set(r.arm, a);
   }
   return [...arms.values()].map((a) => ({ ...a, tokensIn: a.input + a.cacheRead + a.cacheWrite, usd: Math.round(a.usd * 1e4) / 1e4 }));
 }
