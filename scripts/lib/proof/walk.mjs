@@ -338,6 +338,9 @@ export async function walkUpdate(w) {
  * root unit downloads the candidate, checks its signature, backs up, swaps and restarts. Then the same app, with no new pairing, finds the new version and everything it wrote before.
  * @param {{ w: any, run: any, S: (n: string) => string, mac: any, srv: () => any, CALL: string }} a
  */
+/** A call that cannot hang the proof: the box restarts under the app, and a session opened on a dying link may never answer. @param {number} ms @param {() => Promise<any>} fn */
+const within = (ms, fn) => Promise.race([fn(), new Promise((_, no) => setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms))]);
+
 async function updateSteps({ w, run, S, mac, srv, CALL }) {
   const u = w.update;
   const U = (/** @type {string} */ n) => S(n);
@@ -375,7 +378,7 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
     let last = "", st = null;
     for (let i = 0; i < 120 && !st; i++) {
       await new Promise(r => setTimeout(r, 5000));
-      try { await mac.openSession(); const s = await mac.callTool("update.status"); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
+      try { const s = await within(20_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
       catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
     }
     assert.ok(st, `the server did not come back on ${u.newVersion} within 10 minutes: ${last}`);
