@@ -82,7 +82,7 @@ test("module: the manifest is valid and every tool it declares is registered", a
   assert.deepEqual(validate(JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")), { firstParty: true }), []);
   const { reg, connect } = await rig(t);
   assert.equal(reg.status().find((/** @type {any} */ m) => m.name === "chrome")?.state, "running");
-  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check");
+  const declared = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8")).does.tools.map((/** @type {any} */ n) => (typeof n === "string" ? n : n.name)).filter((/** @type {string} */ n) => n !== "chrome.release" && n !== "chrome.plan.check" && n !== "chrome.op.run");
   const listed = reg.listTools().map((/** @type {any} */ x) => x.name);
   for (const name of declared) assert.ok(listed.includes(name), name);
   assert.ok(!listed.includes("chrome.release"), "release is internal: only the Gate calls it");
@@ -704,9 +704,9 @@ test("module: chrome.op.run is the connectors module's alone; chrome.op names th
   for (const caller of ["cli", "mcp", "module:gate", "capsule"]) {
     const r = await reg.call("chrome.op.run", { site: "https://app.example.com", name: "searchPeople" }, caller);
     assert.ok(r.error, `${caller} ran it`);
-    assert.ok(/denied|connectors/.test(`${r.error.code} ${r.error.message}`), `${caller}: ${r.error.message}`);
+    assert.ok(/denied|connectors|no tool/.test(`${r.error.code} ${r.error.message}`), `${caller}: ${r.error.message}`);
   }
-  assert.ok(!reg.listTools().some((/** @type {any} */ x) => x.name === "chrome.op.run" && !x.internal && !x.hidden) || true, "it is an internal tool");
+  assert.ok(!reg.listTools().some((/** @type {any} */ x) => x.name === "chrome.op.run"), "it is an internal tool: no model's list shows it");
   const noSite = await reg.call("chrome.op", { action: "list" }, "cli");
   assert.match(String(noSite.error && noSite.error.message), /name the site/);
   const model = await reg.call("chrome.op", { action: "rollback", site: "https://app.example.com", name: "x", version: 1 }, "mcp");
