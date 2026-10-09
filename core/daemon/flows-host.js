@@ -10,7 +10,7 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
-import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
+import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
@@ -170,10 +170,27 @@ export function createFlowsHost(o) {
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
+    const isAdminOf = async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id);
+    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules"), { code: "unavailable" }); });
+    /** An agent's change to itself, by conversation (R031-09): the agents module keeps the draft and writes the version; the card goes to the agent's owner, else an owner or admin. */
+    const agentKind = {
+      draft: async (/** @type {any} */ chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const by = assistantOf(chain);
+        const r = await callModule("agents.change.draft", { agent: String(spec.agent || ""), patch: spec.patch, proposer: proposer.id, ...(by ? { by } : {}) });
+        if (proposer.id !== r.owner && by !== r.agent && !(await isAdminOf(proposer))) throw Object.assign(new Error(`only ${r.agent}'s owner, an admin, or ${r.agent} itself proposes a change to it`), { code: "not_found" });
+        const brief = (/** @type {any} */ x) => JSON.parse(JSON.stringify(x, (_k, v) => (typeof v === "string" && v.length > 600 ? `${v.slice(0, 600)}...` : v)));
+        return { form: { agent: r.agent, draft: r.id, hash: r.hash, owner: r.owner || null, before: brief(r.before), after: brief(r.after) }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("agents.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("agents.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
+    };
     const proposals = {
       chain: flowsChain,
-      isAdmin: async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id),
+      isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
+      // the agents are this home's own: only the home's Space takes a change to one
+      kinds: o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {},
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.

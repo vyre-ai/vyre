@@ -11,7 +11,8 @@
   "does": {
     "reads": [
       "agents.history",
-      "agents.list"
+      "agents.list",
+      "agents.versions"
     ],
     "tools": [
       {
@@ -80,6 +81,24 @@
         "name": "agents.delete",
         "reach": "person",
         "effect": "write"
+      },
+      {
+        "name": "agents.change.draft",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.change.title",
+        "reach": "modules"
+      },
+      {
+        "name": "agents.change.apply",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "agents.versions",
+        "reach": "anyone"
       }
     ]
   },

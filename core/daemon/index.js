@@ -274,6 +274,9 @@ async function startLocked(opts, root, p, release) {
       lights: async () => { const r = await registry.call("connectors.connection.list", {}, "module:vyred"); const rows = r && !r.error && r.data && Array.isArray(r.data.connections) ? r.data.connections : []; return Object.fromEntries(rows.filter((/** @type {any} */ c) => c && c.id && c.light).map((/** @type {any} */ c) => [`conn-${c.id}`, String(c.light)])); },
       // The Space's settings for Flows (concurrency, stuck and stale limits, the backlog cap): read through the settings tool, as the daemon itself.
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
+      // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
+      agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
+      callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
