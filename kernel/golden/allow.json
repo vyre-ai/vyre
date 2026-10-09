@@ -60,6 +60,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: publishes an artifact)"
  },
  {
+  "tool": "brand.draft",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns a web page the caller fetched into a draft brand profile; it keeps nothing and sends nothing"
+ },
+ {
+  "tool": "brand.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the space's brand profile (names, colours, fonts, logos), which the space already shows on everything it makes"
+ },
+ {
+  "tool": "brand.resolve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what to use by default for this space: names, the theme colour as drawn in each scheme, fonts, logos and letterhead"
+ },
+ {
   "tool": "bridges.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one share the person's Space is part of; the bridges module takes the person from the verified caller"
  },
@@ -278,6 +290,14 @@
  {
   "tool": "design.catalogue",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the design language's block catalogue: names, props and sample data, nothing of the person's"
+ },
+ {
+  "tool": "design.css",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the custom CSS in force, which the web app draws"
+ },
+ {
+  "tool": "design.css.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): files custom CSS for a screen or the space as pending; only the Engineer proposes it, it must pass the linter, and the owner sees it before and after"
  },
  {
   "tool": "design.propose",

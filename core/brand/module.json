@@ -1,0 +1,20 @@
+{
+  "name": "brand",
+  "version": "0.1.0",
+  "description": "The space's brand profile: logo, colours, fonts, density and the company's name, legal name, address, phone and letterhead. It is the default for artifacts, previews, documents, signing pages and screens unless a document says otherwise. All of it is optional, and a colour is never used raw: it is pulled to the nearest one that keeps text readable.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["brand.get", "brand.resolve", "brand.draft"],
+    "tools": [
+      { "name": "brand.get", "reach": "anyone", "effect": "read" },
+      { "name": "brand.resolve", "reach": "anyone", "effect": "read" },
+      { "name": "brand.draft", "reach": "anyone", "effect": "read" },
+      { "name": "brand.set", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["brand.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}
