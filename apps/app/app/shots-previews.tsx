@@ -4,7 +4,7 @@ import { useLocalSearchParams } from "expo-router";
 import { ThemeProvider, Text } from "@vyre/ui";
 import { PreviewCard } from "../src/chat/PreviewCard";
 
-const card = (id: string, title: string, state: string, mode: string, access: string) => ({ block: "preview" as const, id, title, state: state as never, source: "port", mode: mode as never, access: access as never });
+const card = (id: string, title: string, state: string, mode: string, access: string) => ({ block: "preview" as const, id, title, state: state as never, source: "port", mode: mode as never, access: access as never, thumb: 0 });
 const ALL = {
   live: card("0a1b2c3d", "Intake form", "live", "session", "me"),
   supervised: card("1b2c3d4e", "Northwind portal", "live", "supervised", "project"),
