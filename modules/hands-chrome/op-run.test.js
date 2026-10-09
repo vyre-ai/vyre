@@ -19,16 +19,15 @@ const ORIGIN = "https://app.example.com";
 const read = () => learnOperation({ name: "searchPeople", exchanges: F.pageRest("alpha corp"), exchanges2: F.pageRest("beta works"), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies: [{ name: "sid", value: F.SECRET_COOKIE }], storage: F.restStorage, trigger: { url: `${ORIGIN}/search?q={query}` } }).operation;
 const people = (/** @type {string} */ t) => ({ total: 1, results: [{ id: "p-1", name: `${t} one`, profileUrl: "u", headline: "h", meta: { score: 1, tags: [] } }] });
 
-/** Stand-ins for the modules the box module leans on: the computers (an endpoint, may-act) and the site record (get, report). */
-const STUBS = `export default { async start(ctx) {
+/** Stand-ins for the modules the box module leans on: the computers (an endpoint, may-act) and the site record (get, report). A module's tools carry its own name, so there are two. */
+const stub = (/** @type {string} */ name, /** @type {Record<string, string>} */ tools) => `export default { async start(ctx) {
   const g = globalThis.__rig = globalThis.__rig || { reports: [], mayAct: { ok: true } };
   const t = (n, run) => ctx.tool(n, { effect: "read", description: "x", input: { type: "object" }, run });
-  t("computers.endpoint", async () => ({ helper: { url: "http://computerd.invalid", token: "t" } }));
-  t("computers.may-act", async () => g.mayAct);
-  t("memory.site.get", async i => ({ origin: g.record, rev: 1 }));
-  t("memory.site.report", async i => { g.reports.push(i); return { conf: 0.6 }; });
+  ${Object.entries(tools).map(([n, body]) => `t("${name}.${n}", ${body});`).join("\n  ")}
   return {};
 } };`;
+const COMPUTERS = stub("computers", { endpoint: `async () => ({ helper: { url: "http://computerd.invalid", token: "t" } })`, "may-act": `async () => g.mayAct` });
+const MEMORY = stub("memory", { "site.get": `async () => ({ origin: g.record, rev: 1 })`, "site.report": `async i => { g.reports.push(i); return { conf: 0.6 }; }` });
 
 /** A fake page and the Cdp-shaped connection to it. */
 function fakePool() {
@@ -57,18 +56,19 @@ async function rig(/** @type {any} */ t) {
   const home = tempHome(t);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
-  const dir = path.join(home, "mods", "stubs");
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "stubs", version: "0.0.1", roles: ["box"], does: { tools: ["computers.endpoint", "computers.may-act", "memory.site.get", "memory.site.report"] } }));
-  fs.writeFileSync(path.join(dir, "index.js"), STUBS);
+  for (const [name, src, tools] of /** @type {[string, string, string[]][]} */ ([["computers", COMPUTERS, ["computers.endpoint", "computers.may-act"]], ["memory", MEMORY, ["memory.site.get", "memory.site.report"]]])) {
+    const dir = path.join(home, "mods", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name, version: "0.0.1", roles: ["box"], does: { tools } }));
+    fs.writeFileSync(path.join(dir, "index.js"), src);
+  }
   const page = fakePool();
   const reg = new Registry({ db, events: new Events(db), log: () => {}, config: { role: "box", handsChrome: { pool: page.pool } } });
   const firstParty = reg.isFirstParty.bind(reg);
   reg.isFirstParty = (/** @type {string} */ d) => d.startsWith(path.join(home, "mods")) || firstParty(d);
   await reg.start([...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([path.join(home, "mods")])], { role: "box" });
   t.after(() => reg.stop && reg.stop());
-  const st = reg.status().find((/** @type {any} */ m) => m.name === "stubs");
-  assert.equal(st && st.state, "running", JSON.stringify(st));
+  for (const n of ["computers", "memory", "chrome"]) { const st = reg.status().find((/** @type {any} */ m) => m.name === n); assert.equal(st && st.state, "running", JSON.stringify(st)); }
   const rigState = /** @type {any} */ (globalThis).__rig;
   rigState.record = { ops: [{ name: "searchPeople", kind: "read", version: 1, op: read() }] };
   rigState.reports = []; rigState.mayAct = { ok: true };
