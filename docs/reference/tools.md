@@ -902,7 +902,7 @@ The person's answers to a question card: { id, answers: { <question id>: { choic
 - Input:
   - `answers` object, required
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `ask.cancel`
 
@@ -910,7 +910,7 @@ The person puts a question card away without answering: the agent is told it was
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
 
 ### `ask.get`
 
@@ -919,18 +919,18 @@ The state of a question card you asked: { id, state, answers, lines }. With wait
 - Input:
   - `id` string, required
   - `wait_ms` integer
-- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `ask.many`
 
-Ask the person several things at once, as ONE card in this chat: { title?, questions: [{ id?, prompt, choices: [label or { label, detail }], allowText?, optional? }], wait_ms? }. Each question has choices and room for the person to type or say their own. Use it whenever more than one thing is unclear, instead of asking one at a time. Waits up to wait_ms (at most 55 s) for the answers; if they have not come, answers { id, state: "waiting" } and you call ask.get { id, wait_ms } to wait again. Answers { id, state: "answered", answers, lines }. The answers decide nothing by themselves: when you then send or change something, it still waits for the person's yes.
+Ask the person several things at once as ONE card: title and questions (prompt, choices, allowText). Returns answers, or an id to poll with ask.get.
 
 - Input:
   - `questions` list, required
   - `thread` string
   - `title` string
   - `wait_ms` integer
-- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ## assistant
 
@@ -7265,14 +7265,14 @@ The last lines of a preview's output (what its server printed), for the person l
 
 ### `previews.open`
 
-No description.
+Show the person a server (port) or files you wrote (path) as a card. Needs title and port or path. Returns the id.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
 
 ### `previews.operator`
 
-Show the person a computer's live screen as a card in this chat, with what it is doing now: { computer, title?, run?, thread? }. Returns { run }. Then call previews.step as it works, so the card's status line and step track follow. The person watches, or takes over the keyboard, from the card.
+Show a computer's live screen as a card in this chat: { computer, title? }. Returns { run }; narrate with previews.step.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
@@ -7307,7 +7307,7 @@ Restart a preview Vyre keeps running.
 
 ### `previews.run-get`
 
-The state of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck. With wait_ms (at most 55 s) it waits for a reply.
+State of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck; wait_ms waits for it.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
@@ -7321,7 +7321,7 @@ Who may open a preview: me (only you), project (the people of its project) or te
 
 ### `previews.signin`
 
-Ask the person to sign in to a site on the computer, as a card in this chat: { computer, site, why?, thread?, wait_ms? }. The card says "Sign in to <site>" and opens the screen in place with the keyboard theirs and private (you cannot see the page until they hand back, and you never get the password); when they are done you carry on. Waits up to wait_ms (at most 55 s); if they have not finished, answers { id, state: "waiting" } and you call previews.signin-get { id, wait_ms }.
+Ask the person to sign in to a site on the computer, as a card: computer, site, why. You never see the password. Poll previews.signin-get.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
@@ -7342,7 +7342,7 @@ Whether the person has finished signing in: { id, state } (waiting, done, cancel
 
 ### `previews.step`
 
-Say what the computer is doing now, in words a person reads ("Opening the workflow list", "Typing the password from your Vault"): { run, line, state? } with state working, done, stuck or paused. The card's status line and its last seven steps follow.
+Say what the computer is doing now, in plain words: { run, line, state? } (working, done, stuck, paused). Stuck may add `ask`.
 
 - Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
 - Callers: any caller
@@ -9874,7 +9874,9 @@ Lend one of your computers to a space, or stop. The first time for a device in a
   - `device` string, required
   - `on` boolean, required
   - `space` string, required
+  - `loosen` boolean: Lending only: you mean to allow more network than you did before on this computer.
   - `member` string: Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it).
+  - `network_cap` "provider" or "internet": Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen.
 - Callers: any caller
 - Needs a person present.
 

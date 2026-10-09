@@ -11,7 +11,7 @@
     "three": "0.160.0",
     "chart.js": "4.4.3",
     "date-fns": "3.6.0",
-    "xlsx": "0.18.5",
+    "xlsx": "0.20.3",
     "@tailwindcss/browser": "4.1.11"
   },
   "files": {
@@ -92,8 +92,8 @@
     },
     "xlsx": {
       "file": "xlsx.js",
-      "sha256": "61f660897298d1156ee0e11968d01e20940575703819ac9cad7db876bb9e7171",
-      "bytes": 432131
+      "sha256": "77e6b7a0711048158ebd0b57c2a8f03cee5939825945c250ef00f57eacb84ac5",
+      "bytes": 502305
     },
     "tailwind": {
       "file": "tailwind.js",

@@ -128,7 +128,9 @@ if (!STATIC) {
     section = "";
   }
   // A file that ran fewer tests than recorded is this branch's only when it touched that file or the counts.
-  for (const f of short) if (changed.includes(f) || changed.includes("test/test-counts.json")) red.add(f); else warns.push(`base red (count): ${f} runs fewer tests than test/test-counts.json records, before your change`);
+  /** The counts file's entry for f, here and at the base. @param {string} rev @param {string} f */
+  const countAt = (rev, f) => { try { const j = JSON.parse(rev ? git(["show", `${rev}:test/test-counts.json`]) : fs.readFileSync("test/test-counts.json", "utf8")); return JSON.stringify(j[f] ?? j.files?.[f] ?? Object.values(j).find(v => v && typeof v === "object" && f in v)?.[f]); } catch { return ""; } };
+  for (const f of short) if (changed.includes(f) || countAt("", f) !== countAt(mergeBase, f)) red.add(f); else warns.push(`base red (count): ${f} runs fewer tests than test/test-counts.json records, before your change`);
   if (r.status !== 0 && !red.size) red.add("(the runner failed; see above)");
   // A red that is also red on the integration tip without this branch is not this branch's: it is reported, not blocking.
   /** @type {string[]} */ const baseRed = [];
@@ -146,10 +148,34 @@ if (!STATIC) {
     } catch (e) { warns.push(`could not check the base for its own reds (${String(e).slice(0, 120)}); every red counts as yours`); }
     finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* left for git worktree prune */ } }
   }
-  const mineRed = [...red].filter(f => !baseRed.includes(f));
+  // Strict mode (scripts/team/STRICT exists): once the integration branch is fully green, nothing red lands, base or not.
+  const strict = fs.existsSync("scripts/team/STRICT");
+  const mineRed = strict ? [...red] : [...red].filter(f => !baseRed.includes(f));
   testsOk = !mineRed.length;
-  if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by install-proof's list, not blocking you):\n    ${baseRed.join("\n    ")}`);
+  if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by release's red list, not blocking you):\n    ${baseRed.join("\n    ")}`);
   if (!testsOk) fail("T2", `red because of this branch:\n    ${mineRed.join("\n    ")}\n  A guard names its rule in its message; fix the cause, never loosen the guard.`);
+
+  // T5 red first: a branch that changes behaviour must carry a test that FAILS without that change. Its changed tests run
+  // against the base's source (the branch's tests and test helpers copied in, nothing else); at least one must fail there.
+  // A behaviour-free change says so with [refactor] in a commit message.
+  const changedTests = existing.filter(f => /\.test\.m?js$/.test(f) && !GUARDS.includes(f));
+  const changedSource = existing.filter(f => /\.(m?js|ts|tsx)$/.test(f) && !/\.test\.|\/testing\/|^test\/|^scripts\/|^\.github\//.test(f));
+  const refactor = /\[refactor\]/i.test(bodies);
+  if (changedSource.length && !refactor) {
+    if (!changedTests.length) fail("T5", `this branch changes code (${changedSource.slice(0, 3).join(", ")}${changedSource.length > 3 ? ", ..." : ""}) with no test that proves it. Add a test that fails without the change, or mark a behaviour-free change [refactor] in a commit message.`);
+    else {
+      const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-red-first-"));
+      try {
+        execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
+        for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
+        for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
+        const failedOnBase = changedTests.filter(f => spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0);
+        if (!failedOnBase.length) fail("T5", `none of this branch's tests fail without its code change, so none of them proves it (${changedTests.join(", ")}). Write the test that would catch the bug or the missing behaviour; check it fails on ${BASE}.`);
+        else console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
+      } catch (e) { warns.push(`could not run the red-first check (${String(e).slice(0, 120)})`); }
+      finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
+    }
+  }
 
   // App types: only errors in files this branch touched count against it.
   if (existing.some(f => /^(apps\/app|lib)\//.test(f)) && fs.existsSync("apps/app/node_modules")) {

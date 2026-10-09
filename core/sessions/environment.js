@@ -23,6 +23,7 @@ export const FAMILIES = {
   connectors: { section: "connectors" }, mcp: { section: "connectors" }, vault: { section: "connectors" }, google: { section: "connectors" }, mail: { section: "connectors" }, github: { section: "connectors" },
   spaces: { section: "space" }, files: { section: "project" }, artifacts: { section: "project" }, publish: { section: "project" }, planner: { section: "planner" }, goals: { section: "planner" }, watchers: { section: "planner" },
   glass: { section: "computer" }, computers: { section: "computer" }, computer: { section: "computer" }, documents: { section: "project" }, comms: { section: "connectors" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
+  ask: { section: "show" }, previews: { section: "show" },
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
   appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
@@ -132,6 +133,10 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   ]);
   if (has("computer")) add("computer", 11, [
     "Computer tools (a browser, the desktop) act on the person's own machine only after their grant, and each outward step still waits for their yes.",
+  ]);
+
+  if (has("show")) add("show", 12, [
+    "To show the person something you built or started, tools_call previews.open (the port your server listens on, or a file or folder you wrote): a card appears in the chat and they open it from there. When more than one thing is unclear, ask them all at once with ask.many.",
   ]);
 
   const more = [...new Set(families.filter(f => (FAMILIES[f] || {}).more).map(f => f))];

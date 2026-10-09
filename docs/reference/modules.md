@@ -723,6 +723,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Tools: [19](tools.md#publish)
 - Emits: [6 events](events.md#publish)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
 - Needs vault: `per-deployment`
 
 ## push

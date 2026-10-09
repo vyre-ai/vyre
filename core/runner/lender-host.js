@@ -10,14 +10,14 @@
 import { createLentClient } from "./lent-client.js";
 
 /**
- * @param {{ invoke: (call: string, args: any[]) => Promise<any>, deviceId: string, deviceKey: string, lenderCap?: "provider" | "internet", pollMs?: number,
+ * @param {{ invoke: (call: string, args: any[]) => Promise<any>, deviceId: string, deviceKey: string, eid?: string, lenderCap?: "provider" | "internet", pollMs?: number,
  *   server?: (space: string) => any, requestServer?: (space: string, session: string) => any, space?: string }} o
  */
 export function createLenderHost(o) {
-  const client = createLentClient({ invoke: o.invoke, device: o.deviceId, deviceKey: o.deviceKey });
+  let cap = o.lenderCap;   // the lender's own choice, from the Offer the person accepted at the home (lent.status), or what the daemon was given
+  const client = createLentClient({ invoke: o.invoke, device: o.deviceId, deviceKey: o.deviceKey, ...(o.eid ? { eid: o.eid } : {}), cap: () => cap });
   const pollMs = Math.max(60_000, o.pollMs || 60_000);
   let state = { spaceAllows: false, memberAccepts: false };
-  let cap = o.lenderCap;   // the lender's own choice, from the Offer the person accepted at the home (lent.status), or what the daemon was given
   const told = new Set();
   let timer = null;
   const refresh = async () => {

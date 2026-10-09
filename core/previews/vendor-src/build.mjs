@@ -14,7 +14,17 @@ const src = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(src, "..", "vendor");
 // the exact versions are installed into a scratch folder, so no package manifest sits in the repo
 const here = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-preview-libs-"));
-const wanted = JSON.parse(fs.readFileSync(path.join(src, "versions.json"), "utf8")).versions;
+const { versions: wanted, tarballs = {} } = JSON.parse(fs.readFileSync(path.join(src, "versions.json"), "utf8"));
+// a library published outside npm is committed beside this file and installed only when its tarball matches the pinned hash
+for (const [name, pin] of Object.entries(tarballs)) {
+  if (name.startsWith("_")) continue;
+  const buf = fs.readFileSync(path.join(src, pin.file));
+  const got = crypto.createHash("sha256").update(buf).digest("hex");
+  if (got !== pin.sha256) throw new Error(`${name}: ${pin.file} hashes to ${got}, not the pinned ${pin.sha256}; nothing was installed`);
+  const file = path.join(here, pin.file);
+  fs.writeFileSync(file, buf);
+  wanted[name] = `file:${file}`;
+}
 fs.writeFileSync(path.join(here, "package.json"), JSON.stringify({ private: true, dependencies: wanted }));
 execFileSync("npm", ["install", "--no-audit", "--no-fund", "--ignore-scripts"], { cwd: here, stdio: "inherit" });
 const require = createRequire(path.join(here, "package.json"));

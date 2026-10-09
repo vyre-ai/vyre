@@ -79,11 +79,11 @@ export default {
       if (!l) {
         const k = ctx.kernel?.for?.(space);
         if (!k || typeof k.call !== "function") return null;   // a Space this computer hosts itself: not lent over a wire
-        await h.identity();   // this computer has claimed an identity (it may lend at all)
+        const mine = await h.identity();   // this computer has claimed an identity (it may lend at all)
         // The Offers for this computer are made under the id the Space's home gives it, read from what the transport proved: the home answers it, this computer never chooses it.
         const me = await k.call("lent.whoami", []);
         if (!me || typeof me.device !== "string" || !me.device) throw Object.assign(new Error("the Space's home did not say which computer this is"), { code: "unavailable" });
-        l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
+        l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(mine && typeof mine.deviceId === "string" && mine.deviceId ? { eid: mine.deviceId } : {}), ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
         await l.ready; lenders.set(space, l);
         l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} runners.delete(space); } });
       }
@@ -133,7 +133,7 @@ export default {
         const p = await portsFor(space); const r = await forSpace(space);
         // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
         await r.open();
-        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}) });
+        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const run = resolveAgent(spec);
         const h = await r.start({ session, resume: Boolean(resume), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
