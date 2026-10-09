@@ -441,6 +441,8 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (!write && !callOp && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
       // A learned website operation: a read is asked as it is; an outward one only from the connectors module, which has the kernel's approval for exactly that call, and it is signed below.
       if (callOp && input && input.approved === true && !(meta && meta.caller === "module:connectors")) throw Object.assign(new Error(`${tool} runs an outward operation on a Mac only for the connectors module, with the person's approval`), { code: "denied" });
+      // Vyre Computer asks a Mac to look, act or find files only through its own module; the Mac checks the person's allowlist again.
+      if (tool === "computer.call" && !(meta && meta.caller === "module:computer")) throw Object.assign(new Error("computer.call is sent to a Mac only by Vyre Computer"), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
       // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) —

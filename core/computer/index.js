@@ -10,13 +10,13 @@
 
 import { agentClaim } from "../modules/index.js";
 import { resolveTarget, planRoute, hostOf, registrable } from "./route.js";
+import { CLASS } from "../../lib/computer-classes.js";
 
 const CALLERS = ["cli", "local", "deck", "capsule", "mcp", "harness", "module"];
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const TAUGHT_MS = 30 * 60_000;
 
-/** The actions, by what they touch. `look` and `files` only read; `act` drives a page or an app. The Mac's person allows each class for the box on its own (link.computer.allow). */
-export const CLASS = Object.freeze({ look: "look", shot: "look", tabs: "look", open: "act", click: "act", type: "act", fill: "act", act: "act", press: "act", signin: "act", find: "files", get: "files" });
+export { CLASS };
 
 /**
  * The engine tool for an action on a kind of computer. `args` pass through as the engine's own input (its own names for a control: a selector for the cloud's Chrome, a ref for the Mac's).

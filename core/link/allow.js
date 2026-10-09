@@ -42,4 +42,8 @@ export const ASKS = Object.freeze(["ask.raised", "ask.answered"]);
  * assertion signed by the box's key, bound to this Mac, that site, that operation and those exact inputs (assert.js signCall), for 60 s and one use.
  * @type {readonly string[]}
  */
-export const CALL = Object.freeze(["chrome.op.call"]);
+export const CALL = Object.freeze(["chrome.op.call", "computer.call"]);
+
+// computer.call is the other call of the same kind: Vyre Computer's `computer` tool on the box asks this Mac to look, act or find files (lib/computer-classes.js). It runs only for a class the person
+// allowed for the box on this Mac (link.computer.allow); there is no outward path through it (an engine's own Gate still holds a send, and nothing is signed for it); the box's `computer` module
+// is the only caller the box lets send it.
