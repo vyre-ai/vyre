@@ -787,6 +787,7 @@ export function createWink(inject = {}) {
       onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); Promise.resolve(ctx.call("vault.mcp.base", { base })).catch(() => {}); },
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
       ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      tunnel: () => Boolean(ctx.config && ctx.config.relay && typeof ctx.config.relay.tunnel_url === "string" && ctx.config.relay.tunnel_url),
       ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.gatePort) ? { gatePort: ctx.config.wink.gatePort } : {}),
@@ -989,7 +990,7 @@ export function nameDirectory(dirCall) {
   return {
     acme: async (/** @type {string} */ _name, /** @type {string} */ token) => dirCall("names.directory.acme", { token }),
     acmeClear: async () => dirCall("names.directory.acme-clear", {}),
-    publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean }} [o] */ o) => dirCall("names.directory.publish", o && o.apps === true ? { apps: true } : {}),
+    publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean, via?: string, share?: boolean }} [o] */ o) => dirCall("names.directory.publish", { ...(o && o.apps === true ? { apps: true } : {}), ...(o && o.via === "tunnel" ? { via: "tunnel", share: o.share === true } : {}) }),
   };
 }
 
