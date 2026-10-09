@@ -22,7 +22,7 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
-import { signedLeasesWanted } from "../runner/protocol.js";
+import { signedLeasesWanted } from "../../lib/signed-leases.js";
 import { build, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
