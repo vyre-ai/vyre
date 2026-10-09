@@ -27,6 +27,15 @@ function box(o = {}) {
       case "vault.offboard": return { data: { revoked: ["p1", "p2"], rotate: ["Stripe"] } };
       case "vault.devices": return { data: { devices: [{ id: "d1", name: "Chrome", created: NOW - 5 * 86400_000, lastSeen: NOW - 86400_000, sessions: 2 }, { id: "d2", created: NOW - 90 * 86400_000, revoked: NOW - 10 * 86400_000 }, { name: "no id" }] } };
       case "vault.health": return { data: { checked: 5, counts: { weak: 1, reused: 2, old: 0 }, items: [{ name: "A", kind: "login", reasons: ["weak", "reused"], group: "g1" }, { name: "B", kind: "login", reasons: ["reused"], group: "g1" }, { name: "x" }] } };
+      case "vault.emergency.list": return { data: { contacts: [
+        { person: "Dana", wait: "7d", wait_ms: 7 * 86400_000, state: "standby", items: "every item except ssh keys and passkeys", created: 1, refreshed: 2 },
+        { person: "Theo", wait: "3d", wait_ms: 3 * 86400_000, state: "waiting", requested: Date.parse("2026-10-04T00:00:00Z"), opens: Date.parse("2026-10-07T00:00:00Z"), items: ["Gmail", "Bank"] },
+        { person: "Kit", wait: "1d", wait_ms: 86400_000, state: "denied", denied: Date.parse("2026-10-01T00:00:00Z"), items: "x", secret: "never" },
+        { person: "Old", wait: "30d", wait_ms: 30 * 86400_000, state: "released", released: Date.parse("2026-09-01T00:00:00Z"), items: [] }] } };
+      case "vault.emergency.add": case "vault.emergency.deny": case "vault.emergency.remove": case "vault.emergency.refresh": return { data: { ok: true } };
+      case "vault.codes.import": return { data: input.preview ? { add: ["github-dana", "bank"], same: ["gmail"], renamed: [], skipped: ["x: the code does not read as a TOTP"], missing: [{ of: 3, parts: [2, 3] }] } : { added: ["github-dana"], same: [], renamed: [{ from: "bank", to: "bank-2" }], skipped: [], secret: "NEVER" } };
+      case "vault.vaults.list": return { data: { vaults: [{ id: "v1", name: "Firm logins", role: "admin", members: [{ name: "Dana", role: "owner", fingerprint: "ab:cd" }, { name: "Lee", role: "read-only", fingerprint: "ef:01" }], items: [{ name: "Stripe", rotate: true }, { name: "Gmail" }], conflicts: 1, kv: "SECRET" }] } };
+      case "vault.people": return { data: { people: [{ name: "Dana", fingerprint: "ab:cd", verified: true }, { name: "Lee", fingerprint: "ef:01", verified: false }, { name: "Kit", fingerprint: "11", verified: true, blocked: true }] } };
       case "vault.breach.check": return { data: { checked: 4, breached: ["A", 7] } };
       case "vault.history": return { data: { versions: [{ ver: 2, at: NOW - 86400_000, fields: ["password"], by: "cli" }, { ver: 1, at: NOW - 9 * 86400_000, by: "deck" }, { ver: 9 }], passwords: [{ at: NOW - 5 * 86400_000 }, { at: NOW - 40 * 86400_000 }] } };
       case "vault.update": return { data: o.update ?? { generated: "password" } };
@@ -208,4 +217,62 @@ test("an outside agent's ask to see a value: read from vault.pending, and the li
   assert.deepEqual(rows, [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }]);
   assert.equal(revealLine(rows[0]), "Dana's Claude's agent asks to see stripe-live: to debug");
   assert.deepEqual(pickReveals(null), []);
+});
+
+test("emergency access: contacts as names, waits and dates; each state has a plain line, only a waiting request can be denied, and the tool inputs are the choices made", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { emergencyLine, EMERGENCY_WAITS } = await import("./more-model.ts");
+  const b = box();
+  const src = vaultMoreSource(b.call);
+  const list = await src.emergency();
+  assert.deepEqual(list.map((c) => [c.person, c.waitDays, c.state]), [["Dana", 7, "standby"], ["Theo", 3, "waiting"], ["Kit", 1, "denied"], ["Old", 30, "released"]]);
+  assert.ok(!JSON.stringify(list).includes("never"), "a stray field in an answer does not reach the screen");
+  const lines = list.map(emergencyLine);
+  assert.equal(lines[0].sub, "Can ask. 7 days after they ask, the items open to them unless you deny it.");
+  assert.equal(lines[1].sub, "Asked on 2026-10-04. It opens on 2026-10-07 unless you deny it.");
+  assert.equal(lines[2].sub, "You denied their request on 2026-10-01. They may ask again, and wait again.");
+  assert.equal(lines[3].sub, "Opened for them on 2026-09-01. Remove them to end it.");
+  assert.deepEqual(lines.map((l) => l.canDeny), [false, true, false, false]);
+  assert.equal(list[1].items, "Gmail, Bank");
+  await src.emergencyAdd("Dana", "7d"); await src.emergencyDeny("Theo"); await src.emergencyRemove("Kit"); await src.emergencyRefresh();
+  assert.deepEqual(b.seen.slice(1).map((s) => [s.tool, s.input]), [["vault.emergency.add", { person: "Dana", wait: "7d" }], ["vault.emergency.deny", { person: "Theo" }], ["vault.emergency.remove", { person: "Kit" }], ["vault.emergency.refresh", {}]]);
+  assert.deepEqual(EMERGENCY_WAITS.map((w) => w[0]), ["1d", "3d", "7d", "14d", "30d"]);
+});
+
+test("health on the home: a count and the biggest reasons in one line, nothing when all is well, and 2fa hints are not counted as trouble", { skip: !strip }, async () => {
+  const { healthSummary } = await import("./more-model.ts");
+  const h = { checked: 5, counts: { weak: 1, reused: 2, "2fa-available": 3 }, items: [
+    { name: "A", kind: "login", reasons: ["weak", "reused"], group: "g" }, { name: "B", kind: "login", reasons: ["reused"], group: "g" }, { name: "C", kind: "login", reasons: ["2fa-available"], group: "" }] };
+  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused." });
+  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "" });
+  assert.equal(healthSummary({ checked: 1, counts: { old: 1 }, items: [{ name: "Z", kind: "login", reasons: ["old"], group: "" }] }).line, "1 item needs attention: 1 old.");
+});
+
+test("two-factor codes: addresses are picked out of pasted text once each, names come back and never a seed, and the words say what happens", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { otpAddresses, codesLine } = await import("./more-model.ts");
+  const a = otpAddresses("otpauth://totp/GitHub:dana?secret=AAAA\nhello\notpauth-migration://offline?data=Zm9v otpauth://totp/GitHub:dana?secret=AAAA");
+  assert.deepEqual(a, { uris: ["otpauth://totp/GitHub:dana?secret=AAAA", "otpauth-migration://offline?data=Zm9v"], ignored: 1 });
+  assert.equal(otpAddresses("x".repeat(10)).uris.length, 0);
+  const b = box();
+  const src = vaultMoreSource(b.call);
+  const pre = await src.codesPreview(a.uris);
+  assert.deepEqual([pre.add, pre.same, pre.missing], [["github-dana", "bank"], ["gmail"], [{ of: 3, parts: [2, 3] }]]);
+  assert.equal(codesLine(pre, true), "2 accounts would be added, 1 already here, 1 could not be read. Scan the other parts too (2, 3 of 3).");
+  const done = await src.codesImport(a.uris);
+  assert.ok(!JSON.stringify(done).includes("NEVER"));
+  assert.equal(codesLine(done, false), "1 account added.");
+  assert.deepEqual(b.seen.map((s) => [s.tool, s.input.preview === true]), [["vault.codes.import", true], ["vault.codes.import", false]]);
+});
+
+test("shared vaults and people: names, roles and fingerprints only, one plain line each, and a changed key blocks", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { vaultLine, personLine, roleWord } = await import("./more-model.ts");
+  const src = vaultMoreSource(box().call);
+  const vaults = await src.sharedVaults();
+  assert.ok(!JSON.stringify(vaults).includes("SECRET"));
+  assert.equal(vaultLine(vaults[0]), "2 people, 2 items, you are admin, 1 to rotate, 1 conflict to settle");
+  assert.deepEqual(vaults[0].members.map((m) => [m.name, roleWord(m.role)]), [["Dana", "Owner"], ["Lee", "Read only"]]);
+  const people = await src.people();
+  assert.deepEqual(people.map(personLine), ["Card checked.", "Card pinned but not checked. Compare fingerprints with them before sharing.", "Their key changed. Check it with them before sharing anything new."]);
 });

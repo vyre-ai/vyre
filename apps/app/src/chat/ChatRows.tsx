@@ -3,9 +3,9 @@
 // height as it reveals), tool results as native blocks, asks as inline task cards, quiet notices.
 // Each row subscribes to its own key and is memoized on what it draws.
 
-import { createContext, memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Chip, Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
@@ -139,8 +139,8 @@ function HighlightAction({ from, text, ctx }: { from: string; text: string; ctx:
   if (!ctx.onHighlight) return null;
   return (
     <View style={S.s4}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={{ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
-        <Text size="caption" tone="label">Highlight to assistant</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from, text, selected: picked.current })} style={{ minHeight: ctx.wide ? 28 : 44, justifyContent: "center", paddingHorizontal: 8, marginLeft: -8, borderRadius: 8 }}>
+        <Text size="caption" tone="label">Ask about this</Text>
       </Pressable>
     </View>
   );
@@ -244,15 +244,37 @@ function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
   const { color } = useUiTheme();
   const label = `Asked ${it.name}` + (it.role && it.role !== it.name ? ` (${it.role})` : "");
   const state = it.state === "running" ? "working" : it.state;
+  const router = useRouter();
+  // Once the teammate has a conversation of its own (it carries the thread), the row opens it.
+  const open = it.thread ? () => { if (!allowsMock()) router.push({ pathname: "/u/chats/[id]", params: { id: String(it.thread) } }); } : undefined;
+  const Row = open ? Pressable : View;
   return (
-    <View style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`}>
+    <Row style={{ gap: 4 }} accessibilityLabel={`${label}, ${state}`} {...(open ? { onPress: open, accessibilityRole: "link" as const, accessibilityHint: `Opens ${it.name}'s conversation` } : {})}>
       <View style={S.s9}>
         <Face name={it.name || it.agent} family="assistant" size={24} id={`agent:${it.agent}`} />
         <Text size="caption" strong numberOfLines={1}>{label}</Text>
         {it.project ? <Text size="caption" tone="label" numberOfLines={1} style={S.s10}>{`· ${String(it.project)}`}</Text> : <View style={S.s10} />}
         <Text size="caption" tone={it.state === "failed" ? "err" : "label"}>{state}</Text>
+        {open ? <Icon name="chev-r" size={14} tone="muted" /> : null}
       </View>
       {it.text ? <Text size="caption" tone="muted" numberOfLines={2}>{it.text}</Text> : null}
+    </Row>
+  );
+}
+
+/** "3 files, 4 commands, 1 min" under a turn: opens the changes panel, every file the turn touched with its diff. */
+function TurnChip({ it, ctx }: { it: any; ctx: BlockCtx }) {
+  const [open, setOpen] = useState(false);
+  const diff = useMemo(() => { const n = normalizeBlock({ block: "files", files: it.diffs }); return n.block === "diff" ? n : { block: "diff" as const, files: [] }; }, [it.diffs]);
+  const has = diff.files.length > 0;
+  return (
+    <View>
+      <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+      {has ? (
+        <Sheet open={open} onClose={() => setOpen(false)} title="Changes in this turn">
+          <View style={{ padding: 16 }}><BlockView block={diff} ctx={ctx} /></View>
+        </Sheet>
+      ) : null}
     </View>
   );
 }
@@ -403,6 +425,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     }
     case "handoffResult":
       return <Frame wide={wide} indent dense><HandoffResult it={it} /></Frame>;
+    case "turnsummary":
+      return <Frame wide={wide} indent dense><TurnChip it={it} ctx={ctx} /></Frame>;
     case "handoff":
       return <Frame wide={wide} indent dense><HandoffLine it={it} store={store} /></Frame>;
     case "tool":

@@ -6,7 +6,7 @@ import { Pressable } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Icon, LoadingState, Row, Segmented, Sheet, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
 import { vaultMore } from "./more";
-import { EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
+import { personLine, roleWord, vaultLine, type Person, type SharedVault, EMERGENCY_WAITS, emergencyLine, type EmergencyContact, EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
   type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
@@ -152,7 +152,7 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
           <Segmented label="For" value="agent" onChange={(v) => { if (v === "vyre") setAgent(false); }} options={[["vyre", "Another Vyre"], ["agent", "An outside agent"]]} />
           <Field label="Name" value={m.name} onChangeText={(name) => setM({ ...m, name })} help="Who or what it is for, such as Dana's Claude." />
           <Text size="caption" strong tone="label">Ends after</Text>
-          <Segmented label="Ends after" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
+          <Segmented label="Ends after" value={String(m.days)} onChange={(d) => setM({ ...m, days: Number(d) as 7 | 30 | 90 })} options={MCP_DAYS.map(([d, l]): [string, string] => [String(d), l])} />
           <View className="gap-s1">
             <Text size="caption" strong tone="label">Credentials</Text>
             <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <PickChip key={r.name} on={m.items.includes(r.name)} label={r.name} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })} />)}</View>
@@ -265,7 +265,105 @@ export function SharedPage({ reload }: Props) {
         return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
       })}</Card> : <Card><EmptyState title="Nothing shared with you" body="When someone shares something, paste their ticket with vyre vault pass accept." /></Card>}
       <Text size="caption" tone="label">Your agents use these with vault.relay. Their box adds the value; it never reaches yours.</Text>
+      <SharedVaultsSection />
+      <EmergencySection reload={reload} />
     </View>
+  );
+}
+
+// ---- Shared vaults and people ----
+
+/** The vaults shared with others and the people Vyre shares with, from names only. Reading is here; making and changing a shared vault is at the command line until the app may ask for it. */
+export function SharedVaultsSection() {
+  const [vaults, setVaults] = useState<SharedVault[] | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  useEffect(() => { vaultMore.sharedVaults().then(setVaults).catch(() => setVaults([])); vaultMore.people().then(setPeople).catch(() => setPeople([])); }, []);
+  if (!vaults || (!vaults.length && !people.length)) return null;
+  return (
+    <View className="gap-s2 pt-s4">
+      <Text strong size="secondary">Shared vaults</Text>
+      {vaults.length ? vaults.map((v) => (
+        <Card key={v.id} title={v.name}>
+          <View className="gap-s2">
+            <Text size="secondary" tone="label">{vaultLine(v)}</Text>
+            {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`} />)}
+          </View>
+        </Card>
+      )) : <Text size="secondary" tone="label">None yet. Make one with vyre vault vaults create.</Text>}
+      {people.length ? <><Text strong size="secondary">People you share with</Text><Card flush>{people.map((p, i) => <View key={p.name}>{i ? <Divider /> : null}<Row dense title={p.name} sub={personLine(p)} /></View>)}</Card></> : null}
+    </View>
+  );
+}
+
+// ---- Emergency access ----
+
+/**
+ * Emergency access (R032-12): a person you trust may ask, and after the wait the items open to them unless you deny it. This lists who can ask and where each request stands, with Deny while one
+ * waits and Remove at any time (taking access away never needs a yes), and adds a contact with a wait of 1 to 30 days. Adding and rebuilding are the person's own yes at the vault's floor.
+ */
+export function EmergencySection({ reload }: { reload: () => void }) {
+  const [list, setList] = useState<EmergencyContact[] | null>(null);
+  const [problem, setProblem] = useState("");
+  const [adding, setAdding] = useState(false);
+  const load = useCallback(() => { vaultMore.emergency().then((x) => { setList(x); setProblem(""); }).catch((e) => setProblem(say(e, "loaded"))); }, []);
+  useEffect(load, [load]);
+  const act = (f: () => Promise<unknown>, done: string) => f().then(() => { showToast(done); load(); reload(); }).catch((e) => showToast(say(e, "done")));
+  return (
+    <>
+      <EmergencyView list={list} problem={problem} onDeny={(c) => act(() => vaultMore.emergencyDeny(c.person), "Denied. Nothing was opened.")} onRemove={(c) => act(() => vaultMore.emergencyRemove(c.person), "Removed. Their access is gone.")}
+        onRefresh={() => act(() => vaultMore.emergencyRefresh(), "Sealed again with what is in the vault now.")} onAdd={() => setAdding(true)} />
+      <AddEmergencySheet open={adding} onClose={() => setAdding(false)} onDone={() => { setAdding(false); load(); reload(); }} />
+    </>
+  );
+}
+
+/** The list and its actions, from what it is given: the section above reads the box, the gallery gives it a sample. */
+export function EmergencyView({ list, problem, onDeny, onRemove, onRefresh, onAdd }: { list: EmergencyContact[] | null; problem: string; onDeny: (c: EmergencyContact) => void; onRemove: (c: EmergencyContact) => void; onRefresh: () => void; onAdd: () => void }) {
+  const phone = useUiTheme().phone, size = phone ? "md" : "sm";
+  return (
+    <View className="gap-s2 pt-s4">
+      <Text strong size="secondary">Emergency access</Text>
+      <Text size="caption" tone="label">Someone you trust can ask. After the wait, the items open to them unless you deny it. They are never shown the values until it opens.</Text>
+      {problem && !list ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+      {list && list.length ? <Card flush>{list.map((c, i) => {
+        const l = emergencyLine(c);
+        const buttons = <View className="flex-row gap-s1">
+          {l.canDeny ? <Button size={size} label="Deny" onPress={() => onDeny(c)} /> : null}
+          <Button kind="holdText" size={size} label="Remove" onPress={() => onRemove(c)} />
+        </View>;
+        // A phone has no room beside the words: the actions sit under them.
+        return <View key={c.person}>{i ? <Divider /> : null}{phone
+          ? <Row dense title={l.title} sub={<View className="gap-s1"><Text size="secondary" tone="label">{l.sub}</Text>{buttons}</View>} />
+          : <Row dense title={l.title} sub={l.sub} end={buttons} />}</View>;
+      })}</Card> : list ? <Card><EmptyState title="No one yet" body="Add someone you trust, and give them a wait you are comfortable with." /></Card> : null}
+      <View className="flex-row gap-s2 self-start">
+        <Button kind="primary" label="Add someone" onPress={onAdd} />
+        {list && list.length ? <Button kind="ghost" label="Rebuild" onPress={onRefresh} /> : null}
+      </View>
+    </View>
+  );
+}
+
+function AddEmergencySheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [who, setWho] = useState("");
+  const [wait, setWait] = useState("7d");
+  const [problem, setProblem] = useState("");
+  useEffect(() => { if (open) { setWho(""); setWait("7d"); setProblem(""); } }, [open]);
+  const go = () => {
+    const person = who.trim();
+    if (!person) { setProblem("Say who."); return; }
+    vaultMore.emergencyAdd(person, wait).then(() => { showToast(`${person} can ask for emergency access.`); onDone(); }).catch((e) => setProblem(say(e, "done")));
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Emergency access for someone">
+      <View className="gap-s3">
+        <Text tone="muted">They must be someone whose card you have already checked. They can ask at any time; you can deny it during the wait.</Text>
+        <Field label="Who" value={who} onChangeText={setWho} />
+        <Segmented label="Wait" value={wait} onChange={setWait} options={EMERGENCY_WAITS} />
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+        <View className="flex-row gap-s2"><Button kind="primary" label="Add" onPress={go} /><Button kind="ghost" label="Cancel" onPress={onClose} /></View>
+      </View>
+    </Sheet>
   );
 }
 

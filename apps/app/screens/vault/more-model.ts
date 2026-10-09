@@ -79,6 +79,14 @@ export function healthGroups(h: Health): { code: string; title: string; why: str
   });
 }
 
+/** The Vault home's one line about health: how many items need attention and the biggest reasons, or nothing when all is well. Counts only; no name and no value. */
+export function healthSummary(h: Health): { total: number; line: string } {
+  const flagged = new Set(h.items.filter((i) => i.reasons.some((r) => REASON_ORDER.includes(r) && r !== "2fa-available")).map((i) => i.name));
+  const parts = REASON_ORDER.filter((c) => c !== "2fa-available" && h.counts[c]).map((c) => `${h.counts[c]} ${REASON[c][0].toLowerCase()}`);
+  const total = flagged.size;
+  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${parts.join(", ")}.` : "" };
+}
+
 /** What a breach check answers: the names that appear in known breaches, and how many were checked. */
 export function pickBreach(d: unknown): { checked: number; breached: string[] } {
   const o = d as { checked?: unknown; breached?: unknown } | null;
@@ -227,3 +235,105 @@ export const savedLine = (name: string, generated?: string): string => (generate
 const NAME = /^[A-Za-z0-9._-]+$/;
 /** An SSH key's name, or what is wrong with it. */
 export const sshNameError = (name: string): string => (NAME.test(name) ? "" : "A name is letters, digits, dot, dash and underscore, with no spaces. Nothing was sent.");
+
+// ---- Emergency access: a person you trust may ask, and after the wait the items open to them unless you deny it ----
+
+export type EmergencyContact = { person: string; waitDays: number; state: "standby" | "waiting" | "denied" | "released"; requested: number | null; opens: number | null; denied: number | null; released: number | null; items: string };
+
+/** vault.emergency.list: names, the wait and where a request stands. Only names and dates; the items are a sentence or a list of names, never a value. */
+export function pickEmergency(d: unknown): EmergencyContact[] {
+  return arr((d as { contacts?: unknown } | null)?.contacts).filter((c) => str(c.person)).map((c) => {
+    const state = str(c.state);
+    return {
+      person: str(c.person), waitDays: Math.max(1, Math.round((num(c.wait_ms) ?? 7 * 86_400_000) / 86_400_000)),
+      state: (state === "waiting" || state === "denied" || state === "released" ? state : "standby") as EmergencyContact["state"],
+      requested: num(c.requested), opens: num(c.opens), denied: num(c.denied), released: num(c.released),
+      items: Array.isArray(c.items) ? strs(c.items).join(", ") : str(c.items) || "every item except ssh keys and passkeys",
+    };
+  });
+}
+
+const day = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/** One plain line per contact: what they can do, and where a request stands. */
+export function emergencyLine(c: EmergencyContact): { title: string; sub: string; canDeny: boolean } {
+  const wait = `${c.waitDays} ${c.waitDays === 1 ? "day" : "days"}`;
+  if (c.state === "released") return { title: c.person, sub: `Opened for them${c.released ? ` on ${day(c.released)}` : ""}. Remove them to end it.`, canDeny: false };
+  if (c.state === "waiting") return { title: c.person, sub: `Asked${c.requested ? ` on ${day(c.requested)}` : ""}. It opens${c.opens ? ` on ${day(c.opens)}` : ` in ${wait}`} unless you deny it.`, canDeny: true };
+  if (c.state === "denied") return { title: c.person, sub: `You denied their request${c.denied ? ` on ${day(c.denied)}` : ""}. They may ask again, and wait again.`, canDeny: false };
+  return { title: c.person, sub: `Can ask. ${wait} after they ask, the items open to them unless you deny it.`, canDeny: false };
+}
+
+/** The wait choices the owner may pick: 1 to 30 days, 7 by default. */
+export const EMERGENCY_WAITS: [string, string][] = [["1d", "1 day"], ["3d", "3 days"], ["7d", "7 days"], ["14d", "14 days"], ["30d", "30 days"]];
+
+// ---- Two-factor codes: scan or paste, see what would come in, say yes once ----
+
+/** The one-time-code addresses in what was pasted or scanned: otpauth:// and otpauth-migration:// only, each once, in order. Anything else is left out and counted. */
+export function otpAddresses(text: string): { uris: string[]; ignored: number } {
+  const seen = new Set<string>(), uris: string[] = [];
+  let ignored = 0;
+  for (const raw of String(text).split(/[\s,]+/)) {
+    const t = raw.trim();
+    if (!t) continue;
+    if (!/^otpauth(-migration)?:\/\//i.test(t)) { ignored++; continue; }
+    if (!seen.has(t)) { seen.add(t); uris.push(t); }
+  }
+  return { uris: uris.slice(0, 100), ignored };
+}
+
+export type CodesPlan = { add: string[]; added: string[]; same: string[]; renamed: { from: string; to: string }[]; skipped: string[]; missing: { of: number; parts: number[] }[] };
+
+/** vault.codes.import: names only. A preview lists what would be added; an import lists what was. */
+export function pickCodes(d: unknown): CodesPlan {
+  const o = d as Record<string, unknown> | null;
+  return { add: strs(o?.add), added: strs(o?.added), same: strs(o?.same), skipped: strs(o?.skipped),
+    renamed: arr(o?.renamed).map((r) => ({ from: str(r.from), to: str(r.to) })).filter((r) => r.to),
+    missing: arr(o?.missing).map((m) => ({ of: num(m.of) ?? 0, parts: Array.isArray(m.parts) ? (m.parts as unknown[]).filter((x): x is number => typeof x === "number") : [] })) };
+}
+
+/** The words for a preview or a result. */
+export function codesLine(p: CodesPlan, preview: boolean): string {
+  const n = preview ? p.add.length : p.added.length;
+  const parts = [`${n} ${n === 1 ? "account" : "accounts"} ${preview ? "would be added" : "added"}`];
+  if (p.same.length) parts.push(`${p.same.length} already here`);
+  if (p.skipped.length) parts.push(`${p.skipped.length} could not be read`);
+  const gap = p.missing[0];
+  return parts.join(", ") + "." + (gap ? ` Scan the other ${gap.parts.length === 1 ? "part" : "parts"} too (${gap.parts.join(", ")} of ${gap.of}).` : "");
+}
+
+// ---- Shared vaults and the people Vyre shares with: names, roles and fingerprints; never a value ----
+
+export type SharedVault = { id: string; name: string; role: string; members: { name: string; role: string; fingerprint: string }[]; items: { name: string; rotate: boolean }[]; conflicts: number };
+export type Person = { name: string; fingerprint: string; verified: boolean; blocked: boolean };
+
+export function pickVaults(d: unknown): SharedVault[] {
+  return arr((d as { vaults?: unknown } | null)?.vaults).filter((v) => str(v.name)).map((v) => ({
+    id: str(v.id) || str(v.name), name: str(v.name), role: str(v.role) || "member", conflicts: num(v.conflicts) ?? 0,
+    members: arr(v.members).filter((m) => str(m.name)).map((m) => ({ name: str(m.name), role: str(m.role) || "member", fingerprint: str(m.fingerprint) })),
+    items: arr(v.items).filter((i) => str(i.name)).map((i) => ({ name: str(i.name), rotate: Boolean(i.rotate) })),
+  }));
+}
+
+export function pickPeople(d: unknown): Person[] {
+  const list = Array.isArray(d) ? (d as unknown[]) : (d as { people?: unknown } | null)?.people;
+  return arr(list).filter((p) => str(p.name)).map((p) => ({ name: str(p.name), fingerprint: str(p.fingerprint), verified: Boolean(p.verified), blocked: Boolean(p.blocked || p.changed) }));
+}
+
+const ROLE_WORD: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", "read-only": "Read only" };
+export const roleWord = (r: string): string => ROLE_WORD[r] ?? r;
+
+/** One line per shared vault: how many people and items, and what needs attention. */
+export function vaultLine(v: SharedVault): string {
+  const n = v.members.length, i = v.items.length, rot = v.items.filter((x) => x.rotate).length;
+  const parts = [`${n} ${n === 1 ? "person" : "people"}`, `${i} ${i === 1 ? "item" : "items"}`, `you are ${roleWord(v.role).toLowerCase()}`];
+  if (rot) parts.push(`${rot} to rotate`);
+  if (v.conflicts) parts.push(`${v.conflicts} ${v.conflicts === 1 ? "conflict" : "conflicts"} to settle`);
+  return parts.join(", ");
+}
+
+/** One line per person: whether their card is checked. A changed key blocks new shares until it is verified again. */
+export function personLine(p: Person): string {
+  if (p.blocked) return "Their key changed. Check it with them before sharing anything new.";
+  return p.verified ? "Card checked." : "Card pinned but not checked. Compare fingerprints with them before sharing.";
+}

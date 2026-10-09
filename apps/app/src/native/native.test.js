@@ -19,6 +19,9 @@ test("readCode: a bare offer, a vyre:// link and plain text", { skip: !strip }, 
   assert.equal(readCode(null), null);
   const long = readCode("x".repeat(5000));
   assert.equal(long?.kind === "other" && long.text.length, MAX_OTHER);
+  const otp = "otpauth-migration://offline?data=" + "A".repeat(1500);
+  assert.deepEqual(readCode(otp), { kind: "other", text: otp }, "a one-time-code address is read whole, not cut to the length kept for other codes");
+  assert.equal(readCode("otpauth://totp/x?secret=" + "B".repeat(6000))?.text?.length, 4096);
 });
 
 test("onceEach: the same code inside the hold is read once, a different one at once", { skip: !strip }, async () => {

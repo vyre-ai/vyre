@@ -33,6 +33,22 @@ export function toItem(r: ListRow): RealItem {
 
 export const itemsOf = (rows: ListRow[], tab: Tab): RealItem[] => rows.filter((r) => tabOf(r.kind) === tab).map(toItem);
 
+/**
+ * Find items by what the person remembers: part of the name, the note, the site it is for, or the kind ("card", "api key"). Every word typed must match somewhere; names first, then the rest, each in
+ * name order. Matches across all tabs. Only names, notes, hosts and kinds are searched: never a value.
+ */
+export function searchItems(rows: ListRow[], query: string): RealItem[] {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const scored = rows.map((r) => {
+    const name = r.name.toLowerCase(), rest = [r.description, ...r.hosts, r.url ?? "", kindWord(r.kind), r.kind].join(" ").toLowerCase();
+    const all = words.every((w) => name.includes(w) || rest.includes(w));
+    return { r, all, byName: words.every((w) => name.includes(w)) };
+  }).filter((x) => x.all);
+  scored.sort((a, b) => Number(b.byName) - Number(a.byName) || a.r.name.localeCompare(b.r.name));
+  return scored.map((x) => toItem(x.r));
+}
+
 const WORD: Record<string, string> = { reveal: "revealed", fill: "filled", "agent-fill": "filled for an agent", relay: "used through a relay", request: "used for a request", totp: "one-time code", copy: "copied", release: "released to a module", resolve: "read" };
 export const actionWord = (a: string): string => WORD[a] ?? a;
 

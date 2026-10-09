@@ -3741,6 +3741,48 @@
     }
    }
   },
+  "vault-emergency": {
+   "title": "Vault: emergency access",
+   "screens": {
+    "full": {
+     "component": "vault-emergency"
+    },
+    "compact": {
+     "component": "vault-emergency"
+    },
+    "glance": {
+     "component": "vault-emergency"
+    }
+   }
+  },
+  "runner-settings": {
+   "title": "Run on this computer",
+   "screens": {
+    "full": {
+     "component": "runner-settings"
+    },
+    "compact": {
+     "component": "runner-settings"
+    },
+    "glance": {
+     "component": "runner-settings"
+    }
+   }
+  },
+  "runner-chip": {
+   "title": "Session placement",
+   "screens": {
+    "full": {
+     "component": "runner-chip"
+    },
+    "compact": {
+     "component": "runner-chip"
+    },
+    "glance": {
+     "component": "runner-chip"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {

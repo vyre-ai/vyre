@@ -211,12 +211,10 @@ Every step is an event with the full chain on it, so the whole path can be shown
 | --- | --- |
 | `.claude-plugin/` | The Claude Code plugin marketplace entry that points at `harness/`. |
 | `.github/` | GitHub Actions workflows: tests, releases, the Windows and Mac proofs, the docs build. |
-| `.wrangler/` | (not described yet) |
 | `apps/` | The Vyre app (Expo, in `apps/app`): web, iPhone and Android from one codebase. |
 | `bin/` | The `vyre` command's entry file and the git credential helper. |
 | `box/` | The server's Docker image, its compose files and the `vyre` command that runs on the host. |
 | `core/` | The daemon `vyred`: its plumbing and the core modules, one folder each. |
-| `deck/` | (not described yet) |
 | `design-refs/` | The picture tests' reference pictures for every block and key screen, made by CI in a pinned image (apps/app/scripts/design-pictures.mjs). |
 | `docs/` | This documentation: concepts, how-to pages, the reference, the ADRs. |
 | `examples/` | Example modules to copy from. |

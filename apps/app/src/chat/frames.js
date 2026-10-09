@@ -16,6 +16,7 @@
 
 import { kindOf } from "./frame-type.js";
 import { quoteFromData } from "./reply.js";
+import { turnSummary } from "./turn-summary.js";
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
@@ -64,6 +65,8 @@ export function createFolder() {
   // A group chat's log carries no status frames (the stream drops them): its state is read from the
   // replies instead, working while any assistant's message is open and ready otherwise.
   let sawStatus = false;
+  /** Where the turn in progress began in `rows`, and when (-1 while none is). */
+  let turnFrom = -1, turnAt = 0;
   /** @type {Set<string>} */ const open = new Set();
   const groupState = () => {
     if (sawStatus || !participants.size) return;
@@ -360,6 +363,13 @@ export function createFolder() {
       }
       case "status": {
         const state = STATES.includes(d.state) ? d.state : status.state;
+        // A turn begins when the chat starts working and ends when it stops: what it did is one line under it.
+        if (state === "working" && status.state !== "working") { turnFrom = rows.length; turnAt = f.time ?? 0; }
+        else if (status.state === "working" && state !== "working" && turnFrom >= 0) {
+          const sum = turnSummary(rows.slice(turnFrom).map((r) => items.get(r.key)), turnAt && f.time ? f.time - turnAt : 0);
+          turnFrom = -1;
+          if (sum) { const key = "z:" + f.cur; put(key, "turnsummary", { key, kind: "turnsummary", ...sum }); out.layout = true; touch(key); }
+        }
         sawStatus = true;
         status.state = state;
         status.turn = d.turn ?? status.turn;

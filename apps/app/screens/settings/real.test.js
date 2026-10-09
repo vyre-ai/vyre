@@ -85,7 +85,7 @@ test("assistants: the list as lines, pause is agents.stop and resume is agents.r
   const b = box({ "agents.list": { data: AGENTS }, "agents.stop": { data: { stopped: ["t1"] } }, "agents.resume": { data: {} } });
   const s = settingsSource(b.call);
   const list = await s.agentsList();
-  assert.deepEqual(list.map((a) => [m.roleOf(a), m.isStopped(a), m.worksLine(a.projects)]), [["Your assistant", false, "Every project"], ["Agent", true, "2 projects"], ["Agent", false, "No projects yet"]]);
+  assert.deepEqual(list.map((a) => [m.roleOf(a), m.isStopped(a), m.worksLine(a.projects)]), [["Your assistant", false, "Every project"], ["Agent", true, "Works on juniper and site"], ["Agent", false, "No projects yet"]]);
   assert.equal(m.agentLine(list[0]), "idle, sonnet, uses your subscription, Every project");
   await s.agentStop("juno"); await s.agentResume("kit");
   assert.deepEqual(b.seen.slice(1), [{ tool: "agents.stop", input: { agent: "juno" } }, { tool: "agents.resume", input: { agent: "kit" } }]);

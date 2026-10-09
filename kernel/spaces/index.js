@@ -57,6 +57,9 @@ export function createSpaceKernels(cfg) {
       onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { try { fs.writeFileSync(f, JSON.stringify({ ...meta, owner: to, previous_owner: from }), { mode: 0o600 }); } catch { /* the next boot rewrites it from the log */ } },
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
     if (cfg.stageFactory) late.stages = await cfg.stageFactory(id, booted, meta);
+    // R031-83: a Space restored from its bundle (lib/space-bundle.js) leaves its grants in restore.json: they go onto it once, under this seal, and its log says so
+    { const rf = path.join(d, "restore.json"); let r = null; try { r = JSON.parse(fs.readFileSync(rf, "utf8")); } catch { /* no restore waiting */ }
+      if (r && r.grants) { await booted.grants.adopt(r.grants); booted.log.append(booted.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "space.restored", sv: 1, subject: `vyre://${id}/space/${id}`, data: { head: r.head, bundle_hash: r.bundle_hash }, vis: "owner", red: "internal" }); fs.rmSync(rf, { force: true }); } }
     return booted;
   }
 
@@ -118,6 +121,19 @@ export function createSpaceKernels(cfg) {
   }
 
   const api = {
+    /**
+     * What the Space bundle needs of one hosted Space (lib/space-bundle.js): its grants as data, its log's head, its sealed values under a bundle key, a consistent copy of its store, and where its two sealed bundle entries live.
+     * @param {string} id
+     */
+    bundleOf(id) {
+      const k = live.get(id), db = dbs.get(id);
+      if (!k || !db || !cfg.sealer) throw new KernelError("unavailable", "that Space is not hosted and open here");
+      const name = (/** @type {string} */ w) => { if (w !== "key" && w !== "code") throw new KernelError("bad_input", "key or code"); return `spaces.${id}.bundle${w}`; };
+      let meta = {}; try { meta = JSON.parse(fs.readFileSync(path.join(ofDir(id), "space.json"), "utf8")); } catch { /* none */ }
+      return Object.freeze({ id: { ...meta, space: id }, state: () => k.grants.state(), head: () => ({ seq: k.log.latestSeq(), hash: k.log.head() }), dump: (/** @type {Uint8Array} */ bk) => cfg.sealer.spaceDump({ space: id, bk }),
+        keep: (/** @type {string} */ w, /** @type {string} */ v) => cfg.sealer.service.put({ name: name(w), value: v }), take: (/** @type {string} */ w) => cfg.sealer.service.get({ name: name(w) }),
+        copyDb: (/** @type {string} */ file) => { db.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`); } });
+    },
     /** The Space ids this home hosts, the personal one first. */
     list() {
       let more = []; try { more = fs.readdirSync(dir).filter(n => SPACE_ID.test(n) && !live.has(n)).sort(); } catch { /* none yet */ }

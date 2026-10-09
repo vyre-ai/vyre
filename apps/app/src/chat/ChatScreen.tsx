@@ -25,6 +25,7 @@ import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { AboutSheet, type AboutInfo } from "./AboutSheet";
+import { SelectionAsk } from "./SelectionAsk";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
@@ -38,6 +39,7 @@ import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
+import { MovedLines, PlacementChip, usePlacement } from "./placement";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
@@ -105,6 +107,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
+  const placed = usePlacement(p.sessionId, !allowsMock());
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
@@ -276,6 +279,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
+      <SelectionAsk onAsk={(t) => setHighlights((l) => addHighlight(l, makeHighlight({ from: "this chat", text: t, selected: t, kind: "message" })))} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -361,6 +365,7 @@ export function ChatScreen(p: ChatScreenProps) {
       ) : null}
 
       <StatusLine
+        place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
         presence={group.presenceLine()}
         state={meta.state}
         busy={meta.busy}
@@ -393,6 +398,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       {realComposer ? <GroupApprovals /> : null}
       {realComposer ? <LinkSuggestion chat={p.sessionId} text={lastUserText} /> : null}
+      <MovedLines lines={placed.lines} />
       <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
@@ -406,7 +412,7 @@ export function ChatScreen(p: ChatScreenProps) {
           onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
+          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant", doing: "Waiting on your answer" }, { name: "kit", family: "assistant", doing: "Working on Northwind Bakery" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
           records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Juniper Studio intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Claude Sonnet", fit: 92 }, { id: "deep", label: "Claude Opus", fit: 97 }, { id: "local", label: "Llama, on this Mac", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}

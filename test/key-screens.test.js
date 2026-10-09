@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "a
 const ROUTES = path.join(ROOT, "app", "u");
 
 /** Routes drawn from blocks. Each must reach BlockScreen through its imports. */
-const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^records\/\[type\]\.tsx$/];
+const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^records\/\[type\]\.tsx$/, /^tags\/\[tag\]\.tsx$/];
 
 /** Hand-written, with why. [pattern, reason]. Moving one means rebuilding it as a screen (data) and deleting the hand-written file. */
 const HAND = /** @type {[RegExp, string][]} */ ([
@@ -20,6 +20,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^chats\//, "the conversation: a live stream with a composer; chat has its own renderer and the glance card (ChatCard) sits beside it"],
   [/^glass\/|^wink\/|^setup\//, "a live device or screen stream, a pairing flow"],
   [/^settings\//, "settings pages built on the hub's setting rows; they become screens when the settings hub describes itself as blocks"],
+  [/^templates(\/\[id\])?\.tsx$/, "the project template studio (a tree of stages and tasks with its own editing): the projects team owns it; it moves with the template design in 0.3.2"],
   [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|project\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
@@ -42,11 +43,10 @@ function reachesBlocks(file, depth = 4, seen = new Set()) {
   return false;
 }
 
-test("key screens: every route is drawn from blocks or named as hand-written with its reason (a new one is listed, not failed), and the ones that claim blocks reach BlockScreen", () => {
+test("key screens: every route is drawn from blocks or named as hand-written with its reason (a new one fails until it is named), and the ones that claim blocks reach BlockScreen", () => {
   const routes = walk(ROUTES);
-  // A route another team adds is not a red on their merge: it is listed here as undecided, and the design-language owner names it (blocks, or hand-written with a reason) at the next pass.
   const undecided = routes.filter(r => !BLOCKS.some(p => p.test(r)) && !HAND.some(([p]) => p.test(r)));
-  if (undecided.length) console.log(`key screens: ${undecided.length} routes not yet decided: ${undecided.join(", ")}`);
+  assert.deepEqual(undecided, [], "a new screen needs a decision: draw it from blocks, or name it in HAND with the reason");
   for (const r of routes.filter(r => BLOCKS.some(p => p.test(r)))) assert.ok(reachesBlocks(path.join(ROUTES, r)), `${r} says it is drawn from blocks but does not reach BlockScreen`);
   const blocks = routes.filter(r => BLOCKS.some(p => p.test(r))).length;
   console.log(`key screens: ${blocks} of ${routes.length} routes drawn from blocks (${routes.length - blocks - undecided.length} hand-written with a reason, ${undecided.length} undecided)`);
