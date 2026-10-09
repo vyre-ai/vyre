@@ -25,7 +25,7 @@ import crypto from "node:crypto";
 import { McpError } from "./client.js";
 import { isPerson, isOwnerDevice } from "../../lib/caller.js";
 import { isLoopbackHost, isTailnet } from "../../lib/netguard.js";
-import { startsLikeCredential } from "../../lib/credential-shapes.js";
+import { startsLikeCredential, hasPrivateKey } from "../../lib/credential-shapes.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE mcp_servers (
@@ -190,7 +190,7 @@ export function looksSecret(v) {
   if (/^(bearer|basic|token)\s+\S{8,}/i.test(s)) return true;
   if (startsLikeCredential(s)) return true;
   if (/^eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\./.test(s)) return true;
-  if (/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(s)) return true;
+  if (hasPrivateKey(s)) return true;
   if (s.length >= 24 && !/[\s/\\]/.test(s) && /[a-z]/.test(s) && /[A-Z0-9]/.test(s) && /[0-9]/.test(s) && !/^[a-z0-9.-]+\.[a-z]{2,}$/.test(s)) return true;
   return false;
 }

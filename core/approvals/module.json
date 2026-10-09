@@ -58,7 +58,10 @@
         "name": "approvals.status", "effect": "read",
         "reach": "person"
       },
-      "approvals.items"
+      {
+        "name": "approvals.items", "effect": "read",
+        "reach": "person"
+      }
     ]
   },
   "watches": {
