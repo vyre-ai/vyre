@@ -16,7 +16,7 @@ import { vaultMore } from "./more";
 import { healthSummary } from "./more-model";
 import { heldByRecord, heldFields, heldLine, shareInput, shareNote, shareRefusal, type Share } from "./held-model";
 import { REVEAL_PURPOSE } from "../../ui/fields/logic.js";
-import { NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
+import { searchItems, NEW_KINDS, putProblems, personalUnlockRefusal, itemsOf, tabOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -62,7 +62,8 @@ export default function RealVault() {
   useEffect(load, [load]);
   useEffect(() => { if (section === "items" && !locked) vaultMore.health().then((h) => setHealth(healthSummary(h))).catch(() => setHealth(null)); }, [section, locked, rows]);
 
-  const items: RealItem[] = rows && tab !== "Held" ? itemsOf(rows, tab) : [];
+  const [query, setQuery] = useState("");
+  const items: RealItem[] = rows ? (query.trim() ? searchItems(rows, query) : tab !== "Held" ? itemsOf(rows, tab) : []) : [];
   const cur = items.find((v) => v.id === sel) ?? (phone ? undefined : items[0]);
   useEffect(() => {
     if (!cur || uses[cur.id]) return;
@@ -194,6 +195,7 @@ export default function RealVault() {
       </View> : null}
       {section !== "items" ? null : <>
       {!err && rows && !locked && health && health.total ? <Card><View className="flex-row items-center gap-s3"><View className="min-w-0 flex-1"><Text strong>Health</Text><Text size="secondary" tone="label">{health.line}</Text></View><Button kind="primary" size={phone ? "md" : "sm"} label="Fix" onPress={() => { hide(); setSection("health"); }} /></View></Card> : null}
+      {!err && rows && !locked ? <Field label="Search the vault" value={query} onChangeText={(q) => { hide(); setQuery(q); setSel(null); }} placeholder="A name, a site or a kind" /> : null}
       <Tabs<Tab | "Held"> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held fields"]]} />
       {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
         <Text strong>Your personal vault is locked</Text>
