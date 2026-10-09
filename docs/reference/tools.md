@@ -11706,7 +11706,7 @@ The .env files in your project folders that hold secrets: which project, how man
 
 - Input:
   - `roots` list of string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`
 
 ### `vault.fetch.public`
 
@@ -11854,15 +11854,18 @@ This Vyre's public card, to give to someone who will share items with you. It ho
 
 ### `vault.import`
 
-Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts "update" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored.
+Import a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and the other managers vyred reads. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts "update" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored. `files` imports several .env files at once, under one yes.
 
 - Input:
-  - `file` string, required
   - `conflicts` "skip" or "update"
+  - `content` string
+  - `file` string
+  - `filename` string
+  - `files` list of string
   - `format` string
   - `rewrite` boolean
   - `token` string
-- Callers: `cli`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
 - Needs a person present.
 
 ### `vault.import.preview`
@@ -11870,9 +11873,11 @@ Import a .env file, a folder of them, or a 1Password, Bitwarden, Chrome or Apple
 What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.
 
 - Input:
-  - `file` string, required
+  - `content` string
+  - `file` string
+  - `filename` string
   - `format` string
-- Callers: `cli`, `local`, `mcp`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`
 - Needs a person present.
 
 ### `vault.inject`
