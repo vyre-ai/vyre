@@ -81,6 +81,18 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+   {
+    "name": "spaces.bundle.enrol", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.bundle.export", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.bundle.status", "effect": "read",
+    "reach": "person"
+   },
   {
     "name": "spaces.brief", "effect": "read", "reach": "modules"
   },
@@ -512,7 +524,8 @@
  "needs": {
   "kernel": {
    "membership": true,
-   "spaces": true
+   "spaces": true,
+   "bundle": true
   }
  },
  "teaches": {}

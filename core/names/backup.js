@@ -36,7 +36,7 @@ export function inspect(buf) {
 export { isSealed, isStream };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
-export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names", "data"];
+export const INCLUDE = ["config.json", "hub.json", "vyre.db", "space-bundle.vyb", "vault", "watchers", "modules", "certs", "names", "data"];
 
 /**
  * Files under `data` that mean something only to a running process and so stay out: the artifacts
