@@ -26,6 +26,7 @@ const ALLOWED = new Map([
   ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
   ["local/voice/ws.js", "the voice provider's WebSocket handshake needs the raw upgraded socket, which the client cannot give; it checks the address through lib/http.js pin() and dials the checked address"],
   ["core/cli/commands/phone.js", PARAM + " (userHostFetch: the person's own server)"],
+  ["lib/siteops/page.js", "the TEXT of a function that runs inside the signed-in page (a browser), which signs the call with the page's own cookies"],
   // inside a sandboxed child: the host side is the vault request engine
   ["core/watchers/presets.js", "runs inside the sandboxed watcher child, which has no network (its uid is refused by the host firewall): `fetch` there is a message to the parent, and the parent's answer is lib/sandbox/fetch.js on the shared lib/http.js transport"],
   ["core/watchers/connector-preset.js", "runs inside the sandboxed watcher child (see presets.js)"], ["core/watchers/runner.js", "the watcher child's fetch, which asks the host"],

@@ -1350,12 +1350,12 @@
    "reason": "scope check: a change touches only the caller's OWN list (one per person), never the Space default; an assistant may make it for the person, who can undo it; refuses an entry that is not installed"
   },
   "sidebar.pin": {
-     "module": "sidebar",
-     "reason": "scope check: it adds one entry to the caller's OWN list (one per person), never the Space default; an assistant may do it for the person, who can undo it; the entry is built from a kind and an id, never an address the caller invents except a view under /u/"
+   "module": "sidebar",
+   "reason": "scope check: it adds one entry to the caller's OWN list (one per person), never the Space default; an assistant may do it for the person, who can undo it; the entry is built from a kind and an id, never an address the caller invents except a view under /u/"
   },
   "sidebar.unpin": {
-     "module": "sidebar",
-     "reason": "scope check: it removes one entry from the caller's OWN list only; the person can pin it again"
+   "module": "sidebar",
+   "reason": "scope check: it removes one entry from the caller's OWN list only; the person can pin it again"
   },
   "sidebar.get": {
    "module": "sidebar",
@@ -2156,6 +2156,30 @@
   "work.tools": {
    "module": "work",
    "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "chrome.op": {
+   "module": "chrome",
+   "reason": "held: a learned operation runs only in a signed-in page; a write is held at the Gate and sent once; the person's Chrome must be connected, and an agent needs the person's grant and a posted plan (callers list, check)"
+  },
+  "connectors.site.limits": {
+   "module": "connectors",
+   "reason": "read-only: the account governor's numbers for one website (callers list)"
+  },
+  "connectors.site.list": {
+   "module": "connectors",
+   "reason": "read-only: the website Connections, names and lights, never a cookie (callers list)"
+  },
+  "connectors.site.operations": {
+   "module": "connectors",
+   "reason": "read-only: one website Connection's operations and their health, never a value (callers list)"
+  },
+  "connectors.site.propose": {
+   "module": "connectors",
+   "reason": "held: only a proposal the person approves; nothing is learned or connected until their yes (callers list, check)"
+  },
+  "connectors.site.rows": {
+   "module": "connectors",
+   "reason": "read-only: one row per website operation for a view (callers list)"
   }
  }
 }

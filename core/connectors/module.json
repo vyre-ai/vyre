@@ -99,7 +99,7 @@
       "view:site-operations": {
         "title": "Website operations",
         "keywords": ["operations", "versions", "rollback", "learned", "heal", "repair"],
-        "icon": "history",
+        "icon": "list.bullet",
         "list": {
           "tool": "connectors.site.rows",
           "input": {},

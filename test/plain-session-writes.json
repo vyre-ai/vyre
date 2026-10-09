@@ -362,12 +362,12 @@
    "why": "the caller's own sidebar list only; an assistant arranges the person's own layer, which the person can undo"
   },
   "sidebar.pin": {
-     "class": "own",
-     "why": "the caller's own sidebar list only; an assistant pins for the person, who can undo it"
+   "class": "own",
+   "why": "the caller's own sidebar list only; an assistant pins for the person, who can undo it"
   },
   "sidebar.unpin": {
-     "class": "own",
-     "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
+   "class": "own",
+   "why": "the caller's own sidebar list only; an assistant unpins for the person, who can pin it again"
   },
   "sidebar.team": {
    "class": "held",
@@ -576,6 +576,10 @@
   "work.know.answer": {
    "class": "own",
    "why": "reads the Space's records as the person the call carries"
+  },
+  "connectors.site.propose": {
+   "class": "held",
+   "why": "a proposal only: the person approves it before anything is learned or connected"
   }
  }
 }
