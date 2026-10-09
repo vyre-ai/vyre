@@ -10,7 +10,9 @@ const SKILL = { name: "write-a-watcher", description: "Use when they want someth
 test("placement: each harness reads SKILL.md where it reads it; an unknown harness or a bad name has no place", () => {
   assert.equal(placement(SKILL_HOMES, "claude", "write-a-watcher").path, ".claude/skills/write-a-watcher/SKILL.md");
   assert.equal(placement(SKILL_HOMES, "codex", "write-a-watcher").path, ".codex/skills/write-a-watcher/SKILL.md");
-  assert.equal(placement(SKILL_HOMES, "grok", "x"), null);
+  assert.equal(placement(SKILL_HOMES, "grok", "write-a-watcher").path, ".grok/skills/write-a-watcher/SKILL.md");
+  assert.equal(placement(SKILL_HOMES, "grok", "../x"), null);
+  assert.equal(placement(SKILL_HOMES, "someone-else", "x"), null);
   assert.equal(placement(SKILL_HOMES, "claude", "../etc"), null);
 });
 
@@ -22,7 +24,9 @@ test("render: the SKILL.md goes unchanged where the harness reads skills; where 
   const noSkills = /** @type {any} */ (render(SKILL_HOMES, "codex", SKILL, { skills: false }));
   assert.equal(noSkills.mode, "instructions");
   assert.match(noSkills.text, /^## Skill: write-a-watcher\nUse when they want something watched\.\n\n# Write a watcher/);
-  assert.equal(/** @type {any} */ (render(SKILL_HOMES, "grok", SKILL, { skills: true })).mode, "instructions", "no known place");
+  assert.equal(/** @type {any} */ (render(SKILL_HOMES, "someone-else", SKILL, { skills: true })).mode, "instructions", "no known place");
+  const g = /** @type {any} */ (render(SKILL_HOMES, "grok", SKILL, null));
+  assert.deepEqual([g.mode, g.files[0].path, g.files[0].text], ["native", ".grok/skills/" + SKILL.name + "/SKILL.md", SKILL.text], "Grok reads the same SKILL.md unchanged");
 });
 
 test("routePlugin: a plugin runs on its vendor's harness, and on another only where its needs are met, with the reason where not", () => {
@@ -35,4 +39,9 @@ test("routePlugin: a plugin runs on its vendor's harness, and on another only wh
   assert.equal(routePlugin("someone-else", [], capsBy).native, null);
   assert.equal(harnessOf("openrouter"), "openrouter");
   assert.equal(harnessOf("codex"), "codex");
+});
+
+test("the table names, for the harnesses that read a shared folder, the folder: Codex also reads .agents/skills, Grok also reads .claude/skills", () => {
+  assert.deepEqual(SKILL_HOMES.codex.also, [".agents/skills"]);
+  assert.deepEqual(SKILL_HOMES.grok.also, [".claude/skills"]);
 });
