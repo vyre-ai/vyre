@@ -102,7 +102,7 @@ export function resultLine(r: Imported): string {
   const bits = [n ? `${plural(n, "item is", "items are")} in your Vault.` : "Nothing new was added."];
   if (r.updated.length) bits.push(`${plural(r.updated.length, "item", "items")} got a new version; the old one stays in its history.`);
   if (r.same.length) bits.push(`${r.same.length} ${r.same.length === 1 ? "was" : "were"} already there.`);
-  if (r.conflicts.length) bits.push(`${plural(r.conflicts.length, "item differs", "items differ")} and was left as it is.`);
+  if (r.conflicts.length) bits.push(`${plural(r.conflicts.length, "item differs and was", "items differ and were")} left as it is.`);
   return bits.join(" ");
 }
 
