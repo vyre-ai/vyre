@@ -4,8 +4,10 @@
 name: node
 on:
   push:
-    # ci's throwaway proof branches (work/ci-box-*, work/ci-app, ...) prove one other workflow.
-    branches-ignore: ["work/ci-*"]
+    # The full suite runs once per integration tip, not on every team push (team/FOUNDATION.md,
+    # part 7): teams run preflight, the merge queue checks each landing, and this runs the whole
+    # suite on what landed. The newest tip cancels an older run.
+    branches: ["main", "work/lead-*", "work/release-*", "release/**", "work/stage-0.2"]
   pull_request:
   workflow_dispatch:
 permissions:
