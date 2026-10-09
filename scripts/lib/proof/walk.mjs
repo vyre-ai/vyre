@@ -340,6 +340,22 @@ export async function walkUpdate(w) {
  * @param {{ w: any, run: any, S: (n: string) => string, mac: any, srv: () => any, CALL: string }} a
  */
 /** A call that cannot hang the proof: the box restarts under the app, and a session opened on a dying link may never answer. @param {number} ms @param {() => Promise<any>} fn */
+/** A fresh signed-in session straight to the box on :7443 (no relay): what the app does on a network that sees the box. Tries https with a self-made certificate, then plain http. @param {any} app */
+async function directSession(app) {
+  const pairing = app.pairing;
+  const tryOrigin = async (/** @type {string} */ scheme) => {
+    const call = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {Record<string, string>} */ headers = {}) => {
+      const mod = await import(scheme === "https" ? "node:https" : "node:http");
+      return await new Promise((res, no) => {
+        const req = mod.request({ host: "127.0.0.1", port: 7443, path: `/v1/tools/${tool}`, method: "POST", rejectUnauthorized: false, headers: { "content-type": "application/json", ...headers } }, (r) => { let b = ""; r.on("data", d => { b += d; }); r.on("end", () => { try { res(JSON.parse(b)); } catch { res({ error: { message: b.slice(0, 120) } }); } }); });
+        req.on("error", no); req.end(JSON.stringify(input));
+      });
+    };
+    return await app.startDirect(call);
+  };
+  try { return await tryOrigin("https"); } catch (e) { return await tryOrigin("http"); }
+}
+
 const within = (ms, fn) => Promise.race([fn(), new Promise((_, no) => setTimeout(() => no(new Error(`no answer in ${ms / 1000} s`)), ms))]);
 
 async function updateSteps({ w, run, S, mac, srv, CALL }) {
@@ -377,17 +393,20 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
   await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
     // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
     let last = "", st = null;
-    const deadline = Date.now() + 10 * 60_000;   // wall clock: ten minutes, however long each try takes
+    const deadline = Date.now() + 4 * 60_000;   // wall clock: four minutes, however long each try takes
     for (let i = 0; Date.now() < deadline && !st; i++) {
       await new Promise(r => setTimeout(r, 5000));
       try { const s = await within(20_000, async () => { await mac.openSession(); return mac.callTool("update.status"); }); if (s.current === u.newVersion) st = s; else last = `still ${s.current}, run ${JSON.stringify(s.run && { state: s.run.state, stage: s.run.stage, message: s.run.message })}`; }
       catch (e) { last = String(/** @type {Error} */ (e).message).slice(0, 160); }
-      if (i % 6 === 0) console.log(`update: waiting for the new version (${Math.round((Date.now() - (deadline - 10 * 60_000)) / 1000)} s): ${last}`);
+      if (i % 6 === 0) console.log(`update: waiting for the new version (${Math.round((Date.now() - (deadline - 4 * 60_000)) / 1000)} s): ${last}`);
     }
     if (!st) {
       // what the host and the box say, so a stall names its step
       const sh = (/** @type {string} */ c) => { try { return String(spawnSync("sh", ["-c", c], { encoding: "utf8", timeout: 30_000 }).stdout || ""); } catch { return ""; } };
-      const diag = ["== docker ps", sh("docker ps -a 2>&1 | head -20"), "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== update unit", sh("sudo journalctl -u vyre-update.service --no-pager -n 60 2>&1"),
+      const op = (/** @type {string} */ tool) => sh(`docker exec -u vyre vyre-vyre-1 vyre call ${tool} '{}' 2>&1 | head -c 1500`);
+      // a FRESH direct call the way the app reaches a box it can see: the device's own signed session over https on :7443, no relay
+      const direct = await within(60_000, () => directSession(mac)).then(r => `direct session ok: ${JSON.stringify(r).slice(0, 200)}`, e => `direct session failed: ${String(e && e.message).slice(0, 300)}`);
+      const diag = ["== direct", direct, "== relay.devices.list (on the box)", op("relay.devices.list"), "== system.info (on the box)", op("system.info"), "== box log files", sh("docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do tail -n 60 \"$f\"; done' 2>&1 | grep -i 'relay\\|wink\\|pair\\|device\\|denied' | tail -40"), "== docker ps", sh("docker ps -a 2>&1 | head -20"), "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== update unit", sh("sudo journalctl -u vyre-update.service --no-pager -n 60 2>&1"),
         "== box log", sh("docker logs --tail 40 vyre-vyre-1 2>&1"), "== version file", sh("cat /srv/vyre/VERSION 2>&1")].join("\n");
       fs.writeFileSync(path.join(w.out, "update-diag.txt"), diag);
       console.log(diag);
