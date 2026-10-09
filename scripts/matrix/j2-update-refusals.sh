@@ -32,12 +32,16 @@ statusf() { sudo cat "$ST/status/status.json" 2>/dev/null | tr -d '\n'; }
 : >"$OUT/pids"
 serve() { python3 -m http.server "$2" --bind 127.0.0.1 --directory "$1" >/dev/null 2>&1 & echo $! >>"$OUT/pids"; for i in $(seq 1 50); do curl -fs "http://127.0.0.1:$2/VERSION" >/dev/null && return 0; sleep 0.2; done; }
 
-# A throwaway signing key: the private half signs, the public half (SPKI, base64) is what the box is told to trust.
-node -e '
+# A throwaway signing key: the private half signs, the public half (SPKI, base64) is what the box is told to trust. With J2B_KEYDIR the candidate was already pinned to and signed with that
+# key (scripts/matrix/j2-pin-key.mjs), so its modules boot; without it a key is made here and the candidate's modules cannot boot.
+if [ -n "${J2B_KEYDIR:-}" ] && [ -s "$J2B_KEYDIR/good.pem" ]; then cp "$J2B_KEYDIR/good.pem" "$J2B_KEYDIR/good.pub" "$WORK"/
+else node -e '
 const c=require("crypto"),fs=require("fs");const k=c.generateKeyPairSync("ed25519");
 const o=process.argv[1];
 fs.writeFileSync(o+"/good.pem",k.privateKey.export({type:"pkcs8",format:"pem"}));
-fs.writeFileSync(o+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));
+fs.writeFileSync(o+"/good.pub",k.publicKey.export({type:"spki",format:"der"}).toString("base64"));' "$WORK"; fi
+node -e '
+const c=require("crypto"),fs=require("fs");const o=process.argv[1];
 const k2=c.generateKeyPairSync("ed25519");fs.writeFileSync(o+"/other.pem",k2.privateKey.export({type:"pkcs8",format:"pem"}));' "$WORK"
 GOODPUB=$(cat "$WORK/good.pub")
 sign() { # sign DIR KEYPEM: SHA256SUMS.sig = base64 Ed25519 over "vyre-release-sums\n" + the exact SHA256SUMS bytes
