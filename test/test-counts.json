@@ -947,7 +947,8 @@
  "apps/app/src/chat/polish.test.js": 5,
  "apps/app/src/auth/presence-words.test.js": 1,
  "core/vyre-index/vyre-index.test.js": 2,
- "test/tools-budget.test.js": 2,
+ "test/tools-budget.test.js": 3,
  "test/tools-find-quality.test.js": 2,
- "test/tools-text-names.test.js": 6
+ "test/tools-text-names.test.js": 6,
+ "test/token-proof.test.js": 6
 }

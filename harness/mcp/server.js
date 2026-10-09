@@ -112,7 +112,7 @@ async function tools() {
   names = next;
   catalog = cat;
   index = indexOf(cat);
-  return listing(cat);
+  return listing(cat, process.env.VYRE_MCP_LISTING);
 }
 
 /** A hub call: the server's own MCP result as it is, or a held call said plainly. @param {string} name @param {any} args */

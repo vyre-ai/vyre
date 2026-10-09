@@ -57,8 +57,13 @@ export const META_TOOLS = [
   },
 ];
 
-/** The MCP listing: the core that this caller has, then the two meta tools. @param {ReturnType<typeof catalogOf>} catalog */
-export function listing(catalog) {
+/**
+ * The MCP listing: the core that this caller has, then the two meta tools. With `mode` "all" (VYRE_MCP_LISTING=all) every tool is listed, as before 0.3.1: only the token proof
+ * (scripts/token-proof.mjs) sets it, to measure the old listing against the new one.
+ * @param {ReturnType<typeof catalogOf>} catalog @param {string} [mode]
+ */
+export function listing(catalog, mode = "") {
+  if (mode === "all") return catalog.map((c) => ({ name: c.name, description: c.description, inputSchema: c.input }));
   const by = new Map(catalog.map((c) => [c.name, c]));
   const core = CORE.filter((n) => by.has(n)).map((n) => { const c = /** @type {any} */ (by.get(n)); return { name: c.name, description: c.description, inputSchema: c.input }; });
   return [...core, ...META_TOOLS];
