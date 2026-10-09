@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Divider, EmptyState, Field, LoadingState, Row, Text, markRef } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { agentsList } from "../settings/real";
@@ -14,9 +14,12 @@ import { ringForNewChat } from "../../src/state/chat-start";
 /** /u/chats/new: pick who to talk to (your assistant is the default and is never listed), say what you want first if you like, and start. work.chat.create makes the chat; it opens with your first words ready to send. */
 export default function NewChatScreen() {
   const router = useRouter();
+  // "Chat about this": a record or project opens a new chat with its urn and name; the chat is linked to it, and the first words name it so the assistant can read it
+  const { about, name } = useLocalSearchParams<{ about?: string; name?: string }>();
+  const aboutUrn = typeof about === "string" && about.startsWith("vyre://") ? about : "";
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
-  const [text, setText] = useState("");
+  const [text, setText] = useState(aboutUrn ? `About ${typeof name === "string" && name ? name : "this"} (${aboutUrn}): ` : "");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [loadErr, setLoadErr] = useState("");
@@ -40,6 +43,8 @@ export default function NewChatScreen() {
       if ("say" in made) { setErr(made.say); return; }
       const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...made }));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
+      // linked to the record it is about; private to its people until they share it on the record's timeline
+      if (aboutUrn) await tool("work.chat.link", { chat: id, record: aboutUrn }).catch(() => undefined);
       // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
       if (text.trim()) {
         const first = await tool("stream.send", { chat: id, text: text.trim(), message: newUuid(), surface: SURFACE }).then(() => null).catch((e: Error) => e);
@@ -62,6 +67,7 @@ export default function NewChatScreen() {
                 </View>
               ))}
             </Card>
+            {aboutUrn ? <Banner tone="plain"><Text>{`This chat is about ${typeof name === "string" && name ? name : "that record"}. It stays private to the people in it until you share it on the timeline.`}</Text></Banner> : null}
             <Field label="First message (optional)" value={text} onChangeText={setText} placeholder="What do you want to work on?" multiline />
             {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
             <View className="flex-row"><Button kind="primary" label={busy ? "Starting" : "Start chat"} disabled={!pick || busy} onPress={() => void start()} /></View>

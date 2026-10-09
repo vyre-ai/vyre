@@ -6,6 +6,7 @@
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
+import { createTimeline } from "./timeline.js";
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
@@ -147,6 +148,15 @@ export default {
       input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { if (!ctx.store || !ctx.store.db) throw unavailable(); return { kind: persistentOf().kindOf(String(i.person), String(i.chat)) }; } });
     // Share to project (R031-41): a share is one `file-share` record by someone in the chat. The kernel does the rest: it opens that one file to the project's members and, for an encrypted chat, wraps the file's key into the project's ring (and rotates it when the last share goes).
     // The files a chat made or received, by name, with which are shared to its project. The chat's folders are sealed: the names come from the chat's own index, for the people in the chat only.
+    // One timeline per record and project, and a chat's link to a record (core/work/timeline.js; R031-41, R031-46)
+    /** @type {any} */ let tl = null;
+    const timelineOf = () => tl || (tl = createTimeline({ kernelOf, hub: hubOf, inChat: (/** @type {any} */ c, /** @type {string} */ n) => inChat(c, n), me: (/** @type {any} */ c) => String((c.hops[0] && c.hops[0].actor.id) || "") }));
+    ctx.tool("work.timeline", { description: "Everything that links to a record or a project, newest first: tasks, files, messages, documents and chats, each only if you may read it. A chat shows only if you are in it or its people shared it, and then only its title. Give a record urn or a project short name.",
+      input: obj({ record: { type: "string" }, project: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 } }), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().timeline(await chainOf(extra), i) });
+    ctx.tool("work.link.suggest", { description: "Which records (a client, a contact, a project) a piece of chat text names, for a \"Link this chat to Northwind?\" prompt. At most three, each one you may read.",
+      input: obj({ text: { type: "string", maxLength: 4000 } }, ["text"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().suggest(await chainOf(extra), i) });
+    ctx.tool("work.chat.link", { description: "Say that a chat is about a record (give its urn; null takes the link off). The chat stays private to its people; `shared: true` shows it, by title, on that record's timeline to everyone who can see the record.",
+      input: obj({ chat: { type: "string" }, record: { type: ["string", "null"] }, shared: { type: "boolean" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().link(await chainOf(extra), i) });
     ctx.tool("work.file.list", { description: "The files this chat has: those it received (chat/) and those it made (made/), each with its name, size, time and whether it is shared with the project. Only for someone in the chat.",
       input: obj({ chat: { type: "string" } }, ["chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
         const k = kernelOf(), chain = await chainOf(extra), chat = String(i.chat);

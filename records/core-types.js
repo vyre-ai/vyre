@@ -299,6 +299,8 @@ export const CHAT = {
   fields: [
     text("title", "Title"),
     f("link", "project", "Project", { to: "project", inverse: { name: "chats", label: "Chats" } }),
+    f("link", "about", "About"),   // any record this chat is about (no target type, no inverse); a record's timeline finds the chat through it
+    f("boolean", "shared", "Shown on the timeline to everyone who can see the record"),   // a chat is private to its people until they share it
     text("chat", "Chat id", { unique: true }),
     text("people", "People"),
     text("agents", "Agents"),

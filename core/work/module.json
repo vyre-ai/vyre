@@ -284,7 +284,9 @@
       },
       {
         "name": "work.template.from-project",
-        "projectArg": ["project"],
+        "projectArg": [
+          "project"
+        ],
         "summary": "a draft template from a project that ran one",
         "reach": "anyone",
         "effect": "write"
@@ -329,6 +331,27 @@
         "summary": "your pinned assistant or Engineer chat",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "work.timeline",
+        "summary": "everything linked to a record or project",
+        "projectArg": [
+          "project"
+        ],
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.link.suggest",
+        "summary": "which records a piece of chat text names",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.link",
+        "summary": "say a chat is about a record, and whether to show it on the timeline",
+        "reach": "anyone",
+        "effect": "write"
       },
       {
         "name": "work.file.list",
@@ -518,6 +541,16 @@
                 "name": "chats",
                 "label": "Chats"
               }
+            },
+            {
+              "name": "about",
+              "kind": "link",
+              "label": "About"
+            },
+            {
+              "name": "shared",
+              "kind": "boolean",
+              "label": "Shown on the timeline to everyone who can see the record"
             },
             {
               "name": "chat",
