@@ -5,6 +5,9 @@ import { useLocalSearchParams } from "expo-router";
 import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
+import fx from "../screens/vault/real-box.fixture.json";
+import { setBoxOverride } from "../src/real/box";
+import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
@@ -38,6 +41,12 @@ function Sample({ name }: { name: string }) {
       { id: 2, kind: "css" as const, screenId: "space", title: "Styling: space", why: "Softer cards, in the firm's colour.", by: "mcp:agent:engineer", status: "pending", before: null, after: '[data-block="kpis"] { border-radius: var(--r-card); }', uses: { reads: [], runs: [] }, appliesTo: "web" },
     ];
     return <DesignChangesView items={items} shots={{ 1: { before: list, after: desk } }} phone={phone} busy={null} error="" onAnswer={() => {}} onRetry={() => {}} />;
+  }
+  if (name.startsWith("vault-real")) {
+    // The Vault as it reads a real box: answers recorded from a real vyred (scripts/capture-vault-fixtures.mjs). `vault-real-health` opens on the Health page.
+    const answers = fx as Record<string, { data?: unknown; error?: { code: string; message: string } }>;
+    setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
+    return <RealVault />;
   }
   if (name === "vault-emergency") {
     const day = 86_400_000, t0 = Date.parse("2026-10-04T00:00:00Z");
