@@ -93,7 +93,8 @@ for (const scheme of ["light", "dark"]) for (const [label, viewport] of SIZES) {
   if (label !== "1920") {
     await pg.goto(`${BASE}/u/templates`, { waitUntil: "domcontentloaded" }); await shot("templates");
     await pg.goto(`${BASE}/u/templates/${lib.template}`, { waitUntil: "domcontentloaded" }); await shot("studio");
-    const test = pg.getByText("Test mode", { exact: true }).first(); if (await test.count()) { await test.click().catch(() => {}); await shot("studio-test"); }
+    const test = pg.getByText("Test mode", { exact: true }).first();
+    if (await test.count()) { await test.click().catch(() => {}); await pg.getByText("Nothing is created, sent or changed", { exact: false }).first().scrollIntoViewIfNeeded({ timeout: 15000 }).catch(() => {}); await shot("studio-test"); }
     await pg.goto(`${BASE}/u/project/${plainId}`, { waitUntil: "domcontentloaded" }); await shot("project-free");
   }
   await pg.goto(`${BASE}/u/project/${tplId}`, { waitUntil: "domcontentloaded" }); await shot("project-template");
