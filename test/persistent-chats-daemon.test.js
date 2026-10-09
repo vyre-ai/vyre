@@ -58,3 +58,20 @@ test("the assistant's and the Engineer's chats are one each per person: pinned, 
   const pins = d.registry.deps ? null : null; void pins;
   assert.deepEqual([(await call(ownerChain, "work.chat.persistent", { kind: "assistant" })).data.chat, (await call(ownerChain, "work.chat.persistent", { kind: "engineer" })).data.chat], [a1.id, e1.id]);
 });
+
+test("only the pinned assistant chat opens its session as the assistant; the person's second chat and a bare session open as plain sessions (R031-94)", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {}, kernel: true, kernelPresence: presence });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner, grants = d.kernel.gateway.grants;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const as = async (/** @type {any} */ c) => ({ token: (await d.kernel.surfaces.open(c, {})).token });
+  const a1 = String((await grants.chats.create(ownerChain, {})).id), a2 = String((await grants.chats.create(ownerChain, {})).id);
+  assert.equal((await d.registry.call("work.chat.pin", { kind: "assistant", chat: a1 }, "cli", await as(ownerChain))).data.chat, a1);
+  assert.equal((await d.registry.call("work.chat.pinned", { person: owner, chat: a1 }, "module:vyred")).data.kind, "assistant");
+  assert.equal((await d.registry.call("work.chat.pinned", { person: owner, chat: a2 }, "module:vyred")).data.kind, null);
+  const hops = async (/** @type {any} */ q) => { const s = await d.registry.deps.kernelSession({ thread: "t-" + Math.random(), agent: null, ...q }); try { return (await d.kernel.surfaces.chainFor(await s.token())).hops.map((/** @type {any} */ h) => `${h.actor.kind}:${h.actor.id}`); } finally { await s.end(); } };
+  assert.deepEqual(await hops({ chat: a1, asker: owner }), [`person:${owner}`, "agent:assistant"], "the pinned chat acts as the assistant");
+  assert.deepEqual(await hops({ chat: a2, asker: owner }), [`person:${owner}`, "agent:session"], "a second chat of the same person is a plain session");
+  assert.deepEqual(await hops({ asker: owner }), [`person:${owner}`, "agent:session"], "a bare session is a plain session");
+});

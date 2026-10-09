@@ -145,6 +145,8 @@ export default {
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
     ctx.tool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
+    ctx.tool("work.chat.pinned", { description: "Which pinned chat this chat is for a person: assistant, engineer, or null. The daemon asks it when it opens a chat's session: only the pinned assistant chat acts as the assistant (R031-94). Modules only.",
+      input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { kernelOf(); return { kind: persistentOf().pinnedOf(String(i.person)).get(String(i.chat)) || null }; } });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),

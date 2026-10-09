@@ -331,6 +331,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.pinned",
+        "summary": "which pinned chat a chat is for a person (the daemon's question when it opens a session)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.pin",
         "summary": "make a chat your pinned assistant or Engineer chat",
         "reach": "anyone",
