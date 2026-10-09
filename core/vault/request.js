@@ -104,6 +104,14 @@ function forms(v) {
  * at most maxBytes back. No redirect is followed here; execute() decides.
  * @param {Send} s @returns {Promise<Reply>}
  */
+/** The address of a call to a browser credential: https, the site's own host exactly, no login in it and no port. Nothing is resolved, because nothing is sent from here. @param {string} rawUrl @param {string[]} hosts */
+function browserTarget(rawUrl, hosts) {
+  let u;
+  try { u = new URL(rawUrl); } catch { throw bad("that address is not valid", "bad_input"); }
+  if (u.protocol !== "https:" || u.username || u.password || u.port || !hosts.includes(u.hostname.toLowerCase())) throw bad(`${printable(u.hostname, 80)} is not this connection's site`, "bad_input");
+  return { url: u, addresses: [] };
+}
+
 export function httpsTransport({ url, address, method, headers, body, timeoutMs = TIMEOUT_MS, maxBytes = MAX_RESPONSE }) {
   return new Promise((resolve, reject) => {
     const h = { ...headers };
@@ -274,7 +282,8 @@ export class ApiRequests {
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);
     const rawUrl = buildUrl(input.url, input.query);
-    const target = config.app ? await this.appTarget(config, rawUrl) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
+    // A browser credential makes no network request from here (the browser does, to its own site), so there is nothing to resolve: the address only has to be the site's, exactly.
+    const target = config.app ? await this.appTarget(config, rawUrl) : config.auth.type === "browser" ? browserTarget(rawUrl, config.hosts) : await checkTarget(rawUrl, config.hosts, { lookup: this.deps.lookup });
     const url = target.url;
     checkQuery(url);
     let body;
