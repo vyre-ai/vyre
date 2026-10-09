@@ -22,6 +22,8 @@ const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
+/** The tighter of two lender limits: `provider` beats `internet` beats none. */
+export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "provider" : a === "internet" || b === "internet" ? "internet" : undefined);
 
 /**
  * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean }, capOf?(q: { member: string, device: string }): "provider" | "internet" | undefined },
@@ -65,9 +67,9 @@ export function createLentHome(o) {
     /** Whether this person's computer may run the Space's work now (both Offers), and the lender's own cap: the lender's runner polls it (never faster than once a minute). @param {any} chain @param {{ device_key?: string }} [i] */
     async status(chain, i = {}) {
       const w = who(chain); const a = o.offers.active({ member: w.person, device: w.device, ...(i && i.device_key ? { device_key: String(i.device_key) } : {}) });
-      return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: (o.lenderCap && o.lenderCap(w)) || (o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null };
+      return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null };
     },
-    /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string }} i */
+    /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string, cap?: "provider" | "internet" | null, chat?: string }} i */
     async start(chain, i) {
       const w = who(chain);
       if (!i || !SESSION.test(String(i.session))) throw err("bad_input", "name the session");
@@ -75,7 +77,9 @@ export function createLentHome(o) {
       { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
       const spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
-      const cap = (o.lenderCap && o.lenderCap(w)) || (o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined);
+      if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
+      // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
+      const cap = tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined);
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
       if (o.leases && i.lease) { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }

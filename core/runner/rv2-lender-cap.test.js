@@ -86,3 +86,61 @@ test("CAP-3: lend of an already-accepted computer with a cap neither applies it 
   console.log("CAP-3 lend result", JSON.stringify(out).slice(0, 100), "cap now", cap);
   assert.ok(out.error || cap === "provider", "a requested cap must apply or be refused, never dropped silently");
 });
+
+// ---- R031-95 2.3: the cap floor. The tightest limit ever signed for a computer holds until the lender signs a loosening; the runner's hello can only ask for less. ----
+const LEND = `vyre://${SPACE}/offer/lend`;
+const unlendProof = o => proof("grants.unoffer", { unlend: { member: o.member, device: o.device } }, LEND);
+const lendWith = (r, extra, cap) => { const o = { member: BOB, device: "dev_floor", device_key: "KEY_LAPTOP" };
+  return r.g.offers.lend(r.bob, { ...o, ...(cap ? { network_cap: cap } : {}), ...extra }, { presence: proof("grants.offer", { lend: { ...o, network_cap: cap ?? null, ...(extra.loosen ? { loosen: true } : {}) } }, LEND) }); };
+const unlend = (r, device = "dev_floor") => r.g.offers.unlend(r.bob, { member: BOB, device }, { presence: unlendProof({ member: BOB, device }) });
+const startNet = async (r, device, i = {}) => { const c = r.as(BOB, device); await c.vault.lease(); return (await c.spec({ session: `s_${Math.random().toString(36).slice(2, 8)}`, ...i })).network; };
+
+test("CAP-4: a limit the lender signed survives stopping the lend and lending again with no limit, and holds at the home", async t => {
+  const r = await rig(t);
+  await lendWith(r, {}, "provider");
+  await unlend(r);
+  await assert.rejects(lendWith(r, {}), e => e.code === "not_allowed" && /tighter network limit/.test(e.message), "a re-lend that states no limit is refused");
+  await assert.rejects(lendWith(r, {}, "internet"), e => e.code === "not_allowed", "so is a looser one");
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "provider", "the floor stands while nothing is lent");
+  await lendWith(r, {}, "provider");                                                // the same limit again is fine
+  // Seen from the lender's computer: the Space asks for the internet, the home answers with the provider only.
+  const c = r.as(BOB, "dev_floor"); await c.vault.lease();
+  assert.equal((await c.spec({ session: "s1" })).network, "provider");
+});
+
+test("CAP-5: only a loosening the lender signs lowers the floor, and the proof binds the word", async t => {
+  const r = await rig(t);
+  await lendWith(r, {}, "provider");
+  await unlend(r);
+  const o = { member: BOB, device: "dev_floor", device_key: "KEY_LAPTOP" };
+  // A proof made for the plain lend does not carry a loosening.
+  await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: true }, { presence: proof("grants.offer", { lend: { ...o, network_cap: "internet" } }, LEND) }), e => /wrong_payload|presence|proof/i.test(String(e.code) + e.message));
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "provider");
+  await assert.rejects(r.g.offers.lend(r.bob, { ...o, network_cap: "internet", loosen: "yes" }, {}), e => e.code === "bad_input");
+  // Signed with the loosening, it goes through and the floor starts again from there.
+  await lendWith(r, { loosen: true }, "internet");
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_floor" }), "internet");
+  await unlend(r);
+  await assert.rejects(lendWith(r, {}), e => e.code === "not_allowed", "internet is now the floor: no limit is looser than it");
+  await lendWith(r, {}, "provider");                                                 // tighter is always allowed
+  await unlend(r);
+  await assert.rejects(lendWith(r, {}, "internet"), e => e.code === "not_allowed");
+});
+
+test("CAP-6: the hello's limit is the tightest of the Space, the lender's acceptance and what the runner signed; a runner can only ask for less", async t => {
+  const r = await rig(t);                                                           // dev_laptop: accepted with no limit, the Space says internet
+  assert.equal(await startNet(r, "dev_laptop"), "internet");
+  assert.equal(await startNet(r, "dev_laptop", { cap: "provider" }), "provider", "the runner signed provider: tighter than the home knew");
+  assert.equal(await startNet(r, "dev_laptop", { cap: "internet" }), "internet", "internet from the runner does not loosen anything the home knows");
+  const tight = await rig(t, { acceptCap: "provider" });
+  assert.equal(await startNet(tight, "dev_laptop", { cap: "internet" }), "provider", "a runner asking for more than the lender's acceptance gets the acceptance");
+  const c = tight.as(BOB, "dev_laptop"); await c.vault.lease();
+  await assert.rejects(c.spec({ session: "s9", cap: "everything" }), e => e.code === "bad_input");
+});
+
+test("CAP-7: an acceptance that states no limit never lowers the floor (CAP-2 read through the floor), and a bad limit is refused", async t => {
+  const r = await rig(t, { acceptCap: "provider" });
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });   // taken, and it changes nothing
+  assert.equal(r.g.offers.capOf({ member: BOB, device: "dev_laptop" }), "provider");
+  await assert.rejects(r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_other", device_key: "K2", network_cap: "everything" }), e => e.code === "bad_input");
+});

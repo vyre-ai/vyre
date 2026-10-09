@@ -51,7 +51,7 @@ export function createLentClient(o) {
       credential: req => o.invoke("leases.use", [{ session: req.session, route: req.route, method: req.method, path: req.path }]),
     },
     /** The Space's definition of the session, written at the home with the lender's cap already applied. */
-    spec: ({ session, chat }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}) }]),
+    spec: ({ session, chat, cap }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}), ...(cap ? { cap } : {}) }]),
     stop: session => o.invoke("lent.stop", [{ session }]),
   };
 }

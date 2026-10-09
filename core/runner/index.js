@@ -133,7 +133,7 @@ export default {
         const p = await portsFor(space); const r = await forSpace(space);
         // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
         await r.open();
-        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}) });
+        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const run = resolveAgent(spec);
         const h = await r.start({ session, resume: Boolean(resume), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });

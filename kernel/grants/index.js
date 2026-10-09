@@ -143,6 +143,18 @@ export function createGrantsStore(cfg) {
   /** @type {Set<string>} agent, service and automation actors that belong to the Space */ const actors = new Set();
   /** @type {Map<string, any>} pending, single-use invitations an admin approved */ const invites = new Map();
   /** @type {Map<string, any>} compute offers: the two grants a member's computer runs a Space's work under */ const offers = new Map();
+  // The lender's network limit, ranked: `provider` is the tightest, `internet` next, none stated the loosest (CAP floor, R031-95 2.3).
+  const capRank = (/** @type {string | null | undefined} */ c) => (c === "provider" ? 2 : c === "internet" ? 1 : 0);
+  /**
+   * The floor for one computer: the tightest limit ever signed on a member's acceptance of it (active or ended), counted from the last time the lender signed a loosening. It only tightens by itself:
+   * a re-lend, a restart or an acceptance that states no limit never drops it; only a lend that carries `loosen` under the member's own proof (the proof binds the flag) starts the count again.
+   */
+  const capFloor = (/** @type {string} */ member, /** @type {string} */ device) => {
+    const mine = [...offers.values()].filter(o => o.side === "member_accepts" && o.member === member && o.device === device).sort((a, b) => (a.at || 0) - (b.at || 0));
+    let from = 0; mine.forEach((o, i) => { if (o.floor_reset) from = i; });
+    /** @type {string | null} */ let cap = null; for (const o of mine.slice(from)) if (capRank(o.network_cap) > capRank(cap)) cap = o.network_cap;
+    return cap;
+  };
   /** @type {Map<string, { prefix: string, actions: string[] }[]>} what each first-party module may mint for others: its manifest's `needs.kernel.mints`, set at install */ const mints = new Map();
   /** @type {{ from: string, to: string } | null} the owner's adoption of the claimed identity, once (`owner.adopted`) */ let adopted = null;
   /** @type {Map<string, any>} standing rules of the Space (never, draft only, always ask) */ const rules = new Map();
@@ -611,7 +623,7 @@ export function createGrantsStore(cfg) {
      * Lend one computer to this Space in ONE act (the first lend of a device, ruled 5 Oct): the Space's side (only when the caller is an owner or admin) and the member's own side, bound to the
      * computer's key, made under ONE presence proof that is bound to this compound input (member, device, key; the sides made follow from the caller's role). The proof covers nothing else and is spent
      * once. Withdrawing is `unlend`, which needs only the live session.
-     * @param {any} chain @param {{ member: string, device: string, device_key: string, network_cap?: "provider" | "internet" | null }} o @param {{ presence?: any }} [opt]
+     * @param {any} chain @param {{ member: string, device: string, device_key: string, network_cap?: "provider" | "internet" | null, loosen?: true }} o @param {{ presence?: any }} [opt]
      * @returns {Promise<{ offers: any[] }>}
      */
     async lend(chain, o, opt = {}) {
@@ -625,17 +637,21 @@ export function createGrantsStore(cfg) {
       // A computer already lent with another limit is not silently kept at the old one: the member stops lending it and lends it again with the new limit, under a new proof (CAP-3).
       { const had = [...offers.values()].find(x => x.status === "active" && x.side === "member_accepts" && x.member === o.member && x.device === o.device);
         if (had && (had.network_cap ?? null) !== cap) throw new KernelError("not_allowed", "this computer is already lent with a different network limit: stop lending it, then lend it again with the new limit"); }
+      if (o.loosen !== undefined && o.loosen !== true) throw new KernelError("bad_input", "loosen is true or left out");
+      // The floor: a lend that states a looser limit than this computer was ever lent with is refused unless the member signs the loosening itself (the proof binds `loosen`).
+      const floor = capFloor(o.member, o.device), loosens = capRank(cap) < capRank(floor);
+      if (loosens && o.loosen !== true) throw new KernelError("not_allowed", `this computer was lent with a tighter network limit (${floor}) before: lend it again and confirm the looser one`);
       // The member's own earlier lend of this very computer that THEY ended is still their grant: turning it on again takes the live session, not a fresh proof. Anything else that ended it (an owner's off, a
       // removal, a role change) leaves no such record, so the next lend is a first grant and takes the proof again.
       const prior = [...offers.values()].filter(x => x.side === "member_accepts" && x.status === "revoked" && x.member === o.member && x.device === o.device && x.device_key === o.device_key).sort((a, b) => (b.revoked_at || 0) - (a.revoked_at || 0))[0];
-      const resume = Boolean(prior && prior.ended_by === issuer.id);
-      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: cap } }, opt.presence);
+      const resume = Boolean(prior && prior.ended_by === issuer.id) && !loosens;   // allowing more than the lender ever allowed before always takes a fresh proof that binds it
+      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: cap, ...(o.loosen ? { loosen: true } : {}) } }, opt.presence);
       if (!memberOk({ kind: "person", id: o.member, space: cfg.space })) throw new KernelError("not_found", "no such member");
       /** @type {any[]} */ const made = [];
       for (const side of both ? ["space_allows", "member_accepts"] : ["member_accepts"]) {
         const have = [...offers.values()].find(x => x.status === "active" && x.side === side && x.member === o.member && x.device === o.device);
         if (have) { made.push(have); continue; }
-        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, ...(side === "member_accepts" && cap ? { network_cap: cap } : {}), status: "active", made_by: issuer.id, at: clock() });
+        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, ...(side === "member_accepts" && cap ? { network_cap: cap } : {}), ...(side === "member_accepts" && loosens ? { floor_reset: true } : {}), status: "active", made_by: issuer.id, at: clock() });
         offers.set(rec.id, rec);
         await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
         made.push(rec);
@@ -675,9 +691,8 @@ export function createGrantsStore(cfg) {
     /** What the lender allows this member's computer to reach (`provider` or `internet`), from the member's own active acceptance; undefined when the acceptance names none (the Space's choice stands). */
     capOf(/** @type {{ member: string, device: string }} */ q) {
       // The tightest limit across every live acceptance for that computer: `provider` is tighter than `internet`, and an acceptance that states none never loosens one that does (CAP-2).
-      let cap;
-      for (const o of offers.values()) if (o.status === "active" && o.side === "member_accepts" && o.member === q.member && o.device === q.device) { if (o.network_cap === "provider") return "provider"; if (o.network_cap === "internet") cap = "internet"; }
-      return cap;
+      // The floor counts even when no acceptance stands right now, so ending a lend and lending again never drops a limit the lender signed.
+      return capFloor(q.member, q.device) ?? undefined;
     },
     /** The active offer record for a side, member and computer (`device` null = the Space's any-computer offer), or null. Sync; it reads the store. */
     find(/** @type {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} */ q) {
