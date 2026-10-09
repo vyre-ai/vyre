@@ -278,6 +278,12 @@ export function previewsScript(o: { tps?: number } = {}): Segment[] {
   c.push("status", { state: "working", turn: "turn-1" });
   c.push("user-message", { message: "m1", text: "Build me a small intake form I can show Maria this afternoon, and let me look at it.", state: "sent" }, 40);
   c.say("a1", "I built the form with the three questions you listed and started it on a port. It validates the date and keeps nothing until you press send.", tps, 200);
+  c.push("tool-started", { tool_id: "e1", tool: "Edit", summary: "Edit form.html" }, 120);
+  c.push("tool-finished", { tool_id: "e1", ok: true, result: { block: "diff", path: "form.html", hunks: [{ del: "<input name=\"date\">", add: "<input name=\"date\" type=\"date\" required>" }] } }, 300);
+  c.push("tool-started", { tool_id: "e2", tool: "Edit", summary: "Edit form.css" }, 100);
+  c.push("tool-finished", { tool_id: "e2", ok: true, result: { block: "diff", path: "form.css", hunks: [{ del: "gap: 8px;", add: "gap: 12px;" }] } }, 300);
+  c.push("tool-started", { tool_id: "c1", tool: "Bash", kind: "terminal", summary: "Start the form on a port" }, 100);
+  c.push("tool-finished", { tool_id: "c1", ok: true, result: { block: "terminal", command: "node serve.js", output: "listening on 5173", exit: 0, running: false } }, 300);
   c.push("tool-finished", { tool_id: "preview:0a1b2c3d", ok: true, result: { block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "port", mode: "session", access: "me", thumb: 1 } }, 300);
   c.say("a2", "It ends with this chat. If you want it there tomorrow, tap Keep it running and I will leave it to Vyre.", tps, 200);
   c.push("status", { state: "waiting", turn: "turn-1" }, 60);

@@ -25,6 +25,7 @@ import type { StreamSource } from "./mock-stream";
 import { useSessionStream, type PerfSink } from "./store";
 import { ChatHeader } from "./ChatHeader";
 import { AboutSheet, type AboutInfo } from "./AboutSheet";
+import { SelectionAsk } from "./SelectionAsk";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
@@ -278,6 +279,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
+      <SelectionAsk onAsk={(t) => setHighlights((l) => addHighlight(l, makeHighlight({ from: "this chat", text: t, selected: t, kind: "message" })))} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
