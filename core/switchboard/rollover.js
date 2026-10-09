@@ -32,6 +32,12 @@ export const ROLL = Object.freeze({
   turnChars: 6_000,
   /** Pointer lines in the seed's index. */
   lines: 30,
+  /** Work-done receipts in the seed (R031-00q): at most this many lines, each cut at receiptChars; older calls are counted, not listed. */
+  receipts: 60,
+  receiptChars: 200,
+  /** The facts ledger: ids kept, remembered facts kept, and the lines of each. */
+  ledgerIds: 20,
+  ledgerFacts: 12,
   /** What an agent's own prompt and tools hold before the conversation (tokens), for the estimate. */
   baseline: 12_000,
 });
@@ -79,18 +85,58 @@ export const cutTo = (s, n) => (s.length > n ? s.slice(0, Math.max(0, n - 1)) + 
 
 export { SEED_OPEN, withoutSeed };
 
+
+/** A tool's name without the MCP prefix: mcp__vyre__planner_add is planner_add. @param {string} n */
+const bare = n => String(n || "").replace(/^mcp__.*?__/, "");
+
+/**
+ * The receipts of a thread's tool calls, from its event log (R031-00q): one line a call, oldest first, newest 60 when there are more, with the older ones counted. A call's line is what it did
+ * (the started event's summary, already redacted and cut) and its outcome (the done event's receipt: one word, how many items, up to three ids). Output text is never here: the log never held it.
+ * Also gives the ids folded to the last value per (tool, key), for the ledger, and the todos and reminders the thread set.
+ * @param {{ type: string, at?: number, payload: any }[]} events the thread's thread.tool events, oldest first
+ * @param {Partial<typeof ROLL>} [limits]
+ * @returns {{ lines: string[], earlier: number, calls: number, ids: { v: string, k: string, tool: string, n: number }[], set: { id: string, text: string }[] }}
+ */
+export function receiptsOf(events, limits = {}) {
+  const L = { ...ROLL, ...limits };
+  /** @type {Map<string, { name: string, summary: string, n: number, receipt?: any, failed?: boolean }>} */ const calls = new Map();
+  let n = 0;
+  for (const e of events) {
+    const p = e.payload || {};
+    const key = String(p.call || p.id || "");
+    if (!key) continue;
+    if (p.phase === "started") { if (!calls.has(key)) calls.set(key, { name: bare(p.name || p.tool), summary: String(p.summary || p.name || ""), n: ++n }); }
+    else if (p.phase === "done") { const c = calls.get(key); if (c) { c.receipt = p.receipt; c.failed = p.status === "failed" || p.error === true; } }
+  }
+  const all = [...calls.values()].filter(c => c.name !== "TodoWrite");
+  const line = (/** @type {typeof all[number]} */ c) => {
+    const r = c.receipt;
+    const outcome = r ? [r.out, r.n !== undefined ? `${r.n} item${r.n === 1 ? "" : "s"}` : null, ...(r.ids || []).map((/** @type {any} */ i) => i.v)].filter(Boolean).join(", ") : c.failed ? "failed" : "no result seen";
+    return cutTo(`#${c.n} ${bare(c.summary).replace(/\s+/g, " ")} -> ${outcome}`, L.receiptChars);
+  };
+  const shown = all.slice(-L.receipts);
+  /** @type {Map<string, { v: string, k: string, tool: string, n: number }>} */ const ids = new Map();
+  /** @type {{ id: string, text: string }[]} */ const set = [];
+  for (const c of all) {
+    for (const i of (c.receipt && c.receipt.ids) || []) ids.set(`${c.name}\u0000${i.k}`, { v: i.v, k: i.k, tool: c.name, n: c.n });
+    if (/^planner_add$/.test(c.name) && c.receipt && c.receipt.out === "ok" && c.receipt.ids && c.receipt.ids[0]) set.push({ id: c.receipt.ids[0].v, text: cutTo(bare(c.summary).replace(/^planner_add\s*/, "").replace(/\s+/g, " "), 120) });
+  }
+  return { lines: shown.map(line), earlier: all.length - shown.length, calls: all.length, ids: [...ids.values()].sort((a, b) => b.n - a.n).slice(0, L.ledgerIds), set: set.slice(-8) };
+}
+
 /**
  * The seed: one data-framed block, then the person's words follow it in the same message.
  * @param {{ decisions?: { topic?: string, value?: string, text?: string, state?: string, at?: number, replaces?: string|null }[],
  *   plan?: { text: string, status: string }[], tasks?: { text: string, status: string }[],
  *   pointers?: { lines?: string[], files?: { ref: string, at: string[] }[], commits?: { ref: string, at: string }[], sessions?: number, turns?: number },
  *   tail?: { who: string, text: string, pointer?: string }[],
+ *   receipts?: ReturnType<typeof receiptsOf> | null, facts?: string[], held?: string[],
  *   roll?: number, folder?: string|null, limits?: Partial<typeof ROLL>,
  *   kind?: "roll"|"switch"|"back" }} o
  *   kind: why the block is sent. A roll (the window filled), a switch (another model takes the thread over) or a back (a model that ran the thread before returns to it, and `tail` is what was said while it was away).
  * @returns {{ text: string, chars: number, tail: number, decisions: number, lines: number }}
  */
-export function seedOf({ decisions = [], plan = [], tasks = [], pointers = {}, tail = [], roll = 1, folder = null, limits = {}, kind = "roll" }) {
+export function seedOf({ decisions = [], plan = [], tasks = [], pointers = {}, tail = [], roll = 1, folder = null, limits = {}, kind = "roll", receipts = null, facts = [], held = [] }) {
   const L = { ...ROLL, ...limits };
   const label = kind === "back" ? "Said while you were away" : "Most recent";
   const why = kind === "roll" ? "Its earlier context was rolled over to keep the window small, so you start fresh from this block."
@@ -120,6 +166,21 @@ export function seedOf({ decisions = [], plan = [], tasks = [], pointers = {}, t
   if (open.length) {
     parts.push("Work still open:");
     for (const x of open) parts.push(quote(`[${x.status}] ${cutTo(String(x.text).replace(/\s+/g, " "), 240)}`));
+  }
+
+  // 2c. What was done (receipts) and what is established (the ledger), R031-00q: the tool outputs are gone, so this says what the tools did and what they returned that later steps need.
+  if (receipts && receipts.lines.length) {
+    parts.push(`Work done so far, one line per tool call, oldest first (the outputs are not kept here; a call's id or count is what it returned)${receipts.earlier ? `. ${receipts.earlier} earlier calls are not listed` : ""}:`);
+    parts.push(quote(receipts.lines.join("\n")));
+  }
+  const ledger = [];
+  for (const f of facts.slice(0, L.ledgerFacts)) ledger.push(`fact: ${cutTo(String(f).replace(/\s+/g, " "), 200)}`);
+  if (receipts) for (const i of receipts.ids) ledger.push(`${i.v}  (${i.k} from ${i.tool}, call #${i.n})`);
+  if (receipts) for (const x of receipts.set) ledger.push(`set: ${x.id} ${x.text}  (a reminder or to-do this session made; planner_list shows whether it is still open)`);
+  for (const h of held.slice(0, 8)) ledger.push(`held at the Gate, waiting for the person: ${cutTo(String(h).replace(/\s+/g, " "), 160)}`);
+  if (ledger.length) {
+    parts.push("Established so far (ids and values the work produced, facts kept, things still open; each can be read back with its call number or memory_search before you rely on it):");
+    parts.push(quote(ledger.join("\n")));
   }
 
   // 3. The index of what was dropped: pointers, files, commits. Capped to L.lines pointer lines.

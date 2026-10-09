@@ -46,7 +46,7 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { ROLL, contextOf, decide as rollDecide, seedOf, indexOf as pointerIndex } from "./rollover.js";
+import { ROLL, contextOf, decide as rollDecide, seedOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js";
@@ -1915,10 +1915,27 @@ export class Switchboard {
       for (const e of this.deps.ofThread(thread, { types: ["thread.task"] })) latest.set(String(e.payload.id), e.payload);
       tasks = [...latest.values()].filter(x => x.status === "running").map(x => ({ text: x.title || x.id, status: "running" }));
     }
+    // R031-00q: the receipts of the thread's tool calls (from its event log, which never held the outputs), and a ledger derived from stores that exist: what the agent was told to keep
+    // (memory writes made in this thread), and what waits on the person at the Gate. A terminal session has no thread, so none of this: its seed carries the ledger parts Recall and memory give.
+    /** @type {ReturnType<typeof receiptsOf> | null} */ let receipts = null;
+    /** @type {string[]} */ let facts = [];
+    /** @type {string[]} */ let waiting = [];
+    // VYRE_MANAGED_CONTEXT=off leaves the receipts and the ledger out: only the token proof sets it, to measure the seed with and without them.
+    if (thread && process.env.VYRE_MANAGED_CONTEXT !== "off") {
+      receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
+      const [w, g] = await Promise.all([
+        this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
+        this.deps.call("gate.held", { thread }).catch(() => null),
+      ]);
+      const writes = w && !w.error && w.data && Array.isArray(w.data.writes) ? w.data.writes : [];
+      facts = writes.filter((/** @type {any} */ x) => x && x.state !== "forgotten" && x.from && x.from.thread === thread && x.text).map((/** @type {any} */ x) => `${x.kind || "fact"}: ${x.text}`).slice(0, ROLL.ledgerFacts);
+      const items = g && !g.error && g.data && Array.isArray(g.data.held) ? g.data.held : Array.isArray(g.data) ? g.data : [];
+      waiting = items.map((/** @type {any} */ x) => `${x.id || ""} ${x.summary || x.kind || ""}`.trim()).filter(Boolean);
+    }
     const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
     const moved = kind !== "roll" && thread;
     const tail = moved ? this.rollTurns(thread, 400, since) : held ? held.tail : thread ? this.rollTurns(thread) : [];
-    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
+    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
   }
 
   /**

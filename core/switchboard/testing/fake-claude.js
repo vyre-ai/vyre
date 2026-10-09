@@ -476,6 +476,13 @@ async function turn(prompt, uuid = null) {
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
     await say("done"); return result(true, "done");
   }
+  // "tooljson <name> <json>": a finished tool call whose result is that JSON, as a Vyre MCP tool's is (the rollover test reads the receipt it leaves), then a reply.
+  const toolJson = /^tooljson (\S+) (.+)$/s.exec(p);
+  if (toolJson) {
+    out({ type: "assistant", message: { id: "m-tj", role: "assistant", content: [{ type: "tool_use", id: "tu-j", name: toolJson[1], input: { title: "Renew the notary bond" } }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-j", content: toolJson[2] }] } });
+    await say("done"); return result(true, "done");
+  }
   // "tooluse-ask <name>": the same, but Claude Code first asks the host whether it may (a can_use_tool control request), as it does for a Vyre MCP tool in a real thread. Nothing answers it
   // unless the host does, and a tool nobody answers for ends as the real one does: "Tool permission request failed", an error result and a run with no usage. The token proof's stand-in uses it.
   const toolAsk = /^tooluse-ask (\S+)$/.exec(p);

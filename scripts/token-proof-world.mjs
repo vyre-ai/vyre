@@ -154,12 +154,22 @@ const person = setInterval(async () => {
       const id = a.id || a.ask; if (!id || answered.has(id)) continue;
       answered.add(id);
       const mine = a.kind === "permission" && /^mcp__[a-z_]*vyre[a-z_]*__/.test(String(a.tool || ""));
-      await call("threads.answer", mine ? { ask: id, decision: "allow" } : { ask: id, decision: "deny", message: "not part of the proof" });
+      const ans = await call("threads.answer", mine ? { ask: id, decision: "allow" } : { ask: id, decision: "deny", message: "not part of the proof" });
+      if (process.env.TOKEN_PROOF_DEBUG) console.log("ask", id, a.tool, a.kind, JSON.stringify(ans).slice(0, 160));
       if (mine) allowed++; else refused++;
     }
   } catch { /* the next tick tries again */ }
 }, 150);
 person.unref();
+
+/** The long task passes when the answer holds the real ids of the two todos it names, and the count. */
+async function verifyLong(/** @type {string} */ text) {
+  const l = await call("planner.list", { state: "all", limit: 500 });
+  const items = (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : []);
+  const idOf = (/** @type {string} */ title) => (items.find((/** @type {any} */ x) => x.title === title) || {}).id;
+  const a = idOf("Call Aaron Adair"), b = idOf("Call Carl Cole");
+  return Boolean(a && b && text.includes(a) && text.includes(b) && /\b(6|six)\b/i.test(text) && items.filter((/** @type {any} */ x) => /^Call /.test(String(x.title))).length === 6);
+}
 
 // ------------------------------------------------------------------ the paid round
 if (cmd === "run") {
@@ -170,11 +180,20 @@ if (cmd === "run") {
   const arms = flag("arms", "old,core").split(",").filter((a) => a in ARMS), reps = Number(flag("reps", "1")), only = flag("only") ? flag("only").split(",") : null;
   const standIn = args.includes("--stand-in");
   const out = flag("out", fs.mkdtempSync(`${home}-proof-`)); fs.mkdirSync(out, { recursive: true });
-  /** @type {any[]} */ const rows = []; let spent = 0;
+  /** @type {any[]} */ const rows = []; let spent = 0; let rolled = false;
   outer: for (let rep = 0; rep < reps; rep++) for (const task of TASKS.filter((t) => !only || only.includes(t.id))) for (const arm of arms) {
     if (standIn && !task.standIn) continue;
+    if (task.arms ? !task.arms.includes(arm) : arm.startsWith("roll-") && !only) continue;
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
     await call("agents.stop", { agent: "juno" });                        // a fresh thread for every run: nothing carries over
+    // The window arms: rollover off, or on at 30 percent of the window so it happens in the middle of the long task. Every other arm runs with the defaults (on, 60).
+    const rollMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_ROLL;
+    if (rollMode || rolled) {
+      await call("settings.set", { key: "sessions.rollover", value: rollMode !== "off" });
+      await call("settings.set", { key: "sessions.rollover_at", value: rollMode === "on" ? 30 : 60 });
+      rolled = Boolean(rollMode);
+    }
+    if (task.verify === "long") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
     Object.assign(process.env, /** @type {any} */ (ARMS)[arm]);
     if (!process.env.VYRE_MCP_LISTING) delete process.env.VYRE_MCP_LISTING;
     if (!process.env.VYRE_MCP_FEATURES) process.env.VYRE_MCP_FEATURES = "";
@@ -182,8 +201,11 @@ if (cmd === "run") {
     process.env.TOKEN_PROOF_TEE = tee;
     const t0 = Date.now();
     const asked = await call("agents.ask", { agent: "juno", text: standIn ? /** @type {string} */ (task.standIn) : task.prompt, wait: true, surface: "deck" });
+    // agents.ask answers as soon as the thread stops to ask the person, which can be before the turn is over: wait for the run's own result line (the person's answer comes from the loop above).
+    await until(async () => !(await call("threads.asks", {})).data?.length && fs.existsSync(tee) && /"type":"result"/.test(fs.readFileSync(tee, "utf8")), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
     const run = parseStream(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "");
-    const row = { arm, task: task.id, rep, pass: !asked.error && !run.error && passed(task, run), armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    const extra = task.verify === "long" ? await verifyLong(run.text) : true;
+    const row = { arm, task: task.id, rep, pass: !asked.error && !run.error && passed(task, run) && extra, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));

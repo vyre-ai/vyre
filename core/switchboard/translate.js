@@ -17,6 +17,7 @@
 // capped, never into an event.
 
 import { redact } from "../transcripts/sanitize.js";
+import { receiptOf } from "../../lib/receipt.js";
 
 const CUT = 200;
 
@@ -215,7 +216,7 @@ export function translate(m) {
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
       if (b.type === "tool_result" && Array.isArray(b.vyre_media) && b.vyre_media.length) (out.media ||= []).push(...b.vyre_media.slice(0, 4));
-      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error), ...(Number.isInteger(b.exit_code) ? { exit_code: b.exit_code } : {}) } });
+      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error), ...(Number.isInteger(b.exit_code) ? { exit_code: b.exit_code } : {}), receipt: receiptOf(b.content, Boolean(b.is_error)) } });
     }
     return out;
   }

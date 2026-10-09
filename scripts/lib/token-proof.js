@@ -30,7 +30,7 @@ export function expand(calls) {
 export const used = (calls, names) => expand(calls).some((c) => c.ok !== false && names.map((n) => n.replace(/\./g, "_")).includes(toolOf(c.name, c.input)));
 
 /** The world the tasks run in is seeded on the box before a round (scripts/token-proof.mjs seed): `seed` names what each task needs there. */
-/** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, batch?: boolean, tools: string[], answer?: RegExp, seed: string }[]} */
+/** `standIn` is the prompt the stand-in claude (scripts/token-proof-world.mjs run --stand-in) turns into a finished call of that tool, to prove the plumbing without a model. @type {{ id: string, prompt: string, standIn?: string, batch?: boolean, arms?: string[], verify?: string, tools: string[], answer?: RegExp, seed: string }[]} */
 export const TASKS = [
   { id: "recall", standIn: "tooluse-ask mcp__plugin_vyre_vyre__memory_search", prompt: "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.", tools: ["memory.ask", "memory.retrieve", "memory.search", "recall.search"], answer: /4,?200/, seed: "memory fact: Harlow Legal pays a monthly retainer of $4,200" },
   { id: "todo", standIn: "tooluse-ask mcp__plugin_vyre_vyre__planner_add", prompt: "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.", tools: ["planner.add"], seed: "none" },
@@ -45,6 +45,8 @@ export const TASKS = [
   // The three tasks that need R031-00o (many steps in one call) and R031-00p (results by reference). They are not part of the first ten, so the first ten are the control.
   { id: "chain", batch: true, prompt: "In Vyre, find the client Dana Whitfield, look up her matters, and tell me how many of them are still open (not Closed).", tools: ["work.call", "records.list"], answer: /\b(2|two)\b/i, seed: "Dana Whitfield with three matters: two Open, one Closed" },
   { id: "biglist", batch: true, prompt: "In Vyre, list all the clients and tell me the names of the three that come first alphabetically.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*Aaron Abbott)(?=[\s\S]*Aaron Acosta)(?=[\s\S]*Aaron Adair)/, seed: "215 clients; the first three alphabetically are Aaron Abbott, Aaron Acosta, Aaron Adair" },
+  // The long-session task (R031-00q): the answer needs ids that only the early tool results held, and the window is made to roll over in the middle (rollover_at 30). Only the roll arms run it.
+  { id: "long", arms: ["roll-off", "roll-seed", "roll-ledger"], verify: "long", prompt: "In Vyre, do this for each of these six people in order: Aaron Abbott, Aaron Acosta, Aaron Adair, Beth Baird, Beth Burke, Carl Cole. List all the clients first (to find the person), then add a todo titled 'Call <name>'. At the end tell me the id of the todo for Aaron Adair, the id of the todo for Carl Cole, and how many todos you added.", tools: ["planner.add"], seed: "215 clients (a 50-record list is about 3,000 tokens a call); no todos yet. Passes when both ids in the answer are the real ids of those todos and the count is six" },
   { id: "both", batch: true, prompt: "In Vyre, look at every matter: how many are Open and how many Closed? Then give me the title of Dana Whitfield's Closed matter.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*\b162\b)(?=[\s\S]*\b55\b)(?=[\s\S]*Deed transfer)/i, seed: "217 matters: 162 Open and 55 Closed; Dana's Closed matter is Deed transfer" },
 ];
 
@@ -60,6 +62,10 @@ export const ARM_ENV = {
   "core-run": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run" } },
   "core-ref": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "ref" } },
   "core-both": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "" } },
+  // The context arms (R031-00q): the core-both listing, and how the session's window is managed. VYRE_PROOF_ROLL is read by the world, VYRE_MANAGED_CONTEXT by the switchboard's seed.
+  "roll-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "off", VYRE_MANAGED_CONTEXT: "off" } },
+  "roll-seed": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "off" } },
+  "roll-ledger": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "on" } },
 };
 
 /** Did a run pass: the right tool was called and returned without an error, and the answer holds the seeded fact where the task has one. @param {typeof TASKS[number]} task @param {{ calls: { name: string, input?: any, ok?: boolean }[], text: string }} run */
