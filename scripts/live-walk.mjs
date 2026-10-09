@@ -16,7 +16,7 @@ const argv = process.argv.slice(2);
 const take = (/** @type {string} */ f, /** @type {string} */ d = "") => { const i = argv.indexOf(f); return i < 0 ? d : argv[i + 1]; };
 const out = path.resolve(take("--out", path.join(os.tmpdir(), `live-walk-${Date.now()}`)));
 const store = take("--store", "auto"), size = take("--size", "s-4vcpu-8gb"), region = take("--region", "sfo3"), updateTo = take("--update-to", "");
-const keep = argv.includes("--keep");
+const keep = argv.includes("--keep"), installer = take("--installer", "");   // --installer FILE: run this install-box.sh in place of the one vyre.run serves (a candidate fix, before it is released)
 const TOKEN = process.env.DIGITALOCEAN_TOKEN || "";
 if (!TOKEN) { console.error("live-walk: DIGITALOCEAN_TOKEN is not set"); process.exit(64); }
 const NAMES = "https://names.vyre.run", RELAY = "wss://relay.vyre.run";
@@ -67,10 +67,25 @@ try {
   }, { needs: ["become yourself in the app (the code is spent)"] });
   let words = "";
   await run.step("run the install line on the droplet (live vyre.run/i)", async () => {
-    const line = flow.state.installLine;
+    let line = flow.state.installLine;
+    if (installer) {
+      const cp = spawnSync("scp", ["-i", keyFile, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR", installer, `root@${droplet.ip}:/root/ib.sh`], { encoding: "utf8" });
+      assert.equal(cp.status, 0, `could not copy the installer: ${cp.stderr}`);
+      line = line.replace("curl -fsSL vyre.run/i |", "cat /root/ib.sh |");
+      assert.ok(line.startsWith("cat /root/ib.sh"), "the install line has the shape the walk expects");
+    }
     const started = Date.now();
-    const r = ssh(droplet.ip, `export DEBIAN_FRONTEND=noninteractive; ${line} 2>&1`, 25 * 60_000);
-    const all = String(r.stdout || "") + String(r.stderr || "");
+    let r = ssh(droplet.ip, `export DEBIAN_FRONTEND=noninteractive; ${line} 2>&1`, 25 * 60_000);
+    let all = String(r.stdout || "") + String(r.stderr || "");
+    if (r.status !== 0 && /Install it with:\s*\n?\s*curl -fsSL https:\/\/get\.docker\.com/.test(all)) {
+      // a plain Ubuntu droplet has no Docker: the installer says so and what to run; a person runs that, then the line again
+      snag("the installer stops on a plain Ubuntu server because Docker is not installed, and tells the person to install it and run the line again");
+      const d0 = Date.now();
+      const dk = ssh(droplet.ip, "export DEBIAN_FRONTEND=noninteractive; curl -fsSL https://get.docker.com | sh 2>&1 | tail -5", 15 * 60_000);
+      console.log(`docker installed on the droplet in ${Math.round((Date.now() - d0) / 1000)} s (exit ${dk.status})`);
+      r = ssh(droplet.ip, `export DEBIAN_FRONTEND=noninteractive; ${line} 2>&1`, 25 * 60_000);
+      all = String(r.stdout || "") + String(r.stderr || "");
+    }
     fs.writeFileSync(path.join(out, "install.log"), all.replace(/VYRE_CODE=\S+/g, "VYRE_CODE=<hidden>"));
     assert.equal(r.status, 0, `the installer exited ${r.status}: ${all.split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 400)}`);
     const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
