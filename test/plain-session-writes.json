@@ -45,6 +45,10 @@
    "class": "own",
    "why": "its own artifacts"
   },
+  "ask.many": {
+   "class": "held",
+   "why": "asks the person several things as one card and waits; the answers are only words, answers are person-only, and any act after them still waits for its own yes"
+  },
   "bridges.continue": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
@@ -316,6 +320,22 @@
   "pluginagent.ask": {
    "class": "own",
    "why": "files a request for the person to approve; changes nothing else"
+  },
+  "previews.open": {
+   "class": "own",
+   "why": "shows the person the model's own running server as a card in its own chat (a port of its own; a folder only inside the thread's folder; a command only on a person's call); who may open it is the person's to widen"
+  },
+  "previews.operator": {
+   "class": "own",
+   "why": "puts a computer's live-screen card in the caller's own chat: a name and words, never the screen, which the person's surface asks for under its own rules"
+  },
+  "previews.signin": {
+   "class": "held",
+   "why": "asks the person to sign in on the computer themselves; the person finishes it, nothing is released to the model, and it waits for them"
+  },
+  "previews.step": {
+   "class": "own",
+   "why": "updates the status line of a run card the caller started in its own chat; words and state only"
   },
   "projects.history": {
    "class": "own",

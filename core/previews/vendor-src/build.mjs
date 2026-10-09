@@ -14,7 +14,19 @@ const src = path.dirname(fileURLToPath(import.meta.url));
 const out = path.join(src, "..", "vendor");
 // the exact versions are installed into a scratch folder, so no package manifest sits in the repo
 const here = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-preview-libs-"));
-const wanted = JSON.parse(fs.readFileSync(path.join(src, "versions.json"), "utf8")).versions;
+const versionsFile = JSON.parse(fs.readFileSync(path.join(src, "versions.json"), "utf8"));
+const wanted = { ...versionsFile.versions };
+// a package not on npm: fetched, checked against the pinned sha256, installed from the file
+for (const [name, t] of Object.entries(versionsFile.tarballs || {})) {
+  const res = await fetch(t.url);
+  if (!res.ok) throw new Error(`could not fetch ${name} (${res.status})`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const got = crypto.createHash("sha256").update(buf).digest("hex");
+  if (got !== t.sha256) throw new Error(`${name} does not match its pinned hash (${got})`);
+  const file = path.join(here, `${name}-${t.version}.tgz`);
+  fs.writeFileSync(file, buf);
+  wanted[name] = `file:${file}`;
+}
 fs.writeFileSync(path.join(here, "package.json"), JSON.stringify({ private: true, dependencies: wanted }));
 execFileSync("npm", ["install", "--no-audit", "--no-fund", "--ignore-scripts"], { cwd: here, stdio: "inherit" });
 const require = createRequire(path.join(here, "package.json"));

@@ -1,5 +1,5 @@
 {
- "_comment": "Exact versions of the libraries a React preview may import. build.mjs installs them into a scratch folder, bundles them into ../vendor and records each file's sha256 in ../vendor/manifest.json. Not a package manifest on purpose: these are browser code the box serves, not dependencies of the server.",
+ "_comment": "Exact versions of the libraries a React preview may import. build.mjs installs them into a scratch folder, bundles them into ../vendor and records each file's sha256 in ../vendor/manifest.json. Not a package manifest on purpose: these are browser code the box serves, not dependencies of the server. tarballs are packages not on npm: fetched at build time and checked against a sha256 before they are installed.",
  "versions": {
   "react": "18.3.1",
   "react-dom": "18.3.1",
@@ -12,8 +12,15 @@
   "three": "0.160.0",
   "chart.js": "4.4.3",
   "date-fns": "3.6.0",
-  "xlsx": "0.18.5",
   "@tailwindcss/browser": "4.1.11",
   "esbuild-wasm": "0.28.2"
+ },
+ "tarballs": {
+  "xlsx": {
+   "url": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+   "version": "0.20.3",
+   "sha256": "8dc73fc3b00203e72d176e85b50938627c7b086e607c682e8d3c22c02bb99fe8",
+   "why": "the npm package xlsx stopped at 0.18.5 with known vulnerabilities; SheetJS publishes current releases only from its own CDN. It is fetched at build time, checked against this hash, and served from the box"
+  }
  }
 }
