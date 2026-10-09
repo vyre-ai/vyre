@@ -81,7 +81,7 @@ test("federation send: the person on the box types into a free Mac session; the 
   // The follow ends at thread.finished: the Mac's later words in that thread stay on the Mac.
   await until(async () => (await s.macCall("link.status")).data.following === 0);
   const before = got(s, free.id, "thread.text").length;
-  assert.ok(!(await s.mac.registry.call("threads.notice", { thread: free.id, text: "Northwind's form is saved." }, "module:test")).error);
+  assert.ok(!(await s.macCall("threads.notice", { thread: free.id, text: "Northwind's form is saved." }, "module:work")).error);
   await wait(700);
   assert.equal(got(s, free.id, "thread.text").length, before, "nothing more is forwarded after the answer finished");
 

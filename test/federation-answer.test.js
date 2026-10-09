@@ -144,7 +144,7 @@ test("federation answer: an agent, MCP, a guest or a module on the box never rea
   const direct = await w.boxCall("link.macs.call", { tool: "threads.answer", input: { ask, decision: "allow" } }, "module:test");
   assert.equal(direct.error.code, "denied");
   assert.equal(answersRun(w).length, 0, "the Mac never saw any of them");
-  assert.equal((await w.macd.registry.call("threads.asks", {}, "capsule")).data.length, 1, "the ask is still open on the Mac");
+  assert.equal((await w.macCall("threads.asks", {}, "capsule")).data.length, 1, "the ask is still open on the Mac");
 });
 
 test("federation answer: a Mac paired before answers crossed pins the box's key once, over the pinned channel", async t => {
@@ -168,7 +168,7 @@ test("federation answer: a Mac that pinned another key refuses the box's answer,
   assert.equal(r.error.code, "denied");
   assert.match(r.error.message, /not signed by the box this Mac paired with/);
   assert.equal(answersRun(w).length, 0, "threads.answer never ran on the Mac");
-  assert.equal((await w.macd.registry.call("threads.asks", {}, "capsule")).data.length, 1);
+  assert.equal(w.macd.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM threads_asks WHERE state = 'open'").get().n, 1);
   await w.macd.registry.call("link.status", {}, "cli");
   assert.equal(saved(w).box.assertKey, other, "the heartbeat did not swap the pinned key");
 });
