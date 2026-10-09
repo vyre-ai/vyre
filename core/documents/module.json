@@ -28,6 +28,11 @@
         "name": "documents.generate",
         "effect": "write",
         "reach": "anyone"
+      },
+      {
+        "name": "documents.signing.flow",
+        "effect": "read",
+        "reach": "anyone"
       }
     ]
   },

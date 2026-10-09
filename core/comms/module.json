@@ -41,5 +41,23 @@
       }
     ]
   },
-  "teaches": {}
+  "teaches": {},
+  "flow": {
+    "steps": [
+      {
+        "name": "comms.send",
+        "label": "Send an email or a text",
+        "outward": true,
+        "inputs": {
+          "via": "string",
+          "to": "string",
+          "subject": "string",
+          "body": "string"
+        },
+        "outputs": {
+          "held": "string"
+        }
+      }
+    ]
+  }
 }

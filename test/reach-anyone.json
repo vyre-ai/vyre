@@ -2212,6 +2212,10 @@
   "comms.send": {
    "module": "comms",
    "reason": "held: outward, so the registry holds it as a card for the person's yes and the message waits at the Gate for the final words; nothing is sent from here (callers list, gate)"
+  },
+  "documents.signing.flow": {
+   "module": "documents",
+   "reason": "read-only: returns a Flow definition and creates nothing (callers list)"
   }
  }
 }
