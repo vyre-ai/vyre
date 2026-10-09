@@ -5,12 +5,12 @@
 
 import { createContext, memo, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
-import { partsOf } from "./secure-paste.js";
+import { itemLabel, partsOf } from "./secure-paste.js";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience, authorLabel } from "./group.js";
@@ -118,7 +118,7 @@ export function UserText({ text, pending }: { text: string; pending: boolean }) 
   if (!names.length) return <Text size="read" selectable style={style}>{text}</Text>;
   return (
     <View style={{ gap: 6 }}>
-      <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <Text key={i} size="read" mono>{p.vault}</Text> : p.text))}</Text>
+      <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text))}</Text>
       <View accessibilityLabel={`${names.join(", ")} secured in the Vault`} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         <Icon name="shield" size={14} tone="ok" />
         <Text size="caption" tone="muted">{names.length === 1 ? "Secured in the Vault" : `${names.length} keys secured in the Vault`}</Text>

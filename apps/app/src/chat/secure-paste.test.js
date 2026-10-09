@@ -2,7 +2,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { secureSecrets, partsOf, nameFor } from "./secure-paste.js";
+import { secureSecrets, partsOf, nameFor, itemLabel } from "./secure-paste.js";
 import { keyInText, refuseKey } from "../../../../lib/secure-paste.js";
 
 // Built at run time so this file holds no string a scanner reads as a real key.
@@ -82,4 +82,12 @@ test("the server's check: a key is refused with the kind named and never the val
   assert.equal(keyInText(""), null);
   assert.equal(keyInText(undefined), null);
   assert.throws(() => refuseKey(pem), (e) => /** @type {any} */ (e).code === "secret_in_message");
+});
+
+test("a chip names the item as a person would say it", () => {
+  assert.equal(itemLabel("anthropic-key"), "Anthropic key");
+  assert.equal(itemLabel("github-token-2"), "GitHub token 2");
+  assert.equal(itemLabel("openai-key"), "OpenAI key");
+  assert.equal(itemLabel("private-key"), "Private key");
+  assert.equal(itemLabel("my.db_url"), "My db url");
 });

@@ -47,6 +47,12 @@ try {
     await page.getByRole("switch").first().click(); await shot("projects-1b-one-off");
     await page.getByRole("button", { name: /^Move \d+ keys/ }).click(); await shot("projects-2-done");
     await page.goto(base + "?part=chat", { waitUntil: "networkidle" }); await shot("chat-tags");
+    // the real chat screen on the sample world, with a message whose key was secured
+    await page.goto(base.replace("shots-vault", "chat-demo") + "?at=4200&hold=1", { waitUntil: "networkidle" });
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => /** @type {any} */ (window).__chat.send("Deploy the intake site with vault://anthropic-key and tell me when it is live."));
+    await page.waitForTimeout(800);
+    await shot("chat-real");
     if (errors.length) console.log(`page errors at ${w} ${theme}:`, errors.slice(0, 3).join(" | "));
     await ctx.close();
   }

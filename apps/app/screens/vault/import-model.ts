@@ -16,26 +16,26 @@ export type ScanFile = { project: string | null; file: string; secrets: number; 
 export type Scan = { files: ScanFile[]; scanned: number; templates: number; truncated: boolean };
 
 /** One place a person keeps passwords today, and how to get a file out of it. `accept` is what the file picker offers. */
-export type Source = { id: string; name: string; how: string; accept: string; note?: string };
+export type Source = { id: string; name: string; how: string; accept: string; note?: string; /** One or two letters for the tile; never a logo. */ mark: string };
 
 const CSV = ".csv,text/csv";
 /** The fifteen the import code reads, in the order people ask for them. The box works out the format from the file itself, so a wrong pick still imports. */
 export const SOURCES: Source[] = [
-  { id: "1password", name: "1Password", how: "File, then Export, then choose 1PUX or CSV.", accept: ".1pux,.csv,.zip" },
-  { id: "bitwarden", name: "Bitwarden", how: "Tools, then Export vault. Choose .json or .csv, not the encrypted file.", accept: ".json,.csv" },
-  { id: "lastpass", name: "LastPass", how: "Advanced Options, then Export. It saves a .csv.", accept: CSV },
-  { id: "dashlane", name: "Dashlane", how: "File, then Export, then Credentials. Choose CSV or the zip.", accept: ".csv,.zip,.dash" },
-  { id: "keeper", name: "Keeper", how: "Settings, then Export. Choose CSV or JSON.", accept: ".csv,.json" },
-  { id: "nordpass", name: "NordPass", how: "Settings, then Export items. It saves a .csv.", accept: CSV },
-  { id: "proton", name: "Proton Pass", how: "Settings, then Export. Choose zip or CSV, and leave PGP encryption off.", accept: ".zip,.csv,.json" },
-  { id: "enpass", name: "Enpass", how: "File, then Export, then JSON.", accept: ".json" },
-  { id: "keepass", name: "KeePass or KeePassXC", how: "Database, then Export. Choose XML or CSV. The .kdbx file itself is encrypted and cannot be read.", accept: ".xml,.csv" },
-  { id: "apple", name: "Apple Passwords", how: "In Passwords, File, then Export All Passwords. It saves a .csv.", accept: CSV },
-  { id: "chrome", name: "Chrome", how: "Settings, then Google Password Manager, then Settings, then Export passwords.", accept: CSV },
-  { id: "chromium", name: "Edge, Brave, Arc, Opera or Vivaldi", how: "Open the browser's password settings and choose Export. They all save a .csv.", accept: CSV },
-  { id: "firefox", name: "Firefox", how: "Open about:logins, then the menu, then Export Logins.", accept: CSV },
-  { id: "safari", name: "Safari", how: "File, then Export, then Passwords. It saves a .csv.", accept: CSV },
-  { id: "env", name: "A .env file", how: "Choose the file. To find the ones on your computer instead, use Your projects.", accept: ".env,.txt,text/plain" },
+  { id: "1password", mark: "1P", name: "1Password", how: "File, then Export, then choose 1PUX or CSV.", accept: ".1pux,.csv,.zip" },
+  { id: "bitwarden", mark: "Bw", name: "Bitwarden", how: "Tools, then Export vault. Choose .json or .csv, not the encrypted file.", accept: ".json,.csv" },
+  { id: "lastpass", mark: "LP", name: "LastPass", how: "Advanced Options, then Export. It saves a .csv.", accept: CSV },
+  { id: "dashlane", mark: "Dl", name: "Dashlane", how: "File, then Export, then Credentials. Choose CSV or the zip.", accept: ".csv,.zip,.dash" },
+  { id: "keeper", mark: "K", name: "Keeper", how: "Settings, then Export. Choose CSV or JSON.", accept: ".csv,.json" },
+  { id: "nordpass", mark: "N", name: "NordPass", how: "Settings, then Export items. It saves a .csv.", accept: CSV },
+  { id: "proton", mark: "Pr", name: "Proton Pass", how: "Settings, then Export. Choose zip or CSV, and leave PGP encryption off.", accept: ".zip,.csv,.json" },
+  { id: "enpass", mark: "En", name: "Enpass", how: "File, then Export, then JSON.", accept: ".json" },
+  { id: "keepass", mark: "Kp", name: "KeePass or KeePassXC", how: "Database, then Export. Choose XML or CSV. The .kdbx file itself is encrypted and cannot be read.", accept: ".xml,.csv" },
+  { id: "apple", mark: "A", name: "Apple Passwords", how: "In Passwords, File, then Export All Passwords. It saves a .csv.", accept: CSV },
+  { id: "chrome", mark: "C", name: "Chrome", how: "Settings, then Google Password Manager, then Settings, then Export passwords.", accept: CSV },
+  { id: "chromium", mark: "Cr", name: "Edge, Brave, Arc, Opera or Vivaldi", how: "Open the browser's password settings and choose Export. They all save a .csv.", accept: CSV },
+  { id: "firefox", mark: "Fx", name: "Firefox", how: "Open about:logins, then the menu, then Export Logins.", accept: CSV },
+  { id: "safari", mark: "S", name: "Safari", how: "File, then Export, then Passwords. It saves a .csv.", accept: CSV },
+  { id: "env", mark: ".env", name: "A .env file", how: "Choose the file. To find the ones on your computer instead, use Your projects.", accept: ".env,.txt,text/plain" },
 ];
 
 /** The manager a detected format belongs to, for "Looks like a Bitwarden export". */

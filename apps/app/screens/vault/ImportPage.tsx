@@ -17,7 +17,7 @@ const REAL: Io = { source: vaultImport, pick: pickFile };
 
 export default function ImportPage({ reload, io = REAL }: { reload: () => void; io?: Io }) {
   return (
-    <View className="gap-s4">
+    <View className="w-full gap-s4 self-center" style={{ maxWidth: 720 }}>
       <FromApp reload={reload} io={io} />
       <FromProjects reload={reload} io={io} />
     </View>
@@ -117,15 +117,27 @@ function FromApp({ reload, io }: { reload: () => void; io: Io }) {
   return (
     <View>
       <SectionLabel first>From another app</SectionLabel>
-      <Text tone="muted" size="secondary" className="px-s1 pb-s2">Pick where your passwords are now. You export a file from there, and Vyre reads it for you.</Text>
+      <Text tone="muted" size="secondary" className="pb-s2">Pick where your passwords are now. You export a file from there, and Vyre reads it for you.</Text>
       <Card flush>
         {shown.map((s, i) => (
           <View key={s.id}>{i ? <Divider inset={60} /> : null}
-            <Row dense chevron lead={<IconTile name={s.id === "env" ? "file" : "key"} />} title={s.name} onPress={() => { setProblem(""); setStep({ at: "how", source: s }); }} />
+            <Row dense chevron lead={<MarkTile source={s} index={i} />} title={s.name} onPress={() => { setProblem(""); setStep({ at: "how", source: s }); }} />
           </View>
         ))}
       </Card>
       {all ? null : <View className="self-start pt-s2"><Button kind="ghost" size="sm" label={`Show all ${SOURCES.length}`} onPress={() => setAll(true)} /></View>}
+    </View>
+  );
+}
+
+const TINTS = ["bg-accent-wash", "bg-ok-wash", "bg-warn-wash", "bg-hover"] as const;
+const INKS = ["accent", "ok", "warn", "muted"] as const;
+/** A letter-mark tile for a source: its initials on a calm tint, so the list can be scanned. No brand logos. */
+function MarkTile({ source, index }: { source: Source; index: number }) {
+  const k = index % TINTS.length;
+  return (
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={{ width: 32, height: 32 }} className={`items-center justify-center rounded-card ${TINTS[k]}`}>
+      <Text size="caption" strong tone={INKS[k]}>{source.mark}</Text>
     </View>
   );
 }
@@ -187,7 +199,7 @@ function FromProjects({ reload, io }: { reload: () => void; io: Io }) {
         <Card flush><EmptyState title="No keys found" body={scan.scanned ? "The .env files in your projects hold nothing that looks like a key." : "No .env files turned up in your projects."} action={{ label: "Look again", onPress: look }} /></Card>
       ) : (
         <View className="gap-s3">
-          <Text tone="muted" size="secondary" className="px-s1">{plural(scanTotals(scan).secrets, "key", "keys")} in {plural(scanTotals(scan).files, "file", "files")}. Switch off any you want to leave alone.</Text>
+          <Text tone="muted" size="secondary" >{plural(scanTotals(scan).secrets, "key", "keys")} in {plural(scanTotals(scan).files, "file", "files")}. Switch off any you want to leave alone.</Text>
           {groups.map((g) => (
             <View key={g.project}>
               <SectionLabel meta={plural(g.secrets, "key", "keys")}>{g.project}</SectionLabel>
