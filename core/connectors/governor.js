@@ -61,7 +61,7 @@ export function inQuiet(minutes, q) {
 }
 
 /** Whether a failed call was a challenge the person has to clear (not a plain refusal of one entity). @param {string} cls @param {string} [reason] */
-export const isChallenge = (cls, reason) => cls === "blocked" && /challenge|checkpoint|captcha|verify you|unusual activity/i.test(String(reason || ""));
+export const isChallenge = (cls, reason) => cls === "blocked" && !/no login or challenge markers/i.test(String(reason || "")) && /challenge page|challenge \(|checkpoint|captcha|verify you|unusual activity/i.test(String(reason || ""));
 
 /**
  * @typedef {{ day: string, reads: number, writes: number, last: number, stopped_at: number | null, stopped_reason: string | null, cooldown_until: number }} State
