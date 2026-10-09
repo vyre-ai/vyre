@@ -84,7 +84,7 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   const shot = async (name) => { await pg.waitForTimeout(2500); const text = (await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200); console.log(`${name}-${label}-${scheme}:`, text); await pg.screenshot({ path: path.join(OUT, `${name}-${label}-${scheme}.png`) }); };
   await pg.goto(`${BASE}/u/chats`, { waitUntil: "domcontentloaded" });
   await pg.waitForTimeout(3500);
-  await pg.getByText("Which documents are missing?", { exact: false }).first().click().catch((e) => console.log("no chat row:", e.message.slice(0, 80)));
+  await pg.getByText("Personal", { exact: true }).first().click().catch((e) => console.log("no chat row:", e.message.slice(0, 80)));
   await pg.waitForTimeout(2500);
   await pg.getByLabel("Chat tools").first().click().catch((e) => console.log("no tools button:", e.message));
   await pg.getByText("Files", { exact: true }).first().click().catch((e) => console.log("no Files row:", e.message));
