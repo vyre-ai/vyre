@@ -362,7 +362,7 @@ test("a space has at most eight servers", async t => {
   assert.equal(code(await x.addServer(boxOf(w).route)), "too_many_servers");
 });
 
-const RELAY = "r".repeat(48), TUNNEL_IP = "198.51.100.77";
+const RELAY = "r".repeat(48), TUNNEL_IP = "93.184.216.99";
 const resolve = (w, host, secret = RELAY) => worker.fetch(new Request(`${BASE}/v1/tunnel/resolve?host=${encodeURIComponent(host)}`, { headers: { "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-relay": secret }) } }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
 const suspend = (w, body) => worker.fetch(new Request(BASE + "/v1/names/admin/suspend", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", "x-vyre-admin": ADMIN }, body: JSON.stringify(body) }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
 
