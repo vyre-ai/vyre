@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { bootHomeKernel, homeIdentity } from "./home.js";
-import { signMinimums, signModule } from "./modules/firstparty.js";
+import { signMinimums, signModule } from "../test/sign-release.mjs";
 import { isPackaged, devSwitch } from "./devbuild.js";
 import { tempHome } from "../test/helpers.js";
 
