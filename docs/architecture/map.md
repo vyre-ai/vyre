@@ -340,6 +340,7 @@ What the surfaces draw, and what keeps them informed.
 | `term` | `core/term/` | box and local | A terminal in the browser that survives like mosh. |
 | `tips` | `core/tips/` | box and local | One short tip at a time about the part of Vyre in use. |
 | `views` | `core/views/` | box and local | A module's screens, described by its manifest and drawn by Vyre. |
+| `vyre` | `core/vyre-index/` | box and local | The live index of Vyre's modules for an agent with only the small tool core: vyre.core, from the map's table and the daemon's module list. |
 | `waiting` | `core/waiting/` | box and local | One list of what waits on the person: asks, held drafts, reminders, pairings. |
 
 ### Running and updating Vyre

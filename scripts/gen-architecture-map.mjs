@@ -139,6 +139,7 @@ export const MODULES = {
   "core/sidebar": ["ui", "The sidebar each person arranges: built-in places, module screens, saved views."],
   "core/sight": ["outside", "One screen service for the Mac and every agent's computer: what is on it, what was just done."],
   "core/signin": ["identity", "`vyre signin`: the owner's phone approves a terminal."],
+  "core/vyre-index": ["ui", "The live index of Vyre's modules for an agent with only the small tool core: vyre.core, from the map's table and the daemon's module list."],
   "core/skills": ["sessions", "Find the skills a session may use for what it is about to do: skills.find, skills.list, skills.get, cut by permission."],
   "core/spaces": ["identity", "Identity, Spaces, members and invites: the five roles, with temporary access."],
   "core/spend": ["system", "One ledger of what agents, sessions and memory spend, with a daily cap per provider."],

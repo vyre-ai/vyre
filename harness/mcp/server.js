@@ -7,6 +7,9 @@
 // MCP names allow letters, digits, "_" and "-", so "recall.search" is offered as
 // "recall_search". Tools named harness.* are the hooks' own and are not offered.
 //
+// Only a small core is listed (core-tools.js, R031-00j). Every other tool the caller may use is reached with tools_find (ranked for an intent, with a ready example call) and
+// tools_call (run one by name). Both go through the same call path as a listed tool, under the caller's own identity, so scope and the Gate are unchanged.
+//
 // It also offers the MCP hub's tools (ADR 0016 decision 5), from the hub's cache so listing never
 // starts a server: each under its own "<server>__<tool>" name, which no module tool can take
 // (those have one underscore between words), and each call goes to mcp.call. Both the listing
@@ -21,7 +24,8 @@ import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
-import { ALIASES, REPLACED } from "./memory-tools.js";
+import { ALIASES } from "./memory-tools.js";
+import { mcpName, catalogOf, listing, indexOf, find } from "./core-tools.js";
 
 const PROTOCOL = "2025-06-18";
 /**
@@ -31,8 +35,6 @@ const PROTOCOL = "2025-06-18";
 let names = new Map();
 /** A model reads this first on a hub tool that goes to the Gate, so it expects to wait. */
 const HELD = "(held for approval) ";
-
-const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 
 // Inside an agent's thread the switchboard sets VYRE_AGENT, VYRE_AGENT_KIND and the agent's
 // scope. The caller names the agent, so vyred can refuse what it may not do; an agent that is
@@ -83,33 +85,34 @@ function scoped(tool, input) {
  */
 const sessionKey = () => (AGENT ? null : readKey(paths(home()).sessions, process.ppid));
 
+/** What the caller may use, by the name it is called with: { name, tool?, alias?, hub?, description, input }. The listing is the core of it; tools_find and tools_call reach all of it. */
+let catalog = [];
+/** @type {ReturnType<typeof indexOf> | null} */
+let index = null;
+
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, ident());
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
   if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, ident()); }
   if (r.error) return [];
   askOnce();
-  const all = r.data.filter(offered);
   // The five memory tools go by their own names; their raw twins are not offered beside them.
-  const has = new Set(all.map(t => t.name));
-  const list = all.filter(t => !(REPLACED.has(t.name) && Object.values(ALIASES).some(a => a.tool === t.name)));
-  const aliased = Object.entries(ALIASES).filter(([, a]) => has.has(a.tool));
-  const own = list.map(t => ({ name: mcpName(t.name), description: t.description || t.name, inputSchema: { type: "object", ...(t.input || {}) } }));
-  const next = new Map(list.map(t => [mcpName(t.name), { tool: t.name }]));
-  for (const [name, a] of aliased) { own.push({ name, description: a.description, inputSchema: a.input }); next.set(name, { tool: a.tool, alias: name }); }
+  const cat = catalogOf(r.data.filter(offered));
+  const next = new Map(cat.map((c) => [c.name, c.alias ? { tool: c.tool, alias: c.alias } : { tool: c.tool }]));
   // No mcp module (no_such_tool) or any other refusal: the module tools alone, as before.
   const hub = await call("mcp.tools", {}, { ...ident(), session: sessionKey() });
-  const extra = [];
   if (!hub.error && Array.isArray(hub.data)) {
     for (const t of hub.data) {
       const name = String(t.name || "");
       if (!/^[A-Za-z0-9_-]{1,64}$/.test(name) || !name.includes("__") || next.has(name)) continue;
       next.set(name, { hub: name });
-      extra.push({ name, description: (t.outward ? HELD : "") + (t.description || `${t.tool} on ${t.server}`), inputSchema: { type: "object", ...(t.input || {}) } });
+      cat.push({ name, tool: name, description: (t.outward ? HELD : "") + (t.description || `${t.tool} on ${t.server}`), input: { type: "object", ...(t.input || {}) } });
     }
   }
   names = next;
-  return [...own, ...extra];
+  catalog = cat;
+  index = indexOf(cat);
+  return listing(cat);
 }
 
 /** A hub call: the server's own MCP result as it is, or a held call said plainly. @param {string} name @param {any} args */
@@ -120,6 +123,31 @@ async function hubCall(name, args) {
   if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
   if (d && Array.isArray(d.content)) return d;
   return { content: [{ type: "text", text: typeof d === "string" ? d : JSON.stringify(d) }] };
+}
+
+/**
+ * Run one tool by the name it is called with: a hub tool goes to the hub, anything else to vyred under the caller's own identity.
+ * @param {string} asked @param {any} args @param {any} params the MCP request's params, for its _meta
+ */
+async function runTool(asked, args, params) {
+  const hit = names.get(asked);
+  // A hub name this session has not listed yet (a server added since) still goes to the hub,
+  // which checks scope itself; a module tool's name never has "__".
+  if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return hubCall(asked, args);
+  const tool = hit && "tool" in hit ? hit.tool : asked;
+  const alias = hit && "alias" in hit ? ALIASES[String(hit.alias)] : null;
+  // agents.ask waits for a whole turn of another session, which can take minutes.
+  const session = sessionKey();
+  // Claude Code's own id for this tool call, so a tool's steps (a Glass step, a computer action)
+  // link back to the chat row that caused them (vyred reads it as meta.call on a session's paths).
+  const meta = params?._meta || {};
+  const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
+  const via = alias && alias.route && alias.route.when(args, process.env) ? alias.route : null;
+  const sent = via ? via.tool : tool;
+  const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+    ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
+  if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
+  return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
 }
 
 /** @param {any} msg */
@@ -138,25 +166,20 @@ async function handle(msg) {
     case "tools/call": {
       if (!names.size) await tools();
       const asked = String(params?.name || "");
-      const hit = names.get(asked);
-      // A hub name this session has not listed yet (a server added since) still goes to the hub,
-      // which checks scope itself; a module tool's name never has "__".
-      if ((hit && "hub" in hit) || (!hit && asked.includes("__"))) return hubCall(asked, params?.arguments || {});
-      const tool = hit && "tool" in hit ? hit.tool : asked;
-      const alias = hit && "alias" in hit ? ALIASES[String(hit.alias)] : null;
-      // agents.ask waits for a whole turn of another session, which can take minutes.
-      const session = sessionKey();
-      // Claude Code's own id for this tool call, so a tool's steps (a Glass step, a computer action)
-      // link back to the chat row that caused them (vyred reads it as meta.call on a session's paths).
-      const meta = params?._meta || {};
-      const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
-      const args = params?.arguments || {};
-      const via = alias && alias.route && alias.route.when(args, process.env) ? alias.route : null;
-      const sent = via ? via.tool : tool;
-      const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
-        ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
-      if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
-      return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
+      if (asked === "tools_find") {
+        const q = String(params?.arguments?.query || "").trim();
+        if (!q) return { content: [{ type: "text", text: "bad_input: query is required" }], isError: true };
+        const found = find(/** @type {any} */ (index), q, Math.min(10, Math.max(1, Number(params?.arguments?.limit) || 3)));
+        const data = { tools: found.map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } })) };
+        return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };
+      }
+      if (asked === "tools_call") {
+        const want = String(params?.arguments?.tool || "");
+        const target = names.has(want) ? want : names.has(mcpName(want)) ? mcpName(want) : "";
+        if (!target || target === "tools_call") return { content: [{ type: "text", text: `not_found: no tool "${want.slice(0, 80)}" that you may use. tools_find finds the one you need.` }], isError: true };
+        return runTool(target, params?.arguments?.arguments || {}, params);
+      }
+      return runTool(asked, params?.arguments || {}, params);
     }
     default:
       if (id === undefined) return undefined;           // a notification: no reply

@@ -1,0 +1,48 @@
+// @ts-check
+// A short hand list of example asks for the tools agents reach for most, keyed by the name a tool is called with. The rest get their asks from lib/tools-index.js (generated from
+// the tool's own description). Each ask is how a person would say the job, never the tool's name. `example` is a ready arguments object for tools_find to show.
+// Keep it short: a tool earns a line here when tools_find confuses it with a neighbour, not before.
+
+/** @type {Record<string, { asks: string[], example?: Record<string, any> }>} */
+export const ASKS = {
+  memory_ask: { asks: ["what did we decide about this", "what do you know about my work", "remember what was said earlier", "answer a question about my past work"], example: { question: "what did we decide about the launch date?" } },
+  memory_search: { asks: ["find the passage where we talked about a topic", "search past conversations"], example: { query: "stripe webhook" } },
+  memory_remember: { asks: ["keep this fact for later", "note down a lasting decision"], example: { text: "We use Postgres for the CRM.", kind: "decision" } },
+  recall_search: { asks: ["search every past session by words", "find an old chat"], example: { query: "invoice template" } },
+  planner_add: { asks: ["remind me to do something at a time", "add a to-do", "set a reminder", "put a task on my list for tomorrow"], example: { text: "Call the accountant", when: "tomorrow 9am" } },
+  planner_list: { asks: ["what are my reminders", "what is due today", "show my to-dos"] },
+  planner_snooze: { asks: ["remind me again later", "snooze a reminder"] },
+  planner_done: { asks: ["tick off a to-do", "mark a reminder finished"] },
+  gate_request: { asks: ["send something out as the user", "write to a customer by email", "post something publicly", "make a payment", "delete something that cannot be undone"], example: { via: "email", kind: "send", content: { to: "client@example.com", subject: "Agreement", body: "Please sign." } } },
+  mail_send: { asks: ["send an email from the user's account"] },
+  mail_search: { asks: ["find an email in the inbox", "look through my mail"], example: { q: "from:dana invoice" } },
+  mail_read: { asks: ["open an email", "read a message or thread"] },
+  google_mail_draft: { asks: ["write an email draft without sending it", "prepare a reply for the user to review"] },
+  google_calendar_list: { asks: ["what is on my calendar", "meetings between two dates", "what is on tomorrow"] },
+  google_calendar_create: { asks: ["book a meeting", "add an appointment to the calendar", "schedule an event"] },
+  google_calendar_update: { asks: ["move a meeting", "reschedule an event", "change an appointment"] },
+  vault_list: { asks: ["what logins and keys are stored", "which credentials exist"] },
+  vault_request: { asks: ["call a vendor API with a stored key", "use a stored credential without seeing it"], example: { item: "stripe", method: "GET", url: "https://api.stripe.com/v1/balance" } },
+  files_search: { asks: ["find a file by name or content", "where is that document on the computer"], example: { q: "budget" } },
+  files_preview: { asks: ["look inside a file", "show the start of a file"] },
+  team_ask: { asks: ["give work to a teammate by role", "ask the designer or backend person to do something"], example: { to: "backend", text: "Fix the login bug on the signup page." } },
+  agents_ask: { asks: ["talk to another agent", "ask another agent and wait for its reply"], example: { agent: "assistant", text: "What is blocking the release?" } },
+  work_tools: { asks: ["what can I do with the records of this space", "list the customer, contact and matter tools", "what records can I create"] },
+  work_call: { asks: ["create a contact or record", "update a record in the CRM", "run a records action"], example: { tool: "<name from work_tools>", input: {} } },
+  flows_define: { asks: ["write an automation", "make something happen when an event arrives", "set up a workflow"] },
+  flows_list: { asks: ["what automations exist"] },
+  connectors_connection_list: { asks: ["which apps and services are connected", "what connections have been made"] },
+  connectors_connection_propose: { asks: ["connect a new service with an API key", "add an integration for the person to approve"] },
+  docs_find: { asks: ["how do I do something with Vyre", "which docs page explains this"], example: { query: "pair a phone" } },
+  docs_read: { asks: ["open a docs page"], example: { page: "using/box-care.md" } },
+  skills_find: { asks: ["which skill fits this job"], example: { query: "keep a password out of a file" } },
+  skills_list: { asks: ["what skills exist"] },
+  vyre_core: { asks: ["what modules does Vyre have", "what is installed and running", "map of the system"] },
+  agents_list: { asks: ["which agents are there", "who is working right now"] },
+  agents_usage: { asks: ["what the agents cost", "tokens and time each agent used"] },
+  spend_summary: { asks: ["how much have I spent on models this month"] },
+  threads_start: { asks: ["start a new conversation with an agent"] },
+  threads_send: { asks: ["send another message to a running conversation"] },
+  artifacts_create: { asks: ["make a document, report, page or small app for the person"] },
+  projects_list: { asks: ["what projects are there"] },
+};

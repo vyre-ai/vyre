@@ -96,6 +96,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`views`](#views) | `core/views` | `box`, `local` | 3 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
+| [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
@@ -1008,6 +1009,17 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Needs credentials: `[object Object]`, `[object Object]`, `[object Object]`
 - Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## vyre
+
+The live index of Vyre's modules: what each one is for, where it lives, where it runs and whether it is running here now. Read from the architecture map's generated table (which is generated from each module.json) and the daemon's own module list, so it cannot drift from either.
+
+- Folder: `core/vyre-index`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#vyre)
+- Emits: no events
+- Shows on: cli
 
 ## waiting
 

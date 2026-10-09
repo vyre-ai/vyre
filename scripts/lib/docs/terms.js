@@ -114,6 +114,8 @@ export const STALE_ALLOWED = [
 
 const SHELL = new Set(["sh", "bash", "shell", "zsh", "console", "shell-session"]);
 const FILE_EXT = /\.(json|jsonl|js|mjs|cjs|ts|md|html|css|sh|txt|ya?ml|toml|db|sqlite|log|plist|swift|png|svg|jpg|zip|tgz|tar|gz|env|pem|key|crt|app|sock|service|socket|lock|test)$/i;
+// Names that look like a tool of the `vyre` module (vyre.core) and are not: Vyre's own domain, and the example env file.
+const NOT_TOOLS = new Set(["vyre.run", "vyre.env.example"]);
 const DOTTED = /^[a-z][\w-]*(?:\.[a-z0-9][\w-]*)+$/;
 const ENV_RE = /\bVYRE_[A-Z0-9_]*[A-Z0-9]\b(?![*<])/g;
 
@@ -500,7 +502,7 @@ export function scan(k, pages, docsDir, on) {
         if (k.tools.has(name)) { hit(`tool\0${name}`); any = true; }
         if (k.events.has(name)) { hit(`event\0${name}`); any = true; }
         if (k.config.has(name)) { hit(`config\0${name}`); any = true; }
-        if (any || !strict || !check || k.names.has(name) || k.prefixes.has(name) || FILE_EXT.test(name)) return;
+        if (any || !strict || !check || k.names.has(name) || k.prefixes.has(name) || FILE_EXT.test(name) || NOT_TOOLS.has(name)) return;
         const s = name.split(".");
         let p = "";
         for (let i = s.length - 1; i >= 1; i--) { const pre = s.slice(0, i).join("."); if (k.names.has(pre) || k.prefixes.has(pre)) { p = pre; break; } }
