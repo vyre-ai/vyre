@@ -466,6 +466,9 @@ async function startLocked(opts, root, p, release) {
     const personChainFor = async (/** @type {string} */ person) => kernel.chains.fromFacts({ kind: "device", device_key_id: "vyred", person: canonPerson(person), path: "direct" });
     // The chain a direct yes (x-vyre-presence: yes) is checked in: the home's owner as one person, built the same way.
     registry.deps.ownerChain = () => personChainFor(kernel.id.owner);
+    // What the link module's calls as `link:box` are judged as (#114): the person at the paired box, whose answer or words the Mac's link already checked against the box's pinned key. The facts are the ones a
+    // person's own terminal here would carry, never a model's, so the Mac's chat gate sees the owner's chain. Only core/modules hands these out, and only to the link module's `link:box` calls.
+    registry.deps.linkBoxFacts = () => ({ kind: "socket", surface: "local", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: false });
     // What the stream is given of it (needs.daemon "kernelThreads", core/stream): calls on a thread's session and the restart's reopening, never a token and never a way to open a session.
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
