@@ -34,6 +34,7 @@ function fakePool() {
   const st = { url: `${ORIGIN}/feed`, fetches: /** @type {any[]} */ ([]) };
   /** @type {Array<(m: any) => void>} */ const listeners = [];
   const cdp = {
+    page: async () => "s1",
     on: (/** @type {(m: any) => void} */ fn) => { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
     waitFor: (/** @type {(m: any) => boolean} */ pred, ms = 1000) => new Promise(resolve => { const off = cdp.on(m => { if (pred(m)) { off(); resolve(m); } }); setTimeout(() => { off(); resolve(null); }, ms); }),
     async send(/** @type {string} */ method, /** @type {any} */ params) {
