@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: install-proof-${{ github.ref }}
+  group: install-proof-${{ github.ref }}-${{ inputs.candidate_tag }}
   cancel-in-progress: true
 jobs:
   linux:
