@@ -212,6 +212,30 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers join the tailnet as their own tagged nodes"
  },
  {
+  "tool": "connectors.connection.check",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.check opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: runs the Connection's own check request and answers a light in plain words, never the key (callers list)"
+ },
+ {
+  "tool": "connectors.connection.export",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.export opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: callers list and scope: writes nothing, and the template it returns carries the app's address and operations but never the person's key item or values"
+ },
+ {
+  "tool": "connectors.connection.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.get opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: one Connection's declaration, never the key (callers list)"
+ },
+ {
+  "tool": "connectors.connection.import",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.import opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: callers list and scope: text becomes a draft that is never saved or called; by address is the person's act, refused for a model before anything is fetched"
+ },
+ {
+  "tool": "connectors.connection.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.list opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: read-only: id, label, host, light and operations, never the key (callers list)"
+ },
+ {
+  "tool": "connectors.connection.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.connection.propose opened to a model or a module in 565e81d11 (4 Oct 2026); the body decides: held: only a proposal for the person to approve, nothing is made and nothing is called; the person's yes creates it (callers list)"
+ },
+ {
   "tool": "connectors.declared",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
  },
