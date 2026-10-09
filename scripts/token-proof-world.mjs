@@ -185,7 +185,9 @@ if (cmd === "run") {
     if (standIn && !task.standIn) continue;
     if (task.arms ? !task.arms.includes(arm) : arm.startsWith("roll-") && !only) continue;
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
-    await call("agents.stop", { agent: "juno" });                        // a fresh thread for every run: nothing carries over
+    // A fresh thread for every run, nothing carried over: stop the agent and delete its threads, or agents.ask would resume the last one (its whole context, the earlier task's included).
+    await call("agents.stop", { agent: "juno" });
+    for (const th of ((await call("agents.threads", { agent: "juno" })).data || []).map((/** @type {any} */ x) => x.id || x.thread)) if (th) await call("threads.delete", { thread: th });
     // The window arms: rollover off, or on at 30 percent of the window so it happens in the middle of the long task. Every other arm runs with the defaults (on, 60).
     const rollMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_ROLL;
     if (rollMode || rolled) {
@@ -205,7 +207,7 @@ if (cmd === "run") {
     await until(async () => !(await call("threads.asks", {})).data?.length && fs.existsSync(tee) && /"type":"result"/.test(fs.readFileSync(tee, "utf8")), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
     const run = parseStream(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "");
     const extra = task.verify === "long" ? await verifyLong(run.text) : true;
-    const row = { arm, task: task.id, rep, pass: !asked.error && !run.error && passed(task, run) && extra, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : ""), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "") && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
