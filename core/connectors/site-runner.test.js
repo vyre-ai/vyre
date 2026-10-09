@@ -75,7 +75,8 @@ test("on a box the login lives in an agent's own Chrome: that rung runs it with 
   assert.match(walled.lights.at(-1)[2], /ops's computer: open its screen and sign in once/);
   const noAgent = rig({ role: "box" });
   assert.ok((await noAgent.runner.run(q("search_people"))).status >= 400);
-  assert.equal(noAgent.calls.length, 0, "a box with no agent named for the login has no browser rung");
+  assert.equal(noAgent.calls.filter(c => c[0] === "chrome.op.run").length, 0, "a box with no agent named for the login has no box-browser rung");
+  assert.deepEqual(noAgent.calls.map(c => c[0]), ["link.macs.call"], "it asks the person's Mac instead");
 });
 
 // ---- the governor, wired into the runner ----
