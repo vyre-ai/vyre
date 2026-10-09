@@ -1,7 +1,7 @@
 // @ts-check
 // `vyre needs`: everything waiting on the person, in one list. The same two sources as the Deck's
-// Needs (the app's Now list): drafts held at the Gate (gate.held) and open asks from sessions
-// (threads.asks), a permission or a question. Newest first here, since a terminal reads from the
+// Needs (the app's Now list): drafts held at the Gate and open asks from sessions, a permission or
+// a question, read from the one waiting list (approvals.items). Newest first here, since a terminal reads from the
 // bottom of what it just printed up; each row ends with the exact command that acts on it.
 //
 // Ids are shown as their first 8 characters. `vyre gate` and `vyre threads answer` take any
@@ -72,13 +72,19 @@ export function merge({ held, asks, threads = [] }, now = Date.now()) {
   return rows.sort((a, b) => b.at - a.at);
 }
 
-/** Read both lists from vyred. Returns the rows, or null after printing the error. */
+/** The held drafts and the asks out of approvals.items: each card carries its owner's own row as `facts`. @param {any} data */
+export function listsOf(data) {
+  const items = data && Array.isArray(data.items) ? data.items : [];
+  const facts = (/** @type {string} */ source) => items.filter((/** @type {any} */ c) => c && c.source === source && c.facts && typeof c.facts === "object").map((/** @type {any} */ c) => c.facts);
+  return { held: facts("gate"), asks: facts("threads") };
+}
+
+/** Read the one waiting list from vyred (approvals.items). Returns the rows, or null after printing the error. */
 export async function load() {
-  const [held, asks] = await Promise.all([call("gate.held", {}), call("threads.asks", {})]);
-  // A vyred without one of the modules has nothing held there; any other error is shown.
-  const bad = [held, asks].find(r => r.error && r.error.code !== "no_such_tool");
-  if (bad) { failTool(bad.error); return null; }
-  const h = held.data || [], a = asks.data || [];
+  const r = await call("approvals.items", {});
+  // A vyred without the approvals module has nothing waiting; any other error is shown.
+  if (r.error && r.error.code !== "no_such_tool") { failTool(r.error); return null; }
+  const { held: h, asks: a } = listsOf(r.data);
   const threads = h.some(d => d.thread) ? (await call("threads.list", { all: true })).data || [] : [];
   return merge({ held: h, asks: a, threads });
 }

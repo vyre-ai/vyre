@@ -48,8 +48,8 @@ export const fromPending = rows => rows.map(p => {
     answer: { tool: "link.pair.approve", input: {}, fill: ["code"] } };
 });
 
-/** The approvals queue's cards are already rows; the owners it could not read are named like a source of ours. */
-const fromCards = data => (data && Array.isArray(data.items) ? data.items.filter(x => x && typeof x === "object").map(({ state: _state, ...row }) => row) : []);
+/** The approvals queue's cards are already rows; the owners it could not read are named like a source of ours. A card's `facts` are for the person's own surfaces (approvals.items) and never ride on this list, which reaches every device. */
+const fromCards = data => (data && Array.isArray(data.items) ? data.items.filter(x => x && typeof x === "object").map(({ state: _state, facts: _facts, ...row }) => row) : []);
 
 const SOURCES = /** @type {const} */ ([
   ["approvals", "approvals.items", fromCards],

@@ -22,6 +22,11 @@ import { frontMatter } from "../../lib/docs-corpus.js";
 import { buildIndex, search } from "../../lib/docs-rank.js";
 import { tokens } from "../../lib/tokens.js";
 import { fit } from "../../lib/harness-caps.js";
+import os from "node:os";
+import { createHash } from "node:crypto";
+import { createLibrary } from "./library.js";
+import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
+import { runOnce } from "../watchers/run.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -30,6 +35,8 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /** Test seam: the Vyre package root (where harness/skills is) per home. @type {Map<string, { pkg: string }>} */
 export const seams = new Map();
+/** Test seam: the script wall a plugin hook runs behind, per home (production finds one itself, and a hook does not run where there is none). @type {Map<string, { findWall?: () => Promise<any>, wall?: any, netOptions?: any }>} */
+export const hookSeams = new Map();
 
 /** The skill folders under a skills directory, as parsed SKILL.md files. @param {string} dir @param {{ level: string, scope: string | null }} where */
 function readDir(dir, where) {
@@ -95,6 +102,32 @@ export default {
     const seam = seams.get(home);
     const pkg = seam ? seam.pkg : PKG_ROOT;
 
+    // ---- the library (R031-18..21): versions as `skill` records, approvals, and what each AI is given -----------------------------------------------------------------------------------
+    const kernelOk = () => ctx.kernel && ctx.kernel.records && typeof ctx.kernel.serviceChain === "function";
+    const lib = createLibrary({
+      kernel: () => { if (!kernelOk()) throw err("unavailable", "the skill library needs the kernel"); return ctx.kernel; },
+      agentOwner: async (/** @type {string} */ name) => { try { const r = await ctx.call("agents.list", {}); const l = r && !r.error && Array.isArray(r.data) ? r.data : []; const a = l.find((/** @type {any} */ x) => x.name === name); return a && a.owner ? String(a.owner) : null; } catch { return null; } },
+      projectOwner: async (/** @type {string} */ slug) => { try { const rows = (await ctx.kernel.records.query(ctx.kernel.serviceChain("skills"), "project", { filter: { field: "slug", op: "eq", value: slug }, page: { limit: 1 } })).rows; const o = rows[0] && rows[0].data.owner; return o && o.actor ? String(o.actor.id) : null; } catch { return null; } },
+      mcpAdd: async (/** @type {any} */ server) => { const r = await ctx.call("mcp.add", server); if (r.error) throw new Error(r.error.message); return r.data; },
+      log: (/** @type {string} */ m) => ctx.log(m),
+    });
+    /** The caller's kernel chain, or null when the call carries none (a guest, a bare label). @param {any} meta */
+    const chainOf = async (meta) => { try { return kernelOk() && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { return null; } };
+    const personIdOf = (/** @type {any} */ chain) => { const h = chain && chain.hops && chain.hops[0]; return h && h.actor.kind === "person" ? String(h.actor.id) : null; };
+    /** Library items as the same entries the on-disk levels give, a plugin's skills flattened. @param {any[]} items */
+    const entriesOf = (items) => {
+      const out = [];
+      for (const i of items) {
+        const prefix = i.level === "personal" ? "personal" : [i.level, ...(i.scope ? [i.scope] : [])].join("/");
+        const parts = i.kind === "plugin" ? (JSON.parse(String(i.body)).skills || []).map((/** @type {any} */ s) => ({ name: s.name, id: `${prefix}/${i.name}/${s.name}`, text: s.body })) : [{ name: i.name, id: `${prefix}/${i.name}`, text: i.body }];
+        for (const p of parts) {
+          const { data, body } = frontMatter(p.text);
+          out.push({ id: p.id, name: String(data.name || p.name), level: i.level, scope: i.scope || null, description: String(data.description || "").replace(/\s+/g, " ").slice(0, 600), text: p.text, body, tokens: tokens(p.text) });
+        }
+      }
+      return out;
+    };
+
     /** The projects the person has, with their folders. */
     const allProjects = async () => {
       try {
@@ -121,6 +154,12 @@ export default {
     const visible = async (meta, q) => {
       const s = await scopeOf(meta, q.project);
       let list = sourcesOf({ pkg, home, person: s.person, agent: s.agent, account: s.account, projects: s.projects });
+      if (kernelOk() && s.account) {
+        const chain = await chainOf(meta);
+        const approved = await lib.approved({ person: personIdOf(chain), agent: s.agent, projects: s.projects.map((/** @type {any} */ p) => p.slug), allAgents: Boolean(s.person && !s.agent) }).catch(() => []);
+        const seen = new Set(list.map((x) => x.id));
+        list = [...list, ...entriesOf(approved).filter((x) => !seen.has(x.id))];
+      }
       if (q.level) list = list.filter((x) => x.level === q.level);
       return list;
     };
@@ -132,8 +171,8 @@ export default {
 
     ctx.tool("skills.list", {
       effect: "read",
-      description: "The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre (Vyre's own), account (the person's installed skills), project or agent. Narrow with `project` or `level`. Nothing you may not use is listed. skills.find ranks them for what you are about to do.",
-      input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 }, harness: { type: "string", maxLength: 20 } } },
+      description: "The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre (Vyre's own), space (everyone's), personal (yours), account (installed on this machine), project or agent. Narrow with `project` or `level`. Nothing you may not use is listed. skills.find ranks them for what you are about to do.",
+      input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "space", "personal", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 }, harness: { type: "string", maxLength: 20 } } },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const list = await visible(meta, { project: input.project, level: input.level });
         const rows = list.slice(0, input.limit || 100).map(shown);
@@ -170,6 +209,75 @@ export default {
         return { ...shown(s), text: s.text };
       },
     });
+
+    // ---- drafting and approving: anyone drafts, the level's owner says yes -------------------------------------------------------------------------------------------------------------
+    const WHO_CAN = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    const need = async (/** @type {any} */ meta) => { const c = await chainOf(meta); if (!c) throw err("denied", "this call carries no person: a skill is drafted and approved for someone"); return c; };
+    const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
+    const common = { name: { type: "string" }, level: { type: "string", enum: [...LEVELS] }, scope: { type: "string", description: "personal: you (default); agent: the agent's name; project: its short name; space: leave out" } };
+    ctx.tool("skills.draft", { effect: "write", callers: WHO_CAN,
+      description: "Write a skill or a plugin into the library as a DRAFT: nothing uses it until the level's owner approves (skills.approve, or flows.propose { what: \"skill\" } for a card in Now). kind skill: body is a SKILL.md with name and description in its front matter. kind plugin: body is JSON { name, description, skills?, commands?, hooks?, mcp? }; one with a hook or an MCP server has code and its draft says what it declares. level: space, personal, agent or project.",
+      input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string" }, note: { type: "string" } }, ["name", "level", "body"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.draft(await need(meta), i) });
+    ctx.tool("skills.approve", { effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space"],
+      description: "Say yes to a draft: it becomes the version in use at its level and the one before is retired. Only the level's owner: you for a personal skill, an agent's owner, a project's owner, an owner or an admin for the Space. A plugin with code needs ack: the value skills.draft gave, which is the hash of exactly what it declares.",
+      input: obj({ ...common, version: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "version"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.approve(await need(meta), i) });
+    ctx.tool("skills.rollback", { effect: "write", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space"],
+      description: "Go back to an earlier version of a skill: it is written again as a new approved version (the owner's own act). to: the version to restore.",
+      input: obj({ ...common, to: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "to"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.rollback(await need(meta), i) });
+    ctx.tool("skills.versions", { effect: "read", callers: WHO_CAN,
+      description: "The versions in the library, newest first, with who drafted each and which is in use; state: draft shows what is waiting for a yes. Narrow by name, level and scope.",
+      input: obj({ ...common, state: { type: "string", enum: ["draft", "approved", "retired"] } }),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { await need(meta); return { versions: await lib.versions(i) }; } });
+
+    // the proposal kind "skill" (flows-host.js): the same card as any other change
+    ctx.tool("skills.change.draft", { internal: true, callers: ["module"], description: "Check a draft can be approved and say whose yes it needs. For the proposals path.",
+      input: obj({ name: { type: "string" }, level: { type: "string" }, scope: { type: "string" }, version: { type: "integer" }, proposer: { type: "string" } }, ["name", "level", "version", "proposer"]),
+      run: async (/** @type {any} */ i) => {
+        const rec = await lib.get(String(i.name), String(i.level), String(i.scope ?? ""), Number(i.version));
+        if (rec.data.state !== "draft") throw err("bad_state", `version ${i.version} is a ${rec.data.state}, not a draft`);
+        const owner = rec.data.owner || null;
+        let ack; if (rec.data.kind === "plugin") { const p = JSON.parse(String(rec.data.body)); if (hasCode(p)) ack = ackOf(p); }
+        return { id: `${rec.data.level}|${rec.data.scope || ""}|${rec.data.name}|${rec.data.version}`, hash: rec.data.hash, owner, ...(ack ? { ack, declares: declared(JSON.parse(String(rec.data.body))) } : {}), title: `Use the ${rec.data.kind} ${rec.data.name} (${rec.data.level}${rec.data.scope ? " " + rec.data.scope : ""}, version ${rec.data.version})?` };
+      } });
+    const parseId = (/** @type {string} */ id) => { const [level, scope, name, version] = String(id).split("|"); return { level, scope, name, version: Number(version) }; };
+    ctx.tool("skills.change.title", { internal: true, callers: ["module"], description: "The title a stored skill change really has, or null. For the proposals path.", input: obj({ id: { type: "string" }, hash: { type: "string" } }, ["id", "hash"]),
+      run: async (/** @type {any} */ i) => { try { const k = parseId(i.id); const rec = await lib.get(k.name, k.level, k.scope, k.version); return rec.data.state === "draft" && rec.data.hash === i.hash ? `Use the ${rec.data.kind} ${rec.data.name} (${rec.data.level}${rec.data.scope ? " " + rec.data.scope : ""}, version ${rec.data.version})?` : null; } catch { return null; } } });
+    ctx.tool("skills.change.apply", { internal: true, callers: ["module"], description: "Approve the draft on its owner's yes. For the proposals path.", input: obj({ id: { type: "string" }, hash: { type: "string" }, approver: { type: "string" }, ack: { type: "string" } }, ["id", "hash", "approver"]),
+      run: async (/** @type {any} */ i) => { const k = parseId(i.id); const rec = await lib.get(k.name, k.level, k.scope, k.version); if (rec.data.hash !== i.hash) throw err("conflict", "that draft changed since it was proposed"); let ack = i.ack; if (rec.data.kind === "plugin") { const p = JSON.parse(String(rec.data.body)); if (hasCode(p)) ack = ackOf(p); } return lib.applyApproval({ kind: "person", id: String(i.approver) }, { ...k, ack }); } });
+
+    // ---- what each AI is given, and a plugin's hooks ---------------------------------------------------------------------------------------------------------------------------
+    ctx.tool("skills.materialise", { internal: true, callers: ["module"], description: "Write the approved library for one AI and one session (ai: claude, codex or grok; person, agent, project): a plugin folder for Claude and Grok, a skills folder for Codex. Returns the folder.",
+      input: obj({ ai: { type: "string", enum: [...AIS] }, person: { type: "string" }, agent: { type: "string" }, project: { type: "string" } }, ["ai"]),
+      run: async (/** @type {any} */ i) => {
+        if (!kernelOk()) return { dir: null, skills: [] };
+        const approved = await lib.approved({ person: i.person || String(ctx.kernel.owner || ""), agent: i.agent || null, projects: i.project ? [String(i.project)] : [], allAgents: false });
+        if (!approved.length) return { dir: null, skills: [] };
+        const id = createHash("sha256").update(JSON.stringify([i.ai, approved.map((/** @type {any} */ a) => [a.name, a.level, a.scope, a.version, a.hash])])).digest("hex").slice(0, 16);
+        const dir = path.join(home || os.tmpdir(), "materialised", String(i.ai), id);
+        const done = fs.existsSync(path.join(dir, ".done"));
+        const r = done ? { dir, skills: [], commands: [], hooks: 0 } : writeFor(dir, i.ai, approved, { hookCommand: (plugin, hook) => `vyre call skills.hook.run '{"plugin":"${plugin}","hook":"${hook}"}'` });
+        if (!done) fs.writeFileSync(path.join(dir, ".done"), "");
+        return { ...r, dir };
+      } });
+    ctx.tool("skills.hook.run", { internal: true, callers: ["module", "hook"], description: "Run one approved plugin hook in the script sandbox: no network of its own, only the hosts the plugin declared. Returns what the script emitted.",
+      input: obj({ plugin: { type: "string" }, hook: { type: "string" }, payload: { type: "object" } }, ["plugin", "hook"]),
+      run: async (/** @type {any} */ i) => {
+        const rows = (await lib.approved({ person: String(ctx.kernel.owner || ""), allAgents: true, projects: [] })).filter((/** @type {any} */ x) => x.kind === "plugin" && x.name === i.plugin);
+        const item = rows[0];
+        if (!item) throw err("not_found", `no approved plugin ${String(i.plugin).slice(0, 60)}`);
+        const hook = (JSON.parse(String(item.body)).hooks || []).find((/** @type {any} */ h) => h.id === i.hook);
+        if (!hook) throw err("not_found", `${i.plugin} has no hook ${String(i.hook).slice(0, 60)}`);
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-hook-"));
+        try {
+          fs.writeFileSync(path.join(dir, "watch.js"), hook.script);
+          const seam = hookSeams.get(home) || {};
+          const r = await runOnce({ dir, needs: [], since: null, hook: i.payload || null, timeoutMs: 8000, fetch: async () => { throw new Error("a hook handles no credentials"); }, hosts: hook.network || [], ...(seam.wall !== undefined ? { wall: seam.wall } : {}), ...(seam.findWall ? { findWall: seam.findWall } : {}), ...(seam.netOptions ? { netOptions: seam.netOptions } : {}) });
+          return { ok: !r.error, ...(r.error ? { error: r.error } : {}), result: r.items[0] || null, logs: r.logs.slice(0, 20), declared: hook.network || [] };
+        } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      } });
     return { async stop() {} };
   },
 };

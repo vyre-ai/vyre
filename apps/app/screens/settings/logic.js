@@ -47,7 +47,7 @@ export const PRIVACY_ROWS = [
 ];
 
 /** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
-const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits"];
+const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits", "/u/settings/engineer"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
 
@@ -84,6 +84,7 @@ function all(/** @type {string} */ space) {
       ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "shield"],
       ["Privacy and sealing", "Admins only", "/u/settings/privacy", "vault"],
       ["Kits", "Installed and available", "/u/kits", "box"],
+      ["Engineer", "Set up your Space by talking to it", "/u/settings/engineer", "assistants"],
     ] },
     { title: "More places", rows: [
       ["Memory", "What Vyre knows", "/u/memory", "memory"],

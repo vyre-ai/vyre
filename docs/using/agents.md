@@ -125,9 +125,10 @@ thread.
 In the Vyre app, **New assistant** (`/u/settings/assistants/new`) is a form for a new agent: a
 name, its projects, its job, what it runs on and the **Its own computer** switch.
 `agents.create` and `agents.update` also take an `effort`; `vyre agents` has no flag for it. Making or changing an agent asks for no passkey. It is yours: the CLI, the Vyre app, the
-Lumen and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
-`agents.update` to change an agent's name, job, model, effort and description. Any other agent, a
-bare MCP session and a guest are refused with "denied", and nobody is asked.
+Lumen and onboarding may call `agents.create` and `agents.update`. A model never edits an agent. Your assistant, or the agent itself, proposes a change to its
+instructions, skills, model, effort or tags (see [project templates](project-templates.md)), the
+agent's owner approves it, and it is a version you can roll back. Any other agent, a bare MCP
+session and a guest are refused with "denied", and nobody is asked.
 
 ## Make the assistant later
 

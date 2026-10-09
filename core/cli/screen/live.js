@@ -1,7 +1,7 @@
 // @ts-check
 // What the screen knows, from vyred: the lists, one event stream, and the link line.
 //
-// The lists come from tools (projects.list, threads.list, threads.asks, gate.held, agents.list)
+// The lists come from tools (projects.list, threads.list, approvals.items for what waits on the person, agents.list)
 // and are read again only when an event says they changed, a quarter second after the last such
 // event, so a burst of events costs one refresh. Nothing polls, apart from the link line once a
 // minute. The stream is one connection for the whole screen, from `since=latest`; when it drops
@@ -12,6 +12,7 @@ import http from "node:http";
 import * as config from "../../config/index.js";
 import { call, request } from "../../daemon/client.js";
 import { parseSSE } from "../commands/threads.js";
+import { listsOf } from "../commands/needs.js";
 
 /** @typedef {import("./model.js").Data} Data */
 
@@ -30,16 +31,17 @@ async function agentsNow() {
  * @returns {Promise<Data>}
  */
 export async function load({ cwd = process.cwd(), sessions = {} } = {}) {
-  const [projects, agents, here, threads, asks, drafts, health] = await Promise.all([
-    call("projects.list", {}), agentsNow(), call("projects.of", { cwd }), call("threads.list", {}), call("threads.asks", {}),
-    call("gate.held", {}), request("GET", "/v1/health"),
+  const [projects, agents, here, threads, waiting, health] = await Promise.all([
+    call("projects.list", {}), agentsNow(), call("projects.of", { cwd }), call("threads.list", {}), call("approvals.items", {}),
+    request("GET", "/v1/health"),
   ]);
+  const { held, asks } = listsOf(waiting.error ? null : waiting.data);
   if (projects.error) throw new Error(projects.error.message);
   return {
     projects: list(projects.data && projects.data.projects), agents, here: here.data?.slug || null,
-    threads: threads.error ? [] : list(threads.data), asks: asks.error ? [] : list(asks.data),
-    // No Gate module: no drafts section at all, rather than an empty one that can never fill.
-    drafts: drafts.error ? null : list(drafts.data), sessions, health: health.data || null,
+    threads: threads.error ? [] : list(threads.data), asks,
+    // No approvals module: no drafts section at all, rather than an empty one that can never fill.
+    drafts: waiting.error ? null : held, sessions, health: health.data || null,
   };
 }
 

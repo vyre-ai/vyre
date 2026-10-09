@@ -16,8 +16,30 @@
 //    a "login" account is signed in once and only its own uid can read the token.
 // Not a bypass mode: never "never" for approval_policy, never danger-full-access.
 
+import fs from "node:fs";
 import path from "node:path";
 import { acpProvider } from "./acp.js";
+
+/** The config Vyre seeds into the account's Codex home at every start (the same text as `seed` below). */
+const CONFIG = 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\n';
+
+/**
+ * The CODEX_HOME a session runs with (R031-19). With no library, the account's own folder. With the Space's approved skills written for Codex (`VYRE_SKILLS_DIR`, a content-addressed folder the skills module
+ * made), a home of its own beside it: the account's sign-in linked in (never copied), Vyre's config, and the skills folder linked, so sessions with the same skills share one home and a session never sees skills
+ * that are not its project's or agent's. The folder is named by the skills' own content id, so nothing here needs cleaning up when they change.
+ * @param {string} home the account's HOME @param {string | undefined} skillsDir
+ */
+export function codexHomeFor(home, skillsDir) {
+  const own = path.join(home, ".codex");
+  if (!skillsDir || !fs.existsSync(path.join(skillsDir, "skills"))) return own;
+  const dir = path.join(home, ".codex-lib", path.basename(skillsDir));
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const link = (/** @type {string} */ name, /** @type {string} */ target) => { const at = path.join(dir, name); try { if (fs.readlinkSync(at) === target) return; fs.rmSync(at, { force: true }); } catch { /* not a link yet */ } try { fs.rmSync(at, { recursive: true, force: true }); fs.symlinkSync(target, at); } catch { /* the folder is read-only or gone: the session runs without it */ } };
+  if (fs.existsSync(path.join(own, "auth.json"))) link("auth.json", path.join(own, "auth.json"));
+  fs.writeFileSync(path.join(dir, "config.toml"), CONFIG, { mode: 0o600 });
+  link("skills", path.join(skillsDir, "skills"));
+  return dir;
+}
 
 /**
  * @param {{ bin?: string, floor?: (call: any) => any, sessions?: any, custom?: { id: string, baseUrl: string, envKey: string, model: string } }} [o]
@@ -48,7 +70,7 @@ export function codexProvider(o = {}) {
     pinMode: ["workspace-write", "read-only"],
     askMode: /^(workspace-write|read-only)$/i,
     // HOME is the account's (the spawner sets it on a box, the Switchboard on a Mac); the sign-in lives under it.
-    env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: path.join(String(home), ".codex") } : {}; },
+    env: run => { const home = run.env && run.env.HOME; return home ? { CODEX_HOME: codexHomeFor(String(home), run.env && run.env.VYRE_SKILLS_DIR) } : {}; },
     secretEnv: () => ["OPENAI_API_KEY", "CODEX_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     // codex-acp answers session/new "Authentication required" until authenticate. A custom OpenAI-compatible endpoint (the
     // OpenRouter rung, a test stand-in) goes through its "gateway" method, which the client must advertise
@@ -70,7 +92,7 @@ export function codexProvider(o = {}) {
     // codex-acp exits at once if CODEX_HOME does not exist, so the folder is made (as the account) with every start.
     // The account's config.toml is written from Vyre's own settings at every start (never read from what is there, which the agent
     // could have edited to loosen its next session).
-    seed: { ".codex/config.toml": 'approval_policy = "on-request"\nsandbox_mode = "workspace-write"\n' },
+    seed: { ".codex/config.toml": CONFIG },
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
     ...(o.sessions ? { sessions: o.sessions } : {}),
