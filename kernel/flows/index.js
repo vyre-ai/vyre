@@ -266,6 +266,24 @@ export function createFlows(o) {
       if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
       await runner.retry(i.run, { skip: i.skip === true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
     },
+    // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
+    "flows.attention": async () => ({ runs: await runner.attention() }),
+    "flows.settle": async (chain, i) => {
+      const who = personOf(chain);
+      const run = need(i, "run", "the run's id (flows.attention)");
+      const action = need(i, "action", "retry, skip, stop or advance");
+      if (action === "retry") { await runner.retry(run, { by: who.id }); return { ok: true, action }; }
+      if (action === "skip") {
+        if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
+        await runner.retry(run, { skip: true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id }); return { ok: true, action };
+      }
+      if (action === "stop") return { ...(await runner.cancel(run, { by: who.id, reason: i.reason })), action };
+      if (action === "advance") {
+        if (!stagesRef) throw Object.assign(new Error("stages are not running in this Space"), { code: "unavailable" });
+        return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
+      }
+      throw Object.assign(new Error("action is retry, skip, stop or advance"), { code: "bad_input" });
+    },
     "flows.cancel": async (chain, i) => { const who = personOf(chain); need(i, "run", "the run's id (flows.runs)"); return runner.cancel(i.run, { by: who.id, reason: i.reason }); },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
     "kits.diff": async (chain, i) => kits.diff(i.kit),

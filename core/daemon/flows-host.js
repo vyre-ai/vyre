@@ -168,7 +168,11 @@ export function createFlowsHost(o) {
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
     await whenStoreReady(k.store, setupTypes);
 
-    const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
+    // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
+    const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
+      if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`);
+      if (o.publish && /^(flow\.(finished|stuck|stale|paused|cancelled|retried|started)|stage\.gate-(opened|closed))$/.test(type)) { try { o.publish(type, { run: data && data.run, flow: data && data.flow, ...(data && data.state ? { state: data.state } : {}) }); } catch { /* a notice, never a stop */ } }
+    };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
     const proposals = {
       chain: flowsChain,
