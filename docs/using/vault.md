@@ -126,6 +126,29 @@ folders, lists `.env.example` files without importing them, and follows no symli
 `--rewrite` changes a file only after every value in it is stored, writes no backup of the old
 file, and leaves a file alone when its values differ from the vault's (a conflict).
 
+### In the app
+
+Vault, Items, **Import** does the same without a terminal. Pick where your passwords are now (1Password,
+Bitwarden, LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass, Apple Passwords, Chrome,
+Edge and the other Chromium browsers, Firefox, Safari, or a .env file), follow the one-line export
+steps, and choose the file. You see what would come in (new, already in the Vault, different, by kind)
+before anything is stored, then import with one button. Where a password in the file differs from the
+Vault's, the Vault's is kept unless you choose the file's, and the old one stays in that item's history.
+The app sends the file to your Vyre once; an assistant never sees it. Choosing a file needs Vyre on a
+Mac or in a browser.
+
+**Your projects**, on the same page, asks Vyre for the .env files that hold keys, lists them by project
+(with a warning for any file git holds), and moves the ones you leave switched on into the Vault and
+swaps each value for a reference, under one approval.
+
+### A key pasted in chat
+
+Paste a key into a message and Vyre catches it before the message is sent. It saves the key to the Vault
+(you approve the save), and the message goes on with `vault://anthropic-key` in its place; the chat shows
+a small "Secured in the Vault" tag. Neither the assistant nor the transcript holds the key. If the
+Vault does not take it, nothing is sent. Ask the assistant to use the key and it asks for a grant, like
+any other item.
+
 ## Leaks and rotation
 
 ```
