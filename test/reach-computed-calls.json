@@ -2,9 +2,9 @@
  "_comment": "Files that call a tool through ctx.call or use with a computed name. Each runs as a module caller, so the callee's reach must allow modules; the owner reviews and lowers the count or documents it. test/reach-module-calls.test.js fails on a new one.",
  "files": {
   "core/connectors/index.js": {
-   "count": 1,
-   "owner": "connect-anything",
-   "note": "reviewed (9 Oct): the one forwarding wrapper madeConnections calls through; core/connectors/made.js names only vault.list, vault.put, vault.delete, vault.connections.register and .unregister, and vault.request, all literal, each run as the person who asked or the module"
+   "count": 4,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): forwarding wrappers over literal tool names (madeConnections' call, the site runner's recordOps, siteEntriesFrom); each runs as the person who asked or the module"
   },
   "lib/views/engine.js": {
    "count": 1,
@@ -62,9 +62,9 @@
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
   "core/link/mac.js": {
-   "count": 2,
-   "owner": "module's own team",
-   "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
+   "count": 3,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): ctx.call(q.tool) for the allowlisted reads, ctx.call(engine) for a Vyre Computer action whose engine is chosen from lib/computer-classes.js after the person's class allowlist, and the chrome.op.call literal; the Mac's own engines keep their floors"
   },
   "core/mail/index.js": {
    "count": 2,
@@ -171,7 +171,7 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
-   "local/hands-chrome-mac/extension/caps/batch.js": {
+  "local/hands-chrome-mac/extension/caps/batch.js": {
    "count": 3,
    "owner": "capsule-sight",
    "note": "extension-side op dispatch, not a registry tool call. batch.run and batch.parallel call ops of the same extension through ctx.call, so the floor, stop and approval apply to each step. batch.parallel refuses any op outside the READING set (extension/shared/proto.js) before it runs anything, so it can never start a write; batch.run's two calls were listed before. Needs reviewer-2 on the READING guard (pending)"
@@ -195,6 +195,26 @@
    "count": 2,
    "owner": "lead",
    "note": "reviewed 7 Oct 2026: forwards a sandboxed module's own ctx.call by the name it asked for; the host-side ctx.call still refuses any tool its manifest's needs.tools does not list (undeclared), so the sandbox gains no reach"
+  },
+  "core/connectors/site.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the one forwarding wrapper (call) the site runner uses; every name it passes is a literal in site.js (memory.site.*, link.macs.call, chrome.op.run)"
+  },
+  "core/computer/index.js": {
+   "count": 2,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the `ask` helper over literal names, and ctx.call(engine) where engine comes from lib/computer-classes.js engineFor (chrome.*, hands.*, hands-desktop.*, files.*), run for the caller's own agent or a person; each engine checks the caller itself"
+  },
+  "core/vault/tools/agent-fill.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the call wrapper handed to agentFill, which names only computers.fill.begin and computers.fill.end (both vault-only)"
+  },
+  "local/hands-chrome-mac/index.js": {
+   "count": 1,
+   "owner": "site-ops",
+   "note": "reviewed (9 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
   }
  }
 }

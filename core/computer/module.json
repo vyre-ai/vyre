@@ -41,7 +41,7 @@
       },
       {
         "id": "computer-allow-mac",
-        "text": "A box agent works on your Mac only for what you allow there: `vyre call link.computer.allow '{\"class\":\"look\"}'` (look, act or files). Each is off until you turn it on.",
+        "text": "A box agent works on your Mac only for what you allow there: look, act or files. Each is off until you turn it on.",
         "surfaces": [
           "cli"
         ],
