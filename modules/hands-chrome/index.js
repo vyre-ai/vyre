@@ -99,7 +99,8 @@ const selectorSummary = sel => [sel && sel.role, sel && sel.name].filter(Boolean
 
 export default {
   async start(ctx) {
-    const pool = new CdpPool({
+    // a rig may hand in its own pool of CDP connections (a test with no Chrome); a real box never does
+    const pool = (ctx.config && ctx.config.handsChrome && ctx.config.handsChrome.pool) || new CdpPool({
       onEvent: (agent, m) => { if (m.method === "Inspector.detached" || m.method === "Target.targetCrashed") ctx.log(`${agent}'s Chrome: ${m.method}`); },
     });
 

@@ -989,5 +989,6 @@
  "test/site-mac-rung.test.js": 3,
  "core/connectors/governor.test.js": 6,
  "lib/siteops/kit-benchmark.test.js": 6,
- "lib/siteops/kits.test.js": 4
+ "lib/siteops/kits.test.js": 4,
+ "modules/hands-chrome/op-run.test.js": 2
 }
