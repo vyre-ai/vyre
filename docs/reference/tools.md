@@ -9874,7 +9874,9 @@ Lend one of your computers to a space, or stop. The first time for a device in a
   - `device` string, required
   - `on` boolean, required
   - `space` string, required
+  - `loosen` boolean: Lending only: you mean to allow more network than you did before on this computer.
   - `member` string: Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it).
+  - `network_cap` "provider" or "internet": Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen.
 - Callers: any caller
 - Needs a person present.
 
