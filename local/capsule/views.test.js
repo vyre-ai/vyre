@@ -272,3 +272,39 @@ test("capsule.status is the person's surfaces, modules and a model: refused to a
   }
   for (const caller of ["cli", "capsule", "local", "deck", "mcp", "harness", "module:chat"]) { const r = await reg.call("capsule.status", {}, caller); assert.ok(!r.error || !["denied", "no_such_tool", "not_declared"].includes(r.error.code), `${caller}: ${JSON.stringify(r).slice(0, 120)}`); }
 });
+
+const south = () => ({
+  name: "south", version: "0.1.0", apiVersion: 1, description: "South's desk.", roles: ["local"],
+  does: { tools: [{ name: "south.orders", summary: "orders" }, { name: "south.read", summary: "one order" }] },
+  shows: { capsule: { "view:desk": { title: "Desk", screen: {
+    v: 2, layout: { col: [{ block: "kpis" }, { block: "orders" }, { block: "note" }] },
+    blocks: {
+      kpis: { type: "stats", data: { tool: "south.orders", map: { items: "orders", label: "name", value: "day" } } },
+      orders: { type: "list", data: { tool: "south.orders", map: { rows: "orders", id: "ref", title: "name", subtitle: "note" } }, detail: { tool: "south.read", input: { ref: "{id}" }, map: { title: "name", body: "text" } }, actions: [{ id: "open", title: "Open", do: { open: "https://example.com" } }] },
+      note: { type: "text", props: { style: "note" }, data: { static: { text: "Today's orders." } } },
+    },
+  } } } },
+});
+const southSrc = `export default { async start(ctx) {
+  ctx.tool("south.orders", { effect: "read", input: { type: "object" }, run: async () => ({ orders: [{ ref: "o1", name: "Harlow", note: "Sourdough", day: "Mon" }, { ref: "o2", name: "Lee", note: "Rye", day: "Tue" }] }) });
+  ctx.tool("south.read", { effect: "read", input: { type: "object" }, run: async (i) => ({ name: "Harlow", text: "Two loaves " + i.ref }) });
+  return {};
+} };`;
+
+test("capsule: a screen reaches Lumen as its glance, written as the list or detail frames Lumen already draws, read-only", async t => {
+  const reg = await registry(t, [["south", south(), southSrc]]);
+  const cmds = (await reg.call("capsule.commands", {}, "capsule")).data.commands;
+  assert.ok(cmds.some(c => c.module === "south" && c.id === "desk"), "the screen is a Lumen command");
+  const f = (await reg.call("capsule.view", { module: "south", command: "desk" }, "capsule")).data;
+  assert.equal(f.v, 1, JSON.stringify(f));
+  assert.equal(f.kind, "list");
+  assert.equal(f.from, "south");
+  assert.deepEqual(f.rows.slice(0, 2).map(r => [r.title, r.subtitle]), [["Mon", "Harlow"], ["Tue", "Lee"]], "the numbers lead as rows");
+  assert.ok(f.rows.some(r => r.id === "o1" && r.title === "Harlow"));
+  assert.ok(f.rows.every(r => r.actions.length === 0), "a glance carries no action: it would need the block it belongs to");
+  assert.ok(!JSON.stringify(f).includes("south.orders"), "no tool names");
+  // a row opens as a detail through the block that has a detail, with no block named by Lumen
+  const d = (await reg.call("capsule.view", { module: "south", command: "desk", view: "detail", id: "o1" }, "capsule")).data;
+  assert.equal(d.kind, "detail", JSON.stringify(d));
+  assert.match(d.body, /Two loaves o1/);
+});
