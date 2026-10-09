@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test: the federation cases cut for main green (7 in federation-answer, 3 in federation-send) point at issue #114 (since 0.3.0 the box cannot answer or type into a paired Mac's session: the chat gate refuses link:box); its fix restores them.
 - test: robust under heavy load. spoken.test.js compares the time of a hostile reply at 20000 characters with the same reply at 5000 (linear work is 4 times, a quadratic blow-up 16) instead of a fixed number of milliseconds, which a loaded machine moved from 65 to 594 ms; the recall CLI case keeps trying for up to 30 s when vyred says "could not tell who is calling; try again"; test/relay.test.js is four files.
 - fix(daemon): an event stream asked for by a client that is already gone (a request routed while the daemon stops) is not started, and its heartbeat timer no longer keeps the process alive: core/cli/commands/threads-sessions.test.js passed every case on CI and then never ended because of that 15 s interval (found with the new hang report). perf-check's idle heap budget moves from 50 to 60 MB (measured 50.0 MB on the integration).
 - test: wink-paired.test.js and wink-paired-2.test.js are three files each (they ran past 300 s on a busy box); the relay device-removal case waits, bounded, for the channel to close instead of a fixed 150 ms.

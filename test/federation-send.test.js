@@ -5,7 +5,7 @@
 // the thread's events come back to the box's bus through link.events, labelled with the Mac,
 // until the answer is finished. Agents, MCP, guests and modules never reach the Mac.
 
-// Removed 9 Oct 2026 (main green): three cases (a free Mac session typed into from the box, a session another surface holds, a finish while words wait) hit the Mac's chat gate (0.3.0): a thread made for a
+// Cut cases are tracked in https://github.com/vyre-ai/vyre/issues/114 (the fix must restore all of them). Removed 9 Oct 2026 (main green): three cases (a free Mac session typed into from the box, a session another surface holds, a finish while words wait) hit the Mac's chat gate (0.3.0): a thread made for a
 // box's send is in a chat, and the Mac's own labelled calls into it (module:test notice, surface lease) carry no person chain, so the gate answers not_found. A federated Mac's chat belongs to the
 // Wink redesign of the box-to-Mac call (team/BACKLOG.md, 0.3.1). The five cases that stand do not need the Mac's chat.
 import "../scripts/mac-test-guard.mjs";
