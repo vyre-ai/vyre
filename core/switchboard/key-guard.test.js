@@ -18,7 +18,7 @@ process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 // Built at run time so this file holds no string a scanner reads as a real key.
 const KEY = "sk-" + "ant-" + "a1B2".repeat(8);
 
-test("a raw key sent through each surface's chat tools is refused before any turn sees it; a vault reference goes through", { timeout: 120_000 }, async t => {
+test("a raw key sent through each surface's chat tools never reaches a turn: a person's own surface gets a card, a yes saves it and sends the reference; anyone else is refused", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
   const transcripts = path.join(root, "transcripts");
@@ -42,9 +42,16 @@ test("a raw key sent through each surface's chat tools is refused before any tur
   assert.ok(ok.data && ok.data.id, JSON.stringify(ok));
   const id = ok.data.id;
 
-  // threads.send, by each surface and by a model's call
-  for (const caller of ["cli", "local", "deck", "capsule"]) refused(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller), caller);
-  // a model's call, or a surface this box does not know as the owner's, is stopped by the kernel before the tool or by the tool itself: either way it is an error and nothing is sent
+  // threads.send from a person's own surface holds the message as a card (the raw key is not in the card); anyone else is refused outright
+  /** @param {any} r */ const heldCard = r => { assert.ok(r.data && r.data.held === true && r.data.id, JSON.stringify(r)); assert.ok(!JSON.stringify(r).includes(KEY), "the answer never repeats the key"); return r.data.id; };
+  const ids = [];
+  for (const caller of ["cli", "local", "deck", "capsule"]) ids.push(heldCard(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller)));
+  const card = (await call("gate.get", { id: ids[0] }, "cli")).data;
+  assert.equal(card.state, "held");
+  assert.ok(!JSON.stringify(card).includes(KEY), "the Gate's card holds the words with a reference, never the key");
+  assert.match(JSON.stringify(card), /vault:\/\/anthropic-key/);
+  assert.match(String(card.why), /Save this Anthropic key to your Vault and send the message with it\?/);
+  // a model's call, or a surface this box does not know as the owner's, is stopped by the kernel before the tool or by the tool itself: either way it is an error and nothing is held or sent
   for (const caller of ["mobile", "mcp", "harness"]) {
     const r = await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined);
     assert.ok(r.error, `${caller}: ${JSON.stringify(r)}`);
@@ -52,9 +59,20 @@ test("a raw key sent through each surface's chat tools is refused before any tur
   }
   refused(await call("threads.edit-retry", { thread: id, text: `again ${KEY}` }));
   refused(await call("stream.send", { chat: "chat-none", text: `to the group ${KEY}` }));
+  // a no sends nothing and saves nothing
+  const no = await call("gate.reject", { id: ids[1] }, "cli");
+  assert.ok(!no.error, JSON.stringify(no));
+  assert.equal((await call("vault.list", {})).data.items.filter((/** @type {any} */ x) => /anthropic/.test(x.name)).length, 0, "nothing is saved before the yes");
+  // a yes saves the key to the Vault and sends the message with the reference
+  const yes = await call("gate.approve", { id: ids[0] }, "cli");
+  assert.ok(!yes.error, JSON.stringify(yes));
+  const items = (await call("vault.list", {})).data.items.filter((/** @type {any} */ x) => /anthropic/.test(x.name));
+  assert.equal(items.length, 1, JSON.stringify(items));
+  assert.equal(items[0].name, "anthropic-key");
+  assert.equal((await call("vault.reveal", { name: "anthropic-key", field: "value" }, "cli")).data?.value, KEY, "the Vault holds the key");
   // the same reference a person sends goes through
   const sent = await call("threads.send", { thread: id, text: "ok, vault://anthropic-key is the one", surface: "deck" });
-  assert.ok(!sent.error || sent.error.code !== "secret_in_message", JSON.stringify(sent));
+  assert.ok(!sent.error && !(sent.data && sent.data.held), JSON.stringify(sent));
 
   // nothing the box holds or handed to a turn carries the key: the thread's events, and every transcript the fake Claude wrote
   assert.ok(!JSON.stringify((await call("threads.get", { thread: id, limit: 500 })).data).includes(KEY), "not in the thread");
