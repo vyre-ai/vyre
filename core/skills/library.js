@@ -52,13 +52,15 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
   }
 
   /** A new draft version. @param {any} chain the caller's chain (a person, or a person with an assistant) @param {{ name: string, level: string, scope?: string, kind?: string, body: string, note?: string, proposer?: string }} i */
-  async function draft(chain, i) {
-    const person = personOf(chain);
+  async function draft(chain, i) { return draftAs(personOf(chain), agentOf(chain), i); }
+  /** A draft for a named person with no chain of theirs (learn's lesson, drafted for the install's owner): a draft only, written by the service; approving stays the person's. @param {string} personId @param {any} i */
+  function draftFor(personId, i) { return draftAs({ kind: "person", id: String(personId) }, null, i); }
+  /** @param {any} person @param {string | null} agent @param {any} i */
+  async function draftAs(person, agent, i) {
     if (!person) throw fail("not_allowed", "a skill is drafted for a person: by them, or by their assistant or an agent working for them");
     const level = String(i.level || ""), name = String(i.name || ""), kind = i.kind === "plugin" ? "plugin" : "skill";
     if (!LEVELS.includes(level)) throw fail("bad_input", `level is one of ${LEVELS.join(", ")}`);
     if (!validName(name)) throw fail("bad_input", "a skill's name is lower-case letters, digits, dots, dashes and underscores");
-    const agent = agentOf(chain);
     let scope = String(i.scope ?? "");
     if (level === "space") scope = "";
     else if (level === "personal") { scope = scope || person.id; if (scope !== person.id) throw fail("not_allowed", "a personal skill is drafted for yourself"); }
@@ -142,5 +144,5 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
     if (!rec) throw fail("not_found", `no version ${version} of ${name}`);
     return rec;
   }
-  return { draft, approve, applyApproval, rollback, versions, approved, get, history, ownerOfLevel, mayApprove };
+  return { draft, draftFor, approve, applyApproval, rollback, versions, approved, get, history, ownerOfLevel, mayApprove };
 }

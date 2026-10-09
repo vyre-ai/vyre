@@ -13,6 +13,7 @@ import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
+import { signingBrand } from "../../lib/brand/profile.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -26,6 +27,8 @@ export const MIGRATIONS = [
    );`,
   `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
   `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
+  // Signed-in browser sessions on an app's own origin (and a preview's): kept by the hash of the cookie so a restart or an update does not sign anyone out.
+  `CREATE TABLE appmods_sessions (h TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, exp INTEGER NOT NULL, who_w TEXT, who_r TEXT);`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -105,6 +108,9 @@ export function pick(o, at) {
 export const seam = /** @type {{ driver: any }} */ ({ driver: null });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** A preview's name on the front: pv- and eight hex digits. Never an installed app's name (those are catalog names). */
+const PREVIEW_NAME = /^pv-[0-9a-f]{8}$/;
+
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
@@ -316,16 +322,31 @@ export default {
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
 
     // The apps' own screens, each on its own origin (<module>.<base>), answered by Host before any Vyre route (proxy.js). Only an installed app that is running is served.
-    const tickets = createTickets();
+    const tickets = createTickets({ store: {
+      put: (/** @type {string} */ h, /** @type {any} */ r) => { db.prepare("INSERT OR REPLACE INTO appmods_sessions (h, name, host, exp, who_w, who_r) VALUES (?,?,?,?,?,?)").run(h, r.name, r.host, r.exp, r.who ? r.who.w : null, r.who ? r.who.r : null); },
+      get: (/** @type {string} */ h) => { const r = db.prepare("SELECT * FROM appmods_sessions WHERE h = ?").get(h); return r ? { name: r.name, host: r.host, exp: Number(r.exp), who: r.who_w ? { w: r.who_w, r: r.who_r || "" } : null } : null; },
+      dropName: (/** @type {string} */ n) => { db.prepare("DELETE FROM appmods_sessions WHERE name = ?").run(n); },
+      sweep: (/** @type {number} */ t) => { db.prepare("DELETE FROM appmods_sessions WHERE exp < ?").run(t); },
+    } });
+    // The look a public signing page takes from the space's brand (core/brand): the profile resolved into a stylesheet, or nothing when there is no brand or no brand module.
+    const brandCss = async () => {
+      try { const r = await ctx.call("brand.resolve", {}); return r && !r.error && r.data ? signingBrand(r.data) : ""; } catch { return ""; }
+    };
     const hostProxy = createHostProxy({
+      brand: brandCss,
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
+        // A preview (core/previews) is one more origin behind the same front, ticket and cookie: asked of that module by name, never by import.
+        if (PREVIEW_NAME.test(String(name))) {
+          const p = await ctx.call("previews.resolve", { name: String(name) }).catch(() => null);
+          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, allowEmbed: true, ...(typeof p.data.viewerKey === "string" ? { viewerKey: p.data.viewerKey } : {}), credentials: async () => ({}) } : null;
+        }
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
         if (!m) return null;
-        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [],
+        return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [], ...(m.app.signing ? { signing: m.app.signing } : {}),
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
     });
@@ -336,6 +357,8 @@ export default {
       hostProxy(req, res, { url }).then(done => { if (!done && !res.headersSent) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); res.end("not found"); } }).catch(() => { if (!res.headersSent) res.writeHead(502); res.end(); });
     });
     front.on("error", e => ctx.log.warn(`appmods: the apps' front could not listen: ${e.message}`));
+    // A WebSocket on an app's origin (a preview's hot reload): the same checks, tunnelled.
+    front.on("upgrade", (req, socket, head) => { hostProxy.upgrade(req, /** @type {any} */ (socket), head).then(done => { if (!done) socket.destroy(); }).catch(() => socket.destroy()); });
     await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
     ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
       const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening", "unavailable"); return { port: a.port };
@@ -372,6 +395,29 @@ export default {
         const t = tickets.issue(r.name, new URL(here).host, screen ? screen.path : "/");
         return { url: `${here}${ENTER}?t=${t}`, host: new URL(here).host };
       },
+    });
+    // The previews module's door onto the same ticket path: it has judged who may open a preview, and asks for the ticket address. Modules only, and only for a preview's own name.
+    const previewsOnly = (/** @type {any} */ meta, /** @type {string} */ name) => {
+      if (!meta || meta.caller !== "module:previews" || meta.firstParty === false) throw refuse("the previews module alone asks for a preview's ticket", "denied");
+      if (!PREVIEW_NAME.test(String(name))) throw refuse("that is not a preview's name", "bad_input");
+    };
+    ctx.tool("appmods.ticket", {
+      description: "A one-time sign-in address for a preview, on its own origin: { url, host }. Internal: the previews module has already decided that this person may open it.", internal: true,
+      input: obj({ name: str, next: str, origin: str, who: str, role: str, embed: { type: "boolean" } }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        previewsOnly(meta, i.name);
+        let base = baseHost();
+        if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
+        const here = originFor(i.name, base);
+        const next = typeof i.next === "string" && i.next.startsWith("/") && !i.next.startsWith("//") ? i.next : "/";
+        const who = typeof i.who === "string" && i.who ? { w: String(i.who).slice(0, 120), r: String(i.role || "").slice(0, 20) } : null;
+        return { url: `${here}${ENTER}?t=${tickets.issue(i.name, new URL(here).host, next, who, i.embed === true)}`, host: new URL(here).host };
+      },
+    });
+    ctx.tool("appmods.drop", {
+      description: "End every open sign-in to a preview (its access changed, or it was removed). Internal: the previews module only.", internal: true,
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { previewsOnly(meta, i.name); tickets.drop(i.name); return { dropped: i.name }; },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
       hosts: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host) }) });

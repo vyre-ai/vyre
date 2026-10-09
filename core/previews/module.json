@@ -1,0 +1,189 @@
+{
+  "name": "previews",
+  "version": "0.1.0",
+  "description": "Live previews: a server an agent started on a port becomes a card in its chat, opened on its own address, kept running by Vyre, and shared the way you share a document.",
+  "roles": [
+    "box"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "previews.open",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.list",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.url",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.keep",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.restart",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.stop",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.remove",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.log",
+        "effect": "read",
+        "reach": "person"
+      },
+      {
+        "name": "previews.share",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.operator",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.step",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.signin",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.signin-get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.signin-done",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.resolve",
+        "effect": "read",
+        "reach": "modules"
+      },
+      {
+        "name": "previews.reply",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.run-get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.frame",
+        "effect": "read",
+        "reach": "person"
+      },
+      {
+        "name": "previews.thumb",
+        "effect": "read",
+        "reach": "person"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "preview.state",
+      "preview.opened",
+      "preview.removed",
+      "thread.preview",
+      "thread.operator",
+      "thread.signin"
+    ]
+  },
+  "shows": {
+    "cli": []
+  },
+  "needs": {
+    "kernel": {
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update"
+      ],
+      "prefixes": [
+        "preview_doc/*"
+      ],
+      "types": [
+        {
+          "name": "preview_doc",
+          "label": "Preview data",
+          "fields": [
+            {
+              "name": "preview",
+              "kind": "text",
+              "label": "Preview",
+              "required": true
+            },
+            {
+              "name": "path",
+              "kind": "text",
+              "label": "Path",
+              "required": true
+            },
+            {
+              "name": "collection",
+              "kind": "text",
+              "label": "Collection"
+            },
+            {
+              "name": "docid",
+              "kind": "text",
+              "label": "Document"
+            },
+            {
+              "name": "data",
+              "kind": "text",
+              "label": "Data"
+            },
+            {
+              "name": "owner",
+              "kind": "text",
+              "label": "Written by"
+            },
+            {
+              "name": "updated",
+              "kind": "number",
+              "label": "Updated"
+            },
+            {
+              "name": "gone",
+              "kind": "number",
+              "label": "Removed"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "teaches": {}
+}

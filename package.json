@@ -38,6 +38,7 @@
     "@noble/curves": "1.9.7",
     "@noble/hashes": "1.8.0",
     "docxtemplater": "3.71.0",
+    "esbuild-wasm": "0.28.2",
     "pizzip": "3.3.0",
     "yaml": "2.9.1"
   },
@@ -49,7 +50,8 @@
     "docxtemplater",
     "pako",
     "pizzip",
-    "yaml"
+    "yaml",
+    "esbuild-wasm"
   ],
   "files": [
     "bin",

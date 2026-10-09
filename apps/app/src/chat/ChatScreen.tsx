@@ -36,6 +36,8 @@ import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
+import { PreviewPane } from "./PreviewPane";
+import { usePreviewPane } from "./previewPane";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
@@ -268,7 +270,8 @@ export function ChatScreen(p: ChatScreenProps) {
     ? found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }))
     : allowsMock() ? [] : here.slots.map((x) => ({ id: x.id, label: x.name, provider: null as string | null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
-  return (
+  const paneOpen = usePreviewPane();
+  const body = (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
@@ -419,4 +422,6 @@ export function ChatScreen(p: ChatScreenProps) {
       </View>
     </View>
   );
+  // A preview open in Vyre: a column beside the chat on a computer, a full-screen sheet on a phone.
+  return paneOpen && !phone ? <View style={{ flex: 1, flexDirection: "row" }}><View style={{ flex: 1, minWidth: 0 }}>{body}</View><PreviewPane phone={false} /></View> : <>{body}<PreviewPane phone={phone} /></>;
 }

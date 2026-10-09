@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case tasks</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f6f4ee; --card:#fff; --ink:#171716; --muted:#6a675f; --line:#dcd9d1; --accent:#4b3fcf; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121211; --card:#1b1b1a; --ink:#f3f1ec; --muted:#a8a59d; --line:#34332f; --accent:#a99cff; } }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system,system-ui,sans-serif; }
+  main { max-width:640px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; } .muted { color:var(--muted); }
+  form { display:flex; gap:8px; margin:20px 0; } input { flex:1; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--card); color:inherit; font:inherit; }
+  button { padding:10px 16px; border-radius:10px; border:1px solid var(--line); background:var(--card); color:inherit; font:inherit; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:transparent; }
+  ul { list-style:none; padding:0; margin:0; display:grid; gap:8px; } li { display:flex; align-items:center; gap:10px; padding:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+  li.done span { text-decoration:line-through; color:var(--muted); } li span { flex:1; }
+  #summary { margin-top:20px; padding:12px; border-left:3px solid var(--accent); display:none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Case tasks</h1>
+  <div class="muted" id="who">Not signed in</div>
+  <form id="add"><input id="title" placeholder="What needs doing?" aria-label="New task" autocomplete="off"><button class="primary" type="submit">Add</button></form>
+  <ul id="list" aria-live="polite"></ul>
+  <p class="muted" id="empty">Nothing yet.</p>
+  <div style="display:flex;gap:8px;margin-top:20px"><button id="summarize" hidden>Summarize</button><button id="export" hidden>Export CSV</button></div>
+  <div id="summary" role="status"></div>
+</main>
+<script>
+  // A page written for Claude's artifact runtime: it designs for absence (every capability may be null) and lights features up when the promise resolves.
+  (async () => {
+    const $ = (id) => document.getElementById(id);
+    const list = $("list"), empty = $("empty");
+    let tasks = [];
+    const db = await claude.use("db");
+    const user = await claude.use("user");
+    const sample = await claude.use("sample");
+    const downloads = await claude.use("downloads");
+    if (user) { const me = await user.me(); $("who").textContent = "Signed in as " + me.name; }
+    function render() {
+      list.innerHTML = ""; empty.style.display = tasks.length ? "none" : "block";
+      for (const t of tasks) {
+        const li = document.createElement("li"); li.className = t.data().done ? "done" : "";
+        const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = !!t.data().done; cb.style.flex = "none"; cb.setAttribute("aria-label", "Done: " + t.data().title);
+        cb.onchange = () => db.doc("tasks/" + t.id).update({ done: cb.checked });
+        const s = document.createElement("span"); s.textContent = t.data().title;
+        li.append(cb, s); list.append(li);
+      }
+    }
+    if (!db) { $("who").textContent = "Stored data is off for this page."; return; }
+    db.collection("tasks").orderBy("createdAt").onSnapshot((snap) => { tasks = snap.docs; render(); }, (e) => { $("who").textContent = "Stored data stopped: " + e.code; });
+    $("add").onsubmit = async (e) => { e.preventDefault(); const v = $("title").value.trim(); if (!v) return; $("title").value = ""; await db.collection("tasks").add({ title: v, done: false, createdAt: Date.now() }); };
+    if (sample) { $("summarize").hidden = false; $("summarize").onclick = async () => { try { const r = await sample("Summarize these tasks in one sentence: " + tasks.map((t) => t.data().title).join("; ")); $("summary").style.display = "block"; $("summary").textContent = r.text; } catch (e) { $("summary").style.display = "block"; $("summary").textContent = "The model could not answer: " + e.code; } }; }
+    if (downloads) { $("export").hidden = false; $("export").onclick = () => downloads.save({ filename: "tasks.csv", data: "title,done\n" + tasks.map((t) => JSON.stringify(t.data().title) + "," + !!t.data().done).join("\n") }).catch(() => {}); }
+  })();
+</script>
+</body>
+</html>

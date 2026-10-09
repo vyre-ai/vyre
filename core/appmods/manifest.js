@@ -54,7 +54,7 @@ export function checkAppModule(m) {
   const a = m.app;
   if (!isObj(a)) bad("app", "an app module has an app part");
   else {
-    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "tmp", "hookPort"];
+    const ak = ["image", "port", "volumes", "env", "secrets", "health", "limits", "egress", "bootstrap", "login", "public", "signing", "tmp", "hookPort"];
     for (const k of Object.keys(a)) if (!ak.includes(k)) bad(`app.${k}`, `${k} is not part of app`);
     if (typeof a.image !== "string" || !PINNED_RE.test(a.image)) bad("app.image", "the image is pinned by digest: name:tag@sha256:<64 hex>");
     if (!(Number.isInteger(a.port) && a.port >= 1 && a.port <= 65535)) bad("app.port", "port is a whole number from 1 to 65535");
@@ -95,6 +95,13 @@ export function checkAppModule(m) {
     }
     // Static files a browser fetches without its cookies (a web app manifest): served to anyone who reaches the app's origin, GET only, nothing else.
     if (a.public !== undefined && !(Array.isArray(a.public) && a.public.length <= 8 && a.public.every((/** @type {any} */ p) => typeof p === "string" && /^\/[A-Za-z0-9_.\/-]{1,80}$/.test(p) && !p.includes("..")))) bad("app.public", "public lists the static paths served without a session");
+    // What a signer's browser may reach without the owner's ticket (a signing app only): exact method and path routes, and pretty links that go to one. Nothing else is public.
+    if (a.signing !== undefined) {
+      const s = a.signing;
+      const route = (/** @type {any} */ r) => isObj(r) && Array.isArray(r.methods) && r.methods.length > 0 && r.methods.every((/** @type {any} */ x) => ["GET", "HEAD", "POST", "PUT", "PATCH"].includes(x)) && typeof r.path === "string" && /^\/[A-Za-z0-9_.:\/*-]{0,120}$/.test(r.path) && !r.path.includes("..") && !r.path.includes("//") && (!r.path.includes("*") || r.path.endsWith("/*"));
+      if (!isObj(s) || Object.keys(s).some(k => !["routes", "redirects"].includes(k)) || !Array.isArray(s.routes) || s.routes.length === 0 || s.routes.length > 40 || !s.routes.every(route)) bad("app.signing", "signing is { routes: [{ methods, path }] } with up to 40 exact routes (:name is one segment, a trailing /* is the rest)");
+      else if (s.redirects !== undefined && !(Array.isArray(s.redirects) && s.redirects.length <= 4 && s.redirects.every((/** @type {any} */ r) => isObj(r) && typeof r.from === "string" && typeof r.to === "string" && route({ methods: ["GET"], path: r.from }) && /^\/[A-Za-z0-9_.:\/-]{1,120}$/.test(r.to) && !r.to.includes("..") && !r.to.includes("//")))) bad("app.signing.redirects", "redirects are [{ from, to }] inside the app");
+    }
     // The webhook door's port on a box where the host helper starts the app: fixed here, unique across the catalog, checked again by root when it records the catalog.
     if (a.hookPort !== undefined && !(Number.isInteger(a.hookPort) && a.hookPort >= 43000 && a.hookPort <= 43999)) bad("app.hookPort", "hookPort is a whole number from 43000 to 43999");
     if (a.egress !== undefined) {

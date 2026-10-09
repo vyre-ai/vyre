@@ -20,10 +20,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 16 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 18 | 6 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 13 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
-| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
+| [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
+| [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
@@ -66,6 +67,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
+| [`previews`](#previews) | `core/previews` | `box` | 20 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
@@ -83,7 +85,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`skills`](#skills) | `core/skills` | `box`, `local` | 12 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 13 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 112 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -150,7 +152,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [16](tools.md#appmods)
+- Tools: [18](tools.md#appmods)
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`
@@ -188,11 +190,22 @@ Documents, reports, pages, dashboards, diagrams, decks and small apps your agent
 - Folder: `core/artifacts`, version 0.2.0
 - Runs on: `box`
 - Requires: none
-- Tools: [28](tools.md#artifacts)
+- Tools: [29](tools.md#artifacts), 1 of them only for other modules
 - Emits: [10 events](events.md#artifacts)
 - Listens for: `floor.wrote`, `thread.deleted`
 - Shows on: capsule, cli, deck
 - Needs tools: `threads.get`, `agents.list`
+
+## ask
+
+One card for every question: several clarifications an agent needs, asked together, each with choices and room to type your own, answered once.
+
+- Folder: `core/ask`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [4](tools.md#ask)
+- Emits: [2 events](events.md#ask)
+- Shows on: cli
 
 ## assistant
 
@@ -666,6 +679,18 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## previews
+
+Live previews: a server an agent started on a port becomes a card in its chat, opened on its own address, kept running by Vyre, and shared the way you share a document.
+
+- Folder: `core/previews`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [20](tools.md#previews)
+- Emits: [6 events](events.md#previews)
+- Shows on: cli
+- Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`
+
 ## projects
 
 - Folder: `core/projects`, version 0.1.0
@@ -871,7 +896,7 @@ The skills a session may use, found by what it is about to do, and the library t
 - Folder: `core/skills`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [12](tools.md#skills), 5 of them only for other modules
+- Tools: [13](tools.md#skills), 6 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update"]}`

@@ -1,6 +1,6 @@
 // @ts-check
 // The Block contract (team/archive/work-journals/chat.md, 0.3): a tool result becomes one of
-//   terminal | diff | files | record | task | draft | flow-change | answer | screen | text
+//   terminal | diff | files | record | task | draft | flow-change | answer | screen | preview | questions | operator | signin | text
 // `normalizeBlock` checks the shape and returns a typed block the components draw. Anything unknown
 // or malformed degrades to a short `text` block, never a JSON dump. A sealed field keeps no value:
 // only its typed placeholder (class, present) survives here, so nothing downstream can render one.
@@ -15,6 +15,11 @@
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
+ *  | { block: "preview", id: string, title: string, state: string, source: string, mode: string, access: string, thumb: number }
+ *  | { block: "operator", run: string, computer: string, title: string, state: "working" | "done" | "stuck" | "paused", line: string, ask: string, steps: { line: string, state: string }[] }
+ *  | { block: "signin", id: string, computer: string, site: string, why: string, state: "waiting" | "done" | "cancelled" | "expired" }
+ *  | { block: "questions", id: string, title: string, state: "waiting" | "answered" | "cancelled" | "expired", questions: { id: string, prompt: string, choices: { label: string, detail?: string }[], allowText: boolean, optional: boolean }[], answers: Record<string, { choice?: string, text?: string }> | null }
+
  *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean, urn?: string }
  *  | { block: "text", text: string }} Block
  * @typedef {{ path: string, op: string, diff: string, add: number, del: number }} DiffFile
@@ -100,6 +105,38 @@ export function normalizeBlock(raw, fallback = "Done") {
     case "screen": {
       const frames = arr(o.frames).filter((f) => typeof f === "string").slice(-4);
       return { block: "screen", label: str(o.label, 120), live: o.live !== false, frames };
+    }
+    // A live preview of something an agent is running. Never an address: the card asks the box for a one-time one when the person opens it.
+    case "preview": {
+      const id = str(o.id, 16), title = str(o.title, 120);
+      if (!/^[0-9a-f]{8}$/.test(id) || !title) return text();
+      return { block: "preview", id, title, state: ["starting", "live", "stopped", "crashed"].includes(o.state) ? o.state : "starting", source: str(o.source, 12) || "port", mode: o.mode === "supervised" ? "supervised" : "session", access: ["me", "project", "team"].includes(o.access) ? o.access : "me", thumb: Number(o.thumb) > 0 ? Number(o.thumb) : 0 };
+    }
+    // One card of several questions, asked together (ask.many). The person answers once; the card then shows what they said.
+    case "questions": {
+      const id = str(o.id, 20);
+      const questions = arr(o.questions).slice(0, 6).map((q) => rec(q)).filter(Boolean).map((q) => ({
+        id: str(q?.id, 40), prompt: str(q?.prompt, 300),
+        choices: arr(q?.choices).slice(0, 8).map((c) => rec(c)).filter(Boolean).map((c) => ({ label: str(c?.label, 120), ...(c?.detail ? { detail: str(c.detail, 160) } : {}) })).filter((c) => c.label),
+        allowText: q?.allowText !== false, optional: q?.optional === true,
+      })).filter((q) => q.id && q.prompt);
+      if (!/^[0-9a-f]{12}$/.test(id) || !questions.length) return text();
+      const a = rec(o.answers);
+      /** @type {Record<string, { choice?: string, text?: string }>} */ const answers = {};
+      if (a) for (const q of questions) { const x = rec(a[q.id]); if (x && typeof x.text === "string") answers[q.id] = { text: x.text.slice(0, 500) }; else if (x && typeof x.choice === "string") answers[q.id] = { choice: x.choice.slice(0, 120) }; }
+      return { block: "questions", id, title: str(o.title, 120) || "A few questions", state: ["waiting", "answered", "cancelled", "expired"].includes(o.state) ? o.state : "waiting", questions, answers: a ? answers : null };
+    }
+    // A computer's live screen with what it is doing now (the screen itself is Glass's; the card asks for it), and a sign-in waiting for the person.
+    case "operator": {
+      const run = str(o.run, 20), computer = str(o.computer, 64);
+      if (!/^[0-9a-f]{12}$/.test(run) || !computer) return text();
+      return { block: "operator", run, computer, title: str(o.title, 120) || `${computer}'s computer`, state: ["working", "done", "stuck", "paused"].includes(o.state) ? o.state : "working", line: str(o.line, 160), ask: str(o.ask, 120),
+        steps: arr(o.steps).slice(-7).map((x) => rec(x)).filter(Boolean).map((x) => ({ line: str(x?.line, 160), state: ["working", "done", "stuck", "paused"].includes(x?.state) ? x?.state : "done" })).filter((x) => x.line) };
+    }
+    case "signin": {
+      const id = str(o.id, 20), computer = str(o.computer, 64), site = str(o.site, 80);
+      if (!/^[0-9a-f]{12}$/.test(id) || !computer || !site) return text();
+      return { block: "signin", id, computer, site, why: str(o.why, 200), state: ["waiting", "done", "cancelled", "expired"].includes(o.state) ? o.state : "waiting" };
     }
     case "text":
       return text();

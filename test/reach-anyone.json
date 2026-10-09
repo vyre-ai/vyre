@@ -1,6 +1,14 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
  "tools": {
+  "ask.get": {
+   "module": "ask",
+   "reason": "read-only: the state and answers of a question card the asker made; an unknown id is not found"
+  },
+  "ask.many": {
+   "module": "ask",
+   "reason": "an agent asks the person several things as one card; it decides nothing (the answers are only the person's words) and any act that follows still waits for the person's yes; capped at 6 questions and 20 waiting"
+  },
   "agents.ask": {
    "module": "agents",
    "reason": "guard() refuses non-assistant agent labels; modelMay refuses a plain mcp or harness caller with no verified thread or agent; sessions, the verified assistant, the person and modules pass (onboard asks as a module)"
@@ -1092,6 +1100,42 @@
   "presence.remove": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.session.open": {
+   "module": "presence",
+   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "previews.get": {
+   "module": "previews",
+   "reason": "read-only: one preview by title, state and who may open it; for a person it also shows the folder and port, never a ticket"
+  },
+  "previews.list": {
+   "module": "previews",
+   "reason": "read-only: the previews of a chat or project by title, state and who may open them; never an address, a ticket or a command"
+  },
+  "previews.operator": {
+   "module": "previews",
+   "reason": "an agent shows the person a computer's live screen as a card in its own chat; the card holds a name and words, never the screen, which the person's surface asks Glass for under Glass's own rules"
+  },
+  "previews.run-get": {
+   "module": "previews",
+   "reason": "read-only: the state of a run the asker started, and what the person typed when it was stuck; a model reads only a run of its own chat"
+  },
+  "previews.signin": {
+   "module": "previews",
+   "reason": "an agent asks the person to sign in on a computer as a card; the sign-in is private (the agent sees nothing of the page and gets no password) and only the person's own surface finishes it"
+  },
+  "previews.signin-get": {
+   "module": "previews",
+   "reason": "read-only: whether the person has finished a sign-in the asker made"
+  },
+  "previews.step": {
+   "module": "previews",
+   "reason": "words for the status line of the asker's own card (a model only moves a card of its own chat)"
+  },
+  "previews.open": {
+   "module": "previews",
+   "reason": "an agent shows the person something running: it names a port of its own (never Vyre's, never below 1024) and the preview opens only for the person, through a ticket the person's own surface asks for; a command is run only for a person's own call, never a model's"
   },
   "projects.access.check": {
    "module": "projects",
