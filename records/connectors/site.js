@@ -40,7 +40,7 @@ export function siteDeclaration({ id, label, origin, entries }) {
  */
 export function siteConfig(d) {
   const base = toCredentialConfig(d);
-  return { ...base, operations: JSON.parse(JSON.stringify(d.ops)), readers: [{ module: "connectors", paths: [] }] };
+  return { ...base, operations: JSON.parse(JSON.stringify(d.ops)) };
 }
 
 /**
