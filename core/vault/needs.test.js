@@ -216,15 +216,13 @@ test("needs: every state, connect for fields, a file and a sign-in, refusals, pr
   assert.equal(fromClaude.error.code, "denied");
   assert.equal((await cli("vault.list", { filter: "talker-github" })).data.items.length, 0);
 
-  // Presence: without a person, vault.connect stores nothing; vault.need still answers.
+  // Without the person, vault.connect stores nothing (it is the person's own act and takes no yes: an agent is refused); vault.need still answers.
   assert.equal(d.registry.listTools("cli").find(x => x.name === "vault.connect").presence, true);
   assert.equal(d.registry.listTools("cli").find(x => x.name === "vault.need").presence, undefined);
-  pres.deny = true;
-  const away = await cli("vault.connect", { module: "talker", need: "github", fields: { token: v("ghp_" + hex(20)) } });
+  const away = await mcp("vault.connect", { module: "talker", need: "github", fields: { token: v("ghp_" + hex(20)) } });
   outs.push(away);
-  assert.equal(away.error.code, "presence_required");
+  assert.ok(away.error, "an agent cannot connect a credential");
   assert.equal(stateOf(await need(), "github"), "missing");
-  pres.deny = false;
 
   // No value in any reply, event or log line.
   const all = JSON.stringify(outs) + JSON.stringify(d.registry.deps.events.since(0, { limit: 1000 })) + lines.join("\n");
