@@ -26,7 +26,7 @@ export const FAMILIES = {
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
   appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
-  settings: { more: true }, sidebar: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
+  settings: { more: true }, sidebar: { more: true }, views: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
   context: { more: true }, import: { more: true }, mentions: { more: true }, modules: { more: true }, presence: { more: true }, push: { more: true }, releases: { more: true }, rules: { more: true },
   signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
 };

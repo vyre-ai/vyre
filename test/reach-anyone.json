@@ -367,7 +367,7 @@
   },
   "connectors.connection.export": {
    "module": "connectors",
-   "reason": "read-only: the app's template without the person's key item or values (callers list)"
+   "reason": "callers list and scope: writes nothing, and the template it returns carries the app's address and operations but never the person's key item or values"
   },
   "connectors.connection.get": {
    "module": "connectors",
