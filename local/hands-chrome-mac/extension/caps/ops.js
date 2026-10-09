@@ -12,13 +12,16 @@
 //   ops.scout   the capture of the last run as a few lines per candidate request (what carries the example, what the answer looks like), so an agent chooses on few tokens.
 //   ops.check   can this tab sign this operation right now: the right site, and which references resolve (names only).
 
-import { learnOperation, leafName, matches, parseCookieHeader } from "../shared/sk/siteops/learn.js";
+import { learnOperation } from "../shared/sk/siteops/learn.js";
+import { suggestPick } from "../shared/sk/siteops/pickfields.js";
+import { parseBody } from "../shared/sk/siteops/extract.js";
+import { STATE_EXPRESSION, resolverFor, loginWall } from "../shared/sk/siteops/page.js";
 import { runOperation } from "../shared/sk/siteops/run.js";
 import { healOperation } from "../shared/sk/siteops/heal.js";
 import { scout } from "../shared/sk/siteops/outline.js";
 import { parseOperation, readOnly } from "../shared/sk/siteops/spec.js";
 import { refsOf } from "../shared/sk/siteops/build.js";
-import { fillTemplate, walk } from "../shared/sk/siteops/codec.js";
+import { fillTemplate } from "../shared/sk/siteops/codec.js";
 import * as redact from "../shared/sk/siteops/redact.js";
 import { held, writeGate, digest } from "../shared/outbound.js";
 import net, { records, target, refuse, pageFetch, start, runIn } from "./net.js";
@@ -34,7 +37,6 @@ const lastHeal = new Map();
 /** The last capture of ops.learn, per tab, for ops.scout. @type {Map<number, any[]>} */
 const lastCapture = new Map();
 
-const LOGIN_PATH = /\/(login|signin|sign_in|sign-in|accounts\/login|uas\/login|authwall|checkpoint|ServiceLogin)(\/|$|\?)/i;
 const TYPE = { xhr: "xhr", fetch: "fetch", document: "document", script: "script", stylesheet: "stylesheet", image: "image", font: "font", media: "media", websocket: "websocket", ping: "ping" };
 
 /** @param {Record<string, any>|undefined} h */
@@ -90,58 +92,20 @@ async function settle(ctx, tab, since) {
 
 /** The page's own storage, read here and never returned. @param {any} ctx @param {number} tab */
 async function pageState(ctx, tab) {
-  const expression = `(() => { const dump = s => { const o = {}; try { for (let i = 0; i < s.length; i++) { const k = s.key(i); const v = s.getItem(k); if (v && v.length < 20000) o[k] = v; } } catch (e) {} return o; };
-    const c = {}; document.cookie.split(";").forEach(p => { const i = p.indexOf("="); if (i > 0) c[p.slice(0, i).trim()] = p.slice(i + 1).trim(); });
-    return { origin: location.origin, url: location.href, cookie: c, local: dump(localStorage), session: dump(sessionStorage) }; })()`;
-  const res = await runIn(ctx, tab, null, expression, { returnByValue: true });
+  const res = await runIn(ctx, tab, null, STATE_EXPRESSION, { returnByValue: true });
   return /** @type {{ origin: string, url: string, cookie: Record<string, string>, local: Record<string, string>, session: Record<string, string> }} */ (res?.result?.value || { origin: "", url: "", cookie: {}, local: {}, session: {} });
 }
 
-/** A JSON-path read inside a stored JSON string: "a/b/0". @param {string} text @param {string} path */
-function jsonLeaf(text, path) {
-  try {
-    let cur = JSON.parse(text);
-    for (const k of path.split("/").filter(Boolean)) { if (cur == null || typeof cur !== "object") return undefined; cur = cur[k]; }
-    return typeof cur === "string" ? cur : undefined;
-  } catch { return undefined; }
-}
-
 /**
- * Resolve a credential reference where the request is signed: a cookie the page can read, a storage entry, or the newest request of this site that carried that header or field. Returns
- * undefined when none holds it (the caller says so; it never invents one). The value stays in this closure.
+ * Resolve a credential reference where the request is signed (lib/siteops/page.js says how). The value stays in this closure; an unresolved reference is undefined and the caller says so.
  * @param {any} ctx @param {number} tab @param {string} origin @param {any} op
  */
 async function makeResolver(ctx, tab, origin, op) {
   const st = await pageState(ctx, tab);
   if (st.origin !== origin) throw refuse("bad_request", `this tab is on ${redact.url(st.origin || "no page")}, not ${redact.url(origin)}: open the site's tab first`);
-  const recent = (await records(ctx, tab, {})).filter(r => originOf(r.url) === origin).sort((a, b) => b.seq - a.seq).slice(0, 120);
-  return (/** @type {string} */ ref) => {
-    const i = ref.indexOf(":");
-    const kind = ref.slice(0, i), name = ref.slice(i + 1);
-    if (kind === "cookie") {
-      if (st.cookie[name] !== undefined) return st.cookie[name];
-      for (const r of recent) { const c = parseCookieHeader(String(Object.entries(r.reqHeaders || {}).find(([k]) => k.toLowerCase() === "cookie")?.[1] || "")); if (c[name] !== undefined) return c[name]; }
-      return undefined;
-    }
-    const base = name.replace(/@.*$/, "");
-    for (const store of [st.local, st.session]) {
-      if (store[base] !== undefined) return store[base];
-      for (const k of Object.keys(store)) if (base.startsWith(k + "/")) { const v = jsonLeaf(store[k], base.slice(k.length + 1)); if (v !== undefined) return v; }
-    }
-    const lc = base.toLowerCase();
-    for (const r of recent) {
-      const h = Object.entries(r.reqHeaders || {}).find(([k]) => k.toLowerCase() === lc);
-      if (h) return String(h[1]);
-    }
-    // a field of a recent request of the same operation, then of any request of the site
-    for (const pool of [recent.filter(r => matches(op.match, { method: r.method, url: r.url, headers: {} })), recent]) {
-      for (const r of pool) {
-        const leaf = walk({ method: r.method, url: r.url, headers: {}, ...(r.postData !== undefined ? { body: r.postData } : {}) }).find(l => !l.container && l.type === "string" && leafName(l.at) === base && l.value.length >= 8);
-        if (leaf) return leaf.value;
-      }
-    }
-    return undefined;
-  };
+  const recent = (await records(ctx, tab, {})).filter(r => originOf(r.url) === origin).sort((a, b) => b.seq - a.seq).slice(0, 120)
+    .map(r => ({ method: r.method, url: r.url, headers: r.reqHeaders || {}, ...(r.postData !== undefined ? { body: r.postData } : {}) }));
+  return resolverFor(st, recent, op);
 }
 
 /** @param {string} v */
@@ -209,8 +173,7 @@ async function runTrigger(ctx, tab, trigger, inputs, o) {
     for (const id of rules) { try { await net.ops["net.off"]({ tab, ruleId: id }, ctx); } catch { /* expired */ } }
   }
   const st = await pageState(ctx, tab);
-  let path = ""; try { path = new URL(st.url).pathname; } catch { /* none */ }
-  const wall = LOGIN_PATH.test(path) && !LOGIN_PATH.test(new URL(trigger.url, o.origin).pathname) ? path : undefined;
+  const wall = loginWall(st.url, new URL(trigger.url, o.origin).toString());
   return { exchanges: await exchanges(ctx, tab, since), storage: { ...st.session, ...st.local }, cookies: Object.entries(st.cookie).map(([name, value]) => ({ name, value })), ...(wall ? { loginWall: wall } : {}) };
 }
 
@@ -245,7 +208,17 @@ const ops = {
         trigger, ...(args?.match ? { match: args.match } : {}), ...(Number.isInteger(args?.id) ? { id: args.id } : {}), ...(Array.isArray(args?.public) ? { public: args.public } : {}),
         ...(args?.keepExamples === true ? { keepExamples: true } : {}), now: new Date().toISOString() });
     } catch (e) { return { ok: false, class: "input", reason: String(/** @type {any} */ (e).message || e), next: "pick the request that carries the example (ops.scout, then pass its id) or change the example" }; }
-    return { ok: true, operation: learned.operation, warnings: learned.warnings, origin, request: { id: learned.exchange.id }, aborted: write ? true : undefined };
+    // The fields the person wants back ("name, headline, location"): found in the answer the learned request got, so nobody writes a path by hand.
+    /** @type {string[]|undefined} */ let missing;
+    if (Array.isArray(args?.wants) && args.wants.length && learned.operation.kind === "read") {
+      try {
+        const body = String((first.exchanges.find((/** @type {any} */ e) => e.id === learned.exchange.id)?.response || {}).body || "");
+        const sp = suggestPick(parseBody(body, learned.operation.response.xssiPrefix), args.wants.map(String), { extract: learned.operation.response.extract });
+        if (sp.pick.length) learned.operation.response.pick = sp.pick;
+        missing = sp.missing.length ? sp.missing : undefined;
+      } catch { /* an answer that is not JSON has no fields to pick */ }
+    }
+    return { ok: true, operation: learned.operation, warnings: learned.warnings, ...(missing ? { missingFields: missing } : {}), origin, request: { id: learned.exchange.id }, aborted: write ? true : undefined };
   },
 
   async "ops.scout"(args, ctx) {

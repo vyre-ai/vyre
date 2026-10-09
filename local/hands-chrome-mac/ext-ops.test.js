@@ -193,3 +193,14 @@ test("ops.scout lists the candidate requests of the last capture in a few lines"
   assert.ok(ser(s).length < 4000);
   for (const raw of [F.SECRET_COOKIE, F.CSRF]) assert.ok(!ser(s).includes(raw));
 });
+
+test("ops.learn with the fields the person wants: the picks are found in the learned answer, and a field that is not there is named", async () => {
+  reset();
+  const k = world();
+  const r = await T(opsCap.ops["ops.learn"])({ ...learnArgs, wants: ["name", "headline", "salary"] }, k.ctx);
+  assert.equal(r.ok, true, ser(r));
+  assert.deepEqual(r.operation.response.pick, ["name", "headline"]);
+  assert.deepEqual(r.missingFields, ["salary"]);
+  const out = await T(opsCap.ops["ops.call"])({ tab: 1, op: r.operation, inputs: { query: "gamma labs" } }, k.ctx);
+  assert.deepEqual(Object.keys(out.data[0]).sort(), ["headline", "name"], "only what was asked for comes back");
+});

@@ -154,3 +154,43 @@ export function checkAnswer({ assertion, tool, input, pinned, self, nonces, now 
   if (!nonces.take(A.nonce, A.exp, now)) return no("the assertion was used already");
   return { ok: true, a: A };
 }
+
+/** What an operation call's assertion binds: the site, the operation and the exact inputs. @param {{ site: string, name: string, inputs?: any }} c */
+export const callBind = c => ({ site: String(c.site), name: String(c.name), inputs: c.inputs === undefined ? {} : c.inputs });
+
+/**
+ * Sign one call of a learned website operation for one Mac: that site, that operation, those inputs; 60 s, once. Only for an outward operation the person already approved on the box.
+ * @param {crypto.KeyObject} privateKey @param {{ mac: string, call: { site: string, name: string, inputs?: any }, caller: string, now?: number }} o
+ */
+export function signCall(privateKey, { mac, call, caller, now = Date.now() }) {
+  const A = { v: 1, tool: "chrome.op.call", mac, decision: decisionHash(callBind(call)), caller, iat: now, exp: now + TTL, nonce: b64u(crypto.randomBytes(16)) };
+  const bytes = Buffer.from(canonical(A));
+  return { a: b64u(bytes), sig: b64u(crypto.sign(null, bytes, privateKey)) };
+}
+
+/**
+ * The Mac's check before it lets an outward operation run for the box: the signature against the pinned key, this Mac, these exact bytes, the time, and a nonce not seen before (spent last).
+ * @param {{ assertion: any, call: { site: string, name: string, inputs?: any }, pinned?: string|null, self?: string|null, nonces: Nonces, now?: number }} o
+ * @returns {{ ok: true, a: any } | { ok: false, reason: string }}
+ */
+export function checkCall({ assertion, call, pinned, self, nonces, now = Date.now() }) {
+  const no = (/** @type {string} */ reason) => ({ ok: /** @type {false} */ (false), reason });
+  if (!pinned) return no("this Mac has not pinned the box's key");
+  if (!self) return no("this Mac does not know its own node yet");
+  if (!assertion || typeof assertion.a !== "string" || typeof assertion.sig !== "string") return no("an outward call carries no assertion from the box");
+  const bytes = Buffer.from(assertion.a, "base64url");
+  let good = false;
+  try { good = crypto.verify(null, bytes, crypto.createPublicKey({ key: Buffer.from(pinned, "base64url"), format: "der", type: "spki" }), Buffer.from(assertion.sig, "base64url")); } catch { good = false; }
+  if (!good) return no("the assertion is not signed by the box this Mac paired with");
+  /** @type {any} */ let A;
+  try { A = JSON.parse(bytes.toString("utf8")); } catch { return no("the assertion is not readable"); }
+  if (!A || A.v !== 1 || A.tool !== "chrome.op.call") return no("the assertion is not for an operation call");
+  if (A.mac !== self) return no("the assertion is for another Mac");
+  if (A.decision !== decisionHash(callBind(call))) return no("the call is not the one the box signed");
+  if (!Number.isFinite(A.iat) || !Number.isFinite(A.exp) || A.exp - A.iat > TTL) return no("the assertion's times are not valid");
+  if (now >= A.exp) return no("the assertion has expired");
+  if (A.iat > now + SKEW) return no("the assertion is dated in the future");
+  if (typeof A.nonce !== "string" || A.nonce.length < 16) return no("the assertion has no nonce");
+  if (!nonces.take(A.nonce, A.exp, now)) return no("the assertion was used already");
+  return { ok: true, a: A };
+}

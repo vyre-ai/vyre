@@ -17,7 +17,7 @@ import { createBridge } from "../bridge.js";
 import { diagnoseConnection } from "../diagnose.js";
 import * as nativeHost from "../native-host/install.js";
 import { extensionIdFromKey } from "../native-host/install.js";
-import { guide } from "../index.js";
+import { guide, extensionsPage } from "../index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MARKER = ".vyre-chrome-marker";
@@ -154,7 +154,7 @@ async function main() {
     const seconds = flag(args, "no-wait") !== undefined ? 0 : waitFlag !== undefined ? Math.max(0, Number(waitFlag) || 60) : process.stdout.isTTY ? 60 : 0;
     if (seconds > 0) {
       out();
-      out(`Now load the extension if you have not: chrome://extensions > Developer mode > Load unpacked > ${extDirNow}`);
+      out(`Now load the extension if you have not: ${[...new Set(r.written.map((/** @type {any} */ w) => extensionsPage(w.browser)))].join(" or ")} > Developer mode > Load unpacked > ${extDirNow}`);
       out(`Waiting up to ${seconds} s for it to connect (Ctrl-C to skip)...`);
       const ok = await liveCheck({ dataDir, sock, extensionId: id, seconds, hostRegistered: r.written.length > 0 });
       if (!ok) process.exitCode = 2;
