@@ -20,9 +20,9 @@ export const ingressFixtures = Object.freeze({
   appHost: "documents.harlow.vyre.run",
   shareToken: "AbCdEfGhIjKlMnOpQrStUv_-0123456789",
   /** The shapes at the bare name: [method, path, body, listener that gets it]. */
-  shapes: Object.freeze([["GET", "/s/AbCdEfGhIjKlMnOpQrStUv_-0123456789", "", "share"], ["POST", "/hooks/northwind-orders", '{"a":1}', "hooks"], ["POST", "/vault-mcp", '{"x":1}', "vaultmcp"]]),
+  shapes: Object.freeze([["GET", "/s/AbCdEfGhIjKlMnOpQrStUv_-0123456789", "", "share"], ["POST", "/hooks/northwind-orders", '{"a":1}', "hooks"], ["POST", "/vault-mcp", '{"x":1}', "vaultmcp"], ["POST", "/agents-mcp", '{"x":1}', "agentsmcp"]]),
   /** Requests at the bare name that reach nothing, whatever a consumer wishes. */
-  refused: Object.freeze([["GET", "/"], ["GET", "/hooks/northwind-orders"], ["GET", "/s/AbCdEfGhIjKlMnOpQrStUv_-0123456789?x=1"], ["POST", "/agents-mcp"], ["GET", "/vault-mcp"], ["GET", "/api/v1/node"]]),
+  refused: Object.freeze([["GET", "/"], ["GET", "/hooks/northwind-orders"], ["GET", "/s/AbCdEfGhIjKlMnOpQrStUv_-0123456789?x=1"], ["GET", "/agents-mcp"], ["GET", "/vault-mcp"], ["GET", "/api/v1/node"]]),
 });
 const F = ingressFixtures;
 
@@ -38,10 +38,10 @@ test("ingress contract: the declared shapes reach their own listener, everything
   const { cert, key } = selfSigned({ ips: ["127.0.0.1"], names: [F.name, F.appHost] });
   /** @type {{ who: string, method: string, url: string }[]} */ const seen = [];
   const listener = (/** @type {string} */ who) => { const s = http.createServer((q, r) => { q.resume(); seen.push({ who, method: String(q.method), url: String(q.url) }); r.setHeader("content-type", "text/plain"); r.end(who); }); return new Promise(res => s.listen(0, "127.0.0.1", () => { t.after(() => { s.close(); s.closeAllConnections(); }); res(/** @type {any} */ (s.address()).port); })); };
-  const ports = { share: await listener("share"), hooks: await listener("hooks"), vaultmcp: await listener("vaultmcp"), apps: await listener("apps"), upstream: await listener("upstream") };
+  const ports = { share: await listener("share"), hooks: await listener("hooks"), vaultmcp: await listener("vaultmcp"), agentsmcp: await listener("agentsmcp"), apps: await listener("apps"), upstream: await listener("upstream") };
 
   const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: { cert, key }, upstream: { port: ports.upstream },
-    ingress: { hooks: () => ports.hooks, share: () => ports.share, vaultmcp: () => ports.vaultmcp, appsSuffix: `.${F.name}`, apps: () => ({ port: ports.apps, hosts: [F.appHost] }) } });
+    ingress: { hooks: () => ports.hooks, share: () => ports.share, vaultmcp: () => ports.vaultmcp, agentsmcp: () => ports.agentsmcp, appsSuffix: `.${F.name}`, apps: () => ({ port: ports.apps, hosts: [F.appHost] }) } });
   const at = await gate.listen(); t.after(() => gate.close());
 
   const k = newRouteKey(), route = routeId(k.pub);

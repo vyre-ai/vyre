@@ -540,3 +540,44 @@ test("gate ingress, Vault MCP: the gate's own per-source limit sits in front of 
   assert.ok(limited >= 1 && limited <= 3, `the 61st request from one source is refused (${limited})`);
   assert.match((await raw(port, post("/hooks/abc", "{}"))).toString(), /^HTTP\/1\.1 200 /, "webhooks have their own window");
 });
+
+// ---- the outside agents' MCP: exactly POST /agents-mcp, the same discipline as /vault-mcp, its own listener and its own budget ----
+
+test("gate ingress, agents MCP: POST /agents-mcp reaches the outside module's listener with the agent's token and the real address; the vault's route is its own", async t => {
+  const a = await mcpListener(), v = await mcpListener(); t.after(() => { a.close(); v.close(); });
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, vaultmcp: () => v.port, agentsmcp: () => a.port } });
+  const r = (await raw(port, mcpPost('{"jsonrpc":"2.0"}', "Authorization: Bearer vag_abc\r\nX-Forwarded-For: 6.6.6.6\r\n").replace("POST /vault-mcp ", "POST /agents-mcp "))).toString();
+  assert.match(r, /^HTTP\/1\.1 200 /);
+  assert.deepEqual(a.seen.map(s => [s.method, s.url, s.body]), [["POST", "/agents-mcp", '{"jsonrpc":"2.0"}']]);
+  assert.equal(a.seen[0].headers.authorization, "Bearer vag_abc", "the token reaches the outside module");
+  assert.equal(a.seen[0].headers["x-forwarded-for"], "127.0.0.1");
+  assert.deepEqual(v.seen, [], "and the vault's listener heard nothing");
+  await raw(port, mcpPost("{}"));
+  assert.equal(v.seen.length, 1); assert.equal(a.seen.length, 1);
+  assert.equal(be.seen.length, 0);
+});
+
+test("gate ingress, agents MCP: every other shape is the same 404, off unless set, 404 while its listener is not up, and its budget is its own", async t => {
+  const a = await mcpListener(); t.after(() => a.close());
+  const big = "x".repeat(64 * 1024 + 1);
+  const at = (/** @type {string} */ body, /** @type {string} */ from = "/vault-mcp") => mcpPost(body).replace(`POST ${from} `, "POST /agents-mcp ");
+  const { port } = await setup(t, { ingress: { hooks: () => null, share: () => null, agentsmcp: () => a.port } });
+  const cases = [
+    get("/agents-mcp", "Connection: close\r\n"), `PUT /agents-mcp HTTP/1.1\r\nHost: x\r\nContent-Length: 2\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n{}`,
+    at("{}").replace("POST /agents-mcp ", "POST /agents-mcp?x=1 "), at("{}").replace("POST /agents-mcp ", "POST /agents-mcp/ "), at("{}").replace("POST /agents-mcp ", "POST /Agents-Mcp "),
+    at("{}").replace("POST /agents-mcp ", "POST //agents-mcp "), at("{}").replace("POST /agents-mcp ", "POST /agents-mcp%2f "), at("{}").replace("application/json", "text/plain"), at(big),
+    mcpPost("{}"), // the vault's route is not on: its own listener was never given
+    get("/agents", "Connection: close\r\n"), get("/mcp", "Connection: close\r\n"),
+  ];
+  for (const c of cases) assert.deepEqual(await raw(port, c), NOT_FOUND, c.split("\r\n")[0]);
+  assert.deepEqual(a.seen, []);
+  const off = await setup(t, { ingress: { hooks: () => null, share: () => null } });
+  assert.deepEqual(await raw(off.port, at("{}")), NOT_FOUND);
+  const down = await setup(t, { ingress: { hooks: () => null, share: () => null, agentsmcp: () => null } });
+  assert.deepEqual(await raw(down.port, at("{}")), NOT_FOUND);
+  const lim = await setup(t, { ingress: { hooks: () => null, share: () => null, vaultmcp: () => a.port, agentsmcp: () => a.port } });
+  let limited = 0;
+  for (let i = 0; i < 62; i++) { const r = (await raw(lim.port, at("{}"))).toString(); if (/^HTTP\/1\.1 429 /.test(r)) limited++; }
+  assert.ok(limited >= 1 && limited <= 3, `the 61st request from one source is refused (${limited})`);
+  assert.match((await raw(lim.port, mcpPost("{}"))).toString(), /^HTTP\/1\.1 200 /, "the vault's route has its own window");
+});
