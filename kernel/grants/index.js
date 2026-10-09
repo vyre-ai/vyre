@@ -856,6 +856,8 @@ export function createGrantsStore(cfg) {
       grants.set(g.id, g); await note(k, "grant.created", urn("grant", g.id), { grant: g });
       return g.id;
     },
+    /** A module reading, live, the grants it made whose source starts with `source`. @param {string} module @param {string} source */
+    minted: (module, source) => [...grants.values()].filter(g => g.status === "active" && g.source.startsWith(`${module}:`) && g.source.startsWith(source) && !(g.conditions && g.conditions.when && g.conditions.when.expires <= clock())),
     /** A module ending grants it made (by id, or by `source`): only those whose source carries its name. @param {string} module @param {{ id?: string, source?: string, reason?: string }} q */
     async unmint(module, q) {
       const out = [];

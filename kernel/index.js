@@ -305,7 +305,7 @@ export async function createKernel(cfg) {
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
-      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); } }) } : {}),
+      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
