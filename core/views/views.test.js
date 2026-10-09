@@ -162,3 +162,48 @@ test("views: the click authorises the module's own tool only; inside it a person
   const sneaky = await c("views.act", { module: "cards", command: "board", action: "vault.list", tool: "vault.list", id: "c1" });
   assert.ok(sneaky.error || (sneaky.data && sneaky.data.kind === "error"), "an action id that is no declared action is refused, whatever else rides along");
 });
+
+const deskScreen = {
+  v: 2, layout: { col: [{ block: "kpis" }, { row: [{ block: "cards" }, { block: "note" }] }] },
+  blocks: {
+    kpis: { type: "stats", data: { tool: "cards.count", map: { items: "byDay", label: "day", value: "n" } } },
+    cards: { type: "list", data: { tool: "cards.list", input: { q: "{q}" }, map: { rows: "cards", id: "id", title: "name", subtitle: "who" } }, actions: [{ id: "poke", title: "Refresh", tool: "cards.poke" }] },
+    note: { type: "text", props: { style: "note" }, data: { static: { text: "Cards by day, then the cards." } } },
+  },
+};
+
+test("views: a screen reads each block's own tool, draws for a surface, and an action on a block runs the module's own tool as the module", async t => {
+  const mf = { ...manifest, views: { ...manifest.views, desk: { title: "Desk", screen: deskScreen }, broken: { title: "Broken", screen: { v: 2, layout: { block: "x" }, blocks: { x: { type: "nope" } } } } } };
+  const { c } = await world(t, mf);
+  const by = Object.fromEntries((await c("views.list", {})).data.commands.filter((/** @type {any} */ x) => x.module === "cards").map((/** @type {any} */ x) => [x.id, x]));
+  assert.equal(by.desk.kind, "screen");
+  const app = (await c("views.get", { module: "cards", command: "desk" })).data;
+  assert.equal(app.kind, "screen", JSON.stringify(app));
+  assert.equal(app.v, 2);
+  assert.equal(app.from, "cards");
+  assert.deepEqual(app.blocks.kpis.content.items, [{ label: "Mon", value: "3" }, { label: "Tue", value: "5" }]);
+  assert.deepEqual(app.blocks.cards.content.rows.map((/** @type {any} */ r) => r.id), ["c1", "c2", "c3"]);
+  assert.deepEqual(app.blocks.cards.actions, [{ id: "poke", title: "Refresh" }]);
+  assert.equal(app.blocks.note.content.text, "Cards by day, then the cards.");
+  assert.ok(!JSON.stringify(app).includes("cards.list") && !JSON.stringify(app).includes("cards.poke"), "ids and titles only");
+  const phone = (await c("views.get", { module: "cards", command: "desk", surface: "phone" })).data;
+  assert.deepEqual(phone.layout, { col: [{ block: "kpis" }, { col: [{ block: "cards" }, { block: "note" }] }] }, "a row stacks on a phone");
+  const chat = (await c("views.get", { module: "cards", command: "desk", surface: "chat" })).data;
+  assert.deepEqual(Object.keys(chat.blocks), ["kpis", "cards", "note"]);
+  assert.equal(chat.blocks.cards.content.rows.length, 3);
+  const act = (await c("views.act", { module: "cards", command: "desk", block: "cards", action: "poke", id: "c1" })).data;
+  assert.equal(act.kind, "done", JSON.stringify(act));
+  assert.deepEqual((await c("cards.calls")).data.log.map((/** @type {any} */ x) => [x.tool]), [["poke"]]);
+  const bad = (await c("views.get", { module: "cards", command: "broken" })).data;
+  assert.equal(bad.code, "bad_screen", JSON.stringify(bad));
+});
+
+test("views: a v1 view asked for a surface comes back as a one-block screen, and without one it is unchanged", async t => {
+  const { c } = await world(t);
+  const v1 = (await c("views.get", { module: "cards", command: "board" })).data;
+  assert.equal(v1.kind, "board");
+  const s = (await c("views.get", { module: "cards", command: "board", surface: "phone" })).data;
+  assert.equal(s.v, 2);
+  assert.equal(s.blocks.main.type, "board");
+  assert.deepEqual(s.blocks.main.content.columns.map((/** @type {any} */ x) => x.id), ["todo", "doing", "done", "other"]);
+});
