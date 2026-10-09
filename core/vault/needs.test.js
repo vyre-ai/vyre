@@ -100,7 +100,8 @@ async function boot(t) {
   // could never fetch a value (kernel/modules/child.js), which is the rule and not what this test is about.
   const d = await start({ root, presence: pres, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
-  return { root, d, pres, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
+  return { root, d, pres, lines, // each call carries the old header the fake verifier approves (the server turns it into a yes at its edge); `pres.deny` makes it refuse
+    as: caller => (tool, input = {}) => call(tool, input, { root, caller, headers: { "x-vyre-presence": "tty id=t code=C" } }) };
 }
 
 test("needs: every state, connect for fields, a file and a sign-in, refusals, presence, and no value anywhere", async t => {

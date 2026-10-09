@@ -28,7 +28,7 @@ import { isPerson, deviceIdOf, yesDeviceOf } from "../../lib/caller.js";
 import { projectRecordIdOf } from "../../lib/project-id.js";
 import { holdFields } from "../../lib/hold-fields.js";
 import { COVERED } from "../../lib/covered.js";
-import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard } from "../../lib/one-yes.js";
+import { yes, momentOf, signOf, yesFieldsOf, createReuse, REUSE_OPS, admitCard, AGENT_PENDS } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
@@ -1695,6 +1695,9 @@ export class Registry {
       } else if (!moment) {
         if (!isPerson(String(caller))) return { error: { code: "presence_required", message: `${tool} is the person's own action`, methods: [] } };
         meta = { ...meta, presence: { method: "person", keyId: null } };
+      } else if (AGENT_PENDS.includes(tool) && !isPerson(String(caller))) {
+        // an agent asking for a grant or a pass only files a request: the tool keeps it pending for a person, whose approval (vault.approve) is the moment
+        meta = { ...meta, presence: { method: "pending", keyId: null } };
       } else {
         const got = await this.yesFloor({ tool, moment, caller, meta, input, approval, proof, yesProof, presence, def });
         if (got.error) return got;
