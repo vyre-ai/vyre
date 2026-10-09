@@ -1621,7 +1621,10 @@ sp_app_line() {
 sp_app_line_ok() {
   # The line is split into its fields on purpose, with globbing off.
   # shellcheck disable=SC2086
-  set -f; set -- $1; set +f
+  set -f
+  # shellcheck disable=SC2086 # split on whitespace on purpose, globbing off
+  set -- $1
+  set +f
   [ $# = 13 ] || return 1
   sp_fld '[a-z][a-z0-9-]{1,30}' "$1" || return 1
   [ "${#2}" -le 200 ] && sp_fld '[a-z0-9][a-z0-9./_-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]*)?@sha256:[0-9a-f]{64}' "$2" || return 1
@@ -1673,7 +1676,10 @@ sp_app_record() {
       while IFS= read -r l; do
         [ -n "$l" ] || continue
         sp_app_line_ok "$l" || { why="a catalog line was refused: $(printf '%s' "$l" | cut -c1-30)"; break; }
-        set -f; set -- $l; set +f
+        set -f
+        # shellcheck disable=SC2086 # split on whitespace on purpose, globbing off
+        set -- $l
+        set +f
         nm=$1; hk=$7
         if awk -v n="$nm" '$1 == n { f = 1 } END { exit !f }' "$new"; then why="the app name $nm is listed twice"; break; fi
         if awk -v h="$hk" '$7 == h { f = 1 } END { exit !f }' "$new"; then why="the hook port $hk is used by two apps"; break; fi
@@ -1692,6 +1698,7 @@ sp_app_record() {
 # sp_app_image_ok: the vyre container still runs the image root recorded. An update that root has not recorded yet (space-helper install) means the catalog line may not be the one the container carries.
 sp_app_image_ok() {
   cur=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
+  # shellcheck disable=SC2015 # every way the test fails reports the same message
   [ -n "$cur" ] && [ "$cur" = "$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)" ] || { MSG="the vyre image is not the one the helper recorded; run: sudo vyre space-helper install"; return 1; }
 }
 # sp_app_lint FILE MODULE: a closed check of the generated compose against the recorded line (A_*): one service called app, only the keys the generator uses, the recorded image and limits, no
@@ -1775,6 +1782,7 @@ sp_secrets_app() {
   t=$(mktemp "$f.XXXXXX") || return 1
   if [ -f "$f" ] && [ ! -L "$f" ]; then cat "$f" >"$t" || { rm -f "$t"; return 1; }; fi
   for k in $keys; do grep -q "^$k=" "$t" || printf '%s=%s\n' "$k" "$(sp_rnd)" >>"$t"; done
+  # shellcheck disable=SC2015 # a failed chmod or rename both remove the temp file and fail
   chmod 600 "$t" && rename_over "$t" "$f" || { rm -f "$t"; return 1; }
 }
 # sp_app_dc MODULE ARGS: compose for one app, only on root's own copy, the project name fixed from the validated name.
@@ -1891,7 +1899,10 @@ sp_app_bootstrap() {
   of=$d/setup.out
   set -f
   # shellcheck disable=SC2086 # the words of the catalog line's command, each checked against a short alphabet; split on + only
-  oldifs=$IFS; IFS=+; set -- $A_EXEC; IFS=$oldifs
+  oldifs=$IFS; IFS=+
+  # shellcheck disable=SC2086 # split on '+' on purpose (IFS is set for it)
+  set -- $A_EXEC
+  IFS=$oldifs
   set +f
   brc=0
   timeout 600 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker exec -i --env-file "$ev" -w /app "vyre-app-$m" "$@" - <"$sc" 2>/dev/null | head -c 16384 >"$of" || brc=1
@@ -1930,6 +1941,7 @@ sp_app_up() {
   sp_app_load "$m" || { MSG="that app is not recorded on this server"; return 1; }
   sp_app_image_ok || return 1
   [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
+  # shellcheck disable=SC2015 # a failed mkdir or chmod both take the same exit
   mkdir -p "$SP_APPS/$m" && chmod 700 "$SP_APPS/$m" || { MSG="could not make the app's folder"; return 1; }
   # The pinned image, by digest, if it is not here yet: what is pulled is exactly what the recorded line names. Root pulls; the app's container never does.
   if ! hdock image inspect "$A_IMAGE" >/dev/null 2>&1; then
@@ -1966,7 +1978,7 @@ sp_app_fw_del() {
         if [ "$ch" = OUTPUT ]; then pat="-A OUTPUT -d [0-9a-f:./]+ -m owner --uid-owner [0-9]+-[0-9]+ -m comment --comment \"?$tg\"? -j REJECT( --reject-with [a-z0-9-]+)?"
         else pat="-A INPUT (-s [0-9a-f:./]+ )?-i [a-z0-9]+ (-p tcp -m tcp --dport [0-9]+ |-m conntrack --ctstate (ESTABLISHED,RELATED|RELATED,ESTABLISHED) )?-m comment --comment \"?$tg\"? -j (ACCEPT|DROP)"; fi
         printf '%s\n' "$l" | grep -Eqx -- "$pat" || continue
-        rest=$(printf '%s' "${l#-A $ch }" | tr -d '"')
+        rest=$(printf '%s' "${l#-A "$ch" }" | tr -d '"')
         set -f
         # shellcheck disable=SC2086 # the words of a line that matched the strict pattern above, quotes removed
         timeout 20 nsenter -t "$pid" -n "$fam" -w -D "$ch" $rest >/dev/null 2>&1 || true

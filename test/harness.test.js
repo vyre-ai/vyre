@@ -298,7 +298,9 @@ test("mcp: initialize, list and call over stdio; harness tools are not offered",
   p.kill();
   assert.equal(replies.get(1).result.serverInfo.name, "vyre");
   const names = replies.get(2).result.tools.map(x => x.name);
-  assert.ok(names.includes("system_echo"));
+  // only a short core is listed, beside the two tools that reach the rest (harness/mcp/core-tools.js); system_echo is not in the core, but a call by its name still runs
+  assert.ok(names.includes("tools_find") && names.includes("tools_call"));
+  assert.ok(!names.includes("system_echo"));
   assert.ok(!names.some(n => n.startsWith("harness_")));
   for (const n of names) assert.match(n, /^[A-Za-z0-9_-]{1,64}$/);
   assert.equal(JSON.parse(replies.get(3).result.content[0].text).text, "hello");
@@ -401,11 +403,11 @@ test("mcp: the hub's tools are offered through the one vyre entry; a read reache
   assert.equal(init.result.capabilities.tools.listChanged, false);
   const tools = (await rpc(2, "tools/list", {})).result.tools;
   const byName = new Map(tools.map(x => [x.name, x]));
-  assert.ok(byName.has("system_echo"), "module tools are still offered");
-  assert.ok(byName.has("issues__list_issues"));
-  assert.equal(byName.get("issues__list_issues").description, "List open issues.");
-  assert.match(byName.get("issues__send_message").description, /^\(held for approval\) Send a message/);
-  assert.deepEqual(byName.get("issues__send_message").inputSchema.required, ["to", "text"]);
+  assert.ok(byName.has("tools_find") && byName.has("tools_call"), "the rest is reached through tools_find and tools_call");
+  assert.ok(!byName.has("system_echo") && !byName.has("issues__list_issues"), "module and hub tools are not listed");
+  const found = (q, id) => rpc(id, "tools/call", { name: "tools_find", arguments: { query: q, limit: 10 } }).then(r => new Map(r.result.structuredContent.tools.map(x => [x.name, x])));
+  assert.equal((await found("list open issues", 20)).get("issues__list_issues")?.description, "List open issues.");
+  assert.match((await found("send a message to someone", 21)).get("issues__send_message")?.description || "", /^\(held for approval\) Send a message/);
   for (const x of tools) assert.match(x.name, /^[A-Za-z0-9_-]{1,64}$/);
 
   const read = (await rpc(3, "tools/call", { name: "issues__list_issues", arguments: {} })).result;

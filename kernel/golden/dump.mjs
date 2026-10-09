@@ -10,7 +10,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { CALLERS as GOLDEN_CALLERS, GENERATED_CALLERS, WORLDS } from "./matrix.js";
-const CALLERS = process.argv.includes("--generated") ? GENERATED_CALLERS : GOLDEN_CALLERS;
+// --callers=k/n keeps the callers whose index is k mod n (the generated set is 200 callers and one recording of it outran the per-file limit): a test records the same part for both of its runs.
+const SHARD_ARG = (process.argv.find(a => a.startsWith("--callers=")) || "").slice(10).split("/").map(Number);
+const ALL_CALLERS = process.argv.includes("--generated") ? GENERATED_CALLERS : GOLDEN_CALLERS;
+const CALLERS = SHARD_ARG.length === 2 ? ALL_CALLERS.filter((_, i) => i % SHARD_ARG[1] === SHARD_ARG[0]) : ALL_CALLERS;
 
 const root0 = fs.mkdtempSync(path.join(os.tmpdir(), "kernel-golden-"));
 process.env.VYRE_NO_DIALOGS = "1";
@@ -31,7 +34,9 @@ const letterOf = code => {
 };
 
 const out = { v: 1, callers: CALLERS.map(c => c.id), worlds: WORLDS.map(w => w.id), roles: {} };
-for (const role of ["box", "local"]) {
+// --role=box|local records one role (a golden test shards by role so no file nears its time limit); the default records both.
+const ROLE_ARG = (process.argv.find(a => a.startsWith("--role=")) || "").slice(7);
+for (const role of ROLE_ARG ? [ROLE_ARG] : ["box", "local"]) {
   const root = path.join(root0, role);
   fs.mkdirSync(root, { recursive: true });
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role, transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: [] } }));

@@ -66,6 +66,6 @@ A failed call returns a `code` (stable, lowercase) and a message. The message ne
 | `version_conflict` | Someone changed it since you read it. Read again, then decide whether your change still applies. |
 | `wrong_space` | The call names a different Space than this chain. Use the right Space's chain. |
 
-Other codes, which carry their own message: `already_adopted`, `bad_endorsement`, `bad_revocation`, `closed`, `contents_differ`, `id_mismatch`, `limit`, `no_audience`, `no_grant`, `output_check_failed`, `pattern_not_covered`, `revoked`, `runner_only`, `store_disagreed`, `store_required`, `supervisor_absent`, `tainted`, `type_exists`, `undeclared`, `unknown_action`, `unknown_lease`, `wrong_node`.
+Other codes, which carry their own message: `already_adopted`, `bad_endorsement`, `bad_revocation`, `closed`, `contents_differ`, `exists`, `id_mismatch`, `limit`, `no_audience`, `no_grant`, `output_check_failed`, `pattern_not_covered`, `revoked`, `runner_only`, `store_disagreed`, `store_required`, `supervisor_absent`, `tainted`, `type_exists`, `undeclared`, `unknown_action`, `unknown_lease`, `wrong_node`.
 
 <!-- agent:errors:end -->
