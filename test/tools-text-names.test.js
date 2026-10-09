@@ -1,7 +1,8 @@
 // @ts-check
 // Claude Code and Codex call only the tools a server lists, and Vyre lists a small core (harness/mcp/core-tools.js). So any text an agent reads that tells it to call a tool outside the core by name
 // would quietly fail. This test finds every such name in the agent-facing text and fails unless it is written as `tools_call <name>` (the tool is run with tools_call; tools_find finds it).
-// Texts checked: the MCP server's own instructions, the descriptions of the listed tools, the plugin's skills and commands, the agent docs, and the session and assistant briefs in code.
+// A name after `vyre call` is the command line, which reaches every tool, so it is fine.
+// Texts checked: the MCP server's own instructions, the descriptions of the listed tools, the plugin's skills and commands, the agent docs, the tips every module ships, and the session and assistant briefs in code.
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +27,7 @@ export function unreached(text) {
   for (const m of text.matchAll(TOKEN)) {
     if (!outside.has(m[0])) continue;
     const before = text.slice(Math.max(0, (m.index || 0) - 40), m.index).replace(/[`"'(\s]+$/, "");
-    if (!before.endsWith("tools_call") && !/tools_call\s*\{\s*tool:\s*["']?$/.test(before)) bad.push(m[0]);
+    if (!before.endsWith("tools_call") && !before.endsWith("vyre call") && !/tools_call\s*\{\s*tool:\s*["']?$/.test(before)) bad.push(m[0]);
   }
   return [...new Set(bad)];
 }
@@ -68,6 +69,16 @@ test("the briefs in code (the session environment, the assistant's prompt, the G
     ["core/agents/index.js", prose("core/agents/index.js", "const lines = a.kind === \"assistant\"", "return lines.join")],
     ["core/gate/gate.js", prose("core/gate/gate.js", "const how = names.length", "return { decision: \"deny\"")],
   ].map(([f, text]) => [f, unreached(text)]).filter(([, b]) => b.length);
+  assert.deepEqual(bad, []);
+});
+
+// Tips on the cli, the Capsule, the Deck, the phone and Glass are read by the person, who has the command line; only a chat tip can reach a model.
+test("the chat tips every module ships name outside tools only through tools_call or vyre call", () => {
+  const bad = [];
+  for (const f of files("core", /^module\.json$/).concat(files("local", /^module\.json$/), files("modules", /^module\.json$/))) {
+    const tips = (JSON.parse(fs.readFileSync(path.join(ROOT, f), "utf8")).teaches || {}).tips || [];
+    for (const tip of tips) { if (!tip.surfaces.includes("chat")) continue; const b = unreached(`${tip.text} ${tip.command || ""}`); if (b.length) bad.push([`${f}:${tip.id}`, b]); }
+  }
   assert.deepEqual(bad, []);
 });
 

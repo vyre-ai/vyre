@@ -396,7 +396,7 @@
     "tips": [
       {
         "id": "stop-a-turn",
-        "text": "Stop a running turn with `threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.",
+        "text": "Stop a running turn with `tools_call threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.",
         "surfaces": [
           "chat",
           "deck",
@@ -446,7 +446,7 @@
       },
       {
         "id": "fork",
-        "text": "Fork a session a terminal has open with `threads.fork`. The copy carries on and the terminal's session is never touched.",
+        "text": "Fork a session a terminal has open with `tools_call threads.fork`. The copy carries on and the terminal's session is never touched.",
         "surfaces": [
           "chat",
           "deck",
