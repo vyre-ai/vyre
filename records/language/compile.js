@@ -11,6 +11,7 @@ import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
 import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
 import { FIELD_ORDER } from "./sdk.js";
+import { ROLE_IDS } from "../../kernel/contracts/index.js";
 const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
@@ -32,8 +33,8 @@ function mergeCoreType(t) {
   const merged = { ...t, label: core.label, ...(core.icon ? { icon: core.icon } : {}), fields: [...core.fields.map(inOrder), ...t.fields.filter((/** @type {any} */ f) => !have.has(f.name))] };
   return Object.fromEntries(["name", "label", "icon", "kind", "fields", "stages", "stage_sets", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
 }
-/** Roles every Space has. */
-export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
+/** Roles every Space has: the five of the contract (a Kit role is built on one of them; kernel/flows/kits.js says the same). */
+export const CORE_ROLES = ROLE_IDS;
 
 /**
  * @typedef {{ kind: "kit", sdk: number, id: string, version: number, label?: string, description?: string,

@@ -48,7 +48,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 const OFFER_TTL = 5 * 60_000;
 /** A typed code lives CODE_TTL_MS and MAX_ATTEMPTS wrong tries close it (a fresh one replaces it): both are stated once, in code.js. */
 const INVITE_TTL_DAYS = 7;
-const ROLES = new Set(["member", "contributor", "guest", "admin"]);
+const WINK_PAIR_ROLES = new Set(["member", "contributor", "guest", "admin"]);
 const SENSITIVE_ROLES = new Set(["admin"]);
 const sha = (/** @type {string} */ s) => crypto.createHash("sha256").update(s).digest();
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -517,7 +517,7 @@ export function createWink(inject = {}) {
       run: async (input, meta = {}) => {
         owner(meta, "inviting a person");
         const role = String(input.role || "member");
-        if (!ROLES.has(role)) throw fail("bad_input", "a role is member, contributor, guest or admin");
+        if (!WINK_PAIR_ROLES.has(role)) throw fail("bad_input", "a role is member, contributor, guest or admin");
         const days = Math.min(Math.max(Number(input.days) || INVITE_TTL_DAYS, 1), 30);
         const projects = (Array.isArray(input.projects) ? input.projects : []).map(String).filter(p => /^[a-z0-9][a-z0-9-]{0,62}$/.test(p)).slice(0, 20);
         const space = await spaceId();

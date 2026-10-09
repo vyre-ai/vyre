@@ -5,6 +5,7 @@
 // `seal.put`: writing a value INTO a sealed field is part of being able to write that record (lead ruling 4 Oct). The value goes straight to the sealing process and is never stored or logged in the clear;
 // reading it back is a separate act (unseal, with presence). A temp member gets it only where a grant of theirs names it; the sealing process refuses a chain with a model in it, so an assistant fills a sealed
 // field only through the placeholder path. What a Flow's steps do: a member may start a Flow and give a task (fn.run and model.call are a Flow run's alone: a run needs only flows.run of its approver, and authorize refuses them to anyone else); reading and calling a connected service are an admin's, since an admin approves the Flow that does it, and `service.call` is outward so the vault holds it for a yes anyway. `seal.reveal` (show a sealed value to the person, after their presence) is the owner's and the admin's by role (lead ruling 5 Oct); every other role holds it only by a grant.
+import { ROLE_IDS } from "../contracts/index.js";
 const MEMBER = ["memory.read", "records.read", "records.create", "records.update", "records.remove", "records.restore", "seal.put", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "project.reach", "grants.offer", "grants.unoffer", "flows.run", "ask.request"];
 const MANAGER = [...MEMBER, "grants.list", "rules.list", "rules.get", "rules.test", "rules.propose"];
 const ADMIN = [...MANAGER, "memory.file", "memory.retire", "seal.reveal", "seal.export", "records.define", "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.member", "grants.invite", "project.move_out", "project.move_in", "project.move_finish", "records.import", "drive.read", "drive.write", "drive.restore", "kits.propose", "kits.install", "kits.remove", "rules.set", "rules.enable", "rules.disable", "rules.remove", "rules.accept", "rules.dismiss", "service.read", "service.call"];
@@ -18,4 +19,4 @@ export const ROLE_ACTIONS = Object.freeze({
   temp: Object.freeze(["records.read", "records.create", "records.update", "tasks.read", "tasks.work"]),
 });
 /** Who may set whom: an owner any role; an admin the roles below admin; nobody else. */
-export const MAY_SET = Object.freeze({ owner: ["owner", "admin", "manager", "member", "temp"], admin: ["manager", "member", "temp"] });
+export const MAY_SET = Object.freeze({ owner: [...ROLE_IDS], admin: ["manager", "member", "temp"] });

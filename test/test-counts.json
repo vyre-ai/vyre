@@ -858,6 +858,7 @@
  "test/onboard-order.test.js": 5,
  "test/onboard-page.test.js": 4,
  "test/one-registry-b.test.js": 5,
+ "test/one-role-list.test.js": 4,
  "test/owner-only.test.js": 5,
  "test/pair-fix.test.js": 11,
  "test/patch-release.test.js": 5,
