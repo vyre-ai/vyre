@@ -111,7 +111,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
 
 /** Highlight to assistant: the message, or the part of it the person selected, goes above the composer as a quoted reference. Nothing is sent. */
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): the name reads inline, and one quiet tag under the words says it is secured. */
-function UserText({ text, pending }: { text: string; pending: boolean }) {
+export function UserText({ text, pending }: { text: string; pending: boolean }) {
   const parts = partsOf(text);
   const style = pending ? { opacity: 0.55 } : undefined;
   const names = [...new Set(parts.flatMap((p) => ("vault" in p ? [p.vault] : [])))];

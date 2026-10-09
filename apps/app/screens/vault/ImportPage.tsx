@@ -4,17 +4,22 @@ import { useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Segmented, Switch, Text, showToast } from "@vyre/ui";
 import { vaultImport } from "./import";
-import { canPick, pickFile } from "./pick-file";
+import { pickFile } from "./pick-file";
+import type { importSource } from "./import-source";
 import type { Picked } from "./import-source";
 import { SOURCES, fileName, importLabel, importRefusal, plural, previewView, resultLine, scanGroups, scanTotals, type Imported, type Preview, type Scan, type Source } from "./import-model";
 
 const say = (e: unknown) => importRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
-export default function ImportPage({ reload }: { reload: () => void }) {
+/** What the page calls: the box (default), or a fake in the sample world and in tests. */
+export type Io = { source: ReturnType<typeof importSource>; pick: (accept: string) => Promise<Picked | null> };
+const REAL: Io = { source: vaultImport, pick: pickFile };
+
+export default function ImportPage({ reload, io = REAL }: { reload: () => void; io?: Io }) {
   return (
     <View className="gap-s4">
-      <FromApp reload={reload} />
-      <FromProjects reload={reload} />
+      <FromApp reload={reload} io={io} />
+      <FromProjects reload={reload} io={io} />
     </View>
   );
 }
@@ -23,7 +28,7 @@ export default function ImportPage({ reload }: { reload: () => void }) {
 
 type Step = { at: "pick" } | { at: "how"; source: Source } | { at: "preview"; source: Source; file: Picked; preview: Preview } | { at: "done"; result: Imported };
 
-function FromApp({ reload }: { reload: () => void }) {
+function FromApp({ reload, io }: { reload: () => void; io: Io }) {
   const [step, setStep] = useState<Step>({ at: "pick" });
   const [all, setAll] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -32,16 +37,16 @@ function FromApp({ reload }: { reload: () => void }) {
 
   const choose = async (source: Source) => {
     setProblem("");
-    const file = await pickFile(source.accept);
+    const file = await io.pick(source.accept);
     if (!file) return;
     setBusy(true);
-    try { setStep({ at: "preview", source, file, preview: await vaultImport.preview(file) }); setUseFile(false); }
+    try { setStep({ at: "preview", source, file, preview: await io.source.preview(file) }); setUseFile(false); }
     catch (e) { setProblem(say(e)); }
     finally { setBusy(false); }
   };
   const run = async (file: Picked, preview: Preview) => {
     setBusy(true); setProblem("");
-    try { const result = await vaultImport.run(file, preview.token, useFile); setStep({ at: "done", result }); reload(); }
+    try { const result = await io.source.run(file, preview.token, useFile); setStep({ at: "done", result }); reload(); }
     catch (e) { setProblem(say(e)); }
     finally { setBusy(false); }
   };
@@ -99,20 +104,11 @@ function FromApp({ reload }: { reload: () => void }) {
     return (
       <Card><View className="gap-s3">
         <View className="gap-s1"><Text strong size="title">{s.name}</Text><Text tone="muted">{s.how}</Text></View>
-        {canPick ? (
-          <>
-            {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <View className="flex-row flex-wrap items-center gap-s2">
-              <Button kind="primary" icon="upload" label={busy ? "Reading" : "Choose the file"} disabled={busy} onPress={() => choose(s)} />
-              <Button kind="ghost" label="Back" onPress={() => { setProblem(""); setStep({ at: "pick" }); }} />
-            </View>
-          </>
-        ) : (
-          <>
-            <Text tone="muted">Choosing a file works in Vyre on your Mac or in a browser. Open Vyre there and come back to this page.</Text>
-            <View className="self-start"><Button kind="ghost" label="Back" onPress={() => setStep({ at: "pick" })} /></View>
-          </>
-        )}
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+        <View className="flex-row flex-wrap items-center gap-s2">
+          <Button kind="primary" icon="upload" label={busy ? "Reading" : "Choose the file"} disabled={busy} onPress={() => choose(s)} />
+          <Button kind="ghost" label="Back" onPress={() => { setProblem(""); setStep({ at: "pick" }); }} />
+        </View>
       </View></Card>
     );
   }
@@ -145,7 +141,7 @@ function Count({ n, word, tone }: { n: number; word: string; tone?: "ok" | "warn
 
 // ---- from the projects on the box ----------------------------------------------------------
 
-function FromProjects({ reload }: { reload: () => void }) {
+function FromProjects({ reload, io }: { reload: () => void; io: Io }) {
   const [scan, setScan] = useState<Scan | null | undefined>(undefined);
   const [off, setOff] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
@@ -154,7 +150,7 @@ function FromProjects({ reload }: { reload: () => void }) {
 
   const look = async () => {
     setBusy(true); setProblem(""); setDone(null);
-    try { setScan(await vaultImport.scan()); setOff(new Set()); } catch (e) { setProblem(say(e)); } finally { setBusy(false); }
+    try { setScan(await io.source.scan()); setOff(new Set()); } catch (e) { setProblem(say(e)); } finally { setBusy(false); }
   };
   const groups = scan ? scanGroups(scan) : [];
   const chosen = scan ? scan.files.filter((f) => !off.has(f.file)) : [];
@@ -162,7 +158,7 @@ function FromProjects({ reload }: { reload: () => void }) {
   const move = async () => {
     setBusy(true); setProblem("");
     try {
-      const r = await vaultImport.moveEnv(chosen.map((f) => f.file));
+      const r = await io.source.moveEnv(chosen.map((f) => f.file));
       setDone(r); setScan(undefined); reload();
       showToast(`${plural(r.rewritten?.length ?? 0, "file", "files")} now point${(r.rewritten?.length ?? 0) === 1 ? "s" : ""} at the Vault.`);
     } catch (e) { setProblem(say(e)); } finally { setBusy(false); }
