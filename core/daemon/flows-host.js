@@ -242,7 +242,8 @@ export function createFlowsHost(o) {
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); if (o.publish && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+      if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;

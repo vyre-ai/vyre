@@ -35,6 +35,10 @@ test("the assistant's and the Engineer's chats are one each per person: pinned, 
   await until(async () => (await d.kernel.gateway.records.query(ownerChain, "chat-record", { filter: { field: "chat", op: "eq", value: a2.id }, page: { limit: 1 } })).rows[0], "the chat records");
   assert.equal((await call(ownerChain, "work.chat.pin", { kind: "assistant", chat: a1.id })).data.existing, false);
   assert.equal((await call(ownerChain, "work.chat.pin", { kind: "assistant", chat: a1.id })).data.existing, true, "pinning the same chat again is the same");
+  // vyred asks which chat is the pinned assistant before it gives a session the assistant's authority; a person's CLI call may not
+  assert.deepEqual((await d.registry.call("work.chat.pinned", { person: owner, chat: a1.id }, "module:vyred")).data, { kind: "assistant" });
+  assert.deepEqual((await d.registry.call("work.chat.pinned", { person: owner, chat: a2.id }, "module:vyred")).data, { kind: null });
+  assert.ok((await call(ownerChain, "work.chat.pinned", { person: owner, chat: a1.id })).error, "not callable by a person");
   const twice = await call(ownerChain, "work.chat.pin", { kind: "assistant", chat: a2.id });
   assert.equal(twice.error.code, "exists"); assert.match(twice.error.message, new RegExp(a1.id));
   assert.equal((await call(ownerChain, "work.chat.persistent", { kind: "assistant" })).data.chat, a1.id);

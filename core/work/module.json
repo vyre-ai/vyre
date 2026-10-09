@@ -325,6 +325,10 @@
         "effect": "write"
       },
       {
+        "name": "work.chat.pinned",
+        "reach": "modules"
+      },
+      {
         "name": "work.chat.persistent",
         "summary": "your pinned assistant or Engineer chat",
         "reach": "anyone",
