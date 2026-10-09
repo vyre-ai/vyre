@@ -327,7 +327,7 @@
  "core/resilience/sse.test.js": 2,
  "core/resilience/stream.test.js": 3,
  "core/runner/hardening.test.js": 25,
- "core/runner/homesandbox.test.js": 22,
+ "core/runner/homesandbox.test.js": 23,
  "core/runner/mac-hosted.test.js": 3,
  "core/runner/module.test.js": 5,
  "core/sessions/accounts.test.js": 12,

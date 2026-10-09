@@ -173,7 +173,11 @@ function planDarwin(o) {
   for (const d of Object.values(redirects)) { try { fs.mkdirSync(d, { recursive: true }); } catch {} }
   const px = o.proxy && o.proxy.port ? `http://vyre:${o.proxy.token || ""}@127.0.0.1:${o.proxy.port}` : null;
   const proxyEnv = px ? { HTTPS_PROXY: px, HTTP_PROXY: px, https_proxy: px, http_proxy: px, NO_PROXY: "", GIT_SSH_COMMAND: sshCommand(`127.0.0.1:${o.proxy.port}`, o.proxy.token || "", PROXYCMD) } : {};
-  const env = { ...homeEnv(o.env, o.passEnv), ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, VYRE_SOCKET: o.sessionSocket };
+  // The session's PATH, as on Linux: the program's and its interpreter's folders first (a script agent's `#!/usr/bin/env node` finds node there, whether it lives in Homebrew, nvm, Volta, fnm or a runner's tool cache),
+  // then the caller's own PATH folders, then the system's. Without one, `env` falls back to /usr/bin:/bin and a node anywhere else is "No such file" (issue 109).
+  const callerPath = String(o.env?.PATH || "").split(path.delimiter).filter(d => d && path.isAbsolute(d));
+  const PATH = [...new Set([...(o.pathDirs || []), ...callerPath, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"])].join(path.delimiter);
+  const env = { ...homeEnv(o.env, o.passEnv), PATH, ...(dd ? { DEVELOPER_DIR: dd } : {}), ...redirects, ...(cfg ? cfg.env : {}), ...proxyEnv, VYRE_SOCKET: o.sessionSocket };
   return { argv: ["/usr/bin/sandbox-exec", "-p", homeSeatbelt(o), o.command, ...(o.args || [])], env: { ...env, HOME: o.home }, cwd: o.workdirs?.[0], cleanup() {}, profile: homeSeatbelt(o), fd3: undefined, socket: o.sessionSocket };
 }
 
