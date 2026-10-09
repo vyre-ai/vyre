@@ -128,7 +128,9 @@ if (!STATIC) {
     section = "";
   }
   // A file that ran fewer tests than recorded is this branch's only when it touched that file or the counts.
-  for (const f of short) if (changed.includes(f) || changed.includes("test/test-counts.json")) red.add(f); else warns.push(`base red (count): ${f} runs fewer tests than test/test-counts.json records, before your change`);
+  /** The counts file's entry for f, here and at the base. @param {string} rev @param {string} f */
+  const countAt = (rev, f) => { try { const j = JSON.parse(rev ? git(["show", `${rev}:test/test-counts.json`]) : fs.readFileSync("test/test-counts.json", "utf8")); return JSON.stringify(j[f] ?? j.files?.[f] ?? Object.values(j).find(v => v && typeof v === "object" && f in v)?.[f]); } catch { return ""; } };
+  for (const f of short) if (changed.includes(f) || countAt("", f) !== countAt(mergeBase, f)) red.add(f); else warns.push(`base red (count): ${f} runs fewer tests than test/test-counts.json records, before your change`);
   if (r.status !== 0 && !red.size) red.add("(the runner failed; see above)");
   // A red that is also red on the integration tip without this branch is not this branch's: it is reported, not blocking.
   /** @type {string[]} */ const baseRed = [];
