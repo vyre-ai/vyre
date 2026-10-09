@@ -461,7 +461,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `preview.removed` | `id`, `project`, `thread` |
 | `preview.state` | `id`, `project`, `state`, `thread`, `title`; sometimes `access`, `error` |
 | `thread.operator` | `ask`, `computer`, `line`, `run`, `state`, `steps`, `title` |
-| `thread.preview` | `access`, `id`, `mode`, `source`, `state`, `title` |
+| `thread.preview` | `access`, `id`, `mode`, `source`, `state`, `thumb`, `title` |
 | `thread.signin` | `computer`, `id`, `site`, `state`, `why` |
 
 ## projects
