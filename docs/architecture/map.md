@@ -329,6 +329,7 @@ What the surfaces draw, and what keeps them informed.
 | --- | --- | --- | --- |
 | `appearance` | `core/appearance/` | box and local | The theme, the colour scheme and the design tokens as settings. |
 | `commands` | `core/commands/` | box and local | Every command-line verb the running modules declare, as one list. |
+| `docs` | `core/docs/` | box and local | Find and read the docs from inside Vyre: docs.find and docs.read, with the agent docs offered only to agents. |
 | `mentions` | `core/mentions/` | box and local | The # tag: one picker over everything a person may mention. |
 | `push` | `core/push/` | box and local | Notifications to a phone or laptop for the moments the person asked about. |
 | `settings` | `core/settings/` | box and local | One way to read and change every setting, at any level. |

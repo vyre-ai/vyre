@@ -33,6 +33,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 28 | 10 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 24 | 0 | none |
@@ -283,6 +284,18 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
 - Shows on: cli
+
+## docs
+
+The docs, found and read from inside Vyre: docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section of it, within a token budget. People get the human docs. A session or an agent also gets the agent docs, which are never offered to a person.
+
+- Folder: `core/docs`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#docs)
+- Emits: no events
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## events
 

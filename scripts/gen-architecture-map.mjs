@@ -100,6 +100,7 @@ export const MODULES = {
   "core/computers": ["outside", "Each agent's own computer, a shared pool of screens, and take-over."],
   "core/connectors": ["outside", "The catalog of vendors that run their own MCP server, and connections a firm makes itself."],
   "core/context": ["memory", "Where the person is now: the project, folder, thread and app each surface last reported."],
+  "core/docs": ["ui", "Find and read the docs from inside Vyre: docs.find and docs.read, with the agent docs offered only to agents."],
   "core/event-catalog": ["system", "Every event type the running modules may emit."],
   "core/files": ["work", "Find and bring over files on this machine and the server, inside folders the person chose."],
   "core/flows": ["work", "Flows and Kits: write, approve and run a Flow with its triggers, waits and tasks."],

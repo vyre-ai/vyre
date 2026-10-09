@@ -32,7 +32,7 @@
       "using/connectors.md",
       "using/mobile.md",
       "using/windows.md",
-      "using/box-care.md", "using/tips.md"
+      "using/box-care.md", "using/tips.md", "using/docs-tool.md"
     ]},
     { "title": "Concepts", "pages": [
       "concepts/box-and-mac.md",
@@ -210,5 +210,21 @@
     ]},
     { "title": "Status", "pages": ["roadmap.md", "known-gaps.md", "changelog.md"] }
   ],
-  "unpublished": ["proposals/", "design/boards/"]
+  "agents": [
+    "agents/index.md",
+    "agents/environment.md",
+    "agents/authority.md",
+    "agents/outward-acts.md",
+    "agents/sealed-and-secrets.md",
+    "agents/tools.md",
+    "agents/records.md",
+    "agents/flows.md",
+    "agents/sessions-and-context.md",
+    "agents/connections.md",
+    "agents/computers-and-files.md",
+    "agents/skills.md",
+    "agents/errors.md",
+    "agents/behaviour.md"
+  ],
+  "unpublished": ["proposals/", "design/boards/", "agents/"]
 }
