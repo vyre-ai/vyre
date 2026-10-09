@@ -795,6 +795,7 @@
  "test/add-server.test.js": 1,
  "test/added-module-never.test.js": 1,
  "test/appmods-origin.test.js": 1,
+ "test/architecture-map.test.js": 5,
  "test/boundaries.test.js": 5,
  "test/box-build-clean.test.js": 12,
  "test/box-clis.test.js": 2,

@@ -62,6 +62,7 @@
     ]},
     { "title": "Architecture", "pages": [
       "architecture/index.md",
+      "architecture/map.md",
       "architecture/spec.md",
       "architecture/performance.md",
       "architecture/boundaries.md",
