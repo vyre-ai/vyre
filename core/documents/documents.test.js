@@ -140,6 +140,7 @@ test("a link to the signed copy: the person's chain is needed, the slug is check
 test("documents.send makes the signing request and emails the link in one act; a refusal from either is passed on in its own words", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const r = rig({ call: async (tool, input) => {
+    if (tool === "spaces.self") return {}; // the door's own lookup
     seen.push({ tool, input });
     if (tool === "appmods.signing.request") return { data: { submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123" } };
     return { data: { held: "gi_1", via: "email" } };
@@ -152,7 +153,7 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal((await code(r.run("documents.send", { template_id: 12, email: " " }))).code, "bad_input");
   const none = rig({ chain: null });
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
-  const down = rig({ call: async tool => (tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
+  const down = rig({ call: async tool => (tool === "spaces.self" ? {} : tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
   const e = await code(down.run("documents.send", { template_id: 12, email: "dana@harlow.test" }));
   assert.equal(e.code, "not_found"); assert.match(e.message, /not running/);
 });
@@ -160,6 +161,7 @@ test("documents.send makes the signing request and emails the link in one act; a
 test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const r = rig({ call: async (tool, input) => {
+    if (tool === "spaces.self") return {};
     seen.push({ tool, input });
     return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: Date.now() + 30 * 86_400_000 } } : { data: { held: "gi_2" } };
   } });
