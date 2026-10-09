@@ -1055,14 +1055,18 @@ export default {
       }
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
       // The call, by its shape, so PostToolUse (or its absence by Stop) says what became of it.
-      if (session && tool_use_id && sig.TRACKED.has(tool_name)) {
-        const command = tool_name === "Bash" && typeof tool_input.command === "string" ? tool_input.command : null;
-        addCall.run(String(tool_use_id), session, tool_name, command ? sig.shape(command) || null : null, command && sig.isTest(command) ? 1 : 0,
-          verdict.lesson ?? null, verdict.decision ?? null, now());
-      } else if (session && tool_use_id && sig.isVyreTool(tool_name)) {
-        // R031-00s: a Vyre tool call is a step of the turn. Its row holds the steps (tool names, one a line; never an argument), and only the repeated-work detector reads it.
-        const steps = sig.vyreSteps(tool_name, tool_input);
-        if (steps.length) addCall.run(String(tool_use_id), session, tool_name, steps.join("\n"), 0, null, null, now());
+      const tracked = sig.TRACKED.has(tool_name);
+      if (session && tool_use_id && (tracked || sig.isVyreTool(tool_name))) {
+        const callId = String(tool_use_id);
+        if (tracked) {
+          const command = tool_name === "Bash" && typeof tool_input.command === "string" ? tool_input.command : null;
+          addCall.run(callId, session, tool_name, command ? sig.shape(command) || null : null, command && sig.isTest(command) ? 1 : 0,
+            verdict.lesson ?? null, verdict.decision ?? null, now());
+        } else {
+          // R031-00s: a Vyre tool call is a step of the turn. Its row holds the steps (tool names, one a line; never an argument), and only the repeated-work detector reads it.
+          const steps = sig.vyreSteps(tool_name, tool_input);
+          if (steps.length) addCall.run(callId, session, tool_name, steps.join("\n"), 0, null, null, now());
+        }
       }
       return verdict;
     };

@@ -9,6 +9,7 @@ import { triggerScopeNames } from "./triggers.js";
 import { expandConnections } from "./connection-step.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
 import { parse, roots, stepRefs } from "./expr.js";
+import { decorate } from "./places.js";
 
 /**
  * What the compiler knows about a Space.
@@ -124,10 +125,16 @@ export function deriveCaps(flow, cat) {
 /**
  * @param {any} flow a stored Flow
  * @param {Catalog} cat
- * @returns {{ ok: boolean, errors: { path: string, message: string }[], warnings: { path: string, message: string }[], effects: Effects, caps: { action: string, resource: string }[] }}
+ * @returns {{ ok: boolean, errors: { path: string, message: string, step?: string, fix?: string }[], warnings: { path: string, message: string }[], effects: Effects, caps: { action: string, resource: string }[] }}
  */
 export function compileFlow(flow, cat) {
-  const errors = checkFlow(flow);
+  const r = compileRaw(flow, cat);
+  return { ...r, errors: decorate(flow, r.errors), warnings: r.warnings };
+}
+
+/** @param {any} flow @param {Catalog} cat @returns {ReturnType<typeof compileFlow>} */
+function compileRaw(flow, cat) {
+  /** @type {any[]} */ const errors = checkFlow(flow);
   // A "Call a service" step that names a Connection is written out as the service step it stands for before anything reads it; what is stored is the written-out Flow (connection-step.js).
   if (!errors.length) {
     const ex = expandConnections(flow, cat);
@@ -142,7 +149,7 @@ export function compileFlow(flow, cat) {
 
   const type = (/** @type {string} */ name, /** @type {string} */ path) => {
     const t = cat.types[name];
-    if (!t) errors.push({ path, message: `there is no record type ${name}` });
+    if (!t) errors.push({ path, message: `there is no record type ${name}`, bad: name, choices: Object.keys(cat.types) });
     return t;
   };
   const fieldNames = (/** @type {any} */ t) => new Set((t.fields || []).map((/** @type {any} */ f) => f.name));
@@ -152,7 +159,7 @@ export function compileFlow(flow, cat) {
   const tr = flow.trigger;
   if (tr.on === "stage") {
     const t = type(tr.type, "trigger.type");
-    if (t && !(t.stages || []).some(st => st.name === tr.stage)) errors.push({ path: "trigger.stage", message: `${tr.type} has no stage ${tr.stage}` });
+    if (t && !(t.stages || []).some(st => st.name === tr.stage)) errors.push({ path: "trigger.stage", message: `${tr.type} has no stage ${tr.stage}`, bad: tr.stage, choices: (t.stages || []).map(st => st.name) });
   }
   if (tr.on === "time" && tr.cron !== undefined) { const c = parseCron(tr.cron); if (!c.ok) errors.push({ path: "trigger.cron", message: c.message }); }
 
@@ -165,8 +172,8 @@ export function compileFlow(flow, cat) {
     if (typeof src !== "string") return;
     let ast;
     try { ast = parse(src); } catch { return; }
-    for (const r of roots(ast)) if (!scope.has(r)) errors.push({ path, message: `${r} is not available here (a Flow's expressions read ${[...scope].join(", ")})` });
-    for (const ref of stepRefs(ast)) if (!done.has(ref)) errors.push({ path, message: `steps.${ref} is not a step that has already run` });
+    for (const r of roots(ast)) if (!scope.has(r)) errors.push({ path, message: `${r} is not available here (a Flow's expressions read ${[...scope].join(", ")})`, bad: r, choices: [...scope] });
+    for (const ref of stepRefs(ast)) if (!done.has(ref)) errors.push({ path, message: `steps.${ref} is not a step that has already run`, bad: ref, choices: [...done] });
     if (sealedNames.size) for (const r of src.match(/[A-Za-z_][A-Za-z0-9_]*/g) || []) if (sealedNames.has(r)) { effects.sealed_uses.push({ path, field: r }); }
   }
   /** @param {any} v @param {string} path @param {Set<string>} scope @param {Set<string>} done */
@@ -186,30 +193,30 @@ export function compileFlow(flow, cat) {
       const t = s.type ? type(s.type, `${p}.type`) : undefined;
       if (["create", "update", "upsert"].includes(s.kind) && t) {
         const names = fieldNames(t);
-        for (const k of Object.keys(s.set || {})) if (!names.has(k)) errors.push({ path: `${p}.set.${k}`, message: `${s.type} has no field ${k}` });
-        if (s.kind === "upsert") for (const k of Object.keys(s.match || {})) if (!names.has(k)) errors.push({ path: `${p}.match.${k}`, message: `${s.type} has no field ${k}` });
+        for (const k of Object.keys(s.set || {})) if (!names.has(k)) errors.push({ path: `${p}.set.${k}`, message: `${s.type} has no field ${k}`, bad: k, choices: [...names] });
+        if (s.kind === "upsert") for (const k of Object.keys(s.match || {})) if (!names.has(k)) errors.push({ path: `${p}.match.${k}`, message: `${s.type} has no field ${k}`, bad: k, choices: [...names] });
         for (const k of Object.keys(s.set || {})) if ((t.fields || []).find(f => f.name === k)?.kind === "sealed") errors.push({ path: `${p}.set.${k}`, message: `${k} is sealed: a Flow cannot write a sealed value (it is entered by a person, or by an Ask)` });
       }
-      if (s.kind === "stage" && t && s.to && !(t.stages || []).some(st => st.name === s.to)) errors.push({ path: `${p}.to`, message: `${s.type} has no stage ${s.to}` });
+      if (s.kind === "stage" && t && s.to && !(t.stages || []).some(st => st.name === s.to)) errors.push({ path: `${p}.to`, message: `${s.type} has no stage ${s.to}`, bad: s.to, choices: (t.stages || []).map(st => st.name) });
       if (s.kind === "call") {
         const a = cat.actions[s.action];
-        if (!a) errors.push({ path: `${p}.action`, message: `there is no action ${s.action}` });
+        if (!a) errors.push({ path: `${p}.action`, message: `there is no action ${s.action}`, bad: s.action, choices: Object.keys(cat.actions) });
         else if (OUTWARD.has(a.risk)) effects.outward.push({ step: s.id, action: s.action, risk: a.risk, destination_constant: isConst(s.input) });
       }
       if (["assign", "agent"].includes(s.kind)) {
         const who = String(s.kind === "agent" ? s.assistant : s.to);
         const [kind, name] = [who.split(":")[0], who.slice(who.indexOf(":") + 1)];
-        if (kind === "teammate" && cat.teammates && !cat.teammates.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no teammate ${name}` });
-        if (kind === "pool" && cat.pools && !cat.pools.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no pool ${name}` });
-        if (kind === "role" && cat.roles && !cat.roles.includes(name)) errors.push({ path: `${p}.to`, message: `there is no role ${name}` });
-        if (s.template && cat.templates && !cat.templates.includes(String(s.template))) errors.push({ path: `${p}.template`, message: `there is no template ${s.template}` });
+        if (kind === "teammate" && cat.teammates && !cat.teammates.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no teammate ${name}`, bad: name, choices: cat.teammates });
+        if (kind === "pool" && cat.pools && !cat.pools.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no pool ${name}`, bad: name, choices: cat.pools });
+        if (kind === "role" && cat.roles && !cat.roles.includes(name)) errors.push({ path: `${p}.to`, message: `there is no role ${name}`, bad: name, choices: cat.roles });
+        if (s.template && cat.templates && !cat.templates.includes(String(s.template))) errors.push({ path: `${p}.template`, message: `there is no template ${s.template}`, bad: String(s.template), choices: cat.templates });
         effects.assigns.push({ step: s.id, to: who, checker: s.checker || null, output: s.output && s.output.kind });
       }
       if (s.kind === "ask") effects.asks++;
       if (s.kind === "service") {
         const route = cat.connectors && cat.connectors[s.connector];
         const read = serviceActionOf(cat, s) === "service.read";
-        if (!route) errors.push({ path: `${p}.connector`, message: `there is no connector ${s.connector}: a firm adds the credential and its route first` });
+        if (!route) errors.push({ path: `${p}.connector`, message: `there is no connector ${s.connector}: a firm adds the credential and its route first`, bad: s.connector, choices: Object.keys(cat.connectors || {}) });
         else if (!routeAllows(route, s.method, s.path)) errors.push({ path: `${p}.path`, message: `the ${s.connector} connector does not allow ${s.method} ${s.path}` });
         const files = s.drive ? [...(s.drive.upload ? [{ way: "send", path: s.drive.upload.path, version: s.drive.upload.version ?? null }] : []), ...(s.drive.saveTo ? [{ way: "save", path: s.drive.saveTo, version: null }] : [])] : [];
         effects.services.push({ step: s.id, connector: s.connector, method: s.method, path: s.path, outward: !read, files });

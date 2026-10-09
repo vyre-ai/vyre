@@ -11,6 +11,7 @@
 //   Loop control   depth of the `corr` chain (default 8), a per-Flow rate limit, a step cap per run. A runaway pauses the Flow and raises a card.
 //   Versioned      a run is pinned to the version it started on.
 
+import { runCases } from "./cases.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
@@ -163,10 +164,21 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const compiled = compileFlow(v.flow, cat);
     if (!compiled.ok) throw Object.assign(new Error("that version no longer compiles: " + compiled.errors[0].message), { code: "invalid" });
+    // a saved test case that fails holds the approval back (t2)
+    const cases = this.store.getTests ? await this.store.getTests(id) : [];
+    if (cases.length) {
+      const r = await runCases(this, v.flow, cases, approver);
+      if (!r.ok) throw Object.assign(new Error(`a saved test case fails, so this version is not approved: ${r.results.filter(x => !x.ok).map(x => x.line).slice(0, 3).join("; ")}`), { code: "invalid", cases: r });
+    }
     const row = await this.store.approve(id, version, approver, hash, this.now());
     this.cache = null;
     return row;
   }
+
+  /** The saved test cases of a Flow. @param {string} id */
+  async tests(id) { return this.store.getTests ? this.store.getTests(id) : []; }
+  /** @param {string} id @param {any[]} cases */
+  async saveTests(id, cases) { if (!this.store.putTests) throw Object.assign(new Error("this store keeps no test cases"), { code: "unavailable" }); await this.store.putTests(id, cases); }
 
   async #activeFlows() {
     if (this.cache && this.now() - this.cache.at < 30_000) return this.cache.flows;
@@ -1685,7 +1697,8 @@ export class FlowRunner {
         if (/^records\.(create|update|remove)$/.test(eff.action)) { const ty = eff.resource.split("/")[3]; writes[ty] = (writes[ty] || 0) + 1; }
         if (OUTWARD.has(eff.risk)) { const k = eff.action; outward[k] = outward[k] || { action: eff.action, risk: eff.risk, count: 0 }; outward[k].count++; }
       }
-      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
+      const ran = [...new Set(Object.entries(run.steps).filter(([k, v]) => !k.includes("?") && !k.includes("!") && (/** @type {any} */ (v)).status === "done").map(([k]) => k.replace(/@.*$/, "")))];
+      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, ran, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
     }
     const span = o.since !== undefined && o.until !== undefined ? ` in ${describeSpan(o.until - o.since)}` : " in that window";
     return {

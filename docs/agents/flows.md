@@ -4,7 +4,7 @@ summary: What a Flow is, the step kinds, how to propose a change to one, what th
 audience: agents
 owner: docs
 status: stable
-tokens: 1350
+tokens: 1500
 when: You write, change, test or explain an automation, or a Flow step asks you to do something.
 ---
 
@@ -72,3 +72,9 @@ Every step runs under a time limit and a retry rule, with defaults per kind (rea
 ## Reading how Flows are doing
 
 `flows.list` gives each Flow a one-line health (last run, this week, what needs a person, red when a Connection it uses is red); `flows.health` the same for one Flow; `flows.control` whether everything is paused or draining and how many runs are held. `flows.describe` reads a Flow or a run in a few lines; `flows.timeline { run }` reads a run back one line a step, and `step` gives one step in detail (its input with secrets hidden, every attempt). `flows.diff { id, from, to }` says what changed between two versions by step; going back is `flows.rollback`, which a person approves. Read these before you read a whole Flow.
+
+## Test a Flow before it goes live
+
+- `flows.test.save { id, name, event: { type, data } | input, expect }` keeps a case; `expect` may say `state`, `writes: { <type>: n }`, `outward`, `asks`, `steps_ran`, `steps_not_run`. `{ id, from_run }` keeps what a real run did. You add cases; changing one is a person's.
+- `flows.test.run { id }` runs them with every action stubbed, one line each. A version cannot be approved while a case fails.
+- `flows.describe { run }` also answers `explain` in four sentences. A problem reads `Step 3 (make_letter): ...; did you mean client?` and carries `step` and `fix`.

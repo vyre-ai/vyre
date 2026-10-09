@@ -43,7 +43,13 @@ export class MemoryFlowStore {
     /** @type {Map<string, Run>} */ this.runs = new Map();
     /** @type {Map<string, number>} flow id -> when its schedule last ran (so a restart catches up once instead of forgetting) */ this.schedules = new Map();
     /** @type {any} */ this.control = null;
+    /** @type {Map<string, any[]>} saved test cases by flow id */ this.tests = new Map();
   }
+
+  /** @param {string} flow */
+  async getTests(flow) { return structuredClone(this.tests.get(flow) || []); }
+  /** @param {string} flow @param {any[]} cases */
+  async putTests(flow, cases) { this.tests.set(flow, structuredClone(cases)); }
 
   /** @param {string} flow @returns {Promise<number|null>} */
   async getSchedule(flow) { return this.schedules.has(flow) ? /** @type {number} */ (this.schedules.get(flow)) : null; }
@@ -156,6 +162,8 @@ export const FLOW_TYPES = Object.freeze([
     { name: "reason", kind: "text", label: "Reason" }, { name: "since", kind: "number", label: "Since" } ] },
   { name: "flow-control", label: "Flow control", fields: [
     { name: "key", kind: "text", label: "Key" }, { name: "mode", kind: "text", label: "Mode" }, { name: "since", kind: "number", label: "Since" }, { name: "body", kind: "text", label: "Control" } ] },
+  { name: "flow-tests", label: "Flow test cases", fields: [
+    { name: "flow_id", kind: "text", label: "Flow" }, { name: "body", kind: "text", label: "Cases" } ] },
   { name: "flow-schedule", label: "Flow schedule", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
   { name: "flow-run", label: "Flow run", icon: "run", fields: [
@@ -241,6 +249,14 @@ export class RecordsFlowStore {
     const out = [];
     for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push({ ...v, paused: true }); }
     return out;
+  }
+  /** @param {string} flow */
+  async getTests(flow) { const r = (await this.#find("flow-tests", "flow_id", flow))[0]; return r ? JSON.parse(r.data.body) : []; }
+  /** @param {string} flow @param {any[]} cases */
+  async putTests(flow, cases) {
+    const r = (await this.#find("flow-tests", "flow_id", flow))[0];
+    const data = { flow_id: flow, body: JSON.stringify(cases) };
+    if (r) await this.k.records.update(this.chain, "flow-tests", r.id, data, r.version); else await this.k.records.create(this.chain, "flow-tests", data);
   }
   /** The Space-wide switch (pause all, drain): null when nothing was ever set. */
   async getControl() { const r = (await this.#find("flow-control", "key", "space"))[0]; return r ? JSON.parse(r.data.body) : null; }

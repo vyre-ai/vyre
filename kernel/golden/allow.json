@@ -388,6 +388,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.test.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the saved test cases of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.test.run",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; runs the saved test cases of a Flow with every action stubbed: nothing is stored, sent or emitted; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.test.save",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; saves a test case for a Flow, which only makes approving it stricter; an assistant adds a case but never changes one, and a case that is saved is run once with every action stubbed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.timeline",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads a run as a timeline of its steps, with secrets hidden in what it shows; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },

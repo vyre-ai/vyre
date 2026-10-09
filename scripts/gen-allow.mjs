@@ -243,6 +243,9 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.timeline": "reads a run as a timeline of its steps, with secrets hidden in what it shows",
   "flows.diff": "reads what changed between two versions of a Flow; nothing is changed",
   "flows.describe": "reads a Flow in plain words for a person: when it runs, what it does, what it can touch; nothing is changed",
+  "flows.test.save": "saves a test case for a Flow, which only makes approving it stricter; an assistant adds a case but never changes one, and a case that is saved is run once with every action stubbed",
+  "flows.test.run": "runs the saved test cases of a Flow with every action stubbed: nothing is stored, sent or emitted",
+  "flows.test.list": "reads the saved test cases of a Flow",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
 });
 

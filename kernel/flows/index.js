@@ -9,7 +9,8 @@
 //   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
 import { diffFlows } from "./diff.js";
-import { describeFlow, describeRun } from "./describe.js";
+import { checkCase, runCases, expectFrom, simulateCase, CASE_LIMITS } from "./cases.js";
+import { describeFlow, describeRun, explainRun } from "./describe.js";
 import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, RecordsKitStore, KIT_TYPES, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
@@ -109,6 +110,47 @@ export function createFlows(o) {
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
     "flows.list": async () => { const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h])); return rows.map((/** @type {any} */ r) => { const h = hs.get(r.id); return h ? { ...r, label: h.label, level: h.level, line: h.line } : r; }); },
     "flows.health": async (chain, i) => { const h = await runner.health(i && i.id); if (i && i.id && !h) throw Object.assign(new Error("no such Flow"), { code: "not_found" }); return i && i.id ? h : { flows: h, control: await runner.controlState() }; },
+    // Saved test cases (t2). An assistant may add a case (that only makes approval stricter) but not change or remove one: that is a person's.
+    "flows.test.save": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      const v = await view(id, [i.version]);
+      /** @type {any} */ let c = { name: i.name, ...(i.event !== undefined ? { event: i.event } : {}), ...(i.input !== undefined ? { input: i.input } : {}), ...(i.expect !== undefined ? { expect: i.expect } : {}) };
+      const approver = personOf({ hops: [chain.hops[0]] });
+      if (i.from_run) {
+        const r = await runner.getRun(String(i.from_run));
+        if (!r || r.flow !== id) throw Object.assign(new Error("that run is not a run of this Flow (flows.runs)"), { code: "not_found" });
+        const t = r.trigger || {};
+        c = { name: i.name || `from ${r.id}`, ...(t.event ? { event: { type: t.event.type, subject: t.event.subject, data: t.event.data } } : { input: t.input ?? {} }) };
+        c.expect = expectFrom(await simulateCase(runner, v.flow, c, approver));
+      }
+      const problems = checkCase(c);
+      if (problems.length) throw Object.assign(new Error(problems.map(p => `${p.path ? p.path + ": " : ""}${p.message}`).join("; ")), { code: "invalid" });
+      const cases = await runner.tests(id);
+      const at = cases.findIndex((/** @type {any} */ x) => x.name === c.name);
+      const byAssistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent");
+      if (at >= 0 && byAssistant) throw Object.assign(new Error(`a case named ${c.name} exists; an assistant adds cases, a person changes one`), { code: "not_allowed" });
+      if (at < 0 && cases.length >= CASE_LIMITS.cases) throw Object.assign(new Error(`a Flow keeps at most ${CASE_LIMITS.cases} test cases`), { code: "invalid" });
+      if (at >= 0) cases[at] = c; else cases.push(c);
+      await runner.saveTests(id, cases);
+      const result = await runCases(runner, v.flow, [c], approver);
+      return { saved: c.name, count: cases.length, expect: c.expect || null, ran: result.results[0].line };
+    },
+    "flows.test.run": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      const v = await view(id, [i.version]);
+      const cases = await runner.tests(id);
+      const r = await runCases(runner, v.flow, cases, personOf({ hops: [chain.hops[0]] }));
+      return { id, version: v.version, ok: r.ok, summary: cases.length ? `${r.passed} of ${cases.length} test case${cases.length === 1 ? "" : "s"} pass` : "this Flow has no saved test cases", lines: r.results.map(x => x.line) };
+    },
+    "flows.test.list": async (chain, i) => { const id = need(i, "id", "the Flow's id (flows.list)"); await view(id, [i.version]); return { id, cases: await runner.tests(id) }; },
+    "flows.test.remove": async (chain, i) => {
+      personOf(chain);
+      const id = need(i, "id", "the Flow's id (flows.list)"); const name = need(i, "name", "the case's name (flows.test.list)");
+      const cases = await runner.tests(id);
+      if (!cases.some((/** @type {any} */ c) => c.name === name)) throw Object.assign(new Error("no such test case (flows.test.list)"), { code: "not_found" });
+      await runner.saveTests(id, cases.filter((/** @type {any} */ c) => c.name !== name));
+      return { removed: name };
+    },
     "flows.timeline": async (chain, i) => runner.timeline(need(i, "run", "the run's id (flows.runs)"), { step: i.step }),
     "flows.diff": async (chain, i) => {
       need(i, "id", "the Flow's id (flows.list)"); need(i, "from", "an older version number"); need(i, "to", "a newer version number");
@@ -133,7 +175,7 @@ export function createFlows(o) {
       return { ok: true, active: target.version, was: was ? was.version : null, changes, retried, refused };
     },
     "flows.describe": async (chain, i) => {
-      if (i && i.run) { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { lines: describeRun(r, v ? v.flow : null) }; }
+      if (i && i.run) { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { explain: explainRun(r, v ? v.flow : null), lines: describeRun(r, v ? v.flow : null) }; }
       const v = await view(i.id, [i.version]);
       const h = await runner.health(i.id);
       return { lines: describeFlow(v.flow, { id: v.id, version: v.version, status: v.status, health: h ? h.line : undefined }) };

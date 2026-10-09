@@ -1,7 +1,8 @@
 // @ts-check
 // kernel/flows/describe: a Flow or a run in a few lines, for an agent that should not read the whole document (flows.describe). Pure. One line a step with the policy it carries (time limit, tries, failure path,
 // check), the trigger in words, and, for a run, where it is and what happens next.
-import { timelineOf } from "./timeline.js";
+import { timelineOf, stepIndex } from "./timeline.js";
+import { whyRan } from "./triggers.js";
 
 /** @param {any} t */
 function triggerWords(t) {
@@ -61,4 +62,45 @@ export function describeRun(run, flow) {
   const done = t.lines.length - 1;
   lines.push(`${done} step${done === 1 ? "" : "s"} so far; flows.timeline shows them.`);
   return lines;
+}
+
+const DID = { create: "made", update: "updated", upsert: "saved", remove: "removed", find: "looked up", pick: "picked", assign: "gave out", agent: "handed to an assistant", call: "ran", service: "called", stage: "moved", classify: "sorted", extract: "read", fn: "ran code for", ask: "asked for a yes on" };
+
+/**
+ * A run in plain words, at most four sentences: why it ran, what it did in the order done, and what happens next. No step data and no secrets: only step labels and one-word outcomes.
+ * @param {any} run @param {any} [flow]
+ * @returns {string}
+ */
+export function explainRun(run, flow) {
+  const idx = stepIndex(flow);
+  const why = whyRan(run.trigger);
+  /** @type {string[]} */ const did = [];
+  /** @type {string[]} */ const sent = [];
+  for (const [key, e] of Object.entries(run.steps || {})) {
+    const entry = /** @type {any} */ (e);
+    if (!entry || key.includes("?") || key.includes("!") || entry.status !== "done") continue;
+    const id = key.replace(/@.*$/, "");
+    const meta = idx.get(id);
+    if (!meta || meta.kind === "decide" || meta.kind === "repeat" || meta.kind === "wait") continue;
+    const verb = /** @type {Record<string, string>} */ (DID)[meta.kind] || "did";
+    did.push(`${verb} ${meta.label}`);
+    if (entry.output && entry.output.dry) sent.push(meta.label);
+  }
+  const done = [...new Set(did)];
+  const parts = [why];
+  if (done.length) parts.push(`It ${done.slice(0, 4).join(", ")}${done.length > 4 ? `, and ${done.length - 4} more` : ""}.`);
+  else parts.push("It has not done anything yet.");
+  const w = run.waiting;
+  const err = run.error && run.error.code && run.error.code !== "note" ? run.error : null;
+  const label = (/** @type {string} */ id) => (idx.get(String(id).replace(/\?.*$/, "")) || { label: id }).label;
+  if (run.state === "done") parts.push("It finished.");
+  else if (run.state === "cancelled") parts.push("It was stopped.");
+  else if (run.state === "failed") parts.push(`It stopped at ${label(err ? err.step : "?")} (${err ? err.code : "an error"}); retry it, skip that step, or stop the run.`);
+  else if (run.state === "paused") parts.push(`It is paused${err ? ` at ${label(err.step)}` : ""}.`);
+  else if (run.state === "queued") parts.push(`It is held (${String(run.queued && run.queued.reason || "waiting its turn").replace(/_/g, " ")}) and starts, in order, when it can.`);
+  else if (run.state === "waiting" && w) parts.push(w.kind === "task" ? `It is waiting for ${(idx.get(String(w.step || "").replace(/\?.*$/, "")) || {}).kind === "ask" || String(w.step || "").endsWith("?ask") ? "a person's yes" : "a person"} on ${label(w.step)}.` : w.kind === "time" ? "It is waiting for a time." : `It is waiting for ${w.event || "an event"}.`);
+  else if (run.state === "waiting") parts.push("It is waiting.");
+  else parts.push("It is running.");
+  if (run.attention && run.attention.kind) parts.push(`Needs attention: ${run.attention.kind}.`);
+  return parts.slice(0, 5).join(" ");
 }
