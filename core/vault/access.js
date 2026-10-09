@@ -15,11 +15,14 @@ export const ACCESS_REQUESTS_MIGRATION = `CREATE TABLE vault_access_requests (
      id TEXT PRIMARY KEY, item TEXT NOT NULL, agent TEXT NOT NULL, origin TEXT NOT NULL, expires INTEGER NOT NULL, by TEXT, at INTEGER NOT NULL, UNIQUE (item, agent, origin)
    );`;
 
+/** What was converted once, by key (a credential's scope): so a conversion is made and logged once. Appended to the vault's MIGRATIONS. */
+export const CONVERSIONS_MIGRATION = `CREATE TABLE vault_conversions (key TEXT PRIMARY KEY, at INTEGER NOT NULL, note TEXT);`;
+
 const SOURCE = "vault:agent";
 
 export class Access {
   /** @param {import("./vault.js").Vault} vault @param {any} ctx the vault module's ctx */
-  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; }
+  constructor(vault, ctx) { this.v = vault; this.ctx = ctx; this.db = vault.db; /** @type {string | null} */ this.vid = null; this.carried = false; /** @type {Promise<void> | null} */ this.converting = null; }
 
   /** The kernel's side of the vault, or null in a build with no kernel (then no login is lent to an agent). */
   get K() { const k = this.ctx && this.ctx.kernel; return k && k.grants && k.vault ? k : null; }
@@ -140,6 +143,81 @@ export class Access {
     const rows = [...grants, ...this.pending().map(p => ({ ...p, by: undefined }))].filter(g => (!agent || g.agent === agent) && (!item || g.item === item));
     const use = this.db.prepare("SELECT COUNT(*) AS n, MAX(at) AS last FROM vault_audit WHERE action='agent-fill' AND ok=1 AND name=? AND who=? AND origin=?");
     return { grants: rows.map(g => { const u = /** @type {any} */ (use.get(g.item, `agent:${g.agent}`, g.origin)); return { ...g, lastUsed: u.last ?? null, uses: Number(u.n) }; }) };
+  }
+
+  /**
+   * Which kernel agent a model call is: the agent it names, else the assistant. The kernel's own default assistant is a delegate of the person (it holds whatever the person holds), so a credential is asked
+   * of the agent's STABLE ID (agents.uid), which is never a delegate: an agent or the assistant reaches a credential only through a grant of its own.
+   * @param {{ agent?: string, agentKind?: string }} meta @param {string} caller
+   */
+  modelName(meta, caller) { return String(meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1] || "assistant").toLowerCase(); }
+
+  /** The kernel's answer for a model to use a credential: "allow", "ask" (an outward act, held for a person) or "deny". An agent the Space does not know, or an unreachable kernel, is deny. */
+  async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin) {
+    const K = this.K;
+    if (!K || typeof K.agentMay !== "function") return "deny";
+    try {
+      await this.convertScopes();
+      const uid = await this.uidOf(name);
+      return uid ? String(await K.agentMay(uid, action, await this.urn(item), undefined, true)) : "deny";
+    } catch { return "deny"; }
+  }
+
+  /**
+   * The items a model holds a grant for, of any kind, by the same check a call makes: an API credential it may read, a login lent to it at one of its sites, an item it may read or take a code from.
+   * Names and kinds (an API credential also its description and hosts), never a value. @param {string} name
+   */
+  async listFor(name) {
+    const out = [];
+    for (const it of this.v.list().items) {
+      let ok = (await this.effectFor(name, it.name, "vault.read")) !== "deny" || (await this.effectFor(name, it.name, "vault.totp")) !== "deny";
+      for (const h of ok ? [] : it.hosts || []) if ((await this.effectFor(name, it.name, "vault.fill", h)) !== "deny") { ok = true; break; }
+      if (ok) out.push({ name: it.name, kind: it.kind, ...(it.kind === "api-credential" ? { ...(it.description ? { description: it.description } : {}), ...(it.hosts && it.hosts.length ? { hosts: it.hosts } : {}) } : {}) });
+    }
+    return out;
+  }
+
+  /**
+   * The older way to reach a credential, its `scope` ({ projects, agents }) and the assistant's exemption, become kernel grants once per credential, and each conversion is logged (an audit row and an event naming
+   * what was made): a named agent in the scope gets the credential; a scope that names projects and no agents gives it to each project (its people and agents, by project reach); a scope of everyone gives it to
+   * every agent there is now; and the assistant gets every credential it could reach, so nothing that works today stops. After that a credential is reached by grants alone, and the scope in its config is ignored.
+   */
+  async convertScopes(quiet = false) {
+    const K = this.K;
+    if (!K || this.converting) return this.converting;
+    return (this.converting = (async () => {
+      try {
+        // Starting the vault makes no key: with credentials to convert and the key not open, this waits for the first model call (which opens it).
+        const have = Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM vault_items WHERE kind = 'api-credential'").get()).n);
+        if (have && !this.v.vk && quiet) return;
+        const names = have ? await this.v.apiCredentialNames() : [];
+        const done = new Set(/** @type {any[]} */ (this.db.prepare("SELECT key FROM vault_conversions").all()).map(r => r.key));
+        // Once for the whole vault: the credentials that exist when it first runs. A credential made after that is reached by grants alone, so a new one is never opened to the assistant by this.
+        if (done.has("scope:all")) return;
+        const todo = names.filter(n => !done.has(`scope:${n}`));
+        if (!todo.length) { this.db.prepare("INSERT OR IGNORE INTO vault_conversions (key, at, note) VALUES (?,?,?)").run("scope:all", this.v.clock(), JSON.stringify({ credentials: 0 })); return; }
+        const list = await this.ctx.call("agents.list", {});
+        if (list.error) return; // agents are not running yet: try again at the next call
+        /** @type {{ uid: string, name: string, kind?: string }[]} */ const agents = (Array.isArray(list.data) ? list.data : list.data && list.data.agents) || [];
+        const assistant = agents.find(a => a.kind === "assistant");
+        for (const item of todo) {
+          let cfg; try { cfg = (await this.v.apiCredential(item)).config; } catch { continue; }
+          const sc = cfg.scope, rows = /** @type {any[]} */ ([]), who = { agents: /** @type {string[]} */ ([]), projects: /** @type {string[]} */ ([]) };
+          const add = (/** @type {string} */ w, /** @type {string} */ label, /** @type {string[]} */ into) => { rows.push({ id: `scope:${item}:${w}`, kind: "scope", who: w, item }); into.push(label); };
+          if (sc) {
+            const named = sc.agents === "*" ? agents.filter(a => a.kind !== "assistant") : agents.filter(a => sc.agents.includes(a.name));
+            if (sc.projects === "*" || sc.agents !== "*") for (const a of named) add(a.uid, a.name, who.agents);
+            else for (const slug of sc.projects) { const r = await this.ctx.call("projects.record", { project: slug }); const id = r && r.data && String(r.data.urn || "").split("/").pop(); if (id) add(`project:${id}`, slug, who.projects); }
+          }
+          if (assistant) add(assistant.uid, assistant.name, who.agents);
+          await K.vault.carryOver(rows);
+          this.db.prepare("INSERT OR IGNORE INTO vault_conversions (key, at, note) VALUES (?,?,?)").run(`scope:${item}`, this.v.clock(), JSON.stringify(who));
+          this.v.audit("scope-converted", item, "vault", true, `agents ${who.agents.join(",") || "none"}; projects ${who.projects.join(",") || "none"}`);
+          this.v.emit("vault.scope-converted", { item, agents: who.agents, projects: who.projects, ...(sc && sc.projects !== "*" && sc.agents !== "*" ? { note: "an agent in a named project keeps the credential in every project: narrow it with the project's reach" } : {}) });
+        }
+        this.db.prepare("INSERT OR IGNORE INTO vault_conversions (key, at, note) VALUES (?,?,?)").run("scope:all", this.v.clock(), JSON.stringify({ credentials: todo.length }));
+      } finally { this.converting = null; }
+    })());
   }
 
   /** The logins this agent may use, and where: asked of the kernel one login and one host at a time, so an agent sees its own and nobody else's. @param {string} agent */

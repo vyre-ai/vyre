@@ -42,7 +42,7 @@ import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
-import { ACCESS_REQUESTS_MIGRATION } from "./access.js";
+import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
@@ -148,6 +148,8 @@ export const MIGRATIONS = [
   RELEASE_BODY_MIGRATION,
   // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
   MCP_PASSES_MIGRATION,
+  // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
+  CONVERSIONS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */

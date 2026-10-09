@@ -411,6 +411,7 @@
  "core/undo/undo.test.js": 10,
  "core/update/update.test.js": 8,
  "core/vault/access-kernel.test.js": 2,
+ "core/vault/agent-api.test.js": 7,
  "core/vault/agent-grants.test.js": 11,
  "core/vault/api-credential.test.js": 4,
  "core/vault/api-oauth.test.js": 6,

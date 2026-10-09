@@ -34,7 +34,7 @@ async function world(t, scope) {
   const internal = (name, description, input, run) => tools.set(name, { callers: null, run });
   const said = saidTools.register({ vault: v, internal });
   register({ vault: v, tool, internal, call: async () => ({ error: { code: "no_such_tool", message: "x" } }), said,
-    deps: { lookup: async () => [{ address: "203.0.113.10", family: 4 }], transport: async r => { net.calls.push(`${r.method} ${r.url.pathname}`); return { status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("{}") }; } } });
+    deps: { lookup: async () => [{ address: "93.184.216.10", family: 4 }], transport: async r => { net.calls.push(`${r.method} ${r.url.pathname}`); return { status: 200, headers: { "content-type": "application/json" }, body: Buffer.from("{}") }; } } });
   const cfg = { auth: { type: "bearer" }, hosts: [HOST], ...(scope ? { scope } : {}) };
   await v.put({ name: "ms", kind: "api-credential", fields: { config: JSON.stringify(cfg), secret: fake("s") } }, "cli");
   const read = (caller, meta = {}, extra = {}) => Promise.resolve().then(() => tools.get("vault.request").run({ credential: "ms", method: "GET", url: URL_, ...extra }, { caller, ...meta }))

@@ -192,6 +192,7 @@
       "vault.device-joined",
       "vault.agent-granted",
       "vault.agent-carried",
+      "vault.scope-converted",
       "vault.mcp-pass-made",
       "vault.mcp-pass-ended",
       "vault.mcp-refused",

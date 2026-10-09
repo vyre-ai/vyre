@@ -623,12 +623,19 @@ export class ApiRequests {
       if (use) { tagged = true; this.deps.call("vault.use.note", { item: name, thread: meta.thread, via: "vault.request" }).catch(() => {}); }
     }
 
-    // A model reads through a credential only inside its scope: a named agent, or a session bound to a project, must be named by the
-    // credential's { projects, agents } (or the person tagged the credential to its thread). The person's own session, the assistant and
-    // a module with a grant keep their reach. A read inside scope still runs with no prompt.
+    // A model (an agent or the assistant) reaches a credential only through a kernel grant of its own: its project's linked vault, a vault shared with it, or a task lease (the kernel decides: access.js
+    // effectFor). A read inside a grant runs with no prompt; anything outward is held for a person whatever the grant says. The person's own session and a thread the person tagged with this credential use it by right.
     const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
     const isModel = caller === "mcp" || caller.startsWith("mcp:");
-    if (isModel && plan.kind === "read" && !tagged
+    const access = /** @type {any} */ (this.vault).access;
+    if (isModel && !tagged && access && access.K) {
+      const who = access.modelName(/** @type {any} */ (meta), caller);
+      if ((await access.effectFor(who, name, plan.kind === "read" ? "vault.read" : "vault.call")) === "deny") {
+        audit(false, `${plan.method} ${plan.url.hostname} refused: no grant for ${who}`);
+        throw bad(`${name} is not available to ${who === "assistant" ? "the assistant" : `the agent ${who}`}: it needs a grant (its project's vault, a vault shared with it, or a lease for the task)`, "denied");
+      }
+    // SHIM(no kernel): a build with no kernel (development, tests) keeps the credential's older scope (modelMayRead); a packaged daemon always has the kernel.
+    } else if (isModel && plan.kind === "read" && !tagged
         && !modelMayRead(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project, agentKind: /** @type {any} */ (meta).agentKind })) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
       throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");

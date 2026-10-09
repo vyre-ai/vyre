@@ -258,6 +258,12 @@ vyre vault agent revoke <id>
 
 The agent `kit` may sign in to that one site with that one login until the expiry, and never reads the login. It is a grant in your Space, the same kind as every other: the agent, the action (fill), the login, the exact origin and the expiry. Only you give it, on your own session. When Claude asks, the request waits and you approve it with `vyre vault approve <id>`. Taking it away needs no one, and deleting the login ends every grant on it.
 
+## Which agents can call an API credential
+
+An agent, or your assistant, calls an API credential only through a grant in your Space: its project's linked vault, a vault shared with it, or a lease for one task. Without one the call is refused (it is not held), and the agent's Vault list shows only the credentials it holds a grant for. A read inside a grant runs at once; anything that changes something at the service still waits for your yes, grant or not. You and a thread you tagged with the credential (`#name`) use it by right.
+
+A credential's older `scope` (`projects` and `agents`) is converted to grants once, when this version first runs: each named agent gets its credential, a scope of projects gives it to those projects, a scope of everyone gives it to the agents there are now, and your assistant keeps every credential it could reach. Each conversion is in the audit log (`vault audit`, action `scope-converted`) and announced as `vault.scope-converted`. After that the scope in a credential's config is ignored: change who can use it by changing the grants.
+
 ## Connecting a key
 
 A module says what it needs in its manifest (`needs.credentials`), and you fill each need in one
