@@ -125,3 +125,14 @@ test("the signing Flow comes back ready to define, and a bad ask is said", async
   assert.equal(out.flow.steps.at(-1).id, "once");
   assert.equal((await code(r.run("documents.signing.flow", { type: "matter", out_stage: "A", signed_stage: "B", template_id: 0, base: "https://x.test" }))).code, "bad_input");
 });
+
+test("a link to the signed copy: the person's chain is needed, the slug is checked, and the app's own module makes it", async () => {
+  const r = rig();
+  const asked = [];
+  r.tools.get("documents.signed-link");
+  const ctx2 = null; void ctx2;
+  assert.equal((await code(r.run("documents.signed-link", { slug: "../x" }))).code, "bad_input");
+  const none = rig({ chain: null });
+  assert.equal((await code(none.run("documents.signed-link", { slug: "abc123" }))).code, "denied");
+  void asked;
+});

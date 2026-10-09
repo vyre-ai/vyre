@@ -632,6 +632,10 @@
   "documents.generate": {
    "class": "own",
    "why": "makes a document and files it in the Drive and as a record under the caller's own grants; a missing value refuses by name"
+  },
+  "documents.signed-link": {
+   "class": "held",
+   "why": "outward: held as a card for the person's yes before any link to a signed copy is made"
   }
  }
 }
