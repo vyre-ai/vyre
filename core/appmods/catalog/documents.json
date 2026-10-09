@@ -39,6 +39,7 @@
       { "methods": ["POST"], "path": "/api/submitter_email_clicks" },
       { "methods": ["GET", "HEAD"], "path": "/file/:id/*" },
       { "methods": ["GET", "HEAD"], "path": "/blobs_proxy/:id/*" },
+      { "methods": ["GET", "HEAD"], "path": "/disk/:blob/*" },
       { "methods": ["GET", "HEAD"], "path": "/preview/:id" },
       { "methods": ["GET", "HEAD"], "path": "/assets/*" },
       { "methods": ["GET", "HEAD"], "path": "/packs/*" },

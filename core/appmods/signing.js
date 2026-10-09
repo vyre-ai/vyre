@@ -4,11 +4,13 @@
 // own look laid over the page and the app's licence credit in the footer. The pure parts are here; the proxy applies them.
 
 const SEG = "[A-Za-z0-9_-]{1,80}";
+/** A signed token in one segment (a storage key and its signature: base64 with = and --). Only `:blob` takes it. */
+const BLOB = "[A-Za-z0-9_=%.-]{1,2400}";
 /** The characters of a file path below a prefix (a signed file's name): letters, digits and a few marks, never a dot-dot. */
 const REST = "(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.~%-]+(?:/(?!\\.{1,2}(?:/|$))[A-Za-z0-9_.~%-]+)*";
 
 /**
- * A route pattern as a regular expression: `:name` is one path segment, a trailing `/*` is the rest of the path. Anything else must match as written.
+ * A route pattern as a regular expression: `:name` is one path segment (`:blob` also allows a signed token's = and .), a trailing `/*` is the rest of the path. Anything else must match as written.
  * @param {string} pattern @returns {RegExp}
  */
 export function compile(pattern) {
@@ -16,7 +18,7 @@ export function compile(pattern) {
   const parts = pattern.split("/").slice(1);
   const re = parts.map((p, i) => {
     if (p === "*") { if (i !== parts.length - 1) throw new Error("* may only end a route"); return `(?:${REST})`; }
-    if (p.startsWith(":")) { if (!/^:[a-z][a-z0-9_]{0,20}$/.test(p)) throw new Error(`not a signing route: ${pattern}`); return SEG; }
+    if (p.startsWith(":")) { if (!/^:[a-z][a-z0-9_]{0,20}$/.test(p)) throw new Error(`not a signing route: ${pattern}`); return p === ":blob" ? BLOB : SEG; }
     return p.replace(/[.]/g, "\\.");
   }).join("/");
   return new RegExp(`^/${re}$`);

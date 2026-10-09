@@ -20,6 +20,9 @@ test("a route pattern matches exactly: :name is one segment, a trailing /* is th
   assert.ok(compile("/file/:id/*").test("/file/xyz/signed/Contract.pdf"));
   assert.ok(!compile("/file/:id/*").test("/file/xyz/../etc"));
   assert.ok(!compile("/file/:id/*").test("/file/xyz"));
+  const disk = compile("/disk/:blob/*");
+  assert.ok(disk.test("/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png") && !disk.test("/disk/a%2Fb/x") === true);
+  assert.ok(!compile("/s/:slug").test("/s/a=b"), "only :blob takes a token's = ");
   assert.ok(!compile("/file/:id/*").test("/file/xyz/./a") && !compile("/file/:id/*").test("/file/xyz/a/.."));
   assert.ok(compile("/file/:id/*").test("/file/xyz/My%20Contract.v2.pdf"));
   // an encoded dot, slash, backslash or NUL never passes the matcher, whatever the pattern says
@@ -40,7 +43,7 @@ test("the matcher is by method and path, and a pretty link goes to the page", ()
 test("the Documents manifest lists the signer's routes and no admin path", () => {
   const sign = manifest.app.signing;
   const m = matcher(sign);
-  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
+  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["GET", "/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
   for (const [method, path] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/settings/api"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["GET", "/api/templates"], ["GET", "/users"], ["POST", "/s/xYz123/invite"], ["POST", "/s/xYz123/delegate"], ["GET", "/sign_in"], ["GET", "/d/abc"], ["GET", "/mcp"], ["DELETE", "/s/xYz123"]]) assert.ok(!m.open(method, path), `${method} ${path} must not be public`);
   assert.equal(m.redirect("/sign/12/abc"), "/s/abc");
 });
