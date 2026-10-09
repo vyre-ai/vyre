@@ -142,8 +142,10 @@ export async function indexBlock() {
   return "| Page | Read it when | Tokens |\n| --- | --- | --- |\n" + rows.join("\n");
 }
 
-const BLOCKS = { outward: outwardBlock, tools: toolsBlock, records: recordsBlock, flows: flowsBlock, connections: connectionsBlock, errors: errorsBlock, index: indexBlock };
-const FILES = { outward: "outward-acts.md", tools: "tools.md", records: "records.md", flows: "flows.md", connections: "connections.md", errors: "errors.md", index: "index.md" };
+async function cheatsheetBlock() { const { cheatsheet } = await imp("kernel/flows/cheatsheet.js"); return cheatsheet().trim(); }
+
+const BLOCKS = { outward: outwardBlock, tools: toolsBlock, records: recordsBlock, flows: flowsBlock, cheatsheet: cheatsheetBlock, connections: connectionsBlock, errors: errorsBlock, index: indexBlock };
+const FILES = { outward: "outward-acts.md", tools: "tools.md", records: "records.md", flows: "flows.md", cheatsheet: "flows-cheatsheet.md", connections: "connections.md", errors: "errors.md", index: "index.md" };
 const mark = (n, end) => `<!-- agent:${n}:${end ? "end" : "start"} -->`;
 
 /** One page's text with its generated block rewritten. */

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1399,"event":473,"config":272,"env":263,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1401,"event":473,"config":272,"env":263,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -437,6 +437,7 @@
     {"kind":"tool","name":"flows.budget","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsbudget","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.cancel","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscancel","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.card","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscard","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.cheatsheet","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscheatsheet","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.code","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscode","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.compile-text","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscompile-text","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.control","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscontrol","module":"flows","mentions":[]},
@@ -454,6 +455,7 @@
     {"kind":"tool","name":"flows.kit.propose","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitpropose","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.kit.remove","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitremove","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.list","definedIn":"core/flows/index.js","page":"reference/tools.md#flowslist","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.patch","definedIn":"core/flows/index.js","page":"reference/tools.md#flowspatch","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.pause","definedIn":"core/flows/index.js","page":"reference/tools.md#flowspause","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.propose","definedIn":"core/flows/index.js","page":"reference/tools.md#flowspropose","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.resume","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsresume","module":"flows","mentions":[]},

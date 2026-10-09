@@ -64,7 +64,7 @@ function onlyKeys(o, allowed, path, out) {
 function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, EVENT_RE, NAME_RE }); }
 
 /** Keys each step kind may carry (beyond id, kind, label). */
-const STEP_KEYS = {
+export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"],

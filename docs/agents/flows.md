@@ -4,7 +4,7 @@ summary: What a Flow is, the step kinds, how to propose a change to one, what th
 audience: agents
 owner: docs
 status: stable
-tokens: 1500
+tokens: 1700
 when: You write, change, test or explain an automation, or a Flow step asks you to do something.
 ---
 
@@ -78,3 +78,6 @@ Every step runs under a time limit and a retry rule, with defaults per kind (rea
 - `flows.test.save { id, name, event: { type, data } | input, expect }` keeps a case; `expect` may say `state`, `writes: { <type>: n }`, `outward`, `asks`, `steps_ran`, `steps_not_run`. `{ id, from_run }` keeps what a real run did. You add cases; changing one is a person's.
 - `flows.test.run { id }` runs them with every action stubbed, one line each. A version cannot be approved while a case fails.
 - `flows.describe { run }` also answers `explain` in four sentences. A problem reads `Step 3 (make_letter): ...; did you mean client?` and carries `step` and `fix`.
+- Read `flows-cheatsheet.md` (or `flows.cheatsheet`) before you write one. Read and write a Flow in the lines form: `flows.code { id, format: "lines" }`, and `format: "lines"` on `flows.define` and `flows.compile-text`. Change one with `flows.patch { id, base, ops }` (set, insert, replace, remove, move) instead of rewriting it; a patch made against an older version is refused.
+- `flows.propose` compiles the draft, runs its test cases and replays last week's events before a person is asked, and puts one line on the card. You cannot skip it.
+

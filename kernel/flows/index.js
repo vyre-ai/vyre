@@ -9,6 +9,9 @@
 //   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
 import { diffFlows } from "./diff.js";
+import { cheatsheet } from "./cheatsheet.js";
+import { applyPatch, PatchError } from "./patch.js";
+import { normalizeFlow } from "./text.js";
 import { checkCase, runCases, expectFrom, simulateCase, CASE_LIMITS } from "./cases.js";
 import { describeFlow, describeRun, explainRun } from "./describe.js";
 import { FlowRunner } from "./runner.js";
@@ -83,8 +86,9 @@ export function createFlows(o) {
       const c = await cat();
       let flow = i.flow;
       if (i.text !== undefined) {
-        const r = fromCode(i.text, null, c);
-        const parsed = await parseFlowTextBounded(i.text).catch(() => null);
+        const lines = i.format === "lines";
+        const r = fromCode(i.text, null, c, lines ? "lines" : "ts");
+        const parsed = lines ? true : await parseFlowTextBounded(i.text).catch(() => null);
         if (!r.ok || !parsed) return { ok: false, errors: r.errors.length ? r.errors : [{ path: "", message: "that text could not be read" }] };
         flow = r.flow;
       }
@@ -180,8 +184,22 @@ export function createFlows(o) {
       const h = await runner.health(i.id);
       return { lines: describeFlow(v.flow, { id: v.id, version: v.version, status: v.status, health: h ? h.line : undefined }) };
     },
-    "flows.code": async (chain, i) => seeAsCode((await view(i.id, [i.version])).flow),
-    "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat()),
+    // Edit by patch (e2): small named edits on the newest version, stored as a new draft. A patch made against an older version is refused, never merged.
+    "flows.patch": async (chain, i) => {
+      const id = need(i, "id", "the Flow's id (flows.list)");
+      const cur = await latest(id);
+      if (!cur) throw Object.assign(new Error("no such Flow"), { code: "not_found" });
+      if (i.base !== undefined && i.base !== cur.version && i.base !== cur.hash) throw Object.assign(new Error(`this patch was made against ${typeof i.base === "number" ? "version " + i.base : "an older version"}, but the Flow is at version ${cur.version} (hash ${cur.hash.slice(0, 12)}); read it again with flows.code and redo the edit`), { code: "conflict" });
+      let flow;
+      try { flow = normalizeFlow(applyPatch(cur.flow, i.ops)); } catch (e) { if (e instanceof PatchError) return { ok: false, errors: [{ path: `ops[${e.at}]`, message: e.detail }] }; throw e; }
+      const c = await cat();
+      const by = chain.hops[chain.hops.length - 1].actor;
+      const d = await runner.define(id, flow, by);
+      return d.ok ? { ...d, changes: flowChanges(cur.flow, flow, c) } : d;
+    },
+    "flows.cheatsheet": async () => ({ text: cheatsheet() }),
+    "flows.code": async (chain, i) => seeAsCode((await view(need(i, "id", "the Flow's id (flows.list)"), [i.version])).flow, i.format),
+    "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat(), i.format),
     "flows.graph": async (chain, i) => graph((await view(i.id, [i.version])).flow, await cat()),
     "flows.simulate": async (chain, i) => {
       const c = await cat();
@@ -231,7 +249,30 @@ export function createFlows(o) {
     "kits.diff": async (chain, i) => kits.diff(i.kit),
     // A person, or an assistant acting for them: the person is the approver and the task asks them. An assistant never installs: the install runs only after the approver says yes.
     "kits.propose": async (chain, i) => { const who = proposerOf(chain); if (!who) throw Object.assign(new Error("only a person can do that, in their own name"), { code: "chain_not_person" }); return kits.propose(i.kit, who, chain); },
-    "flows.propose": async (chain, i) => { if (!proposals) throw Object.assign(new Error("proposals are not wired here"), { code: "unavailable" }); return proposals.propose(chain, i); },
+    // A draft is checked and practice-run before a person is asked (e5): it compiles, its saved test cases pass, and the last week of events is replayed through it with every action stubbed.
+    // The result is one line on the card. An assistant cannot skip this; a person may with `unchecked: true`, and the card says so.
+    "flows.propose": async (chain, i) => {
+      if (!proposals) throw Object.assign(new Error("proposals are not wired here"), { code: "unavailable" });
+      if (!i || i.what !== "flow") return proposals.propose(chain, i);
+      const byAssistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent");
+      if (i.unchecked === true && byAssistant) throw Object.assign(new Error("an assistant proposes only a checked draft: remove unchecked"), { code: "not_allowed" });
+      const v = await store.getVersion(String(i.id || ""), Number(i.version));
+      if (!v) return proposals.propose(chain, i);            // the same plain error as before
+      if (i.unchecked === true) return proposals.propose(chain, { ...i, note: `Not checked before proposing. ${i.note || ""}`.trim().slice(0, 500) });
+      const c = await cat();
+      const compiled = compileFlow(v.flow, c);
+      if (!compiled.ok) return { ok: false, errors: compiled.errors, message: "not proposed: the draft does not compile; fix these and propose again" };
+      const approver = personOf({ hops: [chain.hops[0]] });
+      const cases = await runner.tests(v.id);
+      const tested = cases.length ? await runCases(runner, v.flow, cases, approver) : null;
+      if (tested && !tested.ok) return { ok: false, errors: tested.results.filter(r => !r.ok).map(r => ({ path: "tests", message: r.line })), message: "not proposed: a saved test case fails" };
+      const now = runner.now();
+      const sim = await runner.simulate(v.flow, { approver, since: now - 7 * 86_400_000, until: now, limit: 200 }).catch(() => null);
+      const bits = ["compiles", tested ? `${tested.passed} test case${tested.passed === 1 ? "" : "s"} pass` : "no saved test cases", sim && sim.ok ? sim.summary.replace(/^This Flow would have run/, "last week it would have run") : "not replayed (its trigger has nothing to replay)"];
+      const line = `Checked: ${bits.join("; ")}.`;
+      const r = await proposals.propose(chain, { ...i, note: `${line} ${i.note || ""}`.trim().slice(0, 500) });
+      return { ...r, checked: line };
+    },
     "kits.remove": async (chain, i) => kits.remove(i.id, personOf(chain), chain),
     "kits.list": async () => kits.list(),
   };

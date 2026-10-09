@@ -28,6 +28,8 @@
       { "name": "flows.control", "effect": "read", "reach": "anyone" },
       { "name": "flows.health", "effect": "read", "reach": "anyone" },
       { "name": "flows.timeline", "effect": "read", "reach": "anyone" },
+      { "name": "flows.cheatsheet", "effect": "read", "reach": "anyone" },
+      { "name": "flows.patch", "effect": "write", "reach": "anyone" },
       { "name": "flows.test.save", "effect": "write", "reach": "anyone" },
       { "name": "flows.test.run", "effect": "read", "reach": "anyone" },
       { "name": "flows.test.list", "effect": "read", "reach": "anyone" },

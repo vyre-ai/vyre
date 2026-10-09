@@ -104,3 +104,15 @@ test("canvas: the builder's edits never change their input and keep the Flow val
   const unset = ops.updateStep(a, "who", { limit: undefined });
   assert.equal("limit" in unset.steps[1], false);
 });
+
+test("e1: flows.code / compile-text / define take the lines form and mean the same Flow", async () => {
+  const { seeAsCode, fromCode } = await import("./canvas.js");
+  const { parseFlowText, printFlow } = await import("./text.js");
+  const f = parseFlowText(printFlow({ format: 1, name: "t", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "s", kind: "find", type: "matter" }] })).flows[0].flow;
+  const lines = seeAsCode(f, "lines");
+  assert.equal(lines.format, "lines");
+  assert.ok(lines.text.length < seeAsCode(f).text.length);
+  const r = fromCode(lines.text, f, { types: { matter: { fields: [] } }, actions: {}, space: "s" }, "lines");
+  assert.equal(r.same, true, JSON.stringify(r.errors));
+  assert.equal(fromCode("steps:\n  s find type=\n", null, { types: {}, actions: {}, space: "s" }, "lines").errors[0].path, "line 2");
+});

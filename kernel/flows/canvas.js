@@ -3,7 +3,9 @@
 // over it, "See as code" in both directions, a diff in plain words, and the builder's edits as small pure functions over the stored form.
 // Everything here is data in, data out. Nothing draws.
 
-import { printFlow, parseFlowText } from "./text.js";
+import { printFlow, parseFlowText, normalizeFlow } from "./text.js";
+import { printLines, parseLines } from "./lines.js";
+import { checkFlow } from "./schema.js";
 import { compileFlow } from "./compile.js";
 import { describeTrigger, kindOf, whyRan } from "./triggers.js";
 import { describeSchedule } from "./schedule-words.js";
@@ -113,18 +115,25 @@ export function paintRun(flow, run, cat) {
 }
 
 /** "See as code": the Flow as TypeScript text, and the hash that an approval binds to. @param {any} flow */
-export function seeAsCode(flow) { return { text: printFlow(flow), hash: flowHash(flow) }; }
+export function seeAsCode(flow, format = "ts") { return { text: format === "lines" ? printLines(flow) : printFlow(flow), format: format === "lines" ? "lines" : "ts", hash: flowHash(flow) }; }
 
 /**
  * Edit as code: parse what the person typed, check it against the Space's types, and say in words what changed from the stored Flow. Nothing is saved here.
  * @param {string} text @param {any} stored the Flow as it is now, or null for a new one @param {import('./compile.js').Catalog} cat
  */
-export function fromCode(text, stored, cat) {
-  let parsed;
-  try { parsed = parseFlowText(text); }
-  catch (e) { const x = /** @type {any} */ (e); return { ok: false, errors: [{ path: x.line ? `line ${x.line}` : "", message: x.detail || x.message }], changes: [] }; }
-  if (parsed.problems.length) return { ok: false, errors: parsed.problems, changes: [] };
-  const flow = parsed.flows[0].flow;
+export function fromCode(text, stored, cat, format = "ts") {
+  /** @type {any} */ let flow;
+  try {
+    if (format === "lines") {
+      flow = normalizeFlow(parseLines(text));
+      const problems = checkFlow(flow);
+      if (problems.length) return { ok: false, errors: problems, changes: [] };
+    } else {
+      const parsed = parseFlowText(text);
+      if (parsed.problems.length) return { ok: false, errors: parsed.problems, changes: [] };
+      flow = parsed.flows[0].flow;
+    }
+  } catch (e) { const x = /** @type {any} */ (e); return { ok: false, errors: [{ path: x.line ? `line ${x.line}` : "", message: x.detail || x.message }], changes: [] }; }
   const compiled = compileFlow(flow, cat);
   return { ok: compiled.ok, errors: compiled.errors, warnings: compiled.warnings, flow, hash: flowHash(flow), effects: compiled.effects, changes: stored ? flowChanges(stored, flow, cat) : [], same: stored ? canonical(stored) === canonical(flow) : false };
 }
@@ -158,7 +167,7 @@ export function flowChanges(a, b, cat) {
 // ---------------------------------------------------------------- the builder's edits, on the stored form
 
 /** Find a step and the list that holds it. @param {any[]} steps @param {string} id @returns {{ list: any[], index: number }|null} */
-function locate(steps, id) {
+export function locate(steps, id) {
   for (let i = 0; i < steps.length; i++) {
     if (steps[i].id === id) return { list: steps, index: i };
     for (const b of /** @type {string[]} */ (BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (steps[i].kind)] || [])) if (Array.isArray(steps[i][b])) { const r = locate(steps[i][b], id); if (r) return r; }

@@ -28,6 +28,8 @@ const WHAT = {
   "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
   "flows.health": "How a Flow is, in one line (last run, this week, next run, what needs a person, red when a Connection it uses is red); with no id, every Flow and the Space's switch.",
+  "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, every step kind with an example, retry and failure paths, checks, expressions, limits. Read it before you write a Flow.",
+  "flows.patch": "Change a Flow with small named edits instead of rewriting it, stored as a new draft: { id, base (the version you read), ops: [{ op: set, step, key, value } | { op: insert, after | first | into+block, line } | { op: replace, step, line } | { op: remove, step } | { op: move, step, by } | { op: trigger, trigger } | { op: meta, key, value }] }. A line is one step in the lines form (flows.code with format lines). Nothing runs until a person approves the draft.",
   "flows.test.save": "Save a test case for a Flow: { id, name, event: { type, data } | input, expect: { state, writes, outward, asks, steps_ran, steps_not_run } }, or { id, from_run } to keep what a real run did as the baseline. A Flow cannot be approved while a case fails. You add cases; changing one is a person's.",
   "flows.test.run": "Run every saved test case of a Flow (id, optional version) with nothing done for real, one line a case.",
   "flows.test.list": "The saved test cases of a Flow.",

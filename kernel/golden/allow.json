@@ -300,6 +300,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; the approval card for a Flow version, a read; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.cheatsheet",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Flows language as one page of public text, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.code",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads a Flow as code; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -362,6 +366,10 @@
  {
   "tool": "flows.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Flows of a Space; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.patch",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; stores a new draft version of a Flow from named edits, and nothing runs until a person approves it, as flows.define; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.propose",

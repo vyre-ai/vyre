@@ -270,6 +270,14 @@ export class RecordsFlowStore {
   async resume(id) { await this.#known(id); await this.#setState(id, { status: "active", reason: "", since: 0, active: undefined }); }
   /** @param {string} id */
   async disable(id) { await this.#setState(id, { status: "disabled", active: null }); }
+  /** The Flow with its versions (newest last), as the memory store keeps it. @param {string} id */
+  async flowRow(id) {
+    const defs = await this.#find("def-flow", "flow_id", id);
+    if (!defs.length) return null;
+    const st = (await this.#find("flow-state", "flow_id", id))[0];
+    const versions = defs.map((/** @type {any} */ d) => ({ version: Number(d.data.version), hash: d.data.hash, at: Number(d.data.at) || 0 })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.version - b.version);
+    return { id, name: defs[0].data.name, space: defs[0].data.space, versions, active: st && st.data.active !== null ? Number(st.data.active) : null, status: st ? st.data.status : "draft" };
+  }
   async list() {
     const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
     return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
