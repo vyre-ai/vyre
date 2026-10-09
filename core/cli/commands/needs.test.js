@@ -18,7 +18,7 @@ import { Presence } from "../../presence/index.js";
 import { call } from "../../daemon/client.js";
 import { tempHome } from "../../../test/helpers.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { merge, nextFor } from "./needs.js";
+import { merge, nextFor, listsOf } from "./needs.js";
 import { gate, bodyKey } from "./gate.js";
 import { answerFor, answersFrom, pickAnswers } from "./threads.js";
 
@@ -317,4 +317,15 @@ test("threads answer: a question by --pick and --answer, shown first; always wit
   assert.doesNotMatch(left.out, /threads answer/);
   assert.equal((await w.tool("gate.reject", { id: w.draft })).data.state, "rejected");
   assert.match((await vyre(["needs"], env)).out, /nothing is waiting on you/);
+});
+
+test("listsOf: the drafts and the asks come out of approvals.items cards as the owners' own rows, and a card without facts is left out", () => {
+  const draft = { id: "d1", kind: "send", via: "mail", to: ["a@b.test"], summary: "Hi", at: 5 }, ask = { id: "a1", kind: "permission", tool: "Bash", at: 6 };
+  const got = listsOf({ items: [
+    { id: "gate:d1", source: "gate", facts: draft }, { id: "threads:a1", source: "threads", facts: ask },
+    { id: "vault:g", source: "vault" }, { id: "gate:big", source: "gate" }, { id: "approvals:x", source: "approvals" },
+  ] });
+  assert.deepEqual(got, { held: [draft], asks: [ask] });
+  assert.deepEqual(listsOf(null), { held: [], asks: [] });
+  assert.deepEqual(listsOf({ items: "no" }), { held: [], asks: [] });
 });
