@@ -68,11 +68,11 @@ export const META_TOOLS = [
 ];
 
 /**
- * Which of the two batching features a session has: "" both, "run" (tools_run), "ref" (results by reference), "none". Only the token proof sets VYRE_MCP_FEATURES, to measure each feature by itself;
- * a session without it has both.
+ * Which of the two batching features a session has. Unset (every real session): tools_run only; results by reference is OFF until a paid run proves it pays (lead ruling 9 Oct). Set, for measuring:
+ * "" both, "run" (tools_run), "ref" (results by reference), "none".
  * @param {string} [v]
  */
-export const featuresOf = (v = "") => ({ run: v === "" || v === "run", ref: v === "" || v === "ref" });
+export const featuresOf = (v) => (v === undefined ? { run: true, ref: false } : { run: v === "" || v === "run", ref: v === "" || v === "ref" });
 
 /**
  * The MCP listing: the core that this caller has, then the meta tools. With `mode` "all" (VYRE_MCP_LISTING=all) every tool is listed, as before 0.3.1: only the token proof

@@ -40,7 +40,7 @@ import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
-  readerMayRead, scopeAllows,
+  readerMayRead, scopeAllows, modelMayRead,
 } from "./api-request.js";
 import { scrub, scrubAll } from "../../lib/scrub.js";
 
@@ -628,8 +628,8 @@ export class ApiRequests {
     // a module with a grant keep their reach. A read inside scope still runs with no prompt.
     const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
     const isModel = caller === "mcp" || caller.startsWith("mcp:");
-    if (isModel && plan.kind === "read" && (agentName || meta.project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged
-        && !scopeAllows(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project })) {
+    if (isModel && plan.kind === "read" && !tagged
+        && !modelMayRead(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project, agentKind: /** @type {any} */ (meta).agentKind })) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
       throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");
     }

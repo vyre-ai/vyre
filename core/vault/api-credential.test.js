@@ -192,3 +192,16 @@ test("the person's assistant is shown the api-credentials it can call, by name, 
   const asNamed = (await reg("vault.list", {}, "mcp:agent:kit", { agent: "kit", agentKind: "teammate" })).data;
   assert.deepEqual(asNamed.items, [], "a named agent sees nothing it was not granted");
 });
+
+test("vault_list shows a caller exactly what vault_request would let it read through, by the one check", async t => {
+  const { reg } = await daemon(t);
+  const cfg = scope => JSON.stringify({ ...JSON.parse(CONFIG), scope });
+  for (const [name, scope] of [["open-to-kit", { projects: "*", agents: ["kit"] }], ["open-to-other", { projects: "*", agents: ["other"] }], ["no-scope", undefined]]) {
+    const made = await reg("vault.put", { name, kind: "api-credential", fields: { config: scope ? cfg(scope) : CONFIG, secret: fake("s") } });
+    assert.ok(made.data && made.data.created, JSON.stringify(made.error));
+  }
+  const names = async (agent, agentKind, project) => (await reg("vault.list", {}, `mcp:agent:${agent}`, { agent, agentKind, ...(project ? { project } : {}) })).data.items.map(i => i.name).sort();
+  assert.deepEqual(await names("kit", "teammate", "p1"), ["open-to-kit"], "a named agent sees what its scope names");
+  assert.deepEqual(await names("juno", "assistant"), ["no-scope", "open-to-kit", "open-to-other"], "the assistant keeps its reach, as vault.request gives it");
+  assert.deepEqual(await names("stranger", "teammate", "p1"), [], "no scope names it");
+});

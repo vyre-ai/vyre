@@ -130,7 +130,7 @@ await seeded("flow: intake-welcome, approved", async () => {
 });
 
 await seeded("vault: the stored Acme API key (an api-credential)", async () => {
-  await must("vault.put", { name: "acme", kind: "api-credential", description: "Acme API key (GET /v1/status, /v1/customers)", hosts: ["https://api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
+  await must("vault.put", { name: "acme", kind: "api-credential", description: "Acme API key (GET /v1/status, /v1/customers)", hosts: ["https://api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, scope: { projects: ["northwind"], agents: "*" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
 });
 await seeded("connection: Orbit CRM (label, host, key item, check)", async () => {
   await must("vault.put", { name: "orbit-crm-key", kind: "secret", description: "the key of the Orbit CRM connection", fields: { value: KEY } });
