@@ -6,7 +6,7 @@ import { Pressable } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Icon, LoadingState, Row, Segmented, Sheet, Switch, Text, showToast, useUiTheme } from "@vyre/ui";
 import { vaultMore } from "./more";
-import { EMERGENCY_WAITS, emergencyLine, type EmergencyContact, EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
+import { personLine, roleWord, vaultLine, type Person, type SharedVault, EMERGENCY_WAITS, emergencyLine, type EmergencyContact, EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
   type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
@@ -265,7 +265,32 @@ export function SharedPage({ reload }: Props) {
         return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
       })}</Card> : <Card><EmptyState title="Nothing shared with you" body="When someone shares something, paste their ticket with vyre vault pass accept." /></Card>}
       <Text size="caption" tone="label">Your agents use these with vault.relay. Their box adds the value; it never reaches yours.</Text>
+      <SharedVaultsSection />
       <EmergencySection reload={reload} />
+    </View>
+  );
+}
+
+// ---- Shared vaults and people ----
+
+/** The vaults shared with others and the people Vyre shares with, from names only. Reading is here; making and changing a shared vault is at the command line until the app may ask for it. */
+export function SharedVaultsSection() {
+  const [vaults, setVaults] = useState<SharedVault[] | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
+  useEffect(() => { vaultMore.sharedVaults().then(setVaults).catch(() => setVaults([])); vaultMore.people().then(setPeople).catch(() => setPeople([])); }, []);
+  if (!vaults || (!vaults.length && !people.length)) return null;
+  return (
+    <View className="gap-s2 pt-s4">
+      <Text strong size="secondary">Shared vaults</Text>
+      {vaults.length ? vaults.map((v) => (
+        <Card key={v.id} title={v.name}>
+          <View className="gap-s2">
+            <Text size="secondary" tone="label">{vaultLine(v)}</Text>
+            {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`} />)}
+          </View>
+        </Card>
+      )) : <Text size="secondary" tone="label">None yet. Make one with vyre vault vaults create.</Text>}
+      {people.length ? <><Text strong size="secondary">People you share with</Text><Card flush>{people.map((p, i) => <View key={p.name}>{i ? <Divider /> : null}<Row dense title={p.name} sub={personLine(p)} /></View>)}</Card></> : null}
     </View>
   );
 }

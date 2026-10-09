@@ -301,3 +301,39 @@ export function codesLine(p: CodesPlan, preview: boolean): string {
   const gap = p.missing[0];
   return parts.join(", ") + "." + (gap ? ` Scan the other ${gap.parts.length === 1 ? "part" : "parts"} too (${gap.parts.join(", ")} of ${gap.of}).` : "");
 }
+
+// ---- Shared vaults and the people Vyre shares with: names, roles and fingerprints; never a value ----
+
+export type SharedVault = { id: string; name: string; role: string; members: { name: string; role: string; fingerprint: string }[]; items: { name: string; rotate: boolean }[]; conflicts: number };
+export type Person = { name: string; fingerprint: string; verified: boolean; blocked: boolean };
+
+export function pickVaults(d: unknown): SharedVault[] {
+  return arr((d as { vaults?: unknown } | null)?.vaults).filter((v) => str(v.name)).map((v) => ({
+    id: str(v.id) || str(v.name), name: str(v.name), role: str(v.role) || "member", conflicts: num(v.conflicts) ?? 0,
+    members: arr(v.members).filter((m) => str(m.name)).map((m) => ({ name: str(m.name), role: str(m.role) || "member", fingerprint: str(m.fingerprint) })),
+    items: arr(v.items).filter((i) => str(i.name)).map((i) => ({ name: str(i.name), rotate: Boolean(i.rotate) })),
+  }));
+}
+
+export function pickPeople(d: unknown): Person[] {
+  const list = Array.isArray(d) ? (d as unknown[]) : (d as { people?: unknown } | null)?.people;
+  return arr(list).filter((p) => str(p.name)).map((p) => ({ name: str(p.name), fingerprint: str(p.fingerprint), verified: Boolean(p.verified), blocked: Boolean(p.blocked || p.changed) }));
+}
+
+const ROLE_WORD: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", "read-only": "Read only" };
+export const roleWord = (r: string): string => ROLE_WORD[r] ?? r;
+
+/** One line per shared vault: how many people and items, and what needs attention. */
+export function vaultLine(v: SharedVault): string {
+  const n = v.members.length, i = v.items.length, rot = v.items.filter((x) => x.rotate).length;
+  const parts = [`${n} ${n === 1 ? "person" : "people"}`, `${i} ${i === 1 ? "item" : "items"}`, `you are ${roleWord(v.role).toLowerCase()}`];
+  if (rot) parts.push(`${rot} to rotate`);
+  if (v.conflicts) parts.push(`${v.conflicts} ${v.conflicts === 1 ? "conflict" : "conflicts"} to settle`);
+  return parts.join(", ");
+}
+
+/** One line per person: whether their card is checked. A changed key blocks new shares until it is verified again. */
+export function personLine(p: Person): string {
+  if (p.blocked) return "Their key changed. Check it with them before sharing anything new.";
+  return p.verified ? "Card checked." : "Card pinned but not checked. Compare fingerprints with them before sharing.";
+}

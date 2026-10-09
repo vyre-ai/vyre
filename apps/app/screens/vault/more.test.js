@@ -34,6 +34,8 @@ function box(o = {}) {
         { person: "Old", wait: "30d", wait_ms: 30 * 86400_000, state: "released", released: Date.parse("2026-09-01T00:00:00Z"), items: [] }] } };
       case "vault.emergency.add": case "vault.emergency.deny": case "vault.emergency.remove": case "vault.emergency.refresh": return { data: { ok: true } };
       case "vault.codes.import": return { data: input.preview ? { add: ["github-dana", "bank"], same: ["gmail"], renamed: [], skipped: ["x: the code does not read as a TOTP"], missing: [{ of: 3, parts: [2, 3] }] } : { added: ["github-dana"], same: [], renamed: [{ from: "bank", to: "bank-2" }], skipped: [], secret: "NEVER" } };
+      case "vault.vaults.list": return { data: { vaults: [{ id: "v1", name: "Firm logins", role: "admin", members: [{ name: "Dana", role: "owner", fingerprint: "ab:cd" }, { name: "Lee", role: "read-only", fingerprint: "ef:01" }], items: [{ name: "Stripe", rotate: true }, { name: "Gmail" }], conflicts: 1, kv: "SECRET" }] } };
+      case "vault.people": return { data: { people: [{ name: "Dana", fingerprint: "ab:cd", verified: true }, { name: "Lee", fingerprint: "ef:01", verified: false }, { name: "Kit", fingerprint: "11", verified: true, blocked: true }] } };
       case "vault.breach.check": return { data: { checked: 4, breached: ["A", 7] } };
       case "vault.history": return { data: { versions: [{ ver: 2, at: NOW - 86400_000, fields: ["password"], by: "cli" }, { ver: 1, at: NOW - 9 * 86400_000, by: "deck" }, { ver: 9 }], passwords: [{ at: NOW - 5 * 86400_000 }, { at: NOW - 40 * 86400_000 }] } };
       case "vault.update": return { data: o.update ?? { generated: "password" } };
@@ -261,4 +263,16 @@ test("two-factor codes: addresses are picked out of pasted text once each, names
   assert.ok(!JSON.stringify(done).includes("NEVER"));
   assert.equal(codesLine(done, false), "1 account added.");
   assert.deepEqual(b.seen.map((s) => [s.tool, s.input.preview === true]), [["vault.codes.import", true], ["vault.codes.import", false]]);
+});
+
+test("shared vaults and people: names, roles and fingerprints only, one plain line each, and a changed key blocks", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { vaultLine, personLine, roleWord } = await import("./more-model.ts");
+  const src = vaultMoreSource(box().call);
+  const vaults = await src.sharedVaults();
+  assert.ok(!JSON.stringify(vaults).includes("SECRET"));
+  assert.equal(vaultLine(vaults[0]), "2 people, 2 items, you are admin, 1 to rotate, 1 conflict to settle");
+  assert.deepEqual(vaults[0].members.map((m) => [m.name, roleWord(m.role)]), [["Dana", "Owner"], ["Lee", "Read only"]]);
+  const people = await src.people();
+  assert.deepEqual(people.map(personLine), ["Card checked.", "Card pinned but not checked. Compare fingerprints with them before sharing.", "Their key changed. Check it with them before sharing anything new."]);
 });
