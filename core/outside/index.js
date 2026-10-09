@@ -2,10 +2,10 @@
 // outside: Vyre as the home base of agents that are not Vyre sessions (R032-13; team/contracts/ext-agents.md). A person registers an outside agent (Dots, Muse, Hermes, ChatGPT, their own Claude Code on
 // another machine), gives it a token and chosen reach, and it speaks MCP at /agents-mcp. It is a kernel actor of its own (`ext_<id>`, no person behind it): the kernel decides every read from the grants the
 // person gave it, a write waits at the Gate for the person's yes, every use is an event, and ending it takes everything back at once.
-import crypto from "node:crypto";
 import { PERSON_SURFACES } from "../../lib/caller.js";
 import { LIMITS, actorIdOf, reachLine } from "../../lib/outside.js";
 import { createDoor } from "../../lib/token-door.js";
+import { newPrefixedId } from "../../lib/id.js";
 import { MIGRATIONS, openStore, newToken, newAgentId } from "./store.js";
 import { createMcp } from "./mcp.js";
 import { listen, PATH } from "./listener.js";
@@ -123,7 +123,7 @@ export function registerOutside(ctx, seam = {}) {
     const reach = store.reach(agent.id).filter(r => r.kind === "records");
     const label = (reach.flatMap(r => r.spec.defs || []).find((/** @type {any} */ t) => t.name === change.type) || {}).label || change.type;
     const summary = summaryOf(agent.name, tool, change, label);
-    const id = `hd_${crypto.randomBytes(8).toString("hex")}`;
+    const id = newPrefixedId("hd");
     store.hold({ id, agent: agent.id, tool, change, gate: null });
     const r = /** @type {any} */ (await ctx.call("gate.request", { kind: "act", via: SENDER, to: [`outside:${agent.name}`.slice(0, 80)], content: { summary, agent: agent.name, held: id, type: change.type, fields: change.fields }, why: `${agent.name} asked for this through /agents-mcp` }));
     if (r.error || !r.data || !r.data.id) { store.settle(id, "failed", "the Gate did not hold it"); throw fail("the Gate did not hold this change, so nothing was done", "failed"); }

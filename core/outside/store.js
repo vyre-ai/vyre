@@ -2,6 +2,7 @@
 // outside/store: the registration of outside agents in the module's own database (private operational state: tokens as hashes, what each was given, what is waiting for the person). Business data is not
 // here: what an agent reads and writes is records, under the kernel's grants. Pure of Vyre: a database and a clock in, plain rows out.
 import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE outside_agents (
@@ -50,7 +51,7 @@ export function openStore(db, now) {
     reach: (/** @type {string} */ id) => /** @type {any[]} */ (db.prepare("SELECT * FROM outside_reach WHERE agent = ? ORDER BY created").all(id)).map(r => ({ ...r, spec: JSON.parse(r.spec), grants: JSON.parse(r.grants) })),
     /** @param {string} agentId @param {string} kind @param {any} spec @param {string[]} grants the kernel grant ids this reach became */
     addReach(agentId, kind, spec, grants) {
-      const id = `rc_${crypto.randomBytes(8).toString("hex")}`;
+      const id = newPrefixedId("rc");
       db.prepare("INSERT INTO outside_reach (id, agent, kind, spec, grants, created) VALUES (?,?,?,?,?,?)").run(id, agentId, kind, JSON.stringify(spec), JSON.stringify(grants), now());
       return id;
     },
