@@ -795,6 +795,16 @@ export function createWink(inject = {}) {
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
       ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged()),
       ctx.events.on("appmods.installed", () => netd.appsChanged()), ctx.events.on("appmods.removed", () => netd.appsChanged())] : [];
+    // The port of this box's public gate on loopback, for the relay module's tunnel (a visitor's TLS stream is handed to the gate there, which holds the certificate). Modules only, and only the relay's.
+    ctx.tool("wink.gate.port", {
+      internal: true, description: "The loopback port of this box's public gate: { port } or { port: null } while there is none. Internal: the relay module's tunnel end connects each public stream to it.",
+      input: { type: "object", properties: {} },
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("the relay module alone asks for the gate's port"), { code: "denied" });
+        const p = netd && netd.status().publicGate && netd.status().publicGate.port;
+        return { port: Number.isInteger(p) ? p : null };
+      },
+    });
     registerNetwork(ctx, { identity: ports.network, ...(netd ? { ingress: () => netd.ingress() } : {}), ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();

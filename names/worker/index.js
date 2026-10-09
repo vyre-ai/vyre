@@ -232,7 +232,9 @@ import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 const ROUTES = {
   "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
-  "POST /v1/names/admin/drop": "adminDrop",
+  "POST /v1/names/admin/drop": "adminDrop", "POST /v1/names/admin/suspend": "adminSuspend",
+  // the tunnel relay asks which box serves a name it was handed in a TLS hello (a shared secret, never a route key)
+  "GET /v1/tunnel/resolve": "tunnelResolve",
   ...ID_ROUTES,
 };
 
@@ -295,7 +297,13 @@ async function route(request, env, url) {
     }
     const query = Object.fromEntries(url.searchParams);
     let auth = null;
-    if (op === "adminDrop") {
+    if (op === "tunnelResolve") {
+      // The relay's own secret: with none set (or a short one) the door does not exist; a missing and a wrong header answer the same.
+      const given = request.headers.get("x-vyre-relay") || "";
+      if (!env.RELAY_SECRET || String(env.RELAY_SECRET).length < 32) return fail(err(404, "not_found", "not available"));
+      if (!given || !same(await sha256(given), await sha256(String(env.RELAY_SECRET)))) return fail(err(401, "unauthorized", "not authorised"));
+      auth = { relay: true };
+    } else if (op === "adminDrop" || op === "adminSuspend") {
       // Support only. Not signed with a route key: the Worker secret is the authority. With no secret set the
       // operation does not exist; a missing and a wrong header answer the same.
       const given = request.headers.get("x-vyre-admin") || "";
@@ -412,7 +420,7 @@ export class Directory {
     const { op, ip, auth, body, query } = await request.json();
     try {
       if (op === "sweep") { await this.sweep(); return reply(200, { data: { ok: true } }); }
-      if (auth && !auth.admin && !await this.fresh(auth)) return fail(err(401, "unauthorized", "that request was already used"));
+      if (auth && !auth.admin && !auth.relay && !await this.fresh(auth)) return fail(err(401, "unauthorized", "that request was already used"));
       const data = await /** @type {any} */ (this)["op_" + op](body || {}, auth, ip, query || {});
       return reply(200, { data });
     } catch (e) {
@@ -548,7 +556,12 @@ export class Directory {
    */
   async op_publish(b, a, ip) {
     const rec = await this.owned(b, a);
-    const addr = publicIpv4(ip);
+    // Through the tunnel the name points at the TUNNEL relay's address (the operator's, never one the caller names), and only for what the box declares it serves: an app's hosts (`apps`)
+    // and the name itself for webhooks and share links (`share`). A box behind a router has no address of its own to publish.
+    const tunnel = b.via === "tunnel";
+    const addr = tunnel ? publicIpv4(this.env.TUNNEL_IPV4) : publicIpv4(ip);
+    if (tunnel && !addr) throw err(400, "no_tunnel", "this directory has no tunnel to point a name at");
+    if (tunnel && b.apps !== true && b.share !== true) throw err(400, "nothing_declared", "a name is pointed at the tunnel only for the apps or the shared links it serves");
     if (!addr) throw err(400, "not_public", "this request did not come from a public IPv4 address, so there is nothing to publish");
     await this.count("point", a.route, LIMITS.pointPerRoute);
     const dns = dnsFor(this.env);
@@ -558,8 +571,38 @@ export class Directory {
     const apps = b.apps === true;
     if (apps) await dns.point(`*.${fq}`, "A", addr); else await dns.clear(`*.${fq}`, "A").catch(() => {});
     rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { A: addr }; rec.apps = apps;
+    rec.tunnel = tunnel ? { apps, share: b.share === true } : null;
     await this.saveAny(rec);
-    return { name: rec.name, fqdn: fq, type: "A", ip: addr, apps };
+    return { name: rec.name, fqdn: fq, type: "A", ip: addr, apps, ...(tunnel ? { via: "tunnel", share: b.share === true } : {}) };
+  }
+
+  /**
+   * The tunnel relay asks which route serves a name from a visitor's TLS hello. Only a box that declared itself reachable through the tunnel, only the names it declared: `<name>.<zone>` when it serves
+   * shared links or webhooks, `<label>.<name>.<zone>` (one label) when it serves apps. A suspended name, an unknown one and an undeclared host are the same plain no.
+   */
+  async op_tunnelResolve(_b, _a, _ip, q) {
+    const zone = dnsFor(this.env).zone;
+    const host = String(q.host || "").toLowerCase();
+    const m = new RegExp(`^(?:([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)\\.)?([a-z][a-z0-9-]{1,31})\\.${zone.replace(/\./g, "\\.")}$`).exec(host);
+    if (!m) return { route: null };
+    const v = verdict(m[2]);
+    if (v.status === "invalid") return { route: null };
+    const rec = (await this.idLiveRecord(v.name)) || (await this.load(v.name));
+    if (!rec || !rec.tunnel || rec.suspended === true || rec.state === "tombstone") return { route: null };
+    if (m[1] ? rec.tunnel.apps !== true : rec.tunnel.share !== true) return { route: null };
+    const route = rec.kind === "space" ? (Array.isArray(rec.servers) && rec.servers[0]) : rec.route;
+    return { route: typeof route === "string" && ROUTE_RE.test(route) ? route : null };
+  }
+
+  /** Support only: stop a name being served through the tunnel (abuse, takedown) without a redeploy, or let it again. { name, on: true|false } */
+  async op_adminSuspend(b) {
+    const v = verdict(b.name);
+    if (v.status === "invalid") throw err(400, "bad_name", "not a name");
+    const rec = (await this.idLiveRecord(v.name)) || (await this.load(v.name));
+    if (!rec) throw err(404, "not_found", "no such name");
+    rec.suspended = b.on !== false;
+    await this.saveAny(rec);
+    return { name: rec.name, suspended: rec.suspended };
   }
 
   /** Where a challenge goes: under the name for a name, under <routehash>.acme for the person's own domain. */
