@@ -1085,6 +1085,18 @@
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
   },
+  "previews.get": {
+   "module": "previews",
+   "reason": "read-only: one preview by title, state and who may open it; for a person it also shows the folder and port, never a ticket"
+  },
+  "previews.list": {
+   "module": "previews",
+   "reason": "read-only: the previews of a chat or project by title, state and who may open them; never an address, a ticket or a command"
+  },
+  "previews.open": {
+   "module": "previews",
+   "reason": "an agent shows the person something running: it names a port of its own (never Vyre's, never below 1024) and the preview opens only for the person, through a ticket the person's own surface asks for; a command is run only for a person's own call, never a model's"
+  },
   "projects.access.check": {
    "module": "projects",
    "reason": "callers limited in code to capsule, cli, deck, local, module"
