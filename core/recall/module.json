@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "reads": ["recall.status"], "tools": ["recall.search", "recall.related", "recall.thread", "recall.turn", "recall.links", "recall.pointers", "recall.marks", "recall.transcript", "recall.watch", "recall.unwatch", { "name": "recall.sessions", "cwdArg": "cwd" }, "recall.index", "recall.forget", "recall.status", { "name": "recall.sealscan", "effect": "read", "reach": "person" }, { "name": "recall.sealscrub", "effect": "write", "reach": "person" }, "recall.setup", "recall.eval"] },
+  "does": { "reads": ["recall.status"], "tools": ["recall.search", "recall.related", "recall.thread", "recall.turn", "recall.links", "recall.pointers", { "name": "recall.marks", "effect": "read", "reach": "modules" }, "recall.transcript", "recall.watch", "recall.unwatch", { "name": "recall.sessions", "cwdArg": "cwd" }, "recall.index", "recall.forget", "recall.status", { "name": "recall.sealscan", "effect": "read", "reach": "person" }, { "name": "recall.sealscrub", "effect": "write", "reach": "person" }, "recall.setup", "recall.eval"] },
   "watches": { "emits": ["session.indexed", "session.turn", "session.state", "recall.embedded", "recall.scrubbed"] },
   "shows": { "cli": ["recall", "index"] },
   "needs": {},

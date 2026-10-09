@@ -28,7 +28,7 @@ export const FAMILIES = {
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
   settings: { more: true }, sidebar: { more: true }, views: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
   context: { more: true }, import: { more: true }, mentions: { more: true }, modules: { more: true }, presence: { more: true }, push: { more: true }, releases: { more: true }, rules: { more: true },
-  docs: { more: true }, skills: { more: true }, vyre: { more: true }, signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
+  docs: { more: true }, models: { more: true }, skills: { more: true }, vyre: { more: true }, signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
 };
 
 /** The family of a tool name. @param {string} name */

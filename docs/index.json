@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1493,"event":492,"config":282,"env":267,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1494,"event":492,"config":282,"env":267,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -487,6 +487,7 @@
     {"kind":"tool","name":"flows.graph","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsgraph","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.health","definedIn":"core/flows/index.js","page":"reference/tools.md#flowshealth","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.kit.card","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitcard","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.kit.credentials","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitcredentials","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.kit.diff","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitdiff","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.kit.library","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitlibrary","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.kit.library.get","definedIn":"core/flows/index.js","page":"reference/tools.md#flowskitlibraryget","module":"flows","mentions":[]},
