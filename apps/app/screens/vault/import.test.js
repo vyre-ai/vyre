@@ -62,7 +62,7 @@ test("the scan groups files by project, biggest first, and warns about a file gi
   assert.deepEqual(g.map((x) => x.project), ["site", "intake", "a"]);
   assert.equal(g[0].files[0].line, "5 keys: Supabase");
   assert.match(g[0].files[0].warn, /Committed to git/);
-  assert.equal(g[1].files[0].line, "2 keys: Stripe, Openai");
+  assert.equal(g[1].files[0].line, "2 keys: Stripe, OpenAI");
   assert.equal(g[1].files[0].warn, "");
   assert.deepEqual(scanTotals(scan), { files: 3, secrets: 8 });
 });

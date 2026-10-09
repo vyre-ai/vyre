@@ -132,7 +132,7 @@ export function scanGroups(s: Scan): ScanGroup[] {
   for (const f of s.files) {
     const project = f.project || whereLine(f.file).split("/")[0] || "Other folders";
     const g = by.get(project) ?? { project, files: [], secrets: 0 };
-    const kinds = f.kinds.slice(0, 3).map((k) => k[0].toUpperCase() + k.slice(1)).join(", ");
+    const kinds = f.kinds.slice(0, 3).map(brandOf).join(", ");
     const warn = f.git?.tracked ? "Committed to git, so the old values stay in its history. Change them at the provider." : f.git && !f.git.ignored ? "Not in .gitignore yet." : "";
     g.files.push({ ...f, where: whereLine(f.file), line: `${plural(f.secrets, "key", "keys")}${kinds ? `: ${kinds}` : ""}`, warn });
     g.secrets += f.secrets;
@@ -140,5 +140,9 @@ export function scanGroups(s: Scan): ScanGroup[] {
   }
   return [...by.values()].sort((a, b) => b.secrets - a.secrets);
 }
+
+/** A provider as its own name spells it; anything else gets a capital. */
+const BRAND: Record<string, string> = { openai: "OpenAI", github: "GitHub", aws: "AWS", sendgrid: "SendGrid", digitalocean: "DigitalOcean", openrouter: "OpenRouter", huggingface: "Hugging Face", gitlab: "GitLab", pypi: "PyPI", npm: "npm", supabase: "Supabase", stripe: "Stripe", anthropic: "Anthropic", resend: "Resend", twilio: "Twilio", postgres: "Postgres", mysql: "MySQL", mongodb: "MongoDB", elevenlabs: "ElevenLabs", deepgram: "Deepgram", perplexity: "Perplexity" };
+export const brandOf = (k: string): string => BRAND[k.toLowerCase()] ?? (k ? k[0].toUpperCase() + k.slice(1) : k);
 
 export const scanTotals = (s: Scan): { files: number; secrets: number } => ({ files: s.files.length, secrets: s.files.reduce((a, f) => a + f.secrets, 0) });

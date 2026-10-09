@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 const args = process.argv.slice(2);
 const flag = (n, d) => { const i = args.indexOf(n); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const dist = path.resolve(flag("--dist", "dist-vux"));
+const only = flag("--only", ""); // "1280:dark": one width and theme, so a loaded box can run them one at a time
 const [out] = args;
 fs.mkdirSync(out, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
@@ -26,8 +27,9 @@ const base = `http://127.0.0.1:${server.address().port}/app/shots-vault`;
 const browser = await chromium.launch();
 try {
   for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["light", "dark"]) {
-    const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, deviceScaleFactor: 2 });
-    const page = await ctx.newPage();
+    if (only && only !== `${w}:${theme}`) continue;
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, deviceScaleFactor: 1.5 });
+    const page = await ctx.newPage(); page.setDefaultTimeout(150000);
     const errors = [];
     page.on("pageerror", e => errors.push(String(e)));
     const shot = async name => { await page.waitForTimeout(500); await page.screenshot({ path: path.join(out, `${name}-${w}-${theme}.png`), fullPage: true }); };

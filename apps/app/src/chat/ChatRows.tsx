@@ -119,12 +119,10 @@ export function UserText({ text, pending }: { text: string; pending: boolean }) 
   return (
     <View style={{ gap: 6 }}>
       <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <Text key={i} size="read" mono>{p.vault}</Text> : p.text))}</Text>
-      {names.map((n) => (
-        <View key={n} accessibilityLabel={`${n} is secured in the Vault`} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Icon name="shield" size={14} tone="ok" />
-          <Text size="caption" tone="muted">Secured in the Vault</Text>
-        </View>
-      ))}
+      <View accessibilityLabel={`${names.join(", ")} secured in the Vault`} style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Icon name="shield" size={14} tone="ok" />
+        <Text size="caption" tone="muted">{names.length === 1 ? "Secured in the Vault" : `${names.length} keys secured in the Vault`}</Text>
+      </View>
     </View>
   );
 }
