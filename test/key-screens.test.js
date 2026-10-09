@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "a
 const ROUTES = path.join(ROOT, "app", "u");
 
 /** Routes drawn from blocks. Each must reach BlockScreen through its imports. */
-const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/];
+const BLOCKS = [/^module\/\[module\]\/\[view\]\.tsx$/, /^design\.tsx$/, /^records\/\[type\]\.tsx$/];
 
 /** Hand-written, with why. [pattern, reason]. Moving one means rebuilding it as a screen (data) and deleting the hand-written file. */
 const HAND = /** @type {[RegExp, string][]} */ ([
@@ -20,7 +20,7 @@ const HAND = /** @type {[RegExp, string][]} */ ([
   [/^chats\//, "the conversation: a live stream with a composer; chat has its own renderer and the glance card (ChatCard) sits beside it"],
   [/^glass\/|^wink\/|^setup\//, "a live device or screen stream, a pairing flow"],
   [/^settings\//, "settings pages built on the hub's setting rows; they become screens when the settings hub describes itself as blocks"],
-  [/^(records\/\[type\]|record\/\[id\])\.tsx$/, "records views over the Store (ListView, BoardView, CalendarView, DashboardView, RecordPage): rich behaviour (filters, stored views, drag); the `records` data source moves them"],
+  [/^record\/\[id\]\.tsx$/, "one record (RecordPage): fields, related records, files, timeline; moves with typed cells in 0.3.2 (the records list is on blocks already, through the `records` block)"],
   [/^(now|now\/doing|now\/needs|task\/\[id\]|project\/\[id\]|projects)\.tsx$|^now\/(doing|needs)\.tsx$/, "tasks and projects (ui/tasks): Now, Needs, Doing, Task, Project; they move with the project design"],
   [/^(flows|flows\/\[id\]|engineer)\.tsx$/, "the Flows canvas and the Engineer: a canvas and a live thread"],
   [/^(index|about|access|appearance|assistants|calendar|connections|drive|kits|kits\/\[id\]|memory|planner|search|sidebar|sites|sites\/\[id\]|spaces|vault)\.tsx$/, "a hand-written page of Vyre's own; moves to a screen in a later wave of the key-screens work"],

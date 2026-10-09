@@ -1955,6 +1955,72 @@
     }
    }
   },
+  "block-records": {
+   "title": "records",
+   "screens": {
+    "full": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "block": "b"
+     },
+     "blocks": {
+      "b": {
+       "type": "records",
+       "content": {},
+       "data": {
+        "records": {
+         "type": "matter"
+        }
+       }
+      }
+     },
+     "surface": "app"
+    },
+    "compact": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "block": "b"
+     },
+     "blocks": {
+      "b": {
+       "type": "records",
+       "content": {},
+       "data": {
+        "records": {
+         "type": "matter"
+        }
+       }
+      }
+     },
+     "surface": "phone"
+    },
+    "glance": {
+     "v": 2,
+     "id": "records",
+     "layout": {
+      "col": [
+       {
+        "block": "b"
+       }
+      ]
+     },
+     "blocks": {
+      "b": {
+       "type": "text",
+       "content": {
+        "text": "matter records are in the app."
+       },
+       "props": {
+        "style": "note"
+       }
+      }
+     },
+     "surface": "chat"
+    }
+   }
+  },
   "block-filter": {
    "title": "filter",
    "screens": {

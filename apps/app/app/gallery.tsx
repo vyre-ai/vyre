@@ -4,6 +4,7 @@ import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import data from "../ui/blocks/fixtures.generated.json";
+import "../screens/records/register";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
 type Fx = { title: string; screens: Record<string, any> };

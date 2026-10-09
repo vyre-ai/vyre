@@ -1,6 +1,6 @@
 // BlockScreen: draws one resolved screen (lib/views/blocks.js) with the block components. The one renderer for module screens and, as they move over, Vyre's own: the host
 // gives it a screen and handlers and never looks inside. Layout words are semantic; this file decides the pixels, and a surface that is narrow falls back to a stack.
-import { useState } from "react";
+import { createContext, useContext, useState } from "react";
 import { View } from "react-native";
 import { Segmented } from "../components/Segmented";
 import { Button } from "../components/Button";
@@ -39,12 +39,20 @@ const DRAW: Record<string, (p: { k: string; b: Block; h: Handlers }) => React.Re
 };
 export const DRAWN_TYPES = Object.keys(DRAW);
 
+/** Blocks whose drawing lives outside @vyre/ui because it needs the app (its store, its router): the app registers them once at start. The `records` block is one. */
+const REGISTERED: Record<string, (p: { k: string; b: Block; h: Handlers }) => React.ReactNode> = {};
+export function registerBlock(type: string, draw: (p: { k: string; b: Block; h: Handlers }) => React.ReactNode) { REGISTERED[type] = draw; }
+
+/** A screen that is the whole page fills its place (and a block inside it); the others take the height they need. */
+const Fill = createContext(false);
+
 function Leaf({ k, screen, h }: { k: string; screen: Screen; h: Handlers }) {
   const b = screen.blocks[k];
   if (!b) return null;
-  const draw = DRAW[b.type];
+  const draw = DRAW[b.type] ?? REGISTERED[b.type];
+  const fill = useContext(Fill);
   return (
-    <View testID={`block-${k}`} {...ds({ block: k })} className="min-w-0">
+    <View testID={`block-${k}`} {...ds({ block: k })} className="min-w-0" style={fill ? { flex: 1 } : undefined}>
       {draw ? draw({ k, b, h }) : <Text size="caption" tone="label">{`${b.type} is not drawn here yet.`}</Text>}
       {b.type !== "actions" && b.type !== "approval" && b.type !== "list" && b.type !== "board" && b.type !== "detail" && b.actions?.length ? <View className="mt-s3"><ActionBar k={k} actions={b.actions} h={h} /></View> : null}
     </View>
@@ -98,12 +106,14 @@ function Stack({ kids, screen, h, wide, gap }: { kids: Node[]; screen: Screen; h
 /** Below this width of its own container a screen stacks its rows and splits, whatever the window is: a screen drawn in a narrow place (a pane beside another, a chat card) reads as a phone's. */
 const WIDE_MIN = 560;
 
-export function BlockScreen({ screen, handlers = {}, wide }: { screen: Screen; handlers?: Handlers; wide?: boolean }) {
+export function BlockScreen({ screen, handlers = {}, wide, page }: { screen: Screen; handlers?: Handlers; wide?: boolean; page?: boolean }) {
   const { phone } = useUiTheme();
   const [width, setWidth] = useState(0);
   return (
-    <View {...ds({ screen: screen.id ?? "screen" })} className="min-w-0" onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w && Math.abs(w - width) > 1) setWidth(w); }}>
-      <Tree n={screen.layout} screen={screen} h={handlers} wide={wide ?? (width ? width >= WIDE_MIN : !phone)} />
-    </View>
+    <Fill.Provider value={Boolean(page)}>
+      <View {...ds({ screen: screen.id ?? "screen" })} className="min-w-0" style={page ? { flex: 1 } : undefined} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w && Math.abs(w - width) > 1) setWidth(w); }}>
+        <Tree n={screen.layout} screen={screen} h={handlers} wide={wide ?? (width ? width >= WIDE_MIN : !phone)} />
+      </View>
+    </Fill.Provider>
   );
 }

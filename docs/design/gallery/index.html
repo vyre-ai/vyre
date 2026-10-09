@@ -5,7 +5,7 @@ body{margin:0 auto;max-width:880px;padding:32px 16px;background:var(--bg);color:
 section{border-top:1px solid var(--line);padding:20px 0}dl{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:12px 0}dt{color:var(--mut)}dd{margin:0}code,pre{font:12px/1.5 ui-monospace,monospace}pre{overflow:auto;padding:12px;border:1px solid var(--line);border-radius:8px}
 summary{cursor:pointer;color:var(--mut)}nav{display:flex;flex-wrap:wrap;gap:4px 14px}</style></head><body>
 <h1>Blocks</h1><p>Generated from <code>lib/views/blocks.js</code>. Layouts: col, row, grid, split, tabs, stack. Up to 24 blocks per screen, 4 levels deep.</p>
-<nav><a href="#list">list</a><a href="#board">board</a><a href="#summary">summary</a><a href="#detail">detail</a><a href="#form">form</a><a href="#stats">stats</a><a href="#keyvalue">keyvalue</a><a href="#table">table</a><a href="#timeline">timeline</a><a href="#calendar">calendar</a><a href="#chart">chart</a><a href="#document">document</a><a href="#text">text</a><a href="#empty">empty</a><a href="#stages">stages</a><a href="#people">people</a><a href="#activity">activity</a><a href="#approval">approval</a><a href="#gallery">gallery</a><a href="#map">map</a><a href="#banner">banner</a><a href="#actions">actions</a><a href="#filter">filter</a></nav>
+<nav><a href="#list">list</a><a href="#board">board</a><a href="#summary">summary</a><a href="#detail">detail</a><a href="#form">form</a><a href="#stats">stats</a><a href="#keyvalue">keyvalue</a><a href="#table">table</a><a href="#timeline">timeline</a><a href="#calendar">calendar</a><a href="#chart">chart</a><a href="#document">document</a><a href="#text">text</a><a href="#empty">empty</a><a href="#stages">stages</a><a href="#people">people</a><a href="#activity">activity</a><a href="#approval">approval</a><a href="#gallery">gallery</a><a href="#map">map</a><a href="#banner">banner</a><a href="#actions">actions</a><a href="#records">records</a><a href="#filter">filter</a></nav>
 <section id="list"><h2>list<small>tier 1</small></h2><p>Rows with a title, a line under it and one accessory.</p>
 <dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>density</code> default | tight</dd>
 <dt>Content</dt><dd>rows, more, empty</dd><dt>Phone</dt><dd>same</dd><dt>Chat and Lumen</dt><dd>top 5 and a count</dd></dl>
@@ -934,6 +934,16 @@ summary{cursor:pointer;color:var(--mut)}nav{display:flex;flex-wrap:wrap;gap:4px 
  "full": {},
  "phone": {},
  "chat": {}
+}</pre></details></section>
+<section id="records"><h2>records<small>tier 2</small></h2><p>The space's own records of one type as a list, board, calendar or dashboard, with the type's own sorting, filters and stored views. The app draws it from its store.</p>
+<dl><dt>Data</dt><dd>records</dd><dt>Props</dt><dd><code>page</code> true or false</dd>
+<dt>Content</dt><dd>none</dd><dt>Phone</dt><dd>phone rows</dd><dt>Chat and Lumen</dt><dd>a line pointing to the app</dd></dl>
+<details><summary>Sample, and its phone and chat forms as data</summary><pre>{
+ "full": {},
+ "phone": {},
+ "chat": {
+  "text": "These records are in the app."
+ }
 }</pre></details></section>
 <section id="filter"><h2>filter<small>tier 2</small></h2><p>Search and filter pills for the blocks beside it.</p>
 <dl><dt>Data</dt><dd>static</dd><dt>Props</dt><dd><code>search</code> true or false<br><code>pills</code> text, up to 200</dd>

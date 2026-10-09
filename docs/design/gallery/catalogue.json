@@ -62,6 +62,7 @@
   "map: Pins on a map. props title(text); data any; phone a list of places; chat a short list",
   "banner: One line that needs attention. props tone(plain|ok|warn|err|accent) icon(icon); data any; phone same; chat same",
   "actions: A row of buttons; one is the primary. props primary(text); data static; phone a bottom bar; chat up to three",
+  "records: The space's own records of one type as a list, board, calendar or dashboard, with the type's own sorting, filters and stored views. The app draws it from its store. props page(bool); data records; phone phone rows; chat a line pointing to the app",
   "filter: Search and filter pills for the blocks beside it. props search(bool) pills(text); data static; phone a sheet; chat left out"
  ],
  "blocks": [
@@ -1549,6 +1550,36 @@
    "glance": {
     "type": "actions",
     "content": {}
+   }
+  },
+  {
+   "type": "records",
+   "about": "The space's own records of one type as a list, board, calendar or dashboard, with the type's own sorting, filters and stored views. The app draws it from its store.",
+   "tier": 2,
+   "data": [
+    "records"
+   ],
+   "props": {
+    "page": "true or false"
+   },
+   "content": [],
+   "forms": {
+    "compact": "phone rows",
+    "glance": "a line pointing to the app"
+   },
+   "sample": {},
+   "compact": {
+    "type": "records",
+    "content": {}
+   },
+   "glance": {
+    "type": "text",
+    "content": {
+     "text": "These records are in the app."
+    },
+    "props": {
+     "style": "note"
+    }
    }
   },
   {
