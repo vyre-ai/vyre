@@ -391,6 +391,28 @@
     ],
     "daemon": [
       "dataStores"
-    ]
+    ],
+    "kernel": {
+      "mints": [
+        {
+          "prefix": "member/*",
+          "actions": [
+            "member.act"
+          ]
+        },
+        {
+          "prefix": "node/*",
+          "actions": [
+            "node.host"
+          ]
+        },
+        {
+          "prefix": "storage/*",
+          "actions": [
+            "storage.hold"
+          ]
+        }
+      ]
+    }
   }
 }
