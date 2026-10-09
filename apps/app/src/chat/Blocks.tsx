@@ -461,7 +461,7 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;
     case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
-    case "preview": return <PreviewCard block={block} />;
+    case "preview": return <PreviewCard block={block as never} />;
     default: return <TextBlock block={block} />;
   }
 }

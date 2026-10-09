@@ -141,7 +141,9 @@ test("blockFor: secrets are redacted in every block", () => {
 });
 
 test("validBlock: every block name is known, and a block needs its own props", () => {
-  assert.equal(BLOCKS.length, 12);
+  assert.equal(BLOCKS.length, 13);
+  assert.equal(validBlock({ block: "preview", id: "0a1b2c3d", title: "Intake form" }), true);
+  assert.equal(validBlock({ block: "preview", id: "nope", title: "x" }), false);
   assert.equal(validBlock({ block: "text", text: "x" }), true);
   assert.equal(validBlock({ block: "text" }), false);
   assert.equal(validBlock({ block: "nonsense" }), false);
