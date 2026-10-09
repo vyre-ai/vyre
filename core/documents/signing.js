@@ -2,6 +2,7 @@
 // signing: the two Flows that sign a document from a stage (R032-05). Flows orchestrate, Documents files, Comms delivers; this is the wiring a firm asks for in one sentence ("when a matter reaches
 // Out for signature, send the engagement letter; when it is signed, move it on"), written as plain Flow definitions the person reads, edits and approves like any other.
 //
+// (An expression that calls a function on an indexed member is too deep for the Flow language, so the number is joined to text with +.)
 //   1. When a <type> enters <out stage>: make the signing request on the Documents connection (no e-mail from the signing engine), remember its number on the record, and email the signer their link
 //      through Comms (held for the person's yes, so the final words are theirs).
 //   2. When Documents says a document was signed: find the record that holds that number and move it to <signed stage>. The signed copy is filed on the client by the Documents Flow that ships with the app.
@@ -31,9 +32,9 @@ export function signingFlows(o) {
     trigger: { on: "stage", type, stage: o.out_stage },
     steps: [
       { id: "send", kind: "service", connection: conn, operation: "submissions.create", input: { body: { template_id: o.template_id, send_email: false, submitters: [{ email: { expr: `trigger.${email}` }, ...(name ? { name: { expr: `trigger.${name}` } } : {}) }] } } },
-      { id: "mark", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: { expr: `text(${first}.submission_id)` } } },
+      { id: "mark", kind: "update", type, record: { expr: "trigger.id" }, set: { [field]: { expr: `"" + ${first}.submission_id` } } },
       { id: "link", kind: "call", action: "comms.send", resource: "vyre://space/comms", input: { via: "email", to: { expr: `trigger.${email}` }, subject: o.subject || "Your document is ready to sign",
-        body: { expr: `"Your document is ready to sign: ${base}/sign/" + text(${first}.submission_id) + "/" + ${first}.slug` } } },
+        body: { expr: `"Your document is ready to sign: ${base}/sign/" + ${first}.submission_id + "/" + ${first}.slug` } } },
     ],
   };
   const signed = {
