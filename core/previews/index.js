@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, PERSON_SURFACES } from "../../lib/caller.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
 import { createBridge } from "./bridge.js";
@@ -25,7 +25,7 @@ import { mayOpen, mayManage, ACCESS } from "./access.js";
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const PERSON_ONLY = ["cli", "local", "deck", "capsule", "tailnet", "device", "mobile"];
+const PERSON_ONLY = [...PERSON_SURFACES, "tailnet", "device"];
 
 export const MIGRATIONS = [
   `CREATE TABLE previews_items (
@@ -219,7 +219,7 @@ export default {
 
     // ---- tools -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     ctx.tool("previews.open", {
-      description: "Show the person something: a web page or app your server serves on a port ({ port }), or a file or folder you wrote ({ path }: an HTML page or app, a Markdown, SVG or Mermaid file, a built site). The page can be anything; Vyre adds nothing to it unless it declares capabilities (the way a Claude artifact does: db, user, sample, permissions, downloads), which the viewer then allows or not. Call it after you start a dev server or an app, with { port, title }. A card appears in this chat; the person opens it on its own address, and can share it with the project or team. Say `command` (how you started it) so Vyre can offer to keep it running after this session ends. Returns { id, state }.",
+      description: "Show the person a server (port) or files you wrote (path) as a card. Needs title and port or path. Returns the id.",
       input: obj({ title: str, port: { type: "integer" }, command: str, cwd: str, path: str, capabilities: { type: "object" }, thread: str, project: str, access: { type: "string", enum: [...ACCESS] } }, ["title"]),
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -404,7 +404,7 @@ export default {
     const asker = (/** @type {any} */ meta) => ({ person: isPerson(meta), module: String((meta && meta.caller) || "").startsWith("module:") });
 
     ctx.tool("previews.operator", {
-      description: "Show the person a computer's live screen as a card in this chat, with what it is doing now: { computer, title?, run?, thread? }. Returns { run }. Then call previews.step as it works, so the card's status line and step track follow. The person watches, or takes over the keyboard, from the card.",
+      description: "Show a computer's live screen as a card in this chat: { computer, title? }. Returns { run }; narrate with previews.step.",
       input: obj({ computer: str, title: str, run: str, thread: str }, ["computer"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
@@ -421,7 +421,7 @@ export default {
     });
 
     ctx.tool("previews.step", {
-      description: "Say what the computer is doing now, in words a person reads (\"Opening the workflow list\", \"Typing the password from your Vault\"): { run, line, state? } with state working, done, stuck or paused. The card's status line and its last seven steps follow.",
+      description: "Say what the computer is doing now, in plain words: { run, line, state? } (working, done, stuck, paused). Stuck may add `ask`.",
       input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES }, ask: str }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
@@ -458,7 +458,7 @@ export default {
       },
     });
     ctx.tool("previews.run-get", {
-      description: "The state of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck. With wait_ms (at most 55 s) it waits for a reply.",
+      description: "State of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck; wait_ms waits for it.",
       input: obj({ run: str, wait_ms: { type: "integer" } }, ["run"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
@@ -483,7 +483,7 @@ export default {
     });
 
     ctx.tool("previews.signin", {
-      description: "Ask the person to sign in to a site on the computer, as a card in this chat: { computer, site, why?, thread?, wait_ms? }. The card says \"Sign in to <site>\" and opens the screen in place with the keyboard theirs and private (you cannot see the page until they hand back, and you never get the password); when they are done you carry on. Waits up to wait_ms (at most 55 s); if they have not finished, answers { id, state: \"waiting\" } and you call previews.signin-get { id, wait_ms }.",
+      description: "Ask the person to sign in to a site on the computer, as a card: computer, site, why. You never see the password. Poll previews.signin-get.",
       input: obj({ computer: str, site: str, why: str, thread: str, wait_ms: { type: "integer" } }, ["computer", "site"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
