@@ -77,7 +77,8 @@ export function placeholders(buf) {
       if (v && typeof v === "object" && Object.keys(v).length) walk(v, full); else if (!loops.includes(full)) names.add(full);
     }
   };
-  walk(doc.getTags(), "");
+  // getTags() answers per part of the file: { document: { tags, target }, header1: { ... } }.
+  for (const part of Object.values(doc.getTags() || {})) walk(part && /** @type {any} */ (part).tags, "");
   return { names: [...names], loops };
 }
 
