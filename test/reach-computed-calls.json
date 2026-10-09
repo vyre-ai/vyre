@@ -205,6 +205,11 @@
    "count": 1,
    "owner": "site-ops",
    "note": "reviewed (10 Oct): the ops tool's call wrapper; it names only memory.site.* literals"
+  },
+  "core/approvals/index.js": {
+   "count": 1,
+   "owner": "session-transfer",
+   "note": "reviewed (10 Oct, connect-anything): a forwarder (createItems' call) over the literal tools named in core/approvals/items.js (threads.asks, gate.held, vault.pending and the answering tools); it runs as the approvals module"
   }
  }
 }
