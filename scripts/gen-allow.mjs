@@ -26,6 +26,8 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "ask.many": "puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes",
+  "ask.get": "reads the state and answers of a question card the agent made",
   "previews.open": "shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for",
   "previews.list": "lists the previews of a chat or project by title and state, never an address or ticket",
   "previews.get": "reads one preview by title and state, never an address or ticket",

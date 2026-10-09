@@ -38,7 +38,7 @@ export const STUBS = Object.freeze(["hidden"]);
 export { EPHEMERAL, isEphemeral, HOLDBACK, settle };
 /** Control kinds: never logged, no cursor. */
 export const CONTROL = Object.freeze(["reset", "heartbeat"]);
-export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "preview", "text", "field-ref", "field"]);
+export const BLOCKS = Object.freeze(["terminal", "diff", "files", "record", "task", "draft", "flow-change", "answer", "screen", "preview", "questions", "text", "field-ref", "field"]);
 export const HANDOFF_STATES = Object.freeze(["queued", "running", "done", "failed", "cancelled"]);
 export const STATES = Object.freeze(["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"]);
 
@@ -119,6 +119,8 @@ export function validBlock(b) {
     case "field": return isStr(o.label);
     // A live preview: its id and title and state. Never an address or a ticket: the card asks for one when the person opens it.
     case "preview": return isStr(o.id) && /^[0-9a-f]{8}$/.test(o.id) && isStr(o.title) && o.title.length <= 120;
+    // One card of several questions: its id and the questions (each with its own words and choices); a person's answers ride on it once given.
+    case "questions": return isStr(o.id) && /^[0-9a-f]{12}$/.test(o.id) && Array.isArray(o.questions) && o.questions.length >= 1 && o.questions.length <= 6;
     default: return true;
   }
 }

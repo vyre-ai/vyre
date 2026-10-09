@@ -201,7 +201,7 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
-  thread: ["threads", "harness", "link", "projects", "sessions", "artifacts", "previews"],
+  thread: ["threads", "harness", "link", "projects", "sessions", "artifacts", "previews", "ask"],
 };
 
 /** Event nouns Vyre's own modules act on. An added module never emits these, whatever it is named: a module named "device" or "devices" must not say device.paired. */

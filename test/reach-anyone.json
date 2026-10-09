@@ -1,6 +1,14 @@
 {
  "_comment": "Every tool that declares reach anyone, with the reason it is safe: the in-code guard it relies on (callers list, presence proof, own-scope check, held at the Gate), or read-only. A tool with a mutating verb in its name needs a reason that names a guard; read-only does not count. PENDING reasons are tracked and shrink. test/reach-anyone.test.js fails on an anyone with no entry.",
  "tools": {
+  "ask.get": {
+   "module": "ask",
+   "reason": "read-only: the state and answers of a question card the asker made; an unknown id is not found"
+  },
+  "ask.many": {
+   "module": "ask",
+   "reason": "an agent asks the person several things as one card; it decides nothing (the answers are only the person's words) and any act that follows still waits for the person's yes; capped at 6 questions and 20 waiting"
+  },
   "agents.ask": {
    "module": "agents",
    "reason": "guard() refuses non-assistant agent labels; modelMay refuses a plain mcp or harness caller with no verified thread or agent; sessions, the verified assistant, the person and modules pass (onboard asks as a module)"
