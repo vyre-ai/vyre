@@ -226,6 +226,11 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
+  if (process.env.PROBE_COMPLETED) {
+    const slug2 = sub.j[0].slug;
+    for (const p of [`/s/${slug2}`, `/s/${slug2}/completed`]) { const r = await web(p); console.log("PROBE", p, r.status, r.headers.location || "", JSON.stringify([...r.text.matchAll(/(?:href|src|data-[a-z-]*url)="([^"]*(?:download|documents|file|blob|disk)[^"]*)"/g)].map(m => m[1].slice(0, 160))).slice(0, 800)); }
+    for (const p of [`/s/${slug2}/documents`, `/submitters/${slug2}/download`, `/s/${slug2}/download`]) { const r = await fetch(`http://127.0.0.1:${port}${p}`, { redirect: "manual" }); console.log("PROBE-UP", p, r.status, r.headers.get("location") || "", r.headers.get("content-type") || "", (await r.text()).slice(0, 300).replace(/\s+/g, " ")); }
+  }
 
   // the event, the Flow's run, the record it made, and the signed PDF in the Drive
   const ev = await until(async () => { const e = d.registry.deps.events.since(0, { type: "documents.signed" }); return e.length ? e : null; }, "the documents.signed event");
