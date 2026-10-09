@@ -53,7 +53,7 @@ export const SHARED_MIGRATIONS = [
    );`,
 ];
 
-export const ROLES = ["owner", "admin", "member", "read-only"];
+export const VAULT_MEMBER_ROLES = ["owner", "admin", "member", "read-only"];
 const WRITE = new Set(["owner", "admin", "member"]);
 const ADMIN = new Set(["owner", "admin"]);
 const MANIFEST_TAG = "vyre-manifest-v1", RECORD_TAG = "vyre-record-v1", RECEIPT_TAG = "vyre-receipt-v1", INVITE_TAG = "vyre-invite-v1";
@@ -81,7 +81,7 @@ function checkMembers(m) {
   if (!Array.isArray(m.members) || !m.members.length) throw new Error("a manifest needs members");
   const signs = new Set();
   for (const x of m.members) {
-    if (!x || typeof x.name !== "string" || typeof x.sign !== "string" || typeof x.box !== "string" || !ROLES.includes(x.role)) throw new Error("a manifest member is malformed");
+    if (!x || typeof x.name !== "string" || typeof x.sign !== "string" || typeof x.box !== "string" || !VAULT_MEMBER_ROLES.includes(x.role)) throw new Error("a manifest member is malformed");
     if (signs.has(x.sign)) throw new Error("a manifest lists one key twice");
     signs.add(x.sign);
   }

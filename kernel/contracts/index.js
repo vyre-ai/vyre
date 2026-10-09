@@ -78,6 +78,11 @@ export const DEVICE_OFFERS = Object.freeze({
 });
 
 export const ROLE_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp"]);
+/** Strongest highest: owner 4 down to temp 0. The one rank; nothing else types the order again. */
+export const ROLE_RANK = Object.freeze(Object.fromEntries(ROLE_IDS.map((id, i) => [id, ROLE_IDS.length - 1 - i])));
+/** The Vyre name of each role; an admin may rename them for display, the ids never change. */
+export const ROLE_LABELS = Object.freeze({ owner: "Owner", admin: "Admin", manager: "Manager", member: "Member", temp: "Temp" });
+
 const bundle = (role, abilities, never, requires_scope, assistants_act_for_holder) =>
   Object.freeze({ role, abilities: Object.freeze(abilities), never: Object.freeze(never), requires_scope, assistants_act_for_holder });
 const OWNER = ["space.delete", "space.move", "space.transfer", "space.root_key", "space.policy", "members.manage_all", "members.manage_below_admin", "devices.manage", "customize.definitions", "connectors.manage", "assistants.manage", "projects.create_run", "projects.set_team_tasks_checkers", "projects.approve_inside", "kits.use", "projects.work_member_of", "space.shared_by_policy"];

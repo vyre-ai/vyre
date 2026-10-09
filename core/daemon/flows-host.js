@@ -13,6 +13,7 @@
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
+import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
 const MIN_TICK_MS = 60_000;
 
@@ -73,7 +74,7 @@ export function createFlowsHost(o) {
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
       const triggers = o.flowTriggers ? o.flowTriggers() : [];
-      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers };
+      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }

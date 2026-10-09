@@ -1,4 +1,5 @@
 // Sample world for the Flow tests: Harlow Legal, a matter type with stages, and the registry actions the tests use.
+import { ROLE_IDS } from "../../contracts/index.js";
 export const SPACE = "spc_harlow000001";
 
 export const catalog = () => ({
@@ -24,7 +25,7 @@ export const catalog = () => ({
     "service.read": { risk: "read", label: "Read from a connected service" }, "service.call": { risk: "outward.send", label: "Call a connected service" },
     "records.read": { risk: "read" }, "records.create": { risk: "write" }, "records.update": { risk: "write" }, "records.remove": { risk: "outward.delete" },
   },
-  roles: ["owner", "admin", "manager", "member", "attorney"],
+  roles: [...ROLE_IDS, "attorney"],
   teammates: ["research", "intake"],
   templates: ["welcome"],
   // A connector is a vault credential and its route. No secret here: the catalog holds only which methods and paths the route allows.

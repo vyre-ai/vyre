@@ -1,3 +1,4 @@
+import { ROLE_IDS } from "../../../../kernel/contracts/index.js";
 // The pure half of Rules: the kernel's standing rules (kernel/grants rulesList) and proposals as the lines the screen shows. The sentence for each rule is the
 // kernel's own `view`, built from its structured fields; nothing here composes one, and a proposer's label is never the line.
 
@@ -11,7 +12,7 @@ export const KINDS: { kind: RuleKind; title: string; help: string }[] = [
   { kind: "draft_only", title: "Drafts only", help: "The act is prepared as a draft and never sent." },
   { kind: "always_ask", title: "Always ask", help: "Someone named approves every time, with presence. No grant waives it." },
 ];
-export const ROLES = ["owner", "admin", "manager", "member", "temp"];
+export const ROLES: string[] = [...ROLE_IDS];
 
 /** Active rules grouped by kind in the order above; a kind with none is left out. */
 export function groups(rules: Rule[]): { kind: RuleKind; title: string; help: string; rules: Rule[] }[] {

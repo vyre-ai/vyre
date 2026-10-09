@@ -3,6 +3,7 @@
 import fs from "node:fs";
 import { compile } from "../../../records/language/compile.js";
 import { normalize } from "../../../records/connectors/stripe/stripe.js";
+import { ROLE_IDS } from "../../contracts/index.js";
 
 export const SPACE = "spc_harlow000001";
 const KIT_TS = new URL("../../../records/kits/estate-planning/kit.ts", import.meta.url);
@@ -19,7 +20,7 @@ export function catalogOf(kit) {
     space: SPACE,
     types: Object.fromEntries(kit.types.map(t => [t.name, t])),
     actions: { "email.send": { risk: "outward.send", label: "Send an email" }, "records.read": { risk: "read" }, "records.create": { risk: "write" }, "records.update": { risk: "write" } },
-    roles: ["owner", "admin", "manager", "member", "attorney"],
+    roles: [...ROLE_IDS, "attorney"],
     teammates: kit.roles.filter(r => r.kind === "teammate").map(r => r.name),
     templates: kit.templates.map(t => t.name),
   };
