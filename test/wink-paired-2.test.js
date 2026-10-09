@@ -399,7 +399,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
 
 
 
-shardTest("a box-less client makes its first space on a paired server: the server hosts it, the device signs the space's chain and record, and the directory resolves it with the home's route", { todo: "fails on trunk too (15a14c63c): an expected refusal no longer comes; its owner checks it in 0.3.0 (team/BACKLOG.md)" }, async t => {
+shardTest("a box-less client makes its first space on a paired server: the server hosts it, the device signs the space's chain and record, and the directory resolves it with the home's route", async t => {
   const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
   const { idDirectory: mkDir, memorySeen: memSeen } = await import("../lib/identity/directory.js");
   const f = await pairFreshServer(t);
@@ -440,7 +440,7 @@ shardTest("a box-less client makes its first space on a paired server: the serve
   const hosted = f.w.d.kernel.spaces.hosted(made.space);
   await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
-  await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
+  await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: async () => { throw Object.assign(new Error("the server refused"), { code: "denied" }); } }), e => e.code === "denied"); // (spaces.host-here itself needs no presence since 11391dc9d: the owner check is its gate, so the refusal is stood in)
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
 
@@ -507,7 +507,7 @@ shardTest("a key that is a waiting or paired device here is not admitted as an i
   assert.ok(!r.reply.invitee, "a waiting pairing's key is not an invitee");
 });
 
-shardTest("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", { todo: "its probe, spaces.host-here, needs no presence by design since 11391dc9d (the owner check is the gate): re-point it at a tool that needs presence (team/BACKLOG.md 0.3.0)" }, async t => {
+shardTest("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", async t => {
   const savedSw = process.env.VYRE_SEAL_SOFTWARE;
   delete process.env.VYRE_SEAL_SOFTWARE;
   t.after(() => { if (savedSw !== undefined) process.env.VYRE_SEAL_SOFTWARE = savedSw; });
@@ -516,7 +516,7 @@ shardTest("a software device key's presence proof is refused by the server witho
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
-  await assert.rejects(() => links.sessionFor("srv").call("spaces.host-here", { name: "harlow" }), e => /software|phone/i.test(e.message));
+  await assert.rejects(() => links.sessionFor("srv").call("vault.delete", { name: "harlow" }), e => /software|phone/i.test(e.message)); // (a tool that asks for presence: spaces.host-here needs none since 11391dc9d)
 });
 
 
@@ -1172,8 +1172,8 @@ shardTest("the session strength is proven at each sign-in (the identity entry's 
     // the request must fit the moment and be plain data
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
     await assert.rejects(() => links.askApproval("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
-    // MO-1: each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
-    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.backup"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
+    // MO-1 (vault.export and vault.backup moved into the vault moment with the one yes at the floor, lib/one-yes.js): each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
+    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.put"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
     // and at the floor: an approval never counts for such a tool
     const del = await links.sessionFor("srv").call("vault.delete", { name: "northwind-mail", approval: "ap_notacardatall1" }).then(() => null, e => e);
     assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && true, "vault.delete is not a moment: the old floor");

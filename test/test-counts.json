@@ -600,7 +600,7 @@
  "kernel/seal/ledger.test.js": 8,
  "kernel/seal/recovery.test.js": 9,
  "kernel/seal/seal.test.js": 27,
- "kernel/seal/uses.test.js": 11,
+ "kernel/seal/uses.test.js": 6,
  "kernel/size.test.js": 1,
  "kernel/spaces/spaces.test.js": 10,
  "kernel/storage/drive.test.js": 6,

@@ -80,6 +80,10 @@ export const DEVICE_OFFERS = Object.freeze({
 export const ROLE_IDS = Object.freeze(["owner", "admin", "manager", "member", "temp"]);
 /** Strongest highest: owner 4 down to temp 0. The one rank; nothing else types the order again. */
 export const ROLE_RANK = Object.freeze(Object.fromEntries(ROLE_IDS.map((id, i) => [id, ROLE_IDS.length - 1 - i])));
+/** The roles an owner who hands a Space over may keep (ROLE_MAY_SET.admin's top three, minus temp): admin, manager or member. */
+export const ROLE_DEMOTE_TO = Object.freeze(["admin", "manager", "member"]);
+/** Who may set whom, add, invite or remove: an owner any role; an admin the roles below admin; nobody else. The one table; members and grants both read it. */
+export const ROLE_MAY_SET = Object.freeze({ owner: Object.freeze([...ROLE_IDS]), admin: Object.freeze(["manager", "member", "temp"]), manager: Object.freeze([]), member: Object.freeze([]), temp: Object.freeze([]) });
 /** The Vyre name of each role; an admin may rename them for display, the ids never change. */
 export const ROLE_LABELS = Object.freeze({ owner: "Owner", admin: "Admin", manager: "Manager", member: "Member", temp: "Temp" });
 

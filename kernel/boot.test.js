@@ -132,3 +132,20 @@ test("createKernel: the module handle's records is a read-only Proxy over a copy
   assert.equal(Object.isFrozen(k.gateway.records), true, "still frozen after handles were made and poked");
   assert.equal((await k.gateway.audit.verify()).ok, true);
 });
+
+test("boot runs the containment pass: a stored child wider than its parent is cut at the next start, and the cut is in the log", async () => {
+  const f = file();
+  let k = await boot(f);
+  const o = ownerChain(k), g = k.gateway.grants, kit = { kind: "agent", id: "kit", space: SPACE };
+  await g.addActor(o, kit, { presence: proofFor("grants.role", { actor: kit }, `vyre://${SPACE}/member/kit`) });
+  const make = i => g.create(o, i, { presence: proofFor("grants.create", i, `vyre://${SPACE}/grant/new`) });
+  const when = { expires: Date.now() + 1e9 };
+  const parent = await make({ subject: { kind: "actor", actor: { kind: "person", id: OWNER, space: SPACE } }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*` }, conditions: { delegate: { allowed: true, max_depth: 2 }, when }, source: "test" });
+  const kid = await make({ subject: { kind: "actor", actor: kit }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*` }, conditions: { delegate: { allowed: false, max_depth: 0 }, when }, source: "test", parent: parent.id });
+  const soon = Date.now() + 1000;
+  await g.narrow(o, parent.id, { expires: soon }, { presence: proofFor("grants.narrow", { id: parent.id, patch: { expires: soon } }, `vyre://${SPACE}/grant/${parent.id}`) });
+  assert.ok((await g.list(o)).find(x => x.id === kid.id).conditions.when.expires > soon, "the child outlives its parent's new end");
+  k = await boot(f);
+  assert.equal((await k.gateway.grants.list(ownerChain(k))).find(x => x.id === kid.id).conditions.when.expires, soon, "cut to the parent's end at boot");
+  assert.ok(k.log.read({ type: "grant.narrowed" }).some(e => e.data.why === "wider than its parent" && e.data.grant.id === kid.id), "and the cut is logged");
+});

@@ -13,7 +13,7 @@ import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
-import { ROLE_IDS } from "../contracts/index.js";
+import { ROLE_IDS, ROLE_DEMOTE_TO } from "../contracts/index.js";
 import { ACCESS_LEVELS, SURFACE_GROUPS } from "../seal/uses.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
@@ -495,7 +495,7 @@ export function createGrantsStore(cfg) {
     async transferOwner(chain, t, o = {}) {
       const issuer = person(chain);
       const demote = (t && t.demote_to) || "admin";
-      if (!t || typeof t.to !== "string" || !t.to || t.to === issuer.id || !["admin", "manager", "member"].includes(demote)) throw new KernelError("bad_input", "name the member to hand the Space to, and the role you keep (admin, manager or member: a temp role needs a scope and an end date, which a hand-over does not carry)");
+      if (!t || typeof t.to !== "string" || !t.to || t.to === issuer.id || !ROLE_DEMOTE_TO.includes(demote)) throw new KernelError("bad_input", "name the member to hand the Space to, and the role you keep (admin, manager or member: a temp role needs a scope and an end date, which a hand-over does not carry)");
       const d = await gate(chain, "grants.role", urn("member", t.to), { transfer: { to: t.to, demote_to: demote } }, o.presence);
       if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner hands the Space on");
       if (!memberOk({ kind: "person", id: t.to, space: cfg.space })) throw new KernelError("not_found", "no such member");

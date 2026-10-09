@@ -486,4 +486,24 @@ export class KitManager {
   }
 
   async list() { return (await this.store.list()).map((/** @type {any} */ r) => ({ id: r.kit_id, version: r.version, status: r.status, by: r.by, at: r.at })); }
+
+  /**
+   * The Connections an installed Kit version names for one task template, for a task lease (the vault asks `flows.kit.credentials`): found by the record type, the stage and the template's title in the
+   * stored Kit that a person approved at install. Only an installed Kit counts, and only what its template says; a task from a hand-written type, or a template that names nothing, is null.
+   * @param {{ type: string, stage: string, title: string }} q @returns {Promise<{ approved: true, kit: string, version: number, credentials: string[] } | null>}
+   */
+  async credentialsFor({ type, stage, title }) {
+    for (const r of await this.store.list()) {
+      if (!r || r.status !== "installed" || !r.kit) continue;
+      for (const t of (r.kit.includes && r.kit.includes.types) || []) {
+        if (t.name !== type) continue;
+        const sets = [t.stages || [], ...(t.stage_sets || []).map((/** @type {any} */ s) => (s && s.stages) || [])];
+        for (const stages of sets) for (const s of stages) {
+          if (s.name !== stage) continue;
+          for (const task of s.tasks || []) if (task.title === title && Array.isArray(task.credentials) && task.credentials.length) return { approved: true, kit: String(r.kit.id), version: Number(r.version), credentials: task.credentials.map(String) };
+        }
+      }
+    }
+    return null;
+  }
 }

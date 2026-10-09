@@ -2161,14 +2161,6 @@
    "module": "chrome",
    "reason": "held: a learned operation runs only in a signed-in page; a write is held at the Gate and sent once; the person's Chrome must be connected, and an agent needs the person's grant and a posted plan (callers list, check)"
   },
-  "computer.targets": {
-   "module": "computer",
-   "reason": "read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
-  },
-  "computer.use": {
-   "module": "computer",
-   "reason": "guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
-  },
   "connectors.site.limits": {
    "module": "connectors",
    "reason": "read-only: the account governor's numbers for one website (callers list)"
@@ -2188,6 +2180,14 @@
   "connectors.site.rows": {
    "module": "connectors",
    "reason": "read-only: one row per website operation for a view (callers list)"
+  },
+  "computer.targets": {
+   "module": "computer",
+   "reason": "read-only: the names of the computers and whether each is online, never a path or a value (callers list)"
+  },
+  "computer.use": {
+   "module": "computer",
+   "reason": "guard: a model uses only its own agent's computer; a Mac is reached only for a class the person allowed there (link.computer.allow); the engine's own floor, indicator and Gate still apply, and interface first offers a Connection before the screen (callers list, check)"
   },
   "vault.agent.fill": {
    "module": "vault",

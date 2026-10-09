@@ -274,8 +274,6 @@ export const PERSON_ONLY = new Map([
   ["threads.shell", "controls the person's own machine: a shell on it"],
   ["vault.account.lock", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.agent.revoke", "needs the person's Face ID or presence: secrets, devices and vault access"],
-  ["vault.tagged", "the person's own view of where a # tag has lent a login: conversation ids and hosts, never a value"],
-  ["vault.untag", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.approve", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.connect", "needs the person's Face ID or presence: secrets, devices and vault access"],
   ["vault.connections.grant", "needs the person's Face ID or presence: secrets, devices and vault access"],

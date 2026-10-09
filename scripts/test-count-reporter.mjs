@@ -11,7 +11,8 @@ export default async function* countReporter(source) {
     if (ev.type !== "test:pass" && ev.type !== "test:fail") continue;
     const d = ev.data;
     if (!d.file || d.details?.type === "suite") continue;
-    const rel = path.relative(root, d.file).split(path.sep).join("/");
+    // A shard file (sessions-b.test.js imports sessions.test.js) registers its tests in the file it imports: the runner names the file it started in VYRE_TEST_COUNTS_FILE, so each shard is counted, and guarded, on its own.
+    const rel = process.env.VYRE_TEST_COUNTS_FILE ? process.env.VYRE_TEST_COUNTS_FILE : path.relative(root, d.file).split(path.sep).join("/");
     // A file that crashed or was cancelled reports itself as one failed "test" whose name is its path; it is not a counted test.
     if (d.nesting === 0 && d.name === d.file && ev.type === "test:fail") { counts[rel] ||= 0; continue; }
     counts[rel] = (counts[rel] || 0) + 1;

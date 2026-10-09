@@ -8,7 +8,8 @@ import { sandboxCommand, mechanism } from "./sandbox.js";
 import { createEgress, privateAddress } from "./egress.js";
 import { createSupervisor } from "./supervisor.js";
 import { createModuleHost, wildcardOk, SHARED_SUFFIXES } from "./host.js";
-import { createFirstPartyCheck, signModule, treeHash } from "./firstparty.js";
+import { createFirstPartyCheck, treeHash } from "./firstparty.js";
+import { signModule } from "../../test/sign-release.mjs";
 import { pinnedFetch } from "./egress.js";
 import { toBytes } from "../../lib/netguard.js";
 import crypto from "node:crypto";
@@ -193,7 +194,8 @@ test("first party is a signature over the folder's contents by the pinned releas
 });
 
 test("K-1: a release-signed minimum version makes an older signed copy not first party; first party is judged at every load", async () => {
-  const { signMinimums, verifyMinimums } = await import("./firstparty.js");
+  const { verifyMinimums } = await import("./firstparty.js");
+  const { signMinimums } = await import("../../test/sign-release.mjs");
   const release = crypto.generateKeyPairSync("ed25519");
   const mk = version => { const dir = tmp("fpv"); fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "email", version })); fs.writeFileSync(path.join(dir, "index.js"), "export default {};"); signModule(dir, release.privateKey); return dir; };
   const doc = signMinimums({ email: "0.3.0" }, release.privateKey, 5);

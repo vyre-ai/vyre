@@ -577,6 +577,10 @@
    "class": "own",
    "why": "reads the Space's records as the person the call carries"
   },
+  "connectors.site.propose": {
+   "class": "held",
+   "why": "a proposal only: the person approves it before anything is learned or connected"
+  },
   "vault.agent.fill": {
    "class": "refused",
    "why": "refused in the body for a session that names no agent; a named agent signs in its own computer only, with a login lent to it at that origin"
@@ -584,10 +588,6 @@
   "computer.use": {
    "class": "refused",
    "why": "refused in the body for a session that names no agent; a named agent works on its own computer, and a Mac only for a class the person allowed there"
-  },
-  "connectors.site.propose": {
-   "class": "held",
-   "why": "a proposal only: the person approves it before anything is learned or connected"
   }
  }
 }

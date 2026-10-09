@@ -284,6 +284,7 @@
       },
       {
         "name": "work.template.from-project",
+        "projectArg": ["project"],
         "summary": "a draft template from a project that ran one",
         "reach": "anyone",
         "effect": "write"

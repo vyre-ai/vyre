@@ -216,7 +216,7 @@ shardTest("connect: a Google account with domain-wide delegation, and the scopes
 shardTest("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the line and runs claude only with --yes", async t => {
   const v = await vyred(t);
   const help = await vyre(v.root, ["help"]);
-  assert.match(help.out, /vyre mcp \[serve \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
+  assert.match(help.out, /vyre mcp \[serve \| design \| install \[--yes\]\] \[--json\]\s+the Vyre MCP server on stdio, for plain claude/);
   assert.match(help.out, /vyre connect/);
 
   // A fake claude that writes down what it was asked to do.
