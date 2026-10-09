@@ -56,3 +56,12 @@ test("emailOf: a record's address as one string, from a text field or a list, an
   assert.equal(emailOf({ email: ["", "jo@example.com", "x@y.z"] }), "jo@example.com");
   for (const bad of [null, undefined, {}, { email: 5 }, { email: [] }, { email: { a: 1 } }, "jo@example.com"]) assert.equal(emailOf(bad), "");
 });
+
+test("no app route has a segment named [screen]: React Navigation reserves `screen`, and a link to /u/module/<module>/<screen> lost it (the address became .../undefined)", async () => {
+  const fs = await import("node:fs"), path = await import("node:path");
+  const root = new URL("../../app/", import.meta.url).pathname;
+  const bad = [];
+  (function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { if (/\[(screen|params)\]/.test(e.name)) bad.push(path.join(dir, e.name)); if (e.isDirectory()) walk(path.join(dir, e.name)); } })(root);
+  assert.deepEqual(bad, []);
+  assert.ok(fs.existsSync(path.join(root, "u", "module", "[module]", "[view].tsx")), "the module screen route takes the view as `view`");
+});

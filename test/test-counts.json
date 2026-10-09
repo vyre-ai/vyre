@@ -939,6 +939,6 @@
  "core/sidebar/service.test.js": 5,
  "apps/app/screens/shell/module-screen.test.js": 4,
  "core/views/views.test.js": 10,
- "apps/app/screens/shell/module-view.test.js": 6,
+ "apps/app/screens/shell/module-view.test.js": 7,
  "apps/app/src/chat/polish.test.js": 5
 }
