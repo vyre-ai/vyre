@@ -67,6 +67,8 @@ async function rig(/** @type {any} */ t) {
   reg.isFirstParty = (/** @type {string} */ d) => d.startsWith(path.join(home, "mods")) || firstParty(d);
   await reg.start([...discover([path.dirname(HERE)]).filter(m => m.dir === HERE), ...discover([path.join(home, "mods")])], { role: "box" });
   t.after(() => reg.stop && reg.stop());
+  const st = reg.status().find((/** @type {any} */ m) => m.name === "stubs");
+  assert.equal(st && st.state, "running", JSON.stringify(st));
   const rigState = /** @type {any} */ (globalThis).__rig;
   rigState.record = { ops: [{ name: "searchPeople", kind: "read", version: 1, op: read() }] };
   rigState.reports = []; rigState.mayAct = { ok: true };
