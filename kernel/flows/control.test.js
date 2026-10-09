@@ -267,3 +267,75 @@ test("the tools: pause with all or drain, resume with a backlog choice, and the 
   const back = await f.tools["flows.resume"](chain, { all: true });
   assert.equal(back.control.mode, "running");
 });
+
+// ------------------------------------------------------------------ a run on its own never takes the server down
+
+test("a step that throws, and a failure path that throws, leave the process up and the run failed", async () => {
+  /** @type {any[]} */ const unhandled = [];
+  const on = (/** @type {any} */ e) => unhandled.push(e);
+  process.on("unhandledRejection", on);
+  try {
+    const w = await world({ ports: { sandbox: async () => { throw new TypeError("a bug in a port"); } } });
+    await install(w, flowOf([fn("f", { retry: false })], { on_failure: [fn("g", { retry: false })] }));
+    await fire(w, { n: 1 }); await settle(w);
+    const [r] = await w.runner.listRuns();
+    assert.equal(r.state, "failed");
+    assert.equal(r.error.code, "error");
+    assert.ok(r.failing_error, "the failure path's own failure is kept, and does not hide the first");
+    await pause(30);
+  } finally { process.off("unhandledRejection", on); }
+  assert.deepEqual(unhandled, [], "no unhandled rejection");
+});
+
+test("a store that fails while a detached run is written marks the run failed (or leaves it for recover) and raises no unhandled rejection", async () => {
+  /** @type {any[]} */ const unhandled = [];
+  const on = (/** @type {any} */ e) => unhandled.push(e);
+  process.on("unhandledRejection", on);
+  try {
+    const w = await world();
+    await install(w, flowOf([{ id: "m", kind: "create", type: "matter", set: { client: "x" } }]));
+    const put = w.store.putRun.bind(w.store);
+    let n = 0;
+    w.store.putRun = async (/** @type {any} */ run) => { if (run.state === "running" && ++n === 2) throw new Error("the store went away"); return put(run); };
+    await fire(w, { n: 1 }); await pause(80);
+    w.store.putRun = put;
+    const [r] = await w.runner.listRuns();
+    assert.ok(["failed", "running", "done"].includes(r.state), "the run is failed, or left for recover(), or finished: it is never lost");
+  } finally { process.off("unhandledRejection", on); }
+  assert.deepEqual(unhandled, []);
+});
+
+// ------------------------------------------------------------------ two events for one record
+
+test("two events about one record, with no lock of the Flow's own, take turns; events about different records run together", async () => {
+  const g = gate();
+  const w = await world({ ports: { sandbox: g.port } });
+  await install(w, flowOf([fn("f", { timeout_ms: 600000 })], { trigger: { on: "event", event: "matter.updated" } }));
+  const sendRec = async (/** @type {string} */ id) => { w.kernel.inbound("matter.updated", { id }, "member", `vyre://spc_harlow000001/matter/${id}`); await pause(); };
+  await sendRec("m1"); await sendRec("m1"); await sendRec("m2");
+  assert.equal(g.calls, 2, "m1 and m2 run; the second m1 waits its turn");
+  const held = await w.runner.listRuns({ state: "queued" });
+  assert.equal(held.length, 1);
+  assert.equal(held[0].queued.reason, "lock");
+  for (let i = 0; i < 4; i++) { g.release(1); await pause(30); }
+  await until(async () => (await count(w, "done")) === 3, "all three to finish");
+  assert.equal(g.max, 2);
+});
+
+test("two runs on one record that do interleave replay correctly: each run's ledger is its own, and a crash repeats neither's write", async () => {
+  const w = await world();
+  const f = await install(w, flowOf([{ id: "m", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }, { id: "u", kind: "create", type: "matter", set: { client: { expr: "trigger.n + '-b'" } } }]));
+  w.kernel.inbound("payment.received", { n: "one" }); w.kernel.inbound("payment.received", { n: "two" });
+  await settle(w);
+  const runs = await w.runner.listRuns();
+  assert.equal(runs.length, 2);
+  for (const r of runs) {
+    const crashed = structuredClone(r); crashed.state = "running"; crashed.finished_at = undefined; crashed.steps.u = { status: "started", at: r.steps.u.at };
+    await w.store.putRun(crashed);
+  }
+  await w.runner.recover(); await settle(w);
+  await w.kernel.pump(); if (w.kernel.idle) await w.kernel.idle();
+  const made = [...(w.kernel.tables.get("matter") || new Map()).values()].map((/** @type {any} */ m) => m.data.client).sort();
+  assert.deepEqual(made, ["one", "one-b", "two", "two-b"], "each write once");
+  assert.ok(f.id);
+});

@@ -321,8 +321,14 @@ export class FlowRunner {
 
   /** A lock key from the Flow's expression, once per run. @param {Run} run @param {any} flow @returns {string|null} */
   #lockKey(run, flow) {
-    if (!flow || typeof flow.lock !== "string") return null;
     if (run.lock_key !== undefined) return run.lock_key || null;
+    // No lock of its own: a run that a record's event started works on that record, and two such runs for one record take turns (they never interleave their writes). Events that are not about a record have no key.
+    if (!flow || typeof flow.lock !== "string") {
+      const subject = run.trigger && run.trigger.event && typeof run.trigger.event.subject === "string" ? run.trigger.event.subject : "";
+      const m = /^vyre:\/\/[^/]+\/([a-z][a-z0-9-]*)\/[^/]+$/.exec(subject);
+      run.lock_key = m && !["event", "flow", "flow-run", "task", "def-flow", "flow-state"].includes(m[1]) ? subject : "";
+      return run.lock_key || null;
+    }
     let key = "";
     try { const v = evaluate(parse(flow.lock), this.#scope({ run }, {})); key = v === null || v === undefined || v === "" ? "" : String(typeof v === "object" ? JSON.stringify(v) : v).slice(0, 200); } catch { key = ""; }
     run.lock_key = key;
@@ -388,7 +394,7 @@ export class FlowRunner {
         cur.state = "running"; cur.queued = undefined; cur.updated_at = this.now();
         await this.store.putRun(cur);
       });
-      void this.#exec(r.id);
+      this.#detach(r.id);
     }
   }
 
@@ -405,7 +411,7 @@ export class FlowRunner {
       if (r.attention && r.attention.kind === "stuck") continue;
       const going = this.locks.has(r.id);
       const again = this.reexec.get(r.id);
-      if (!going && (again === undefined || again < r.updated_at)) { this.reexec.set(r.id, now); void this.#exec(r.id); continue; }
+      if (!going && (again === undefined || again < r.updated_at)) { this.reexec.set(r.id, now); this.#detach(r.id); continue; }
       // A run that is executing but silent cannot be written behind its own lock (that lock is held by the step that hangs): the flag goes on the live run, and the run's next write keeps it.
       const live = this.live.get(r.id);
       if (!live && !going) {                                  // run once more already and still not moving, with nothing executing it
@@ -638,7 +644,7 @@ export class FlowRunner {
     await this.store.putRun(run);
     this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow-run/${id}`);
     // The run executes on its own: a trigger's delivery is not held up by a slow step (one slow Flow must not stop the others' events), and the concurrency gate is what bounds how many go at once.
-    void this.#exec(id);
+    this.#detach(id);
     return { run: id };
   }
 
@@ -779,6 +785,24 @@ export class FlowRunner {
   }
   /** @param {string} id */
   #exec(id) { return this.#locked(id, () => this.#execLocked(id)); }
+  /**
+   * Run a run on its own. Whatever it throws (a store that failed while a run was being written, a bug) ends here: a detached run must never become an unhandled rejection, which would take the whole server down.
+   * The run is marked failed if it can be, and the fault is said in an event.
+   * @param {string} id
+   */
+  #detach(id) {
+    void this.#exec(id).catch(async (e) => {
+      try {
+        const r = await this.store.getRun(id);
+        if (r && (r.state === "running" || r.state === "queued")) {
+          const f = failOf(e);
+          r.state = "failed"; r.error = { step: r.error ? r.error.step : "", code: f.code, message: f.message }; r.finished_at = this.now(); r.updated_at = r.finished_at; this.#attend(r, { kind: "failed", step: r.error.step, code: f.code, message: f.message });
+          await this.store.putRun(r);
+        }
+      } catch { /* the store is the fault; the next recover() finds the run */ }
+      try { this.emitFn("flow.error", { run: id, message: String(e && /** @type {any} */ (e).message || e).slice(0, 200) }, { chain: null, subject: "", corr: id }); } catch { /* said if it can be */ }
+    });
+  }
 
   /** @param {string} runId */
   async #execLocked(runId) {
