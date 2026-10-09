@@ -632,6 +632,26 @@
   "documents.generate": {
    "class": "own",
    "why": "makes a document and files it in the Drive and as a record under the caller's own grants; a missing value refuses by name"
+  },
+  "ask.many": {
+   "class": "own",
+   "why": "shows the person a question card in the chat the daemon vouched for (a model cannot name another thread), capped at 6 questions and 20 waiting; the answers are only the person's words, and any act after them is still held at the Gate"
+  },
+  "previews.open": {
+   "class": "own",
+   "why": "shows the person a card for a port of the session's own server (Vyre's own ports are refused) or for files inside the folder the session works in; it never runs a command for a model, and anything outward after it is still held at the Gate"
+  },
+  "previews.operator": {
+   "class": "own",
+   "why": "a display card for a computer's live screen in the session's own chat; it shows status words and does no act on the computer"
+  },
+  "previews.step": {
+   "class": "own",
+   "why": "a status line on a card of the session's own chat (a model cannot move another chat's card); words only"
+  },
+  "previews.signin": {
+   "class": "own",
+   "why": "a sign-in card for the person in the session's own chat, capped at 10 waiting; the person types the password in private and the session never sees it, and it grants nothing"
   }
  }
 }

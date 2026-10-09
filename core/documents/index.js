@@ -39,8 +39,8 @@ export function registerDocuments(ctx) {
   /** The newest version number of a Drive file, or 0. */
   const latest = async (/** @type {any} */ d, /** @type {string} */ p) => { try { const h = await d.gateway.drive.history(d.chain, p); const v = Array.isArray(h) ? h : h && h.versions; return v && v.length ? Number(v[v.length - 1].ver) : 0; } catch (e) { if (/** @type {any} */ (e).code === "not_found") return 0; throw e; } };
 
-  tool("documents.template.add", `Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most ${MAX_BYTES / 1048576} MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops, loopFields }.`,
-    obj({ space: str, name: str, base64: str }, ["name", "base64"]), async (i, d) => {
+  tool("documents.template.add", "Save a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name exists. Answers its {placeholders}.",
+    obj({ space: str, name: str, base64: { type: "string", description: `the file's bytes, standard base64, at most ${MAX_BYTES / 1048576} MB` } }, ["name", "base64"]), async (i, d) => {
       const name = nameOf(i.name), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
       if (Math.floor(text.length / 4) * 3 > MAX_BYTES + 3) throw refuse(`a template is at most ${MAX_BYTES / 1048576} MB`, "too_large");
@@ -69,8 +69,8 @@ export function registerDocuments(ctx) {
     return { name, version, ...(({ names, loops, loopFields }) => ({ placeholders: names, loops, loopFields }))(placeholders(bytes)) };
   }, { effect: "read" });
 
-  tool("documents.generate", "Make a document from a template and values, and file it: { template, values?, records?: { alias: record reference }, name?, project?, contact?, format? (docx or pdf), version?, space? }. `values` and the fields of each record (under its alias, {client.name}) fill the {placeholders}. A missing value stops it and names every one; nothing is guessed. Files the result in the Drive under Documents/<project>/ and, when the Space has a Document type, a Document record linked to `contact` and `project`. Answers { path, version, size, sha256, format, record? }.",
-    obj({ space: str, template: str, values: { type: "object" }, records: { type: "object" }, name: str, project: str, contact: str, format: { type: "string", enum: ["docx", "pdf"] }, version: { type: "integer" } }, ["template"]), async (i, d) => {
+  tool("documents.generate", "Make a document from a template, values and records, and file it in the Drive. A missing value stops it and names every one.",
+    obj({ space: str, template: str, values: { type: "object", description: "fills the {placeholders}" }, records: { type: "object", description: "alias to record reference; its fields fill {alias.field}" }, name: str, project: { type: "string", description: "files under Documents/<project>/ and links the Document record" }, contact: { type: "string", description: "links the Document record to this contact" }, format: { type: "string", enum: ["docx", "pdf"] }, version: { type: "integer" } }, ["template"]), async (i, d) => {
       const tname = nameOf(i.template), tpath = templatePath(tname);
       const tver = i.version ?? (await latest(d, tpath));
       if (!tver) throw refuse(`no template named ${tname}`, "not_found");
@@ -99,8 +99,8 @@ export function registerDocuments(ctx) {
     });
 
   ctx.tool("documents.signing.flow", {
-    description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, base, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. When a record of that type enters out_stage it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (held for your yes), waits for the signature and moves the record to signed_stage. Nothing is created: define it with the Flows tools.",
-    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, base: str, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id", "base"]),
+    description: "Build the Flow definition that sends a document for signature when a record enters a stage. Creates nothing: define it with the Flows tools.",
+    input: obj({ type: str, out_stage: { type: "string", description: "entering it asks for the signature and emails the signer their link, held for your yes" }, signed_stage: { type: "string", description: "the record moves here once signed" }, template_id: { type: "integer" }, base: str, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id", "base"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),
   });

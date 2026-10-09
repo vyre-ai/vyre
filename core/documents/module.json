@@ -27,7 +27,8 @@
       {
         "name": "documents.generate",
         "effect": "write",
-        "reach": "anyone"
+        "reach": "anyone",
+        "projectArg": "project"
       },
       {
         "name": "documents.signing.flow",

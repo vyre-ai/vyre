@@ -139,14 +139,14 @@ export default {
     const lineFor = (/** @type {string} */ action, /** @type {any} */ input) => { const h = hostOf(input.url || input.site); return action === "open" && h ? `Opening ${h}` : action === "signin" && h ? `Signing in to ${h} from your Vault` : LINES[action] || "Working"; };
 
     ctx.tool("computer.targets", {
-      description: "The computers you can work on by name: the cloud computer and each paired Mac (or this Mac), and whether each is online. Left unnamed, work goes to the cloud computer.",
+      description: "The computers you can work on by name (cloud computer, each paired Mac) and whether each is online. Unnamed work goes to the cloud.",
       input: obj({}), effect: "read", callers: CALLERS,
       run: async () => ({ computers: (await targets()).map(t => ({ name: t.name, kind: t.kind, ...(t.online !== undefined ? { online: t.online } : {}) })) }),
     });
 
     ctx.tool("computer.use", {
-      description: "Work on a computer: the cloud computer by default, or one you name in `on` (\"my Mac\", \"office computer\"). `do`: look (read the page or app), shot, tabs, open {url}, click, type, fill, act, find/get (files), signin {login} (a login lent to you; you never see it), route {goal, site} (what already covers this without the screen). Connections and learned operations come first: if one covers the site you are told once, and `screen: true` keeps the screen. `args` are the engine's own inputs (a selector, a ref, text).",
-      input: obj({ do: { type: "string", enum: ["look", "shot", "tabs", "open", "click", "type", "fill", "act", "press", "find", "get", "signin", "route"] }, on: str, url: str, app: str, goal: str, site: str, login: str, screen: { type: "boolean" }, args: { type: "object" }, agent: str }, ["do"]),
+      description: "Work on a computer, cloud by default or the one named in `on`. `do` picks the action (enum); `args` carry its inputs.",
+      input: obj({ do: { type: "string", enum: ["look", "shot", "tabs", "open", "click", "type", "fill", "act", "press", "find", "get", "signin", "route"], description: "look (read the page or app), shot, tabs, open {url}, click, type, fill, act, press, find/get (files), signin {login} (a login lent to you; you never see it), route {goal, site} (what already covers this without the screen)" }, on: { ...str, description: "Computer name, e.g. my Mac, office computer; leave out for the cloud computer" }, url: str, app: str, goal: str, site: str, login: str, screen: { type: "boolean", description: "Connections and learned operations come first: if one covers the site you are told once; true keeps the screen anyway" }, args: { type: "object", description: "The engine's own inputs: a selector, a ref, text" }, agent: str }, ["do"]),
       effect: "write", callers: CALLERS,
       run: async (/** @type {any} */ input, /** @type {any} */ meta = {}) => {
         const action = String(input.do);

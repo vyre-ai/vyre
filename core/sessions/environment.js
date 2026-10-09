@@ -22,13 +22,13 @@ export const FAMILIES = {
   team: { section: "team" }, agents: { section: "team" }, threads: { section: "team" }, memory: { section: "memory" }, recall: { section: "memory" }, projects: { section: "project" },
   connectors: { section: "connectors" }, mcp: { section: "connectors" }, vault: { section: "connectors" }, google: { section: "connectors" }, mail: { section: "connectors" }, github: { section: "connectors" },
   spaces: { section: "space" }, files: { section: "project" }, artifacts: { section: "project" }, publish: { section: "project" }, planner: { section: "planner" }, goals: { section: "planner" }, watchers: { section: "planner" },
-  glass: { section: "computer" }, computers: { section: "computer" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
+  glass: { section: "computer" }, computers: { section: "computer" }, computer: { section: "computer" }, ask: { section: "approvals" }, previews: { section: "project" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
   appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },
   link: { more: true }, names: { more: true }, network: { more: true }, onboard: { more: true }, pluginagent: { more: true }, providers: { more: true }, relay: { more: true }, sessions: { more: true },
   settings: { more: true }, sidebar: { more: true }, views: { more: true }, design: { more: true }, brand: { more: true }, spend: { more: true }, system: { more: true }, tips: { more: true }, undo: { more: true }, update: { more: true }, vitals: { more: true }, about: { more: true },
   context: { more: true }, import: { more: true }, mentions: { more: true }, modules: { more: true }, presence: { more: true }, push: { more: true }, releases: { more: true }, rules: { more: true },
-  docs: { more: true }, design: { more: true }, models: { more: true }, skills: { more: true }, vyre: { more: true }, signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
+  docs: { more: true }, comms: { more: true }, documents: { more: true }, design: { more: true }, models: { more: true }, skills: { more: true }, vyre: { more: true }, signin: { more: true }, sight: { more: true }, statusline: { more: true }, stream: { more: true }, suggest: { more: true }, sync: { more: true }, term: { more: true }, waiting: { more: true }, wink: { more: true },
 };
 
 /** The family of a tool name. @param {string} name */
@@ -94,6 +94,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
 
   if (has("project") || s.artifactsDir) add("project", 4, [
     s.artifactsDir ? `Files you make for the person (images, documents, pages, spreadsheets, code output) belong in $VYRE_ARTIFACTS_DIR (${clean(s.artifactsDir, 200)}): save them there at the top level, not in the repository. Vyre keeps what is saved there in the project's Drive folder. Do not put secrets there. A file the person drops into the chat is already kept under chat/ and needs no action.` : "",
+    fam("previews") ? "A server or page you build opens live for the person with previews.open: give it a port you started, or a folder of files, and a card appears in the chat." : "",
     has("project") ? "A Project is one record. Its session records, Drive folder, repository, memory and client hang off it or point at it; tools_call work.situation names the one you are in. Folders and files are reached with the files tools." : "",
   ]);
 
@@ -104,6 +105,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
 
   add("approvals", 6, [
     "Outward acts (send, post, pay, publish, share) are never run for you. They come back held as a task for the person's yes. So propose: say exactly what you would send and to whom, then stop and tell the person it waits for them. Do not try another route to the same act.",
+    fam("ask") ? "When several things are unclear before you act, ask them together with ask.many: one card, choices plus their own words, answered once." : "",
   ], true);
 
   if (has("team") || fam("agents") || fam("threads")) add("team", 7, [

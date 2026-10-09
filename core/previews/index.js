@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
 import { createBridge } from "./bridge.js";
@@ -25,7 +26,7 @@ import { mayOpen, mayManage, ACCESS } from "./access.js";
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const PERSON_ONLY = ["cli", "local", "deck", "capsule", "tailnet", "device", "mobile"];
+const PERSON_ONLY = [...PERSON_SURFACES, "tailnet", "device"];
 
 export const MIGRATIONS = [
   `CREATE TABLE previews_items (
@@ -219,8 +220,8 @@ export default {
 
     // ---- tools -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     ctx.tool("previews.open", {
-      description: "Show the person something: a web page or app your server serves on a port ({ port }), or a file or folder you wrote ({ path }: an HTML page or app, a Markdown, SVG or Mermaid file, a built site). The page can be anything; Vyre adds nothing to it unless it declares capabilities (the way a Claude artifact does: db, user, sample, permissions, downloads), which the viewer then allows or not. Call it after you start a dev server or an app, with { port, title }. A card appears in this chat; the person opens it on its own address, and can share it with the project or team. Say `command` (how you started it) so Vyre can offer to keep it running after this session ends. Returns { id, state }.",
-      input: obj({ title: str, port: { type: "integer" }, command: str, cwd: str, path: str, capabilities: { type: "object" }, thread: str, project: str, access: { type: "string", enum: [...ACCESS] } }, ["title"]),
+      description: "Show the person an app on a port ({ port }) or a file or folder you wrote ({ path }) as a chat card.",
+      input: obj({ title: str, port: { type: "integer", description: "A web page or app your server serves on this port; call it after you start the server, with title. Returns { id, state }" }, command: { ...str, description: "How you started it, so Vyre can offer to keep it running after this session ends" }, cwd: str, path: { ...str, description: "An HTML page or app, a Markdown, SVG or Mermaid file, or a built site" }, capabilities: { type: "object", description: "Optional, as a Claude artifact declares: db, user, sample, permissions, downloads; the viewer allows or not. Vyre adds nothing otherwise" }, thread: str, project: str, access: { type: "string", enum: [...ACCESS] } }, ["title"]),
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const person = await whoIs(meta);
@@ -404,8 +405,8 @@ export default {
     const asker = (/** @type {any} */ meta) => ({ person: isPerson(meta), module: String((meta && meta.caller) || "").startsWith("module:") });
 
     ctx.tool("previews.operator", {
-      description: "Show the person a computer's live screen as a card in this chat, with what it is doing now: { computer, title?, run?, thread? }. Returns { run }. Then call previews.step as it works, so the card's status line and step track follow. The person watches, or takes over the keyboard, from the card.",
-      input: obj({ computer: str, title: str, run: str, thread: str }, ["computer"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      description: "Show a computer's live screen as a chat card with what it is doing. Returns { run }; then call previews.step as it works.",
+      input: obj({ computer: { ...str, description: "The computer's name, as Glass lists it. The person can watch or take over the keyboard from the card" }, title: str, run: str, thread: str }, ["computer"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
         const a = asker(meta);
@@ -421,8 +422,8 @@ export default {
     });
 
     ctx.tool("previews.step", {
-      description: "Say what the computer is doing now, in words a person reads (\"Opening the workflow list\", \"Typing the password from your Vault\"): { run, line, state? } with state working, done, stuck or paused. The card's status line and its last seven steps follow.",
-      input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES }, ask: str }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      description: "Say what the computer is doing now, in words a person reads, on the run's card. State: working, done, stuck or paused.",
+      input: obj({ run: str, line: { ...str, description: "Plain words, e.g. Opening the workflow list. The card shows the last seven steps" }, state: { type: "string", enum: STEP_STATES }, ask: str }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
         if (!o) throw refuse("no such run: start it with previews.operator", "not_found");
@@ -458,8 +459,8 @@ export default {
       },
     });
     ctx.tool("previews.run-get", {
-      description: "The state of a run you started: { run, state, reply? }. `reply` is what the person typed when you were stuck. With wait_ms (at most 55 s) it waits for a reply.",
-      input: obj({ run: str, wait_ms: { type: "integer" } }, ["run"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      description: "The state of a run you started: { run, state, reply? }, where reply is what the person typed when you were stuck.",
+      input: obj({ run: str, wait_ms: { type: "integer", description: "Wait for a reply up to this many ms (at most 55000)" } }, ["run"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
         if (!o) throw refuse("no such run", "not_found");
@@ -483,8 +484,8 @@ export default {
     });
 
     ctx.tool("previews.signin", {
-      description: "Ask the person to sign in to a site on the computer, as a card in this chat: { computer, site, why?, thread?, wait_ms? }. The card says \"Sign in to <site>\" and opens the screen in place with the keyboard theirs and private (you cannot see the page until they hand back, and you never get the password); when they are done you carry on. Waits up to wait_ms (at most 55 s); if they have not finished, answers { id, state: \"waiting\" } and you call previews.signin-get { id, wait_ms }.",
-      input: obj({ computer: str, site: str, why: str, thread: str, wait_ms: { type: "integer" } }, ["computer", "site"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
+      description: "Ask the person to sign in to a site on the computer, in a chat card; they type privately. Waits, else call previews.signin-get.",
+      input: obj({ computer: str, site: { ...str, description: "The card says Sign in to <site> and opens the screen with the keyboard theirs. You cannot see the page until they hand back, and never get the password" }, why: str, thread: str, wait_ms: { type: "integer", description: "Wait up to this many ms (at most 55000); if not finished, answers { id, state: waiting } and you call previews.signin-get { id, wait_ms }" } }, ["computer", "site"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
         const site = String(i.site || "").replace(/\s+/g, " ").trim().slice(0, 80);

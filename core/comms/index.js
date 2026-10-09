@@ -55,8 +55,8 @@ export function registerComms(ctx) {
   };
 
   ctx.tool("comms.send", {
-    description: "Send an email or a text message as the person, held at the Gate until they say yes to the final words: { via: email | sms, to, body, subject? (email), account? (email), why? }. Email goes through their mail account; a text through their Twilio account (comms.sms in config: account SID and the number it comes from). Several numbers are one yes. Nothing is sent from here; the answer is { held, via, message }. Once sent it is logged on the client.",
-    input: obj({ via: { type: "string", enum: ["email", "sms"] }, to: { anyOf: [str, { type: "array", items: str }] }, subject: str, body: str, account: str, why: str }, ["via", "to", "body"]),
+    description: "Send an email or text as the person, held at the Gate until they approve the final words. Returns { held, via, message }.",
+    input: obj({ via: { type: "string", enum: ["email", "sms"], description: "email goes through their mail account; sms through their Twilio account (comms.sms in config: account SID and the number it comes from)" }, to: { anyOf: [str, { type: "array", items: str }], description: "Several numbers are one yes" }, subject: { ...str, description: "email only" }, body: { ...str, description: "The final words. Once sent, logged on the client" }, account: { ...str, description: "email only: which mail account" }, why: str }, ["via", "to", "body"]),
     callers: CALLERS,
     run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
       const body = String(i.body ?? "");

@@ -31,6 +31,8 @@ const NOT_OUTWARD = {
   "mcp.call": "the MCP hub classifies each target tool and holds the outward ones at the Gate; the generic call is not itself a send",
   "memory.merge": "merges memory between your own devices",
   "publish.create": "starts a draft; nothing is public until publish.publish",
+  "previews.reply": "the person types the answer a stuck run asked for on its card; it reaches the agent that asked, inside Vyre",
+  "previews.share": "sets which people of the Space may open a preview (me, project, team); anyone-with-the-link is refused until the public door exists, and will go through Publish and the Gate then",
   "publish.flow": "a read of the publish flow",
   "publish.list": "a read",
   "publish.plan": "a read",

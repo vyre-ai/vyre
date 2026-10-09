@@ -332,16 +332,32 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
+  ["approvals.local-yes", "needs the person's Face ID or presence: gives the yes for a card on this computer (Touch ID, or a code written to their own terminal)"],
+  ["ask.answer", "the person's own words: the answers to a question card, which an assistant must not type for them"],
+  ["ask.cancel", "the person puts a question card away: their own say over a card the agent asked"],
+  ["flows.test.remove", "removes a saved test case, which loosens what approving a Flow requires: an assistant adds cases, only the person removes one"],
+  ["flows.rollback", "needs the person's Face ID or presence: going back to an earlier Flow version approves it again, and an approval is never inherited"],
+  ["models.eval-approve", "spends on the owner's own key: the person's yes to an eval, with a hard cap, never an assistant's on its own proposal"],
+  ["models.eval-decline", "the owner's own no to evaluating a model: its body refuses anything but a person"],
+  ["models.eval-record", "the owner's runner reports a score with the owner's own key: its body refuses anything but a person"],
+  ["previews.url", "gives a browser a signed-in session on a preview: the one-time address is for the person's own surface"],
+  ["previews.keep", "runs a command on the server for good, outside the agent's walls: the person's own act (an agent's command is only remembered)"],
+  ["previews.restart", "runs again the command Vyre keeps running for a preview: the person's own act, with the maker or an owner or admin"],
+  ["previews.stop", "the person's stop over a server Vyre keeps running: only the maker, or an owner or admin, does it"],
+  ["previews.remove", "stops a preview and forgets it: the person's own act, only the maker or an owner or admin"],
+  ["previews.log", "a server's output can carry its users' data: the person's own view, only for someone who may open the preview"],
+  ["previews.share", "sets who of the Space may open a preview: the person's own say over who reaches it, only the maker or an owner or admin"],
+  ["previews.thumb", "the picture of a page can show anything on it: the person's own view, only for someone who may open the preview"],
+  ["previews.frame", "a still of a computer's screen: the person's own view; a Mac's pixels never leave the Mac"],
+  ["previews.reply", "the person types what a stuck run asked for (a code, an answer): their own words, never a model's"],
+  ["previews.signin-done", "the person says they have signed in on a site, or puts the card away: only they can say it"],
 ]);
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
-  "previews.operator", "previews.step", "previews.run-get", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
-  "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
-
-  "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
-  "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
+  "update.whats-new", "update.whats-new-seen", // the release notes of the running version, once per person: the assistant says them in the notes' own words and marks them seen; nothing but a seen mark is written
+  "flows.settle", "flows.advance", // answer a run that needs attention, and move a record past its stage gate early: the kernel holds the call to the person's own chain (a stage gate to its owner or an admin, with a reason on the ledger); a value for a skipped step stays the person's
+  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",

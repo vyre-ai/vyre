@@ -5,12 +5,13 @@
 // Pending asks live in memory (a restart ends the wait: the agent asks again); the card is the chat's own frame (thread.questions).
 import crypto from "node:crypto";
 import { isPerson } from "../../lib/caller.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { cleanQuestions, checkAnswers, answerLines } from "./model.js";
 
 const str = { type: "string" };
 const obj = (/** @type {any} */ properties, required = []) => ({ type: "object", properties, required });
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const PERSON = ["cli", "local", "deck", "capsule", "tailnet", "device", "mobile"];
+const PERSON = [...PERSON_SURFACES, "tailnet", "device"];
 const TTL_MS = 30 * 60_000, MAX_WAIT_MS = 55_000, MAX_OPEN = 20;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -32,8 +33,8 @@ export default {
     });
 
     ctx.tool("ask.many", {
-      description: "Ask the person several things at once, as ONE card in this chat: { title?, questions: [{ id?, prompt, choices: [label or { label, detail }], allowText?, optional? }], wait_ms? }. Each question has choices and room for the person to type or say their own. Use it whenever more than one thing is unclear, instead of asking one at a time. Waits up to wait_ms (at most 55 s) for the answers; if they have not come, answers { id, state: \"waiting\" } and you call ask.get { id, wait_ms } to wait again. Answers { id, state: \"answered\", answers, lines }. The answers decide nothing by themselves: when you then send or change something, it still waits for the person's yes.",
-      input: obj({ title: str, questions: { type: "array" }, wait_ms: { type: "integer" }, thread: str }, ["questions"]),
+      description: "Ask several things in one chat card; use when more than one thing is unclear. Waits for answers, else returns state waiting: call ask.get.",
+      input: obj({ title: str, questions: { type: "array", description: "[{ id?, prompt, choices: [label or { label, detail }], allowText?, optional? }]. The person can also type or say their own. Answers decide nothing alone: a send or change still waits for their yes." }, wait_ms: { type: "integer", description: "Wait for answers up to this many ms (at most 55000); if none, answers { id, state: waiting } and you call ask.get { id, wait_ms }" }, thread: str }, ["questions"]),
       callers: [...PERSON, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         sweep();

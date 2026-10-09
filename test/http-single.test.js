@@ -17,7 +17,7 @@ const PARAM = "calls a `fetch` it was handed (a parameter or dependency) whose d
 const ALLOWED = new Map([
   // not the internet
   ["core/cli/screen/live.js", LOCAL], ["core/daemon/client.js", LOCAL], ["core/daemon/index.js", LOCAL], ["lib/vyre-core-client.js", LOCAL], ["core/cli/commands/vault.js", "a local function named fetch (the vault fetch the CLI waits on), not HTTP"],
-  ["core/computers/", LOCAL], ["core/dockerproxy/proxy.js", LOCAL], ["core/appmods/index.js", LOCAL], ["core/appmods/proxy.js", LOCAL], ["core/wink/control/", LOCAL], ["core/wink/node/shim.js", LOCAL],
+  ["core/computers/", LOCAL], ["core/dockerproxy/proxy.js", LOCAL], ["core/appmods/index.js", LOCAL], ["core/appmods/proxy.js", LOCAL], ["core/previews/index.js", LOCAL + " (the preview's own upstream port, read once for its poster)"], ["core/previews/client/", BROWSER + " (the page-side runtime a preview serves to its own page)"], ["core/wink/control/", LOCAL], ["core/wink/node/shim.js", LOCAL],
   ["core/relay/bridge.js", LOCAL + " (the relay channel's own connection)"], ["core/daemon/app-sw.js", BROWSER], ["core/switchboard/index.js", "functions named fetch that read a credential, not HTTP"],
   ["kernel/storage/pool.js", "`fetch(id)` reads a blob from the pool, not HTTP"], ["core/names/directory.js", PARAM], ["lib/identity/directory.js", PARAM], ["lib/acme/acme.js", PARAM], ["lib/connectors/", PARAM],
   ["core/vault/health.js", PARAM], ["core/sessions/drivers/openrouter.js", PARAM + " (the pinned API client in lib/api-endpoint.js)"],
