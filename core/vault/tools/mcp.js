@@ -29,6 +29,14 @@ export function register({ vault, tool, internal }) {
     obj({ id: str }, ["id"]), ({ id }, { caller }) => vault.mcp.allowReveal(id, String(caller)),
     presence("Show a value to an outside agent, once", ({ id }) => { const r = vault.mcp.reveals().find(x => x.id === id); return r ? `Show ${String(r.item).slice(0, 60)} to ${String(r.pass).slice(0, 60)}'s agent, once` : "Show a value to an outside agent, once"; }));
   tool("vault.mcp.reveal.clear", [...people, "mobile"], "Decline an outside agent's ask to see a value (it was never sent).", obj({ id: str }, ["id"]), ({ id }) => ({ cleared: vault.mcp.clearReveal(id) }));
+  // The task credential lease (core/vault/access.js lend): only the flows module, after the person's yes at the Kit install, lends; ending needs the same caller.
+  const flowsOnly = (/** @type {string} */ caller, /** @type {string} */ what) => { if (caller !== "module:flows") throw Object.assign(new Error(`only the flows module ${what}`), { code: "denied" }); };
+  internal("vault.connections.lend", "A task's doer may use named Connections for that task: { task, agent, connections: [ids], until }. Only the flows module asks, and only for credentials the task's approved Kit version names. Use only; anything outward is still held. Idempotent per task, agent and Connection. { lent, already }.",
+    obj({ task: str, agent: str, connections: { type: "array", items: str }, until: { type: "number" } }, ["task", "agent", "connections", "until"]),
+    (input, { caller }) => { flowsOnly(String(caller), "lends a Connection to a task"); return vault.access.leaseTask(input); });
+  internal("vault.connections.end", "A task is over: take back every Connection lent for it: { task, reason? }. Only the flows module asks. { ended }.",
+    obj({ task: str, reason: str }, ["task"]),
+    (input, { caller }) => { flowsOnly(String(caller), "ends a task's leases"); return vault.access.leaseEnd(input); });
   // What the public gate (core/wink) asks: is the endpoint listening, and where it is reachable from outside once the gate has an address.
   internal("vault.mcp.status", "Whether the Vault MCP endpoint is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.", obj({}), (_i, { caller }) => {
     if (caller !== "module:wink") throw Object.assign(new Error("only the public gate asks where the Vault MCP listens"), { code: "denied" });

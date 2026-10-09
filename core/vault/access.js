@@ -146,6 +146,43 @@ export class Access {
   }
 
   /**
+   * A task credential lease (team/BACKLOG.md): the doer agent may use named Connections for one task. Its authority is the person's yes when the Kit was installed, which listed those credentials, so it is
+   * bound to exactly that: flows says (`flows.kit.credentials`) which approved Kit version the task is from and which credentials it names; a Connection that is not named there, or does not exist, is refused.
+   * Use only (a read runs, anything outward is still held), until `until` or `leaseEnd`, idempotent per task, agent and Connection, so a restart does not double it. The grant records the Kit and its version.
+   * @param {{ task: string, agent: string, connections: string[], until: number }} i
+   */
+  async leaseTask({ task, agent, connections, until }) {
+    const K = this.need();
+    if (!/^[A-Za-z0-9_.-]{1,80}$/.test(String(task))) throw new Error("name the task");
+    if (!Array.isArray(connections) || !connections.length || connections.length > 20) throw new Error("name the Connections to lend, up to 20");
+    if (!(Number(until) > this.v.clock())) throw new Error("a lease ends in the future");
+    const uid = await this.uidOf(agent);
+    if (!uid) throw new Error(`no agent named ${agent}`);
+    const k = await this.ctx.call("flows.kit.credentials", { task: String(task) });
+    const kit = k && k.data;
+    if (!kit || kit.approved !== true || typeof kit.kit !== "string" || !kit.version || !Array.isArray(kit.credentials)) throw Object.assign(new Error("no approved Kit version names credentials for that task"), { code: "denied" });
+    for (const c of connections) {
+      if (!kit.credentials.includes(c)) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not named by the task's Kit, so it cannot be lent`), { code: "denied" });
+      const got = await this.ctx.call("connectors.connection.get", { id: String(c) });
+      if (got.error) throw Object.assign(new Error(`no Connection ${String(c).slice(0, 60)}`), { code: "not_found" });
+    }
+    const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
+    const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until) })));
+    this.v.audit("lease-lent", null, "module:flows", true, `task ${task} to ${agent}: ${connections.join(", ")} (${tag})`);
+    this.v.emit("vault.lease-lent", { task, agent, connections, kit: kit.kit, version: kit.version });
+    return { lent: made.length, already: connections.length - made.length };
+  }
+
+  /** The task is over: every lease of it is taken back (or it ended by itself at its time). @param {{ task: string, reason?: string }} i */
+  async leaseEnd({ task, reason }) {
+    const K = this.need();
+    const gone = await K.vault.takeBack({ source: `vault:lease:${String(task)}`, reason: String(reason || "the task ended").slice(0, 120) });
+    this.v.audit("lease-ended", null, "module:flows", true, `task ${task}: ${gone.length} taken back`);
+    this.v.emit("vault.lease-ended", { task, ended: gone.length });
+    return { ended: gone.length };
+  }
+
+  /**
    * Which kernel agent a model call is: the agent it names, else the assistant. The kernel's own default assistant is a delegate of the person (it holds whatever the person holds), so a credential is asked
    * of the agent's STABLE ID (agents.uid), which is never a delegate: an agent or the assistant reaches a credential only through a grant of its own.
    * @param {{ agent?: string, agentKind?: string }} meta @param {string} caller
@@ -159,7 +196,14 @@ export class Access {
     try {
       await this.convertScopes();
       const uid = await this.uidOf(name);
-      return uid ? String(await K.agentMay(uid, action, await this.urn(item), undefined, true)) : "deny";
+      if (!uid) return "deny";
+      // The credential's own address, and for a Connection's derived credential (`conn-<id>`) the Connection's: a task lease is a grant on the Connection.
+      const at = [await this.urn(item)];
+      const c = /^conn-([A-Za-z0-9][A-Za-z0-9._-]{0,127})$/.exec(item);
+      if (c) at.push(`${at[0].split("/item/")[0]}/connection/${c[1]}`);
+      let best = "deny";
+      for (const res of at) { const e = String(await K.agentMay(uid, action, res, undefined, true)); if (e === "allow") return e; if (e === "ask") best = e; }
+      return best;
     } catch { return "deny"; }
   }
 

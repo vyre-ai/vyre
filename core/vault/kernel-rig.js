@@ -12,7 +12,7 @@ import { AGENT_ACTIONS } from "../../kernel/seal/uses.js";
 
 export const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 
-/** @param {{ clock?: () => number, agents?: Record<string, string>, people?: string[], projects?: Record<string, string> }} [o] */
+/** @param {{ clock?: () => number, agents?: Record<string, string>, people?: string[], projects?: Record<string, string>, call?: (tool: string, input: any) => Promise<any> | any }} [o] */
 export async function kernelRig(o = {}) {
   let T = Date.now();
   const clock = o.clock || (() => ++T);
@@ -41,6 +41,7 @@ export async function kernelRig(o = {}) {
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; }
     if (tool === "agents.list") return { data: Object.entries(agents).map(([name, uid]) => ({ uid, name, kind: name === "assistant" ? "assistant" : "agent" })) };
     if (tool === "projects.record") return projects[input.project] ? { data: { urn: `vyre://${SPACE}/project/${projects[input.project]}` } } : { error: { code: "not_found", message: "no project" } };
     if (tool !== "agents.uid") return { error: { code: "no_such_tool", message: tool } };
