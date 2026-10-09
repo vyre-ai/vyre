@@ -36,7 +36,7 @@ export function build() {
 <style>:root{color-scheme:light dark;--bg:#fff;--fg:#16161a;--mut:#62626b;--line:#e4e4ea}@media(prefers-color-scheme:dark){:root{--bg:#101014;--fg:#ececf1;--mut:#9a9aa6;--line:#26262e}}
 body{margin:0 auto;max-width:880px;padding:32px 16px;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}h1{font-size:28px}h2{font-size:20px;margin:0}small{font-size:12px;color:var(--mut);margin-left:8px;font-weight:400}
 section{border-top:1px solid var(--line);padding:20px 0}dl{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;margin:12px 0}dt{color:var(--mut)}dd{margin:0}code,pre{font:12px/1.5 ui-monospace,monospace}pre{overflow:auto;padding:12px;border:1px solid var(--line);border-radius:8px}
-summary{cursor:pointer;color:var(--mut)}nav a{margin-right:12px}</style></head><body>
+summary{cursor:pointer;color:var(--mut)}nav{display:flex;flex-wrap:wrap;gap:4px 14px}</style></head><body>
 <h1>Blocks</h1><p>Generated from <code>lib/views/blocks.js</code>. Layouts: ${LAYOUT_KINDS.join(", ")}. Up to ${SCREEN_LIMITS.blocks} blocks per screen, ${SCREEN_LIMITS.depth} levels deep.</p>
 <nav>${blocks.map(b => `<a href="#${b.type}">${b.type}</a>`).join("")}</nav>
 ${blocks.map(card).join("\n")}
