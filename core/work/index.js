@@ -631,9 +631,15 @@ export default {
       },
     });
     ctx.tool("work.tools", {
-      description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
-      input: obj(),
-      run: async (_input, extra) => ({ tools: await surfaceOf().list(await chainOf(extra)) }),
+      description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do: name, what it does and its risk. A tool the caller cannot use is not listed. Give `tool` for one tool with its input shape, or `schemas: true` for every shape.",
+      input: obj({ tool: { type: "string" }, schemas: { type: "boolean" } }),
+      run: async (input, extra) => {
+        const all = await surfaceOf().list(await chainOf(extra));
+        const one = input && input.tool ? all.filter(t => t.name === String(input.tool)) : null;
+        if (one) return { tools: one };
+        // A catalog of every shape is most of 30,000 characters; the names and one line each are enough to choose, and the shape of the one chosen is a call away.
+        return { tools: input && input.schemas === true ? all : all.map(t => ({ name: t.name, risk: t.risk, description: String(t.description || "").split(/(?<=\.) /)[0].slice(0, 70) })) };
+      },
     });
     ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",

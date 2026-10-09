@@ -12,7 +12,7 @@ when: You need a tool and do not know its name, a tool you expected is missing, 
 
 ## What you are listed, and the rest
 
-Your tool list is short on purpose: about two dozen tools you will want most (memory, recall, a Space's records through `work_tools` and `work_call`, the planner, Flows, Connections, the Vault, files, asking a teammate, docs, skills) plus `tools_find`, `tools_run`, `results_read`, `tools_call` and `vyre_core`. Every other tool you may use is still there. Say what you are about to do to `tools_find` ("search my inbox") and it returns the best three, each with a ready call; run one with `tools_call`. `vyre_core` lists Vyre's modules and whether each is running here. A tool you may not use is never found, the same as a skill you may not use.
+Your tool list is short on purpose: about two dozen tools you will want most (memory, recall, a Space's records through `work_tools` and `work_call`, the planner, Flows, Connections, the Vault, files, asking a teammate, docs, skills) plus `tools_find`, `tools_run`, `tools_call` and `vyre_core`. Every other tool you may use is still there. Say what you are about to do to `tools_find` ("search my inbox") and it returns the best three, each with a ready call; run one with `tools_call`. `vyre_core` lists Vyre's modules and whether each is running here. A tool you may not use is never found, the same as a skill you may not use.
 
 ## Names
 
@@ -46,7 +46,7 @@ Every tool has a reach that says who may call it. As an agent you can call tools
 
 When one job is several calls that depend on each other ("find the client, then their matters, then the open ones"), send them in one `tools_run` instead of one turn each. A step is `{ id, call, input }`; a value `{ expr: "steps.c.rows[0].id" }` reads an earlier step's result (the Flows expression language: comparisons, `len`, `lower`, `coalesce`, no loops). `when` skips a step. `{ id, fn, inputs }` shapes data in the Flows code sandbox; it can never call a tool. `return` names the one answer you want. Each step is judged as if you had called it alone: the same grants, the same Gate. The script stops at a step that is held (the answer gives the held id and the step; after the person decides, send a new `tools_run` from the next step), refused or failed, and says which steps ran. A tool that needs the person's proof, `tools_run` itself, and the tools that wait on another session do not run inside it.
 
-A result over about 2,000 tokens is not put in your context. You get `{ handle, tokens, summary }`: the shape and the first three items. `results_read` with `{ handle, select, offset, limit }` returns the part you need (`select` is a path such as `rows[0].name`; a list pages). A handle is yours alone, lives 30 minutes and is gone if the session restarts: run the call again. `tools_call results_drop` frees one early.
+A big result comes back whole, so ask for less: `find` takes `limit`, `sort` and a `cursor` (the first three by name is `limit: 3` with a `sort`), and a `tools_run` `return` keeps only what you name. If a result ever comes as `{ handle, summary }`, `results_read { handle, select, where, sort, fields }` returns the part you need.
 
 ## Cheapest path
 

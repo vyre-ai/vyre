@@ -123,3 +123,15 @@ test("the glance says once that there is something to save, as a count and never
   const none = await glance(async (tool) => (tool === "learn.skills" ? { data: { skills: [] } } : { data: tool === "threads.list" ? [] : { rows: [], count: 0 } }));
   assert.ok(!none.lines.some((l) => /skill/.test(l)));
 });
+
+test("a learned Vyre skill says in words what it does, so a request can match it, and keeps the tool ids for the body", async () => {
+  const { template, plainStep } = await import("../core/learn/skills.js");
+  assert.equal(plainStep("vyre:work.call:clients.find"), "look up clients");
+  assert.equal(plainStep("vyre:work.call:matters.create"), "add matters");
+  assert.equal(plainStep("vyre:planner.add"), "add to the planner");
+  const md = template({ steps: ["vyre:work.call:clients.find", "vyre:work.call:matters.find", "vyre:planner.add"], sessions: 3 });
+  const desc = JSON.parse(/^description: (.*)$/m.exec(md)[1]);
+  assert.match(desc, /^Use when asked to look up clients, then look up matters, then add to the planner\./);
+  assert.match(desc, /vyre:work\.call:clients\.find/);
+  assert.ok(desc.length <= 1024);
+});

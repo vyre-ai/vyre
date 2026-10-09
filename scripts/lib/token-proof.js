@@ -64,13 +64,13 @@ export const ARM_ENV = {
   "core-run": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run" } },
   "core-ref": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "ref" } },
   "core-both": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "" } },
-  // The context arms (R031-00q): the core-both listing, and how the session's window is managed. VYRE_PROOF_ROLL is read by the world, VYRE_MANAGED_CONTEXT by the switchboard's seed.
-  "roll-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "off", VYRE_MANAGED_CONTEXT: "off" } },
-  "roll-seed": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "off" } },
-  "roll-ledger": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "on" } },
+  // The context arms (R031-00q): the shipped default (tools_run, results by reference off), and how the session's window is managed. VYRE_PROOF_ROLL is read by the world, VYRE_MANAGED_CONTEXT by the switchboard's seed.
+  "roll-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run", VYRE_PROOF_ROLL: "off", VYRE_MANAGED_CONTEXT: "off" } },
+  "roll-seed": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "off" } },
+  "roll-ledger": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "on" } },
   // The repeated-work arms (R031-00s): the core-both listing, with the learned skill installed or not. VYRE_PROOF_SKILL is read by the world.
-  "skill-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_SKILL: "off" } },
-  "skill-on": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_SKILL: "on" } },
+  "skill-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run", VYRE_PROOF_SKILL: "off" } },
+  "skill-on": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "run", VYRE_PROOF_SKILL: "on" } },
 };
 
 /** Did a run pass: the right tool was called and returned without an error, and the answer holds the seeded fact where the task has one. @param {typeof TASKS[number]} task @param {{ calls: { name: string, input?: any, ok?: boolean }[], text: string }} run */

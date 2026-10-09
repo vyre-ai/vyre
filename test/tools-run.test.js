@@ -272,7 +272,7 @@ async function fakeDaemon(/** @type {any} */ t, /** @type {Record<string, (input
 
 /** An MCP server process aimed at a socket. */
 function mcp(/** @type {any} */ t, /** @type {string} */ sock, extra = {}) {
-  const env = { ...process.env, VYRE_HOME: tempHome(t), VYRE_SOCKET: sock, VYRE_THREAD: "t1", ...extra };
+  const env = { ...process.env, VYRE_HOME: tempHome(t), VYRE_SOCKET: sock, VYRE_THREAD: "t1", VYRE_MCP_FEATURES: "", ...extra };
   delete env.VYRE_AGENT; delete env.VYRE_HUB_CHILD;
   const child = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "inherit"] });
   t.after(() => child.kill());
@@ -432,4 +432,29 @@ test("against a real vyred: a chain reads one real result into the next, and a s
   // the listing carries the two new tools and stays within the budget
   const listed = (await ask(5, "tools/list")).result.tools;
   assert.ok(["tools_run", "results_read"].every((n) => listed.some((/** @type {any} */ x) => x.name === n)) && listed.length <= 30);
+});
+
+test("results by reference: a list is narrowed by where, sort and fields before it is paged, and the summary names the list to read", async () => {
+  const { createStore } = await import("../lib/results-store.js");
+  const store = createStore({ threshold: 10 });
+  const rows = ["delta", "alpha", "charlie", "bravo"].map((n, i) => ({ id: `r${i}`, data: { name: n, stage: i % 2 ? "Open" : "Closed" }, noise: "x".repeat(50) }));
+  const s = store.shape("o", { result: { ok: true, records: rows }, component: { kind: "list" } });
+  assert.ok("ref" in s);
+  assert.equal(s.ref.summary.head.in, "result.records");
+  assert.equal(s.ref.summary.head.count, 4);
+  assert.ok(s.ref.summary.head.fields.includes("data.name"));
+  const first = store.read("o", { handle: s.ref.handle, select: "result.records", sort: "data.name", fields: ["data.name"], limit: 2 });
+  assert.deepEqual(first.data.items, [{ "data.name": "alpha" }, { "data.name": "bravo" }]);
+  assert.equal(first.data.total, 4);
+  const open = store.read("o", { handle: s.ref.handle, select: "result.records", where: { "data.stage": "Open" }, sort: "-data.name", fields: ["id", "data.name"] });
+  assert.deepEqual(open.data.items.map((/** @type {any} */ x) => x["data.name"]), ["bravo", "alpha"]);
+});
+
+test("results by reference is off in a real session and on only when VYRE_MCP_FEATURES asks for it", async () => {
+  const { featuresOf, listing, catalogOf } = await import("../harness/mcp/core-tools.js");
+  assert.deepEqual(featuresOf(undefined), { run: true, ref: false }, "unset: tools_run, no references");
+  assert.deepEqual(featuresOf(""), { run: true, ref: true });
+  assert.deepEqual(featuresOf("ref"), { run: false, ref: true });
+  assert.deepEqual(featuresOf("none"), { run: false, ref: false });
+  void listing; void catalogOf;
 });

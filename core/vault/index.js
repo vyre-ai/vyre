@@ -13,6 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
+import { modelMayRead } from "./api-request.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
@@ -199,7 +200,7 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
+      obj({ filter: str, kind: str, host: str }), (input, { caller, project, agentKind }) => {
         const r = cli.list(vault.list(input), input);
         // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
         // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
@@ -207,8 +208,19 @@ export default {
         // equals a grant's project. An agent with no project sees nothing.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
         if (!who || !r || !Array.isArray(r.items)) return r;
+        // The person's own assistant keeps its reach through vault.request (api-request: the assistant is not asked for a scope), so it is shown the credentials it can call: the name, kind,
+        // description and hosts of each api-credential, never a value and never another kind of item. Without this it reads an empty vault and gives up on a credential it may use.
         const mine = g => Boolean(project) && g.project === project;
-        return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
+        // An api-credential is listed exactly when vault.request would let this caller read through it (modelMayRead: the one check), never more.
+        return (async () => {
+          const callable = [];
+          for (const i of r.items.filter(x => x.kind === "api-credential")) {
+            let config; try { config = (await vault.apiCredential(i.name)).config; } catch { continue; }
+            if (modelMayRead(config, { agent: who[1], project, agentKind })) callable.push({ name: i.name, kind: i.kind, ...(i.description ? { description: i.description } : {}), ...(i.hosts ? { hosts: i.hosts } : {}) });
+          }
+          const granted = r.items.filter(i => i.kind !== "api-credential" && (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind }));
+          return { ...r, items: [...callable, ...granted] };
+        })();
       });
 
     // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
