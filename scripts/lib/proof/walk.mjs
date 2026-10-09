@@ -385,11 +385,24 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
     before = { vault: sorted(vault), plan: sorted(plan), owner: JSON.stringify(mac.pairing.owner), device: JSON.stringify(mac.pairing.device && mac.pairing.device.id || null), info: info && info.version };
     return `vault ${JSON.parse(before.vault).length} item(s), planner ${JSON.parse(before.plan).length}`;
   }, { needs: [U("the server runs the old release and the app shows its notice")] });
+  // #112: a device that signs in again with its own confirmed key REPLACES the session it held: the new token works and the old one is dead at once.
+  /** One call with a given token, then back to the token that was there. @param {string} token */
+  const worksWith = async (token) => { const keep = mac.session.token; mac.session.token = token; try { await mac.callTool("system.info"); return true; } catch { return false; } finally { mac.session.token = keep; } };
+  const replaceStep = (/** @type {string} */ name, /** @type {string[]} */ needs) => run.step(U(name), async () => {
+    const old = String(mac.session.token);
+    await mac.openSession();
+    const fresh = String(mac.session.token);
+    assert.notEqual(fresh, old, "a new session was opened");
+    assert.equal(await worksWith(fresh), true, "the new token works");
+    assert.equal(await worksWith(old), false, "the old token is dead at once");
+    return "replaced; the old token is dead";
+  }, { needs });
+  await replaceStep("a second sign-in with the device's own key succeeds and replaces the first session", [U("record what the vault and records hold before the update")]);
   await run.step(U("the app asks for the update (update.apply, the Settings button's call)"), async () => {
     const r = await mac.callTool("update.apply");
     assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
     return "requested";
-  }, { needs: [U("record what the vault and records hold before the update")] });
+  }, { needs: [U("a second sign-in with the device's own key succeeds and replaces the first session")] });
   await run.step(U("the host's unit installs the candidate and the server comes back as it"), async () => {
     // the container restarts under the app: the old session is gone, so the app opens its next one the way it does after any restart
     // Wait for the box to say it runs the new version AT THE BOX (a docker exec, no app sign-in), then make exactly ONE sign-in try as the app would on reconnecting: more wrong tries lock the device out (presence LOCK_MS).
@@ -421,6 +434,7 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
     return `${notice.current} -> ${st.current}`;
   }, { needs: [U("the app asks for the update (update.apply, the Settings button's call)")] });
   const BACK = U("the host's unit installs the candidate and the server comes back as it");
+  await replaceStep("after the update, signing in again with the device's own key still replaces the held session", [BACK]);
   await run.step(U("the notice is gone"), async () => {
     const st = await mac.callTool("update.status");
     assert.equal(st.available, null, "no newer version is offered any more");
