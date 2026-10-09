@@ -2,7 +2,7 @@
 // the few things a pane needs: Reload (a new sign-in), Open in browser, Close. Nothing about the page is changed. If the page does not come up, it says so in words and offers the log.
 import { useCallback, useEffect, useState } from "react";
 import { Modal, Platform, Linking, View } from "react-native";
-import { Button, IconButton, Text, useUiTheme } from "@vyre/ui";
+import { Button, IconButton, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { tool } from "../real/box";
 import { PreviewFrame } from "./PreviewFrame";
@@ -20,11 +20,14 @@ function Inner({ id, title, phone }: { id: string; title: string; phone: boolean
   const [src, setSrc] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
   const [n, setN] = useState(0);
+  // the sample world has no box: a stand-in page, so the pane can be seen as it looks with a real one
+  const SAMPLE_PAGE = "data:text/html;base64," + (typeof btoa === "function" ? btoa('<!doctype html><meta name=viewport content="width=device-width,initial-scale=1"><body style="margin:0;font:16px/1.5 -apple-system,system-ui,sans-serif;background:#faf9f6;color:#171716"><div style="background:#1f3a5f;color:#fff;padding:18px 24px;font-weight:600;font-size:20px">Juniper Studio</div><main style="max-width:520px;margin:0 auto;padding:28px 20px"><h1 style="font-size:28px;margin:0 0 4px">Tell us about your case</h1><p style="color:#6a675f;margin:0 0 20px">It takes about two minutes.</p><input placeholder="Your name" style="display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #dcd9d1;border-radius:8px;margin-bottom:12px;font:inherit"><input placeholder="Date of the incident" style="display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #dcd9d1;border-radius:8px;margin-bottom:12px;font:inherit"><input placeholder="Phone" style="display:block;width:100%;box-sizing:border-box;padding:12px;border:1px solid #dcd9d1;border-radius:8px;margin-bottom:18px;font:inherit"><button style="background:#4b3fcf;color:#fff;border:0;border-radius:24px;padding:12px 28px;font:inherit;font-weight:600">Send it</button></main>') : "");
   const load = useCallback(async () => {
     setProblem(""); setSrc(null);
+    if (allowsMock()) { setSrc(SAMPLE_PAGE); return; }
     try { setSrc((await tool<{ url: string }>("previews.url", { id, embed: true })).url); }
     catch (e) { setProblem(e instanceof Error && e.message ? e.message : "It did not open."); }
-  }, [id]);
+  }, [id, SAMPLE_PAGE]);
   useEffect(() => { void load(); }, [load, n]);
   const browser = async () => { try { const u = (await tool<{ url: string }>("previews.url", { id })).url; if (Platform.OS === "web") window.open(u, "_blank", "noopener"); else void Linking.openURL(u); } catch (e) { setProblem(e instanceof Error && e.message ? e.message : "It did not open."); } };
   return (
