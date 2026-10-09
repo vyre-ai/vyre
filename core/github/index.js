@@ -16,6 +16,7 @@ import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accou
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
 import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
+import { httpFetch } from "../../lib/http.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -151,7 +152,7 @@ export default {
     }
 
     const signIn = connector({
-      fetch: (...a) => globalThis.fetch(...a), // resolved per call, so a test's stand-in is honoured
+      fetch: (...a) => httpFetch(...a), // resolved per call, so a test's stand-in is honoured
       gh: ghBin,
       taken: name => Boolean(accounts.get(name)),
       // The item a sign-in will make must be free, or one this module made before.
@@ -212,7 +213,7 @@ export default {
     const starFetch = async (method) => {
       const acct = accounts.all()[0];
       const token = await ctx.vault.fetch(acct.item, { field: "token" });
-      return fetch(`https://api.github.com/user/starred/${STAR_REPO}`, {
+      return httpFetch(`https://api.github.com/user/starred/${STAR_REPO}`, {
         method, headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", ...(method === "PUT" ? { "content-length": "0" } : {}) },
         signal: AbortSignal.timeout(10_000),
       });
@@ -302,7 +303,7 @@ export default {
 
     /** One page of GET /user/repos, newest-updated first, mapped to the picker's shape. */
     async function listReposPage(token, page, perPage) {
-      const res = await fetch(`https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${perPage}&page=${page}`,
+      const res = await httpFetch(`https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${perPage}&page=${page}`,
         { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(15_000) });
       if (!res.ok) throw fail(`GitHub answered ${res.status} listing repos.`, "refused");
       const rows = await res.json();
@@ -332,10 +333,10 @@ export default {
     async function getRepo(token, full_name) {
       const url = `https://api.github.com/repos/${full_name}`;
       const accept = "application/vnd.github+json";
-      const authed = await fetch(url, { headers: { authorization: `Bearer ${token}`, accept }, signal: AbortSignal.timeout(15_000) });
+      const authed = await httpFetch(url, { headers: { authorization: `Bearer ${token}`, accept }, signal: AbortSignal.timeout(15_000) });
       if (authed.status !== 401) return { info: authed.ok ? mapRepo(await authed.json()) : null, tokenBroken: false };
       if (!token) return { info: null, tokenBroken: false };
-      const anon = await fetch(url, { headers: { accept }, signal: AbortSignal.timeout(15_000) });
+      const anon = await httpFetch(url, { headers: { accept }, signal: AbortSignal.timeout(15_000) });
       return { info: anon.ok ? mapRepo(await anon.json()) : null, tokenBroken: true };
     }
 
@@ -524,7 +525,7 @@ export default {
       if (!a.user_id) {
         try {
           const token = await ctx.vault.fetch(a.item, { field: "token" });
-          const res = await fetch("https://api.github.com/user", { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
+          const res = await httpFetch("https://api.github.com/user", { headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(10_000) });
           const j = res.ok ? await res.json() : null;
           if (j && Number.isInteger(j.id)) {
             a = accounts.put({ name: a.name, login: a.login, avatar_url: a.avatar_url, item: a.item, user_id: j.id, display_name: typeof j.name === "string" ? j.name.trim().slice(0, 100) : null,

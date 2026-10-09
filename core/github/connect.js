@@ -27,6 +27,7 @@ import os from "node:os";
 import path from "node:path";
 import { scrub } from "../../lib/scrub.js";
 import { newPrefixedId } from "../../lib/id.js";
+import { httpFetch } from "../../lib/http.js";
 
 export const API = "https://api.github.com";
 /** Requested once, at sign-in: full read/write on every repo the account can reach. GitHub's
@@ -85,7 +86,7 @@ export function resolveGh(configured) {
 /** @param {ConnectDeps} deps */
 export function connector(deps) {
   const log = deps.log || (() => {});
-  const f = deps.fetch || globalThis.fetch;
+  const f = deps.fetch || httpFetch;
   const expiresMs = deps.expiresMs || EXPIRES_S * 1000;
   /** @type {Map<string, Flow>} */ const flows = new Map();
   /** How each recent sign-in ended, by id, so a stale id gets a plain answer instead of "no such sign-in". */
