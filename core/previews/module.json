@@ -87,6 +87,21 @@
         "name": "previews.resolve",
         "effect": "read",
         "reach": "modules"
+      },
+      {
+        "name": "previews.reply",
+        "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "previews.run-get",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "previews.frame",
+        "effect": "read",
+        "reach": "person"
       }
     ]
   },
