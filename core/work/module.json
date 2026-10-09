@@ -331,6 +331,12 @@
         "effect": "read"
       },
       {
+        "name": "work.file.list",
+        "summary": "the files a chat made or received, and which are shared",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.file.share",
         "summary": "share one file of a chat with its project",
         "reach": "anyone",

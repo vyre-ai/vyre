@@ -99,3 +99,11 @@ test("the room note: a terminal or diff block keeps the server's line, a block w
   assert.ok(!("note" in /** @type {any} */ (normalizeBlock({ block: "terminal", command: "ls", output: "a", note: 5 }))), "only a string is a note");
   assert.equal(/** @type {any} */ (normalizeBlock({ block: "terminal", command: "x", output: "", note: "y".repeat(500) })).note.length, 120);
 });
+
+test("a cited field that was read for the viewer keeps the record it came from, so a tap opens it; one that was not read carries none", () => {
+  const read = normalizeBlock({ block: "field", label: "Phone", kind: "text", value: "555 0101", record: "vyre://spc_a/contact/0b5e2d1c-aaaa-4bbb-8ccc-123456789abc" });
+  assert.equal(read.state, "value");
+  assert.equal(read.urn, "vyre://spc_a/contact/0b5e2d1c-aaaa-4bbb-8ccc-123456789abc");
+  assert.equal(normalizeBlock({ block: "field", label: "Phone", value: "1", record: "not a urn" }).urn, undefined, "only a record urn is kept");
+  assert.equal(normalizeBlock({ block: "field-ref", record: "vyre://spc_a/contact/x", field: "phone" }).urn, undefined);
+});

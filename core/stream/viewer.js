@@ -142,7 +142,8 @@ export async function resolveRefs(frame, viewer) {
     if (!isObj(spec) || spec.placeholder === true) return unreadable(b);
     const f = { ...spec, name: b.field, label: typeof b.label === "string" ? b.label : typeof spec.label === "string" ? spec.label : b.field };
     if (!canRead(f, viewer)) return { block: "field", ...placeholder(f, viewer) };
-    return { block: "field", name: String(b.field).slice(0, REF_MAX), label: String(f.label).slice(0, REF_MAX), kind: typeof spec.kind === "string" ? spec.kind.slice(0, 40) : "text", value: spec.value };
+    // the record it was read from rides with the value, so tapping the chip opens that record (the viewer could read it: a field they cannot read is a placeholder with no record)
+    return { block: "field", name: String(b.field).slice(0, REF_MAX), label: String(f.label).slice(0, REF_MAX), kind: typeof spec.kind === "string" ? spec.kind.slice(0, 40) : "text", value: spec.value, record: String(b.record).slice(0, 400) };
   };
   const d = frame.data;
   const data = { ...d };

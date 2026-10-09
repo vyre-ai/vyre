@@ -15,7 +15,7 @@
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
- *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
+ *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean, urn?: string }
  *  | { block: "text", text: string }} Block
  * @typedef {{ path: string, op: string, diff: string, add: number, del: number }} DiffFile
  */
@@ -94,7 +94,8 @@ export function normalizeBlock(raw, fallback = "Done") {
         return { block: "field", label, kind: sealed ? "sealed" : str(v && v.kind, 20) || str(o.kind, 20) || "text", state: sealed ? "sealed" : "hidden", value: "", cls: sealed ? str(v && v.sealed, 60) || label : "", present: v && typeof v.present === "boolean" ? v.present : false };
       }
       const value = typeof o.value === "string" ? o.value : typeof o.value === "number" || typeof o.value === "boolean" ? String(o.value) : v && typeof v.amount === "number" ? `${v.currency ?? ""} ${v.amount}`.trim() : "";
-      return { block: "field", label, kind: str(o.kind, 20) || "text", state: "value", value: value.slice(0, 300), cls: "", present: value !== "" };
+      const urn = typeof o.record === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(o.record) ? o.record : "";
+      return { block: "field", label, kind: str(o.kind, 20) || "text", state: "value", value: value.slice(0, 300), cls: "", present: value !== "", ...(urn ? { urn } : {}) };
     }
     case "screen": {
       const frames = arr(o.frames).filter((f) => typeof f === "string").slice(-4);

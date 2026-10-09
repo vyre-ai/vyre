@@ -4,11 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Divider, EmptyState, Field, LoadingState, Row, SectionLabel, Segmented, Sheet, Switch, Text, showToast } from "@vyre/ui";
 import { chatTools } from "./instance";
+import { ChatFiles } from "./ChatFiles";
 import { EFFORTS, contextLines, effortLabel, mentionText, modeLabel, modesOf, takesOff, taskLive, type Commit, type Line, type Mention, type Task } from "./model.ts";
 
 export type ChatToolsProps = {
   open: boolean; onClose: () => void;
-  thread: string; project?: string | null; session?: string | null; cwd?: string | null;
+  thread: string; /** The chat id, for its Files panel. */ chat?: string | null; project?: string | null; session?: string | null; cwd?: string | null;
   /** What the chat knows now: its mode (and the modes it offers), thinking and effort. */
   state?: { mode?: string | null; modes?: string[] | null; thinking?: boolean | null; effort?: string | null };
   /** Messages waiting for the turn to end; "Send now" steers with one. */
@@ -19,9 +20,9 @@ export type ChatToolsProps = {
   /** A person picked someone or something: the text to put in the draft. */
   onMention?: (text: string) => void;
 };
-type Page = "main" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "mention";
+type Page = "main" | "files" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "mention";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
-const TITLES: Record<Page, string> = { main: "In this chat", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript", back: "Go back", mention: "Mention someone" };
+const TITLES: Record<Page, string> = { main: "In this chat", files: "Files in this chat", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript", back: "Go back", mention: "Mention someone" };
 
 export function ChatToolsSheet(p: ChatToolsProps) {
   const [page, setPage] = useState<Page>("main");
@@ -78,6 +79,7 @@ export function ChatToolsSheet(p: ChatToolsProps) {
             <Divider />
             <Row dense title="Context used" sub="What Vyre can see from this chat" chevron onPress={() => go("context")} />
             <Divider />
+            {p.chat ? <><Row dense title="Files" sub="What this chat made or received, and what is shared with the project" chevron onPress={() => go("files")} /><Divider /></> : null}
             <Row dense title="Transcript and recall" chevron onPress={() => go("transcript")} />
             {p.project && p.session ? <><Divider /><Row dense title="Go back" sub="Take off the changes it made, or put them back" chevron onPress={() => go("back")} /></> : null}
           </View>
@@ -109,6 +111,7 @@ export function ChatToolsSheet(p: ChatToolsProps) {
         {page === "mention" ? <MentionPage onPick={(m) => { p.onMention?.(mentionText(m)); p.onClose(); }} /> : null}
         {page === "tasks" ? <TasksPage thread={p.thread} /> : null}
         {page === "context" ? <ContextPage thread={p.thread} project={p.project} cwd={p.cwd} /> : null}
+        {page === "files" && p.chat ? <ChatFiles chat={p.chat} /> : null}
         {page === "transcript" ? <TranscriptPage thread={p.thread} /> : null}
         {page === "back" && p.project && p.session ? <BackPage project={p.project} session={p.session} /> : null}
       </View>

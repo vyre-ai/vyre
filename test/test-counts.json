@@ -987,5 +987,6 @@
  "modules/hands-chrome/op-run.test.js": 2,
  "test/flows-publish-once.test.js": 1,
  "test/work-file-share-daemon.test.js": 1,
- "test/persistent-chats-daemon.test.js": 2
+ "test/persistent-chats-daemon.test.js": 2,
+ "apps/app/screens/chat-tools/files.test.js": 4
 }
