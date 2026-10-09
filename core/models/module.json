@@ -1,0 +1,25 @@
+{
+  "name": "models",
+  "version": "0.1.0",
+  "description": "The model registry: every model Vyre can offer, filled live from each provider's /models (with a key), from what each CLI or subscription login reports, and from OpenRouter's public metadata, with price, capabilities and eval scores; refreshed daily and on demand. A new model proposes its evals as one card; nothing runs without the owner's yes.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": {
+    "reads": ["models.list", "models.get", "models.status", "models.evals", "models.eval-queue"],
+    "tools": [
+      { "name": "models.list", "reach": "anyone", "effect": "read" },
+      { "name": "models.get", "reach": "anyone", "effect": "read" },
+      { "name": "models.status", "reach": "anyone", "effect": "read" },
+      { "name": "models.refresh", "reach": "anyone", "effect": "write" },
+      { "name": "models.evals", "reach": "anyone", "effect": "read" },
+      { "name": "models.eval-queue", "reach": "anyone", "effect": "read" },
+      { "name": "models.eval-approve", "reach": "person", "effect": "write" },
+      { "name": "models.eval-decline", "reach": "person", "effect": "write" },
+      { "name": "models.eval-record", "reach": "person", "effect": "write" }
+    ]
+  },
+  "watches": { "emits": ["models.new", "models.changed", "models.evals-changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

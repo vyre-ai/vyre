@@ -60,7 +60,7 @@ async function rig(over = {}) {
 
 test("the Event type is a core type with the fields the calendar needs", () => {
   const e = CORE_TYPES.find((t) => t.name === "event");
-  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes", "url", "rrule"]);
+  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes", "url", "rrule", "tags"]);
 });
 
 test("google shapes: timed, all-day, attendees, and back", () => {

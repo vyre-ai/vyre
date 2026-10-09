@@ -399,6 +399,41 @@
           "label": "Moved from (Space and project) when it came from another"
         },
         {
+          "name": "template",
+          "kind": "text",
+          "label": "Template it started from (blank when none)"
+        },
+        {
+          "name": "template_version",
+          "kind": "text",
+          "label": "Template version it started from"
+        },
+        {
+          "name": "lead",
+          "kind": "text",
+          "label": "Project lead (an agent of the Space; a template may name one)"
+        },
+        {
+          "name": "template_stage",
+          "kind": "text",
+          "label": "Stage it is in (a template project)"
+        },
+        {
+          "name": "template_snapshot",
+          "kind": "text",
+          "label": "The template's stages as they were when it started (JSON)"
+        },
+        {
+          "name": "personal_of",
+          "kind": "text",
+          "label": "The person whose private Personal project this is (blank for every other project)"
+        },
+        {
+          "name": "tags",
+          "kind": "text",
+          "label": "Tags"
+        },
+        {
           "name": "practice_area",
           "kind": "choice",
           "label": "Practice area",

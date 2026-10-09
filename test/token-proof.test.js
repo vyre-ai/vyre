@@ -25,6 +25,7 @@ test("there are fifteen tasks, each with a fixed prompt, a tool to look for and 
   assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill", "chain", "biglist", "long", "repeat", "both"]);
   for (const t of TASKS) assert.ok(t.prompt.length > 20 && t.tools.length && t.seed, t.id);
   assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 15);
+  assert.ok(TASKS.find((t) => t.id === "long")?.followUp, "the long task is two messages, because a window rolls over only between turns");
   assert.deepEqual(TASKS.filter((t) => t.batch).map((t) => t.id), ["chain", "biglist", "both"]);
 });
 
@@ -153,7 +154,7 @@ test("the long task runs only on the three window arms, which differ only in rol
   const e = (/** @type {string} */ k) => ARM_ENV[k].env;
   assert.deepEqual([e("roll-off").VYRE_PROOF_ROLL, e("roll-seed").VYRE_PROOF_ROLL, e("roll-ledger").VYRE_PROOF_ROLL], ["off", "on", "on"]);
   assert.deepEqual([e("roll-seed").VYRE_MANAGED_CONTEXT, e("roll-ledger").VYRE_MANAGED_CONTEXT], ["off", "on"]);
-  assert.equal(e("roll-seed").VYRE_MCP_FEATURES, e("core-both").VYRE_MCP_FEATURES, "the same listing as core-both");
+  assert.equal(e("roll-seed").VYRE_MCP_FEATURES, "run", "the shipped default: tools_run, results by reference off");
   assert.ok(!TASKS.filter((t) => !["long", "repeat"].includes(t.id)).some((t) => t.arms), "every other task runs on the arms it is given");
 });
 
@@ -162,6 +163,6 @@ test("the repeat task runs only on the two skill arms, which differ only in whet
   assert.deepEqual(rep.arms, ["skill-off", "skill-on"]);
   assert.equal(rep.verify, "repeat");
   assert.deepEqual([ARM_ENV["skill-off"].env.VYRE_PROOF_SKILL, ARM_ENV["skill-on"].env.VYRE_PROOF_SKILL], ["off", "on"]);
-  assert.equal(ARM_ENV["skill-on"].env.VYRE_MCP_FEATURES, ARM_ENV["core-both"].env.VYRE_MCP_FEATURES);
+  assert.equal(ARM_ENV["skill-on"].env.VYRE_MCP_FEATURES, "run", "the shipped default");
   assert.equal(passed(rep, { calls: [{ name: "mcp__vyre__tools_run", input: { steps: [{ id: "a", call: "planner_add", input: {} }] }, ok: true }], text: "ok" }), true, "a batch that adds the todo counts");
 });

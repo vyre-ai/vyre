@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS sessions_openrouter (thread TEXT PRIMARY KEY, message
  * @param {any} meta @param {string} what
  */
 /** What a provider last said about itself in a session: the models its account can use and the plan it is on (a model picker's list; null until one session has run). */
+/** What a harness said about itself when a session started (R031-85): its version and the capabilities Vyre detected, one row per provider, replaced at every start. */
+const HARNESS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_harness_caps (provider TEXT PRIMARY KEY, version TEXT, caps TEXT NOT NULL, counts TEXT, auth TEXT, at INTEGER NOT NULL)`;
 const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provider TEXT NOT NULL, account TEXT NOT NULL DEFAULT '', models TEXT, plan TEXT, at INTEGER NOT NULL, PRIMARY KEY (provider, account))`;
 
 export function askedOnly(meta, what, { assistant = false } = {}) {
@@ -97,7 +99,7 @@ const scope = { type: "string", description: "assistant, agent:<name>, project:<
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION, MODES_MIGRATION, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACP_MIGRATION, ROUTES_MIGRATION, META_MIGRATION, HARNESS_MIGRATION]);
     const db = ctx.store.db;
     // The privacy column is added by checking for it, not by a numbered migration, so a store that ran an earlier order of migrations still gets it.
     try { db.prepare("SELECT privacy FROM sessions_accounts LIMIT 0").get(); } catch { db.exec(ACCOUNTS_PRIVACY_MIGRATION); }
@@ -263,6 +265,25 @@ export default {
         db.prepare(`INSERT INTO sessions_provider_meta (provider, account, models, plan, at) VALUES (?,?,?,?,?)
           ON CONFLICT(provider, account) DO UPDATE SET models = COALESCE(excluded.models, models), plan = COALESCE(excluded.plan, plan), at = excluded.at`).run(String(i.provider), acct, models, plan, Date.now());
         return { recorded: true };
+      },
+    });
+    // R031-85: what each harness can do, detected from what it said at the start of a session. Internal learn; a public read.
+    ctx.tool("sessions.harness.learn", {
+      description: "Record what a harness showed it can do at session start: { provider, version?, caps: { skills, plugins, mcp, subagents, ... : true | false | null }, counts?, auth? }. For the capability store; not a public name.", internal: true,
+      input: { type: "object", required: ["provider", "caps"], properties: { provider: str, version: { type: ["string", "null"] }, caps: { type: "object" }, counts: { type: "object" }, auth: { type: "array", items: str } } },
+      run: async i => {
+        const caps = Object.fromEntries(Object.entries(i.caps || {}).filter(([k, v]) => /^[a-z_]{2,20}$/.test(k) && (v === true || v === false || v === null)));
+        db.prepare("INSERT INTO sessions_harness_caps (provider, version, caps, counts, auth, at) VALUES (?,?,?,?,?,?) ON CONFLICT(provider) DO UPDATE SET version = excluded.version, caps = excluded.caps, counts = excluded.counts, auth = excluded.auth, at = excluded.at")
+          .run(String(i.provider).slice(0, 40), i.version ? String(i.version).slice(0, 40) : null, JSON.stringify(caps), JSON.stringify(i.counts && typeof i.counts === "object" ? i.counts : {}), JSON.stringify(Array.isArray(i.auth) ? i.auth.map(String).slice(0, 8) : []), Date.now());
+        return { recorded: true };
+      },
+    });
+    ctx.tool("sessions.harness.get", {
+      description: "What each harness can do, detected when a session of it last started: { provider, version, caps (true, false, or null for not shown), counts, auth, at }. A harness no session has started has no row, and nothing is hidden for it. provider narrows it.",
+      input: { type: "object", properties: { provider: str } },
+      run: async i => {
+        const rows = /** @type {any[]} */ (i && i.provider ? db.prepare("SELECT * FROM sessions_harness_caps WHERE provider = ?").all(String(i.provider)) : db.prepare("SELECT * FROM sessions_harness_caps ORDER BY provider").all());
+        return { harnesses: rows.map(r => ({ provider: r.provider, version: r.version, caps: JSON.parse(String(r.caps)), counts: JSON.parse(String(r.counts || "{}")), auth: JSON.parse(String(r.auth || "[]")), at: r.at })) };
       },
     });
     ctx.tool("sessions.providers.snapshot", {

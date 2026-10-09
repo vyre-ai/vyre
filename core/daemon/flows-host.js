@@ -10,8 +10,8 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
-import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
-import { createStages } from "../../kernel/flows/stages.js";
+import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
+import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
@@ -168,25 +168,71 @@ export function createFlowsHost(o) {
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
     await whenStoreReady(k.store, setupTypes);
 
-    const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
+    // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
+    const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
+      if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`);
+      if (o.publish && /^(flow\.(finished|stuck|stale|paused|cancelled|retried|started)|stage\.gate-(opened|closed))$/.test(type)) { try { o.publish(type, { run: data && data.run, flow: data && data.flow, ...(data && data.state ? { state: data.state } : {}) }); } catch { /* a notice, never a stop */ } }
+    };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
+    const isAdminOf = async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id);
+    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules"), { code: "unavailable" }); });
+    /** An agent's change to itself, by conversation (R031-09): the agents module keeps the draft and writes the version; the card goes to the agent's owner, else an owner or admin. */
+    const agentKind = {
+      draft: async (/** @type {any} */ chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const by = assistantOf(chain);
+        const r = await callModule("agents.change.draft", { agent: String(spec.agent || ""), patch: spec.patch, proposer: proposer.id, ...(by ? { by } : {}) });
+        if (proposer.id !== r.owner && by !== r.agent && !(await isAdminOf(proposer))) throw Object.assign(new Error(`only ${r.agent}'s owner, an admin, or ${r.agent} itself proposes a change to it`), { code: "not_found" });
+        const brief = (/** @type {any} */ x) => JSON.parse(JSON.stringify(x, (_k, v) => (typeof v === "string" && v.length > 600 ? `${v.slice(0, 600)}...` : v)));
+        return { form: { agent: r.agent, draft: r.id, hash: r.hash, owner: r.owner || null, before: brief(r.before), after: brief(r.after) }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("agents.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("agents.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
+    };
+    /** A template version put live, on its owner's yes (R031-11): the same card, with the work module keeping the versions. */
+    const templateKind = {
+      draft: async (/** @type {any} */ _chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const r = await callModule("work.template.change.draft", { template: String(spec.template || ""), version: Number(spec.version), proposer: proposer.id });
+        if (proposer.id !== r.owner && !(await isAdminOf(proposer))) throw Object.assign(new Error(`only ${r.template}'s owner or an admin proposes a version of it`), { code: "not_found" });
+        return { form: { template: r.template, version: r.version, draft: r.id, hash: r.hash, owner: r.owner || null }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("work.template.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("work.template.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
+    };
     const proposals = {
       chain: flowsChain,
-      isAdmin: async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id),
+      isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
+      // the agents are this home's own: only the home's Space takes a change to one
+      kinds: { template: templateKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
-    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
-    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
+    // The tasks that are stuck, for the one "Needs you" list: read as the Flows service for the Space's owner (names, the reason and when; the kernel's own task read decides what it may see).
+    const stuckTasks = async () => {
+      const rows = await gw.ask.list(flowsChain(), { state: ["stuck"] }).catch(() => []);
+      return (Array.isArray(rows) ? rows : []).slice(0, 50).map((/** @type {any} */ t) => ({ task: t.id, label: String(t.title || "").slice(0, 120), reason: String((t.stuck && t.stuck.reason) || "").slice(0, 200), since: (t.stuck && t.stuck.since) || t.updated_at || 0, ...(t.record ? { record: t.record } : {}) }));
+    };
+    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings, stuckTasks });
+    // A template project's `role:x` doer is the agent or person its team gave that role (team-member rows), before the Space's own roles are asked.
+    const projectRoleDoer = async (/** @type {string} */ role, /** @type {any} */ c) => {
+      if (!c || c.type !== "project" || typeof c.record !== "string") return null;
+      try {
+        const rows = (await gw.records.query(owner(), "team-member", { filter: { field: "project", op: "eq", value: { urn: c.record } }, page: { limit: 100 } })).rows;
+        const hit = rows.find((/** @type {any} */ r) => r.data && r.data.role === role && r.data.actor && r.data.actor.actor);
+        return hit ? hit.data.actor.actor : null;
+      } catch { return null; }
+    };
+    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles, doer: projectRoleDoer }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); if (o.publish && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;

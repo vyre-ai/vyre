@@ -267,13 +267,16 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, onDevice: fn => events.on("link.mac-online", () => fn()), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log, onDevice: fn => events.on("link.mac-online", () => fn()), publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
       lights: async () => { const r = await registry.call("connectors.connection.list", {}, "module:vyred"); const rows = r && !r.error && r.data && Array.isArray(r.data.connections) ? r.data.connections : []; return Object.fromEntries(rows.filter((/** @type {any} */ c) => c && c.id && c.light).map((/** @type {any} */ c) => [`conn-${c.id}`, String(c.light)])); },
       // The Space's settings for Flows (concurrency, stuck and stale limits, the backlog cap): read through the settings tool, as the daemon itself.
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
+      // A module's own tool, as the daemon: the proposals of other modules (an agent's change to itself) keep their drafts there.
+      agentsSpace: () => (kernel && kernel.id ? kernel.id.space : null),
+      callModule: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await registry.call(tool, input, "module:vyred"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),
       // The Space's calendar, in step with an outside one, by default.
       calendarSync: createCalendarSyncHost({ root, log }),
@@ -1215,7 +1218,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // anything the caller sent: a tool that scopes by project reads meta.granted ("*" or slugs).
   // A named agent with no row is granted nothing.
   if (via.agent) {
-    const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
+    const g = await registry.call("agents.scope", { name: via.agent, ...(via.thread ? { thread: via.thread } : {}) }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
     if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;

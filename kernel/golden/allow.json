@@ -312,6 +312,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
  },
  {
+  "tool": "flows.attention",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the runs that need a person, in plain words with the message redacted; no step data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.budget",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -336,6 +340,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; checks text as a Flow without storing it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.connections",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists, per Connection, the Flows that use it with their health lines: names and levels, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.control",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Space's Flow control state: the concurrency limits, what is paused, what is queued and why; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -350,6 +358,10 @@
  {
   "tool": "flows.diff",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads what changed between two versions of a Flow; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.from-chat",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; stores a draft Flow from the calls an assistant made, as flows.define does; nothing runs until a person approves it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.get",

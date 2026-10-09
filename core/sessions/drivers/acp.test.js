@@ -78,6 +78,7 @@ test("acp: a bypass-shaped mode is never listed and never set, whoever asks", as
   const s = open(w);
   const init = await s.until(m => m.type === "system" && m.subtype === "init", "init");
   assert.deepEqual(init.modes.sort(), ["default", "plan"]);
+  assert.deepEqual(init.harness.caps, { loadSession: true, image: false, mcpHttp: false, mcpSse: false }, "the init carries what the agent said about itself (R031-85)");
   await assert.rejects(() => s.proc.setMode("bypassPermissions"), { code: "denied" });
   await assert.rejects(() => s.proc.setMode("unknown-mode"), { code: "denied" });
   assert.deepEqual(await s.proc.setMode("plan"), { mode: "plan" });

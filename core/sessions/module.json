@@ -182,6 +182,14 @@
         "reach": "modules"
       },
       {
+        "name": "sessions.harness.learn",
+        "reach": "modules"
+      },
+      {
+        "name": "sessions.harness.get",
+        "reach": "anyone"
+      },
+      {
         "name": "sessions.routes.get",
         "reach": "anyone"
       },

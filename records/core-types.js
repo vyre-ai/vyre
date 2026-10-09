@@ -11,6 +11,12 @@ const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type
 const choice = (/** @type {string} */ name, /** @type {string} */ label, /** @type {string[]} */ options, /** @type {object} */ more = {}) => ({ name, kind: "choice", label, options, ...more });
 const f = (/** @type {string} */ kind, /** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind, label, ...more });
 
+/**
+ * Free tags on a record (R031-02): one text holding a JSON list (the Task type's `tags` already did), so any word is a tag and a Kit can extend the type unchanged (the kit language's multi_choice
+ * needs fixed options). lib/tags.js reads and writes it. A tag filter is a records query, `tags contains "\"x\""` (the quotes make it a whole tag); pinning one is a sidebar view entry whose href is /u/tags/<tag>.
+ */
+export const TAGS = text("tags", "Tags");
+
 export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 
 /** A template: email, letter or document text with slots. Sealed values are filled by the kernel at send time, never by a model. */
@@ -22,6 +28,7 @@ export const TEMPLATE = {
     text("subject", "Subject"),
     f("rich_text", "body", "Body", { required: true }),
     text("kit", "From Kit"),
+    TAGS,
   ],
 };
 
@@ -33,6 +40,7 @@ export const PLAYBOOK = {
     text("applies_to", "Applies to (a type, a stage or a role)"),
     f("rich_text", "body", "Playbook", { required: true }),
     text("kit", "From Kit"),
+    TAGS,
   ],
 };
 
@@ -49,6 +57,7 @@ export const TEAM_MEMBER = {
     f("rich_text", "instructions", "Role instructions (assistants)"),
     text("doing", "Doing right now"),
     f("datetime", "doing_since", "Doing since"),
+    TAGS,
   ],
 };
 
@@ -71,6 +80,7 @@ export const EVENT = {
     f("rich_text", "notes", "Notes"),
     f("url", "url", "Link (the event on its calendar)"),
     text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
+    TAGS,
   ],
 };
 
@@ -94,6 +104,7 @@ export const CONTACT = {
     f("link", "organization", "Organization", { to: "organization", inverse: { name: "contacts", label: "Contacts" } }),
     f("address", "address", "Address"),
     f("rich_text", "notes", "Notes"),
+    TAGS,
   ],
 };
 
@@ -107,6 +118,7 @@ export const ORGANIZATION = {
     text("phone", "Phone"),
     f("address", "address", "Address"),
     f("rich_text", "notes", "Notes"),
+    TAGS,
   ],
 };
 
@@ -154,6 +166,7 @@ export const COMMUNICATION = {
     text("from", "From"), text("to", "To"), text("cc", "Cc"), text("bcc", "Bcc"), text("organizer", "Organizer"), text("attendees", "Attendees"),
     // the Contacts those addresses belong to, many to many: a Contact's page shows its Communications (the reverse)
     f("link", "contacts", "Contacts", { to: "contact", many: true, inverse: { name: "communications", label: "Communications" } }),
+    TAGS,
   ],
 };
 
@@ -221,6 +234,36 @@ export const PROJECT = {
     f("datetime", "archived_at", "Archived"),
     text("moved_to", "Moved to (Space and project) when it left this Space"),
     text("moved_from", "Moved from (Space and project) when it came from another"),
+    // One kind of Project (R031-01): a template is optional. A blank project has none; a template project names it and the version it started from (the template's stages are pinned on the project when it starts).
+    text("template", "Template it started from (blank when none)"),
+    text("template_version", "Template version it started from"),
+    text("lead", "Project lead (an agent of the Space; a template may name one)"),
+    // A project started from a template is pinned to that version's stages (JSON, written once at start) and sits in one of them: `template_stage` is plain text so the template's own names are its stages.
+    // The Flows stage module drives these two (kernel/flows/stages.js); they are the project's, never typed by hand.
+    text("template_stage", "Stage it is in (a template project)"),
+    text("template_snapshot", "The template's stages as they were when it started (JSON)"),
+    text("personal_of", "The person whose private Personal project this is (blank for every other project)"),
+    TAGS,
+  ],
+};
+
+/**
+ * A project template, one record per version (R031-10): `template` is the stable id every version shares, `state` says which version is live (one at most), and `body` is the template as JSON (lib/project-template.js
+ * says what it holds and checks it). A project started from a version is pinned to that version's stages, so editing or retiring a template never changes a project that is running. `owner` is the person whose yes
+ * puts a version live (an admin may too); `kit` names where a template that shipped with a Kit came from.
+ */
+export const PROJECT_TEMPLATE = {
+  name: "project-template", label: "Project template", icon: "IconTemplate",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("template", "Template id (shared by every version)", { required: true }),
+    f("number", "version", "Version", { required: true }),
+    choice("state", "State", ["draft", "live", "retired"], { required: true }),
+    text("body", "The template (JSON)", { required: true }),
+    f("actor", "owner", "Owner"),
+    text("kit", "Shipped with Kit"),
+    text("note", "What changed"),
+    TAGS,
   ],
 };
 
@@ -243,6 +286,7 @@ export const CHAT = {
     choice("status", "Status", ["working", "idle", "stopped", "failed"]),
     text("drive", "Project Drive folder"),
     text("location", "This chat's Drive folder"),
+    TAGS,
   ],
 };
 
@@ -252,4 +296,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, PROJECT_TEMPLATE, CHAT, TASK].map((t) => Object.freeze(t)));

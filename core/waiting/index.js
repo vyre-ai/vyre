@@ -19,7 +19,7 @@ const LIMIT_MAX = 500;
 /** How long a pairing request lives on the box (core/link/box.js TTL): link.pending gives only its expiry. */
 const PAIR_TTL_MS = 10 * 60_000;
 
-export const KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "reminder", "pairing"]);
+export const KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "reminder", "pairing"]);
 
 // Owners' events that can change what waits. planner.* is narrowed: added, removed and schedule
 // never ring or stop a ring by themselves.
@@ -129,7 +129,7 @@ export default {
     const int = { type: "integer", minimum: 1, maximum: LIMIT_MAX };
 
     ctx.tool("waiting.list", {
-      description: "Everything waiting on the user, newest first: yes waiting on the phone (approval), session asks (ask), held drafts (draft), the vault's pending requests (access), ringing reminders (reminder) and pairing requests (pairing). The asks, drafts and vault requests are read from the approvals queue. Each row: id, kind, title, detail?, project?, thread?, at, source, and answer {tool, input, fill}: the owner's tool that settles it, the input it already has, and what the person still gives. Also count and by_kind over all rows, and partial: the sources that could not be read.",
+      description: "Everything waiting on the user, newest first: yes waiting on the phone (approval), session asks (ask), held drafts (draft), the vault's pending requests (access), Flow runs that stopped or are stuck (run), stuck tasks (task), a new model's evals waiting for a yes (eval), ringing reminders (reminder) and pairing requests (pairing). The asks, drafts and vault requests are read from the approvals queue. Each row: id, kind, title, detail?, project?, thread?, at, source, and answer {tool, input, fill}: the owner's tool that settles it, the input it already has, and what the person still gives. Also count and by_kind over all rows, and partial: the sources that could not be read.",
       input: { type: "object", properties: { limit: int } },
       effect: "read",
       callers,
@@ -141,7 +141,7 @@ export default {
     });
 
     ctx.tool("waiting.count", {
-      description: "How many things wait on the user, and how many of each kind (approval, ask, draft, access, reminder, pairing).",
+      description: "How many things wait on the user, and how many of each kind (approval, ask, draft, access, run, task, eval, reminder, pairing).",
       input: { type: "object", properties: {} },
       effect: "read",
       callers,

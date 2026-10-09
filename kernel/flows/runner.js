@@ -24,7 +24,7 @@ import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
 import { healthOf, connectorsOf } from "./health.js";
-import { timelineOf, stepDetail } from "./timeline.js";
+import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -196,7 +196,7 @@ export class FlowRunner {
     run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
     for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
     await this.store.putRun(run);
-    this.#emit("gate.opened", { run: id, record: g.urn, stage: g.stage }, run, `vyre://${run.space}/flow-run/${id}`);
+    this.#emit("stage.gate-opened", { run: id, record: g.urn, stage: g.stage }, run, `vyre://${run.space}/flow-run/${id}`);
     return id;
   }
 
@@ -247,8 +247,32 @@ export class FlowRunner {
       run.state = o.state || "done"; run.finished_at = this.now(); run.updated_at = run.finished_at; run.waiting = undefined; run.attention = undefined;
       if (o.note) run.error = { step: "move", code: "note", message: o.note };
       await this.store.putRun(run);
-      this.#emit("gate.closed", { run: id, state: run.state }, run, `vyre://${run.space}/flow-run/${id}`);
+      this.#emit("stage.gate-closed", { run: id, state: run.state }, run, `vyre://${run.space}/flow-run/${id}`);
     });
+  }
+
+  /**
+   * The runs that need a person (f3): every run with an `attention` that is not over, newest first. One row each, in plain words, with no step data and no secret (the message is redacted).
+   * A stage gate is here too (stuck task, a held entry condition); `loud` is false for the quiet ones (a person who has simply not answered yet).
+   * @returns {Promise<{ run: string, flow: string, label: string, kind: string, step: string, step_label: string, message: string, since: number, loud: boolean, gate?: boolean }[]>}
+   */
+  async attention() {
+    const rows = [];
+    const versions = new Map();
+    for (const r of await this.store.listRuns({ limit: 1000 })) {
+      if (!r.attention || r.state === "done" || r.state === "cancelled") continue;
+      let label = r.gate ? `Stage gate: ${r.gate.type} ${r.gate.stage}` : r.flow;
+      let stepLabel = r.attention.step || "";
+      if (!r.gate) {
+        const key = `${r.flow}@${r.version}`;
+        if (!versions.has(key)) versions.set(key, await this.store.getVersion(r.flow, r.version).catch(() => null));
+        const v = versions.get(key);
+        if (v && v.flow) { label = v.flow.label || v.flow.name || label; stepLabel = (stepIndex(v.flow).get(String(stepLabel).replace(/\?.*$/, "")) || { label: stepLabel }).label; }
+      }
+      rows.push({ run: r.id, flow: r.flow, label: String(label).slice(0, 120), kind: r.attention.kind, step: String(r.attention.step || ""), step_label: String(stepLabel).slice(0, 80), message: redactText(String(r.attention.message || "")).slice(0, 200),
+        since: r.attention.since || r.updated_at, loud: r.attention.kind !== "stale", ...(r.gate ? { gate: true } : {}) });
+    }
+    return rows.sort((a, b) => b.since - a.since);
   }
 
   /** The saved test cases of a Flow. @param {string} id */
