@@ -125,7 +125,14 @@ export function createFlows(o) {
       }
       return runner.aiBudget();
     },
-    "flows.retry": async (chain, i) => { personOf(chain); await runner.retry(i.run); return { ok: true }; },
+    // A person's own. `by` is never taken from the call: it is the person at the other end of the chain (who supplied a substitute value for a skipped step is on the record).
+    "flows.retry": async (chain, i) => {
+      const who = personOf(chain);
+      // An assistant may propose a value for a skipped step, in words; the person accepts it, and the call that carries it is theirs. A call with an assistant in its chain cannot carry the value itself.
+      if (i.value !== undefined && (chain.hops || []).some((/** @type {any} */ h) => h.actor.kind === "agent")) throw Object.assign(new Error("an assistant proposes the value to use for a skipped step; the person accepts it"), { code: "person_only_value" });
+      await runner.retry(i.run, { skip: i.skip === true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
+    },
+    "flows.cancel": async (chain, i) => { const who = personOf(chain); return runner.cancel(i.run, { by: who.id, reason: i.reason }); },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
     "kits.diff": async (chain, i) => kits.diff(i.kit),
     // A person, or an assistant acting for them: the person is the approver and the task asks them. An assistant never installs: the install runs only after the approver says yes.

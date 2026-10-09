@@ -104,7 +104,7 @@ export function paintRun(flow, run, cat) {
     let state = "pending", note;
     if (es.some(e => e.status === "failed")) state = "failed";
     else if (es.some(e => e.status === "waiting") || (ask && ask.status === "waiting")) { state = "waiting"; note = ask && ask.status === "waiting" ? "Waiting for a person's yes" : "Waiting"; }
-    else if (es.length && es.every(e => e.status === "done")) state = "done";
+    else if (es.length && es.every(e => e.status === "done" || e.status === "skipped" || e.status === "failed_handled")) { state = es.some(e => e.status === "failed_handled") ? "done" : es.every(e => e.status === "skipped") ? "skipped" : "done"; if (es.some(e => e.status === "failed_handled")) note = "Failed, and its failure path handled it"; else if (state === "skipped") note = es.some(e => e.substitute) ? "Skipped, with a value given in its place" : "Skipped"; }
     else if (es.some(e => e.status === "started")) state = "running";
     if (run.error && run.error.step === n.id && run.error.code && run.error.code !== "note" && ["failed", "paused"].includes(run.state)) { state = run.state === "paused" ? "paused" : "failed"; note = run.error.message; }
     return { ...n, state, count: es.length > 1 ? es.length : undefined, note };

@@ -9,7 +9,7 @@ import { createStages } from "../stages.js";
 export const ALEX = { kind: "person", id: "per_alex", space: SPACE };
 export const BOB = { kind: "person", id: "per_bob", space: SPACE };
 
-/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, cat?: any }} [o] */
+/** @param {{ store?: 'memory'|'records', ports?: any, limits?: any, policy?: any, cat?: any }} [o] */
 export async function world(o = {}) {
   const clock = { t: Date.UTC(2026, 9, 3, 12, 0, 0) };
   const which = "real"; // the one kernel there is: the real gateway, tasks and chains (the Fake is gone)
@@ -30,7 +30,7 @@ export async function world(o = {}) {
     kernel, store, catalog: () => cat, chains, clock: () => clock.t,
     emit: (type, data, x) => { emitted.push({ type, data, corr: x.corr }); },
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []), ...(o.ports || {}) },
-    limits: o.limits,
+    limits: o.limits, policy: o.policy,
   });
   // stages made of tasks: a module over the same events, working under [ALEX, service:stages]
   const stageEvents = [];

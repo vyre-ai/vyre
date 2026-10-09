@@ -24,6 +24,7 @@
       { "name": "flows.run", "effect": "read", "reach": "anyone" },
       { "name": "flows.budget", "effect": "write", "reach": "anyone" },
       { "name": "flows.retry", "effect": "write", "reach": "anyone" },
+      { "name": "flows.cancel", "effect": "write", "reach": "anyone" },
       { "name": "flows.kit.card", "effect": "read", "reach": "anyone" },
       { "name": "flows.kit.propose", "effect": "write", "reach": "anyone" },
       { "name": "flows.kit.remove", "effect": "write", "reach": "person" },

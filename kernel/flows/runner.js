@@ -14,7 +14,7 @@
 import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
-import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "./schema.js";
+import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
@@ -23,6 +23,20 @@ import { requestBind, actBind } from "../seal/uses.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+/**
+ * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
+ * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
+ * moment, and a policy cannot name them (the schema refuses). A write is retried only where it carries an idempotency key the other side honours: a record write does; a module tool call and a service write
+ * default to one attempt and are retried only when the Flow's author says so. Human waits (ask, assign, agent, wait) have no attempt limit: the watchdog (f5) and their own deadlines cover them.
+ * `o.policy` overrides any of it, per kind (the host passes the Space's settings).
+ */
+export const POLICY = Object.freeze({
+  find: { timeout_ms: 30_000, attempts: 3, backoff_ms: [2000, 5000] }, pick: { timeout_ms: 30_000, attempts: 3, backoff_ms: [2000, 5000] }, filter: { timeout_ms: 30_000, attempts: 1, backoff_ms: [0] },
+  create: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, update: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, upsert: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] },
+  remove: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, stage: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] },
+  call: { timeout_ms: 60_000, attempts: 1, backoff_ms: [2000, 5000] }, service: { timeout_ms: 30_000, attempts: 1, backoff_ms: [2000, 5000, 15_000], readAttempts: 3 },
+  classify: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, extract: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, fn: { timeout_ms: 10_000, attempts: 1, backoff_ms: [0] },
+});
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -36,6 +50,13 @@ class StepFail extends Error {
 function portFail(e) {
   if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
   throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
+}
+/** What went wrong, as a code and words, whatever was thrown. A port's own code is kept; the usual network faults get the names a retry policy knows. @param {any} e @returns {{ code: string, message: string }} */
+function failOf(e) {
+  if (e instanceof StepFail) return { code: e.code, message: e.message };
+  const raw = e && typeof e.code === "string" ? e.code : "error";
+  const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
+  return { code, message: e instanceof Error ? e.message : String(e) };
 }
 class PauseFlow extends Error {
   /** @param {string} reason */
@@ -59,6 +80,7 @@ class PauseFlow extends Error {
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
  *     model?: { provider: string, model: string },
  *   },
+ *   policy?: Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>,
  *   limits?: Partial<typeof LIMITS>,
  * }} RunnerOptions
  */
@@ -71,6 +93,8 @@ export class FlowRunner {
     this.emitFn = o.emit || (() => {});
     this.ports = o.ports || {};
     this.limits = { ...LIMITS, ...(o.limits || {}) };
+    /** @type {Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>} */
+    this.policy = Object.fromEntries(Object.entries(POLICY).map(([k, v]) => [k, { ...v, .../** @type {any} */ ((o.policy || {})[k] || {}) }]));
     /** @type {Map<string, Promise<any>>} */ this.locks = new Map();
     /** @type {Map<string, number[]>} */ this.rate = new Map();
     /** @type {Map<string, number>} */ this.lastFire = new Map();
@@ -350,16 +374,75 @@ export class FlowRunner {
     });
   }
 
-  /** Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated. @param {string} runId */
-  async retry(runId) {
+  /**
+   * Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated (their recorded outputs are used), so the run resumes at the step that failed.
+   *   skip     do not run the failed step: it is recorded as skipped. If a later step reads its output (`steps.<id>`), a `value` to use instead is required: typed by the person or accepted from an
+   *            agent's proposal, and recorded on the step with who supplied it (`by`). With no value the skip is refused, naming the step.
+   *   version  "latest" re-pins the run to the Flow's active version, only if every step already done is still there with the same id and kind; otherwise it is refused, naming the first that is not.
+   * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
+   */
+  async retry(runId, opts = {}) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
       if (!run || (run.state !== "paused" && run.state !== "failed")) return;
-      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now();
+      const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+      if (opts.version === "latest") {
+        const now = await this.store.active(run.flow);
+        if (!now) throw fail("not_active", "that Flow has no active version to move to");
+        if (now.version !== run.version) {
+          /** @type {Map<string, string>} */ const kinds = new Map();
+          const note = (/** @type {any} */ st) => kinds.set(st.id, st.kind);
+          walkSteps(now.flow.steps || [], note); walkSteps(now.flow.on_failure || [], note);
+          for (const [k, l] of Object.entries(run.steps)) {
+            if (!l || !["done", "skipped", "failed_handled"].includes(l.status) || k.includes("?")) continue;
+            const id = k.replace(/[@!].*$/, "");
+            const was = (await this.store.getVersion(run.flow, run.version));
+            /** @type {Map<string, string>} */ const old = new Map();
+            if (was) { const oldNote = (/** @type {any} */ st) => old.set(st.id, st.kind); walkSteps(was.flow.steps || [], oldNote); walkSteps(was.flow.on_failure || [], oldNote); }
+            if (kinds.get(id) !== old.get(id)) throw fail("version_mismatch", `step ${id} was already done, and version ${now.version} ${kinds.has(id) ? `makes it a ${kinds.get(id)} step` : "no longer has it"}: retry on the version the run started on, or start a new run`);
+          }
+          run.version = now.version; run.hash = now.hash;
+        }
+      }
+      if (opts.skip) {
+        const at = run.error && run.error.step;
+        const entry = Object.entries(run.steps).find(([k, l]) => l && l.status === "failed" && k.replace(/[@!].*$/, "") === at);
+        if (!at || !entry) throw fail("nothing_to_skip", "this run did not stop at a step that can be skipped");
+        const def = await this.store.getVersion(run.flow, run.version);
+        const readers = def && new RegExp(`steps\\.${at}\\b|steps\\[['"]${at}['"]\\]`).test(JSON.stringify(def.flow));
+        if (readers && opts.value === undefined) throw fail("skip_needs_value", `a later step reads what ${at} produces, so skipping it needs a value to use instead (give one, or retry)`);
+        run.steps[entry[0]] = { ...entry[1], status: "skipped", output: opts.value === undefined ? null : opts.value, skipped_by: opts.by || null, skipped_at: this.now(), ...(opts.value !== undefined ? { substitute: true } : {}), error: undefined, handling: undefined };
+      }
+      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now(); run.attention = undefined; run.failing = undefined; run.failing_done = undefined; run.failing_error = undefined;
       // A person retrying a run whose write may or may not have gone out has looked and said go: the record that it might have been sent is cleared, so the call is made again.
-      for (const l of Object.values(run.steps)) if (l && l.status === "started" && l.sent_at) l.sent_at = null;
+      // The tries start again, and a failure path that ran for the last failure may run again for the next.
+      for (const [k, l] of Object.entries(run.steps)) {
+        if (!l) continue;
+        if ((l.status === "started" || l.status === "failed") && l.sent_at) l.sent_at = null;
+        if (l.status === "failed") { l.tries = 0; l.handling = undefined; }
+        if (k.includes("!")) delete run.steps[k];
+      }
       await this.store.putRun(run);
+      this.#emit("flow.retried", { run: run.id, flow: run.flow, ...(opts.skip ? { skipped: true } : {}), ...(opts.version === "latest" ? { version: run.version } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
       await this.#execLocked(runId);
+    });
+  }
+
+  /**
+   * Stop a run that is not running: paused, failed or waiting. It is kept (its ledger and error stay), marked cancelled, and any card it waits on is withdrawn where the kernel can. A run that already finished is left as it is.
+   * @param {string} runId @param {{ by?: string, reason?: string }} [o]
+   */
+  async cancel(runId, o = {}) {
+    return this.#locked(runId, async () => {
+      const run = await this.store.getRun(runId);
+      if (!run || !["paused", "failed", "waiting"].includes(run.state)) return { ok: false, state: run ? run.state : null };
+      const w = run.waiting;
+      run.state = "cancelled"; run.waiting = undefined; run.finished_at = this.now(); run.updated_at = run.finished_at; run.attention = undefined;
+      run.cancelled = { by: o.by || null, at: run.finished_at, ...(o.reason ? { reason: String(o.reason).slice(0, 200) } : {}) };
+      await this.store.putRun(run);
+      if (w && w.task && this.k.ask && typeof this.k.ask.cancel === "function") { try { await this.k.ask.cancel(this.#chain({ run, cat: null, flow: null }), w.task); } catch { /* the card stays; the run is stopped anyway */ } }
+      this.#emit("flow.cancelled", { run: run.id, flow: run.flow, by: o.by || null }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return { ok: true, state: "cancelled" };
     });
   }
 
@@ -387,21 +470,40 @@ export class FlowRunner {
     const caps = Array.isArray(view.flow.caps) ? view.flow.caps : deriveCaps(view.flow, cat);
     const ctx = { run, flow: view.flow, view, cat, caps, dry: false, count: 0, runnerPaused: false };
     try {
+      // A Flow-level failure path was started before a restart: carry on with it, not with the steps that failed.
+      if (run.failing) throw new StepFail(run.failing.code, run.failing.message);
       await this.#walk(ctx, view.flow.steps, "", {});
       run.state = "done"; run.error = undefined;
+      if (run.attention && run.attention.kind !== "verify") run.attention = undefined;
       await this.#finish(run);
     } catch (e) {
       if (e instanceof Suspend) { run.state = "waiting"; run.updated_at = this.now(); await this.store.putRun(run); return; }
       if (e instanceof PauseFlow) {
         run.state = "paused"; run.error = { step: run.error ? run.error.step : "", code: "paused", message: e.reason }; run.updated_at = this.now();
+        this.#attend(run, { kind: "paused", step: run.error.step, code: "paused", message: e.reason });
         await this.store.putRun(run);
         await this.pauseFlow(run.flow, e.reason);
         this.#emit("flow.paused", { run: run.id, flow: run.flow, reason: e.reason }, run, `vyre://${run.space}/flow-run/${run.id}`);
         return;
       }
-      const code = e instanceof StepFail ? e.code : "error";
-      const message = e instanceof Error ? e.message : String(e);
-      run.state = "failed"; run.error = { step: run.error && run.error.step || "", code, message };
+      const f = failOf(e);
+      run.error = { step: run.failing ? run.failing.step : (run.error && run.error.step || ""), code: f.code, message: f.message };
+      // The Flow's own failure path runs once, before the run is called failed. A person's answer in it resumes it here, not at the step that failed.
+      const failedAt = run.error.step;
+      if (Array.isArray(view.flow.on_failure) && view.flow.on_failure.length && !run.failing_done) {
+        run.failing = { step: run.error.step, code: f.code, message: f.message };
+        await this.store.putRun(run);
+        try { await this.#walk(ctx, view.flow.on_failure, "!onfail", { error: { code: f.code, message: f.message, step: run.error.step } }); }
+        catch (e2) {
+          if (e2 instanceof Suspend) { run.state = "waiting"; run.updated_at = this.now(); await this.store.putRun(run); return; }
+          // a failure path that itself fails does not hide the first failure
+          run.failing_error = failOf(e2);
+        }
+        run.failing = undefined; run.failing_done = true;
+        run.error = { step: failedAt, code: f.code, message: f.message };   // the failure path's own steps wrote their names here
+      }
+      run.state = "failed";
+      this.#attend(run, { kind: "failed", step: run.error.step, code: f.code, message: f.message });
       await this.#finish(run);
     }
   }
@@ -477,32 +579,159 @@ export class FlowRunner {
       return;
     }
 
+    if (led && led.status === "failed_handled") return;
+    const dispatch = async () => {
+      /** @type {any} */ let out;
+      switch (s.kind) {
+        case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
+        case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
+        case "wait": out = await this.#wait(ctx, s, key, val); break;
+        case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
+        case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
+          if (ctx.dry) return { dry: true };
+          if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
+          // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
+          const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
+          if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
+          // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
+          const input = val(s.input);
+          const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
+          return draftAs ? { draft: true, via: draftAs, result: r } : r;
+        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
+        case "classify": out = await this.#classify(ctx, s, key, val); break;
+        case "extract": out = await this.#extract(ctx, s, key, val); break;
+        case "service": out = await this.#service(ctx, s, key, val); break;
+        case "fn": out = await this.#fn(ctx, s, key, val); break;
+        default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
+      }
+      return out;
+    };
+    const t0 = this.now();
     /** @type {any} */ let out;
-    switch (s.kind) {
-      case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
-      case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
-      case "wait": out = await this.#wait(ctx, s, key, val); break;
-      case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
-        if (ctx.dry) return { dry: true };
-        if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
-        // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
-        const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
-        if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
-        // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
-        const input = val(s.input);
-        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
-        return draftAs ? { draft: true, via: draftAs, result: r } : r;
-      }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
-      case "classify": out = await this.#classify(ctx, s, key, val); break;
-      case "extract": out = await this.#extract(ctx, s, key, val); break;
-      case "service": out = await this.#service(ctx, s, key, val); break;
-      case "fn": out = await this.#fn(ctx, s, key, val); break;
-      default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
+    if (ctx.dry) out = await dispatch();
+    else {
+      const r = await this.#guarded(ctx, s, key, suffix, locals, dispatch, scope);
+      if (r.handled) return;
+      out = r.out;
     }
-    await this.#mark(ctx, key, { status: "done", output: out });
+    await this.#mark(ctx, key, { status: "done", output: out, started_at: (this.#led(ctx, key) || {}).started_at ?? t0, finished_at: this.now(), error: undefined, handling: undefined });
     this.#emit("step.done", { run: run.id, step: key, kind: s.kind }, run, `vyre://${run.space}/flow-run/${run.id}`);
   }
+
+  /**
+   * One step under its policy (f1, f2): a time limit on each attempt, retries of a fault that is worth retrying (with a durable wait between, so a restart loses nothing and repeats nothing), then the
+   * step's VERIFY, then, if it still failed, its failure path. Replay-safe: the number of tries and the fact that a failure path was started are in the step's ledger entry.
+   * @param {any} ctx @param {any} s @param {string} key @param {string} suffix @param {Record<string, any>} locals @param {() => Promise<any>} dispatch @param {() => any} scope
+   * @returns {Promise<{ out?: any, handled?: boolean }>}
+   */
+  async #guarded(ctx, s, key, suffix, locals, dispatch, scope) {
+    const run = ctx.run;
+    const pol = this.#policyOf(ctx, s);
+    let led = this.#led(ctx, key);
+    /** @type {{ code: string, message: string } | null} */ let failure = null;
+    if (led && led.status === "failed" && led.handling && s.on_fail) failure = led.error || { code: "error", message: "failed" };
+    while (!failure) {
+      try {
+        const out = await this.#withTimeout(pol.timeout_ms, dispatch, s);
+        const bad = await this.#verify(ctx, s, key, out, scope);
+        if (bad) throw new StepFail("verify_failed", bad);
+        return { out };
+      } catch (e) {
+        if (e instanceof Suspend || e instanceof PauseFlow) throw e;
+        const f = failOf(e);
+        led = this.#led(ctx, key);
+        const tries = ((led && led.tries) || 0) + 1;
+        const log = [...((led && led.attempts_log) || []), { at: this.now(), code: f.code }].slice(-8);
+        if (f.code !== "verify_failed" && pol.retryOn.has(f.code) && tries < pol.attempts) {
+          await this.#mark(ctx, key, { status: "started", tries, last_error: f, attempts_log: log });
+          const wait = pol.backoff_ms.length ? pol.backoff_ms[Math.min(tries - 1, pol.backoff_ms.length - 1)] : 0;
+          await this.#sleepOnce(ctx, `${key}?retry${tries}`, wait);   // suspends the run until the wake; the replay then tries again
+          continue;
+        }
+        failure = f;
+        await this.#mark(ctx, key, { status: "failed", error: f, tries, attempts_log: log, handling: Boolean(s.on_fail), started_at: (led && led.started_at) ?? this.now(), finished_at: this.now() });
+      }
+    }
+    // it failed for good
+    if (!s.on_fail) throw new StepFail(failure.code, failure.message);
+    await this.#walk(ctx, s.on_fail.steps, `${suffix}!${s.id}`, { ...locals, error: { code: failure.code, message: failure.message, step: s.id } });
+    run.error = { step: s.id, code: failure.code, message: failure.message };   // the handler's steps wrote their own names here
+    if (s.on_fail.then === "continue") {
+      await this.#mark(ctx, key, { status: "failed_handled", output: { failed: true, error: failure }, handling: undefined, finished_at: this.now() });
+      this.#emit("step.failed-handled", { run: run.id, step: key, code: failure.code }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return { handled: true };
+    }
+    throw new StepFail(failure.code, failure.message);
+  }
+
+  /** The time limit, retry and the codes worth retrying for one step: the step's own words over the kind's defaults. @param {any} ctx @param {any} s */
+  #policyOf(ctx, s) {
+    const base = this.policy[s.kind] || {};
+    const read = s.kind === "service" && ["GET", "HEAD"].includes(String(s.method || "GET").toUpperCase());
+    let attempts = read && base.readAttempts ? base.readAttempts : base.attempts ?? 1;
+    let backoff = base.backoff_ms || [];
+    let on = new Set(RETRY_CODES);
+    if (s.retry === false) attempts = 1;
+    else if (s.retry && typeof s.retry === "object") {
+      if (s.retry.attempts !== undefined) attempts = s.retry.attempts;
+      if (s.retry.backoff_ms !== undefined) backoff = Array.isArray(s.retry.backoff_ms) ? s.retry.backoff_ms : [s.retry.backoff_ms];
+      if (Array.isArray(s.retry.on)) on = new Set(s.retry.on);
+    }
+    const timeout = s.kind === "wait" || ["ask", "assign", "agent"].includes(s.kind) ? 0 : (s.timeout_ms ?? base.timeout_ms ?? 0);
+    return { timeout_ms: timeout, attempts: Math.max(1, attempts), backoff_ms: backoff, retryOn: on };
+  }
+
+  /** @template T @param {number} ms @param {() => Promise<T>} fn @param {any} s @returns {Promise<T>} */
+  #withTimeout(ms, fn, s) {
+    if (!ms) return fn();
+    /** @type {any} */ let timer;
+    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); })]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * A step's VERIFY, evaluated right after it acted: an expression over its output (and everything a step can read), or a read-back of the record it wrote. Returns the words of what is wrong, or null.
+   * An essential check that fails fails the step; an optional one is only written on the ledger and raises the Flow's attention.
+   * @param {any} ctx @param {any} s @param {string} key @param {any} out @param {() => any} scope
+   */
+  async #verify(ctx, s, key, out, scope) {
+    const v = s.verify;
+    if (!v) return null;
+    let problem = null;
+    if (v.check !== undefined) {
+      let ok = false;
+      try { ok = truthy(evaluate(parse(v.check), { ...scope(), output: out })); } catch { ok = false; }
+      if (!ok) problem = v.say || `the check ${v.check} did not hold`;
+    }
+    if (!problem && v.readback === true && out && out.record && out.record.id && s.type) {
+      const want = s.kind === "stage" ? null : this.#valuesOf(s, scope);
+      const cur = await this.k.records.get(this.#chain(ctx), s.type, out.record.id).catch(() => null);
+      if (!cur) problem = v.say || `the ${s.type} record could not be read back`;
+      else if (want) {
+        const data = cur.data || {};
+        const off = Object.keys(want).filter(k => JSON.stringify(data[k] ?? null) !== JSON.stringify(want[k] ?? null));
+        if (off.length) problem = v.say || `the saved ${s.type} differs from what was written in: ${off.join(", ")}`;
+      }
+    }
+    if (!problem) { await this.#mark(ctx, key, { verify: { ok: true } }); return null; }
+    if (v.essential === false) {
+      await this.#mark(ctx, key, { verify: { ok: false, say: problem } });
+      this.#attend(ctx.run, { kind: "verify", step: s.id, code: "verify_failed", message: problem });
+      this.#emit("step.verify-failed", { run: ctx.run.id, step: key, essential: false }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
+      return null;
+    }
+    await this.#mark(ctx, key, { verify: { ok: false, say: problem } });
+    return problem;
+  }
+
+  /** The fields a write step set, resolved, for a read-back. @param {any} s @param {() => any} scope */
+  #valuesOf(s, scope) { try { return s.set ? resolveValue(s.set, scope()) : s.match ? { ...resolveValue(s.match, scope()), ...(s.set ? resolveValue(s.set, scope()) : {}) } : null; } catch { return null; } }
+
+  /**
+   * Something needs a person's eye: a failed run, a stuck one, a check that failed. One field on the run (`attention`), set where the fault is found and cleared on progress, so the inbox,
+   * the health line and the timeline all read the same thing.
+   * @param {Run} run @param {{ kind: 'failed'|'stuck'|'stale'|'verify'|'paused', step?: string, code?: string, message: string }} a
+   */
+  #attend(run, a) { run.attention = { ...a, since: run.attention && run.attention.kind === a.kind && run.attention.step === a.step ? run.attention.since : this.now() }; }
 
   /** @param {any} ctx */
   #chain(ctx) {
@@ -1107,7 +1336,8 @@ function outputs(run) {
   /** @type {Record<string, any>} */ const o = {};
   for (const [k, v] of Object.entries(run.steps)) {
     if (k.includes("?")) continue;
-    if (v.status !== "done" && v.status !== "started") continue;
+    if (v.status !== "done" && v.status !== "started" && v.status !== "skipped" && v.status !== "failed_handled") continue;
+    if (k.includes("!")) continue;                          // a failure path's own steps are read by the failure path, not by steps.<id> of the main line
     const id = k.replace(/@.*$/, "");
     if (v.output !== undefined) o[id] = v.output;
   }
