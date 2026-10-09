@@ -27,6 +27,11 @@ const WHAT = {
   "flows.start": "Start a Flow now, with an input.",
   "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
+  "flows.health": "How a Flow is, in one line (last run, this week, next run, what needs a person, red when a Connection it uses is red); with no id, every Flow and the Space's switch.",
+  "flows.timeline": "A run read back as a few lines, one a step: how long, tries, the check, who answered. step: one step in detail (its input with secrets hidden, its output, every attempt).",
+  "flows.diff": "What changed between two versions of a Flow (id, from, to), by step: added, removed, moved and changed steps with the keys that changed, and a plain-words summary.",
+  "flows.rollback": "Go back to an earlier version of a Flow (id, to) in one step: it is approved again by you, nothing is inherited from the old approval. Runs in flight keep their version; retry_failed: true moves failed runs that still match to it. A person's own.",
+  "flows.describe": "A Flow (id) or a run (run) in a few lines, for reading cheaply: the trigger, one line a step with its limits and checks, how it is doing; for a run, where it is and what happens next.",
   "flows.control": "The Space's switch (running, paused or draining), how many runs are held and why, and how many events were dropped past the cap.",
   "flows.runs": "Recent runs of a Flow, newest first.",
   "flows.run": "One run: its trigger, its steps, what it did.",
@@ -44,7 +49,7 @@ const LIBRARY = {
   "flows.kit.library": "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds.",
   "flows.kit.library.get": "One Kit from the library in the form flows.kit.card, flows.kit.diff and flows.kit.propose take.",
 };
-const PERSONAL = new Set(["flows.approve", "flows.pause", "flows.resume", "flows.kit.remove"]);
+const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 
@@ -86,6 +91,7 @@ export default {
       ctx.tool(name, {
         description, input: open, callers: name === "flows.kit.propose" ? [...CALLERS, "module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
+        ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
           const chain = await chainOf(f, meta);

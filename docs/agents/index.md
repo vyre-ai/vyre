@@ -22,7 +22,7 @@ Read the page for what you are about to do, not all of them. `docs.find` finds a
 | `sealed-and-secrets.md` | A field shows a placeholder instead of a value, you need a password, key or number you cannot see, or you are about to write a secret into text. | 397 |
 | `tools.md` | You need a tool and do not know its name, a tool you expected is missing, or a call returned a held result. | 1228 |
 | `records.md` | You read, create or change a contact, matter, task, note, file or other record, or need to link one record to another. | 582 |
-| `flows.md` | You write, change, test or explain an automation, or a Flow step asks you to do something. | 1128 |
+| `flows.md` | You write, change, test or explain an automation, or a Flow step asks you to do something. | 1293 |
 | `sessions-and-context.md` | You start or continue a session, need to know what was done before, or want to remember something for later. | 750 |
 | `connections.md` | You need to read from or act on an outside service such as mail, a calendar, a payment provider or any API, or a tool from an MCP server. | 613 |
 | `computers-and-files.md` | You need to read or write files, run something on a computer, use a browser, or hand a screen to a person. | 426 |

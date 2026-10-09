@@ -74,7 +74,9 @@ export function createFlowsHost(o) {
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
       const triggers = o.flowTriggers ? o.flowTriggers() : [];
-      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers };
+      // The light of each Connection (green, amber, red), by the name a Flow's service step uses (`conn-<id>`): a Flow that uses a red one says so in its health line.
+      const lights = o.lights ? await o.lights().catch(() => ({})) : {};
+      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }

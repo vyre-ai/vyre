@@ -4,7 +4,7 @@ summary: What a Flow is, the step kinds, how to propose a change to one, what th
 audience: agents
 owner: docs
 status: stable
-tokens: 1150
+tokens: 1350
 when: You write, change, test or explain an automation, or a Flow step asks you to do something.
 ---
 
@@ -68,3 +68,7 @@ Every step runs under a time limit and a retry rule, with defaults per kind (rea
 - **If it fails.** `on_fail: { steps, then }` runs steps that read `error` (`error.code`, `error.message`, `error.step`): `then: "continue"` carries on (the step is `failed_handled`, `steps.<id>.failed` is true); `stop`, the default, fails the run after the steps ran. A Flow can also have `on_failure: [steps]`, run once before the run is called failed. A failure path cannot have one of its own.
 - **Check what a step did.** `verify: { check: "<expression over output>", say: "what was checked" }` fails the step (`verify_failed`) when false; `essential: false` only flags it. On a write, `verify: { readback: true }` reads the record back and compares what was set. Put an essential verify on every step that changes something: a write that did not take is then a failure, not a success.
 - **After a failure.** `flows.retry` resumes at the step that stopped; finished steps are not repeated. `skip: true` skips it (if a later step reads its output, a person gives `value` to use instead; you propose the value, they accept it). `version: "latest"` moves the run to the active version when every step already done is still there. `flows.cancel` ends a run for good.
+
+## Reading how Flows are doing
+
+`flows.list` gives each Flow a one-line health (last run, this week, what needs a person, red when a Connection it uses is red); `flows.health` the same for one Flow; `flows.control` whether everything is paused or draining and how many runs are held. `flows.describe` reads a Flow or a run in a few lines; `flows.timeline { run }` reads a run back one line a step, and `step` gives one step in detail (its input with secrets hidden, every attempt). `flows.diff { id, from, to }` says what changed between two versions by step; going back is `flows.rollback`, which a person approves. Read these before you read a whole Flow.

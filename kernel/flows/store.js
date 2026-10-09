@@ -256,7 +256,7 @@ export class RecordsFlowStore {
   async disable(id) { await this.#setState(id, { status: "disabled", active: null }); }
   async list() {
     const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
-    return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active }));
+    return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
   }
 
   /** @param {string} flow @returns {Promise<number|null>} */

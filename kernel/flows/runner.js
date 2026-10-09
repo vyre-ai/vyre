@@ -20,6 +20,9 @@ import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
+import { redact as redactText } from "../../lib/credential-shapes.js";
+import { healthOf, connectorsOf } from "./health.js";
+import { timelineOf, stepDetail } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -58,6 +61,25 @@ function failOf(e) {
   const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
   return { code, message: e instanceof Error ? e.message : String(e) };
 }
+/**
+ * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, and the whole is cut to 2 KB. A sealed placeholder stays a placeholder.
+ * @param {any} v @returns {any}
+ */
+export function showable(v) {
+  if (v === undefined) return undefined;
+  const SECRET_KEY = /secret|token|password|passwd|api[_-]?key|authorization|cookie|private/i;
+  const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
+    if (depth > 6) return "…";
+    if (typeof x === "string") return redactText(x);
+    if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, SECRET_KEY.test(k) && typeof y !== "object" ? "[hidden]" : walk(y, depth + 1)]));
+    return x;
+  };
+  const out = walk(v, 0);
+  const text = JSON.stringify(out) ?? "null";
+  return text.length > 2048 ? { cut: true, head: text.slice(0, 2000) } : out;
+}
+
 /** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
 class Hold extends Error {
   /** @param {string} reason */
@@ -172,6 +194,42 @@ export class FlowRunner {
     const dropped = o.backlog === "drop" ? await this.#dropHeld((r) => r.flow === id && r.queued !== undefined && r.queued.reason === "flow_paused", o.by || null) : 0;
     await this.#drainQueue();
     return { ok: true, dropped_now: dropped };
+  }
+
+  // ------------------------------------------------------------------ health and the timeline (f8, f12)
+
+  /**
+   * How each Flow is, in one line and a few numbers: last run, this week's successes, the next run, what needs a person, what is held, and red when a Connection it uses is red. One Flow with `id`, else all of
+   * them. Read from the runs the runner already keeps; nothing new is stored.
+   * @param {string} [id]
+   */
+  async health(id) {
+    const now = this.now(), cat = /** @type {any} */ (await this.catalogFn()), ctl = await this.#control();
+    const out = [];
+    for (const r of (await this.store.list()).filter((/** @type {any} */ x) => !id || x.id === id)) {
+      const ver = r.active !== null && r.active !== undefined ? await this.store.getVersion(r.id, r.active) : null;
+      const flow = ver ? ver.flow : null;
+      const runs = await this.store.listRuns({ flow: r.id, limit: 200 });
+      /** @type {number | null} */ let nextAt = null;
+      const t = flow && flow.trigger;
+      if (t && t.on === "time" && r.status === "active") {
+        const last = await this.#lastFire(r.id, now);
+        nextAt = t.cron !== undefined ? nextCron(t.cron, Math.max(last, now), this.#zone(t, cat)) : t.every_ms !== undefined ? Math.max(last + t.every_ms, now) : t.at !== undefined && t.at > now ? t.at : null;
+      }
+      out.push(healthOf({ id: r.id, label: (flow && (flow.label || flow.name)) || r.name || r.id, status: r.status, paused: r.paused || null, runs, now, nextAt, tz: cat.tz || "UTC",
+        lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
+    }
+    return id ? out[0] || null : out;
+  }
+
+  /** A run read back as lines (f12), or one step in detail. @param {string} runId @param {{ step?: string }} [o] */
+  async timeline(runId, o = {}) {
+    const run = await this.store.getRun(runId);
+    if (!run) throw Object.assign(new Error("no such run"), { code: "not_found" });
+    const ver = await this.store.getVersion(run.flow, run.version);
+    if (o.step) { const d = stepDetail(run, o.step); if (!d) throw Object.assign(new Error(`that run has no step ${o.step}`), { code: "not_found" }); return { run: run.id, step: d }; }
+    const t = timelineOf(run, ver ? ver.flow : null);
+    return { run: run.id, flow: run.flow, version: run.version, lines: t.lines };
   }
 
   // ------------------------------------------------------------------ the switch, the queue, concurrency and locks (f5, f6, f7)
@@ -1033,7 +1091,7 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, askKey, asked.wait);
       if (res.timeout) throw new StepFail("timed_out", "nobody answered the question");
       const approved = res.task && res.task.outcome === "approved";
-      await this.#mark(ctx, askKey, { status: approved ? "done" : "failed", output: { outcome: res.task && res.task.outcome } });
+      await this.#mark(ctx, askKey, { status: approved ? "done" : "failed", output: { outcome: res.task && res.task.outcome }, answered: { by: res.task ? (res.task.checked_by ?? res.task.by ?? (res.task.checker && res.task.checker.id) ?? (res.task.doer && res.task.doer.id) ?? null) : null, at: this.now() } });
       if (!approved) throw new StepFail("refused", `a person said no to step ${s.id}`);
     }
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
@@ -1084,7 +1142,7 @@ export class FlowRunner {
         throw new Suspend();
       }
     }
-    if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
+    if (!ctx.dry) await this.#mark(ctx, key, { status: "started", ...(info.input !== undefined ? { input: showable(info.input) } : {}) });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
     ctx.actAs = doerChain;

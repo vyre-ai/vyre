@@ -271,6 +271,7 @@ async function startLocked(opts, root, p, release) {
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
+      lights: async () => { const r = await registry.call("connectors.connection.list", {}, "module:vyred"); const rows = r && !r.error && r.data && Array.isArray(r.data.connections) ? r.data.connections : []; return Object.fromEntries(rows.filter((/** @type {any} */ c) => c && c.id && c.light).map((/** @type {any} */ c) => [`conn-${c.id}`, String(c.light)])); },
       // The Space's settings for Flows (concurrency, stuck and stale limits, the backlog cap): read through the settings tool, as the daemon itself.
       settings: async (/** @type {string} */ key) => { try { const r = await registry.call("settings.get", { key }, "module:vyred"); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } },
       flowTools: () => registry.flowTools(), flowTriggers: () => registry.flowTriggers(), callFlow: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ o) => registry.callFlow(tool, input, o),

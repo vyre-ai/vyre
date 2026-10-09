@@ -8,6 +8,8 @@
 //   one timer     -> flows.tick(), at flows.nextWake()  time triggers and waits (nothing polls faster than a minute)
 //   a watcher     -> flows.watcherItem({ watcher, item }) a watcher's new item (bridgeWatchers adapts the watchers module's events)
 
+import { diffFlows } from "./diff.js";
+import { describeFlow, describeRun } from "./describe.js";
 import { FlowRunner } from "./runner.js";
 import { KitManager, MemoryKitStore, RecordsKitStore, KIT_TYPES, installCard, diffKits } from "./kits.js";
 import { MemoryFlowStore } from "./store.js";
@@ -98,7 +100,36 @@ export function createFlows(o) {
       return { id: v.id, version: v.version, hash: v.hash, authorship: v.flow.authorship, effects: compiled.effects, caps: compiled.caps, warnings: compiled.warnings, changes: prev ? flowChanges(prev.flow, v.flow, c) : [], text: seeAsCode(v.flow).text };
     },
     "flows.get": async (chain, i) => { const v = await view(i.id, [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
-    "flows.list": async () => store.list(),
+    // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
+    "flows.list": async () => { const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h])); return rows.map((/** @type {any} */ r) => { const h = hs.get(r.id); return h ? { ...r, label: h.label, level: h.level, line: h.line } : r; }); },
+    "flows.health": async (chain, i) => { const h = await runner.health(i && i.id); if (i && i.id && !h) throw Object.assign(new Error("no such Flow"), { code: "not_found" }); return i && i.id ? h : { flows: h, control: await runner.controlState() }; },
+    "flows.timeline": async (chain, i) => runner.timeline(i.run, { step: i.step }),
+    "flows.diff": async (chain, i) => {
+      const a = await store.getVersion(i.id, Number(i.from)), b = await store.getVersion(i.id, Number(i.to));
+      if (!a || !b) throw Object.assign(new Error("no such Flow version"), { code: "not_found" });
+      return { id: i.id, from: Number(i.from), to: Number(i.to), ...diffFlows(a.flow, b.flow) };
+    },
+    // One click to go back: approve an earlier version again, as the person who clicks (an approval is never inherited), and say in words what changes. Runs in flight keep their version; failed runs that still match can
+    // be moved to the restored version with retry_failed.
+    "flows.rollback": async (chain, i) => {
+      const who = personOf(chain);
+      const target = await store.getVersion(i.id, Number(i.to));
+      if (!target) throw Object.assign(new Error("no such Flow version"), { code: "not_found" });
+      const list = await store.list(); const row = list.find((/** @type {any} */ r) => r.id === i.id);
+      const was = row && row.active !== null && row.active !== undefined ? await store.getVersion(i.id, row.active) : null;
+      if (was && was.version === target.version) return { ok: true, active: target.version, changes: [], note: "that version is already the active one" };
+      await runner.approve(i.id, target.version, who, target.hash);
+      const changes = was ? diffFlows(was.flow, target.flow).summary : [];
+      /** @type {string[]} */ const retried = [], refused = [];
+      if (i.retry_failed === true) for (const r of await runner.listRuns({ flow: i.id, state: "failed", limit: 200 })) { try { await runner.retry(r.id, { version: "latest", by: who.id }); retried.push(r.id); } catch (e) { refused.push(`${r.id}: ${/** @type {Error} */ (e).message}`); } }
+      return { ok: true, active: target.version, was: was ? was.version : null, changes, retried, refused };
+    },
+    "flows.describe": async (chain, i) => {
+      if (i && i.run) { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { lines: describeRun(r, v ? v.flow : null) }; }
+      const v = await view(i.id, [i.version]);
+      const h = await runner.health(i.id);
+      return { lines: describeFlow(v.flow, { id: v.id, version: v.version, status: v.status, health: h ? h.line : undefined }) };
+    },
     "flows.code": async (chain, i) => seeAsCode((await view(i.id, [i.version])).flow),
     "flows.compile-text": async (chain, i) => fromCode(i.text, i.id ? (await view(i.id)).flow : null, await cat()),
     "flows.graph": async (chain, i) => graph((await view(i.id, [i.version])).flow, await cat()),
