@@ -44,6 +44,8 @@ export function createPersistent({ db, kernel, agentOf }) {
       return { kind, chat, existing: false };
     },
     /** The caller's pinned chats, by chat id. @param {string} person @returns {Map<string, string>} */
+    /** Is this chat that person's pinned assistant or Engineer chat? The one fact vyred asks before it opens a session with the assistant's authority. @param {string} person @param {string} chat @returns {string | null} */
+    kindOf(person, chat) { const r = /** @type {any} */ (row(person, "assistant")), e = /** @type {any} */ (row(person, "engineer")); return r && String(r.chat) === chat ? "assistant" : e && String(e.chat) === chat ? "engineer" : null; },
     pinnedOf(person) { return new Map(db.prepare("SELECT chat, kind FROM work_persistent WHERE person = ?").all(person).map((/** @type {any} */ r) => [String(r.chat), String(r.kind)])); },
   };
 }
