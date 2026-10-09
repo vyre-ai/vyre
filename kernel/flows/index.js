@@ -10,6 +10,7 @@
 
 import { diffFlows } from "./diff.js";
 import { testKit } from "./kit-test.js";
+import { connectorsOf } from "./health.js";
 import { cheatsheet } from "./cheatsheet.js";
 import { applyPatch, PatchError } from "./patch.js";
 import { normalizeFlow } from "./text.js";
@@ -79,6 +80,8 @@ export function createFlows(o) {
     if (!v) throw Object.assign(new Error("no such Flow"), { code: "not_found" });
     return v;
   };
+  /** The Connections a Flow uses (the `conn-` prefix off), from the version that runs or the newest. @param {string} id @returns {Promise<string[]>} */
+  const connectionsOf = async (id) => { try { const v = await view(id); return connectorsOf(v.flow).map((/** @type {string} */ c) => c.replace(/^conn-/, "")); } catch { return []; } };
   const latest = async (/** @type {string} */ id) => { const r = await store.flowRow?.(id); const last = r && r.versions[r.versions.length - 1]; return last ? store.getVersion(id, last.version) : null; };
 
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
@@ -114,7 +117,24 @@ export function createFlows(o) {
     },
     "flows.get": async (chain, i) => { const v = await view(need(i, "id", "the Flow's id (flows.list)"), [i.version]); return { id: v.id, version: v.version, hash: v.hash, status: v.status, approver: v.approver, flow: v.flow }; },
     // Every Flow with its one-line health (f8): a few tokens a Flow, so one call says how the whole Space is.
-    "flows.list": async () => { const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h])); return rows.map((/** @type {any} */ r) => { const h = hs.get(r.id); return h ? { ...r, label: h.label, level: h.level, line: h.line } : r; }); },
+    "flows.list": async () => {
+      const rows = await store.list(); const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
+      return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); return { ...r, ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
+    },
+    // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
+    "flows.connections": async (chain, i) => {
+      const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
+      /** @type {Map<string, any[]>} */ const by = new Map();
+      for (const r of await store.list()) {
+        for (const c of await connectionsOf(r.id)) {
+          if (i && i.connection && c !== String(i.connection)) continue;
+          const h = hs.get(r.id);
+          if (!by.has(c)) by.set(c, []);
+          /** @type {any[]} */ (by.get(c)).push({ id: r.id, label: h ? h.label : r.id, active: r.status === "active", ...(h ? { level: h.level, line: h.line } : {}) });
+        }
+      }
+      return { connections: [...by].map(([connection, flows]) => ({ connection, flows })).sort((a, b) => (a.connection < b.connection ? -1 : 1)) };
+    },
     "flows.health": async (chain, i) => { const h = await runner.health(i && i.id); if (i && i.id && !h) throw Object.assign(new Error("no such Flow"), { code: "not_found" }); return i && i.id ? h : { flows: h, control: await runner.controlState() }; },
     // Saved test cases (t2). An assistant may add a case (that only makes approval stricter) but not change or remove one: that is a person's.
     "flows.test.save": async (chain, i) => {
