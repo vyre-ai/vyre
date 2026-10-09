@@ -87,6 +87,7 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
   const asked = await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes", age: 31 } });
   assert.ok(asked.json && /^hd_/.test(asked.json.held), JSON.stringify(asked));
+  assert.ok(true, JSON.stringify(await ok("gate.held", {})));
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Dana Reyes").length, 0, "nothing was made yet");
   const held = (await ok("gate.held", {})).items || (await ok("gate.held", {}));
   const item = (Array.isArray(held) ? held : held.held || []).find(x => /Muse wants to add a contact: Dana Reyes/.test(x.summary || ""));

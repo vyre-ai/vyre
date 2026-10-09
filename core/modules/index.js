@@ -500,8 +500,8 @@ const readsOf = (m) => new Set(m && m.does && Array.isArray(m.does.reads) ? m.do
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them; so is an outside agent `ext:<id>` (core/outside), and a bare or malformed `ext` label is no one
-  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : /^ext(?::|$)/.test(c) ? (idOfCaller(c) ? "ext" : "unknown") : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them; so is an outside agent `ext:<id>` (core/outside)
+  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : idOfCaller(c) ? "ext" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -557,6 +557,8 @@ export const classReach = (caller, tool, setupExtra) => {
   if (!KNOWN_LABELS.has(c.split(/[\s:]/)[0])) return false;
   // an invitee's channel (core/relay) reaches no tool at all: its one door is the invitee peer stream
   if (c.split(/[\s:]/)[0] === "invitee") return false;
+  // an outside agent (`ext:<id>`, core/outside), or anything that starts like one, reaches no registry tool: it speaks MCP at /agents-mcp, where the kernel decides under its own grants. Fail closed.
+  if (c.split(/[\s:]/)[0] === "ext") return false;
   const k = callerKind(c);
   if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
   if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || setupToolAllowed(tool, setupExtra === undefined ? [] : setupExtra()));
