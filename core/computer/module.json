@@ -3,16 +3,66 @@
   "version": "0.1.0",
   "apiVersion": 1,
   "description": "Vyre Computer: one front door over the cloud computer, your Macs and the screen engines. Computers are chosen by name; interface first, screen last.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
   "does": {
     "tools": [
-      { "name": "computer.use", "effect": "write", "reach": "anyone" },
-      { "name": "computer.targets", "effect": "read", "reach": "anyone" }
+      {
+        "name": "computer.use",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "computer.targets",
+        "effect": "read",
+        "reach": "anyone"
+      }
     ]
   },
   "watches": {},
   "shows": {},
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {
+        "id": "computer-by-name",
+        "text": "Tell an agent where to work: \"on my Mac\" or \"on the office computer\". Left out, it works on its own cloud computer.",
+        "surfaces": [
+          "cli",
+          "deck"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.3.1",
+        "docs": "using/computer.md"
+      },
+      {
+        "id": "computer-allow-mac",
+        "text": "A box agent works on your Mac only for what you allow there: `vyre call link.computer.allow '{\"class\":\"look\"}'` (look, act or files). Each is off until you turn it on.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.3.1",
+        "command": "vyre call link.computer.allow",
+        "docs": "using/computer.md#your-mac"
+      },
+      {
+        "id": "computer-login-tag",
+        "text": "Type # and pick a login to let an agent sign in with it in this conversation. It types the login for itself and never sees it.",
+        "surfaces": [
+          "cli",
+          "deck"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.3.1",
+        "docs": "using/computer.md#logging-in"
+      }
+    ]
+  }
 }
