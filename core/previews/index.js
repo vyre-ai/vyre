@@ -41,7 +41,9 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = seam.now || Date.now;
-    const emit = (/** @type {string} */ type, /** @type {any} */ payload) => { try { ctx.events.emit(type, payload); } catch { /* an event nobody hears */ } };
+    const emit = (/** @type {string} */ type, /** @type {any} */ payload, /** @type {any} */ where) => { try { ctx.events.emit(type, payload, where); } catch { /* an event nobody hears */ } };
+    /** The chat's card: the thread's stream draws (and redraws) it from this. */
+    const card = (/** @type {any} */ r) => { if (r && r.thread) emit("thread.preview", { id: r.id, title: r.title, state: r.state, source: r.source, mode: r.mode, access: r.access }, { thread: r.thread }); };
 
     const view = (/** @type {any} */ r, detail = false) => ({
       id: r.id, title: r.title, source: r.source, mode: r.mode, state: r.state, access: r.access, thread: r.thread || null, project: r.project || null,
@@ -54,6 +56,7 @@ export default {
       const r = row(id); if (!r) return;
       db.prepare("UPDATE previews_items SET state = ?, error = ?, updated = ? WHERE id = ?").run(state, error || null, now(), id);
       emit("preview.state", { id, state, title: r.title, thread: r.thread || null, project: r.project || null, ...(error ? { error } : {}) });
+      card(row(id));
     };
 
     const sup = seam.supervisor || createSupervisor({
@@ -116,9 +119,10 @@ export default {
         const access = ACCESS.includes(i.access) ? i.access : i.project ? "project" : "me";
         db.prepare(`INSERT INTO previews_items (id, space, project, thread, title, source, mode, command, cwd, port, upstream, state, access, created_by, created, updated, wanted)
           VALUES (?,?,?,?,?, 'port', ?, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, ?)`)
-          .run(id, ctx.space || null, i.project ? String(i.project) : null, i.thread ? String(i.thread) : (meta && meta.thread) || null, title, wantsCommandRun ? "supervised" : "session", i.command ? String(i.command).slice(0, 2000) : null, cwd,
+          .run(id, ctx.space || null, i.project ? String(i.project) : null, (person && i.thread ? String(i.thread) : (meta && meta.thread) || null), title, wantsCommandRun ? "supervised" : "session", i.command ? String(i.command).slice(0, 2000) : null, cwd,
             Number.isInteger(i.port) ? i.port : null, Number.isInteger(i.port) ? i.port : null, access, creator, t, t, wantsCommandRun ? 1 : 0);
-        emit("preview.opened", { id, title, thread: (meta && meta.thread) || i.thread || null, project: i.project || null });
+        emit("preview.opened", { id, title, thread: row(id).thread || null, project: i.project || null });
+        card(row(id));
         if (wantsCommandRun) await runSupervised(row(id));
         else setState(id, (await answers(i.port)) ? "live" : "starting");
         void byModel;
@@ -228,6 +232,7 @@ export default {
         db.prepare("UPDATE previews_items SET access = ?, updated = ? WHERE id = ?").run(i.access, now(), r.id);
         if (ACCESS.indexOf(i.access) < ACCESS.indexOf(r.access)) await ctx.call("appmods.drop", { name: nameOf(r.id) }).catch(() => {});
         emit("preview.state", { id: r.id, state: r.state, title: r.title, thread: r.thread || null, project: r.project || null, access: i.access });
+        card(row(r.id));
         return { preview: view(row(r.id)) };
       },
     });

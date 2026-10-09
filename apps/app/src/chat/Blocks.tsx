@@ -13,6 +13,7 @@ import { tokens } from "../theme/tokens";
 import { ANSI_BLOCK as ANSI } from "../terminal/palettes";
 import { parseAnsi, stripAnsi } from "./ansi.js";
 import { readSelection } from "./highlight.js";
+import { PreviewCard } from "./PreviewCard";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
 
 const TERM_RULE = tokens.color.dark.rule;
@@ -460,6 +461,7 @@ export function renderBlock(block: Block, ctx: BlockCtx, extra: { output?: strin
     case "flow-change": return <FlowChange block={block} ctx={ctx} />;
     case "answer": return <CitedAnswer block={block} ctx={ctx} />;
     case "screen": return RC.glass ? <ScreenFrames block={block} ctx={ctx} /> : null;
+    case "preview": return <PreviewCard block={block} />;
     default: return <TextBlock block={block} />;
   }
 }

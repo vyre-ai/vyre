@@ -188,6 +188,9 @@ export function createAdapter() {
           return [spec("tool-finished", { tool_id: id, ok: p.status === "completed", result: { block: "task", items: [{ text: String(p.title || p.summary || "task"), status: "done" }] } })];
         }
         case "thread.shell": return shell("shell", String(p.command ?? ""), String(p.output ?? ""));
+        // A preview of this chat: one card, kept up to date by the same tool id (its state changes patch the card in place).
+        case "thread.preview":
+          return typeof p.id === "string" && /^[0-9a-f]{8}$/.test(p.id) ? [spec("tool-finished", { tool_id: `preview:${p.id}`, ok: true, result: { block: "preview", id: p.id, title: String(p.title || "Preview").slice(0, 120), state: String(p.state || "starting"), source: String(p.source || "port"), mode: String(p.mode || "session"), access: String(p.access || "me") } })] : [];
         case "thread.artifact":
           return p.artifact ? [spec("tool-finished", { tool_id: `art:${p.artifact}:${p.version ?? 0}`, ok: true, result: { block: "text", text: `Artifact ${String(p.title || p.artifact).slice(0, 120)}` } })] : [];
         case "ask.raised":

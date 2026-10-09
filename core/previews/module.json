@@ -19,7 +19,7 @@
       { "name": "previews.resolve", "effect": "read", "reach": "modules" }
     ]
   },
-  "watches": { "emits": ["preview.state", "preview.opened", "preview.removed"] },
+  "watches": { "emits": ["preview.state", "preview.opened", "preview.removed", "thread.preview"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}

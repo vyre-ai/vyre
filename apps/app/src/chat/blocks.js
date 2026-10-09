@@ -1,6 +1,6 @@
 // @ts-check
 // The Block contract (team/archive/work-journals/chat.md, 0.3): a tool result becomes one of
-//   terminal | diff | files | record | task | draft | flow-change | answer | screen | text
+//   terminal | diff | files | record | task | draft | flow-change | answer | screen | preview | text
 // `normalizeBlock` checks the shape and returns a typed block the components draw. Anything unknown
 // or malformed degrades to a short `text` block, never a JSON dump. A sealed field keeps no value:
 // only its typed placeholder (class, present) survives here, so nothing downstream can render one.
@@ -15,6 +15,7 @@
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
+ *  | { block: "preview", id: string, title: string, state: string, source: string, mode: string, access: string }
  *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
  *  | { block: "text", text: string }} Block
  * @typedef {{ path: string, op: string, diff: string, add: number, del: number }} DiffFile
@@ -99,6 +100,12 @@ export function normalizeBlock(raw, fallback = "Done") {
     case "screen": {
       const frames = arr(o.frames).filter((f) => typeof f === "string").slice(-4);
       return { block: "screen", label: str(o.label, 120), live: o.live !== false, frames };
+    }
+    // A live preview of something an agent is running. Never an address: the card asks the box for a one-time one when the person opens it.
+    case "preview": {
+      const id = str(o.id, 16), title = str(o.title, 120);
+      if (!/^[0-9a-f]{8}$/.test(id) || !title) return text();
+      return { block: "preview", id, title, state: ["starting", "live", "stopped", "crashed"].includes(o.state) ? o.state : "starting", source: str(o.source, 12) || "port", mode: o.mode === "supervised" ? "supervised" : "session", access: ["me", "project", "team"].includes(o.access) ? o.access : "me" };
     }
     case "text":
       return text();
