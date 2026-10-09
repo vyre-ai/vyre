@@ -102,7 +102,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
           const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
-            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out } });
+            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };
           let timedOut = false;
