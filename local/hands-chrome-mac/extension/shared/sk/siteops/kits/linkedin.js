@@ -1,6 +1,6 @@
 // GENERATED from lib/siteops/kits/linkedin.js by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.
 // @ts-check
-// The LinkedIn site kit: what to teach, in what order, and how an account is kept safe. It is a recipe, not captured traffic: LinkedIn changes its calls often, so the operations are learned from
+// The LinkedIn site kit (against LinkedIn's terms; at the user's own risk; not a headline feature): what to teach, in what order, and how an account is kept safe. It is a recipe, not captured traffic: LinkedIn changes its calls often, so the operations are learned from
 // the person's own signed-in session, on their own account, with the method (pin the intent, name the operation, two examples, prove on a third), and healed when the site changes. The kit says
 // which operations make the flagship set, the page each is taught from, which fields a person wants back, and that sending anything is held for their yes.
 //
@@ -13,7 +13,7 @@ export const LINKEDIN_KIT = Object.freeze({
   origins: Object.freeze(["https://www.linkedin.com"]),
   /** The profile the account governor applies unless the person sets their own (governor.js WATCHED). */
   governor: "strict",
-  note: "LinkedIn watches for automation. Reads go at a person's pace, a message or a connection request is held for your yes and made once, and the first security check stops the account until you clear it.",
+  note: "Automating LinkedIn is against LinkedIn's terms, and it can get your account restricted or closed. Use it only on an account you can afford to lose, at your own risk. If you do, reads go at a person's pace by default, a message or a connection request is held for your yes and made once, and the first security check stops the account until you clear it.",
   operations: Object.freeze([
     { name: "readProfile", kind: "read", inputs: [{ name: "slug", hint: "the public id in linkedin.com/in/<slug>", pattern: "[A-Za-z0-9%_.-]{3,100}" }],
       trigger: { url: "https://www.linkedin.com/in/{slug}/" }, wants: ["firstName", "lastName", "headline", "locationName", "publicIdentifier", "summary"],

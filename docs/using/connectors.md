@@ -278,12 +278,13 @@ this Mac, an assistant's own Chrome on your box (so it works with the Mac off; s
 its screen view), or your Chrome on a paired Mac that you allowed with `link.ops.allow`. If the
 browser says the login ran out, the Connection's light says to sign in again.
 
-**LinkedIn** has a kit (`chrome_op kit`): read a profile, a company, a search and your inbox; send a
-message or a connection request. LinkedIn watches for automation, so the account is used at a
-person's pace (a read every 20 to 60 seconds, 2 to 5 minutes between sends), within daily limits
-(80 reads, 15 sends), never at night, and **the first security check stops the account** until you
-clear it in the browser and resume it (`connectors.site.resume`). Every one of those numbers is a
-setting for your account (`connectors.site.limits.set`).
+**LinkedIn.** A kit for it exists (`chrome_op kit`), but automating LinkedIn is against LinkedIn's
+terms and can get an account restricted or closed. Use it only on an account you can afford to
+lose, and at your own risk; Vyre does not recommend it. If you do, the strict pace is on by default:
+a read every 20 to 60 seconds, 2 to 5 minutes between sends, 80 reads and 15 sends a day, never at
+night, and **the first security check stops the account** until you clear it in the browser and
+resume it (`connectors.site.resume`). Every one of those numbers is a setting for your account
+(`connectors.site.limits.set`).
 
 It does not solve CAPTCHAs, and a site that challenges your browser needs you once. Respect each
 site's terms: you are responsible for what you ask it to do.
