@@ -9,6 +9,7 @@
 
 import { rotate, rotationFor } from "../rotate.js";
 import { settle } from "../remind.js";
+import { autoFetch } from "../../../lib/http.js";
 
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
@@ -35,7 +36,7 @@ export function register({ vault, tool, presence, quoted, call, endpoints }) {
       if (!how.auto) { vault.audit("rotate", name, caller, true, `${how.provider}: guided`); return { rotated: false, guided: how }; }
       const current = await vault.fields(r);
       let made;
-      try { made = await rotate(item, current, { fetch: globalThis.fetch, endpoints, now: () => Date.now() }); }
+      try { made = await rotate(item, current, { fetch: autoFetch, endpoints, now: () => Date.now() }); }
       catch (e) { vault.audit("rotate", name, caller, false, `${how.provider}: ${/** @type {Error} */ (e).message}`); throw e; }
       await vault.put({ name, kind: r.kind, description: r.description, fields: { ...current, ...made.fields }, url: r.url || undefined, hosts: json(r.hosts, []),
         ...(made.expires ? { details: { expires: made.expires } } : {}) }, caller);

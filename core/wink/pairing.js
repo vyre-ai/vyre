@@ -37,6 +37,7 @@ import { p256 } from "@noble/curves/p256";
 import { deviceKey } from "./devicekey.js";
 import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
+import { autoFetch } from "../../lib/http.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const sha = (/** @type {string} */ s) => crypto.createHash("sha256").update(s).digest();
@@ -517,7 +518,7 @@ export function createPairing(o) {
 
   /** Keeps what the relay answered with, so a refusal can be told from a missing connection. */
   const watchFetch = () => {
-    const f0 = globalThis.fetch;
+    const f0 = autoFetch;
     const seen = { old: false };
     return { seen, fetch: /** @type {typeof fetch} */ (async (...a) => { const r = await f0(...a); if (r.status === 426) seen.old = true; return r; }) };
   };
@@ -746,7 +747,7 @@ export function createPairing(o) {
         void (async () => {
           while (!stopped && now() < p.expires && p.state === "waiting") {
             try {
-              const r = await ports.resolve(t.seed, { relay, fetch: globalThis.fetch });
+              const r = await ports.resolve(t.seed, { relay, fetch: autoFetch });
               if (stopped) return;
               const inv = r && r.invite;
               if (!inv || inv.kind !== "space-invite" || typeof inv.link !== "string" || !/^https:\/\/[^\s]+$/.test(inv.link) || inv.link.length > 1500) { failWith("failed", words("wrongCode")); return; }

@@ -55,6 +55,7 @@ import { qr, terminal } from "../qr.js";
 import { parseSSE } from "./threads.js";
 import { out, dim, bold, signal, beacon, colour } from "../style.js";
 import { EXIT, json, emit, fail, failTool, usage, parse, viewing } from "../kit.js";
+import { userHostFetch } from "../../../lib/http.js";
 
 const USAGE = "vyre phone [add [--iphone|--android] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]";
 
@@ -223,7 +224,7 @@ export async function add(flags, deps = {}) {
   const code = null;
 
   // The native Android app, when the box serves one: one manifest fetch, no retries.
-  const served = flags.iphone || !address ? null : appManifest((deps.base || address).replace(/\/$/, ""), deps.fetch || globalThis.fetch);
+  const served = flags.iphone || !address ? null : appManifest((deps.base || address).replace(/\/$/, ""), deps.fetch || userHostFetch);
   const [d0, k0, r0, am] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list"), served]);
   const app = am && am.manifest ? { version: am.manifest.version, url: `${address}/v1/releases/android?file=${encodeURIComponent(apkName(am.manifest))}` } : null;
   if (d0.error) return failTool(d0.error);
@@ -426,7 +427,7 @@ export const apkName = (/** @type {AppManifest} */ m) => m.file || `vyre-${m.ver
  * @param {string} base @param {typeof fetch} [f]
  * @returns {Promise<{ manifest?: AppManifest, missing?: boolean, error?: string }>}
  */
-export async function appManifest(base, f = globalThis.fetch) {
+export async function appManifest(base, f = userHostFetch) {
   let r;
   try { r = await f(`${base}/v1/releases/android`, { cache: "no-store", signal: AbortSignal.timeout(8000) }); }
   catch (e) { return { error: String(e && e.message || e) }; }
@@ -486,7 +487,7 @@ async function download(url, m, f) {
  */
 export async function android(flags, deps = {}) {
   const how = flags.wireless ? "wireless" : "usb";
-  const f = deps.fetch || globalThis.fetch;
+  const f = deps.fetch || userHostFetch;
   const v = await adb(["version"]);
   if (v.code === 127) return fail("adb is not installed, so Vyre cannot install the app over a cable",
     { code: "no_adb", next: "install Android platform-tools (brew install android-platform-tools), or put the Android SDK's platform-tools on PATH" });

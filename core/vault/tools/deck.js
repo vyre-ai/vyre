@@ -15,6 +15,7 @@ import { generate as makeValue } from "../generate.js";
 import { KINDS } from "../vault.js";
 import { DETAILS } from "../../../lib/vault-kinds/kinds.js";
 import { callerAllowed } from "../../modules/index.js";
+import { httpFetch } from "../../../lib/http.js";
 
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
@@ -27,7 +28,7 @@ const GEN_FIELD = { login: "password", secret: "value", "api-key": "value" };
 /**
  * @param {{ ctx: any, vault: import("../vault.js").Vault, fetch?: typeof globalThis.fetch }} deps
  */
-export function register({ ctx, vault, fetch = globalThis.fetch }) {
+export function register({ ctx, vault, fetch = httpFetch }) {
   const opts = () => (ctx.config && ctx.config.vault) || {};
 
   ctx.tool("vault.caps", {

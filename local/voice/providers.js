@@ -15,6 +15,7 @@
 // which mode is in use, so the Capsule can show "transcribing" instead of live words.
 
 import net from "node:net";
+import { autoFetch } from "../../lib/http.js";
 
 /** @typedef {"deepgram"|"openai"|"elevenlabs"} Provider */
 
@@ -121,7 +122,7 @@ export async function transcribe(p, base, key, pcm) {
   else if (p === "elevenlabs") { url = base + "/v1/speech-to-text"; headers = { "xi-api-key": key }; form.append("model_id", "scribe_v1"); }
   else throw new VoiceError("provider_error", `${p} streams; it is not transcribed on release`);
   let res;
-  try { res = await fetch(url, { method: "POST", headers, body: form, signal: AbortSignal.timeout(30_000) }); }
+  try { res = await autoFetch(url, { method: "POST", headers, body: form, signal: AbortSignal.timeout(30_000), maxBytes: 64 * 1024 * 1024 }); }
   catch { throw offline(p); }
   if (!res.ok) { await res.body?.cancel(); throw statusError(p, res.status); }
   let body;
@@ -153,7 +154,7 @@ export async function speak(p, base, key, text, voice) {
   const abort = new AbortController();
   const t = setTimeout(() => abort.abort(), 15_000);
   let res;
-  try { res = await fetch(url, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body), signal: abort.signal }); }
+  try { res = await autoFetch(url, { method: "POST", headers: { ...headers, "content-type": "application/json" }, body: JSON.stringify(body), signal: abort.signal, maxBytes: 64 * 1024 * 1024 }); }
   catch { throw offline(p); }
   finally { clearTimeout(t); }
   if (!res.ok || !res.body) { await res.body?.cancel(); throw statusError(p, res.status); }
