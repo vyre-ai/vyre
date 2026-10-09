@@ -226,10 +226,19 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
-  if (process.env.PROBE_COMPLETED) {
-    const slug2 = sub.j[0].slug;
-    for (const p of [`/s/${slug2}`, `/s/${slug2}/completed`]) { const r = await web(p); console.log("PROBE", p, r.status, r.headers.location || "", JSON.stringify([...r.text.matchAll(/(?:href|src|data-[a-z-]*url)="([^"]*(?:download|documents|file|blob|disk)[^"]*)"/g)].map(m => m[1].slice(0, 160))).slice(0, 800)); }
-    for (const p of [`/s/${slug2}/documents`, `/submitters/${slug2}/download`, `/s/${slug2}/download`]) { const r = await fetch(`http://127.0.0.1:${port}${p}`, { redirect: "manual" }); console.log("PROBE-UP", p, r.status, r.headers.get("location") || "", r.headers.get("content-type") || "", (await r.text()).slice(0, 300).replace(/\s+/g, " ")); }
+  {
+    // The finished file: the signer's slug does not list or download it, and an expiring link made by Documents does (R032-02 / the signed copy's link).
+    const slugDone = sub.j[0].slug;
+    for (const p of [`/s/${slugDone}/documents`, `/s/${slugDone}/download`]) assert.equal((await web(p)).status, 404, `${p} is closed to a stranger`);
+    const made = await d.registry.call("documents.signed-link", { slug: slugDone, days: 30 }, "cli", { ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
+    assert.ok(made.data && made.data.url, JSON.stringify(made));
+    const u = new URL(made.data.url);
+    assert.equal(u.host, H);
+    const pdfBytes = await new Promise((resolve, reject) => { const r = http.request({ host: "127.0.0.1", port: bridgePort, path: u.pathname, method: "GET", headers: { host: H } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(c) })); }); r.on("error", reject); r.end(); });
+    assert.equal(/** @type {any} */ (pdfBytes).status, 200);
+    assert.equal(/** @type {any} */ (pdfBytes).body.subarray(0, 5).toString(), "%PDF-", "the link opens the signed PDF");
+    assert.equal(/** @type {any} */ (pdfBytes).headers["cache-control"], "no-store");
+    assert.equal((await web(u.pathname.replace(/\.[^.]*$/, ".x"))).status, 404, "a changed link opens nothing");
   }
 
   // the event, the Flow's run, the record it made, and the signed PDF in the Drive
