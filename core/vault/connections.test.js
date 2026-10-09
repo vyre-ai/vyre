@@ -163,9 +163,10 @@ async function boot(t) {
   const d = await start({ root, presence: pres, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   /** A caller over the socket. */
-  const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
+  // The fake verifier approves any proof (the old header, which the server turns into a yes at its edge), so each call carries one; `pres.deny` makes it refuse.
+  const as = caller => (tool, input = {}) => call(tool, input, { root, caller, headers: { "x-vyre-presence": "tty id=t code=C" } });
   /** A module, or an agent vyred verified, in-process (the socket never lets a client claim these). */
-  const inproc = caller => (tool, input = {}) => d.registry.call(tool, input, caller);
+  const inproc = caller => (tool, input = {}) => d.registry.call(tool, input, caller, String(caller).startsWith("module:") ? {} : { proof: { method: "tty", id: "t", code: "C" } });
   return { root, d, pres, lines, as, inproc, events: type => d.registry.deps.events.since(0, { type, limit: 1000 }) };
 }
 
@@ -351,7 +352,7 @@ test("connections: several email accounts, one list, granted per surface", async
   // A default needs no proof of presence, and only a person sets it.
   pres.deny = true;
   assert.deepEqual(ok(await cli("vault.connections.update", { id: im.id, default_for: ["send_mail"] })).connection.default, ["send_mail"]);
-  assert.equal((await cli("vault.connections.update", { id: im.id, label: "x", default_for: ["send_mail"] })).error.code, "presence_required", "a label still needs a person");
+  assert.ok(!(await cli("vault.connections.update", { id: im.id, label: "x", default_for: ["send_mail"] })).error, "a label needs the person and no proof (it is not one of the three moments)");
   pres.deny = false;
   assert.equal((await mcp("vault.connections.update", { id: im.id, default_for: ["read_mail"] })).error.code, "denied");
   assert.equal((await postbox("vault.connections.update", { id: im.id, default_for: ["read_mail"] })).error.code, "denied");
