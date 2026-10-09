@@ -135,6 +135,9 @@ async function world(t) {
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
 
+  // On macOS Claude's sign-in lives in the Keychain, so a sandboxed session needs the setup token from the vault (lib/agent-sandbox.js: sandbox_credential). A made-up one is enough: the fake Claude never uses it.
+  const tok = await d.registry.call("vault.put", { name: "claude-setup-token", kind: "secret", value: "sk-ant-oat01-" + "x".repeat(48) }, "module:onboard"); // as core/onboard makes it
+  assert.ok(!tok.error, JSON.stringify(tok.error));
   const held = await tool("gate.request", { kind: "send", via: "mail", to: "kit@northwind.example",
     content: { subject: "Opening hours", body: "The shop opens at 7 from Monday." } }, "mcp");
   assert.equal(held.data.state, "held", JSON.stringify(held));
