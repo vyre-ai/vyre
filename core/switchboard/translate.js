@@ -17,7 +17,8 @@
 // capped, never into an event.
 
 import { redact } from "../transcripts/sanitize.js";
-import { receiptOf } from "../../lib/receipt.js";
+import { receiptOf, argsOf } from "../../lib/receipt.js";
+import { vyreSteps } from "../../lib/vyre-steps.js";
 
 const CUT = 200;
 
@@ -145,6 +146,14 @@ export function planItems(list) {
   });
 }
 
+/** A Vyre tool call's argument names and id-shaped values, never a value (lib/receipt.js argsOf): the evidence the repeated-work draft is written from (R031-00s). @param {string} name @param {any} input */
+function vyreArgs(name, input) {
+  if (!/^mcp__[^]*?vyre[^]*?__/i.test(String(name))) return {};
+  const a = argsOf(name, input);
+  const steps = vyreSteps(name, input);
+  return { ...(steps.length ? { steps } : {}), ...(a.keys.length ? { argKeys: a.keys } : {}), ...(a.ids.length ? { argIds: a.ids } : {}) };
+}
+
 /**
  * One stream-json message, as the thread events it stands for.
  *
@@ -200,7 +209,7 @@ export function translate(m) {
       // Thinking is its own event, so a surface that does not show it never takes it for the reply.
       if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.thinking", payload: { message: id, block, text: String(b.thinking).slice(0, 20000), done: true } });
       if (b.type === "tool_use") {
-        out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input), ...toolFields(b.name, b.input, b.vyre_kind) } });
+        out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input), ...toolFields(b.name, b.input, b.vyre_kind), ...vyreArgs(b.name, b.input) } });
         // Claude's todo list is the plan: one event carrying the whole list, so a card just replaces its state.
         if (b.name === "TodoWrite" && b.input && Array.isArray(b.input.todos)) out.events.push({ type: "thread.plan", payload: { items: planItems(b.input.todos), at: Date.now() } });
       }

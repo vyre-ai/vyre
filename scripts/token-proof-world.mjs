@@ -21,6 +21,10 @@ const { start } = await import("../core/daemon/index.js");
 const { present, asOwner } = await import("../test/helpers.js");
 const { FAKE } = await import("../core/sessions/testing/boot.js");
 const { TASKS, ARM_ENV, parseStream, passed, summarize } = await import("./lib/token-proof.js");
+const { createSkills, SKILL_MIGRATIONS } = await import("../core/learn/skills.js");
+const { DatabaseSync } = await import("node:sqlite");
+const { callsOf, runFor, evidenceOf } = await import("../lib/skill-skeleton.js");
+const { translate } = await import("../core/switchboard/translate.js");
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "check";
@@ -162,6 +166,43 @@ const person = setInterval(async () => {
 }, 150);
 person.unref();
 
+/**
+ * The skill Vyre would have offered after three clean sessions of the repeat job, through the real path: three scripted runs of the job as thread events (the same translate, receipts and tool-event
+ * fields a real thread writes), the evidence found in them, the template draft with the one-call section, proposed and installed as the person would (account scope, under the proof home). The three
+ * runs are scripted because a paid model cannot be made to do the same job three times and be marked clean at the next prompt on demand; every step after that is the product's own.
+ */
+function installRepeatSkill() {
+  const STEPS = ["vyre:work.call:clients.find", "vyre:work.call:matters.find", "vyre:planner.add"];
+  const run = (/** @type {string} */ who, /** @type {number} */ k) => {
+    /** @type {any[]} */ const ev = []; let i = 0;
+    const call = (/** @type {string} */ name, /** @type {any} */ input, /** @type {any} */ result) => {
+      const id = `tu_${k}_${++i}`;
+      ev.push(...translate({ type: "assistant", message: { id: `m${id}`, content: [{ type: "tool_use", id, name, input }] } }).events, ...translate({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify(result) }] } }).events);
+    };
+    call("mcp__vyre__work_call", { tool: "clients.find", input: { where: { name: who } } }, { result: { records: [{ id: `c_${k}` }] } });
+    call("mcp__vyre__work_call", { tool: "matters.find", input: { where: { client_name: who } } }, { result: { records: [{ id: `m_${k}` }] } });
+    call("mcp__vyre__planner_add", { kind: "todo", title: `Call ${who} about their matters` }, { id: `i_${k}`, kind: "todo" });
+    return ev.map((e) => ({ payload: e.payload }));
+  };
+  const runs = ["Client One", "Client Two", "Client Three"].map((w, k) => runFor(callsOf(run(w, k)), STEPS));
+  if (!runs.every(Boolean)) throw new Error("the scripted runs did not match their steps");
+  const db = new DatabaseSync(":memory:");
+  for (const sql of SKILL_MIGRATIONS) db.exec(sql);
+  const skills = createSkills(db, { claudeDir: path.join(home, ".claude-unused") });
+  const s = skills.propose({ hash: "proof-repeat", steps: STEPS, sessions: 3, scope: "all", evidence: evidenceOf(/** @type {any} */ (runs)) });
+  skills.install(s.id, { home, scope: "account" });
+  return s;
+}
+const removeLearned = () => fs.rmSync(path.join(home, "learned"), { recursive: true, force: true });
+
+/** The repeat task passes when exactly one todo has the title, its real id is in the answer, and so is the matter count (one). */
+async function verifyRepeat(/** @type {string} */ text) {
+  const l = await call("planner.list", { state: "all", limit: 500 });
+  const items = (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : []);
+  const mine = items.filter((/** @type {any} */ x) => x.title === "Call Aaron Adair about their matters");
+  return mine.length === 1 && text.includes(mine[0].id) && /\b(1|one)\b/i.test(text);
+}
+
 /** The long task passes when the answer holds the real ids of the two todos it names, and the count. */
 async function verifyLong(/** @type {string} */ text) {
   const l = await call("planner.list", { state: "all", limit: 500 });
@@ -183,7 +224,7 @@ if (cmd === "run") {
   /** @type {any[]} */ const rows = []; let spent = 0; let rolled = false;
   outer: for (let rep = 0; rep < reps; rep++) for (const task of TASKS.filter((t) => !only || only.includes(t.id))) for (const arm of arms) {
     if (standIn && !task.standIn) continue;
-    if (task.arms ? !task.arms.includes(arm) : arm.startsWith("roll-") && !only) continue;
+    if (task.arms ? !task.arms.includes(arm) : /^(roll|skill)-/.test(arm) && !only) continue;
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
     // A fresh thread for every run, nothing carried over: stop the agent and delete its threads, or agents.ask would resume the last one (its whole context, the earlier task's included).
     await call("agents.stop", { agent: "juno" });
@@ -195,7 +236,9 @@ if (cmd === "run") {
       await call("settings.set", { key: "sessions.rollover_at", value: rollMode === "on" ? 30 : 60 });
       rolled = Boolean(rollMode);
     }
-    if (task.verify === "long") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
+    const skillMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_SKILL;
+    if (skillMode) { removeLearned(); if (skillMode === "on") installRepeatSkill(); }
+    if (task.verify === "long" || task.verify === "repeat") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
     Object.assign(process.env, /** @type {any} */ (ARMS)[arm]);
     if (!process.env.VYRE_MCP_LISTING) delete process.env.VYRE_MCP_LISTING;
     if (!process.env.VYRE_MCP_FEATURES) process.env.VYRE_MCP_FEATURES = "";
@@ -206,8 +249,8 @@ if (cmd === "run") {
     // agents.ask answers as soon as the thread stops to ask the person, which can be before the turn is over: wait for the run's own result line (the person's answer comes from the loop above).
     await until(async () => !(await call("threads.asks", {})).data?.length && fs.existsSync(tee) && /"type":"result"/.test(fs.readFileSync(tee, "utf8")), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
     const run = parseStream(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "");
-    const extra = task.verify === "long" ? await verifyLong(run.text) : true;
-    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : ""), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "") && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    const extra = task.verify === "long" ? await verifyLong(run.text) : task.verify === "repeat" ? await verifyRepeat(run.text) : true;
+    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : ""), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "") && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));

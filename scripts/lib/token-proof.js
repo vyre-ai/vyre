@@ -47,6 +47,8 @@ export const TASKS = [
   { id: "biglist", batch: true, prompt: "In Vyre, list all the clients and tell me the names of the three that come first alphabetically.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*Aaron Abbott)(?=[\s\S]*Aaron Acosta)(?=[\s\S]*Aaron Adair)/, seed: "215 clients; the first three alphabetically are Aaron Abbott, Aaron Acosta, Aaron Adair" },
   // The long-session task (R031-00q): the answer needs ids that only the early tool results held, and the window is made to roll over in the middle (rollover_at 30). Only the roll arms run it.
   { id: "long", arms: ["roll-off", "roll-seed", "roll-ledger"], verify: "long", prompt: "In Vyre, do this for each of these six people in order: Aaron Abbott, Aaron Acosta, Aaron Adair, Beth Baird, Beth Burke, Carl Cole. List all the clients first (to find the person), then add a todo titled 'Call <name>'. At the end tell me the id of the todo for Aaron Adair, the id of the todo for Carl Cole, and how many todos you added.", tools: ["planner.add"], seed: "215 clients (a 50-record list is about 3,000 tokens a call); no todos yet. Passes when both ids in the answer are the real ids of those todos and the count is six" },
+  // The repeated-work task (R031-00s): a fixed three-step job. On the skill arm the world has installed the skill Vyre would have offered after three clean sessions (built by the real draft path from the evidence of three such runs), so the agent can send one tools_run; on the other arm it works the job out.
+  { id: "repeat", standIn: "tooluse-ask mcp__plugin_vyre_vyre__planner_add", arms: ["skill-off", "skill-on"], verify: "repeat", prompt: "In Vyre, for the client Aaron Adair: look up the client record, look up their matters, and add a todo titled 'Call Aaron Adair about their matters'. Then tell me how many matters they have and the id of the todo.", tools: ["planner.add"], seed: "215 clients; Aaron Adair has one matter; no todos yet. Passes when the todo exists once and its real id and the matter count are in the answer" },
   { id: "both", batch: true, prompt: "In Vyre, look at every matter: how many are Open and how many Closed? Then give me the title of Dana Whitfield's Closed matter.", tools: ["work.call", "records.list"], answer: /(?=[\s\S]*\b162\b)(?=[\s\S]*\b55\b)(?=[\s\S]*Deed transfer)/i, seed: "217 matters: 162 Open and 55 Closed; Dana's Closed matter is Deed transfer" },
 ];
 
@@ -66,6 +68,9 @@ export const ARM_ENV = {
   "roll-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "off", VYRE_MANAGED_CONTEXT: "off" } },
   "roll-seed": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "off" } },
   "roll-ledger": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_ROLL: "on", VYRE_MANAGED_CONTEXT: "on" } },
+  // The repeated-work arms (R031-00s): the core-both listing, with the learned skill installed or not. VYRE_PROOF_SKILL is read by the world.
+  "skill-off": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_SKILL: "off" } },
+  "skill-on": { env: { VYRE_MCP_LISTING: "", ENABLE_TOOL_SEARCH: "false", VYRE_MCP_FEATURES: "", VYRE_PROOF_SKILL: "on" } },
 };
 
 /** Did a run pass: the right tool was called and returned without an error, and the answer holds the seeded fact where the task has one. @param {typeof TASKS[number]} task @param {{ calls: { name: string, input?: any, ok?: boolean }[], text: string }} run */

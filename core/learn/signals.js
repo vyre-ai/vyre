@@ -16,6 +16,8 @@ import { shapeOf } from "./skills.js";
 export const MAX_HASHED = 256 * 1024;
 /** Tools whose PostToolUse (or PostToolUseFailure) the Harness passes on, so a missing one means no. */
 export const TRACKED = new Set(["Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"]);
+
+export { isVyreTool, vyreSteps } from "../../lib/vyre-steps.js";
 export const WRITERS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 const short = s => crypto.createHash("sha1").update(s).digest("hex").slice(0, 16);

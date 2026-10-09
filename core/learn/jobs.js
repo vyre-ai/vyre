@@ -57,6 +57,14 @@ export function skillPrompt(candidate) {
     "<<<",
     ...candidate.steps.map((s, i) => `${i + 1}. ${s}`),
     ">>>",
+    ...(candidate.evidence && candidate.evidence.lines && candidate.evidence.lines.length ? [
+      `Steps starting vyre: are calls to Vyre's own tools. How the ${candidate.evidence.runs} runs went (tool, the argument names it used, how it ended; no values):`,
+      "<<<",
+      ...candidate.evidence.lines[0],
+      ...(candidate.evidence.flows.length ? [`Data flow all runs agree on (call 3<-1:id>client_id: call 3's argument client_id was the id call 1 returned): ${candidate.evidence.flows.join(", ")}`] : []),
+      ">>>",
+      "Write the steps in words about what the procedure achieves. Do not write a tools_run script: Vyre adds it.",
+    ] : []),
   ].join("\n");
 }
 
