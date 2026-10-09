@@ -568,12 +568,13 @@ export default {
 
     // The stable id of an agent, for the modules that make grants for it (projects, the plugin agent): the module's own call, never a person's or a model's.
     ctx.tool("agents.uid", {
-      description: "An agent's stable id (the kernel's grants name it, never the name): { uid }. For the projects and plugin-agent modules.",
-      input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
+      description: "An agent's stable id (the kernel's grants name it, never the name): { uid }; given a uid, its name: { name }. For the projects, plugin-agent and vault modules.",
+      input: { type: "object", properties: { name: { type: "string" }, uid: { type: "string" } } },
       callers: ["module"],
-      run: async ({ name }, meta = {}) => {
+      run: async ({ name, uid }, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (c !== "module:projects" && c !== "module:pluginagent") throw Object.assign(new Error("agents.uid is the projects and plugin-agent modules'"), { code: "denied" });
+        if (c !== "module:projects" && c !== "module:pluginagent" && c !== "module:vault") throw Object.assign(new Error("agents.uid is the projects, plugin-agent and vault modules'"), { code: "denied" });
+        if (uid !== undefined) { const r = /** @type {any} */ (db.prepare("SELECT name FROM agents_agents WHERE uid = ?").get(String(uid))); return { name: r ? String(r.name) : null }; }
         return { uid: must(String(name).toLowerCase()).uid };
       },
     });

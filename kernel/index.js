@@ -30,6 +30,7 @@ import { holdKernelDrive } from "./storage/keys.js";
 import { backendFor } from "./storage/devices.js";
 import { createBridge } from "./storage/bridge.js";
 import { TASK } from "../records/core-types.js";
+import { AGENT_ACTIONS } from "./seal/uses.js";
 
 /**
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
@@ -70,7 +71,7 @@ export async function createKernel(cfg) {
     const own = {}; for (const k of ["owner", "project"]) if (typeof /** @type {any} */ (extra)[k] === "string") /** @type {any} */ (own)[k] = /** @type {any} */ (extra)[k];
     return { ...own, ...base };
   };
-  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
+  const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, projectExists: async (/** @type {string} */ id) => { try { return Boolean(await store.get("project", id)); } catch { return false; } }, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
   if (grantsStore && cfg.bootstrap !== false) { if (log.latestSeq() === 0) { await grantsStore.bootstrap({ owner: cfg.owner }); fresh = true; } else { migrated = (await grantsStore.rebuild()).migrated; limits.rebuild(); } }
@@ -226,13 +227,13 @@ export async function createKernel(cfg) {
       // Whether a named agent, acting for this Space's owner, may do a READ-risk act on a resource: the answer only. The agent's chain is built here and never leaves the kernel, so no module can mint an
       // agent chain; a chain of [owner, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. Used by the projects module for "may this agent reach this project".
       ...(needs.reach === true ? {
-        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource) => {
+        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin) => {
           if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
           const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
-          if (!def || def.risk !== "read") throw new KernelError("not_allowed", "only a read can be asked this way");
+          if (!def || !(def.risk === "read" || AGENT_ACTIONS.includes(action))) throw new KernelError("not_allowed", "only a read or the use of a credential can be asked this way");
           try {
             const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true });
-            return (await gateway.authorize({ chain, action, resource })).effect === "allow";
+            return (await gateway.authorize({ chain, action, resource, ...(origin ? { origin } : {}) })).effect === "allow";
           } catch { return false; }
         },
       } : {}),
@@ -302,6 +303,8 @@ export async function createKernel(cfg) {
         recover: (/** @type {any} */ i) => cfg.sealer.recover(i),
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
+      /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
+      ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault() }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection
        * (`meta.kernelFacts`, set only by the daemon: a person's surface on the socket, a paired or signed-in owner device), else the module's own service chain. The kernel's builder

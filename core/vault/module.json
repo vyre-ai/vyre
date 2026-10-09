@@ -183,6 +183,7 @@
       "vault.sync-conflicted",
       "vault.device-joined",
       "vault.agent-granted",
+      "vault.agent-carried",
       "vault.agent-revoked",
       "vault.emergency-added",
       "vault.emergency-requested",
@@ -234,7 +235,7 @@
       }
     }
   },
-  "needs": {},
+  "needs": { "kernel": { "reach": true } },
   "teaches": {
     "tips": [
       {"id": "put-hidden", "text": "Store a secret with `vyre vault put harlow-stripe`. It asks for the value at a hidden prompt, never on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre vault put <name>", "docs": "using/vault.md#store-an-item"},

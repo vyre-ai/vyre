@@ -42,6 +42,7 @@ import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
+import { ACCESS_REQUESTS_MIGRATION } from "./access.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
@@ -139,6 +140,8 @@ export const MIGRATIONS = [
   GRANT_PROJECT_MIGRATION,
   // P17: what the person's own turn asked to go out, so the Gate can tell an asked-for send from an unasked one.
   SAID_MIGRATION,
+  // The one grant model: an assistant's request to lend a login waits here for a person; who may use a login is a kernel grant (access.js).
+  ACCESS_REQUESTS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -360,8 +363,10 @@ export class Vault {
     this.devices = new Devices(this);
     /** The time agent grants expire by; tests pass a fake one instead of sleeping. */
     this.clock = clock;
-    /** Agent logins (ADR 0028, decision 2). */
+    /** Agent logins: what a grant is checked against, the words, the log of uses (ADR 0028, decision 2). Who may use a login is `access`. */
     this.agents = new AgentGrants(this);
+    /** Who may use a login: kernel grants (access.js), set by index.js where there is a kernel. @type {import("./access.js").Access | null} */ this.access = null;
+    /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
     this.emergency = new Emergency(this);
     /** Set by index.js once the relay listener is up. */
@@ -1330,7 +1335,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
-    this.agents.revokeItem(name, who);
+    if (this.access) { const p = this.access.revokeItem(name, String(who)).catch(e => this.log(`vault: what was lent of ${name} was not taken back: ${e.message}`)); this.revoking.add(p); p.finally(() => this.revoking.delete(p)); }
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
     return { deleted: name };
@@ -1376,12 +1381,6 @@ export class Vault {
     this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}), ...(project ? { project } : {}) });
     return { grant: this.grantOut(g) };
   }
-
-  /**
-   * The agent grant in force for (agent, item, origin): active, unexpired and passing its MAC, or
-   * null. For vault.agent.fill (ADR 0028, decision 3), which checks it before every fill.
-   */
-  agentGrantFor(agent, item, origin) { return this.agents.grantFor(agent, item, origin); }
 
   /** Write one use of an item to the audit trail, with its origin and surface (see agents.js). */
   recordUse(u) { return this.agents.recordUse(u); }
@@ -1808,15 +1807,15 @@ export class Vault {
     return {
       grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().filter(g => this.rowOk("vault_grants", g)).map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
-      agentGrants: this.agents.pending(),
+      agentGrants: this.access ? this.access.pending() : [],
       ...this.share.requests(),
     };
   }
 
-  async approve({ id }, caller) {
+  async approve({ id }, caller, meta = { caller }) {
     await this.key();
     if (String(id).startsWith("ag_")) {
-      const a = await this.agents.approve(String(id), caller);
+      const a = this.access ? await this.access.approve(String(id), meta) : null;
       if (a) return a;
       throw new Error(`nothing pending with id ${id}`);
     }

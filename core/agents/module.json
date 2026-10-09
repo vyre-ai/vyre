@@ -53,7 +53,7 @@
       },
       {
         "name": "agents.uid",
-        "summary": "an agent's stable id for the grants made for it (the projects and plugin-agent modules only)",
+        "summary": "an agent's stable id for the grants made for it (the projects, plugin-agent and vault modules only)",
         "reach": "modules",
         "effect": "read"
       },

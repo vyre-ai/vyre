@@ -145,10 +145,11 @@ An agent's threads, newest first.
 
 ### `agents.uid`
 
-An agent's stable id (the kernel's grants name it, never the name): { uid }. For the projects and plugin-agent modules.
+An agent's stable id (the kernel's grants name it, never the name): { uid }; given a uid, its name: { name }. For the projects, plugin-agent and vault modules.
 
 - Input:
-  - `name` string, required
+  - `name` string
+  - `uid` string
 - Callers: `module`
 
 ### `agents.update`
@@ -11308,7 +11309,7 @@ Unlock your personal vault from the phone: its password, and Face ID.
 
 ### `vault.agent.grant`
 
-Let one agent sign in to one site with one login, through vyred's fill of its computer. The agent never reads the login. From Claude it waits for a person to approve it.
+Let one agent sign in to one site with one login, through vyred's fill of its computer. The agent never reads the login. It is a grant in the Space (the one grant model); from Claude it waits for a person to approve it.
 
 - Input:
   - `agent` string, required
