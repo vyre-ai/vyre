@@ -338,16 +338,16 @@ test("the lent service's rows are not a wire call", async () => {
 
 // ---- the place of a lent session (R031-95 2.4, 2.5): the epoch, the heartbeat, the release and the server's take-over ---------------------------------------------------------------------
 import { LAPSE_MS, HEARTBEAT_MS } from "./placement-book.js";
-const CHAT = "chat_aaaaaaaa-0000-0000-0000-000000000001";
 const clockRig = async (t, o = {}) => {
   const c = { t: 1_000_000 }; const resumed = [], said = [];
   const r = await rig(t, { now: () => c.t, resume: async i => { resumed.push(i); }, emit: (type, p) => said.push([type, p]), ...o });
-  return { ...r, c, resumed, said };
+  const chat = (await r.g.chats.create(r.bob, { people: [] })).id;
+  return { ...r, c, resumed, said, chat };
 };
 
 test("every write names the epoch the session was lent under: none, or an older one, is refused", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  const first = await c.spec({ session: "s1", chat: CHAT });
+  const first = await c.spec({ session: "s1", chat: r.chat });
   assert.equal(first.epoch, 1); assert.equal(c.epochOf("s1"), 1);
   await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }]);
   const raw = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
@@ -358,7 +358,7 @@ test("every write names the epoch the session was lent under: none, or an older 
 
 test("the split case: the computer is paused, not dead; the server resumes from the last acknowledged turn; the computer wakes and nothing it says is written", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  await c.spec({ session: "s1", chat: CHAT });
+  await c.spec({ session: "s1", chat: r.chat });
   await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }, { seq: 2, line: "b" }]);
   await c.sync.putCheckpoint("s1", { turn: 1, seq: 2, manifest: {}, state: { n: 1 } });
   await c.sync.appendTranscript("s1", [{ seq: 3, line: "c, a turn the checkpoint does not cover" }]);
@@ -367,10 +367,10 @@ test("the split case: the computer is paused, not dead; the server resumes from 
   r.c.t += LAPSE_MS + 1;
   await r.home.sweep();
   assert.equal(r.resumed.length, 1, "the server took the session once");
-  assert.deepEqual([r.resumed[0].session, r.resumed[0].chat, r.resumed[0].epoch, r.resumed[0].reason], ["s1", CHAT, 2, "offline"]);
+  assert.deepEqual([r.resumed[0].session, r.resumed[0].chat, r.resumed[0].epoch, r.resumed[0].reason], ["s1", r.chat, 2, "offline"]);
   assert.equal((await r.resumed[0].view.checkpoint()).turn, 1, "from the last whole turn");
   assert.deepEqual((await r.resumed[0].view.transcript(1)).map(e => e.line).slice(0, 2), ["a", "b"]);
-  assert.deepEqual(r.said.map(([type, p]) => [type, p.thread, p.to, p.reason, p.epoch, p.from]), [["thread.moved", CHAT, "server", "offline", 2, "mac"]]);
+  assert.deepEqual(r.said.map(([type, p]) => [type, p.thread, p.to, p.reason, p.epoch, p.from]), [["thread.moved", r.chat, "server", "offline", 2, "mac"]]);
   await r.home.sweep(); assert.equal(r.resumed.length, 1, "a second sweep does not take it again");
   // the computer wakes: its client learns it was fenced, its writes are refused, nothing reaches the store
   const fenced = []; c.onFenced(s => fenced.push(s));
@@ -384,7 +384,7 @@ test("the split case: the computer is paused, not dead; the server resumes from 
   // it cannot take the session back by starting it again; the person bringing it back is what allows that
   await assert.rejects(c.spec({ session: "s1" }), e => e.code === "conflict");
   r.home.book.bringBack("s1", BOB);
-  assert.deepEqual((await c.beat({ sessions: [] })).directives, [{ do: "start", session: "s1", chat: CHAT, reason: null }], "the lender is told to start it");
+  assert.deepEqual((await c.beat({ sessions: [] })).directives, [{ do: "start", session: "s1", chat: r.chat, reason: null }], "the lender is told to start it");
   const again = await c.spec({ session: "s1" });
   assert.equal(again.epoch, 3);
   await c.sync.appendTranscript("s1", [{ seq: 3, line: "c again, on the computer" }]);
@@ -392,7 +392,7 @@ test("the split case: the computer is paused, not dead; the server resumes from 
 
 test("a computer that hands the session over after its final checkpoint is fenced at once, and the server resumes from that checkpoint", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  await c.spec({ session: "s1", chat: CHAT });
+  await c.spec({ session: "s1", chat: r.chat });
   await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }]);
   await c.sync.putCheckpoint("s1", { turn: 1, seq: 1, manifest: {}, state: {} });
   await assert.rejects(c.release({ session: "s1", reason: "whatever" }), e => e.code === "bad_input");
@@ -405,7 +405,7 @@ test("a computer that hands the session over after its final checkpoint is fence
 
 test("an automatic move is held back inside the cooldown, and the lender keeps the session; the person's own move is not", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  await c.spec({ session: "s1", chat: CHAT });
+  await c.spec({ session: "s1", chat: r.chat });
   assert.equal((await c.release({ session: "s1", reason: "unplugged" })).moved, true);
   r.home.book.bringBack("s1", BOB); r.c.t += 30_000;
   await c.spec({ session: "s1" });
@@ -416,10 +416,10 @@ test("an automatic move is held back inside the cooldown, and the lender keeps t
 
 test("the heartbeat tells a computer what the home wants: hand a session over, or that a condition cleared and the session is offered back", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  await c.spec({ session: "s1", chat: CHAT }); await c.spec({ session: "s2" });
+  await c.spec({ session: "s1", chat: r.chat }); await c.spec({ session: "s2" });
   r.home.book.askRelease("s1", "you");
   const a = await c.beat({ sessions: [{ session: "s1", epoch: 1 }, { session: "s2", epoch: 1 }] });
-  assert.deepEqual(a.directives, [{ do: "release", session: "s1", chat: CHAT, reason: "you" }]);
+  assert.deepEqual(a.directives, [{ do: "release", session: "s1", chat: r.chat, reason: "you" }]);
   assert.equal(r.home.book.get("s1").state, "moving");
   await c.release({ session: "s2", reason: "lid-closed" });
   assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).offers, [], "not well yet: nothing is offered");
@@ -434,7 +434,7 @@ test("the heartbeat tells a computer what the home wants: hand a session over, o
 
 test("a home that restarts keeps the sessions on lenders' computers, and gives each a whole lapse to show itself", async t => {
   const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
-  await c.spec({ session: "s1", chat: CHAT });
+  await c.spec({ session: "s1", chat: r.chat });
   r.c.t += LAPSE_MS * 3;
   // the same folder, a new process: the book is read back from its file
   const home2 = createLentHome({ space: SPACE, root: path.join(r.dir, "home"), offers: r.g.offers, leases: r.k.gateway.leases, now: () => r.c.t, specFor: async () => ({ command: "x", routes: [] }) });
