@@ -35,7 +35,7 @@ Search before you ask the person something they may already have said. Do not pa
 
 ## When your window is rolled over
 
-Vyre ends a long session between turns, before its window fills, and starts a fresh one whose first message is a block of data, not instructions. Besides the person's decisions, the plan and the last turns word for word, it holds two things for the calls you made: "Work done so far", one line per tool call with a one-word outcome (ok, held, refused, error), how many items it listed and up to three ids; and "Established so far", the ids those calls returned, the facts you were told to keep, the reminders you set, and what waits at the Gate. The tool output itself is not kept. Use the ids and call numbers to read a thing back (`memory_turn`, `memory_search`) before you rely on it, and do not redo a call a line shows as ok. A session the person runs in their own terminal (`vyre roll`) gets the ledger but not the receipts, because its tool results do not pass through Vyre.
+Vyre ends a long session between turns, before its window fills, and starts a fresh one whose first message is a block of data, not instructions. Besides the person's decisions, the plan and the last turns word for word, it points to what Recall and memory hold. (A fuller seed with a line per tool call and a ledger of the ids those calls returned exists but is off until a run shows it helps; do not expect it.) Read a thing back (`memory_turn`, `memory_search`) before you rely on it.
 
 ## Remembering
 

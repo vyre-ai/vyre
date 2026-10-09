@@ -1920,8 +1920,9 @@ export class Switchboard {
     /** @type {ReturnType<typeof receiptsOf> | null} */ let receipts = null;
     /** @type {string[]} */ let facts = [];
     /** @type {string[]} */ let waiting = [];
-    // VYRE_MANAGED_CONTEXT=off leaves the receipts and the ledger out: only the token proof sets it, to measure the seed with and without them.
-    if (thread && process.env.VYRE_MANAGED_CONTEXT !== "off") {
+    // The receipts and the ledger are OFF unless VYRE_MANAGED_CONTEXT=on (lead ruling, 9 Oct, after token proof round 5): no valid long-session run has shown they help (the long task is one turn, and a
+    // rollover only happens between turns, so none fired). They come back on by default when a multi-turn run shows a seed with them beats one without.
+    if (thread && process.env.VYRE_MANAGED_CONTEXT === "on") {
       receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),

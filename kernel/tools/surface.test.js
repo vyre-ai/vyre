@@ -133,3 +133,10 @@ test("a find says when there is more and how to get it, says when a limit was cu
   assert.equal(first.records[0].data.title, "alpha");
   assert.equal((await r.surface.call(p, "matters.find", { limit: 500 })).capped_at, 50);
 });
+
+test("the task type's create tool points a to-do at planner_add, so a short catalog does not send a model to it", async () => {
+  const r = await rig({ defs: [{ name: "task", label: "Task", fields: [{ name: "title", kind: "text", label: "Title" }] }, MATTER] });
+  const tools = await r.surface.list(person(OWNER));
+  assert.match(tools.find(t => t.name === "tasks.create").description, /planner_add/);
+  assert.match(tools.find(t => t.name === "matters.create").description, /^Add a Matter\.$/);
+});

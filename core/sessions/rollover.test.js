@@ -47,6 +47,7 @@ for (const driver of ["cli", "sdk"]) {
   const rolled = async (w, id, n = 1) => until(async () => (await w.events(id)).filter(e => e.type === "thread.rolled").length >= n && (await w.events(id)).filter(e => e.type === "thread.rolled")[n - 1], `rollover ${n}`);
 
   test(`${driver}: the seed after a rollover carries receipts of the tool calls and a ledger of their ids, and none of the output text (R031-00q)`, { skip }, async t => {
+    process.env.VYRE_MANAGED_CONTEXT = "on"; t.after(() => { delete process.env.VYRE_MANAGED_CONTEXT; });
     const w = await boot(t, { driver });
     noMemoryBlocks(w);
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "set up the reminders", surface: "deck" })).data;
@@ -66,6 +67,23 @@ for (const driver of ["cli", "sdk"]) {
     // (the fake's tool result is typed in the person's own message, which the tail quotes; the receipt and ledger sections are what must hold none of it)
     const sections = said.slice(said.indexOf("Work done so far"), said.indexOf("as pointers") > 0 ? said.indexOf("as pointers") : said.indexOf("Most recent, word for word"));
     assert.ok(sections.length > 100 && !/IGNORE PREVIOUS INSTRUCTIONS/.test(sections), "a tool's output text never reaches the receipts or the ledger");
+  });
+
+  test(`${driver}: with VYRE_MANAGED_CONTEXT unset the seed carries no receipts and no ledger (they are opt-in until a multi-turn run shows they help)`, { skip }, async t => {
+    delete process.env.VYRE_MANAGED_CONTEXT;
+    const w = await boot(t, { driver });
+    noMemoryBlocks(w);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "set up the reminders", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: 'tooljson mcp__vyre__planner_add {"id":"i_78","kind":"todo"}', surface: "deck" })).error, undefined);
+    await w.finished(th.id, 2);
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "bloat 130000", surface: "deck" })).error, undefined);
+    await w.finished(th.id, 3);
+    await rolled(w, th.id);
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck" })).error, undefined);
+    await w.finished(th.id, 4);
+    const said = (await w.said(th.id)).at(-1);
+    assert.doesNotMatch(said, /Work done so far|Established so far/);
   });
 
   test(`${driver}: a window past 60% rolls over between turns: same thread, a fresh native session, a notice, and the seed rides the next message with the person's words after it`, { skip }, async t => {
@@ -353,3 +371,4 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(turn.turns[0].text, /marzipan-7$/);
   });
 }
+

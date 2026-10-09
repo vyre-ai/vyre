@@ -47,7 +47,7 @@ export function createToolSurface({ kernel, space, types, actions = () => [], ta
           const page = await kernel.records.query(c, t.name, { ...(where.length ? { filter: { and: where.map(([field, value]) => ({ field, op: "eq", value })) } } : {}), ...(Array.isArray(i.sort) && i.sort.length ? { sort: i.sort } : {}), page: { limit, ...(typeof i.cursor === "string" && i.cursor ? { cursor: i.cursor } : {}) } });
           return { ok: true, type: t.name, records: page.rows, ...(page.next_cursor ? { more: true, next_cursor: page.next_cursor } : {}), ...(Number(i.limit) > 50 ? { capped_at: 50 } : {}) };
         } });
-      out.push({ name: `${nm}.create`, description: `Add a ${label}.`, risk: "write", action: "records.create", resource: urn(t.name),
+      out.push({ name: `${nm}.create`, description: t.name === "task" ? "A to-do or reminder is planner_add; this is a work item on a record." : `Add a ${label}.`, risk: "write", action: "records.create", resource: urn(t.name),
         schema: { type: "object", required: ["data"], properties: { data: { type: "object", description: `Fields: ${names.join(", ")}.` } } },
         run: async (/** @type {any} */ c, /** @type {any} */ i) => ({ ok: true, type: t.name, record: await kernel.records.create(c, t.name, i.data || {}) }) });
       out.push({ name: `${nm}.update`, description: `Change fields on a ${label}.`, risk: "write", action: "records.update", resource: urn(t.name),
