@@ -145,6 +145,17 @@ export default {
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] } }, ["kind"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().get(c, i); })() });
     ctx.tool("work.chat.pinned", { description: "Whether a chat is a person's pinned assistant or Engineer chat: { kind: \"assistant\" | \"engineer\" | null }. For vyred, which lets only the pinned assistant chat run with the assistant's authority.", internal: true, callers: ["module"],
       input: obj({ person: { type: "string" }, chat: { type: "string" } }, ["person", "chat"]), run: async (/** @type {any} */ i) => { if (!ctx.store || !ctx.store.db) throw unavailable(); return { kind: persistentOf().kindOf(String(i.person), String(i.chat)) }; } });
+    // Share to project (R031-41): a share is one `file-share` record by someone in the chat. The kernel does the rest: it opens that one file to the project's members and, for an encrypted chat, wraps the file's key into the project's ring (and rotates it when the last share goes).
+    ctx.tool("work.file.share", { description: "Share one file of a chat you are in with that chat's project: its members open that one file and nothing else. Give the file's path (Projects/<project>/chat/<chat>/<name>).",
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => { const r = await kernelOf().records.create(await chainOf(extra), "file-share", { path: String(i.path) }); return { shared: true, id: r.id }; } });
+    ctx.tool("work.file.unshare", { description: "Take a shared file back: the project's members lose it at once. Give the file's path. You can take back the shares you made; an admin can take back any.",
+      input: obj({ path: { type: "string", maxLength: 500 } }, ["path"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+        const k = kernelOf(), chain = await chainOf(extra);
+        const rows = (await k.records.query(chain, "file-share", { filter: { field: "path", op: "eq", value: String(i.path) }, page: { limit: 50 } })).rows || [];
+        let removed = 0;
+        for (const r of rows) { try { await k.records.remove(chain, "file-share", r.id, r.version); removed++; } catch { /* not this person's to take back */ } }
+        return { unshared: removed };
+      } });
     ctx.tool("work.chat.pin", { description: "Make a chat you are in your pinned chat of a kind (assistant or engineer). A second, different chat of the same kind is refused and names the first: there is one each.",
       input: obj({ kind: { type: "string", enum: ["assistant", "engineer"] }, chat: { type: "string" } }, ["kind", "chat"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => (async () => { const c = await chainOf(extra); return persistentOf().pin(c, i); })() });
     ctx.tool("work.project.create", {

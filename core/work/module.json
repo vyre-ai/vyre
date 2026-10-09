@@ -335,6 +335,18 @@
         "effect": "read"
       },
       {
+        "name": "work.file.share",
+        "summary": "share one file of a chat with its project",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.file.unshare",
+        "summary": "take a shared file back",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.pin",
         "summary": "make a chat your pinned assistant or Engineer chat",
         "reach": "anyone",

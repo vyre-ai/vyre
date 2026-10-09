@@ -8,6 +8,7 @@ import { sealedDrive } from "../storage/sealed-drive.js";
 import { createRing } from "../../lib/chat-keys.js";
 import { newDeviceKey, fingerprint } from "../../lib/keywrap.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { FILE_SHARE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol", ADA = "per_ada", DAN = "per_dan";
 const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
@@ -38,12 +39,15 @@ async function rig() {
   const dev = (person, id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person, path: "direct" });
   const g = k.gateway.grants;
   for (const [p, role] of [[BOB, "member"], [CAROL, "member"], [ADA, "admin"], [DAN, "member"]]) { const r = { person: p, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
+  k.kernelFor({ name: "work", needs: { kernel: { actions: ["records.read"] } } });
+  await k.gateway.records.define(owner, { add_types: [FILE_SHARE] });
+  const share = (who, path) => k.gateway.records.create(who, "file-share", { path });
   const bob = dev(BOB, "d-b"), carol = dev(CAROL, "d-c"), ada = dev(ADA, "d-a"), dan = dev(DAN, "d-d");
   const chat = await g.chats.create(bob, { people: [CAROL] });
   held.set(chat.id, createRing(chat.id, { [holder]: dev0.publicJwk }).keys);
   projHeld.set("p1", createRing("proj-p1", { [holder]: dev0.publicJwk }).keys);
   const dir = `Projects/p1/chat/${chat.id}`;
-  return { k, raw, held, D: k.gateway.drive, g, owner, bob, carol, ada, dan, chat, dir };
+  return { k, share, raw, held, projHeld, D: k.gateway.drive, g, owner, bob, carol, ada, dan, chat, dir };
 }
 const enc = s => new TextEncoder().encode(s);
 const dec = b => new TextDecoder().decode(b);
@@ -73,28 +77,33 @@ test("sealed chat folders: a non-participant with the exact logical path, and wi
   await assert.rejects(() => D.get(bob, `${dir}/secret.txt`), e => ["not_found", "unavailable"].includes(e.code), "locked: the participant cannot read either");
 });
 
-test("sealed chat folders: Share to project is a grant plus a key wrap, unshare takes it back at once and rotates the key", { todo: "0.3.0 (team/BACKLOG.md): Share to project for a file in an encrypted chat needs project rings and a share tool; 0.2.9 shares by the file-share record (kernel/gateway/shares.js) and makes no wrap" }, async () => {
-  const { g, D, bob, dan, ada, dir, raw } = await rig();
+test("sealed chat folders: Share to project is a file-share record plus a key wrap, taking it back refuses at once and rotates the key", async () => {
+  const { k, D, bob, dan, ada, dir, raw, share } = await rig();
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   await D.put(bob, `${dir}/private.txt`, enc("not shared"));
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" });
-  await g.shareFile(bob, `${dir}/shared.txt`);
+  const sh = await share(bob, `${dir}/shared.txt`);
   assert.equal(dec(await D.get(dan, `${dir}/shared.txt`)), "for the project");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" });
-  assert.deepEqual(await g.unshareFile(bob, `${dir}/shared.txt`), { unshared: 1 });
+  await k.gateway.records.remove(bob, "file-share", sh.id, sh.version);
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" });
   assert.equal(dec(await D.get(bob, `${dir}/shared.txt`)), "for the project", "the participant still reads it after the key rotated");
   assert.ok(ada && raw);
 });
 
-test("sealed chat folders: a project member who is not in the chat opens a shared file through the project's ring alone, and is refused an unshared one, before and after the chat is locked", { todo: "0.3.0 (team/BACKLOG.md): Share to project for a file in an encrypted chat needs project rings and a share tool; 0.2.9 shares by the file-share record (kernel/gateway/shares.js) and makes no wrap" }, async () => {
-  const { g, D, bob, dan, dir, held, chat, raw } = await rig();
+test("sealed chat folders: a project member who is not in the chat opens a shared file through the project's ring alone, and is refused an unshared one, before and after the chat is locked", async () => {
+  const { D, bob, dan, dir, held, chat, raw, share, projHeld } = await rig();
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   await D.put(bob, `${dir}/private.txt`, enc("not shared"));
-  await g.shareFile(bob, `${dir}/shared.txt`);
+  await share(bob, `${dir}/shared.txt`);
   held.delete(chat.id);   // no participant has the chat unlocked: only the project's ring is held
   assert.equal(dec(await D.get(dan, `${dir}/shared.txt`)), "for the project", "opened with the project ring, no chat key");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" }, "the unshared file stays refused");
+  // after a restart (a fresh drive over the same disk) the project index is read back and the shared file opens again, the unshared one still not
+  const again = sealedDrive(raw, { keysFor: () => null, projectKeysFor: p => projHeld.get(p) || null });
+  assert.deepEqual(await again.loadShared("p1"), { loaded: 1 });
+  assert.equal(dec(await again.get(`${dir}/shared.txt`)), "for the project", "found again from the project's index alone");
+  await assert.rejects(() => again.get(`${dir}/private.txt`));
   // the project index on the disk is ciphertext too
   const disk = [...raw.files.entries()].map(([p, vs]) => p + "\n" + vs.map(v => Buffer.from(v.bytes).toString("latin1")).join("\n")).join("\n");
   assert.ok(!disk.includes("shared.txt") && !disk.includes("for the project"), "no name or content in the project's share index");

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1495,"event":492,"config":282,"env":268,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1497,"event":492,"config":282,"env":268,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2889,6 +2889,8 @@
     {"kind":"tool","name":"work.chat.span","definedIn":"core/work/index.js","page":"reference/tools.md#workchatspan","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.upgrade-move","definedIn":"core/work/index.js","page":"reference/tools.md#workchatupgrade-move","module":"work","mentions":[]},
     {"kind":"tool","name":"work.chat.upgrade-plan","definedIn":"core/work/index.js","page":"reference/tools.md#workchatupgrade-plan","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.file.share","definedIn":"core/work/index.js","page":"reference/tools.md#workfileshare","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.file.unshare","definedIn":"core/work/index.js","page":"reference/tools.md#workfileunshare","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.accept","definedIn":"core/work/index.js","page":"reference/tools.md#workknowaccept","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.answer","definedIn":"core/work/index.js","page":"reference/tools.md#workknowanswer","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.capture","definedIn":"core/work/index.js","page":"reference/tools.md#workknowcapture","module":"work","mentions":[]},

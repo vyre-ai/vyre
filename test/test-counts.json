@@ -985,5 +985,6 @@
  "lib/siteops/kit-benchmark.test.js": 6,
  "lib/siteops/kits.test.js": 4,
  "modules/hands-chrome/op-run.test.js": 2,
- "test/flows-publish-once.test.js": 1
+ "test/flows-publish-once.test.js": 1,
+ "test/work-file-share-daemon.test.js": 1
 }

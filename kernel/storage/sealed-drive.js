@@ -105,6 +105,7 @@ export function sealedDrive(drive, src) {
       if (!w || w.rest === null) return drive.get(p, o);
       if (!src.keysFor(w.chat)) {
         // not in the chat: only a file shared to the project opens, through the project's ring, at the version that was shared
+        if (!shared.has(w.project)) await loadShared(w.project);
         const e = sharedEntry(w), pk = src.projectKeysFor ? src.projectKeysFor(w.project) : null;
         if (!e || !pk) throw err("unavailable", "this chat's key is not unlocked here");
         return new Uint8Array(openShared(pk, e.rec, JSON.parse(Buffer.from(await drive.get(e.stored, { version: e.ver })).toString("utf8"))));
@@ -169,6 +170,11 @@ export function sealedDrive(drive, src) {
       if (!w || w.rest === null) return drive.restore(p, version, o);
       const sp = stored(p);
       return turn(w.root, async () => { const r = await drive.restore(sp, version, o); const ix = await readIndex(w), e = ix.files[rel(sp, w)]; if (e && e.recs[version]) { e.recs[r.version] = e.recs[version]; await writeIndex(w, ix); } return r; });
+    },
+    /** The logical path a project's index holds for a stored one (what a share record names), or null. @param {string} sp */
+    logical(sp) {
+      for (const [project, m] of shared) { const pk = src.projectKeysFor ? src.projectKeysFor(project) : null; for (const e of pk ? m.values() : []) if (e.stored === sp) return `Projects/${project}/${namer(pk).open(e.name)}`; }
+      return null;
     },
     /** Share one file's key to a project's ring (a wrap, never a copy). A project whose key is not held here is skipped: the kernel grant still decides who reads. @param {string} p */
     async share(p) {
