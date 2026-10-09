@@ -32,6 +32,8 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
     finally { setBusy(false); }
   };
   const showLog = () => run(() => tool<{ log: string }>("previews.log", { id: b.id }), (r) => setLog(String(r.log || "Nothing was printed yet.")));
+  const open = () => openPreview({ id: b.id, title: b.title });
+  const inBrowser = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
   const more = [
     ...(a.open ? [{ label: "Open in browser", onPress: inBrowser }] : []),
     ...(a.keep ? [{ label: "Keep it running", onPress: () => run(() => tool("previews.keep", { id: b.id })) }] : []),
@@ -39,8 +41,6 @@ export function PreviewCard({ block, sample }: { block: PreviewBlock; sample?: s
     ...(a.log && a.open ? [{ label: "Look at the log", onPress: showLog }] : a.log && a.restart ? [{ label: "Look at the log", onPress: showLog }] : []),
     ...(a.stop ? [{ label: "Stop", onPress: () => run(() => tool("previews.stop", { id: b.id })), danger: true }] : []),
   ];
-  const open = () => openPreview({ id: b.id, title: b.title });
-  const inBrowser = () => run(() => tool<{ url: string }>("previews.url", { id: b.id }), (r) => { if (Platform.OS === "web") window.open(r.url, "_blank", "noopener"); else void Linking.openURL(r.url); });
 
   return (
     <View accessible accessibilityLabel={`${b.title}, ${word.toLowerCase()}`} style={{ borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], borderRadius: 14, overflow: "hidden", marginVertical: 4, maxWidth: 560 }}>
