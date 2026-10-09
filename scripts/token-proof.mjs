@@ -7,7 +7,7 @@
 //                                                     the paid round: drives headless Claude Code against the Vyre box at --home, one process per task and arm
 //
 // Arms: `old` lists every tool (VYRE_MCP_LISTING=all, Claude Code's own tool search off, so the whole listing is in the prompt); `old-search` lists every tool and leaves Claude Code's
-// own tool search on (it defers a long MCP list by itself); `core` is the new listing with tools_find and tools_call. Each run records input, output and cache tokens, time, turns, the
+// own tool search forced on (ENABLE_TOOL_SEARCH=true; it defers a long MCP list by itself); `core` is the new listing with tools_find and tools_call. Each run records input, output and cache tokens, time, turns, the
 // tool calls made (tools_call unwrapped to the tool it ran) and pass or fail. The paid round runs only with VYRE_PROOF_PAID=yes in the environment AND --max-usd: it stops before the next run
 // once Claude Code's own reported cost reaches the cap. It uses whatever ANTHROPIC_* auth the shell has; nothing is printed of it. Run it on the test box, never on a person's Mac.
 import fs from "node:fs";
@@ -26,8 +26,8 @@ const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "estimate";
 const flag = (/** @type {string} */ n, /** @type {string} */ d = "") => { const i = args.indexOf(`--${n}`); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const ARMS = {
   old: { listing: "all", env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "false" } },
-  "old-search": { listing: "all", env: { VYRE_MCP_LISTING: "all" } },
-  core: { listing: "core", env: {} },
+  "old-search": { listing: "all", env: { VYRE_MCP_LISTING: "all", ENABLE_TOOL_SEARCH: "true" } },
+  core: { listing: "core", env: { ENABLE_TOOL_SEARCH: "false" } },
 };
 
 function dry() {
@@ -72,7 +72,7 @@ async function paid() {
     const cfg = path.join(work, "mcp.json");
     fs.writeFileSync(cfg, JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [path.join(ROOT, "harness", "mcp", "server.js")], env: { VYRE_HOME: home, ...(ARMS[/** @type {keyof typeof ARMS} */ (arm)].env.VYRE_MCP_LISTING ? { VYRE_MCP_LISTING: "all" } : {}) } } } }));
     const env = { ...process.env, ...ARMS[/** @type {keyof typeof ARMS} */ (arm)].env, DISABLE_AUTOUPDATER: "1", CI: "1" };
-    const a = ["-p", task.prompt, "--output-format", "stream-json", "--verbose", "--mcp-config", cfg, "--strict-mcp-config", "--allowedTools", "mcp__vyre", "--max-turns", "12", ...(model ? ["--model", model] : [])];
+    const a = ["-p", task.prompt, "--output-format", "stream-json", "--verbose", "--mcp-config", cfg, "--strict-mcp-config", "--allowedTools", "mcp__vyre", "--max-turns", "12", "--max-budget-usd", String(Math.max(0.05, Math.min(1, cap - spent)).toFixed(2)), ...(model ? ["--model", model] : [])];
     const res = /** @type {any} */ (await claude(a, /** @type {any} */ (env), work));
     const run = parseStream(res.out);
     const row = { arm, task: task.id, rep: r, pass: !run.error && passed(task, run), ...run, ms: run.ms || res.ms };
