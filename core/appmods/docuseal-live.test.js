@@ -146,6 +146,67 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const sub = await api("POST", "/api/submissions", { template_id: Number(tpl.template_id), send_email: false, submitters: [{ role: "First Party", email: "signer@example.com" }] });
   assert.equal(sub.s, 200, JSON.stringify(sub.j));
   const submitter = sub.j[0].id;
+  // The signing page for the signer, who has no ticket: the pretty link goes to the page, the page is dressed with Vyre's look and carries the app's credit, every asset it names loads from the same
+  // origin, and the owner's pages and the API stay closed to them (R032-02).
+  {
+    const slug = sub.j[0].slug, subId = sub.j[0].submission_id;
+    assert.ok(slug && subId, JSON.stringify(sub.j[0]).slice(0, 200));
+    const pretty = await web(`/sign/${subId}/${slug}`);
+    assert.equal(pretty.status, 302);
+    assert.equal(pretty.headers.location, `/s/${slug}`);
+    const signPage = await web(`/s/${slug}`);
+    assert.equal(signPage.status, 200, signPage.text.slice(0, 200));
+    assert.match(signPage.text, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
+    assert.ok(signPage.text.includes("Signatures by"), "the app's credit is in the footer");
+    assert.equal(signPage.headers["referrer-policy"], "no-referrer");
+    assert.ok(!/name="user\[password\]"/.test(signPage.text), "a signer is not shown the owner's login");
+    const css = await web("/__vyre/brand.css");
+    assert.equal(css.status, 200);
+    const assets = [...new Set([...signPage.text.matchAll(/(?:href|src)="(\/(?:packs|assets|fonts)\/[^"]+|\/favicon[^"]*|\/apple-icon[^"]*|\/logo\.svg)"/g)].map(m => m[1]))];
+    assert.ok(assets.length >= 2, `the signing page names assets: ${assets.join(", ")}`);
+    for (const a of assets) assert.equal((await web(a)).status, 200, `the signer can load ${a}`);
+    for (const closed of ["/", "/templates", "/submissions", "/api/submissions", "/api/templates", "/settings/api", "/users", "/up"]) assert.equal((await web(closed)).status, 404, `${closed} is closed to a stranger`);
+    // a stranger is not the install's admin: the signing page is the signer's view, and the app saw no admin cookie (the page has no "Sign out")
+    assert.ok(!/sign_out|Sign out/i.test(signPage.text), "the page is the signer's, not the admin's");
+    console.log(`signing page: ${signPage.text.length} bytes, ${assets.length} assets, all public`);
+    // With CHROME_BIN set, a real browser opens the signing page with no cookie: every request the page makes must be answered (none refused by the list), and the page must show the credit.
+    if (process.env.CHROME_BIN && fs.existsSync(process.env.CHROME_BIN)) {
+      const { spawn } = await import("node:child_process");
+      const { Cdp } = await import("../../lib/cdp.js");
+      const dir = fs.mkdtempSync(path.join(root, "chrome-"));
+      const child = spawn(process.env.CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", "--use-mock-keychain", "--password-store=basic", `--user-data-dir=${dir}`, "--no-first-run", "--disable-gpu", ...(process.platform === "linux" ? ["--no-sandbox"] : []), "about:blank"], { stdio: "ignore", detached: true });
+      t.after(() => { try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { /* gone */ } });
+      let cport = 0;
+      for (let i = 0; i < 400 && !cport; i++) { try { const n = Number(fs.readFileSync(path.join(dir, "DevToolsActivePort"), "utf8").split("\n")[0]); if (n && (await fetch(`http://127.0.0.1:${n}/json/version`)).ok) cport = n; } catch { /* not yet */ } if (!cport) await new Promise(r => setTimeout(r, 50)); }
+      assert.ok(cport, "Chrome came up");
+      const cdp = new Cdp({ cdpUrl: `http://127.0.0.1:${cport}` });
+      await cdp.connect();
+      const { targetId } = await cdp.send("Target.createTarget", { url: "about:blank" });
+      const { sessionId } = await cdp.send("Target.attachToTarget", { targetId, flatten: true });
+      /** @type {{ url: string, status: number }[]} */ const resp = []; /** @type {string[]} */ const failed = [];
+      cdp.on(m => { if (m.sessionId !== sessionId) return; if (m.method === "Network.responseReceived") resp.push({ url: m.params.response.url, status: m.params.response.status }); if (m.method === "Network.loadingFailed" && !m.params.canceled) failed.push(`${m.params.errorText} ${m.params.requestId}`); });
+      await cdp.send("Network.enable", {}, sessionId); await cdp.send("Page.enable", {}, sessionId); await cdp.send("Runtime.enable", {}, sessionId);
+      // the space's brand, as saved by the owner: the signing page must wear it
+      const saved = await d.registry.call("brand.set", { profile: { name: "Harlow Legal", colors: { primary: "#3A5BA0" } } }, "cli", { ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
+      assert.ok(!saved.error, JSON.stringify(saved));
+      const loaded = cdp.waitFor(m => m.sessionId === sessionId && m.method === "Page.loadEventFired", 30_000);
+      await cdp.send("Page.navigate", { url: `http://${H}/sign/${subId}/${slug}` }, sessionId);
+      await loaded; await new Promise(r => setTimeout(r, 4000));
+      const bad = resp.filter(r => r.status >= 400);
+      const text = (await cdp.send("Runtime.evaluate", { expression: "document.body.innerText", returnByValue: true }, sessionId)).result.value || "";
+      try { fs.writeFileSync(`/tmp/sign-page-requests-${process.pid}.json`, JSON.stringify(resp, null, 1)); } catch { /* no copy */ }
+      const look = (await cdp.send("Runtime.evaluate", { expression: "JSON.stringify({ band: getComputedStyle(document.body, '::before').content, p: getComputedStyle(document.documentElement).getPropertyValue('--p').trim() })", returnByValue: true }, sessionId)).result.value;
+      await cdp.close();
+      assert.deepEqual(bad, [], `a real browser on the signing page got errors: ${JSON.stringify(bad).slice(0, 400)}`);
+      assert.deepEqual(failed, [], "no request failed");
+      assert.ok(text.includes("Signatures by"), "the credit shows in the page");
+      const seenLook = JSON.parse(look);
+      assert.equal(seenLook.band, '"Harlow Legal"', `the brand's name is on the page: ${look}`);
+      assert.match(seenLook.p, /^\d+ \d+% \d+%$/, `the brand's colour is the page's primary: ${look}`);
+
+      console.log(`browser: ${resp.length} requests, none refused`);
+    }
+  }
   // the Vyre views over DocuSeal's Connection, against the real app: the document just sent is waiting for a signature
   const listed = (await d.registry.call("views.list", {}, "cli", await ownerMeta())).data;
   const vids = (Array.isArray(listed) ? listed : listed.views || listed.commands || []).filter(/** @param {any} r */ r => r.module === "appmods").map(/** @param {any} r */ r => r.id).sort();
