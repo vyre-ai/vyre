@@ -48,7 +48,7 @@
     return loadMeta().then(function (m) {
       var title = (m && m.title ? m.title : "This page") + " wants to";
       var lines = names.map(function (n) { return "• " + (WORDS[n] || n); }).join("\n");
-      return dialog(title, lines + "\n\nYou can change this later from the page's menu.", [{ label: "Not now", value: false }, { label: "Allow", value: true, primary: true }]);
+      return dialog(title, lines + "\n\nYou can say no: the page keeps working without it.", [{ label: "Not now", value: false }, { label: "Allow", value: true, primary: true }]);
     }).then(function (ok) {
       return post("permissions.grant", { names: names, allow: ok }).then(function (st) { if (meta) for (var k in st) meta.state[k] = st[k]; return ok; });
     });
