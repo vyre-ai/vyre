@@ -38,18 +38,18 @@ async function boot(/** @type {any} */ t) {
   return { d, admin, meta, work, rows, memberChain };
 }
 
-test("every chat is a record with its id, times and Drive folders, filed in General when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
+test("every chat is a record with its id, times and Drive folders, filed in its creator's Personal project when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
   const { d, admin, meta, work, rows } = await boot(t);
-  const general = await until(async () => (await rows("project")).find((/** @type {any} */ r) => r.data.slug === "general" && r.data.drive_path), "the General project");
-  assert.equal(general.data.name, "General");
-  assert.equal(general.data.drive_path, `Projects/${general.id}`);
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", name: "First chat" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   const id = r.data.id;
   const chat = (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.chat;
   assert.match(chat, /^chat_/, "every run is in a chat");
   const rec = await until(async () => (await rows("chat-record")).find((/** @type {any} */ x) => x.data.chat === chat && x.data.title === "First chat"), "the chat record");
-  assert.equal(rec.data.project.urn, general.urn, "no project: General");
+  const general = await until(async () => (await rows("project")).find((/** @type {any} */ r) => r.data.personal_of && r.data.drive_path), "the owner's Personal project");
+  assert.equal(general.data.name, "Personal");
+  assert.equal(general.data.drive_path, `Projects/${general.id}`);
+  assert.equal(rec.data.project.urn, general.urn, "no project: Personal");
   assert.equal(rec.data.drive, general.data.drive_path);
   assert.equal(rec.data.location, `${general.data.drive_path}/chat/${chat}/`);
   assert.ok(rec.data.started && rec.data.last_active, "start time and last active");

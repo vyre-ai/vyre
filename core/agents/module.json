@@ -102,6 +102,9 @@
       },
       {
         "name": "agents.spawn",
+        "projectArg": [
+          "project"
+        ],
         "reach": "anyone",
         "effect": "write"
       },
