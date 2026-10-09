@@ -163,6 +163,10 @@ const GQL_NAME = /(?:^|\})\s*(?:query|mutation|subscription)\s+([A-Za-z_]\w*)/;
 export function operationNameOf(req) {
   const fields = [["body", "json:/operationName"], ["body", "json:/0/operationName"], ["form:fb_api_req_friendly_name"], ["form:operationName"], ["query:operationName"], ["header:x-fb-friendly-name"]];
   for (const at of fields) { const v = tryGet(req, at); if (typeof v === "string" && v) return v; }
+  // A GET GraphQL call names its query in queryId as "<name>.<hash>": the name before the dot is the stable identity; the hash is what a deploy rotates.
+  const qid = tryGet(req, ["query:queryId"]);
+  const named = typeof qid === "string" ? /^([A-Za-z][A-Za-z0-9_]*)\.[0-9a-fA-F_-]{8,}$/.exec(qid) : null;
+  if (named) return named[1];
   for (const at of [["body", "json:/query"], ["body", "json:/0/query"], ["form:query"], ["query:query"]]) {
     const v = tryGet(req, at);
     const m = typeof v === "string" ? GQL_NAME.exec(v) : null;
