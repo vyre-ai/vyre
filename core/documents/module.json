@@ -69,7 +69,7 @@
       "key": "documents.pdf",
       "group": "documents",
       "label": "Address of the PDF converter",
-      "help": "Documents turns a filled Word file into a PDF through Gotenberg, which runs beside Vyre. Give its address (such as http://127.0.0.1:3000). Left empty, a PDF is refused in plain words and the Word file is still made.",
+      "help": "On a server with Records the converter (Gotenberg) runs beside Vyre by default and nothing needs setting. Give another address here (such as http://127.0.0.1:3000) to use your own. With none, a PDF is refused in plain words and the Word file is still made.",
       "type": "string",
       "levels": [
         "account"

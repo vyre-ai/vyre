@@ -87,7 +87,7 @@ export function registerDocuments(ctx) {
       }
       const { buffer, used } = fill(tbytes, values);
       const format = i.format === "pdf" ? "pdf" : "docx";
-      const out = format === "pdf" ? await toPdf(buffer, { url: cfg().pdf }) : buffer;
+      const out = format === "pdf" ? await toPdf(buffer, { url: cfg().pdf || process.env.VYRE_DOCUMENTS_PDF }) : buffer;
       const sha256 = crypto.createHash("sha256").update(out).digest("hex");
       const scope = i.project ? SLUG(String(i.project)) : "general";
       const title = String(i.name || tname).replace(/\s+/g, " ").trim().slice(0, 100);

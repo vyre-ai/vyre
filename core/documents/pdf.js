@@ -1,6 +1,6 @@
 // @ts-check
-// pdf: a filled .docx to a PDF through Gotenberg (MIT), the converter that runs beside Vyre. It is addressed by `documents.pdf` in config (its address, such as http://127.0.0.1:3000); nothing is
-// sent anywhere else. With none set, a PDF is refused in plain words and the .docx is still made.
+// pdf: a filled .docx to a PDF through Gotenberg (MIT), the converter that runs beside Vyre. On a server with Records it is one more container of the space's unit (lib/spaces/home-unit.js) and
+// vyred is told where it is (VYRE_DOCUMENTS_PDF); `documents.pdf` in config overrides it. Nothing is sent anywhere else. With none, a PDF is refused in plain words and the .docx is still made.
 import crypto from "node:crypto";
 import { userHostFetch } from "../../lib/http.js";
 
@@ -21,7 +21,7 @@ export function multipart(field, filename, bytes, type) {
 export async function toPdf(docx, o) {
   let base;
   try { base = o.url ? new URL(o.url) : null; } catch { base = null; }
-  if (!base || !/^https?:$/.test(base.protocol)) throw fail("no_pdf_engine", "a PDF needs the converter: set documents.pdf in config.json to its address (Gotenberg), or ask for the Word file");
+  if (!base || !/^https?:$/.test(base.protocol)) throw fail("no_pdf_engine", "PDF needs the Records server, which runs the converter. The Word file works anywhere: ask for that instead");
   const { boundary, body } = multipart("files", "document.docx", docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const doFetch = o.fetch || userHostFetch;
   let res;
