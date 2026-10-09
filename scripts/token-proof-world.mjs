@@ -21,6 +21,10 @@ const { start } = await import("../core/daemon/index.js");
 const { present, asOwner } = await import("../test/helpers.js");
 const { FAKE } = await import("../core/sessions/testing/boot.js");
 const { TASKS, ARM_ENV, parseStream, passed, summarize } = await import("./lib/token-proof.js");
+const { createSkills, SKILL_MIGRATIONS } = await import("../core/learn/skills.js");
+const { DatabaseSync } = await import("node:sqlite");
+const { callsOf, runFor, evidenceOf } = await import("../lib/skill-skeleton.js");
+const { translate } = await import("../core/switchboard/translate.js");
 
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "check";
@@ -126,18 +130,20 @@ await seeded("flow: intake-welcome, approved", async () => {
 });
 
 await seeded("vault: the stored Acme API key (an api-credential)", async () => {
-  await must("vault.put", { name: "acme", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
+  await must("vault.put", { name: "acme", kind: "api-credential", description: "Acme API key (GET /v1/status, /v1/customers)", hosts: ["api.acme-proof.test"], fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.acme-proof.test"], endpoints: [{ method: "GET", path: "/v1/status", kind: "read" }, { method: "GET", path: "/v1/customers", kind: "read" }] }), secret: KEY } });
 });
-await seeded("connection: Acme CRM (label, host, key item, check)", async () => {
-  await must("vault.put", { name: "acme-crm-key", kind: "secret", fields: { value: KEY } });
-  const r = await must("connectors.connection.create", { label: "Acme CRM", base_url: "https://api.acme-proof.test", send: { how: "bearer" }, credential: { item: "acme-crm-key" }, check: { path: "/v1/status" } });
+await seeded("connection: Orbit CRM (label, host, key item, check)", async () => {
+  await must("vault.put", { name: "orbit-crm-key", kind: "secret", description: "the key of the Orbit CRM connection", fields: { value: KEY } });
+  const r = await must("connectors.connection.create", { label: "Orbit CRM", base_url: "https://api.orbit-proof.test", send: { how: "bearer" }, credential: { item: "orbit-crm-key" }, check: { path: "/v1/status" } });
   return JSON.stringify(r);
 });
 
 /** @type {any} */ let projectRecord = null;
+/** @type {string | null} */ let teammateAgent = null;
 await seeded("teammate: backend on northwind", async () => {
   projectRecord = (await until(async () => { const r = await call("work.project.ref", { project: "northwind" }); return r.error ? null : r.data; }, "the northwind Project record", 20_000)).id;
   const r = await must("team.add", { project: projectRecord, role: "backend", brief: "backend code and errors" });
+  teammateAgent = r.agent;
   return `${r.agent} ${r.state}`;
 });
 
@@ -162,6 +168,62 @@ const person = setInterval(async () => {
 }, 150);
 person.unref();
 
+/**
+ * The skill Vyre would have offered after three clean sessions of the repeat job, through the real path: three scripted runs of the job as thread events (the same translate, receipts and tool-event
+ * fields a real thread writes), the evidence found in them, the template draft with the one-call section, proposed and installed as the person would (account scope, under the proof home). The three
+ * runs are scripted because a paid model cannot be made to do the same job three times and be marked clean at the next prompt on demand; every step after that is the product's own.
+ */
+function installRepeatSkill() {
+  const STEPS = ["vyre:work.call:clients.find", "vyre:work.call:matters.find", "vyre:planner.add"];
+  const run = (/** @type {string} */ who, /** @type {number} */ k) => {
+    /** @type {any[]} */ const ev = []; let i = 0;
+    const call = (/** @type {string} */ name, /** @type {any} */ input, /** @type {any} */ result) => {
+      const id = `tu_${k}_${++i}`;
+      ev.push(...translate({ type: "assistant", message: { id: `m${id}`, content: [{ type: "tool_use", id, name, input }] } }).events, ...translate({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: JSON.stringify(result) }] } }).events);
+    };
+    call("mcp__vyre__work_call", { tool: "clients.find", input: { where: { name: who } } }, { result: { records: [{ id: `c_${k}` }] } });
+    call("mcp__vyre__work_call", { tool: "matters.find", input: { where: { client_name: who } } }, { result: { records: [{ id: `m_${k}` }] } });
+    call("mcp__vyre__planner_add", { kind: "todo", title: `Call ${who} about their matters` }, { id: `i_${k}`, kind: "todo" });
+    return ev.map((e) => ({ payload: e.payload }));
+  };
+  const runs = ["Client One", "Client Two", "Client Three"].map((w, k) => runFor(callsOf(run(w, k)), STEPS));
+  if (!runs.every(Boolean)) throw new Error("the scripted runs did not match their steps");
+  const db = new DatabaseSync(":memory:");
+  for (const sql of SKILL_MIGRATIONS) db.exec(sql);
+  const skills = createSkills(db, { claudeDir: path.join(home, ".claude-unused") });
+  const s = skills.propose({ hash: "proof-repeat", steps: STEPS, sessions: 3, scope: "all", evidence: evidenceOf(/** @type {any} */ (runs)) });
+  skills.install(s.id, { home, scope: "account" });
+  return s;
+}
+const removeLearned = () => fs.rmSync(path.join(home, "learned"), { recursive: true, force: true });
+
+/**
+ * What this run's own thread wrote: the copy files its claude processes made (`<tee>.<pid>.part`), only those whose session started in the agent's folder under this proof's home, oldest first.
+ * Helper sessions (memory, a teammate) start in other folders and are left out, as is anything another proof on the box wrote.
+ * @param {string} tee
+ */
+function readRun(tee) {
+  const dir = path.dirname(tee), base = path.basename(tee) + ".";
+  const mine = path.join(home, "agents", "juno");
+  /** @type {{ at: number, text: string }[]} */ const parts = [];
+  for (const f of fs.existsSync(dir) ? fs.readdirSync(dir) : []) {
+    if (!f.startsWith(base) || !f.endsWith(".part")) continue;
+    const file = path.join(dir, f);
+    const text = fs.readFileSync(file, "utf8");
+    const init = text.split("\n").map((l) => { try { return JSON.parse(l); } catch { return null; } }).find((e) => e && e.type === "system" && e.subtype === "init");
+    if (init && String(init.cwd || "").startsWith(mine)) parts.push({ at: fs.statSync(file).birthtimeMs || fs.statSync(file).ctimeMs, text });
+  }
+  return parts.sort((a, b) => a.at - b.at).map((x) => x.text).join("");
+}
+
+/** The repeat task passes when exactly one todo has the title, its real id is in the answer, and so is the matter count (one). */
+async function verifyRepeat(/** @type {string} */ text) {
+  const l = await call("planner.list", { state: "all", limit: 500 });
+  const items = (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : []);
+  const mine = items.filter((/** @type {any} */ x) => x.title === "Call Aaron Adair about their matters");
+  return mine.length === 1 && text.includes(mine[0].id) && /\b(1|one)\b/i.test(text);
+}
+
 /** The long task passes when the answer holds the real ids of the two todos it names, and the count. */
 async function verifyLong(/** @type {string} */ text) {
   const l = await call("planner.list", { state: "all", limit: 500 });
@@ -180,12 +242,22 @@ if (cmd === "run") {
   const arms = flag("arms", "old,core").split(",").filter((a) => a in ARMS), reps = Number(flag("reps", "1")), only = flag("only") ? flag("only").split(",") : null;
   const standIn = args.includes("--stand-in");
   const out = flag("out", fs.mkdtempSync(`${home}-proof-`)); fs.mkdirSync(out, { recursive: true });
+  // One proof per out folder: two at once wrote into the same files and made a whole round unreadable.
+  const lock = path.join(out, ".world.lock");
+  try { const pid = Number(fs.readFileSync(lock, "utf8")); if (pid && pid !== process.pid) { try { process.kill(pid, 0); console.error(`refused: another proof (pid ${pid}) is writing to ${out}`); await d.stop(); process.exit(2); } catch (e) { if (/** @type {any} */ (e).code !== "ESRCH") throw e; } } } catch (e) { if (/** @type {any} */ (e).code !== "ENOENT" && !/another proof/.test(String(/** @type {any} */ (e).message))) { /* an unreadable lock is stale */ } }
+  if (fs.existsSync(path.join(out, "rows.json")) && !args.includes("--again")) { console.error(`refused: ${out} already holds a round's rows.json; use a fresh --out, or --again to add to it`); await d.stop(); process.exit(2); }
+  fs.writeFileSync(lock, String(process.pid));
+  process.on("exit", () => { try { fs.rmSync(lock, { force: true }); } catch { /* gone */ } });
   /** @type {any[]} */ const rows = []; let spent = 0; let rolled = false;
   outer: for (let rep = 0; rep < reps; rep++) for (const task of TASKS.filter((t) => !only || only.includes(t.id))) for (const arm of arms) {
     if (standIn && !task.standIn) continue;
-    if (task.arms ? !task.arms.includes(arm) : arm.startsWith("roll-") && !only) continue;
+    if (task.arms ? !task.arms.includes(arm) : /^(roll|skill)-/.test(arm) && !only) continue;
     if (spent >= cap) { console.log(`stopped: reported spend $${spent.toFixed(3)} reached the cap of $${cap}`); break outer; }
-    await call("agents.stop", { agent: "juno" });                        // a fresh thread for every run: nothing carries over
+    // A fresh thread for every run, nothing carried over: stop the agent and delete its threads, or agents.ask would resume the last one (its whole context, the earlier task's included).
+    // The teammate the `teammate` task asks keeps working after its task: stop it too, or its session runs on beside the next task.
+    if (teammateAgent) { await call("agents.stop", { agent: teammateAgent }); for (const th of ((await call("agents.threads", { agent: teammateAgent })).data || []).map((/** @type {any} */ x) => x.id || x.thread)) if (th) await call("threads.delete", { thread: th }); }
+    await call("agents.stop", { agent: "juno" });
+    for (const th of ((await call("agents.threads", { agent: "juno" })).data || []).map((/** @type {any} */ x) => x.id || x.thread)) if (th) await call("threads.delete", { thread: th });
     // The window arms: rollover off, or on at 30 percent of the window so it happens in the middle of the long task. Every other arm runs with the defaults (on, 60).
     const rollMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_ROLL;
     if (rollMode || rolled) {
@@ -193,7 +265,9 @@ if (cmd === "run") {
       await call("settings.set", { key: "sessions.rollover_at", value: rollMode === "on" ? 30 : 60 });
       rolled = Boolean(rollMode);
     }
-    if (task.verify === "long") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
+    const skillMode = /** @type {any} */ (ARMS)[arm].VYRE_PROOF_SKILL;
+    if (skillMode) { removeLearned(); if (skillMode === "on") installRepeatSkill(); }
+    if (task.verify === "long" || task.verify === "repeat") { const l = await call("planner.list", { state: "all", limit: 500 }); for (const it of (l.data && l.data.items) || (Array.isArray(l.data) ? l.data : [])) await call("planner.delete", { id: it.id }); }
     Object.assign(process.env, /** @type {any} */ (ARMS)[arm]);
     if (!process.env.VYRE_MCP_LISTING) delete process.env.VYRE_MCP_LISTING;
     if (!process.env.VYRE_MCP_FEATURES) process.env.VYRE_MCP_FEATURES = "";
@@ -202,10 +276,11 @@ if (cmd === "run") {
     const t0 = Date.now();
     const asked = await call("agents.ask", { agent: "juno", text: standIn ? /** @type {string} */ (task.standIn) : task.prompt, wait: true, surface: "deck" });
     // agents.ask answers as soon as the thread stops to ask the person, which can be before the turn is over: wait for the run's own result line (the person's answer comes from the loop above).
-    await until(async () => !(await call("threads.asks", {})).data?.length && fs.existsSync(tee) && /"type":"result"/.test(fs.readFileSync(tee, "utf8")), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
-    const run = parseStream(fs.existsSync(tee) ? fs.readFileSync(tee, "utf8") : "");
-    const extra = task.verify === "long" ? await verifyLong(run.text) : true;
-    const row = { arm, task: task.id, rep, pass: !asked.error && !run.error && passed(task, run) && extra, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
+    await until(async () => !(await call("threads.asks", {})).data?.length && /"type":"result"/.test(readRun(tee)), `the end of ${task.id} on ${arm}`, 600_000).catch(() => null);
+    const stream = readRun(tee);
+    const run = parseStream(stream);
+    const extra = task.verify === "long" ? await verifyLong(run.text) : task.verify === "repeat" ? await verifyRepeat(run.text) : true;
+    const row = { arm, task: task.id, rep, fresh: !/SessionStart:resume/.test(stream), pass: !asked.error && !run.error && passed(task, run) && extra && !/SessionStart:resume/.test(stream) && run.text.trim().length > 0, rolls: asked.data && asked.data.thread ? ((await call("threads.rolls", { thread: asked.data.thread })).data || []).length : null, ranBatch: run.calls.some((c) => /tools_run$/.test(String(c.name))), recoveryCalls: run.calls.filter((c) => /memory_(search|turn)|recall_/.test(String(c.name))).length, armListed: run.mcpToolsListed, askError: asked.error ? asked.error.code : null, ...run, ms: run.ms || Date.now() - t0 };
     spent += run.usd; rows.push(row);
     console.log(`${arm.padEnd(10)} ${task.id.padEnd(10)} ${row.pass ? "PASS" : "FAIL"}  listed ${run.mcpToolsListed}  in ${run.usage.input + run.usage.cacheRead + run.usage.cacheWrite}  out ${run.usage.output}  ${run.turns} turns  ${run.calls.length} calls  $${run.usd.toFixed(4)}  ${(row.ms / 1000).toFixed(1)}s${asked.error ? "  ask: " + asked.error.code : ""}`);
     fs.writeFileSync(path.join(out, "rows.json"), JSON.stringify(rows, null, 1));
@@ -223,7 +298,7 @@ const PROBES = [
   ["record", "work.call", { tool: "clients.find", input: { where: { name: "Dana Whitfield" } } }, /probate/],
   ["flow", "flows.start", { id: () => flowId, input: { name: "Test Client" } }, /run_|"run"|started|status/i],
   ["vault", "vault.request", { credential: "acme", method: "GET", url: "https://api.acme-proof.test/v1/status" }, /"status":\s*200|ok/],
-  ["connection", "vault.request", { credential: "conn-acme-crm", method: "GET", url: "https://api.acme-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
+  ["connection", "vault.request", { credential: "conn-orbit-crm", method: "GET", url: "https://api.orbit-proof.test/v1/customers", query: { limit: 1 } }, /Test Customer|cus_1/],
   ["chain", "work.call", { tool: "matters.find", input: { where: { client_name: "Dana Whitfield" } } }, /Deed transfer/],
   ["biglist", "work.call", { tool: "clients.find", input: {} }, /Aaron Abbott/],
   ["both", "work.call", { tool: "matters.find", input: {} }, /Deed transfer|Abbott file/],

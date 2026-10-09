@@ -4,7 +4,7 @@ summary: What a skill is in Vyre, where skills come from, and how permission dec
 audience: agents
 owner: docs
 status: stable
-tokens: 400
+tokens: 520
 when: You are looking for a ready-made way to do a kind of task, need to find the right skill, or a skill is offered or refused.
 ---
 
@@ -29,3 +29,7 @@ Read the skill first, once. Follow it, and say you did. If it conflicts with wha
 ## Finding one
 
 `skills.find` ranks the skills you may use for what you are about to do, in plain words, and `skills.list` lists them. `tools_call skills.get` reads one by its id. Each result says what the skill is for and what reading it costs. A skill you may not use is not listed, not ranked and not readable.
+
+## Skills Vyre learned from your repeats
+
+When the same sequence of Vyre tools ended cleanly in three sessions, Vyre drafts a skill for it (the person reads it whole and installs it). If the steps are all Vyre tools, the skill ends in a `## One call` section: a ready `tools_run` script with the argument names the runs used and `<placeholders>` for the values. Fill the placeholders, write the path of any id an argument reads from an earlier step, and send it as one `tools_run`. The script holds no value from any earlier session.

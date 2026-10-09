@@ -21,15 +21,15 @@ const sample = (/** @type {string} */ tool, /** @type {any} */ input, /** @type 
   { type: "result", result: text, is_error: false, num_turns: 2, duration_ms: 1500, total_cost_usd: usd, usage: { input_tokens: 100, output_tokens: 40, cache_read_input_tokens: 5000, cache_creation_input_tokens: 2000 } },
 ]);
 
-test("there are fourteen tasks, each with a fixed prompt, a tool to look for and a named world; the first ten are the control, the last three need batching", () => {
-  assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill", "chain", "biglist", "long", "both"]);
+test("there are fifteen tasks, each with a fixed prompt, a tool to look for and a named world; the first ten are the control, the last three need batching", () => {
+  assert.deepEqual(TASKS.map((t) => t.id), ["recall", "todo", "record", "flow", "connection", "vault", "file", "teammate", "doc", "skill", "chain", "biglist", "long", "repeat", "both"]);
   for (const t of TASKS) assert.ok(t.prompt.length > 20 && t.tools.length && t.seed, t.id);
-  assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 14);
+  assert.equal(new Set(TASKS.map((t) => t.prompt)).size, 15);
   assert.deepEqual(TASKS.filter((t) => t.batch).map((t) => t.id), ["chain", "biglist", "both"]);
 });
 
 test("the arms differ in nothing but the listing and the batching features, and a tools_run counts as the calls its steps make", () => {
-  assert.deepEqual(Object.keys(ARM_ENV), ["old", "old-search", "core", "core-run", "core-ref", "core-both", "roll-off", "roll-seed", "roll-ledger"]);
+  assert.deepEqual(Object.keys(ARM_ENV), ["old", "old-search", "core", "core-run", "core-ref", "core-both", "roll-off", "roll-seed", "roll-ledger", "skill-off", "skill-on"]);
   const strip = (/** @type {string} */ k) => { const { VYRE_MCP_FEATURES, ...rest } = ARM_ENV[k].env; return JSON.stringify(rest); };
   assert.equal(strip("core"), strip("core-run"));
   assert.equal(strip("core"), strip("core-ref"));
@@ -68,7 +68,7 @@ test("the summary adds up per arm, and the estimate prices the core arm below th
   const s = summarize([row("old", true), row("old", false), row("core", true)]);
   assert.deepEqual(s.map((a) => [a.arm, a.runs, a.pass, a.tokensIn]), [["old", 2, 1, 220], ["core", 1, 1, 110]]);
   const e = estimate({ arms: [{ name: "old", listing: 81500, turns: 3 }, { name: "core", listing: 4300, turns: 5 }], reps: 3 });
-  assert.equal(e.arms[0].runs, 42);
+  assert.equal(e.arms[0].runs, 45);
   assert.ok(e.arms[1].usd < e.arms[0].usd && e.totalUsd > 0);
 });
 
@@ -89,7 +89,14 @@ test("the tee in front of claude passes standard input and output through and ke
   const r = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-claude.mjs"), "-p", "x"], { input: "hello\n", env: { ...process.env, TOKEN_PROOF_REAL_CLAUDE: real, TOKEN_PROOF_TEE: tee }, encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr);
   assert.equal(r.stdout, "got:hello\nargs:-p x\n");
-  assert.equal(fs.readFileSync(tee, "utf8"), r.stdout);
+  // one copy file per claude process, never one shared file: a second session or a second proof cannot interleave its lines
+  const parts = fs.readdirSync(dir).filter((f) => f.startsWith("tee.jsonl.") && f.endsWith(".part"));
+  assert.equal(parts.length, 1);
+  assert.equal(fs.readFileSync(path.join(dir, parts[0]), "utf8"), r.stdout);
+  assert.ok(!fs.existsSync(tee), "nothing is written to the shared name");
+  const again = spawnSync(process.execPath, [path.join(ROOT, "scripts", "token-proof-claude.mjs"), "-p", "y"], { input: "hello\n", env: { ...process.env, TOKEN_PROOF_REAL_CLAUDE: real, TOKEN_PROOF_TEE: tee }, encoding: "utf8" });
+  assert.equal(again.status, 0);
+  assert.equal(fs.readdirSync(dir).filter((f) => f.endsWith(".part")).length, 2, "a second process makes its own file");
 });
 
 test("only the token proof's own world sets the development network seam of the vault", () => {
@@ -147,5 +154,14 @@ test("the long task runs only on the three window arms, which differ only in rol
   assert.deepEqual([e("roll-off").VYRE_PROOF_ROLL, e("roll-seed").VYRE_PROOF_ROLL, e("roll-ledger").VYRE_PROOF_ROLL], ["off", "on", "on"]);
   assert.deepEqual([e("roll-seed").VYRE_MANAGED_CONTEXT, e("roll-ledger").VYRE_MANAGED_CONTEXT], ["off", "on"]);
   assert.equal(e("roll-seed").VYRE_MCP_FEATURES, e("core-both").VYRE_MCP_FEATURES, "the same listing as core-both");
-  assert.ok(!TASKS.filter((t) => t.id !== "long").some((t) => t.arms), "every other task runs on the arms it is given");
+  assert.ok(!TASKS.filter((t) => !["long", "repeat"].includes(t.id)).some((t) => t.arms), "every other task runs on the arms it is given");
+});
+
+test("the repeat task runs only on the two skill arms, which differ only in whether the learned skill is installed", () => {
+  const rep = /** @type {any} */ (TASKS.find((t) => t.id === "repeat"));
+  assert.deepEqual(rep.arms, ["skill-off", "skill-on"]);
+  assert.equal(rep.verify, "repeat");
+  assert.deepEqual([ARM_ENV["skill-off"].env.VYRE_PROOF_SKILL, ARM_ENV["skill-on"].env.VYRE_PROOF_SKILL], ["off", "on"]);
+  assert.equal(ARM_ENV["skill-on"].env.VYRE_MCP_FEATURES, ARM_ENV["core-both"].env.VYRE_MCP_FEATURES);
+  assert.equal(passed(rep, { calls: [{ name: "mcp__vyre__tools_run", input: { steps: [{ id: "a", call: "planner_add", input: {} }] }, ok: true }], text: "ok" }), true, "a batch that adds the todo counts");
 });
