@@ -391,9 +391,9 @@ summary{cursor:pointer;color:var(--mut)}nav{display:flex;flex-wrap:wrap;gap:4px 
   ]
  }
 }</pre></details></section>
-<section id="table"><h2>table<small>tier 1</small></h2><p>Columns and rows you can sort and open.</p>
-<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>sort</code> text, up to 40</dd>
-<dt>Content</dt><dd>columns, rows, more, empty</dd><dt>Phone</dt><dd>rows of two lines</dd><dt>Chat and Lumen</dt><dd>a short list</dd></dl>
+<section id="table"><h2>table<small>tier 1</small></h2><p>Columns and rows you can sort and open. A cell is text, or typed by a field kind (money, stage, person, link, date, sealed...): the app draws it with that kind's own renderer, and a sealed cell carries no value, only that it is on file.</p>
+<dl><dt>Data</dt><dd>tool, operation, records, flow, static</dd><dt>Props</dt><dd><code>title</code> text, up to 60<br><code>sort</code> text, up to 40<br><code>desc</code> true or false<br><code>controls</code> true or false</dd>
+<dt>Content</dt><dd>columns, rows, more, empty, total</dd><dt>Phone</dt><dd>rows of two lines</dd><dt>Chat and Lumen</dt><dd>a short list</dd></dl>
 <details><summary>Sample, and its phone and chat forms as data</summary><pre>{
  "full": {
   "columns": [

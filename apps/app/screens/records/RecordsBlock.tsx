@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 import { PinToSidebar } from "../shell/PinToSidebar";
+import { tableFromRecords } from "../../ui/views/records-table.js";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
+import { BlockScreen, BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, LoadingState, Segmented, Select, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
 
 type ViewKind = "list" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
@@ -48,6 +49,8 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
   // One scope-style control, with icons only on a phone.
   const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
+  // The list is a table block with typed cells (the values cross into it through tableFromRecords, which stops a sealed value): the same sorting, filters and rows as the list view had.
+  const listScreen = { v: 2 as const, id: "records-list", layout: { block: "t" }, blocks: { t: { type: "table", ...tableFromRecords(def, rows, { view: viewName, noFilter: cleared, env: { actors: world.actors, links: env.links } }) } } };
   return (
     frame(vd.plural, <>
       <View className="flex-row items-center gap-s3">
@@ -77,7 +80,7 @@ export function RecordsBlock({ b }: { k: string; b: { props?: Record<string, any
           </View>
         </Card>
       ) : null}
-      {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} lead={switcher} view={viewName} noFilter={cleared} /> : switcher}
+      {shown === "list" ? <BlockScreen screen={listScreen} handlers={{ open: (_k, r) => openRec(r), openLink: open, slot: () => switcher }} /> : switcher}
       {shown === "board" ? <BoardView def={def} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
       {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={def} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}

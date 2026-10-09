@@ -13,6 +13,7 @@ import { EmptyState } from "../components/States";
 import { Table } from "../components/Table";
 import { Text } from "../components/Text";
 import { TimelineItem } from "../components/TimelineItem";
+import { TypedTable } from "./TypedTable";
 import type { Action, Block, Handlers } from "./types";
 
 type P = { k: string; b: Block; h: Handlers };
@@ -131,6 +132,8 @@ export function DetailBlock({ k, b, h }: P) {
 }
 
 export function TableBlock({ k, b, h }: P) {
+  // Typed content (columns with field kinds, from a type's records) has its own form: the field renderers, sorting and filters of the records list.
+  if (b.props?.controls || (Array.isArray(c(b).columns) && c(b).columns.some((x: any) => x && x.kind))) return <TypedTable k={k} b={b} h={h} />;
   const cols = rows(c(b).columns), data = rows(c(b).rows);
   return (
     <View className="gap-s2">
