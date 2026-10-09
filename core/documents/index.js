@@ -95,6 +95,7 @@ export function registerDocuments(ctx) {
       if (out.length > 8 * 1024 * 1024) throw refuse("the document is more than 8 MB; it was not filed", "too_large");
       const put = await d.gateway.drive.put(d.chain, path, new Uint8Array(out), { base: null });
       const rec = await filed(d, { name: title, status: "Draft", template: tname, template_version: tver, file: path, sha256, source: "generated", ...(i.contact ? { contact: String(i.contact) } : {}), ...(i.project ? { project: String(i.project) } : {}) });
+      ctx.events.emit("documents.generated", { path, format, template: tname, template_version: tver, record: rec || null });
       return { path, version: put.version, size: out.length, sha256, format, template: tname, template_version: tver, used, ...(rec ? { record: rec } : { record: null, note: "no Document record type here yet: install Documents from Apps to file these on the client" }) };
     });
 
@@ -129,6 +130,7 @@ export function registerDocuments(ctx) {
       const email = address(i);
       const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `Your document is ready to sign: ${asked.url}`, why: "signing request" });
+      ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
       return { ...asked, sent };
     },
   });
@@ -144,6 +146,7 @@ export function registerDocuments(ctx) {
       const link = await use("appmods.signed.link", { name: "documents", slug, ...(i.days !== undefined ? { days: i.days } : {}) });
       const days = Math.max(1, Math.round((link.expires - Date.now()) / 86_400_000));
       const sent = await use("comms.send", { via: "email", to: email, subject: "Your signed copy", body: `Thank you for signing. Your signed copy is here, and the link works for ${days} days (reply if you need a new one): ${link.url}`, why: "signed copy" });
+      ctx.events.emit("documents.copy-sent", { days });
       return { ...link, sent };
     },
   });

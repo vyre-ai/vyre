@@ -27,11 +27,12 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
     records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; }, async create(_c, type, data) { made.push({ type, data }); return { urn: `vyre://${SPACE}/${type}/rec${made.length}` }; } },
   };
   /** @type {Map<string, any>} */ const tools = new Map();
-  const ctx = { config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
+  const emitted = /** @type {{ type: string, payload: any }[]} */ ([]);
+  const ctx = { config, events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { emitted.push({ type, payload }); } }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
     kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
-  return { run, files, made, tools };
+  return { run, files, made, tools, emitted };
 }
 const b64 = (/** @type {Buffer} */ b) => b.toString("base64");
 const LETTER = () => docx(["Dear {client.name},", "Your fee is {matter.fee}.", "{#fees}{label} {amount}; {/fees}"]);
@@ -59,6 +60,8 @@ test("generate fills the template from values and a record, files it in the Driv
   assert.equal(out.sha256, crypto.createHash("sha256").update(r.files.get(out.path)[0]).digest("hex"));
   assert.deepEqual(textOf(r.files.get(out.path)[0]), ["Dear Dana Harlow,", "Your fee is 1500.", "filing 100; "]);
   assert.equal(r.made.length, 1);
+  assert.deepEqual(r.emitted.map(e => e.type), ["documents.generated"], "the timeline hears of the new document");
+  assert.equal(r.emitted[0].payload.path, out.path);
   assert.deepEqual([r.made[0].type, r.made[0].data.name, r.made[0].data.template, r.made[0].data.template_version, r.made[0].data.file, r.made[0].data.contact, r.made[0].data.project, r.made[0].data.source],
     ["document", "Letter", "Letter", 1, out.path, `vyre://${SPACE}/contact/k1`, "Harlow estate", "generated"]);
   assert.ok(out.record);
@@ -150,6 +153,7 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.deepEqual(seen[0].input, { name: "documents", template_id: 12, email: "dana@harlow.test", signer: "Dana Harlow" });
   assert.deepEqual(seen[1].input, { via: "email", to: "dana@harlow.test", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123", why: "signing request" });
   assert.equal(out.submission, 4411); assert.equal(out.slug, "abc123"); assert.equal(out.sent.held, "gi_1");
+  assert.deepEqual(r.emitted, [{ type: "documents.sent", payload: { submission: 4411, template_id: 12 } }], "the timeline hears of it, without the signer's code");
   assert.equal((await code(r.run("documents.send", { template_id: 12, email: " " }))).code, "bad_input");
   const none = rig({ chain: null });
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
@@ -170,6 +174,7 @@ test("documents.send-signed makes the expiring link and emails it; the slug is c
   assert.equal(seen[1].input.subject, "Your signed copy");
   assert.match(seen[1].input.body, /works for 30 days.*signed\/1\.abc\.sig$/);
   assert.equal(out.sent.held, "gi_2");
+  assert.deepEqual(r.emitted, [{ type: "documents.copy-sent", payload: { days: 30 } }]);
   const before = seen.length;
   assert.equal((await code(r.run("documents.send-signed", { slug: "../x", email: "dana@harlow.test" }))).code, "bad_input");
   assert.equal(seen.length, before, "nothing was made for a bad slug");
