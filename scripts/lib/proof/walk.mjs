@@ -436,7 +436,9 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
   const BACK = U("the host's unit installs the candidate and the server comes back as it");
   await replaceStep("after the update, signing in again with the device's own key still replaces the held session", [BACK]);
   await run.step(U("the notice is gone"), async () => {
-    const st = await mac.callTool("update.status");
+    // the box can answer on the new version a moment before the host's unit writes its last word ("ok"): wait for it, up to two minutes
+    let st = await mac.callTool("update.status");
+    for (let i = 0; i < 24 && st.run && st.run.state === "running"; i++) { await new Promise(r => setTimeout(r, 5000)); st = await mac.callTool("update.status"); }
     assert.equal(st.available, null, "no newer version is offered any more");
     assert.deepEqual(st.notes, [], "no notes are left to show");
     assert.ok(!st.pending, "no request is waiting");
