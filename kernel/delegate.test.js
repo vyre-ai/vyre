@@ -111,3 +111,14 @@ test("FL-1: a Flow run is built only on a person's OWN chain; a viewer, a sessio
   }
   assert.ok(k.chains.forFlow({ flow: "fl_a", approver: owner, run: "run_3" }), "the owner's own device chain still works");
 });
+
+test("R031-05: the assistant holds the person's own access on their project, and a sealed vault item stays sealed to it", async () => {
+  const { bob, forBob, decide } = await rig();
+  const project = `vyre://${SPACE}/project/p1`;
+  assert.equal((await decide(bob, "records.read", project)).effect, "allow", "Bob reads his project");
+  assert.equal((await decide(forBob, "records.read", project)).effect, "allow", "so does his assistant, with no grant of its own");
+  const item = `vyre://${SPACE}/vault/personal/item/bank-login`;
+  for (const action of ["vault.reveal", "vault.share", "vault.rotate"]) {
+    assert.notEqual((await decide(forBob, action, item)).effect, "allow", `${action} is not the assistant's`);
+  }
+});

@@ -90,7 +90,7 @@ test("a /rename inside Claude Code reaches the chat's title: only a CHANGE in th
 test("the kernel's chat.created and chat.changed make and mirror the record; a run's start fills the title and takes a chat out of General", async () => {
   const { kernel } = fake();
   const hub = createHub({ kernel, call: async (/** @type {string} */ tool) => (tool === "projects.list" ? { data: { projects: [{ slug: "rivera", name: "Rivera" }] } } : { data: null }) });
-  const general = await hub.generalProject();
+  const general = await hub.personalProject("per_o");
   await hub.onChatCreated({ data: { chat: { id: "chat_c1", people: ["per_o"], assistants: [] } } });
   let rec = await hub.chatRecord("chat_c1");
   assert.deepEqual([rec.data.title, rec.data.project.urn, rec.data.people, rec.data.agents, rec.data.status], ["New chat", general.urn, "per_o", "", "idle"]);
@@ -129,4 +129,44 @@ test("a Basic personal space keeps a project as a plain device folder: no Drive,
   const inProject = (/** @type {string} */ urn) => [...rows.values()].filter(r => r.type === "chat-record" && r.data.project && r.data.project.urn === urn).map(r => r.data.chat);
   assert.deepEqual(inProject(general.urn), [sess.data.chat]);
   assert.deepEqual(inProject(proj.urn), []);
+});
+
+test("a chat started with no project lands in its creator's private Personal project, one per person; the old shared General is moved into its creators' Personal once (R031-03)", async () => {
+  const { kernel, rows } = fake();
+  const hub = createHub({ kernel });
+  await hub.onChatCreated({ data: { chat: { id: "chat_a1", people: ["per_ann"], assistants: [] } } });
+  await hub.onChatCreated({ data: { chat: { id: "chat_b1", people: ["per_bob", "per_ann"], assistants: [] } } });
+  const ann = await hub.personalProject("per_ann"), bob = await hub.personalProject("per_bob");
+  assert.notEqual(ann.urn, bob.urn, "one Personal per person");
+  assert.deepEqual([ann.data.name, ann.data.personal_of, bob.data.personal_of], ["Personal", "per_ann", "per_bob"]);
+  assert.equal((await hub.chatRecord("chat_a1")).data.project.urn, ann.urn);
+  assert.equal((await hub.chatRecord("chat_b1")).data.project.urn, bob.urn, "filed with the creator, the first person");
+  assert.equal([...rows.values()].filter(r => r.type === "project" && r.data.personal_of === "per_ann").length, 1, "made once");
+  assert.equal((await hub.personalProject("per_ann")).urn, ann.urn);
+  // the old General, with a chat each from two people
+  const gen = await hub.createProject({ who: "p" }, { name: "General", slug: "general" });
+  for (const [id, who] of [["chat_g1", "per_ann"], ["chat_g2", "per_cy"]]) await kernel.records.create(null, "chat-record", { title: id, chat: id, project: { urn: gen.urn }, people: who, agents: "", status: "idle", drive: gen.data.drive_path, location: `${gen.data.drive_path}/chat/${id}/` });
+  const moved = await hub.migrateGeneral();
+  assert.deepEqual(moved.map(m => [m.chat, m.to]).sort(), [["chat_g1", "per_ann"], ["chat_g2", "per_cy"]]);
+  assert.equal((await hub.chatRecord("chat_g1")).data.project.urn, ann.urn);
+  assert.equal((await hub.chatRecord("chat_g2")).data.project.urn, (await hub.personalProject("per_cy")).urn);
+  assert.equal([...rows.values()].find(r => r.type === "project" && r.data.slug === "general").data.status, "archived");
+  assert.deepEqual(await hub.migrateGeneral(), [], "once");
+});
+
+test("R031-01: a blank project is a record with members, tags, chats and a files folder; the template fields are empty until a template starts one", async () => {
+  const { kernel } = fake();
+  const hub = createHub({ kernel });
+  const { change, parse, filter } = await import("../../lib/tags.js");
+  const proj = await hub.createProject({ who: "p" }, { name: "Rivera" });
+  assert.equal(proj.type, "project");
+  assert.deepEqual([proj.data.template, proj.data.template_version, proj.data.lead, proj.data.personal_of], [undefined, undefined, undefined, undefined], "blank: no template, no lead, not Personal");
+  await kernel.records.update(null, "project", proj.id, { tags: change("", { add: ["Estate", "urgent"] }) }, proj.version);
+  assert.deepEqual(parse((await kernel.records.get(null, "project", proj.id)).data.tags), ["estate", "urgent"]);
+  assert.equal(filter("estate").field, "tags");
+  assert.ok((await hub.teamMember({ action: "add", project: proj.data.slug, agent: "researcher", role: "research" })).id, "a teammate is a member of it");
+  await hub.onChatCreated({ data: { chat: { id: "chat_r1", people: ["per_o"], assistants: [] } } });
+  await hub.moveChat("chat_r1", proj.urn, { who: "p" });
+  assert.equal((await hub.chatRecord("chat_r1")).data.project.urn, proj.urn, "a chat belongs to it");
+  assert.ok(proj.data.drive_path.startsWith("Projects/"), "and it has a files folder");
 });

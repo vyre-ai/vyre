@@ -119,7 +119,7 @@ export default {
           dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
           if (dbh.prepare("SELECT 1 FROM work_flags WHERE key = 'access-restore'").get()) return;
           const k = kernelOf();
-          const general = await hubOf().generalProject();
+          const general = await hubOf().personalProject();
           await k.ask.request(k.serviceChain("work"), {
             title: "Restore who could see your projects", record: general.urn,
             doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
@@ -129,8 +129,8 @@ export default {
         } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
       const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
-      // every Space has a General project, made with it
-      void hubOf().generalProject().catch(() => {});
+      // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
+      void hubOf().personalProject().then(() => hubOf().migrateGeneral()).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
@@ -399,7 +399,11 @@ export default {
             return row ? Number(row.n) || 0 : 0;
           } catch { return 0; }
         };
-        const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        const projRows = (await k.records.query(chain, "project", { page: { limit: 500 } })).rows || [];
+        const projects = new Map(projRows.map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        // Personal is private: a chat filed in somebody else's Personal project is not listed (R031-03)
+        const others = new Set(projRows.filter((/** @type {any} */ p) => p.data.personal_of && p.data.personal_of !== personId).map((/** @type {any} */ p) => p.urn));
+        rows = rows.filter((/** @type {any} */ r) => !(r.data.project && others.has(r.data.project.urn)));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
           if (!mine.has(r.data.chat)) return base;
@@ -539,7 +543,7 @@ export default {
       },
     });
     ctx.tool("work.chat.create", {
-      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.",
+      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (your Personal project when none). Returns the chat's id.",
       input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } },
         id: { type: "string", description: "the chat's id (chat_<uuid>), chosen by the device that made the ring: the ring is bound to it" }, ring: { type: "object", description: "the chat's key ring, made on the creator's device (createRing in lib/chat-keys.js: wrapped to every device of every participant); with it the chat's folders are stored sealed. Left out, the chat is in the clear." } }),
       run: async (input, extra) => {
