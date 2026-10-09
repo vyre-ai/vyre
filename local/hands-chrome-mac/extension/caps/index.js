@@ -22,7 +22,7 @@ import frames from "./frames.js";
 import devtools from "./devtools.js";
 import net from "./net.js";
 import api from "./api.js";
-import ops from "./ops.js";
+import siteops from "./ops.js";
 import ghl from "./ghl.js";
 import login from "./login.js";
 import site from "./site.js";
@@ -67,7 +67,7 @@ const loadedFiles = new Set();
  * @param {(name: string) => Promise<any>} [importer]
  * @param {string[]} [names] file names under caps/ to try
  */
-const STATIC = { devtools, net, api, ops, ghl };
+const STATIC = { devtools, net, api, ops: siteops, ghl };
 
 export async function loadOptional(importer = async name => ({ default: /** @type {any} */ (STATIC)[name] }), names = OPTIONAL) {
   for (const name of names) {
