@@ -666,7 +666,7 @@ Listens for: `link.unpaired`
 | `thread.remembered` | `file`, `scope` |
 | `thread.renamed` | `name` |
 | `thread.rewound` | `restore`, `uuid`; sometimes `at`, `files` |
-| `thread.rolled` | `from`, `reason`, `seed_chars`, `seed_tail`, `text`, `thread`, `to`; sometimes `share`, `source`, `used`, `window` |
+| `thread.rolled` | `from`, `quiet`, `reason`, `seed_chars`, `seed_tail`, `thread`, `to`; sometimes `share`, `source`, `used`, `window` |
 | `thread.sandbox` | `sandboxed`; sometimes `confined_by`, `folder`, `provider`, `reason` |
 | `thread.sent` | `surface`, `text`; sometimes `author`, `images`, `kind`, `queued`, `queued_at`, `request`, `step`, `uuid`, `via` |
 | `thread.shell` | `code`, `command`, `output` |

@@ -524,6 +524,17 @@ export default {
         return { ...out, indexed: have, missing: ids.filter(id => !have.includes(id)) };
       },
     });
+    ctx.tool("recall.marks", {
+      effect: "read",
+      description: "For a rollover's reference sheet (Vyre's own): where in a thread's windows each moment falls. Give the windows (session ids) and times in ms; get, for each time, the pointer (session:seq) of the latest turn at or before it, or null. No model.",
+      input: { type: "object", required: ["sessions", "at"], properties: { sessions: { ...stringArray, maxItems: 24 }, at: { type: "array", maxItems: 400, items: { type: "number" } } } },
+      callers: OWNERS_ONLY,
+      run: async input => {
+        const ids = [...new Set((input.sessions || []).map(String))].slice(0, 24);
+        for (const id of ids) await indexNow(id);
+        return { marks: marksOf(db, ids.filter(id => db.prepare("SELECT 1 FROM recall_sessions WHERE id = ?").get(id)), (input.at || []).map(Number).slice(0, 400)) };
+      },
+    });
     ctx.tool("recall.transcript", {
       effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",

@@ -143,6 +143,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_REDUCED_MOTION` | Not described yet. | `core/cli/delight.js` |
 | `VYRE_RELEASES_API` | Where `vyre update` reads releases. Default `https://api.github.com`. Tests point it at a local server. | `core/cli/commands/update.js`, `core/update/index.js` |
 | `VYRE_RELEASES_REPO` | Not described yet. | `core/update/index.js` |
+| `VYRE_ROLLOVER_SHEET` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
 | `VYRE_SEAL_DEV` | Not described yet. | `core/vault/request.js` |
 | `VYRE_SEAL_SOFTWARE` | Not described yet. | `core/daemon/index.js`, `core/presence/module.js`, `core/spaces/index.js`, `core/wink/pairing.js` |

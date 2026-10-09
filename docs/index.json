@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1452,"event":482,"config":282,"env":264,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1453,"event":482,"config":282,"env":265,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1187,6 +1187,7 @@
     {"kind":"tool","name":"recall.index","definedIn":"core/recall/index.js","page":"reference/tools.md#recallindex","module":"recall","mentions":[]},
     {"kind":"tool","name":"recall.links","definedIn":"core/recall/index.js","page":"reference/tools.md#recalllinks","module":"recall","mentions":[{"page":"using/memory.md","line":101,"anchor":"read-a-turn-word-for-word"},{"page":"using/memory.md","line":102,"anchor":"read-a-turn-word-for-word"}]},
     {"kind":"config","name":"recall.lowBattery","definedIn":"core/recall/index.js","page":null,"mentions":[]},
+    {"kind":"tool","name":"recall.marks","definedIn":"core/recall/index.js","page":"reference/tools.md#recallmarks","module":"recall","mentions":[]},
     {"kind":"config","name":"recall.maxChunks","definedIn":"core/recall/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"recall.models","definedIn":"core/recall/index.js","page":null,"mentions":[]},
     {"kind":"config","name":"recall.npm","definedIn":"core/recall/index.js","page":null,"mentions":[]},
@@ -2579,6 +2580,7 @@
     {"kind":"env","name":"VYRE_RELEASES_API","definedIn":"core/cli/commands/update.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_RELEASES_REPO","definedIn":"core/update/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_ROLLBACK_POLL","definedIn":"box/vyre","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_ROLLOVER_SHEET","definedIn":"core/switchboard/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_ROOT_TMP","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_ROOT_UID","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_SCOPE_CWDS","definedIn":"core/switchboard/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"build/mcp-hub.md","line":40,"anchor":"inside-an-agents-thread"}]},
