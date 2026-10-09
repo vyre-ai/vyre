@@ -133,10 +133,8 @@ for (const step of STEPS) {
 }
 void KNOWN_REFUSED;
 
-// FOUND BY THE FIRST RUN (5 Oct): lib/kernel-session.js gives a thread that names no assistant the default assistant's identity ("a thread with no named assistant runs as the default one"), so a PLAIN session,
-// the shell of any model, moves and submits the assistant's tasks. The ruling says a bare mcp is never the assistant or the person. Kernel-sessions and sessions decide the fix (a plain session gets no
-// agent hop, or a per-session key that holds no grant); remove the todo when it passes.
-test("a plain session (no agent named) cannot move the assistant's task", { timeout: 150_000, todo: "a thread that names no assistant runs as the default assistant (lib/kernel-session.js agentOf), so a bare session acts with the assistant's authority" }, async t => {
+// Found by the first run (5 Oct) and fixed with R031-94: only the person's pinned assistant chat acts as the assistant (lib/kernel-session.js `pinned`); a bare session is a plain session.
+test("a plain session (no agent named) cannot move the assistant's task", { timeout: 150_000 }, async t => {
   const w = await world(t);
   const task = await w.ask("Draft the engagement letter");
   const plain = await w.viaPlainSession("tasks.move", { id: task.id, to: "working" });

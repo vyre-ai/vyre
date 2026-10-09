@@ -18,6 +18,7 @@ const ALLOWED = new Map([
   ["core/term/index.js", "a terminal id names a dtach socket file, and a unix socket path has a length limit a 36-character uuid would break"],
   ["core/team/index.js", "a short code a person reads and types (`r_ab12cd34`)"],
   ["lib/spaces/move-pull.js", "a pull ticket is a bearer: full-width random, with no time in it"],
+  ["core/vault/passmcp.js", "a Vault MCP pass token is a bearer secret, full-width random with no time in it; the `vmcp_` prefix only lets a leaked one be recognised (the pass id itself is newPrefixedId)"],
   ["lib/connectors/testing/", "test support: a fake OAuth server's codes and tokens"],
 ]);
 const PATTERNS = [

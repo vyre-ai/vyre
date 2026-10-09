@@ -325,10 +325,6 @@
         "effect": "write"
       },
       {
-        "name": "work.chat.pinned",
-        "reach": "modules"
-      },
-      {
         "name": "work.chat.persistent",
         "summary": "your pinned assistant or Engineer chat",
         "reach": "anyone",
@@ -345,6 +341,12 @@
         "summary": "take a shared file back",
         "reach": "anyone",
         "effect": "write"
+      },
+      {
+        "name": "work.chat.pinned",
+        "summary": "which pinned chat a chat is for a person (the daemon's question when it opens a session)",
+        "reach": "modules",
+        "effect": "read"
       },
       {
         "name": "work.chat.pin",
