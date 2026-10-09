@@ -25,6 +25,7 @@ export const MIGRATIONS = [
      name TEXT PRIMARY KEY, space TEXT NOT NULL, version TEXT NOT NULL, state TEXT NOT NULL, origin TEXT, hook_port INTEGER, login_email TEXT, installed INTEGER NOT NULL, note TEXT
    );`,
   `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
+  `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -258,8 +259,19 @@ export default {
               if (connection) db.prepare("UPDATE appmods_apps SET connection_id = ? WHERE name = ?").run(connection, m.name);
             } catch (e) { ctx.log.warn(`appmods: ${m.name} is installed without its Connection: ${/** @type {Error} */ (e).message}`); db.prepare("UPDATE appmods_apps SET note = ? WHERE name = ?").run(`no Connection yet: ${String(/** @type {Error} */ (e).message).slice(0, 200)}`, m.name); }
           }
+          // The Kit the app ships (its record type and its Flow), proposed as the installing person: the owner's yes in Now is what defines it. A build without Flows installs the app all the same.
+          let kit = null;
+          if (m.kit) {
+            try {
+              const stored = JSON.parse(fs.readFileSync(path.join(CATALOG, m.kit), "utf8"));
+              const made = await ctx.call("flows.kit.propose", { kit: stored }, { relay: true });
+              if (made.error) throw new Error(made.error.message);
+              kit = made.data && made.data.task ? String(made.data.task) : "proposed";
+              db.prepare("UPDATE appmods_apps SET kit_task = ? WHERE name = ?").run(kit, m.name);
+            } catch (e) { ctx.log.warn(`appmods: ${m.name} is installed without its Kit: ${/** @type {Error} */ (e).message}`); }
+          }
           ctx.events.emit("appmods.installed", { name: m.name, version: m.version });
-          return { name: m.name, state: "running", connection };
+          return { name: m.name, state: "running", connection, kit };
         } catch (e) {
           db.prepare("UPDATE appmods_apps SET state = 'failed', note = ? WHERE name = ?").run(String(/** @type {Error} */ (e).message).slice(0, 300), m.name);
           throw e;

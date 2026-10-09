@@ -378,8 +378,8 @@ generated: scripts/gen-docs-reference
 - `device.renamed` event, [explained](events.md#computers). No mentions.
 - `device.trust-asked` event, [explained](events.md#relay). No mentions.
 - `distill.finished` event, [explained](events.md#learn). 1 mention: adr/0007-intelligence.md [262](../adr/0007-intelligence.md#12-the-contract)
-- `docuseal.form-completed` event, [explained](events.md#appmods). No mentions.
-- `docuseal.signed` event, [explained](events.md#appmods). No mentions.
+- `documents.form-completed` event, [explained](events.md#appmods). No mentions.
+- `documents.signed` event, [explained](events.md#appmods). No mentions.
 - `drive.exposed` event, [explained](events.md#files). 1 mention: adr/0014-tailnet.md [60](../adr/0014-tailnet.md#1-taildrive-the-boxs-folders-on-the-mac)
 
 ## E

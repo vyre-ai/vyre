@@ -1,0 +1,258 @@
+{
+  "kind": "kit",
+  "sdk": 1,
+  "id": "documents",
+  "version": 1,
+  "label": "Documents",
+  "description": "A Document record for each document sent for signature, linked to the signer's Contact and the project, and a Flow that files the signed copy when it arrives.",
+  "types": [
+    {
+      "name": "contact",
+      "label": "Contact",
+      "icon": "IconUser",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "email",
+          "kind": "text",
+          "label": "Email",
+          "unique": true
+        },
+        {
+          "name": "phone",
+          "kind": "text",
+          "label": "Phone",
+          "unique": true
+        },
+        {
+          "name": "other_emails",
+          "kind": "emails",
+          "label": "Other emails"
+        },
+        {
+          "name": "other_phones",
+          "kind": "phones",
+          "label": "Other phones"
+        },
+        {
+          "name": "job_title",
+          "kind": "text",
+          "label": "Job title"
+        },
+        {
+          "name": "time_zone",
+          "kind": "text",
+          "label": "Time zone"
+        },
+        {
+          "name": "organization",
+          "kind": "link",
+          "label": "Organization",
+          "to": "organization",
+          "inverse": {
+            "name": "contacts",
+            "label": "Contacts"
+          }
+        },
+        {
+          "name": "address",
+          "kind": "address",
+          "label": "Address"
+        },
+        {
+          "name": "notes",
+          "kind": "rich_text",
+          "label": "Notes"
+        },
+        {
+          "name": "last_signed_at",
+          "kind": "datetime",
+          "label": "Last signed a document"
+        }
+      ]
+    },
+    {
+      "name": "document",
+      "label": "Document",
+      "icon": "IconFileText",
+      "fields": [
+        {
+          "name": "name",
+          "kind": "text",
+          "label": "Name",
+          "required": true
+        },
+        {
+          "name": "status",
+          "kind": "choice",
+          "label": "Status",
+          "options": [
+            "Waiting",
+            "Signed",
+            "Declined"
+          ]
+        },
+        {
+          "name": "template",
+          "kind": "text",
+          "label": "Template"
+        },
+        {
+          "name": "signer_email",
+          "kind": "text",
+          "label": "Signer's e-mail"
+        },
+        {
+          "name": "signed_at",
+          "kind": "datetime",
+          "label": "Signed"
+        },
+        {
+          "name": "file",
+          "kind": "text",
+          "label": "Signed copy in the Drive"
+        },
+        {
+          "name": "submission",
+          "kind": "text",
+          "label": "Submission"
+        },
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Signer",
+          "to": "contact",
+          "inverse": {
+            "name": "documents",
+            "label": "Documents"
+          }
+        },
+        {
+          "name": "project",
+          "kind": "link",
+          "label": "Project",
+          "to": "project",
+          "inverse": {
+            "name": "documents",
+            "label": "Documents"
+          }
+        }
+      ]
+    }
+  ],
+  "templates": [],
+  "roles": [],
+  "flows": [
+    {
+      "format": 1,
+      "authorship": "kit",
+      "name": "document_signed",
+      "label": "File a signed document",
+      "description": "When a document is signed, find the signer's Contact by their e-mail, file a Document record linked to them (the signed copy is already in the Drive), and put it on their timeline.",
+      "trigger": {
+        "on": "event",
+        "event": "documents.signed"
+      },
+      "steps": [
+        {
+          "id": "who",
+          "kind": "pick",
+          "type": "contact",
+          "where": "record.email == trigger.payload.email"
+        },
+        {
+          "id": "link",
+          "kind": "decide",
+          "if": "steps.who.found",
+          "then": [
+            {
+              "id": "doc",
+              "kind": "upsert",
+              "type": "document",
+              "match": {
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              },
+              "set": {
+                "name": {
+                  "expr": "trigger.payload.template"
+                },
+                "status": "Signed",
+                "template": {
+                  "expr": "trigger.payload.template"
+                },
+                "signer_email": {
+                  "expr": "trigger.payload.email"
+                },
+                "file": {
+                  "expr": "trigger.payload.files[0].path"
+                },
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                },
+                "contact": {
+                  "urn": {
+                    "expr": "steps.who.record.urn"
+                  }
+                }
+              }
+            },
+            {
+              "id": "touch",
+              "kind": "update",
+              "type": "contact",
+              "record": {
+                "urn": {
+                  "expr": "steps.who.record.urn"
+                }
+              },
+              "set": {
+                "last_signed_at": {
+                  "expr": "trigger.payload.at"
+                }
+              }
+            }
+          ],
+          "else": [
+            {
+              "id": "doc_unlinked",
+              "kind": "upsert",
+              "type": "document",
+              "match": {
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              },
+              "set": {
+                "name": {
+                  "expr": "trigger.payload.template"
+                },
+                "status": "Signed",
+                "template": {
+                  "expr": "trigger.payload.template"
+                },
+                "signer_email": {
+                  "expr": "trigger.payload.email"
+                },
+                "file": {
+                  "expr": "trigger.payload.files[0].path"
+                },
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "views": [],
+  "codeSteps": []
+}

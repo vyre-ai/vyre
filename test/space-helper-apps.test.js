@@ -25,17 +25,17 @@ test("app helper: the catalog is recorded at install, field by field, from the i
   const line = r.catalogLine().trim();
   const f = line.split(" ");
   assert.equal(f.length, 13, line);
-  assert.deepEqual(f.slice(0, 1).concat(f.slice(2, 7)), ["docuseal", "3000", "1536", "1.5", "512", "43001"]);
+  assert.deepEqual(f.slice(0, 1).concat(f.slice(2, 7)), ["documents", "3000", "1536", "1.5", "512", "43001"]);
   assert.match(f[1], /^docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}$/);
   assert.deepEqual(f.slice(7), ["docuseal-bootstrap.rb", "bin/rails+runner", "api_token+login_password", "/", "200+302", "120"]);
-  assert.ok(!(fs.existsSync(path.join(r.F, "pulled")) && read(path.join(r.F, "pulled")).includes("docuseal")), "recording the catalog pulls no app image: a server that never installs an app does not carry one");
+  assert.ok(!(fs.existsSync(path.join(r.F, "pulled")) && read(path.join(r.F, "pulled")).includes("documents")), "recording the catalog pulls no app image: a server that never installs an app does not carry one");
   assert.equal(fs.statSync(path.join(r.priv, "app-modules")).mode & 0o777, 0o600);
 });
 
 test("app helper: a catalog line that fails any field records NO app, and the install still succeeds (Twenty does not wait on an app)", opts, async t => {
   const bad = {
     "an image with no digest": lineOf({ image: "docuseal/docuseal:3.3.1" }), "an uppercase digest": lineOf({ image: "docuseal/docuseal@sha256:" + "E".repeat(64) }),
-    "an image with a space": lineOf({ image: "docuseal/docu seal@sha256:" + "e".repeat(64) }), "a name with a capital": lineOf({ name: "Docuseal" }), "a one letter name": lineOf({ name: "d" }),
+    "an image with a space": lineOf({ image: "documents/docu seal@sha256:" + "e".repeat(64) }), "a name with a capital": lineOf({ name: "Docuseal" }), "a one letter name": lineOf({ name: "d" }),
     "a port of 0": lineOf({ port: "0" }), "a port over 65535": lineOf({ port: "65536" }), "a port with a leading zero": lineOf({ port: "03000" }),
     "memory under 64": lineOf({ mem: "63" }), "memory over 8192": lineOf({ mem: "8193" }), "cpus of 0": lineOf({ cpus: "0" }), "cpus over 8": lineOf({ cpus: "8.5" }), "cpus in words": lineOf({ cpus: "one" }),
     "pids under 32": lineOf({ pids: "31" }), "a hook port under 43000": lineOf({ hook: "42999" }), "a hook port over 43999": lineOf({ hook: "44000" }),
@@ -93,9 +93,9 @@ test("app helper: names and hook ports are unique across the catalog, and a hook
 test("app helper: a request is `app-up|app-stop|app-down <module>` for a recorded module and nothing else", opts, async t => {
   const r = await ready(t);
   const bad = {
-    "a module that is not recorded": "app-up nothere\n", "a capital": "app-up Docuseal\n", "a dot": "app-up docu.seal\n", "a slash": "app-up ../x\n", "an equals sign": "app-up docuseal=1\n",
-    "a space": "app-up docu seal\n", "two words after": "app-up docuseal now\n", "one letter": "app-up d\n", "a Space name": "app-up harlow\n", "a Twenty name": "app-up docuseal-twenty\n",
-    "an unknown verb": "app-purge docuseal\n", "app-up with a flag": "app-up --privileged\n", "a verb in capitals": "APP-UP docuseal\n", "no newline": "app-up docuseal", "two lines": "app-up docuseal\napp-down docuseal\n",
+    "a module that is not recorded": "app-up nothere\n", "a capital": "app-up Docuseal\n", "a dot": "app-up docu.seal\n", "a slash": "app-up ../x\n", "an equals sign": "app-up documents=1\n",
+    "a space": "app-up docu seal\n", "two words after": "app-up documents now\n", "one letter": "app-up d\n", "a Space name": "app-up harlow\n", "a Twenty name": "app-up documents-twenty\n",
+    "an unknown verb": "app-purge documents\n", "app-up with a flag": "app-up --privileged\n", "a verb in capitals": "APP-UP documents\n", "no newline": "app-up documents", "two lines": "app-up documents\napp-down documents\n",
   };
   const asked = Object.entries(bad).map(([what, text]) => [what, r.ask(text)]);
   await r.helper();
@@ -105,7 +105,7 @@ test("app helper: a request is `app-up|app-stop|app-down <module>` for a recorde
   }
   assert.ok(!/compose .* (create|up)/.test(r.calls()), "nothing was started by any of them");
   // requests that are not the daemon's: a mode that allows others, a stale one
-  const odd = Object.entries({ "a request with group access": { mode: 0o660 }, "a request older than five minutes": { age: 400 } }).map(([what, opt]) => [what, r.ask("app-up docuseal\n", opt)]);
+  const odd = Object.entries({ "a request with group access": { mode: 0o660 }, "a request older than five minutes": { age: 400 } }).map(([what, opt]) => [what, r.ask("app-up documents\n", opt)]);
   await r.helper();
   for (const [what, id] of odd) {
     const st = r.status(id);
@@ -120,7 +120,7 @@ test("app helper: app-up makes root's keys and compose, joins and walls BEFORE t
   const { id, st } = await r.appUp();
   assert.equal(st.state, "ok", JSON.stringify(st));
   assert.equal(st.id, id);
-  const d = path.join(r.priv, "apps", "docuseal");
+  const d = path.join(r.priv, "apps", "documents");
   assert.equal(fs.statSync(path.join(d, "secrets.env")).mode & 0o777, 0o600, "root's keys are root-only");
   assert.match(read(path.join(d, "secrets.env")), /^SECRET_KEY_BASE=[0-9a-f]{64}\n$/);
   const compose = read(path.join(d, "compose.yml"));
@@ -133,38 +133,38 @@ test("app helper: app-up makes root's keys and compose, joins and walls BEFORE t
   const fw = r.appFw();
   const out = fw.filter((/** @type {any} */ x) => x.ch === "OUTPUT").map((/** @type {any} */ x) => x.r);
   assert.deepEqual(out.map((/** @type {any} */ x) => x.uid).sort(), [`0-${UID - 1}`, `${UID + 1}-4294967294`].sort());
-  assert.ok(out.every((/** @type {any} */ x) => x.d === "172.31.7.0/24" && x.c === "vyre-app:docuseal" && x.j === "REJECT"));
+  assert.ok(out.every((/** @type {any} */ x) => x.d === "172.31.7.0/24" && x.c === "vyre-app:documents" && x.j === "REJECT"));
   const inp = fw.filter((/** @type {any} */ x) => x.ch === "INPUT").map((/** @type {any} */ x) => x.r);
   assert.deepEqual(inp, [
-    { i: "eth1", ct: "ESTABLISHED,RELATED", c: "vyre-app:docuseal", j: "ACCEPT" },
-    { i: "eth1", s: "172.31.7.0/24", p: "tcp", dp: "43001", c: "vyre-app:docuseal", j: "ACCEPT" },
-    { i: "eth1", c: "vyre-app:docuseal", j: "DROP" },
+    { i: "eth1", ct: "ESTABLISHED,RELATED", c: "vyre-app:documents", j: "ACCEPT" },
+    { i: "eth1", s: "172.31.7.0/24", p: "tcp", dp: "43001", c: "vyre-app:documents", j: "ACCEPT" },
+    { i: "eth1", c: "vyre-app:documents", j: "DROP" },
   ], "answers, then the hook port from the app's subnet, then drop everything else on that interface");
-  assert.match(read(path.join(r.SP, "status", "subnets")), /^app:docuseal 172\.31\.7\.0\/24$/m, "the wall waits for the app's subnet after a restart");
+  assert.match(read(path.join(r.SP, "status", "subnets")), /^app:documents 172\.31\.7\.0\/24$/m, "the wall waits for the app's subnet after a restart");
   // order: create, join, OUTPUT, INPUT, start, health, OUTPUT proof, INPUT proof, setup
   const calls = r.calls();
   const at = (/** @type {RegExp} */ re) => { const m = re.exec(calls); assert.ok(m, `${re} in ${calls}`); return m.index; };
   assert.match(read(path.join(r.F, "pulled")), /docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}/, "the pinned digest is pulled at app-up");
-  const order = [/pull -q docuseal/, /compose .* create/, /network connect --alias vyre-daemon vyre-app-docuseal_net vyre-vyre-1/, /-I OUTPUT 1 .*vyre-app:docuseal/, /-I INPUT 1 .*-j DROP/, /compose .* up -d/, /--entrypoint node .*fetch\(/, /setpriv --reuid=2000/, /require\("net"\)/, /exec -i --env-file/];
+  const order = [/pull -q docuseal/, /compose .* create/, /network connect --alias vyre-daemon vyre-app-documents_net vyre-vyre-1/, /-I OUTPUT 1 .*vyre-app:documents/, /-I INPUT 1 .*-j DROP/, /compose .* up -d/, /--entrypoint node .*fetch\(/, /setpriv --reuid=2000/, /require\("net"\)/, /exec -i --env-file/];
   const pos = order.map(at);
   assert.deepEqual([...pos].sort((x, y) => x - y), pos, "the order holds");
   // the inbound proof: every port but the hook port was tried and timed out; the hook port was tried too
   const tries = read(path.join(r.F, "tries")).trim().split("\n").map(l => l.split(" "));
-  assert.ok(tries.every(x => x[0] === "vyre-app-docuseal_net" && x[1] === "172.31.7.2"));
+  assert.ok(tries.every(x => x[0] === "vyre-app-documents_net" && x[1] === "172.31.7.2"));
   assert.deepEqual(tries.map(x => x[2]).sort((x, y) => Number(x) - Number(y)), ["1", "22", "43001", "443", "80"].sort((x, y) => Number(x) - Number(y)));
   // the setup: the script out of the image on the command's STDIN, an env FILE (0600) with the hook token and url, never on a command line; root never writes into the app's filesystem
   assert.match(read(path.join(r.F, "exec-stdin")), /api_token/, "the script reached the command on stdin");
   assert.ok(!/(^| )cp /m.test(calls), "no docker cp in any command line: a third-party container's filesystem is never written by root");
   assert.equal(read(path.join(r.F, "exec-env-mode")), "600");
   const env = read(path.join(r.F, "exec-env"));
-  assert.match(env, /^APP_URL=http:\/\/vyre-app-docuseal:3000$/m);
+  assert.match(env, /^APP_URL=http:\/\/vyre-app-documents:3000$/m);
   assert.match(env, /^VYRE_HOOK_URL=http:\/\/172\.31\.7\.2:43001\/hook$/m);
   assert.match(env, /^VYRE_HOOK_TOKEN=[0-9a-f]{64}$/m);
-  assert.match(read(path.join(r.F, "exec-args")), /exec -i --env-file \S+ -w \/app vyre-app-docuseal bin\/rails runner -$/);
+  assert.match(read(path.join(r.F, "exec-args")), /exec -i --env-file \S+ -w \/app vyre-app-documents bin\/rails runner -$/);
   assert.ok(!fs.existsSync(path.join(d, "setup.env")) && !fs.existsSync(path.join(d, "setup.out")), "the setup's files are gone");
   assert.ok(!SECRET.test(calls) && !calls.includes(env.match(/VYRE_HOOK_TOKEN=(\S+)/)[1]), "no secret and no token is in any command line");
   // the handoff: a file only the daemon's uid reads, with the token and the setup's outputs
-  const hand = path.join(r.SP, "status", "app-docuseal-secrets");
+  const hand = path.join(r.SP, "status", "app-documents-secrets");
   assert.equal(fs.statSync(hand).mode & 0o777, 0o400);
   assert.equal(fs.statSync(hand).uid, UID);
   const body = read(hand);
@@ -209,8 +209,8 @@ test("app helper: each wall is proved and a failed proof stops the app", opts, a
     const { st } = await r.appUp();
     assert.equal(st.state, "failed", what);
     assert.match(st.message, /** @type {RegExp} */ (msg), what);
-    assert.ok(!fs.existsSync(path.join(r.F, "app-running-docuseal")), `${what}: the app was stopped again`);
-    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "docuseal", "bootstrapped")), `${what}: no setup ran`);
+    assert.ok(!fs.existsSync(path.join(r.F, "app-running-documents")), `${what}: the app was stopped again`);
+    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "documents", "bootstrapped")), `${what}: no setup ran`);
   }
   for (const [what, flag, msg] of [["no interface found", "no-iface", /interface .* could not be found/], ["a rule that cannot be added", "fw-add-fails", /firewall rule could not be added/], ["a create that fails", "create-fails", /could not be created/], ["a start that fails", "up-fails", /did not start/]]) {
     const r = await ready(t, { [String(flag)]: "1" });
@@ -232,15 +232,15 @@ test("app helper: a setup that fails or prints no output stops the app and recor
     const { st } = await r.appUp();
     assert.equal(st.state, "failed", String(what));
     assert.match(st.message, /** @type {RegExp} */ (msg), String(what));
-    assert.ok(!fs.existsSync(path.join(r.SP, "status", "app-docuseal-secrets")), `${what}: nothing handed over`);
-    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "docuseal", "bootstrapped")), `${what}: the setup can run again`);
-    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "docuseal", "setup.env")), `${what}: the environment file is gone`);
-    assert.ok(!fs.existsSync(path.join(r.F, "app-running-docuseal")), `${what}: the app is stopped`);
+    assert.ok(!fs.existsSync(path.join(r.SP, "status", "app-documents-secrets")), `${what}: nothing handed over`);
+    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "documents", "bootstrapped")), `${what}: the setup can run again`);
+    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "documents", "setup.env")), `${what}: the environment file is gone`);
+    assert.ok(!fs.existsSync(path.join(r.F, "app-running-documents")), `${what}: the app is stopped`);
   }
 });
 
 test("app helper: the generated compose is linted against the recorded line; each thing the lint refuses is refused and nothing starts", opts, async t => {
-  const real = (await (async () => { const { composeFile } = await import("../core/appmods/host-plan.js"); return composeFile("docuseal"); })());
+  const real = (await (async () => { const { composeFile } = await import("../core/appmods/host-plan.js"); return composeFile("documents"); })());
   const edits = {
     "a privileged service": ["    init: true\n", "    init: true\n    privileged: true\n"],
     "a published port": ["    init: true\n", "    init: true\n    ports:\n      - 3000:3000\n"],
@@ -258,15 +258,15 @@ test("app helper: the generated compose is linted against the recorded line; eac
     "the docker socket": ["      - data:/data/docuseal\n", "      - data:/data/docuseal\n      - docker:/var/run/docker.sock\n"],
     "an undeclared volume": ["      - data:/data/docuseal\n", "      - other:/data/docuseal\n"],
     "a volume over /etc": ["      - data:/data/docuseal\n", "      - data:/etc/x\n"],
-    "an env value with a dollar": ['APP_URL: "http://vyre-app-docuseal:3000"', 'APP_URL: "$(id)"'],
+    "an env value with a dollar": ['APP_URL: "http://vyre-app-documents:3000"', 'APP_URL: "$(id)"'],
     "an env value with a backtick": ['FORCE_SSL: "false"', 'FORCE_SSL: "`id`"'],
     "another secret reference": ["SECRET_KEY_BASE: ${SECRET_KEY_BASE}", "SECRET_KEY_BASE: ${OTHER}"],
     "a second service": ["networks:\n  net:", "  second:\n    image: x\nnetworks:\n  net:"],
     "a network that is not internal": ["    internal: true", "    internal: false"],
     "an external network": ["networks:\n  net:\n", "networks:\n  net:\n    external: true\n"],
-    "a volume named elsewhere": ["name: vyre-app-docuseal_data", "name: vyre-twenty_data"],
-    "a project name that is not the app's": ["name: vyre-app-docuseal\n", "name: vyre-harlow-twenty\n"],
-    "a container name that is not the app's": ["container_name: vyre-app-docuseal", "container_name: vyre-vyre-1"],
+    "a volume named elsewhere": ["name: vyre-app-documents_data", "name: vyre-twenty_data"],
+    "a project name that is not the app's": ["name: vyre-app-documents\n", "name: vyre-harlow-twenty\n"],
+    "a container name that is not the app's": ["container_name: vyre-app-documents", "container_name: vyre-vyre-1"],
     "a user line": ["    init: true\n", "    init: true\n    user: root\n"],
     "pid host": ["    init: true\n", "    init: true\n    pid: host\n"],
     "a command": ["    init: true\n", "    init: true\n    command: sh\n"],
@@ -288,7 +288,7 @@ test("app helper: the generated compose is linted against the recorded line; eac
   const { st } = await r.appUp();
   assert.equal(st.state, "ok", "the real file passes the same lint");
   // a generator that prints nothing, or not the marker line, is refused too
-  for (const body of ["", "name: vyre-app-docuseal\n"]) {
+  for (const body of ["", "name: vyre-app-documents\n"]) {
     r.flag("hostplan-compose", body || "\n");
     const o = await r.appUp();
     assert.equal(o.st.state, "failed");
@@ -299,29 +299,29 @@ test("app helper: the generated compose is linted against the recorded line; eac
 test("app helper: app-stop keeps the walls; app-down removes both chains' rules BEFORE the app leaves the interface, the subnet entry, the join and the app, and keeps the data", opts, async t => {
   const r = await ready(t);
   await r.appUp();
-  const s = r.ask("app-stop docuseal\n");
+  const s = r.ask("app-stop documents\n");
   await r.helper();
   assert.equal(r.status(s).state, "ok");
-  assert.ok(!fs.existsSync(path.join(r.F, "app-running-docuseal")));
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-documents")));
   assert.equal(r.appFw().length, 5, "a stopped app keeps its walls");
   fs.writeFileSync(path.join(r.F, "calls"), "");
-  const dn = r.ask("app-down docuseal\n");
+  const dn = r.ask("app-down documents\n");
   await r.helper();
   assert.equal(r.status(dn).state, "ok", JSON.stringify(r.status(dn)));
   assert.deepEqual(r.appFw(), [], "every rule with the app's comment is gone, INPUT and OUTPUT");
-  assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:docuseal"));
-  assert.ok(!fs.existsSync(path.join(r.F, "app-net-docuseal")), "the network is removed");
-  assert.ok(!read(path.join(r.F, "joined")).includes("vyre-app-docuseal_net"), "the vyre container left it");
+  assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:documents"));
+  assert.ok(!fs.existsSync(path.join(r.F, "app-net-documents")), "the network is removed");
+  assert.ok(!read(path.join(r.F, "joined")).includes("vyre-app-documents_net"), "the vyre container left it");
   const calls = r.calls();
-  assert.ok(calls.search(/-D INPUT/) < calls.search(/network disconnect -f vyre-app-docuseal_net/), "rules first, then the join");
+  assert.ok(calls.search(/-D INPUT/) < calls.search(/network disconnect -f vyre-app-documents_net/), "rules first, then the join");
   assert.ok(calls.search(/network disconnect/) < calls.search(/compose .* down/));
   assert.ok(!/ -v\b|volume rm/.test(calls), "the data is kept");
-  assert.ok(!fs.existsSync(path.join(r.priv, "apps", "docuseal", "bootstrapped")), "the setup runs again on the next install");
-  assert.ok(fs.existsSync(path.join(r.priv, "apps", "docuseal", "secrets.env")), "root keeps the app's keys with its data");
+  assert.ok(!fs.existsSync(path.join(r.priv, "apps", "documents", "bootstrapped")), "the setup runs again on the next install");
+  assert.ok(fs.existsSync(path.join(r.priv, "apps", "documents", "secrets.env")), "root keeps the app's keys with its data");
   // down for an app that was never started, stop for one, and a rule the helper cannot read as its own
   const never = appRig(t);
   await never.prime();
-  const n = never.ask("app-down docuseal\n");
+  const n = never.ask("app-down documents\n");
   await never.helper();
   assert.equal(never.status(n).state, "failed");
   assert.match(never.status(n).message, /never started/);
@@ -332,53 +332,53 @@ test("app helper: another app's, and a Space's, rules are never touched by app-d
   // a second app: the real DocuSeal line and compose under another name and hook port
   const { composeFile } = await import("../core/appmods/host-plan.js");
   const first = r.catalogLine().trim();
-  r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "docuseal-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
-  r.flag("hostplan-compose-docuseal-two", composeFile("docuseal").replaceAll("vyre-app-docuseal", "vyre-app-docuseal-two"));
+  r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "documents-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
+  r.flag("hostplan-compose-documents-two", composeFile("documents").replaceAll("vyre-app-documents", "vyre-app-documents-two"));
   await r.run(["space-helper", "install"]);
   assert.equal(r.catalogLine().trim().split("\n").length, 2);
   // a Space with its own rules in the same container
   const sp = r.ask("up harlow\n");
   await r.helper();
   assert.equal(r.status(sp).state, "ok");
-  for (const m of ["docuseal", "docuseal-two"]) { r.flag("hook-port", m === "docuseal" ? "43001" : "43002"); const o = await r.appUp(m); assert.equal(o.st.state, "ok", m + ": " + JSON.stringify(o.st)); }
+  for (const m of ["documents", "documents-two"]) { r.flag("hook-port", m === "documents" ? "43001" : "43002"); const o = await r.appUp(m); assert.equal(o.st.state, "ok", m + ": " + JSON.stringify(o.st)); }
   assert.equal(r.appFw().length, 10);
-  const dn = r.ask("app-down docuseal\n");
+  const dn = r.ask("app-down documents\n");
   await r.helper();
   assert.equal(r.status(dn).state, "ok");
   const left = r.appFw();
   assert.equal(left.length, 5);
-  assert.ok(left.every((/** @type {any} */ x) => x.r.c === "vyre-app:docuseal-two"), "docuseal-two keeps all five");
+  assert.ok(left.every((/** @type {any} */ x) => x.r.c === "vyre-app:documents-two"), "documents-two keeps all five");
   assert.equal(r.rules().filter(l => l.includes("vyre:harlow")).length, 2, "the Space keeps its two");
 });
 
 test("app helper: the handoff file is swept after ten minutes, and `reattach` walls and proves a running app again in a new container, or stops it", opts, async t => {
   const r = await ready(t);
   await r.appUp();
-  const hand = path.join(r.SP, "status", "app-docuseal-secrets");
+  const hand = path.join(r.SP, "status", "app-documents-secrets");
   assert.ok(fs.existsSync(hand));
   const old = new Date(Date.now() - 11 * 60 * 1000);
   fs.utimesSync(hand, old, old);
-  r.ask("app-stop docuseal\n");
-  r.ask("app-up docuseal\n");
+  r.ask("app-stop documents\n");
+  r.ask("app-up documents\n");
   await r.helper();
   assert.ok(!fs.existsSync(hand), "an unread handoff does not wait for ever");
   // a new vyre container: new pid, no joins, no rules
-  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); fs.writeFileSync(path.join(r.F, "app-running-docuseal"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"], { SP_REWALL_WAIT: "0" })); };
+  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); fs.writeFileSync(path.join(r.F, "app-running-documents"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"], { SP_REWALL_WAIT: "0" })); };
   const ok = await again();
   assert.equal(ok.code, 0, ok.out);
   const pid = read(path.join(r.F, "ctr-pid"));
   assert.equal(r.appFw(pid).length, 5, "joined and walled again in the new container");
-  assert.match(read(path.join(r.F, "joined")), /vyre-app-docuseal_net/);
+  assert.match(read(path.join(r.F, "joined")), /vyre-app-documents_net/);
   // a namespace still settling: a proof that fails twice and then holds does not stop the app
   r.flag("probe-flaky", "2");
   const settling = await again();
   assert.equal(settling.code, 0, settling.out);
-  assert.ok(fs.existsSync(path.join(r.F, "app-running-docuseal")), "two failed proofs and a third that holds: the app stays");
+  assert.ok(fs.existsSync(path.join(r.F, "app-running-documents")), "two failed proofs and a third that holds: the app stays");
   fs.rmSync(path.join(r.F, "probe-flaky"));
   r.flag("fw-ineffective");
   const bad = await again();
-  assert.match(bad.out, /the app docuseal was stopped/);
-  assert.ok(!fs.existsSync(path.join(r.F, "app-running-docuseal")), "an app that cannot be proved is stopped, never left running unwalled");
+  assert.match(bad.out, /the app documents was stopped/);
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-documents")), "an app that cannot be proved is stopped, never left running unwalled");
 });
 
 test("app helper: with no catalog the helper behaves as before (no app directory, no app rule, Twenty's rules unchanged)", opts, async t => {
@@ -400,8 +400,8 @@ test("app helper: app-up shares the up lane's rate limit with Twenty's up, and a
   let states = [], stop = "";
   for (let attempt = 0; attempt < 2 && !states.includes("busy"); attempt++) {   // a minute boundary inside the run resets the window: look again once
     const ids = [];
-    for (let i = 0; i < 8; i++) ids.push(r.ask("app-up docuseal\n"));
-    const s = r.ask("app-stop docuseal\n");
+    for (let i = 0; i < 8; i++) ids.push(r.ask("app-up documents\n"));
+    const s = r.ask("app-stop documents\n");
     const h = /** @type {any} */ (await r.run(["space-helper-run"]));
     assert.equal(h.code, 0, h.out);
     states = ids.map(i => r.status(i).state);
@@ -414,17 +414,17 @@ test("app helper: app-up shares the up lane's rate limit with Twenty's up, and a
 test("app helper: `vyre admin purge-app` is an admin act (a terminal, a typed word), never a request: it removes the rules, the app, its volumes and root's folder for it", opts, async t => {
   const r = await ready(t);
   await r.appUp();
-  const dir = path.join(r.priv, "apps", "docuseal");
+  const dir = path.join(r.priv, "apps", "documents");
   assert.ok(fs.existsSync(dir));
   // not a spool verb
-  const id = r.ask("app-purge docuseal\n");
+  const id = r.ask("app-purge documents\n");
   await r.helper();
   assert.equal(r.status(id).state, "failed");
   assert.ok(fs.existsSync(dir));
   // no terminal, a wrong word, a name that is not an app, an app root never started
-  let a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal"], {}, "purge-app docuseal\n"));
+  let a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents"], {}, "purge-app documents\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /needs a terminal/);
-  a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal"], { VYRE_ADMIN_NO_TTY: "1" }, "y\n"));
+  a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents"], { VYRE_ADMIN_NO_TTY: "1" }, "y\n"));
   assert.notEqual(a.code, 0); assert.match(a.out, /not the word/);
   a = /** @type {any} */ (await r.run(["admin", "purge-app", "Docu.seal"], { VYRE_ADMIN_NO_TTY: "1" }, "x\n"));
   assert.notEqual(a.code, 0);
@@ -432,14 +432,14 @@ test("app helper: `vyre admin purge-app` is an admin act (a terminal, a typed wo
   assert.match(a.out, /no app named nothere/);
   assert.ok(fs.existsSync(dir), "nothing was touched by any of them");
   fs.writeFileSync(path.join(r.F, "calls"), "");
-  a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app docuseal\n"));
+  a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app documents\n"));
   assert.equal(a.code, 0, a.out);
   assert.deepEqual(r.appFw(), [], "both chains' rules are gone");
   assert.ok(!fs.existsSync(dir), "root's folder for the app is gone");
   assert.match(r.calls(), /compose .* down -v --remove-orphans/);
   assert.match(r.calls(), /image rm docuseal\/docuseal:[0-9.]+@sha256:[0-9a-f]{64}/, "the app's image goes with it");
-  assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:docuseal"));
-  assert.match(read(path.join(r.priv, "log")), /admin purge-app docuseal/);
+  assert.ok(!read(path.join(r.SP, "status", "subnets")).includes("app:documents"));
+  assert.match(read(path.join(r.priv, "log")), /admin purge-app documents/);
 });
 
 test("app helper: an install over a running watcher restarts it, so the watcher that re-walls after a restart of the vyre container runs the wrapper that was installed", opts, async t => {
@@ -454,34 +454,34 @@ test("app helper: purge-app keeps an image another app that still has a folder h
   const r = await ready(t);
   const { composeFile } = await import("../core/appmods/host-plan.js");
   const first = r.catalogLine().trim();
-  r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "docuseal-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
-  r.flag("hostplan-compose-docuseal-two", composeFile("docuseal").replaceAll("vyre-app-docuseal", "vyre-app-docuseal-two"));
+  r.flag("hostplan-list", first + "\n" + first.split(" ").map((x, i) => (i === 0 ? "documents-two" : i === 6 ? "43002" : x)).join(" ") + "\n");
+  r.flag("hostplan-compose-documents-two", composeFile("documents").replaceAll("vyre-app-documents", "vyre-app-documents-two"));
   await r.run(["space-helper", "install"]);
-  for (const m of ["docuseal", "docuseal-two"]) { r.flag("hook-port", m === "docuseal" ? "43001" : "43002"); assert.equal((await r.appUp(m)).st.state, "ok", m); }
+  for (const m of ["documents", "documents-two"]) { r.flag("hook-port", m === "documents" ? "43001" : "43002"); assert.equal((await r.appUp(m)).st.state, "ok", m); }
   fs.writeFileSync(path.join(r.F, "calls"), "");
-  let a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app docuseal\n"));
+  let a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app documents\n"));
   assert.equal(a.code, 0, a.out);
-  assert.ok(!/image rm/.test(r.calls()), "docuseal-two still runs that digest");
-  a = /** @type {any} */ (await r.run(["admin", "purge-app", "docuseal-two"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app docuseal-two\n"));
+  assert.ok(!/image rm/.test(r.calls()), "documents-two still runs that digest");
+  a = /** @type {any} */ (await r.run(["admin", "purge-app", "documents-two"], { VYRE_ADMIN_NO_TTY: "1" }, "purge-app documents-two\n"));
   assert.equal(a.code, 0, a.out);
   assert.match(r.calls(), /image rm docuseal\/docuseal/, "the last one takes it");
 });
 
 test("app helper: APP_URL is the public address (https://<module>.<name>.vyre.run:<port>) when the box has a name on vyre.run, read through the vyre container but kept only if it has that shape; otherwise the internal one", opts, async t => {
   const r = await ready(t);
-  const urlOf = () => /APP_URL: "([^"]*)"/.exec(read(path.join(r.priv, "apps", "docuseal", "compose.yml")))[1];
+  const urlOf = () => /APP_URL: "([^"]*)"/.exec(read(path.join(r.priv, "apps", "documents", "compose.yml")))[1];
   assert.equal((await r.appUp()).st.state, "ok");
-  assert.equal(urlOf(), "http://vyre-app-docuseal:3000", "no name on vyre.run: the internal address");
+  assert.equal(urlOf(), "http://vyre-app-documents:3000", "no name on vyre.run: the internal address");
   for (const bad of ["alex.evil 7443", "alex 99999999", "Alex 7443", "alex 7443\nhttp://x", "alex -1", "al$(id) 7443", "alex"]) {
     r.flag("public", bad);
     assert.equal((await r.appUp()).st.state, "ok", bad);
-    assert.equal(urlOf(), "http://vyre-app-docuseal:3000", `${JSON.stringify(bad)} is not a name and a port: the internal address stays`);
+    assert.equal(urlOf(), "http://vyre-app-documents:3000", `${JSON.stringify(bad)} is not a name and a port: the internal address stays`);
   }
   r.flag("public", "alex 7443");
   assert.equal((await r.appUp()).st.state, "ok");
-  assert.equal(urlOf(), "https://docuseal.alex.vyre.run:7443");
+  assert.equal(urlOf(), "https://documents.alex.vyre.run:7443");
   // and the setup (a first start with the same name) is told the same address
   const r2 = await ready(t, { public: "alex 7443" });
   assert.equal((await r2.appUp()).st.state, "ok");
-  assert.match(read(path.join(r2.F, "exec-env")), /^APP_URL=https:\/\/docuseal\.alex\.vyre\.run:7443$/m);
+  assert.match(read(path.join(r2.F, "exec-env")), /^APP_URL=https:\/\/documents\.alex\.vyre\.run:7443$/m);
 });

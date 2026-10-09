@@ -1,4 +1,4 @@
-// A real browser against an app's screens on its own origin (run inside ghcr.io/puppeteer/puppeteer by docuseal-live.test.js with VYRE_APPMODS_BROWSER=1): open the address Vyre gave (it carries a one-time
+// A real browser against an app's screens on its own origin (run inside ghcr.io/puppeteer/puppeteer by documents-live.test.js with VYRE_APPMODS_BROWSER=1): open the address Vyre gave (it carries a one-time
 // ticket), wait for the app's JavaScript to settle, click through to a second screen, report every request the page made (all must be to the app's origin, none may fail, the console must hold no error),
 // and from the app's own page try to read Vyre's origin as a script of the app could (it must get nothing).
 const puppeteer = require("puppeteer");

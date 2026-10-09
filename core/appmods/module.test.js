@@ -15,7 +15,7 @@ import { tempHome, present } from "../../test/helpers.js";
 import { seam, handleWebhook, pick, connectionForm } from "./index.js";
 import { createGate, NOT_FOUND } from "../wink/control/gate.js";
 
-const docuseal = () => JSON.parse(fs.readFileSync(new URL("./catalog/docuseal.json", import.meta.url), "utf8"));
+const documents = () => JSON.parse(fs.readFileSync(new URL("./catalog/documents.json", import.meta.url), "utf8"));
 
 async function world(t, opt = {}) {
   const PDF = Buffer.from("%PDF-1.4 signed bytes");
@@ -31,7 +31,7 @@ async function world(t, opt = {}) {
       if (q.url === "/sign_in" && q.method === "GET") return void r.writeHead(200, { "content-type": "text/html", "set-cookie": "sess=anon; path=/; HttpOnly" }).end('<html><head><meta name="csrf-token" content="tok123"></head><body><form action="/sign_in" method="post"><input type="hidden" name="authenticity_token" value="tok123"><input name="user[email]"><input name="user[password]"></form></body></html>');
       if (q.url === "/sign_in" && q.method === "POST") {
         const f = new URLSearchParams(body); seen.sign.push(Object.fromEntries(f));
-        const ok = f.get("authenticity_token") === "tok123" && f.get("user[email]") === "vyre+docuseal@vyre.invalid" && f.get("user[password]") === "pw_1234567890abcdef" && /sess=anon/.test(q.headers.cookie || "");
+        const ok = f.get("authenticity_token") === "tok123" && f.get("user[email]") === "vyre+documents@vyre.invalid" && f.get("user[password]") === "pw_1234567890abcdef" && /sess=anon/.test(q.headers.cookie || "");
         return void r.writeHead(ok ? 302 : 422, { location: "/", ...(ok ? { "set-cookie": "sess=authed; path=/; HttpOnly" } : {}) }).end();
       }
       if (!authed) return void r.writeHead(302, { location: "/sign_in" }).end();
@@ -82,9 +82,9 @@ async function world(t, opt = {}) {
 test("the catalog and the card are open to every caller and say what the app may reach", async t => {
   const w = await world(t);
   const c = await w.model("appmods.catalog");
-  assert.equal(c.data.apps[0].name, "docuseal");
+  assert.equal(c.data.apps[0].name, "documents");
   assert.equal(c.data.apps[0].installed, false);
-  const card = await w.model("appmods.card", { name: "docuseal" });
+  const card = await w.model("appmods.card", { name: "documents" });
   assert.deepEqual(card.data.reaches, ["your Vyre, to tell it a document was signed"]);
   assert.equal((await w.model("appmods.card", { name: "nope" })).error.code, "not_found");
 });
@@ -92,7 +92,7 @@ test("the catalog and the card are open to every caller and say what the app may
 test("a model cannot install, start, stop or remove an app", async t => {
   const w = await world(t);
   for (const tool of ["appmods.install", "appmods.remove", "appmods.stop", "appmods.start"]) {
-    const r = await w.model(tool, { name: "docuseal" });
+    const r = await w.model(tool, { name: "documents" });
     assert.ok(r.error, `${tool} was refused for a model: ${JSON.stringify(r)}`);
   }
   assert.deepEqual(w.log, [], "the runtime was never touched");
@@ -100,46 +100,46 @@ test("a model cannot install, start, stop or remove an app", async t => {
 
 test("install: keys in the Vault, the app started with them, set up by its bootstrap, webhooks become events; no secret anywhere", async t => {
   const w = await world(t);
-  const r = await w.cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: "docuseal" }, JSON.stringify(r));
+  const r = await w.cli("appmods.install", { name: "documents" });
+  assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "documents", state: "running", connection: "documents", kit: "string" }, JSON.stringify(r));
   assert.match(w.log[0][1], /^spc_[a-z2-7]{12}$/);
-  assert.deepEqual([w.log[0][0], w.log[0][2]], ["up", "docuseal"]);
+  assert.deepEqual([w.log[0][0], w.log[0][2]], ["up", "documents"]);
   assert.deepEqual(w.log[0][4], ["SECRET_KEY_BASE"]);
   const boot = w.boot();
   assert.deepEqual(boot.argv, ["bin/rails", "runner", "{file}"]);
   assert.deepEqual(boot.files, ["docuseal-bootstrap.rb"]);
   assert.match(boot.env.VYRE_HOOK_URL, /^http:\/\/127\.0\.0\.1:\d+\/hook$/);
-  const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-"));
-  assert.deepEqual(items.sort(), ["app-docuseal-api-token", "app-docuseal-hook", "app-docuseal-login-password", "app-docuseal-secret_key_base"].sort().map(n => n === "app-docuseal-secret_key_base" ? "app-docuseal-secret_key_base" : n));
+  const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-documents-"));
+  assert.deepEqual(items.sort(), ["app-documents-api-token", "app-documents-hook", "app-documents-login-password", "app-documents-secret_key_base"].sort().map(n => n === "app-documents-secret_key_base" ? "app-documents-secret_key_base" : n));
   assert.equal((await w.cli("appmods.list")).data.apps[0].state, "running");
   assert.equal((await w.cli("appmods.screens")).data.screens[0].path, "/");
-  assert.equal((await w.cli("appmods.install", { name: "docuseal" })).error.code, "exists");
+  assert.equal((await w.cli("appmods.install", { name: "documents" })).error.code, "exists");
   // what the Connections module reads: the record the manifest declares, and the Vault item that holds the key (never the key)
-  const conn = (await w.cli("appmods.connection", { name: "docuseal" })).data;
-  assert.deepEqual([conn.app, conn.label, conn.auth, conn.credential, conn.check], ["docuseal", "DocuSeal", { kind: "header", name: "X-Auth-Token" }, { item: "app-docuseal-api-token", field: "value" }, { method: "GET", path: "/api/user" }]);
+  const conn = (await w.cli("appmods.connection", { name: "documents" })).data;
+  assert.deepEqual([conn.app, conn.label, conn.auth, conn.credential, conn.check], ["documents", "Documents", { kind: "header", name: "X-Auth-Token" }, { item: "app-documents-api-token", field: "value" }, { method: "GET", path: "/api/user" }]);
   assert.deepEqual(conn.operations.map(o => o.name), ["templates.list", "submissions.list", "submissions.create", "submissions.get", "submissions.documents"]);
   assert.equal(conn.operations[2].input.body.template_id.required, true, "the send operation says what it takes: a view draws its form from this");
   assert.deepEqual(conn.operations[1].input.query.status.enum, ["pending", "completed", "declined", "expired"]);
   assert.ok(!JSON.stringify(conn).includes("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
-  assert.ok((await w.cli("appmods.origin", { name: "docuseal" })).error, "the origin is for Vyre's own modules, not a person at the terminal");
-  assert.match((await w.d.registry.call("appmods.origin", { name: "docuseal" }, "module:connectors", { door: true })).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
+  assert.ok((await w.cli("appmods.origin", { name: "documents" })).error, "the origin is for Vyre's own modules, not a person at the terminal");
+  assert.match((await w.d.registry.call("appmods.origin", { name: "documents" }, "module:connectors", { door: true })).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/);
   // nothing secret leaked into what a person or the log can read
   const db = w.d.registry.deps.db;
-  const everything = JSON.stringify([r, w.lines, w.d.registry.deps.events.since(0, { limit: 5000 }), db.prepare("SELECT * FROM appmods_apps").all(), await w.cli("appmods.status", { name: "docuseal" })]);
+  const everything = JSON.stringify([r, w.lines, w.d.registry.deps.events.since(0, { limit: 5000 }), db.prepare("SELECT * FROM appmods_apps").all(), await w.cli("appmods.status", { name: "documents" })]);
   for (const v of ["tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "pw_1234567890abcdef", boot.env.VYRE_HOOK_TOKEN]) assert.ok(!everything.includes(v), `a secret leaked: ${v.slice(0, 8)}`);
 });
 
 test("a webhook with the app's token becomes a Vyre event, through the hook tool and through the app's own door; one without is refused", async t => {
   const w = await world(t);
-  await w.cli("appmods.install", { name: "docuseal" });
+  await w.cli("appmods.install", { name: "documents" });
   const token = w.boot().env.VYRE_HOOK_TOKEN;
   const body = { event_type: "submission.completed", timestamp: "2026-10-08T00:00:00Z", data: { id: 7, template: { name: "NDA" }, submitters: [{ email: "a@example.com" }], documents: [{ name: "nda", url: "http://localhost:3000/file/abc/nda.pdf" }] } };
-  const bad = await w.d.registry.call("appmods.hook", { name: "docuseal", token: "wrong", body }, "hook");
+  const bad = await w.d.registry.call("appmods.hook", { name: "documents", token: "wrong", body }, "hook");
   assert.equal(bad.error.code, "denied");
-  const ok = await w.d.registry.call("appmods.hook", { name: "docuseal", token, body }, "hook");
+  const ok = await w.d.registry.call("appmods.hook", { name: "documents", token, body }, "hook");
   assert.ok(ok.data, JSON.stringify(ok));
-  assert.equal(ok.data.event, "docuseal.signed", JSON.stringify(ok));
-  const ev = w.d.registry.deps.events.since(0, { type: "docuseal.signed" });
+  assert.equal(ok.data.event, "documents.signed", JSON.stringify(ok));
+  const ev = w.d.registry.deps.events.since(0, { type: "documents.signed" });
   assert.equal(ev.length, 1);
   assert.deepEqual([ev[0].payload.submission, ev[0].payload.email, ev[0].payload.template], [7, "a@example.com", "NDA"]);
   // the signed document was fetched from the app (never from the host its address names) and put in the Drive folder the owner agreed to
@@ -150,21 +150,21 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   const url = w.boot().env.VYRE_HOOK_URL;
   const res = await fetch(url, { method: "POST", headers: { "x-vyre-token": token, "content-type": "application/json" }, body: JSON.stringify({ ...body, data: { ...body.data, id: 8 } }) });
   assert.equal(res.status, 202);
-  assert.equal(w.d.registry.deps.events.since(0, { type: "docuseal.signed" }).length, 2);
+  assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2);
   assert.equal((await fetch(url, { method: "POST", headers: { "x-vyre-token": "no", "content-type": "application/json" }, body: "{}" })).status, 403);
   // an event the manifest does not map is ignored, not an error
-  assert.deepEqual((await w.d.registry.call("appmods.hook", { name: "docuseal", token, body: { event_type: "template.created" } }, "hook")).data, { ignored: "template.created" });
+  assert.deepEqual((await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "template.created" } }, "hook")).data, { ignored: "template.created" });
 });
 
 test("handleWebhook starts the Flow the manifest names, once per submission, as an external call", async () => {
-  const m = docuseal();
+  const m = documents();
   const started = [];
   const events = [];
   const run = body => handleWebhook({ manifest: m, token: "t", given: "t", body, emit: (t, p) => events.push([t, p]), startFlow: async (p, o) => { started.push([p, o]); return { run: "run_1" }; } });
   const out = await run({ event_type: "submission.completed", data: { id: 3, documents: [] } });
-  assert.deepEqual(out, { event: "docuseal.signed", flow: "run_1" });
-  assert.equal(started[0][0], "docuseal-signed");
-  assert.equal(started[0][1].key, "docuseal.signed:3", "a retried delivery is the same run");
+  assert.deepEqual(out, { event: "documents.signed", flow: "run_1" });
+  assert.equal(started[0][0], "documents-signed");
+  assert.equal(started[0][1].key, "documents.signed:3", "a retried delivery is the same run");
   assert.equal(started[0][1].trust, "external");
   assert.equal(started[0][1].body.submission, 3);
   await assert.rejects(() => handleWebhook({ manifest: m, token: "t", given: "", body: {}, emit() {} }), e => e.code === "denied");
@@ -174,19 +174,19 @@ test("handleWebhook starts the Flow the manifest names, once per submission, as 
 
 test("remove takes the container, the listener and every key; data goes only when asked", async t => {
   const w = await world(t);
-  await w.cli("appmods.install", { name: "docuseal" });
-  const r = await w.cli("appmods.remove", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", removed: true }, JSON.stringify(r));
+  await w.cli("appmods.install", { name: "documents" });
+  const r = await w.cli("appmods.remove", { name: "documents" });
+  assert.deepEqual(r.data, { name: "documents", removed: true }, JSON.stringify(r));
   assert.deepEqual(w.log.find(x => x[0] === "down")[1], { data: false });
-  assert.deepEqual((await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-")), []);
+  assert.deepEqual((await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-documents-")), []);
   assert.equal((await w.cli("appmods.list")).data.apps.length, 0);
-  assert.equal((await w.cli("appmods.remove", { name: "docuseal" })).error.code, "not_found");
+  assert.equal((await w.cli("appmods.remove", { name: "documents" })).error.code, "not_found");
 });
 
 test("the app's screens are on the app's own origin: a ticket from Vyre's sign-in buys a cookie for that host only, the app is signed in for the person, nothing of Vyre is on that origin", async t => {
   const w = await world(t);
-  await w.cli("appmods.install", { name: "docuseal" });
-  const H = "docuseal.localhost:9999";
+  await w.cli("appmods.install", { name: "documents" });
+  const H = "documents.localhost:9999";
   const at = (method, p, o = {}) => w.web(method, p, { ...o, headers: { host: H, ...(o.headers || {}) } });
   // no cookie, no word: whoever asks gets a plain 404 on this origin
   assert.equal((await at("GET", "/")).status, 404);
@@ -195,17 +195,17 @@ test("the app's screens are on the app's own origin: a ticket from Vyre's sign-i
   assert.equal((await at("POST", "/manifest.json")).status, 404, "and only a GET is open");
   assert.equal((await w.web("GET", "/v1/health", { headers: { host: "localhost" } })).status, 404, "this port is the apps' front and nothing else: Vyre is not on it");
   // a model cannot ask for the ticket; the owner can, and gets an address on the app's origin
-  assert.ok((await w.model("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).error);
-  const opened = await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" });
+  assert.ok((await w.model("appmods.open", { name: "documents", origin: "http://localhost:9999" })).error);
+  const opened = await w.cli("appmods.open", { name: "documents", origin: "http://localhost:9999" });
   assert.ok(opened.data, JSON.stringify(opened));
-  assert.match(opened.data.url, /^http:\/\/docuseal\.localhost:9999\/__vyre\/enter\?t=[A-Za-z0-9_-]{20,}$/);
+  assert.match(opened.data.url, /^http:\/\/documents\.localhost:9999\/__vyre\/enter\?t=[A-Za-z0-9_-]{20,}$/);
   assert.equal(opened.data.host, H);
-  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, ["docuseal.localhost"]);
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, ["documents.localhost"]);
   const ticket = new URL(opened.data.url).search;
   // the wrong host cannot spend it (and it is gone); a new one is spent once at the right host
-  assert.equal((await w.web("GET", "/__vyre/enter" + ticket, { headers: { host: "docuseal.evil.example" } })).status, 404);
+  assert.equal((await w.web("GET", "/__vyre/enter" + ticket, { headers: { host: "documents.evil.example" } })).status, 404);
   assert.equal((await at("GET", "/__vyre/enter" + ticket)).status, 404, "a ticket that was tried at the wrong host is spent");
-  const second = (await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).data.url;
+  const second = (await w.cli("appmods.open", { name: "documents", origin: "http://localhost:9999" })).data.url;
   const enter = await at("GET", "/__vyre/enter" + new URL(second).search);
   assert.equal(enter.status, 302);
   assert.equal(enter.headers.location, "/");
@@ -227,21 +227,21 @@ test("the app's screens are on the app's own origin: a ticket from Vyre's sign-i
   // a redirect to the app's own address stays on this origin; a write is the person's own origin
   const go = await at("GET", "/go", { headers: jar });
   assert.equal(go.status, 302);
-  assert.equal(go.headers.location, "http://docuseal.localhost:9999/templates/1");
+  assert.equal(go.headers.location, "http://documents.localhost:9999/templates/1");
   const save = await at("POST", "/save", { headers: { ...jar, "content-type": "application/json", origin: "http://" + H, "content-length": "7" }, body: '{"a":1}' });
   assert.equal(save.status, 200, save.text);
   // removing the app ends the sessions and the host
-  await w.cli("appmods.remove", { name: "docuseal" });
+  await w.cli("appmods.remove", { name: "documents" });
   assert.notEqual((await at("GET", "/", { headers: jar })).status, 200);
 });
 
 test("the Connection form for an app is the Connections module's create form with `app` and no host, and the key is the Vault item the install made", () => {
-  const m = docuseal();
-  const form = connectionForm(m, "app-docuseal-api-token");
+  const m = documents();
+  const form = connectionForm(m, "app-documents-api-token");
   assert.deepEqual(Object.keys(form).sort(), ["app", "check", "credential", "label", "operations", "send"]);
-  assert.equal(form.app, "docuseal");
+  assert.equal(form.app, "documents");
   assert.deepEqual(form.send, { how: "header", name: "X-Auth-Token" });
-  assert.deepEqual(form.credential, { item: "app-docuseal-api-token", field: "value" });
+  assert.deepEqual(form.credential, { item: "app-documents-api-token", field: "value" });
   assert.deepEqual(form.check, { path: "/api/user" });
   assert.ok(!("base_url" in form) && !("host" in form));
   assert.deepEqual(form.operations.map(o => o.name), ["templates.list", "submissions.list", "submissions.create", "submissions.get", "submissions.documents"]);
@@ -251,42 +251,42 @@ test("the Connection form for an app is the Connections module's create form wit
 test("when the Connection cannot be made the install still works and says the Connection is pending", async t => {
   const w = await world(t);
   // a Connection of that name is already there (someone made one by hand), so the install's own cannot be made
-  assert.ok(!(await w.cli("vault.put", { name: "docuseal-key", kind: "secret", value: "k-123456789012" })).error);
-  assert.ok((await w.cli("connectors.connection.create", { ...connectionForm(docuseal(), "docuseal-key") })).data);
-  const r = await w.cli("appmods.install", { name: "docuseal" });
+  assert.ok(!(await w.cli("vault.put", { name: "documents-key", kind: "secret", value: "k-123456789012" })).error);
+  assert.ok((await w.cli("connectors.connection.create", { ...connectionForm(documents(), "documents-key") })).data);
+  const r = await w.cli("appmods.install", { name: "documents" });
   assert.equal(r.data.state, "running");
   assert.equal(r.data.connection, null);
-  const row = w.d.registry.deps.db.prepare("SELECT note, connection_id FROM appmods_apps WHERE name = 'docuseal'").get();
+  const row = w.d.registry.deps.db.prepare("SELECT note, connection_id FROM appmods_apps WHERE name = 'documents'").get();
   assert.match(row.note, /^no Connection yet/);
   assert.equal(row.connection_id, null);
 });
 
 test("install through the host helper: the hook port is the catalog's, root's hand-over is kept in the Vault, no key is made here and no command is run in the app", async t => {
   const w = await world(t, { helper: true });
-  const r = await w.cli("appmods.install", { name: "docuseal" });
-  assert.deepEqual(r.data, { name: "docuseal", state: "running", connection: "docuseal" }, JSON.stringify(r));
-  assert.deepEqual([w.log[0][0], w.log[0][2], w.log[0][3], w.log[0][4]], ["up", "docuseal", 43001, []], "the catalog's hook port, and no secret handed to the host (root made them)");
+  const r = await w.cli("appmods.install", { name: "documents" });
+  assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "documents", state: "running", connection: "documents", kit: "string" }, JSON.stringify(r));
+  assert.deepEqual([w.log[0][0], w.log[0][2], w.log[0][3], w.log[0][4]], ["up", "documents", 43001, []], "the catalog's hook port, and no secret handed to the host (root made them)");
   assert.equal(w.log.filter(l => l[0] === "exec").length, 0);
-  const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-docuseal-")).sort();
-  assert.deepEqual(items, ["app-docuseal-api-token", "app-docuseal-hook", "app-docuseal-login-password"], "the hand-over is in the Vault, and no SECRET_KEY_BASE was made here");
+  const items = (await w.cli("vault.list", {})).data.items.map(x => x.name).filter(n => n.startsWith("app-documents-")).sort();
+  assert.deepEqual(items, ["app-documents-api-token", "app-documents-hook", "app-documents-login-password"], "the hand-over is in the Vault, and no SECRET_KEY_BASE was made here");
   assert.equal((await w.cli("appmods.list")).data.apps[0].state, "running");
   const all = JSON.stringify([r, w.lines, (await w.cli("appmods.list")).data]);
   assert.ok(!/tok_ABCDEF|pw_1234567890|h{64}/.test(all), "no key in a result or a log line");
   // a later start asks again and needs nothing from the Vault
-  assert.equal((await w.cli("appmods.stop", { name: "docuseal" })).data.state, "stopped");
-  assert.equal((await w.cli("appmods.start", { name: "docuseal" })).data.state, "running");
+  assert.equal((await w.cli("appmods.stop", { name: "documents" })).data.state, "stopped");
+  assert.equal((await w.cli("appmods.start", { name: "documents" })).data.state, "running");
 });
 
 test("install through the host helper: no hand-over from the host is a failed install that says so", async t => {
   const w = await world(t, { helper: true, handoff: false });
-  const r = await w.cli("appmods.install", { name: "docuseal" });
+  const r = await w.cli("appmods.install", { name: "documents" });
   assert.match(r.error.message, /gave no hand-over/);
   assert.equal((await w.cli("appmods.list")).data.apps[0].state, "failed");
 });
 
 test("through the public gate: an app's host reaches the apps' front, the ticket buys the cookie, the app answers, and a host that is not a running app is the gate's plain 404", async t => {
   const w = await world(t);
-  await w.cli("appmods.install", { name: "docuseal" });
+  await w.cli("appmods.install", { name: "documents" });
   // the gate as the Wink module builds it: the apps' front port and the hosts of the running apps, asked per request
   const apps = async () => {
     const f = await w.d.registry.call("appmods.front", {}, "module:wink"), h = await w.cli("appmods.hosts", {});
@@ -302,20 +302,20 @@ test("through the public gate: an app's host reaches the apps' front, the ticket
     const q = http.request({ host: "127.0.0.1", port: gp, path: p, method, headers: { host, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString() })); });
     q.on("error", reject); q.end();
   });
-  assert.equal((await at("GET", "/", "docuseal.localhost")).status, 404, "no ticket, no cookie: the front's own plain 404");
-  const url = (await w.cli("appmods.open", { name: "docuseal", origin: "http://localhost:9999" })).data.url;
-  const enter = await at("GET", "/__vyre/enter" + new URL(url).search, "docuseal.localhost:9999");
+  assert.equal((await at("GET", "/", "documents.localhost")).status, 404, "no ticket, no cookie: the front's own plain 404");
+  const url = (await w.cli("appmods.open", { name: "documents", origin: "http://localhost:9999" })).data.url;
+  const enter = await at("GET", "/__vyre/enter" + new URL(url).search, "documents.localhost:9999");
   assert.equal(enter.status, 302, enter.text);
   const cookie = /vyre_app=([A-Za-z0-9_-]+)/.exec(String(enter.headers["set-cookie"]))[1];
-  const home = await at("GET", "/", "docuseal.localhost:9999", { cookie: `vyre_app=${cookie}` });
+  const home = await at("GET", "/", "documents.localhost:9999", { cookie: `vyre_app=${cookie}` });
   assert.equal(home.status, 200, home.text.slice(0, 200));
   assert.ok(home.text.includes('href="/templates/1"'), "the app's page came through the gate untouched");
   // a host that is not a running app: the gate's 404 bytes, and the front is never asked
   const raw = await new Promise(resolve => { const c = net.connect(gp, "127.0.0.1", () => c.write("GET / HTTP/1.1\r\nHost: nothere.localhost\r\nConnection: close\r\n\r\n")); const b = []; c.on("data", d => b.push(d)); c.on("close", () => resolve(Buffer.concat(b))); });
   assert.deepEqual(raw, NOT_FOUND);
   // after the app is stopped its host is not a running app any more
-  await w.cli("appmods.stop", { name: "docuseal" });
-  const gone = await new Promise(resolve => { const c = net.connect(gp, "127.0.0.1", () => c.write("GET / HTTP/1.1\r\nHost: docuseal.localhost\r\nConnection: close\r\n\r\n")); const b = []; c.on("data", d => b.push(d)); c.on("close", () => resolve(Buffer.concat(b))); });
+  await w.cli("appmods.stop", { name: "documents" });
+  const gone = await new Promise(resolve => { const c = net.connect(gp, "127.0.0.1", () => c.write("GET / HTTP/1.1\r\nHost: documents.localhost\r\nConnection: close\r\n\r\n")); const b = []; c.on("data", d => b.push(d)); c.on("close", () => resolve(Buffer.concat(b))); });
   assert.deepEqual(gone, NOT_FOUND);
   assert.equal(asked, 0, "Headscale was never asked");
 });
@@ -323,32 +323,32 @@ test("through the public gate: an app's host reaches the apps' front, the ticket
 test("DocuSeal's two Vyre views are valid in the view language, name only operations the Connection declares, and the send is outward", async () => {
   const { checkView } = await import("../../packages/module-sdk/capsule-view.js");
   const mod = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8"));
-  const app = docuseal();
+  const app = documents();
   const declared = new Set(app.connection.operations.map(o => o.name));
-  assert.deepEqual(Object.keys(mod.views), ["docuseal-waiting", "docuseal-send"]);
+  assert.deepEqual(Object.keys(mod.views), ["documents-waiting", "documents-send"]);
   for (const [id, v] of Object.entries(mod.views)) {
     assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(), firstParty: true }), [], id);
     const ops = [];
     (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === "object") { if (typeof x.operation === "string") ops.push([x.connection, x.operation]); Object.values(x).forEach(walk); } })(v);
     assert.ok(ops.length, id);
-    for (const [c, o] of ops) { assert.equal(c, "docuseal"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
+    for (const [c, o] of ops) { assert.equal(c, "documents"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
   }
   assert.equal(app.connection.operations.find(o => o.name === "submissions.create").kind, "send", "a send is held for the person's yes by the Connection itself");
-  assert.equal(mod.views["docuseal-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
-  assert.equal(mod.views["docuseal-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
-  assert.equal(mod.views["docuseal-waiting"].list.input.query.status, "pending");
+  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
+  assert.equal(mod.views["documents-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
+  assert.equal(mod.views["documents-waiting"].list.input.query.status, "pending");
 });
 
 test("DocuSeal's views are listed only while DocuSeal is connected: absent, then present once its Connection exists, then absent again", async t => {
   const w = await world(t);
   const ids = async () => { const l = (await w.cli("views.list", {})).data; return (Array.isArray(l) ? l : l.views || l.commands || []).filter(r => r.module === "appmods").map(r => r.id).sort(); };
   assert.deepEqual(await ids(), [], "DocuSeal is not there: no views");
-  assert.equal((await w.cli("views.get", { module: "appmods", command: "docuseal-waiting" })).error?.code ?? "gone", "not_found", "and asking for one finds nothing");
-  assert.ok(!(await w.cli("vault.put", { name: "docuseal-key", kind: "secret", value: "k-123456789012" })).error);
-  const made = await w.cli("connectors.connection.create", { ...connectionForm(docuseal(), "docuseal-key") });
+  assert.equal((await w.cli("views.get", { module: "appmods", command: "documents-waiting" })).error?.code ?? "gone", "not_found", "and asking for one finds nothing");
+  assert.ok(!(await w.cli("vault.put", { name: "documents-key", kind: "secret", value: "k-123456789012" })).error);
+  const made = await w.cli("connectors.connection.create", { ...connectionForm(documents(), "documents-key") });
   assert.ok(made.data, JSON.stringify(made));
-  assert.deepEqual(await ids(), ["docuseal-send", "docuseal-waiting"], "connected: both views");
-  const frame = (await w.cli("views.get", { module: "appmods", command: "docuseal-waiting" })).data;
+  assert.deepEqual(await ids(), ["documents-send", "documents-waiting"], "connected: both views");
+  const frame = (await w.cli("views.get", { module: "appmods", command: "documents-waiting" })).data;
   assert.ok(frame && typeof frame.kind === "string", JSON.stringify(frame).slice(0, 200));
   assert.ok(!(await w.cli("connectors.connection.delete", { id: made.data.id })).error);
   assert.deepEqual(await ids(), [], "removed: the views go with it");

@@ -1,8 +1,9 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Appear, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
+import { Appear, Button, EmptyState, ErrorState, PageHeader, RecordPage, SkeletonRows, titleOf, urnParam, useFieldEnv, useRecordEvents, useRecordsWorld, viewDefOf } from "@vyre/ui";
 import { useShell } from "../shell/shared";
+import { tool } from "../../src/real/box";
 
 
 /** /u/record/<id>: one record's page. The id is the record's urn (vyre://space/type/id, encoded) or its bare id (the uuid); both find the same record. */
@@ -15,6 +16,16 @@ export function RecordScreen({ id }: { id: string }) {
   const urn = urnParam(id);
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const events = useRecordEvents(rec?.urn);
+  // A Contact with an e-mail gets "Send for signature" when the Documents app is installed: its view opens with the e-mail already in the form.
+  const [canSend, setCanSend] = useState(false);
+  const isContact = rec?.type === "contact";
+  useEffect(() => {
+    if (!isContact) { setCanSend(false); return; }
+    let live = true;
+    tool<{ commands: { module: string; id: string }[] }>("views.list", {}).then((r) => { if (live) setCanSend(r.commands.some((c) => c.module === "appmods" && c.id === "documents-send")); }).catch(() => { if (live) setCanSend(false); });
+    return () => { live = false; };
+  }, [isContact]);
+  const email = typeof rec?.data?.email === "string" ? rec.data.email : "";
   const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
   if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
@@ -27,6 +38,7 @@ export function RecordScreen({ id }: { id: string }) {
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={title} context={[def.label, space].filter(Boolean).join(" \u00B7 ")} faces={[{ kind: vd.initials ? "person" : "project", id: rec.id, name: title, seed: rec.data?.avatar_seed }]} onBack={back} />
+      {canSend && email ? <View className="flex-row px-s4 pt-s2"><Button kind="ghost" size="sm" label="Send for signature" onPress={() => router.push(`/u/module/appmods/documents-send?q=${encodeURIComponent(email)}` as never)} /></View> : null}
       <ScrollView contentContainerClassName="gap-s4 px-s4 pb-s12 pt-s2 max-w-page w-full self-center">
         <Appear index={1}><RecordPage def={def} rec={rec} world={world} events={events.data ?? []} env={env} onOpen={open} /></Appear>
       </ScrollView>

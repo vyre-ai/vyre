@@ -76,7 +76,7 @@
  "core/appmods/docuseal-live.test.js": 1,
  "core/appmods/helper-driver.test.js": 6,
  "core/appmods/host-plan.test.js": 5,
- "core/appmods/manifest.test.js": 11,
+ "core/appmods/manifest.test.js": 13,
  "core/appmods/module.test.js": 14,
  "core/appmods/proxy.test.js": 5,
  "core/appmods/runtime.test.js": 5,

@@ -1,5 +1,5 @@
 // @ts-check
-// The app's own screens, on the app's OWN origin: <module>.<the host Vyre is served at> (docuseal.acme.vyre.run). Not under a path of Vyre's origin: the app's JavaScript would then run beside Vyre's and
+// The app's own screens, on the app's OWN origin: <module>.<the host Vyre is served at> (documents.acme.vyre.run). Not under a path of Vyre's origin: the app's JavaScript would then run beside Vyre's and
 // could call Vyre as the person. On its own origin the browser keeps them apart (Vyre's cookie is for Vyre's host only), and nothing of the app is rewritten.
 //   - A request whose Host is <installed running app>.<anything> is answered here and nowhere else, whatever its path: this origin has no Vyre on it.
 //   - Vyre's sign-in reaches it by a one-time ticket (`appmods.open`, for the Space's owner and admins): the browser opens /__vyre/enter?t=..., the proxy trades the ticket for a session cookie scoped to
@@ -16,7 +16,7 @@ const TICKET_MS = 60_000;
 const SESSION_MS = 8 * 3_600_000;
 const HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "cookie", "authorization"]);
 
-/** `docuseal.acme.vyre.run:8443` -> { name: "docuseal", base: "acme.vyre.run:8443" }, or null. @param {string} host */
+/** `documents.acme.vyre.run:8443` -> { name: "documents", base: "acme.vyre.run:8443" }, or null. @param {string} host */
 export function moduleHost(host) {
   const m = /^([a-z][a-z0-9-]{1,30})\.([a-z0-9.-]+(?::\d{1,5})?)$/.exec(String(host || "").toLowerCase());
   return m ? { name: m[1], base: m[2] } : null;

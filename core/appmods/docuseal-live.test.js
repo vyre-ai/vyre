@@ -14,10 +14,13 @@ import * as config from "../config/index.js";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { namesOf } from "./runtime.js";
+import { canonical } from "../../kernel/core/canonical.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const LIVE = process.env.VYRE_APPMODS_LIVE === "1";
+/** The owner's presence for a test box: the proof must name this op and these exact fields, once (the module-kit upgrade test's stand-in). */
+const stubPresence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
 const until = async (/** @type {() => Promise<any>} */ f, what, ms = 60_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 500)); } };
 const docker = (/** @type {string[]} */ a, input) => spawnSync("docker", a, { encoding: "utf8", ...(input ? { input } : {}) });
 
@@ -46,10 +49,10 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const portProbe = http.createServer(); await new Promise(r => portProbe.listen(0, "127.0.0.1", r));
   const bridgePort = /** @type {any} */ (portProbe.address()).port; await new Promise(r => portProbe.close(r));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "appmods-live", vault: { keystore: "file" }, appmods: { base: `localhost:${bridgePort}`, listen: bridgePort } }));
-  const d = await start({ root, presence: present, log: m => { if (process.env.WLOG) console.error(m); }, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (process.env.WLOG) console.error(m); }, kernel: true, kernelPresence: stubPresence() });
   const space = d.kernel.id.space;
-  const names = namesOf(space, "docuseal");
-  t.after(async () => { try { await d.registry.call("appmods.remove", { name: "docuseal", data: true }, "cli"); } catch { /* gone */ } docker(["rm", "-f", names.container]); await d.stop(); });
+  const names = namesOf(space, "documents");
+  t.after(async () => { try { await d.registry.call("appmods.remove", { name: "documents", data: true }, "cli"); } catch { /* gone */ } docker(["rm", "-f", names.container]); await d.stop(); });
   const cli = (/** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, "cli", { proof: { method: "passkey", id: "x" } });
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   const ownerMeta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" }), {})).token });
@@ -57,7 +60,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
 
   // a record type for the Flow to write, and the Flow: when DocuSeal says a document was signed, record it
   await d.kernel.gateway.records.define(admin, { add_types: [{ name: "signed_document", label: "Signed document", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "signer", kind: "text", label: "Signer" }, { name: "file", kind: "text", label: "File in the Drive" }] }] });
-  const flow = { format: 1, name: "record_signed", label: "Record a signed document", authorship: "human", trigger: { on: "web", path: "docuseal-signed" },
+  const flow = { format: 1, name: "record_signed", label: "Record a signed document", authorship: "human", trigger: { on: "web", path: "documents-signed" },
     steps: [{ id: "c", kind: "create", type: "signed_document", set: { name: { expr: "trigger.template" }, signer: { expr: "trigger.email" }, file: { expr: "trigger.files[0].path" } } }] };
   const def = await d.registry.call("flows.define", { flow }, "cli", await ownerMeta());
   assert.ok(def.data && def.data.ok, JSON.stringify(def));
@@ -65,9 +68,16 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
 
   // install: the owner's yes. The image is pulled by digest, the container started with its limits, set up with no browser
   const t0 = Date.now();
-  const inst = await cli("appmods.install", { name: "docuseal" });
+  const inst = await d.registry.call("appmods.install", { name: "documents" }, "cli", { ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
   assert.equal(inst.data && inst.data.state, "running", JSON.stringify(inst));
   console.log(`installed in ${Math.round((Date.now() - t0) / 1000)} s`);
+  // the Kit the app ships (a Document record type and a Flow that files each signed one) waits for the owner's yes in Now; the owner says yes
+  assert.ok(inst.data.kit && inst.data.kit !== "proposed", `the install proposed the Kit: ${JSON.stringify(inst.data)}`);
+  const kitRow = await d.kernel.gateway.ask.get(admin, inst.data.kit);
+  await d.kernel.gateway.ask.decide(admin, inst.data.kit, { outcome: "approved", proof: { op: "task.decide", fields: { task: inst.data.kit, payload_hash: kitRow.payload.payload_hash, decision: kitRow.payload.decision }, n: Math.random() } });
+  await until(async () => ((await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data || []).find(/** @param {any} k */ k => (k.id ?? k.kit_id) === "documents" && k.status === "installed"), "the Documents Kit to install");
+  // a Contact the signer's e-mail finds, and a Project (the Document will be linked to the Contact)
+  const contact = await d.kernel.gateway.records.create(admin, "contact", { name: "Jo Signer", email: "signer@example.com" });
   const ins = JSON.parse(docker(["inspect", names.container]).stdout)[0];
   assert.equal(ins.HostConfig.Memory, 1536 * 1048576);
   assert.equal(ins.HostConfig.PidsLimit, 512);
@@ -75,15 +85,15 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.equal(ins.HostConfig.Privileged, false);
   assert.match(ins.Config.Image, /@sha256:e171808c/);
 
-  // its screens, on the app's own origin (docuseal.localhost:<port>): a ticket from Vyre's sign-in, the real app's pages signed in for the person, nothing of Vyre on that origin
-  const H = `docuseal.localhost:${bridgePort}`;
+  // its screens, on the app's own origin (documents.localhost:<port>): a ticket from Vyre's sign-in, the real app's pages signed in for the person, nothing of Vyre on that origin
+  const H = `documents.localhost:${bridgePort}`;
   const web = (/** @type {string} */ p, headers = {}) => new Promise((resolve, reject) => {
     const req = http.request({ host: "127.0.0.1", port: bridgePort, path: p, method: "GET", headers: { host: H, ...headers } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, text: Buffer.concat(c).toString("utf8") })); });
     req.on("error", reject); req.end();
   });
   assert.equal((await web("/")).status, 404, "no cookie, no word");
   assert.equal((await web("/v1/health")).status, 404, "Vyre's API is not on the app's origin");
-  const opened = await d.registry.call("appmods.open", { name: "docuseal", origin: `http://localhost:${bridgePort}` }, "cli", await ownerMeta());
+  const opened = await d.registry.call("appmods.open", { name: "documents", origin: `http://localhost:${bridgePort}` }, "cli", await ownerMeta());
   assert.ok(opened.data, JSON.stringify(opened));
   assert.equal(new URL(opened.data.url).host, H);
   const enter = await web(new URL(opened.data.url).pathname + new URL(opened.data.url).search);
@@ -101,7 +111,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   // screen. Every request the page makes must go to the app's origin and none may fail; and from the app's page Vyre's address (the same port, no app host) must give nothing.
   if (process.env.VYRE_APPMODS_BROWSER === "1") {
     const seenReq = [];
-    const second = await d.registry.call("appmods.open", { name: "docuseal", origin: `http://localhost:${bridgePort}` }, "cli", await ownerMeta());
+    const second = await d.registry.call("appmods.open", { name: "documents", origin: `http://localhost:${bridgePort}` }, "cli", await ownerMeta());
     const out = path.join(root, "browser"); fs.mkdirSync(out, { recursive: true }); fs.chmodSync(out, 0o777);
     fs.copyFileSync(new URL("./browser-probe.cjs", import.meta.url), path.join(root, "probe.cjs"));
     const run = await new Promise(res => execFile("docker", ["run", "--rm", "--network", "host", "-v", `${path.join(root, "probe.cjs")}:/home/pptruser/probe.cjs:ro`, "-v", `${out}:/out`, "ghcr.io/puppeteer/puppeteer:latest", "node", "/home/pptruser/probe.cjs", second.data.url, `http://localhost:${bridgePort}`], { encoding: "utf8", timeout: 240_000 }, (err, stdout, stderr) => res({ stdout: String(stdout || ""), stderr: String(stderr || "") })));
@@ -126,7 +136,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const made = docker(["exec", "-w", "/app", names.container, "bin/rails", "runner", "/tmp/tpl.rb"]);
   const tpl = Object.fromEntries(made.stdout.split("\n").map(l => l.split("=")).filter(x => x.length === 2));
   assert.ok(tpl.template_id && tpl.api_token, made.stdout + made.stderr);
-  const origin = (await cli("appmods.status", { name: "docuseal" })).data;
+  const origin = (await cli("appmods.status", { name: "documents" })).data;
   assert.equal(origin.runtime.state, "running");
   const port = /127\.0\.0\.1:(\d+)/.exec(docker(["port", names.container, "3000/tcp"]).stdout)[1];
   const api = async (/** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ body) => { const r = await fetch(`http://127.0.0.1:${port}${p}`, { method, headers: { "X-Auth-Token": tpl.api_token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined }); return { s: r.status, j: await r.json().catch(() => null) }; };
@@ -139,18 +149,18 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   // the Vyre views over DocuSeal's Connection, against the real app: the document just sent is waiting for a signature
   const listed = (await d.registry.call("views.list", {}, "cli", await ownerMeta())).data;
   const vids = (Array.isArray(listed) ? listed : listed.views || listed.commands || []).filter(/** @param {any} r */ r => r.module === "appmods").map(/** @param {any} r */ r => r.id).sort();
-  assert.deepEqual(vids, ["docuseal-send", "docuseal-waiting"], "DocuSeal is connected: its views are listed");
-  const waiting = (await d.registry.call("views.get", { module: "appmods", command: "docuseal-waiting" }, "cli", await ownerMeta())).data;
+  assert.deepEqual(vids, ["documents-send", "documents-waiting"], "DocuSeal is connected: its views are listed");
+  const waiting = (await d.registry.call("views.get", { module: "appmods", command: "documents-waiting" }, "cli", await ownerMeta())).data;
   assert.equal(waiting.kind, "list", JSON.stringify(waiting).slice(0, 300));
   assert.ok(waiting.rows.some(/** @param {any} r */ r => /signer@example.com/.test(JSON.stringify(r))), `the waiting view shows the document just sent: ${JSON.stringify(waiting.rows).slice(0, 300)}`);
-  const sendList = (await d.registry.call("views.get", { module: "appmods", command: "docuseal-send" }, "cli", await ownerMeta())).data;
+  const sendList = (await d.registry.call("views.get", { module: "appmods", command: "documents-send" }, "cli", await ownerMeta())).data;
   assert.ok(sendList.rows && sendList.rows.some(/** @param {any} r */ r => /Vyre proof NDA/.test(JSON.stringify(r))), `the send view lists the template: ${JSON.stringify(sendList).slice(0, 300)}`);
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
 
   // the event, the Flow's run, the record it made, and the signed PDF in the Drive
-  const ev = await until(async () => { const e = d.registry.deps.events.since(0, { type: "docuseal.signed" }); return e.length ? e : null; }, "the docuseal.signed event");
+  const ev = await until(async () => { const e = d.registry.deps.events.since(0, { type: "documents.signed" }); return e.length ? e : null; }, "the documents.signed event");
   assert.equal(ev[0].payload.email, "signer@example.com");
   assert.equal(ev[0].payload.template, "Vyre proof NDA");
   assert.equal(ev[0].payload.files.length, 1);
@@ -173,4 +183,18 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.equal(bytes.subarray(0, 5).toString(), "%PDF-", "the Drive holds a PDF");
   assert.ok(bytes.length > 1000, `the signed PDF has content (${bytes.length} bytes)`);
   console.log(`signed PDF in the Drive: ${file.path}, ${bytes.length} bytes; Flow run ${runs[0].id}`);
+
+  // the Kit's own Flow: a Document record, linked to the Contact the e-mail found, the Contact's timeline, and the signed copy's Drive path
+  if (process.env.WLOG) { const fl = (await d.registry.call("flows.list", {}, "cli", await ownerMeta())).data; console.error("FLOWS", JSON.stringify(fl).slice(0, 1200)); for (const f of (Array.isArray(fl) ? fl : fl.flows || [])) { const rr = (await d.registry.call("flows.runs", { id: f.id }, "cli", await ownerMeta())).data; console.error("RUNS", f.name, JSON.stringify(rr).slice(0, 600)); for (const r of rr) console.error("RUN", JSON.stringify((await d.registry.call("flows.run", { run: r.id }, "cli", await ownerMeta())).data.run).slice(0, 1500)); } }
+  const docs = await until(async () => { const q = await d.kernel.gateway.records.query(admin, "document", { page: { limit: 5 } }); const rows = Array.isArray(q) ? q : q.rows || q.items || q.records || q.data; return Array.isArray(rows) && rows.length ? rows : null; }, "the Document record the Kit's Flow files");
+  const dd = docs[0].data || docs[0];
+  assert.equal(dd.name, "Vyre proof NDA");
+  assert.equal(dd.status, "Signed");
+  assert.equal(dd.signer_email, "signer@example.com");
+  assert.equal(dd.file, file.path);
+  assert.equal((dd.contact && dd.contact.urn) || dd.contact, contact.urn, `the Document is linked to the signer's Contact: ${JSON.stringify(dd).slice(0, 300)}`);
+  const linked = (await d.registry.call("records.linked", { urn: contact.urn }, "cli", await ownerMeta())).data;
+  assert.ok(JSON.stringify(linked).includes("Vyre proof NDA") || JSON.stringify(linked).includes(docs[0].urn || "no-urn"), `the Contact shows the Document: ${JSON.stringify(linked).slice(0, 300)}`);
+  const timeline = (await d.registry.call("records.events", { record: contact.urn }, "cli", await ownerMeta())).data;
+  assert.ok(JSON.stringify(timeline).includes("last_signed_at") || JSON.stringify(timeline).includes(String(docs[0].urn || "x")), `the Contact's timeline has it: ${JSON.stringify(timeline).slice(0, 400)}`);
 });

@@ -136,7 +136,7 @@ The theme preset, the scheme and the design tokens as hub settings (ADR 0035), c
 
 ## appmods
 
-Apps from the open-source world as modules: a catalog of pinned apps (DocuSeal first) that run on this server, with their screens, their API as a Connection and their events.
+Apps from the open-source world as modules: a catalog of pinned apps (Documents first) that run on this server, with their screens, their API as a Connection and their events.
 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`

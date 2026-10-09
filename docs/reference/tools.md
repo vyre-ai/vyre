@@ -2787,7 +2787,7 @@ Propose a Kit for approval: its types, templates, roles and Flows. A person, or 
 
 - Input:
   - `space` string
-- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `space`, `tailnet`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
 ### `flows.kit.remove`
 

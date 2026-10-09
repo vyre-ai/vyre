@@ -29,8 +29,8 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | `appmods.removed` | `name` |
 | `appmods.started` | `name` |
 | `appmods.stopped` | `name` |
-| `docuseal.form-completed` | not found in the source (the type is built at run time) |
-| `docuseal.signed` | not found in the source (the type is built at run time) |
+| `documents.form-completed` | not found in the source (the type is built at run time) |
+| `documents.signed` | not found in the source (the type is built at run time) |
 
 ## apps
 

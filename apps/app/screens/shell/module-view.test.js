@@ -22,6 +22,7 @@ test("module view: a form lists what is still missing, and starts with empty val
   assert.deepEqual(missingFields(form, { note: "  ", tag: "" }), ["Note"]);
   assert.deepEqual(missingFields(form, { note: "x" }), []);
   assert.deepEqual(initialValues(form), { note: "", tag: "" });
+  assert.deepEqual(initialValues({ fields: [{ name: "email", type: "text", default: "jo@example.com" }, { name: "name", type: "text", default: "" }] }), { email: "jo@example.com", name: "" }, "a default the server gave starts the field");
 });
 
 test("module view: every answer of the server becomes one effect", () => {
