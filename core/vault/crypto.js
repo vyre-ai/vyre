@@ -11,6 +11,8 @@
 // so old items can be opened once and re-sealed. Nothing here touches the disk.
 
 import crypto from "node:crypto";
+import { base32 as libBase32 } from "../../lib/bytes.js";
+import { canonical as kernelCanonical } from "../../kernel/core/canonical.js";
 
 const b64 = buf => Buffer.from(buf).toString("base64");
 const unb64 = s => Buffer.from(String(s), "base64");
@@ -34,12 +36,8 @@ export function fromHex(hex) {
   return out;
 }
 
-/** Stable JSON: keys sorted at every level, so a signature covers the same bytes on both ends. */
-export function canonical(v) {
-  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
-  if (v && typeof v === "object") return "{" + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
-  return JSON.stringify(v);
-}
+/** Canonical JSON (sorted keys, no whitespace, undefined dropped): the kernel's, one implementation (kernel/core/canonical.js). A value that is undefined at the top is "null". @param {any} v @returns {string} */
+export const canonical = v => (v === undefined ? "null" : kernelCanonical(v));
 
 /** @param {crypto.KeyObject|Buffer} key @param {Buffer|string} plaintext @param {string} aad */
 function gcmSeal(key, plaintext, aad) {
@@ -245,13 +243,8 @@ export const rowMac = (key, table, fields) => crypto.createHmac("sha256", key).u
 
 const B32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
-/** RFC 4648 base32 without padding. */
-export function base32(buf) {
-  let bits = 0, val = 0, out = "";
-  for (const b of buf) { val = (val << 8) | b; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } }
-  if (bits > 0) out += B32[(val << (5 - bits)) & 31];
-  return out;
-}
+/** RFC 4648 base32 without padding, in capitals (the Secret Key's alphabet). lib/bytes.js writes it once, in lower case. */
+export const base32 = buf => libBase32(buf).toUpperCase();
 
 function unbase32(s, bytes) {
   const out = Buffer.alloc(bytes);

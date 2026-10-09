@@ -14,6 +14,7 @@
 
 import { resolveSafe, pinnedFetch } from "../../../lib/api-endpoint.js";
 import { route, doorMessage, isRefusal } from "../../../lib/door-bridge.js";
+import { scrub as scrubText } from "../../../lib/scrub.js";
 
 const BASE = "https://openrouter.ai/api/v1";
 const MAX_HISTORY = 60;
@@ -36,7 +37,7 @@ export function openrouterDoorDriver(entry = {}) {
     async call(input) {
       const key = String((input.credential && input.credential.key) || "");
       const base = String((input.credential && input.credential.base) || entry.baseUrl || BASE).replace(/\/+$/, "");
-      const fail = (/** @type {string} */ m) => new Error(key ? m.split(key).join("[key]") : m);
+      const fail = (/** @type {string} */ m) => new Error(scrubText(m, [key], { marker: "[key]", min: 1 }));
       if (!okBase(base)) throw fail("the OpenRouter address must be https");
       const pin = entry.fetch && !entry.lookup ? null : await resolveSafe(base, entry.lookup);
       if (!(entry.fetch && !entry.lookup) && !pin) throw fail("that address is not a place a key may be sent");
@@ -152,7 +153,7 @@ function runChat(entry, store, o) {
       if (e === DONE) { /* answered through the door */ }
       else if (asked && ac.signal.aborted) cancelled = true; else failed = /** @type {Error} */ (e);
       // Whatever an error carries, the key is never in it.
-      if (failed && key) failed = new Error(String(failed.message).split(key).join("[key]"));
+      if (failed && key) failed = new Error(scrubText(String(failed.message), [key], { marker: "[key]", min: 1 }));
     }
     ac = null;
     if (text) { history.push({ role: "assistant", content: text }); say({ type: "assistant", message: { id: `or-turn-${++turn}`, content: [{ type: "text", text }] } }); }

@@ -27,7 +27,7 @@ async function mk(t) {
   const v = new Vault({ db, dir: path.join(home, "vault"), config: { name: "harlow-box", vault: { keystore: "file" } }, emit: () => {}, log: () => {} });
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   let appOrigin = () => ({ error: { code: "not_found", message: "no app" } });
-  let resolve = async (/** @type {string} */ _h) => [{ address: "203.0.113.10", family: 4 }];
+  let resolve = async (/** @type {string} */ _h) => [{ address: "93.184.216.10", family: 4 }];
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
   const transport = async r => { net.calls.push({ path: r.url.pathname + r.url.search, headers: r.headers, method: r.method, address: r.address, host: r.url.hostname }); return net.script(r); };
   const tools = new Map();
@@ -168,7 +168,7 @@ test("fetching an API description by address: a public https GET with nothing of
   await assert.rejects(get("https://metadata.example.com/x"), /private, loopback, link-local or metadata/);
   setResolve(async () => []);
   await assert.rejects(get("https://nothing.example.com/x"), /resolved to no address/);
-  setResolve(async () => [{ address: "203.0.113.10", family: 4 }]);
+  setResolve(async () => [{ address: "93.184.216.10", family: 4 }]);
   // a redirect is followed and checked again; one to a private address, off https, or too many, is not
   let step = 0;
   net.script = () => (step++ === 0 ? { status: 302, headers: { location: "https://raw.example.com/spec.json" }, body: Buffer.from("") } : { status: 200, headers: {}, body: Buffer.from("{}") });
@@ -179,10 +179,10 @@ test("fetching an API description by address: a public https GET with nothing of
   net.script = () => ({ status: 302, headers: { location: "https://docs.example.com/again" }, body: Buffer.from("") });
   await assert.rejects(get("https://docs.example.com/spec"), /more than three times/);
   let hop = 0;
-  setResolve(async h => (hop++ === 0 ? [{ address: "203.0.113.10", family: 4 }] : [{ address: "10.0.0.5", family: 4 }]));
+  setResolve(async h => (hop++ === 0 ? [{ address: "93.184.216.10", family: 4 }] : [{ address: "10.0.0.5", family: 4 }]));
   net.script = () => ({ status: 302, headers: { location: "https://inside.example.com/x" }, body: Buffer.from("") });
   await assert.rejects(get("https://docs.example.com/spec"), /private, loopback/);
-  setResolve(async () => [{ address: "203.0.113.10", family: 4 }]);
+  setResolve(async () => [{ address: "93.184.216.10", family: 4 }]);
   // size and status
   net.script = () => ({ status: 200, headers: {}, body: Buffer.from("x"), truncated: true });
   await assert.rejects(get("https://docs.example.com/big"), /larger than 5 MB/);

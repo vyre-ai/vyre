@@ -38,6 +38,7 @@ import net from "node:net";
 import path from "node:path";
 import { execFile, spawn as nodeSpawn } from "node:child_process";
 import { startShim as realStartShim } from "./shim.js";
+import { isTailnet } from "../../../lib/netguard.js";
 
 /** The prefs the core is held to; `AdvertiseTags` is filled from start()'s tags. */
 export const ENFORCED_PREFS = Object.freeze({
@@ -55,10 +56,7 @@ export class WinkCoreError extends Error {
 }
 
 /** True for an address inside the tailnet ranges. @param {string} ip */
-export function isTailnetIp(ip) {
-  if (net.isIPv4(ip)) { const [a, b] = ip.split(".").map(Number); return a === 100 && b >= 64 && b <= 127; }
-  return net.isIPv6(ip) && /^fd7a:115c:a1e0:/i.test(ip);
-}
+export const isTailnetIp = isTailnet;
 
 const nonEmpty = (/** @type {any} */ a) => Array.isArray(a) && a.length > 0;
 

@@ -12,6 +12,7 @@
 
 import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
+import { canonical as kernelCanonical } from "../../kernel/core/canonical.js";
 
 export const WINDOW_MS = 15 * 60_000;
 const SKEW_MS = 2 * 60_000, ATTEMPTS = 5, ATTEMPT_WINDOW = 10 * 60_000, PENDING_MS = 5 * 60_000, KIND = "core";
@@ -26,12 +27,8 @@ export function coreFingerprint(core) {
   return `${d.slice(0, 4)} ${d.slice(4)}`;
 }
 
-/** JSON with every object's keys sorted: both ends hash the same bytes. @param {any} v @returns {string} */
-export function canonical(v) {
-  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
-  if (Array.isArray(v)) return `[${v.map(x => (x === undefined ? "null" : canonical(x))).join(",")}]`;
-  return `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canonical(v[k])}`).join(",")}}`;
-}
+/** JSON with every object's keys sorted, so both ends hash the same bytes for the same value: the kernel's canonical (kernel/core/canonical.js). A value that is undefined at the top is "null". @param {any} v @returns {string} */
+export const canonical = v => (v === undefined ? "null" : kernelCanonical(v));
 
 /**
  * What a call's token signs for its input: sha256 (base64url) of the canonical JSON, with `data` (an upload chunk's raw bytes) replaced by

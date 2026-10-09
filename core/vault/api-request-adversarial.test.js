@@ -15,10 +15,10 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { Vault, MIGRATIONS } from "./vault.js";
 import { ApiRequests } from "./request.js";
-import { checkTarget, hostAllowed, addressBlocked, parseV6, normalize, buildUrl, checkHeaders, checkQuery, classify, pinnedOptions } from "./api-request.js";
+import { checkTarget, hostAllowed, addressBlocked, normalize, buildUrl, checkHeaders, checkQuery, classify, pinnedOptions } from "./api-request.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
-const PUBLIC = "203.0.113.10";
+const PUBLIC = "93.184.216.10";
 const HOSTS = ["api.harlow.test"];
 const lookup = async () => [{ address: PUBLIC, family: 4 }];
 const target = (u, hosts = HOSTS, l = lookup) => checkTarget(u, hosts, { lookup: l });
@@ -108,14 +108,9 @@ test("IPv4-mapped and other IPv6 forms cannot carry a blocked IPv4 address past 
     "::gggg", ":::", "1:2:3:4:5:6:7:8:9", "1::2::3", "", "not-an-ip", "12345::1",
   ];
   for (const ip of blocked) assert.ok(addressBlocked(ip), `${JSON.stringify(ip)} must be blocked`);
-  const fine = ["::ffff:8.8.8.8", "::ffff:808:808", "64:ff9b::808:808", "2002:808:808::1", "2606:4700:4700::1111", "2a00:1450:4001:81b::200e", "8.8.8.8", "142.250.80.46", "203.0.113.10"];
+  const fine = ["::ffff:8.8.8.8", "::ffff:808:808", "64:ff9b::808:808", "2002:808:808::1", "2606:4700:4700::1111", "2a00:1450:4001:81b::200e", "8.8.8.8", "142.250.80.46", "93.184.216.10"];
   for (const ip of fine) assert.ok(!addressBlocked(ip), `${ip} is a public address`);
   // The parser itself.
-  assert.deepEqual(parseV6("::ffff:7f00:1"), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 127, 0, 0, 1]);
-  assert.deepEqual(parseV6("::ffff:127.0.0.1"), parseV6("::ffff:7f00:1"));
-  assert.deepEqual(parseV6("[::1]"), [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
-  assert.equal(parseV6("fe80::1%eth0"), null);
-  assert.equal(parseV6("1.2.3.4"), null);
 });
 
 test("decimal, hex and octal address hosts are not the credential's host, and a resolver answering in those forms is refused", async () => {
@@ -229,12 +224,12 @@ test("rebinding: an address is validated and then used, never looked up a second
   assert.equal(net.calls.length, 0);
   // Both public but different: the transport gets exactly the address the connect-time check validated.
   net.lookups.length = 0;
-  state.answer = (_h, n) => (n === 1 ? "203.0.113.1" : "203.0.113.2");
+  state.answer = (_h, n) => (n === 1 ? "93.184.216.1" : "93.184.216.2");
   await get("https://api.harlow.test/v1");
-  assert.deepEqual(net.calls.map(c => c.address), ["203.0.113.2"]);
+  assert.deepEqual(net.calls.map(c => c.address), ["93.184.216.2"]);
   assert.equal(net.lookups.length, 2, "one lookup to plan, one to connect; none after the address was chosen");
   // A round-robin answer with a private address anywhere in it is refused, whichever turn it takes.
-  for (const set of [["203.0.113.1", "10.0.0.9"], ["10.0.0.9", "203.0.113.1"], ["::ffff:10.0.0.9", "203.0.113.1"], ["203.0.113.1", "203.0.113.2", "169.254.169.254"]]) {
+  for (const set of [["93.184.216.1", "10.0.0.9"], ["10.0.0.9", "93.184.216.1"], ["::ffff:10.0.0.9", "93.184.216.1"], ["93.184.216.1", "93.184.216.2", "169.254.169.254"]]) {
     net.calls.length = 0;
     state.multi = set;
     await assert.rejects(get("https://api.harlow.test/v1"), /may never reach/, set.join(" "));

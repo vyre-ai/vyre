@@ -33,7 +33,7 @@ async function mk(t) {
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   let clock = 1_800_000_000_000;
   const net = { calls: /** @type {any[]} */ ([]), script: /** @type {(r: any) => any} */ (() => json(200, { ok: true })) };
-  const lookup = async () => [{ address: "203.0.113.10", family: 4 }];
+  const lookup = async () => [{ address: "93.184.216.10", family: 4 }];
   const transport = async r => { net.calls.push({ host: r.url.hostname, path: r.url.pathname, method: r.method, headers: r.headers, body: r.body }); return net.script(r); };
   const tools = new Map();
   const tool = (name, callers, description, input, run) => tools.set(name, { callers, run });

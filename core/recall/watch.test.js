@@ -62,7 +62,7 @@ const turns = seen => seen.filter(e => e.type === "session.turn").map(e => e.pay
 test("recall.watch: appended lines arrive as session.turn events, redacted, with busy state", async t => {
   const w = await world(t);
   const r = await w.call("recall.watch", { session: ID });
-  assert.match(r.watch, /^w_[0-9a-f]{16}$/);
+  assert.match(r.watch, /^w_[0-9a-f-]{36}$/);
   assert.deepEqual({ ...r, watch: 0 }, { watch: 0, session: ID, from: null, busy: false });
   assert.equal(turns(w.seen).length, 0, "without from, nothing old is sent");
 

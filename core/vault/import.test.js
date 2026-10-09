@@ -159,7 +159,7 @@ test("import: .env with export, quotes, comments, inline comment and empty value
     INLINE: "plain-value-xyz",
     HASH_KEPT: "abc#def",
   });
-  // The file is one env-set holding what detect.js calls secret; the rest stays in the file.
+  // The file is one env-set holding what credential-shapes.js calls secret; the rest stays in the file.
   const r = parse(ENV, { filename: "/somewhere/.env.local" });
   assert.equal(r.format, "env");
   assert.equal(r.items.length, 1);

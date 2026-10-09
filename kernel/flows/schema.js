@@ -6,6 +6,7 @@
 import crypto from "node:crypto";
 import { parse, ExprError } from "./expr.js";
 import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
+import { canonical as kernelCanonical } from "../core/canonical.js";
 
 export const FLOW_FORMAT = 1;
 
@@ -237,12 +238,8 @@ export function checkFlow(flow) {
   return out;
 }
 
-/** Canonical JSON: sorted keys, no whitespace. The one form that is hashed and approved. @param {any} v @returns {string} */
-export function canonical(v) {
-  if (v === null || typeof v !== "object") return JSON.stringify(v);
-  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
-  return "{" + Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
-}
+/** Canonical JSON (sorted keys, no whitespace, undefined dropped): the kernel's, one implementation (kernel/core/canonical.js). A value that is undefined at the top is "null". @param {any} v @returns {string} */
+export const canonical = v => (v === undefined ? "null" : kernelCanonical(v));
 
 /** @param {any} flow */
 export const flowHash = flow => crypto.createHash("sha256").update(canonical(flow)).digest("base64url");

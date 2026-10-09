@@ -28,6 +28,7 @@ import { otpRoute, saveRoute } from "./fill-save.js";
 import { saveKeyRoute } from "./fill-key.js";
 import * as passkeys from "./fill-passkey.js";
 import * as cards from "./fill-cards.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -91,7 +92,7 @@ function deviceKey(k) {
   } catch { return null; }
 }
 const newToken = () => crypto.randomBytes(32).toString("base64url");
-const newId = p => p + crypto.randomBytes(9).toString("base64url");
+const newId = p => newPrefixedId(p.replace(/_$/, ""));
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 const isStr = v => typeof v === "string" && v.length > 0;
 

@@ -19,7 +19,8 @@
 import { STOPPED, UNKNOWN } from "./pool.js";
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
-import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "../../lib/ws.js";
+import { scrub as scrubText } from "../../lib/scrub.js";
 
 /** @param {import("node:net").Socket} socket @param {number} status @param {string} reason */
 function reject(socket, status, reason) {
@@ -41,11 +42,7 @@ export function closeWith(socket, code, reason) {
 }
 
 /** Never let a password or token ride an error message up to a log line. */
-function scrub(msg, ...secrets) {
-  let s = String(msg == null ? "an error" : msg);
-  for (const secret of secrets) if (secret) s = s.split(String(secret)).join("[redacted]");
-  return s;
-}
+function scrub(msg, ...secrets) { return scrubText(msg == null ? "an error" : msg, secrets.filter(Boolean).map(String), { marker: "[redacted]", min: 1 }); }
 
 /** How often a viewer on a slow link may ask for an incremental update: every 200 ms, 5 fps. */
 export const SLOW_EVERY = 200;
@@ -149,7 +146,7 @@ export class Glass {
     const offered = req.headers && req.headers["sec-websocket-protocol"];
     const protoLine = offered && String(offered).split(",").map(s => s.trim()).includes("binary")
       ? "Sec-WebSocket-Protocol: binary\r\n" : "";
-    socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n${protoLine}\r\n`);
+    socket.write(upgradeHead(key, protoLine));
 
     let closed = false;
     let viewerHeld = false;

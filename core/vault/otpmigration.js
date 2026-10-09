@@ -1,3 +1,4 @@
+import { base32 } from "../../lib/bytes.js";
 // @ts-check
 // otpmigration: Google Authenticator's "Transfer accounts" QR codes, read into otpauth:// URIs.
 //
@@ -50,16 +51,7 @@ function* fields(buf) {
 }
 
 /** RFC 4648 base32, no padding, for otpauth's `secret`. @param {Uint8Array} bytes */
-export function base32Encode(bytes) {
-  const A = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  let out = "", bits = 0, value = 0;
-  for (const b of bytes) {
-    value = (value << 8) | b; bits += 8;
-    while (bits >= 5) { out += A[(value >>> (bits - 5)) & 31]; bits -= 5; }
-  }
-  if (bits > 0) out += A[(value << (5 - bits)) & 31];
-  return out;
-}
+export const base32Encode = bytes => base32(bytes).toUpperCase();
 
 const text = b => Buffer.from(b).toString("utf8").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 200);
 

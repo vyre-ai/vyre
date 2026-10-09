@@ -5,9 +5,9 @@
 // Why it is built this way:
 //   - Two ways in. A provider prefix (sk-ant-, ghp_, xoxb-, AKIA...) is enough on its own. A
 //     generic high-entropy string counts only when the element is labelled key, token or secret.
-//   - The prefix table is a copy of the provider rows in core/vault/detect.js, which the box runs
+//   - The prefix table is a copy of the provider rows in lib/credential-shapes.js, which the box runs
 //     again on the value before it stores anything (fill-key.js). keyfind.test.js checks that
-//     every shape accepted here is one detect.js calls a secret with the same provider, so the
+//     every shape accepted here is one credential-shapes.js calls a secret with the same provider, so the
 //     two cannot drift. A shape the box would not accept never raises a chip.
 //   - It never returns or keeps anything but the matched value and a provider word.
 //   - Nothing that looks like a UUID, a git or file hash, an image, a placeholder or a run of one
@@ -17,7 +17,7 @@
   const g = /** @type {any} */ (globalThis);
   if (g.vyreKeyFind) return;
 
-  /** @type {Array<[RegExp, string, ("live"|"test")?]>} Provider rows from detect.js: shape, provider. */
+  /** @type {Array<[RegExp, string, ("live"|"test")?]>} Provider rows from credential-shapes.js: shape, provider. */
   const PREFIXES = [
     [/^sk-ant-[\w-]{20,}$/, "anthropic"],
     [/^sk-or-[\w-]{20,}$/, "openrouter"],
@@ -104,7 +104,7 @@
   }
 
   /**
-   * Long, dense, mixed and not prose: most likely generated. Same idea as detect.js's check.
+   * Long, dense, mixed and not prose: most likely generated. Same idea as credential-shapes.js's check.
    * @param {string} v
    */
   function generic(v) {

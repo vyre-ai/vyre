@@ -23,10 +23,10 @@
 // and the inverse check above refuses them anyway). Running it as the original actor needs a
 // CALL_AS entry for undo in core/modules, which is the platform's to add.
 
-import crypto from "node:crypto";
 import { agentClaim, callerKind } from "../modules/index.js";
 import { isPerson as isPersonCaller } from "../../lib/caller.js";
 import { HUMAN_ONLY, PERSON_ONLY, personOnly } from "../presence/index.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 const DAY = 24 * 60 * 60_000;
 export const KEEP_MS = 30 * DAY;
@@ -159,7 +159,7 @@ export default {
         // does not carry a call chain; without one, the action is the module's own.
         const actor = cap(one(i.actor), 200) || String(meta.caller || self);
         const actor_kind = await kindOf(actor);
-        const id = "u_" + crypto.randomBytes(9).toString("base64url");
+        const id = newPrefixedId("u");
         const w = cleanWhy(i.why);
         db.prepare(`INSERT INTO undo_acted (id, at, actor, actor_kind, tool, summary, input, inverse_tool, inverse_input, why, state)
           VALUES (?,?,?,?,?,?,?,?,?,?, 'done')`).run(id, Date.now(), actor, actor_kind, i.tool, summary, JSON.stringify(i.input),

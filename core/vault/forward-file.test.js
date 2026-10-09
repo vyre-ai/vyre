@@ -30,7 +30,7 @@ async function mk(t, routeOver = {}, { filesFor = null } = {}) {
   const drive = new Drive(pool), files = driveFiles(drive);
   t.after(() => { db.close(); fs.rmSync(home, { recursive: true, force: true }); });
   let clock = 1_800_000_000_000; const net = { calls: /** @type {any[]} */ ([]), reply: /** @type {(c: any) => any} */ (() => ({ status: 200, headers: { "content-type": "application/json" }, chunks: [Buffer.from("{}")] })) };
-  const lookup = async () => [{ address: "203.0.113.10", family: 4 }];
+  const lookup = async () => [{ address: "93.184.216.10", family: 4 }];
   // The fake stream transport consumes the request body as a stream (counting chunks and hashing) and answers with a scripted stream.
   const streamTransport = async r => {
     const rec = { host: r.url.hostname, path: r.url.pathname, method: r.method, headers: r.headers, length: r.length, chunks: 0, bytes: 0, hash: crypto.createHash("sha256"), raw: /** @type {Buffer[]} */ ([]), maxChunk: 0 };

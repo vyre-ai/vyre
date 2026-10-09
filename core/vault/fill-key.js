@@ -8,18 +8,18 @@
 //
 // It needs a paired device and a live session, exactly what /v1/fill/save needs (gate), and only
 // the extension's own origin gets this far (the listener's CORS check). The key is stored ready
-// to use: an item with the kind and provider detect.js reads from the value's own shape, a name
+// to use: an item with the kind and provider credential-shapes.js reads from the value's own shape, a name
 // from the page's host and label, the page's origin recorded, and, when the provider is in the
 // catalog, its details.provider so it shows up as a connection; a `connect` hook (given to Fill)
 // may then grant it to a module whose need names that provider. There is no draft.
 //
-// The box decides, not the page: detect.js classifies the value again and anything that is not a
+// The box decides, not the page: credential-shapes.js classifies the value again and anything that is not a
 // secret is refused. The page origin must equal the origin the chip was raised on (the worker
 // records that; a tab that moved on cannot save what the last page showed). Undo removes only an
 // item this route made for this device, within two minutes. No value is ever returned, audited or
 // put in an event.
 
-import { classify } from "./detect.js";
+import { classify } from "../../lib/credential-shapes.js";
 import { gate, openFailed } from "./fill-save.js";
 import { provider as catalog } from "./providers.js";
 
@@ -42,7 +42,7 @@ export const onProviderSite = (prov, host, pathname = "/") => (PROVIDER_SITES[/*
 });
 
 const MAX_VALUE = 8192;
-/** Shapes that are never a key to keep, whatever detect.js makes of their randomness: ids and hashes. */
+/** Shapes that are never a key to keep, whatever credential-shapes.js makes of their randomness: ids and hashes. */
 const NEVER = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[0-9a-f]{32}$|^[0-9a-f]{40}$|^[0-9a-f]{56}$|^[0-9a-f]{64}$|^[0-9a-f]{128}$/i;
 const UNDO_MS = 2 * 60_000;
 
@@ -53,7 +53,7 @@ function origin(u) {
   try { const x = new URL(String(u)); return ["http:", "https:"].includes(x.protocol) ? x.origin : null; } catch { return null; }
 }
 
-/** detect.js's type to the vault kind that holds it and the field that kind takes. */
+/** credential-shapes.js's type to the vault kind that holds it and the field that kind takes. */
 const HOLD = {
   "api-key": ["api-key", "value"], pat: ["pat", "token"], oauth: ["oauth", "token"], cloud: ["cloud", "value"],
   secret: ["secret", "value"], webhook: ["secret", "value"],

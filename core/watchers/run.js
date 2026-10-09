@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { mediatedFetch, sandboxIdentity, getWall } from "../../lib/sandbox/index.js";
+import { scrub as scrubText, valueForms } from "../../lib/scrub.js";
 
 const RUNNER = fileURLToPath(new URL("./runner.js", import.meta.url));
 // The permission model is `--permission` from Node 22.13 and 23.5, and `--experimental-permission`
@@ -67,7 +68,7 @@ async function runIn(wall, { dir, needs, since, hook = null, timeoutMs, fetch, s
   const items = [], logs = [];
   let asks = 0, dropped = 0, cursor = null, error = /** @type {string|null} */ (null), finished = false;
 
-  const scrub = s => { let out = String(s); for (const v of released) if (v) out = out.split(v).join("[vault value]"); return out; };
+  const scrub = s => scrubText(s, released, { marker: "[vault value]", min: 1 });
   const logLine = line => {
     if (logs.length >= LIMITS.logLines) { dropped++; return; }
     logs.push(scrub(line).slice(0, LIMITS.lineChars));
@@ -177,8 +178,7 @@ function readFolder(dir) {
 /** A value and the encodings that would still identify it in a log or an item. */
 function forms(v) {
   const raw = String(v);
-  if (raw.length < 6) return [raw];
-  return [...new Set([raw, Buffer.from(raw).toString("base64"), Buffer.from(raw).toString("base64url"), Buffer.from(raw).toString("hex"), encodeURIComponent(raw), JSON.stringify(raw).slice(1, -1)])];
+  return raw.length < 6 ? [raw] : valueForms(raw, { wide: true, min: 1 });
 }
 
 function lastLines(s) {

@@ -48,7 +48,7 @@ import path from "node:path";
 import { URL } from "node:url";
 import { createFs } from "./fs.js";
 import { CdpMux } from "./cdpmux.js";
-import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
+import { acceptKey, encodeFrame, FrameParser, upgradeHead } from "./ws.js";
 
 const PORT = Number(process.env.COMPUTERD_PORT || 7000);
 /**
@@ -617,7 +617,7 @@ function cdpUpgrade(req, socket, head) {
   if (String(req.headers.upgrade || "").toLowerCase() !== "websocket" || typeof key !== "string" || !key) return refuse("400 Bad Request");
   if (!mux.up) return refuse("503 Service Unavailable");
 
-  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
+  socket.write(upgradeHead(key));
   if (typeof (/** @type {any} */ (socket)).setNoDelay === "function") /** @type {any} */ (socket).setNoDelay(true);
   let open = true;
   const transport = {

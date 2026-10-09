@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { deviceLabel } from "../modules/index.js";
 import { isNotSoftware } from "../presence/strengths.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE pluginagent_asks (id TEXT PRIMARY KEY, computer TEXT NOT NULL, asked_at INTEGER NOT NULL, state TEXT NOT NULL);
@@ -70,7 +71,7 @@ export default {
         const last = db.prepare("SELECT asked_at FROM pluginagent_asks WHERE state = 'expired' ORDER BY asked_at DESC LIMIT 1").get();
         if (last && now() < Number(last.asked_at) + ASK_MS + QUIET_MS) return { state: "quiet", until: Number(last.asked_at) + ASK_MS + QUIET_MS };
         const computer = computerName();
-        const id = `pa_${crypto.randomBytes(9).toString("base64url")}`;
+        const id = newPrefixedId("pa");
         db.prepare("INSERT INTO pluginagent_asks (id, computer, asked_at, state) VALUES (?,?,?, 'waiting')").run(id, computer, now());
         try { ctx.events.emit("pluginagent.asked", { id, computer }); } catch { /* an event never decides */ }
         return { state: "waiting", id };

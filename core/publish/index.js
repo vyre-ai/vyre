@@ -22,6 +22,7 @@ import { writeSiteFiles, volumeFill, siteFolder, sweepSites } from "../../lib/pu
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
 import { NO_BUILDER } from "./builder-plan.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 export { buildctlArgs } from "./builder-plan.js";
 
@@ -133,7 +134,7 @@ export default {
       const st = storeFor(space);
       return {
         async request(/** @type {any} */ chain, /** @type {any} */ t) {
-          let id = "hold_" + crypto.randomBytes(8).toString("hex");
+          let id = newPrefixedId("hold");
           try {
             const r = await call("tasks.create", { title: t.title, source: "module:publish", kind: t.kind, priority: "medium", tags: ["publish"], payload_hash: t.payload_hash });
             const made = r.data && (r.data.id || (r.data.task && r.data.task.id));

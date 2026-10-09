@@ -9,8 +9,8 @@
 // never needs anyone. Rows, events and audit lines carry names and origins, never a value or a
 // username.
 
-import crypto from "node:crypto";
 import { hostsOf } from "./native.js";
+import { newPrefixedId } from "../../lib/id.js";
 
 /** The vault_agent_grants table (vault.js appends it to MIGRATIONS). */
 export const AGENT_GRANTS_MIGRATION = `CREATE TABLE vault_agent_grants (
@@ -36,7 +36,7 @@ export const SURFACES = ["ios", "android", "mac", "chrome", "firefox", "capsule"
 const AGENT = /^[a-z][a-z0-9-]{1,30}$/;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const now = () => Date.now();
-const newId = () => "ag_" + crypto.randomBytes(9).toString("base64url");
+const newId = () => newPrefixedId("ag");
 
 /** "1 Oct", or "1 Oct 2027" outside this year. @param {number} t */
 export function day(t, from = now()) {

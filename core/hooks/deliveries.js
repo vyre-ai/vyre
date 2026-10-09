@@ -6,6 +6,7 @@
 // what a watcher files is kept in the project.
 
 import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const KEEP = 500;
 export const KEEP_MS = 7 * 24 * 3600_000;
@@ -52,7 +53,7 @@ export class Deliveries {
       const v = headers[h];
       if (typeof v === "string" && v) kept[h] = v.slice(0, 300);
     }
-    const id = "hd_" + crypto.randomBytes(9).toString("base64url");
+    const id = newPrefixedId("hd");
     this.db.prepare("INSERT INTO hooks_deliveries (id, route, at, headers, body, bytes, digest, caller) VALUES (?,?,?,?,?,?,?,?)")
       .run(id, route, at, JSON.stringify(kept), body, body.length, digest, `internet:${route}`);
     this.db.prepare(`DELETE FROM hooks_deliveries WHERE id IN

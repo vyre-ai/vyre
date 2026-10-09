@@ -20,7 +20,7 @@
 //   ignored and audited.
 // Everything here is pure except the class, which only reads and writes its own table.
 
-import crypto from "node:crypto";
+import { newPrefixedId } from "../../lib/id.js";
 
 export const SAID_MIGRATION = `CREATE TABLE vault_said_intents (
      id TEXT PRIMARY KEY, thread TEXT NOT NULL, said TEXT NOT NULL, kind TEXT NOT NULL, channel TEXT,
@@ -148,7 +148,7 @@ export class SaidIntents {
     const agents = (i.agents || []).map(x => x.trim());
     const at = Number.isFinite(i.at) ? Number(i.at) : Date.now();
     await this.vault.key();
-    const id = "s_" + crypto.randomBytes(9).toString("base64url");
+    const id = newPrefixedId("s");
     this.vault.db.prepare(`INSERT INTO vault_said_intents (id, thread, said, kind, channel, recipients, what, when_text, standing, limits, at, agents)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, i.thread, i.said, i.kind, i.channel || null, JSON.stringify(to.map(String)), i.what.trim().slice(0, MAX_TEXT),
       i.when || null, i.standing === true ? 1 : 0, limits ? JSON.stringify(limits) : null, at, agents.length ? JSON.stringify(agents) : null);

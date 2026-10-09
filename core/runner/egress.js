@@ -20,7 +20,7 @@ import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
 import net from "node:net";
-import { resolvePublic, isPublicAddress } from "./netguard.js";
+import { resolvePublic, isPublicAddress, isLoopbackHost } from "../../lib/netguard.js";
 import fs from "node:fs";
 
 /** Headers the proxy owns: the session's token and the real credential never pass through from the client. */
@@ -162,7 +162,7 @@ export function createEgress(o) {
   };
 }
 
-const isLoopback = h => h === "127.0.0.1" || h === "localhost" || h === "::1" || h === "[::1]";
+const isLoopback = h => isLoopbackHost(String(h).replace(/^\[|\]$/g, ""));
 
 /** The token can ride in x-api-key (Anthropic style), Authorization: Bearer, or x-vyre-token. */
 function firstToken(h) {

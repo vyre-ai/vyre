@@ -10,6 +10,7 @@
 // end or the network stack said, because a helper that echoes its request would otherwise leak it
 // into a tool result.
 
+import { scrub as scrubText } from "../../lib/scrub.js";
 const DEFAULT_TIMEOUT = 10_000;
 
 export class ComputerdError extends Error {
@@ -30,7 +31,7 @@ export function createClient({ url, token, timeout = DEFAULT_TIMEOUT, fetch: f =
   if (!/^https?:\/\//.test(base)) throw new ComputerdError("computerd has no address: the computer's endpoint did not say where its helper answers");
   const secret = String(token || "");
   /** @param {string} s */
-  const scrub = s => (secret ? String(s).split(secret).join("[token]") : String(s));
+  const scrub = s => scrubText(s, [secret], { marker: "[token]", min: 1 });
   const where = scrub(base);
 
   /**

@@ -448,13 +448,13 @@ test("rotate refuses guided and unknown providers before any request", async () 
   assert.equal(calls.length, 0);
 });
 
-test("every provider detect.js knows has a key page and plain steps", () => {
+test("every provider credential-shapes.js knows has a key page and plain steps", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  // The shape list itself lives in lib/secret-detect.js (core/vault/detect.js re-exports it).
-  const src = fs.readFileSync(path.join(here, "..", "..", "lib", "secret-detect.js"), "utf8");
+  // The shape list itself lives in lib/credential-shapes.js.
+  const src = fs.readFileSync(path.join(here, "..", "..", "lib", "credential-shapes.js"), "utf8");
   const names = src.slice(src.indexOf("NAME_PROVIDERS = {"), src.indexOf("};", src.indexOf("NAME_PROVIDERS = {")));
   const slugs = new Set([...src.matchAll(/provider: "([a-z0-9-]+)"/g), ...names.matchAll(/: "([a-z0-9]+)"/g)].map(m => m[1]));
-  assert.ok(slugs.size > 40 && slugs.has("jina") && slugs.has("cloudflare"), "read detect.js's providers");
+  assert.ok(slugs.size > 40 && slugs.has("jina") && slugs.has("cloudflare"), "read credential-shapes.js's providers");
   for (const s of [...slugs, "tailscale"]) assert.ok(Object.hasOwn(PROVIDERS, s), `${s} has no entry`);
   const auto = Object.entries(PROVIDERS).filter(([, p]) => p.auto).map(([k]) => k).sort();
   assert.deepEqual(auto, ["aws", "cloudflare", "gcp", "gitlab"]);
