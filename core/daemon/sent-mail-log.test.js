@@ -102,3 +102,16 @@ test("a Gmail send made through a Connection is read from its raw message", asyn
   // another call to the same host is not an email
   assert.equal(emailOf({ final: { url: "https://gmail.googleapis.com/gmail/v1/users/me/labels", request: { body: { raw } } } }, []), null);
 });
+
+test("a sent text is a Communication of kind text on the client whose number it went to, the words kept as the excerpt", async () => {
+  const { kernel } = await rig(), R = kernel.records;
+  const jane = await R.create(owner(), "contact", { name: "Jane Doe", phone: "+15555550123" });
+  const d = { kernel, chain: owner, call: async () => ({ data: { state: "sent", via: "comms:sms", to: ["+15555550123", "+15555550999"], final: { body: "Your hearing is moved to Tuesday at 10." } } }), now: () => 1_800_000_500_000 };
+  const out = await logSent(d, { id: "gi_sms1", kind: "send", via: "comms:sms" });
+  assert.deepEqual([out.logged, out.of], [1, 2]);
+  const row = (await R.query(owner(), "communication", { page: { limit: 10 } })).rows[0].data;
+  assert.deepEqual([row.kind, row.direction, row.excerpt, row.source_key, row.mailbox], ["text", "outbound", "Your hearing is moved to Tuesday at 10.", "gate:gi_sms1", "comms:sms"]);
+  assert.deepEqual(row.contacts.map((/** @type {any} */ x) => x.urn), [jane.urn]);
+  await logSent(d, { id: "gi_sms1", kind: "send", via: "comms:sms" });
+  assert.equal((await R.query(owner(), "communication", { page: { limit: 10 } })).rows.length, 1, "filed once");
+});

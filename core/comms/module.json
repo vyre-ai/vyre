@@ -1,0 +1,45 @@
+{
+  "name": "comms",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Send an email or a text message as you, held at the Gate for your yes and logged on the client it went to.",
+  "roles": [
+    "box"
+  ],
+  "requires": [],
+  "does": {
+    "tools": [
+      {
+        "name": "comms.send",
+        "outward": true,
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "comms.release",
+        "reach": "modules"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "comms.held",
+      "comms.sent"
+    ]
+  },
+  "shows": {},
+  "needs": {
+    "vault": [
+      "per-connection"
+    ],
+    "credentials": [
+      {
+        "id": "twilio",
+        "kind": "api-key",
+        "provider": "twilio",
+        "purpose": "Send text messages through your Twilio account"
+      }
+    ]
+  },
+  "teaches": {}
+}
