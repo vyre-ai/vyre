@@ -235,3 +235,12 @@ test("emergency access: contacts as names, waits and dates; each state has a pla
   assert.deepEqual(b.seen.slice(1).map((s) => [s.tool, s.input]), [["vault.emergency.add", { person: "Dana", wait: "7d" }], ["vault.emergency.deny", { person: "Theo" }], ["vault.emergency.remove", { person: "Kit" }], ["vault.emergency.refresh", {}]]);
   assert.deepEqual(EMERGENCY_WAITS.map((w) => w[0]), ["1d", "3d", "7d", "14d", "30d"]);
 });
+
+test("health on the home: a count and the biggest reasons in one line, nothing when all is well, and 2fa hints are not counted as trouble", { skip: !strip }, async () => {
+  const { healthSummary } = await import("./more-model.ts");
+  const h = { checked: 5, counts: { weak: 1, reused: 2, "2fa-available": 3 }, items: [
+    { name: "A", kind: "login", reasons: ["weak", "reused"], group: "g" }, { name: "B", kind: "login", reasons: ["reused"], group: "g" }, { name: "C", kind: "login", reasons: ["2fa-available"], group: "" }] };
+  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused." });
+  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "" });
+  assert.equal(healthSummary({ checked: 1, counts: { old: 1 }, items: [{ name: "Z", kind: "login", reasons: ["old"], group: "" }] }).line, "1 item needs attention: 1 old.");
+});

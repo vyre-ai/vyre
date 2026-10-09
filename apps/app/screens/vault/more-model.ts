@@ -79,6 +79,14 @@ export function healthGroups(h: Health): { code: string; title: string; why: str
   });
 }
 
+/** The Vault home's one line about health: how many items need attention and the biggest reasons, or nothing when all is well. Counts only; no name and no value. */
+export function healthSummary(h: Health): { total: number; line: string } {
+  const flagged = new Set(h.items.filter((i) => i.reasons.some((r) => REASON_ORDER.includes(r) && r !== "2fa-available")).map((i) => i.name));
+  const parts = REASON_ORDER.filter((c) => c !== "2fa-available" && h.counts[c]).map((c) => `${h.counts[c]} ${REASON[c][0].toLowerCase()}`);
+  const total = flagged.size;
+  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${parts.join(", ")}.` : "" };
+}
+
 /** What a breach check answers: the names that appear in known breaches, and how many were checked. */
 export function pickBreach(d: unknown): { checked: number; breached: string[] } {
   const o = d as { checked?: unknown; breached?: unknown } | null;
