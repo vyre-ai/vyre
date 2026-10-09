@@ -22,9 +22,12 @@ const ALLOWED = new Map([
   ["kernel/storage/pool.js", "`fetch(id)` reads a blob from the pool, not HTTP"], ["core/names/directory.js", PARAM], ["lib/identity/directory.js", PARAM], ["lib/acme/acme.js", PARAM], ["lib/connectors/", PARAM],
   ["core/vault/health.js", PARAM], ["core/sessions/drivers/openrouter.js", PARAM + " (the pinned API client in lib/api-endpoint.js)"],
   ["core/runner/egress.js", "this IS the sandbox's egress proxy, which decides with lib/netguard.js"], ["lib/http.js", "the one client"],
+  ["core/resilience/node.js", "dials the person's own vyred (a unix socket, or the LAN, tailnet or relay address they paired), never a public service"],
+  ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
+  ["local/voice/ws.js", "the voice provider's WebSocket handshake needs the raw upgraded socket, which the client cannot give; it checks the address through lib/http.js pin() and dials the checked address"],
   ["core/cli/commands/phone.js", PARAM + " (userHostFetch: the person's own server)"],
   // inside a sandboxed child: the host side is the vault request engine
-  ["core/watchers/presets.js", "runs inside the sandboxed watcher child, where `fetch` is the child's: the host answers it through the vault request engine (core/watchers/runner.js)"],
+  ["core/watchers/presets.js", "runs inside the sandboxed watcher child, which has no network (its uid is refused by the host firewall): `fetch` there is a message to the parent, and the parent's answer is lib/sandbox/fetch.js on the shared lib/http.js transport"],
   ["core/watchers/connector-preset.js", "runs inside the sandboxed watcher child (see presets.js)"], ["core/watchers/runner.js", "the watcher child's fetch, which asks the host"],
   // the credentialed engine keeps its own pinned transport
   ["core/vault/forward-file.js", "streams a file through the credentialed engine's own pinned request (api-request.js pinnedOptions), under its adversarial suite"],
@@ -37,7 +40,7 @@ const ALLOWED = new Map([
   // test support
   [".github/scripts/", HARNESS], ["core/artifacts/testing/", HARNESS], ["core/runner/testing/", HARNESS], ["core/switchboard/testing/", HARNESS], ["stores/twenty/live/", HARNESS], ["stores/twenty/testing/", HARNESS],
 ]);
-const PATTERNS = [/(?<![\w.$])fetch\(|globalThis\.fetch(?!\.bind)|\bhttps?\.(request|get)\(|new WebSocket\(/];
+const PATTERNS = [/(?<![\w.$])fetch\(|globalThis\.fetch(?!\.bind)|\bhttps?\.(request|get)\(|\b(?:lib|mod)\.request\(|new WebSocket\(/];
 
 test("no other source file makes a raw request of its own", () => {
   assert.deepEqual(findInSource(PATTERNS, ALLOWED), [], "call httpFetch (public hosts) or userHostFetch (an address the person gave) from lib/http.js, or add the file to ALLOWED with the reason");
