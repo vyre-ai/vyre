@@ -146,6 +146,30 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const sub = await api("POST", "/api/submissions", { template_id: Number(tpl.template_id), send_email: false, submitters: [{ role: "First Party", email: "signer@example.com" }] });
   assert.equal(sub.s, 200, JSON.stringify(sub.j));
   const submitter = sub.j[0].id;
+  // The signing page for the signer, who has no ticket: the pretty link goes to the page, the page is dressed with Vyre's look and carries the app's credit, every asset it names loads from the same
+  // origin, and the owner's pages and the API stay closed to them (R032-02).
+  {
+    const slug = sub.j[0].slug, subId = sub.j[0].submission_id;
+    assert.ok(slug && subId, JSON.stringify(sub.j[0]).slice(0, 200));
+    const pretty = await web(`/sign/${subId}/${slug}`);
+    assert.equal(pretty.status, 302);
+    assert.equal(pretty.headers.location, `/s/${slug}`);
+    const signPage = await web(`/s/${slug}`);
+    assert.equal(signPage.status, 200, signPage.text.slice(0, 200));
+    assert.match(signPage.text, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
+    assert.ok(signPage.text.includes("Signatures by"), "the app's credit is in the footer");
+    assert.equal(signPage.headers["referrer-policy"], "no-referrer");
+    assert.ok(!/name="user\[password\]"/.test(signPage.text), "a signer is not shown the owner's login");
+    const css = await web("/__vyre/brand.css");
+    assert.equal(css.status, 200);
+    const assets = [...new Set([...signPage.text.matchAll(/(?:href|src)="(\/(?:packs|assets|fonts)\/[^"]+|\/favicon[^"]*|\/apple-icon[^"]*|\/logo\.svg)"/g)].map(m => m[1]))];
+    assert.ok(assets.length >= 2, `the signing page names assets: ${assets.join(", ")}`);
+    for (const a of assets) assert.equal((await web(a)).status, 200, `the signer can load ${a}`);
+    for (const closed of ["/", "/templates", "/submissions", "/api/submissions", "/api/templates", "/settings/api", "/users", "/up"]) assert.equal((await web(closed)).status, 404, `${closed} is closed to a stranger`);
+    // a stranger is not the install's admin: the signing page is the signer's view, and the app saw no admin cookie (the page has no "Sign out")
+    assert.ok(!/sign_out|Sign out/i.test(signPage.text), "the page is the signer's, not the admin's");
+    console.log(`signing page: ${signPage.text.length} bytes, ${assets.length} assets, all public`);
+  }
   // the Vyre views over DocuSeal's Connection, against the real app: the document just sent is waiting for a signature
   const listed = (await d.registry.call("views.list", {}, "cli", await ownerMeta())).data;
   const vids = (Array.isArray(listed) ? listed : listed.views || listed.commands || []).filter(/** @param {any} r */ r => r.module === "appmods").map(/** @param {any} r */ r => r.id).sort();
