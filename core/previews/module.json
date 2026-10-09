@@ -1,0 +1,26 @@
+{
+  "name": "previews",
+  "version": "0.1.0",
+  "description": "Live previews: a server an agent started on a port becomes a card in its chat, opened on its own address, kept running by Vyre, and shared the way you share a document.",
+  "roles": ["box"],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "previews.open", "effect": "write", "reach": "anyone" },
+      { "name": "previews.list", "effect": "read", "reach": "anyone" },
+      { "name": "previews.get", "effect": "read", "reach": "anyone" },
+      { "name": "previews.url", "effect": "write", "reach": "person" },
+      { "name": "previews.keep", "effect": "write", "reach": "person" },
+      { "name": "previews.restart", "effect": "write", "reach": "person" },
+      { "name": "previews.stop", "effect": "write", "reach": "person" },
+      { "name": "previews.remove", "effect": "write", "reach": "person" },
+      { "name": "previews.log", "effect": "read", "reach": "person" },
+      { "name": "previews.share", "effect": "write", "reach": "person" },
+      { "name": "previews.resolve", "effect": "read", "reach": "modules" }
+    ]
+  },
+  "watches": { "emits": ["preview.state", "preview.opened", "preview.removed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

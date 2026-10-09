@@ -105,6 +105,9 @@ export function pick(o, at) {
 export const seam = /** @type {{ driver: any }} */ ({ driver: null });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
+/** A preview's name on the front: pv- and eight hex digits. Never an installed app's name (those are catalog names). */
+const PREVIEW_NAME = /^pv-[0-9a-f]{8}$/;
+
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
@@ -321,6 +324,11 @@ export default {
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
+        // A preview (core/previews) is one more origin behind the same front, ticket and cookie: asked of that module by name, never by import.
+        if (PREVIEW_NAME.test(String(name))) {
+          const p = await ctx.call("previews.resolve", { name: String(name) }).catch(() => null);
+          return p && p.data && p.data.origin ? { origin: p.data.origin, origins: [p.data.origin], login: null, public: [], rewriteHost: true, passCookies: true, credentials: async () => ({}) } : null;
+        }
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
@@ -336,6 +344,8 @@ export default {
       hostProxy(req, res, { url }).then(done => { if (!done && !res.headersSent) { res.writeHead(404, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); res.end("not found"); } }).catch(() => { if (!res.headersSent) res.writeHead(502); res.end(); });
     });
     front.on("error", e => ctx.log.warn(`appmods: the apps' front could not listen: ${e.message}`));
+    // A WebSocket on an app's origin (a preview's hot reload): the same checks, tunnelled.
+    front.on("upgrade", (req, socket, head) => { hostProxy.upgrade(req, /** @type {any} */ (socket), head).then(done => { if (!done) socket.destroy(); }).catch(() => socket.destroy()); });
     await new Promise(r => { front.once("listening", r); front.once("error", r); front.listen(Number((ctx.config.appmods || {}).listen) || 0, "127.0.0.1"); });
     ctx.tool("appmods.front", { description: "The loopback port the apps' front listens on: { port }. For Vyre's own modules (the public gate carries the apps' hosts to it).", input: obj({}), run: async () => {
       const a = front.address(); if (!a || typeof a === "string") throw refuse("the apps' front is not listening", "unavailable"); return { port: a.port };
@@ -372,6 +382,28 @@ export default {
         const t = tickets.issue(r.name, new URL(here).host, screen ? screen.path : "/");
         return { url: `${here}${ENTER}?t=${t}`, host: new URL(here).host };
       },
+    });
+    // The previews module's door onto the same ticket path: it has judged who may open a preview, and asks for the ticket address. Modules only, and only for a preview's own name.
+    const previewsOnly = (/** @type {any} */ meta, /** @type {string} */ name) => {
+      if (!meta || meta.caller !== "module:previews" || meta.firstParty === false) throw refuse("the previews module alone asks for a preview's ticket", "denied");
+      if (!PREVIEW_NAME.test(String(name))) throw refuse("that is not a preview's name", "bad_input");
+    };
+    ctx.tool("appmods.ticket", {
+      description: "A one-time sign-in address for a preview, on its own origin: { url, host }. Internal: the previews module has already decided that this person may open it.", internal: true,
+      input: obj({ name: str, next: str, origin: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        previewsOnly(meta, i.name);
+        let base = baseHost();
+        if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
+        const here = originFor(i.name, base);
+        const next = typeof i.next === "string" && i.next.startsWith("/") && !i.next.startsWith("//") ? i.next : "/";
+        return { url: `${here}${ENTER}?t=${tickets.issue(i.name, new URL(here).host, next)}`, host: new URL(here).host };
+      },
+    });
+    ctx.tool("appmods.drop", {
+      description: "End every open sign-in to a preview (its access changed, or it was removed). Internal: the previews module only.", internal: true,
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => { previewsOnly(meta, i.name); tickets.drop(i.name); return { dropped: i.name }; },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
       hosts: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host) }) });
