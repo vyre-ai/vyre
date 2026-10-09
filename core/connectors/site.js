@@ -115,13 +115,13 @@ export function registerSiteTools(ctx, { made, runner, yours, fail, obj, str, pe
 
   ctx.tool("connectors.site.connect", {
     effect: "write", callers: people,
-    description: "Make a website a Connection from the operations Vyre has learned on it: { site (origin), label, id?, operations? (names; default all) }. Flows, watchers and assistants then call those operations like any Connection's, a send waits for your yes, and the login stays in the browser. Your own act: it decides what the Connection can reach.",
-    input: obj({ site: str, label: str, id: str, operations: { type: "array", items: str } }, ["site", "label"]),
+    description: "Make a website a Connection from the operations Vyre has learned on it: { site (origin), label, id?, operations? (names; default all), polls? (reads a watcher may poll) }. Flows, watchers and assistants then call those operations like any Connection's, a send waits for your yes, and the login stays in the browser. Your own act: it decides what the Connection can reach.",
+    input: obj({ site: str, label: str, id: str, operations: { type: "array", items: str }, polls: { type: "array", description: "Reads a watcher may poll: [{ name, operation, id (path of an item's own id), items?, title?, at?, args?, every_minutes? }]." } }, ["site", "label"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       const as = yours(meta, "connect a website");
       const origin = originOf(input.site);
       const entries = pick(await recordOps(call, origin), input.operations);
-      return made.saveSite({ id: input.id, label: String(input.label), origin, entries }, { as });
+      return made.saveSite({ id: input.id, label: String(input.label), origin, entries, ...(Array.isArray(input.polls) ? { polls: input.polls } : {}) }, { as });
     },
   });
 

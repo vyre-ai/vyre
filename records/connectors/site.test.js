@@ -62,3 +62,18 @@ test("the checker keeps the browser sign-in for site Connections only, and wants
   assert.ok(checkDeclaration(bare).some(p => /site.name/.test(p)));
   assert.ok(checkDeclaration({ ...d, transport: "other" }).some(p => /transport/.test(p)));
 });
+
+test("a read can be a watcher's source: a poll on a learned operation compiles to the same watcher as any Connection's, reading through the browser credential", async () => {
+  const { connectorPreset } = await import("../../core/watchers/connector-preset.js");
+  const { pollsOf } = await import("./site.js");
+  const polls = [{ name: "people.new", operation: "searchPeople", id: "id", items: "", title: "name", args: { query: { query: "estate planning" } }, every_minutes: 30 }];
+  const d = siteDeclaration({ id: "linkedin", label: "LinkedIn", origin: ORIGIN, entries: entries(), polls });
+  assert.deepEqual(checkDeclaration(d), []);
+  assert.deepEqual(pollsOf(d).map(p => [p.name, p.operation, p.id, p.title, p.every_minutes]), [["people.new", "searchPeople", "id", "name", 30]], "a sync keeps them");
+  const w = connectorPreset({ project: "harlow-legal", connector: d, poll: "people.new", credential: "conn-linkedin" });
+  assert.deepEqual(w.json.net, { "app.example.com": { credential: "conn-linkedin" } });
+  assert.match(w.code, /\/ops\/search_people/);
+  assert.equal(w.json.schedule && w.json.emits, "linkedin.found");
+  assert.throws(() => siteDeclaration({ id: "x", label: "X", origin: ORIGIN, entries: entries(), polls: [{ name: "p" }] }), /a poll is/);
+  assert.ok(checkDeclaration(siteDeclaration({ id: "x", label: "X", origin: ORIGIN, entries: entries(), polls: [{ name: "gone", operation: "searchPeople", id: "id" }] })).length === 0);
+});

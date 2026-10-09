@@ -20,9 +20,11 @@ const shapeType = t => (t === "number" || t === "boolean" || t === "object" || t
 /**
  * The declaration of a site Connection from the operations a site record holds. `entries` are the record's `ops` items ({ name, kind, op }); the Connection's address is the site's origin.
  * A read takes its inputs in the query (a GET); every other kind takes them in the body (a POST). Inputs keep their names and types, so a Flow's step is checked against them.
- * @param {{ id: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[] }} i
+ * `polls` makes a read a watcher's source: { name, operation (the learned name), id (the path of an item's own id), items? (the list in the answer), title?, at?, args? ({ query }), every_minutes? }.
+ * A watcher then polls the website like any Connection's read, and files each new item for a Flow.
+ * @param {{ id: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[], polls?: any[] }} i
  */
-export function siteDeclaration({ id, label, origin, entries }) {
+export function siteDeclaration({ id, label, origin, entries, polls }) {
   /** @type {Record<string, any>} */ const ops = {};
   for (const e of entries) {
     const shapes = Object.fromEntries(e.op.params.map((/** @type {any} */ p) => [p.name, { type: shapeType(p.type), ...(p.required !== false ? { required: true } : {}) }]));
@@ -30,7 +32,19 @@ export function siteDeclaration({ id, label, origin, entries }) {
     ops[opKey(e.name)] = { method: read ? "GET" : "POST", path: opPath(e.name), kind: e.kind, label: e.op.description || e.name, site: { name: e.name },
       ...(Object.keys(shapes).length ? { input: read ? { query: shapes } : { body: shapes, encoding: "json" } } : {}) };
   }
-  return defineConnector({ id, label, version: 1, transport: "site", base_url: String(origin).replace(/\/+$/, ""), auth: { type: "browser" }, ops });
+  /** @type {Record<string, any>} */ const poll = {};
+  for (const p of Array.isArray(polls) ? polls : []) {
+    if (!p || typeof p.name !== "string" || typeof p.operation !== "string" || typeof p.id !== "string") throw Object.assign(new Error("a poll is { name, operation, id (the path of an item's own id), items?, title?, at?, args?, every_minutes? }"), { code: "bad_input" });
+    poll[p.name] = { op: opKey(p.operation), id: p.id, ...(p.items ? { items: String(p.items) } : {}), ...(p.args ? { args: p.args } : {}), ...(p.every_minutes ? { every_minutes: p.every_minutes } : {}), label: String(p.label || p.name),
+      map: { ...(p.title ? { title: String(p.title) } : {}), ...(p.at ? { at: String(p.at) } : {}) } };
+  }
+  return defineConnector({ id, label, version: 1, transport: "site", base_url: String(origin).replace(/\/+$/, ""), auth: { type: "browser" }, ops, ...(Object.keys(poll).length ? { poll } : {}) });
+}
+
+/** The polls of a declaration, in the form siteDeclaration takes, so a sync keeps them. @param {import("./format.js").Declaration} d */
+export function pollsOf(d) {
+  return Object.entries(d.poll || {}).map(([name, p]) => ({ name, operation: (d.ops[p.op] && d.ops[p.op].site && d.ops[p.op].site.name) || p.op, id: typeof p.id === "string" ? p.id : "", ...(p.items ? { items: p.items } : {}), ...(p.args ? { args: p.args } : {}),
+    ...(p.every_minutes ? { every_minutes: p.every_minutes } : {}), ...(p.label ? { label: p.label } : {}), ...(p.map && p.map.title ? { title: p.map.title } : {}), ...(p.map && p.map.at ? { at: p.map.at } : {}) }));
 }
 
 /**

@@ -979,7 +979,7 @@
  "lib/siteops/run.test.js": 5,
  "local/hands-chrome-mac/ext-ops.test.js": 7,
  "local/hands-chrome-mac/ops-tool.test.js": 6,
- "records/connectors/site.test.js": 4,
+ "records/connectors/site.test.js": 5,
  "core/vault/service-site.test.js": 4,
  "core/connectors/site-daemon.test.js": 4,
  "kernel/flows/site-flow.test.js": 3

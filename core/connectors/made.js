@@ -6,7 +6,7 @@
 import { defineConnector, appHost } from "../../records/connectors/format.js";
 import { fromForm, toConfig, credentialName, outcomeOf, operationsOf, cardOf } from "../../records/connectors/connection.js";
 import { newPrefixedId } from "../../lib/id.js";
-import { siteDeclaration, siteConfig } from "../../records/connectors/site.js";
+import { siteDeclaration, siteConfig, pollsOf } from "../../records/connectors/site.js";
 
 const AUTH_OF = { bearer: "bearer", basic: "password", "api-key": "api-key" };
 
@@ -75,12 +75,14 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
   /**
    * Make (or, with `replace`, rewrite) the Connection of a website from the operations its site record holds. A person's act: it widens what the Connection can reach, and the vault asks them to
    * confirm the credential it writes.
-   * @param {{ id?: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[] }} site @param {{ as: string, replace?: boolean }} o
+   * @param {{ id?: string, label: string, origin: string, entries: { name: string, kind: string, op: any }[], polls?: any[] }} site @param {{ as: string, replace?: boolean }} o
    */
   async function saveSite(site, o) {
     const id = site.id ? String(site.id) : String(site.label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "");
-    const declaration = siteDeclaration({ id, label: site.label, origin: site.origin, entries: site.entries });
     const had = row(id);
+    // a sync keeps the polls the Connection already had unless new ones are given
+    const polls = Array.isArray(site.polls) ? site.polls : had && JSON.parse(had.declaration).transport === "site" ? pollsOf(JSON.parse(had.declaration)) : undefined;
+    const declaration = siteDeclaration({ id, label: site.label, origin: site.origin, entries: site.entries, ...(polls ? { polls } : {}) });
     if (had && !o.replace) throw fail(`there is already a connection ${id}; sync it to change it`, "exists");
     if (!had && o.replace) throw fail(`no connection ${id}`, "not_found");
     if (had && JSON.parse(had.declaration).transport !== "site") throw fail(`${id} is not a website connection`, "bad_input");
