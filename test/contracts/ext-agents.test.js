@@ -16,7 +16,7 @@ test("an outside agent has one id in three spellings, and nothing else is one", 
   for (const not of ["cli", "mcp", "harness", "module:outside", "ext:", "ext:SHORT", "ext:../etc/passwd", " ext:" + F.id, "ext:" + F.id + ":agent:x", "mcp:ext:" + F.id, "Ext:" + F.id, "device:" + F.id]) assert.equal(isOutside(not), false, not);
   assert.equal(idOfActor("ext_UPPERCASE00"), null);
   assert.equal(idOfActor("vp_" + F.id), null, "a pass id is not an actor id until it is migrated");
-  assert.throws(() => callerOf("x"), /10 to 24/);
+  assert.throws(() => callerOf("x"), /10 to 40/);
 });
 
 test("the tools /agents-mcp lists are exactly what the agent holds", () => {
@@ -38,6 +38,9 @@ test("what an agent may reach is one plain line", () => {
   assert.equal(reachLine([{ kind: "memory", project: "harlow" }, { kind: "files", project: "harlow" }], p => p === "harlow" ? "the Harlow project" : p), "asks the memory of the Harlow project; reads the files of the Harlow project");
   assert.equal(reachLine([{ kind: "vault", items: ["ghl-api"] }]), "uses ghl-api without seeing it");
   assert.equal(reachLine([{ kind: "vault", items: ["a", "b"], reveal: true }]), "uses 2 credentials without seeing them; may ask to see a value");
-  assert.equal(F.listed.reach, reachLine([{ kind: "records", types: ["Clients", "Matters"], write: true }]).replace(/Clients and Matters/, "Clients and Matters"));
+  assert.equal(F.listed.reach, reachLine([{ kind: "records", types: ["Clients", "Matters"], write: true }]));
+  const pass = "0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10";
+  assert.equal(idOfActor(actorIdOf(pass)), pass, "a pass made before registration keeps its uuid and its actor");
+  assert.equal(idOfCaller(callerOf(pass)), pass);
   assert.ok(LIMITS.maxDays === 90 && LIMITS.defaultRate === 30);
 });
