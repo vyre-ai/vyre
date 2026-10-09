@@ -328,6 +328,12 @@ export async function walkUpdate(w) {
       await mac.openSession();
       assert.ok(await mac.callTool("system.info"), "system.info answered");
     }, { needs: [S("confirm the words in the app: adopt and pair")] });
+    // The discriminator: a SECOND sign-in of the same device, before any update or restart. A device's first sign-in spends its pairing grant; a later one needs a renewal (presence module renewGrant). If this fails too, the
+    // refusal after the update is not about the update.
+    await run.step(S("a second sign-in from the same app, before any update"), async () => {
+      await mac.openSession();
+      assert.ok(await mac.callTool("system.info"), "system.info answered");
+    }, { needs: [S("the app reaches the server and calls a tool")] });
     await updateSteps({ w: { update, out: w.out }, run, S, mac, srv: () => srv, CALL: S("the app reaches the server and calls a tool") });
   } finally {
     try { if (srv) await srv.stop(); } catch { /* gone */ }
@@ -410,7 +416,7 @@ async function updateSteps({ w, run, S, mac, srv, CALL }) {
       const op = (/** @type {string} */ tool, /** @type {string} */ input = "{}") => sh(`docker exec -u vyre vyre-vyre-1 vyre call ${tool} '${input}' 2>&1 | head -c 2500`);
       let devId = ""; try { devId = String(JSON.parse(op("relay.devices.list")).devices[0].id); } catch { /* unlisted */ }
       const logs = "docker exec -u vyre vyre-vyre-1 sh -c 'for f in ~/.vyre/logs/*; do tail -n 400 \"$f\"; done' 2>&1";
-      const diag = ["== box says", boxVersion, "== relay.devices.list", op("relay.devices.list"), `== wink.device.record ${devId}`, op("wink.device.record", JSON.stringify({ id: devId })),
+      const diag = ["== box says", boxVersion, "== wink.device.paired", op("wink.device.paired"), "== relay.devices.list", op("relay.devices.list"), `== wink.device.record ${devId}`, op("wink.device.record", JSON.stringify({ id: devId })),
         "== DEBUG lines from presence.person.pair-challenge", sh(`${logs} | grep DEBUG | tail -10`), "== relay and pairing log lines", sh(`${logs} | grep -i 'relay\\|device\\|denied\\|refus\\|pair' | tail -40`),
         "== update status.json", sh("sudo cat /var/lib/vyre-update/status/status.json 2>&1"), "== docker ps", sh("docker ps -a 2>&1 | head -10")].join("\n");
       fs.writeFileSync(path.join(w.out, "update-diag.txt"), diag);
