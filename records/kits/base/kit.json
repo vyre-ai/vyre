@@ -70,6 +70,11 @@
           "label": "Notes"
         },
         {
+          "name": "tags",
+          "kind": "text",
+          "label": "Tags"
+        },
+        {
           "name": "source",
           "kind": "choice",
           "label": "How they found us",
@@ -432,6 +437,31 @@
           "name": "moved_from",
           "kind": "text",
           "label": "Moved from (Space and project) when it came from another"
+        },
+        {
+          "name": "template",
+          "kind": "text",
+          "label": "Template it started from (blank when none)"
+        },
+        {
+          "name": "template_version",
+          "kind": "text",
+          "label": "Template version it started from"
+        },
+        {
+          "name": "lead",
+          "kind": "text",
+          "label": "Project lead (an agent of the Space; a template may name one)"
+        },
+        {
+          "name": "personal_of",
+          "kind": "text",
+          "label": "The person whose private Personal project this is (blank for every other project)"
+        },
+        {
+          "name": "tags",
+          "kind": "text",
+          "label": "Tags"
         },
         {
           "name": "stage",

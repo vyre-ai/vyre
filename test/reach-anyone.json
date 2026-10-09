@@ -1341,6 +1341,14 @@
    "module": "sidebar",
    "reason": "scope check: a change touches only the caller's OWN list (one per person), never the Space default; an assistant may make it for the person, who can undo it; refuses an entry that is not installed"
   },
+  "sidebar.pin": {
+     "module": "sidebar",
+     "reason": "scope check: it adds one entry to the caller's OWN list (one per person), never the Space default; an assistant may do it for the person, who can undo it; the entry is built from a kind and an id, never an address the caller invents except a view under /u/"
+  },
+  "sidebar.unpin": {
+     "module": "sidebar",
+     "reason": "scope check: it removes one entry from the caller's OWN list only; the person can pin it again"
+  },
   "sidebar.get": {
    "module": "sidebar",
    "reason": "read-only: the Space's default and the caller's own list; nothing of another person's is shown, and a team member reads only through the Space's kernel as themselves"

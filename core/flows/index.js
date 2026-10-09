@@ -29,6 +29,10 @@ const WHAT = {
   "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
   "flows.health": "How a Flow is, in one line (last run, this week, next run, what needs a person, red when a Connection it uses is red); with no id, every Flow and the Space's switch.",
   "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, every step kind with an example, retry and failure paths, checks, expressions, limits. Read it before you write a Flow.",
+  "flows.from-chat": "Turn what you did by hand in a chat into a draft Flow: { name, label?, calls: [{ tool, input, returns?: { id }, resource? }], variables?: { <name>: <the value that varies> }, propose? }. Record writes and finds become steps, a variable becomes an input the Flow reads, an id one call returned and a later one used becomes a read of that step; what cannot be a step is listed. The draft is stored, never approved. With propose it is checked and proposed.",
+  "flows.connections": "Which Flows use which Connections: per Connection (or the one you name), the Flows that use it with their health, so a red Connection shows what it stops. Flows.list rows also carry `connections`.",
+  "flows.attention": "The runs that need a person: failed, paused, stuck, or a stage gate held back; newest first, one row each with the Flow, the step, the reason in plain words and whether it is loud or quiet.",
+  "flows.settle": "Answer a run that needs attention: { run, action: retry | skip | stop | advance }. skip may carry `value` to use in place of the skipped step's output (a person's, not an assistant's); advance (a stage gate) takes `reason`. A person's own.",
   "flows.advance": "Move a record on before its stage's tasks are done: { run (the stage gate), reason }. The stage's owner or an admin, in their own name; the reason is on the gate's ledger.",
   "flows.patch": "Change a Flow with small named edits instead of rewriting it, stored as a new draft: { id, base (the version you read), ops: [{ op: set, step, key, value } | { op: insert, after | first | into+block, line } | { op: replace, step, line } | { op: remove, step } | { op: move, step, by } | { op: trigger, trigger } | { op: meta, key, value }] }. A line is one step in the lines form (flows.code with format lines). Nothing runs until a person approves the draft.",
   "flows.test.save": "Save a test case for a Flow: { id, name, event: { type, data } | input, expect: { state, writes, outward, asks, steps_ran, steps_not_run } }, or { id, from_run } to keep what a real run did as the baseline. A Flow cannot be approved while a case fails. You add cases; changing one is a person's.",
@@ -97,12 +101,13 @@ export default {
     }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
-        description, input: open, callers: name === "flows.kit.propose" ? [...CALLERS, "module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
+        description, input: open, callers: name === "flows.kit.propose" || name === "flows.attention" ? [...CALLERS, "module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
         ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
-          const chain = await chainOf(f, meta);
+          // The approvals queue lists what needs attention as itself, with no person's chain on the call (it holds the person's queue); no other module may.
+          const chain = name === "flows.attention" && meta && meta.caller === "module:approvals" ? null : await chainOf(f, meta);
           if (PERSONAL.has(name) && !(chain.hops.length === 1 && chain.hops[0].actor.kind === "person")) throw refuse(`${name} is a person's own`, "denied");
           const { space: _space, module: fromModule, ...rest } = input || {};
           // A Kit may be given in the language's stored form as well as the kernel's. One that ships with an added module (`module` names it) is held to what a module may add.

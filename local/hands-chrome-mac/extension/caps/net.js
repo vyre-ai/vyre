@@ -23,7 +23,7 @@
 // credentials included), so the page's own cookies authenticate it and no credential is handed to
 // anything outside the browser.
 
-import * as redact from "../shared/redact.js";
+import * as redact from "../shared/sk/siteops/redact.js";
 import { classify } from "../shared/floor.js";
 import { classifySend, held, writeGate, PASS } from "../shared/outbound.js";
 import { fail } from "../shared/proto.js";

@@ -65,6 +65,7 @@
     "records",
     "box",
     "apps/app/dist",
+    "release/notes",
     "scripts/install-box.sh",
     "scripts/admin-wipe.mjs",
     "scripts/admin-anchor-reset.mjs",

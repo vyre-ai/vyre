@@ -4,4 +4,4 @@
 // module and the native host import the same copies, so nothing can drift.
 
 export * as proto from "../shared/proto.js";
-export * as redact from "../shared/redact.js";
+export * as redact from "../shared/sk/siteops/redact.js";

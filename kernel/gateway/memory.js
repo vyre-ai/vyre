@@ -26,6 +26,8 @@ export const MEMORY_FACT = Object.freeze({
     { name: "by", kind: "text", label: "Filed by", required: true }, { name: "filed_at", kind: "number", label: "Filed (ms)", required: true },
     { name: "key", kind: "text", label: "Content key", required: true }, { name: "state", kind: "choice", label: "State", options: ["active", "retired"], required: true },
     { name: "labels", kind: "text", label: "Labels (JSON)", required: true },
+    // Where the fact lives (R031-08): "" for the whole Space, `project:<id>` for one project, `agent:<id>` for what an agent learned and takes with it to every project
+    { name: "scope", kind: "text", label: "Scope" },
   ]),
 });
 
@@ -40,12 +42,20 @@ export function createMemoryGateway(cfg) {
   const mustChain = (/** @type {any} */ c) => { if (!isChain(c)) throw new KernelError("bad_input", "a call needs a kernel-built chain"); };
   const sha = (/** @type {string} */ s) => createHash("sha256").update(s).digest("hex");
   let defined = false;
-  const ready = async () => { if (!defined) { await cfg.store.define({ add_types: [MEMORY_FACT] }); defined = true; } };
+  const ready = async () => {
+    if (defined) return;
+    const have = typeof cfg.store.types === "function" ? (await cfg.store.types()).find((/** @type {any} */ t) => t.name === MEMORY_FACT.name) : null;
+    await cfg.store.define(have ? (have.fields.some((/** @type {any} */ x) => x.name === "scope") ? { add_types: [MEMORY_FACT] } : { change_types: [MEMORY_FACT] }) : { add_types: [MEMORY_FACT] });
+    defined = true;
+  };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => {
     try { cfg.log.append(chain, { type, sv: 1, subject, data, vis: "space", red: "internal" }, decision ? { decision } : {}); } catch { /* the act stands; the note is best effort */ }
   };
   const shape = (/** @type {any} */ r) => Object.freeze({ id: r.id, urn: urn(r.id), text: r.data.text, source: r.data.source, kind: r.data.kind, topics: JSON.parse(r.data.topics || "[]"), by: r.data.by,
-    filed_at: r.data.filed_at, state: r.data.state, labels: JSON.parse(r.data.labels) });
+    filed_at: r.data.filed_at, state: r.data.state, labels: JSON.parse(r.data.labels), scope: r.data.scope || "" });
+  /** The agent a chain works as: its first agent hop, or null. @param {any} chain */
+  const agentOf = (chain) => { const h = chain.hops.find((/** @type {any} */ x) => x.actor.kind === "agent"); return h ? String(h.actor.id) : null; };
+  const projectUrn = (/** @type {string} */ id) => `vyre://${cfg.space}/project/${id}`;
 
   /** The source a fact names: a record, task or file of THIS Space the filer may read, or an opaque session or thread reference. */
   async function checkSource(/** @type {any} */ chain, /** @type {any} */ source) {
@@ -66,14 +76,14 @@ export function createMemoryGateway(cfg) {
   return Object.freeze({
     /**
      * File a fact into this Space's memory. Returns the fact; the same text from the same source filed twice is one fact (the first is returned, `existing: true`).
-     * @param {any} chain @param {{ text: string, source: string, kind?: string, topics?: string[] }} f
+     * @param {any} chain @param {{ text: string, source: string, kind?: string, topics?: string[], scope?: string }} f (`scope`: "agent" keeps it with the agent across projects, "project:<id>" in one project it may reach; none is the whole Space)
      */
     async file(chain, f) {
       mustChain(chain);
       if (chain.space !== cfg.space) throw new KernelError("not_found", "no such record");
       const d = await gate(chain, "memory.file", urn("new"));
       if (!f || typeof f !== "object") throw new KernelError("bad_input", "a fact is an object");
-      for (const k of Object.keys(f)) if (!["text", "source", "kind", "topics"].includes(k)) throw new KernelError("bad_input", `a fact has no ${k}: who filed it and when are the kernel's`);
+      for (const k of Object.keys(f)) if (!["text", "source", "kind", "topics", "scope"].includes(k)) throw new KernelError("bad_input", `a fact has no ${k}: who filed it and when are the kernel's`);
       const text = typeof f.text === "string" ? f.text.trim() : "";
       if (!text || text.length > TEXT_MAX) throw new KernelError("bad_input", `a fact is text of 1 to ${TEXT_MAX} characters`);
       // A placeholder is how a sealed or room-hidden value is named; a fact is a statement, so one that carries a token would act as an instruction to fill it.
@@ -83,13 +93,20 @@ export function createMemoryGateway(cfg) {
       const topics = f.topics === undefined ? [] : f.topics;
       if (!Array.isArray(topics) || topics.length > TOPICS_MAX || topics.some((/** @type {any} */ t) => typeof t !== "string" || !t.trim() || t.length > TOPIC_MAX)) throw new KernelError("bad_input", `topics are up to ${TOPICS_MAX} short words`);
       const source = await checkSource(chain, f.source);
+      let scope = "";
+      if (f.scope !== undefined) {
+        const m = typeof f.scope === "string" ? /^project:([A-Za-z0-9_-]{1,64})$/.exec(f.scope) : null;
+        if (f.scope === "agent") { const a = agentOf(chain); if (!a) throw new KernelError("bad_input", "only an agent has a scope of its own: name a project, or leave the scope out"); scope = `agent:${a}`; }
+        else if (m) { if (!(await check(chain, "project.reach", projectUrn(m[1])))) throw new KernelError("not_found", "no such record"); scope = `project:${m[1]}`; }
+        else throw new KernelError("bad_input", 'scope is "agent" or "project:<id>"');
+      }
       await ready();
-      const key = sha(`${source}\u0000${text}`);
+      const key = sha(`${scope}\u0000${source}\u0000${text}`);
       const have = (await cfg.store.query("memory_fact", { filter: { and: [{ field: "key", op: "eq", value: key }, { field: "state", op: "eq", value: "active" }] }, page: { limit: 1 } })).rows[0];
       if (have) return Object.freeze({ ...shape(have), existing: true });
       const id = mintUuid(clock());
       const labels = { trust: chain.labels.trust, red: chain.labels.red, source_spaces: [...chain.labels.source_spaces] };
-      const rec = await cfg.store.create("memory_fact", id, { text, source, kind, topics: JSON.stringify([...new Set(topics.map((/** @type {string} */ t) => t.trim().toLowerCase()))]), by: actorOf(chain), filed_at: clock(), key, state: "active", labels: JSON.stringify(labels) });
+      const rec = await cfg.store.create("memory_fact", id, { text, source, kind, topics: JSON.stringify([...new Set(topics.map((/** @type {string} */ t) => t.trim().toLowerCase()))]), by: actorOf(chain), filed_at: clock(), key, state: "active", labels: JSON.stringify(labels), scope });
       note(chain, "memory.filed", urn(id), { id, source, kind, topics, text_hash: sha(text) }, d.decision);
       return Object.freeze({ ...shape(rec), existing: false });
     },
@@ -97,7 +114,8 @@ export function createMemoryGateway(cfg) {
     /**
      * The facts this chain may read (an empty list when it may read none), newest first, optionally narrowed by words in the text, a topic, a kind or a source. Each fact is asked about on its own (`memory.read` on its
      * reference), so a grant narrowed to some facts shows only those, and one the chain may not read is absent, never marked.
-     * @param {any} chain @param {{ q?: string, topic?: string, kind?: string, source?: string, limit?: number }} [o]
+     * @param {any} chain @param {{ q?: string, topic?: string, kind?: string, source?: string, limit?: number, project?: string }} [o]
+     * A fact with a scope is read only where it belongs: an agent's own, from that agent's chain, in every project; a project's, only by a chain working in that project (the model slot's project, else `project`) that may reach it.
      */
     async recall(chain, o = {}) {
       mustChain(chain);
@@ -109,10 +127,14 @@ export function createMemoryGateway(cfg) {
       const q = typeof o.q === "string" ? o.q.trim().toLowerCase() : "";
       const topic = typeof o.topic === "string" ? o.topic.trim().toLowerCase() : "";
       const rows = (await cfg.store.query("memory_fact", { filter: { field: "state", op: "eq", value: "active" }, sort: [{ field: "filed_at", dir: "desc" }], page: { limit: SCAN_MAX } })).rows;
+      const me = agentOf(chain), here = typeof chain.project === "string" ? chain.project : (typeof o.project === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(o.project) ? o.project : null);
+      const mayHere = here ? await check(chain, "project.reach", projectUrn(here)) : false;
       /** @type {any[]} */ const out = [];
       for (const r of rows) {
         if (out.length >= limit) break;
         const f = shape(r);
+        if (f.scope.startsWith("agent:") && f.scope !== `agent:${me}`) continue;
+        if (f.scope.startsWith("project:") && !(mayHere && f.scope === `project:${here}`)) continue;
         if (o.kind && f.kind !== o.kind) continue;
         if (o.source && f.source !== o.source) continue;
         if (topic && !f.topics.includes(topic)) continue;

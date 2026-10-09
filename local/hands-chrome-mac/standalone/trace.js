@@ -4,7 +4,7 @@
 // bound. Local only: nothing here opens a network connection or leaves the folder.
 //
 // Redaction, same rules as the product: secrets, passwords, tokens and cookies are always masked
-// (extension/shared/redact.js), and a value shaped like a person's email or phone number is masked
+// (extension/shared/sk/siteops/redact.js), and a value shaped like a person's email or phone number is masked
 // while the field's NAME stays. Workflow config text stays readable.
 //
 // Shape of a line: {t, seq, kind: "call"|"event"|"session", ...}. A "call" carries tool, args
@@ -13,7 +13,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import * as redact from "../extension/shared/redact.js";
+import * as redact from "../extension/shared/sk/siteops/redact.js";
 
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // Seven or more digits with the separators a phone number has, or a bare 10 or 11 digits; a longer bare run is an id and is left alone.

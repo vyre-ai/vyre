@@ -261,7 +261,7 @@ test("registry: validates names, refuses duplicates, unknown_op, and survives mi
   assert.ok(["tabs", "page", "batch"].every(n => rep.loaded.includes(n)));
   // whichever optional files exist loaded, whichever do not are listed as missing, and neither is fatal
   const seen = new Set([...rep.optional.loaded, ...rep.optional.missing, ...rep.optional.failed.map(f => f.name)]);
-  assert.deepEqual([...seen].sort(), ["api", "devtools", "ghl", "net"]);
+  assert.deepEqual([...seen].sort(), ["api", "devtools", "ghl", "net", "ops"]);
   assert.ok(opNames().includes("page.fill"));
 });
 

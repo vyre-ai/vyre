@@ -19,12 +19,14 @@
 //      by structure (role, container, nth). Chrome supplies the evidence; this code decides.
 
 import { redact } from "./credential-shapes.js";
+import { parseOperation } from "./siteops/spec.js";
 
 export const SITE_V = 1;
 
 export const LIMITS = Object.freeze({
   str: 120, text: 600, names: 4, related: 8, signals: 8, authHosts: 8, frames: 16, controls: 200, api: 300,
-  flows: 40, notes: 20, steps: 60, params: 12, expects: 8, tombstones: 200, recordBytes: 256 * 1024, cardBytes: 8 * 1024,
+  flows: 40, notes: 20, steps: 60, params: 12, expects: 8, tombstones: 200, recordBytes: 1024 * 1024, cardBytes: 8 * 1024,
+  ops: 40, opBytes: 12 * 1024, opPrev: 2, opStr: 4000,
   shapeDepth: 6, shapeKeys: 60, perPageCard: 10, rungs: 40,
 });
 
@@ -126,7 +128,7 @@ const identifierHasId = s => s.split(/[-_:.]/).some(t => /^[0-9a-f]{8,}$/i.test(
 // The allowlist: each cleaner returns the cleaned value or null (dropped), and files problems.
 
 /**
- * @typedef {{ refused: Problem[], dropped: Problem[], now: number, trusted: boolean, notes: boolean, ids: Set<string>, replica: boolean }} Ctx
+ * @typedef {{ refused: Problem[], dropped: Problem[], now: number, trusted: boolean, notes: boolean, ids: Set<string>, replica: boolean, key?: string }} Ctx
  */
 
 /** A word that is an opaque token: long and mixing letters and digits (or hex). Never text a person would write. @param {string} w */
@@ -340,6 +342,54 @@ function apiEntry(x, path, c) {
     authKind, statuses: (Array.isArray(o.statuses) ? o.statuses : []).filter(n => Number.isInteger(n) && n >= 100 && n < 600).slice(0, 12), count: int(o.count, 0, 1e9, 1) };
 }
 
+/** The classes a call's answer can have (lib/siteops/classify.js); the last one is kept on the entry so a Connection can show its health. */
+const OP_CLASSES = ["ok", "drift", "auth", "rate", "blocked", "input", "error"];
+
+/**
+ * One learned website operation (lib/siteops): a named, typed call the site's own page makes, as a TEMPLATE. It holds structure and constants, never a login and never a value a person
+ * typed: a secret shape or an email anywhere in it refuses the whole patch; a header value that looks like a credential is refused unless the operation lists the header as public.
+ * The version history is the store's own (foldItem), so a patch cannot set it; only a replica's record carries it.
+ * @param {any} x @param {string} path @param {Ctx} c
+ */
+function opEntry(x, path, c) {
+  const o = obj(x); if (!o) return null;
+  const parsed = parseOperation({ ...(obj(o.op) || {}), name: o.name ?? (obj(o.op) || {}).name });
+  if (!parsed.ok) { c.dropped.push({ path, why: `not a valid operation: ${parsed.problems[0]}` }); return null; }
+  const op = parsed.op;
+  const clean = (/** @type {any} */ opx, /** @type {string} */ p) => {
+    let ok = true;
+    /** @param {any} v @param {string} at @param {boolean} [header] */
+    const walk = (v, at, header = false) => {
+      if (!ok) return;
+      if (typeof v === "string") {
+        if (v.length > LIMITS.opStr) { c.dropped.push({ path: at, why: "too long" }); ok = false; return; }
+        if (redact(v) !== v) { c.refused.push({ path: at, why: "secret shape" }); ok = false; return; }
+        if (EMAIL.test(v)) { c.refused.push({ path: at, why: "email" }); ok = false; return; }
+        if (header && v.split(/[\s,;:=]+/).some(opaque) && !(opx.public || []).includes(at.split(".").pop())) { c.refused.push({ path: at, why: "a header value that looks like a credential" }); ok = false; }
+      } else if (Array.isArray(v)) v.forEach((e, i) => walk(e, `${at}[${i}]`, header));
+      else if (v && typeof v === "object") for (const [k, e] of Object.entries(v)) { if (UNSAFE_KEYS.has(k)) { ok = false; return; } walk(e, `${at}.${k}`, header || at.endsWith(".headers")); }
+    };
+    walk(opx, p);
+    if (!ok) return null;
+    // an example value must not be a person's data
+    for (const prm of opx.params) if (prm.example !== undefined && piiShape(String(typeof prm.example === "object" ? JSON.stringify(prm.example) : prm.example))) delete prm.example;
+    let origin = ""; try { origin = new URL(opx.request.url).origin; } catch { /* checked below */ }
+    if (c.key && !FAMILY_KEY.test(c.key) && origin !== c.key) { c.dropped.push({ path: p, why: "the operation's host is not this site" }); return null; }
+    if (JSON.stringify(opx).length > LIMITS.opBytes) { c.dropped.push({ path: p, why: "too large" }); return null; }
+    return opx;
+  };
+  const cur = clean(op, path + ".op"); if (!cur) return null;
+  /** @type {any[]} */ const prev = [];
+  if (c.replica) for (const pv of (Array.isArray(o.prev) ? o.prev : []).slice(0, LIMITS.opPrev)) {
+    const pp = obj(pv); const po = pp && parseOperation({ ...(obj(pp.op) || {}), name: op.name });
+    const cleaned = po && po.ok ? clean(po.op, path + ".prev") : null;
+    if (cleaned && Number.isInteger(pp && pp.version) && iso(pp && pp.at)) prev.push({ version: pp.version, at: pp.at, op: cleaned });
+  }
+  if (c.refused.length) return null;
+  return { ...fact(o, path, c), name: op.name, kind: op.kind, version: c.replica && Number.isInteger(o.version) && o.version > 0 ? o.version : 1, op: cur, ...(prev.length ? { prev } : {}),
+    ...(OP_CLASSES.includes(o.lastClass) ? { lastClass: o.lastClass, lastAt: iso(o.lastAt) || new Date(c.now).toISOString() } : {}) };
+}
+
 /** What a step argument may be besides a placeholder or a small integer: a reference to a stored item, by its exact id (an id in this patch or in the record) or a digits-only ref like c12. */
 const REF_DIGITS = /^(?:c|f|s|e|ctl|ctrl|frame|step|entry)[_-]?\d{1,6}$/;
 /** Keys whose number is a duration or a position, never a value. */
@@ -440,7 +490,7 @@ const list = (/** @type {any} */ v, max, fn, path, /** @type {Ctx} */ c) => (Arr
 /** @param {string} key an origin or "family:<id>" */
 export function emptyRecord(key) {
   return { v: SITE_V, key, rev: 0, updated: null, names: [], family: null, related: [], ready: [], login: { wall: [], signedIn: [], authHosts: [] },
-    frames: [], controls: [], api: [], flows: [], notes: [], tombstones: [], rungs: {} };
+    frames: [], controls: [], api: [], flows: [], ops: [], notes: [], tombstones: [], rungs: {} };
 }
 
 /** @param {string} key */
@@ -457,7 +507,7 @@ export const isFamilyKey = (/** @type {string} */ k) => FAMILY_KEY.test(k);
  */
 export function sanitize(input, { now = Date.now(), trusted = false, notes = false, known = [], replica = false } = {}) {
   /** @type {Ctx} */
-  const c = { refused: [], dropped: [], now, trusted, notes, ids: new Set(known), replica };
+  const c = { refused: [], dropped: [], now, trusted, notes, ids: new Set(known), replica, key: undefined };
   const o = obj(input);
   if (!o) return { ok: false, record: null, refused: [{ path: "", why: "not an object" }], dropped: [] };
   // The ids this patch itself defines: a step may refer to them by their exact id and to nothing else.
@@ -465,16 +515,17 @@ export function sanitize(input, { now = Date.now(), trusted = false, notes = fal
   for (const f of Array.isArray(o.flows) ? o.flows : []) for (const st of Array.isArray(f && f.steps) ? f.steps : []) if (st && typeof st.id === "string") c.ids.add(st.id);
   const key = typeof o.key === "string" ? o.key : typeof o.origin === "string" ? o.origin : "";
   if (!keyOk(key)) return { ok: false, record: null, refused: [{ path: "key", why: "not an origin or a family key" }], dropped: [] };
+  c.key = key;
   const names = (Array.isArray(o.names) ? o.names : []).slice(0, LIMITS.names).map((n, i) => str(n, 40, `names[${i}]`, c)).filter(Boolean);
   const family = o.family != null && /^[a-z0-9][a-z0-9-]{0,39}$/.test(String(o.family)) ? String(o.family) : null;
   const related = (Array.isArray(o.related) ? o.related : []).filter(x => typeof x === "string" && ORIGIN.test(x)).slice(0, LIMITS.related);
   const login = obj(o.login) || {};
-  const tombstones = (Array.isArray(o.tombstones) ? o.tombstones : []).slice(0, LIMITS.tombstones).map(t => { const to = obj(t); return to && ["controls", "api", "flows", "notes", "frames", "ready", "wall", "signedIn"].includes(to.part) && iso(to.at) && typeof to.id === "string" && /^[A-Za-z0-9_:.|~-]{1,200}$/.test(to.id) && !opaque(to.id) ? { part: to.part, id: to.id, at: Date.parse(to.at) > now ? new Date(now).toISOString() : to.at } : null; }).filter(Boolean);
+  const tombstones = (Array.isArray(o.tombstones) ? o.tombstones : []).slice(0, LIMITS.tombstones).map(t => { const to = obj(t); return to && ["controls", "api", "flows", "notes", "frames", "ready", "wall", "signedIn", "ops"].includes(to.part) && iso(to.at) && typeof to.id === "string" && /^[A-Za-z0-9_:.|~-]{1,200}$/.test(to.id) && !opaque(to.id) ? { part: to.part, id: to.id, at: Date.parse(to.at) > now ? new Date(now).toISOString() : to.at } : null; }).filter(Boolean);
   const record = { v: SITE_V, key, rev: int(o.rev, 0, 1e12, 0), updated: iso(o.updated), names, family, related,
     ready: list(o.ready, LIMITS.signals, signal, "ready", c), login: { wall: list(login.wall, LIMITS.signals, signal, "login.wall", c), signedIn: list(login.signedIn, LIMITS.signals, signal, "login.signedIn", c),
       authHosts: (Array.isArray(login.authHosts) ? login.authHosts : []).map(h => String(h).toLowerCase()).filter(h => HOST.test(h)).slice(0, LIMITS.authHosts) },
     frames: list(o.frames, LIMITS.frames, frame, "frames", c), controls: list(o.controls, LIMITS.controls, control, "controls", c), api: list(o.api, LIMITS.api, apiEntry, "api", c),
-    flows: list(o.flows, LIMITS.flows, flow, "flows", c), notes: list(o.notes, LIMITS.notes, note, "notes", c), tombstones,
+    flows: list(o.flows, LIMITS.flows, flow, "flows", c), ops: list(o.ops, LIMITS.ops, opEntry, "ops", c), notes: list(o.notes, LIMITS.notes, note, "notes", c), tombstones,
     // Rungs are the store's own count of which way of acting worked on a page (applyRung); a patch from Chrome never carries them.
     rungs: c.replica ? cleanRungs(o.rungs, c.now) : {},
     ...(Array.isArray(o.remove) ? { remove: o.remove.slice(0, 100).map(r => { const ro = obj(r); return ro && typeof ro.part === "string" && typeof ro.id === "string" && ro.id.length <= 200 ? { part: ro.part, id: ro.id } : null; }).filter(Boolean) } : {}) };
@@ -538,7 +589,7 @@ export function applyRung(rec, { template, rung, lowerFailed = false }, now = Da
   return out;
 }
 
-export const itemId = (/** @type {string} */ part, /** @type {any} */ it) => (part === "ready" || part === "wall" || part === "signedIn" ? signalId(it) : part === "flows" || part === "notes" ? it.name : it.id);
+export const itemId = (/** @type {string} */ part, /** @type {any} */ it) => (part === "ready" || part === "wall" || part === "signedIn" ? signalId(it) : part === "flows" || part === "notes" || part === "ops" ? it.name : it.id);
 
 /** The trust to read an item at: stored conf, halved when unverified for 90 days. @param {any} f @param {number} [now] */
 export function readConf(f, now = Date.now()) {
@@ -572,13 +623,13 @@ export function heal(f, outcome, now = Date.now()) {
   return out;
 }
 
-const PARTS = /** @type {const} */ (["frames", "controls", "api", "flows", "notes"]);
+const PARTS = /** @type {const} */ (["frames", "controls", "api", "flows", "ops", "notes"]);
 const SIG_PARTS = [["ready", r => r.ready, (r, v) => { r.ready = v; }], ["wall", r => r.login.wall, (r, v) => { r.login.wall = v; }], ["signedIn", r => r.login.signedIn, (r, v) => { r.login.signedIn = v; }]];
-const CAP = { frames: LIMITS.frames, controls: LIMITS.controls, api: LIMITS.api, flows: LIMITS.flows, notes: LIMITS.notes, ready: LIMITS.signals, wall: LIMITS.signals, signedIn: LIMITS.signals };
+const CAP = { frames: LIMITS.frames, controls: LIMITS.controls, api: LIMITS.api, flows: LIMITS.flows, ops: LIMITS.ops, notes: LIMITS.notes, ready: LIMITS.signals, wall: LIMITS.signals, signedIn: LIMITS.signals };
 
 /** One item of a patch into the stored list. New items start no higher than 0.5. */
 /** What makes an item the thing it is: when it changes under the same id, what was learned about the old one does not carry over. */
-const targetOf = (part, it) => JSON.stringify(part === "flows" ? [it.steps || null, it.params] : part === "api" ? [it.origin, it.method, it.pathTemplate] : part === "frames" ? [it.match, it.role] : part === "controls" ? [it.page, it.role] : null);
+const targetOf = (part, it) => JSON.stringify(part === "flows" ? [it.steps || null, it.params] : part === "api" ? [it.origin, it.method, it.pathTemplate] : part === "frames" ? [it.match, it.role] : part === "ops" ? [it.op && it.op.match, it.kind] : part === "controls" ? [it.page, it.role] : null);
 
 function foldItem(part, old, inc, now) {
   // The same id with a different target is a new item: it starts at 0.5 at most, unverified.
@@ -593,6 +644,15 @@ function foldItem(part, old, inc, now) {
   delete out.missAt; delete out.lastMissAt; delete out.qAt;
   if (old.missAt) out.missAt = old.missAt; if (old.lastMissAt) out.lastMissAt = old.lastMissAt; if (old.qAt) out.qAt = old.qAt;
   if (part === "api") { out.count = (old.count || 0) + (inc.count || 0); out.statuses = [...new Set([...(old.statuses || []), ...(inc.statuses || [])])].sort((a, b) => a - b).slice(0, 12); out.query = { ...old.query, ...inc.query }; }
+  if (part === "ops") {
+    // A new version of the same operation (a verified heal) keeps the old one for a rollback; the history is the store's own, never a patch's.
+    const same = JSON.stringify(old.op) === JSON.stringify(inc.op);
+    out.version = old.version || 1;
+    out.prev = old.prev || [];
+    if (!same) { out.version = (old.version || 1) + 1; out.prev = [{ version: old.version || 1, at: new Date(now).toISOString(), op: old.op }, ...(old.prev || [])].slice(0, LIMITS.opPrev); }
+    if (!out.prev.length) delete out.prev;
+    if (inc.lastClass) { out.lastClass = inc.lastClass; out.lastAt = inc.lastAt; } else if (old.lastClass) { out.lastClass = old.lastClass; out.lastAt = old.lastAt; }
+  }
   if (part === "flows") { out.runs = Math.max(old.runs || 0, inc.runs || 0); out.fails = Math.max(old.fails || 0, inc.fails || 0); if (inc.src === "shipped" || old.src === "shipped") out.src = "shipped"; }
   if (part === "controls") {
     out.name = inc.name || old.name;
@@ -662,9 +722,9 @@ function shrink(rec, now) {
   let guard = 0;
   while (recordBytes(rec) > LIMITS.recordBytes && guard++ < 5000) {
     let worst = null;
-    for (const part of [...PARTS, "ready"]) for (const x of (part === "ready" ? rec.ready : rec[part])) { const s = score(x, now); if (!worst || s < worst.s) worst = { part, x, s }; }
+    for (const part of [...PARTS, "ready"]) for (const x of (part === "ready" ? rec.ready : rec[part] || [])) { const s = score(x, now); if (!worst || s < worst.s) worst = { part, x, s }; }
     if (!worst) break;
-    const list = worst.part === "ready" ? rec.ready : rec[worst.part]; list.splice(list.indexOf(worst.x), 1);
+    const list = worst.part === "ready" ? rec.ready : rec[worst.part] || []; list.splice(list.indexOf(worst.x), 1);
   }
   return rec;
 }
@@ -726,6 +786,38 @@ export function mergeFamily(origin, family) {
 }
 
 /**
+ * Is this patch only about the person's own taught operations (ops, and the removal of ops)? Teaching one is deliberate work, not passive observation, so the "learn" switch (which
+ * governs what Chrome notices on its own) does not stop it.
+ * @param {any} patch
+ */
+export function opsOnly(patch) {
+  const o = obj(patch); if (!o) return false;
+  const keys = Object.keys(o).filter(k => k !== "key" && k !== "origin" && !(Array.isArray(o[k]) && o[k].length === 0));
+  if (!keys.length || !keys.every(k => k === "ops" || k === "remove")) return false;
+  return !Array.isArray(o.remove) || o.remove.every((/** @type {any} */ r) => r && r.part === "ops");
+}
+
+/**
+ * Roll an operation back to an earlier version it still holds: the current one becomes the newest entry of the history, so a rollback can itself be undone. Returns the new record, or null
+ * when the operation or that version is not held.
+ * @param {any} rec @param {string} name @param {number} version @param {number} [now]
+ */
+export function rollbackOp(rec, name, version, now = Date.now()) {
+  const i = (rec.ops || []).findIndex((/** @type {any} */ x) => x.name === name);
+  if (i < 0) return null;
+  const cur = rec.ops[i];
+  const at = (cur.prev || []).findIndex((/** @type {any} */ p) => p.version === version);
+  if (at < 0) return null;
+  const out = JSON.parse(JSON.stringify(rec));
+  const target = out.ops[i].prev[at];
+  const rest = out.ops[i].prev.filter((/** @type {any} */ _p, /** @type {number} */ k) => k !== at);
+  out.ops[i] = { ...out.ops[i], op: target.op, version: Math.max(cur.version || 1, ...rest.map((/** @type {any} */ p) => p.version)) + 1, prev: [{ version: cur.version || 1, at: new Date(now).toISOString(), op: cur.op }, ...rest].slice(0, LIMITS.opPrev), misses: 0 };
+  delete out.ops[i].qAt;
+  out.rev = (rec.rev || 0) + 1; out.updated = new Date(now).toISOString();
+  return out;
+}
+
+/**
  * The small row Chrome reads on every arrival: signals, frames, the best controls for each page
  * template, and a name index of flows and API entries without their bodies. At most cardBytes.
  * @param {any} rec @param {{ now?: number }} [o]
@@ -740,12 +832,14 @@ export function arrivalCard(rec, { now = Date.now() } = {}) {
     startRungs: Object.fromEntries(Object.entries(rec.rungs || {}).filter(([, x]) => x.n >= 2).map(([k, x]) => [k, x.r])),
     flows: rec.flows.map(f => ({ name: f.name, title: f.title, src: f.src, conf: f.conf, verified: f.verified, params: f.params })),
     api: rec.api.map(e => ({ id: e.id, method: e.method, pathTemplate: e.pathTemplate, conf: e.conf, verified: e.verified })),
+    ops: (rec.ops || []).map(e => ({ name: e.name, kind: e.kind, version: e.version, conf: e.conf, verified: e.verified, ...(e.lastClass ? { lastClass: e.lastClass } : {}), inputs: e.op.params.map((/** @type {any} */ p) => p.name) })),
   });
   let n = LIMITS.perPageCard, card = build(n);
   while (JSON.stringify(card).length > LIMITS.cardBytes && n > 1) card = build(--n);
   // Still too big: thin the name index, weakest API entries first.
   while (JSON.stringify(card).length > LIMITS.cardBytes && card.api.length) card.api.pop();
   while (JSON.stringify(card).length > LIMITS.cardBytes && card.flows.length) card.flows.pop();
+  while (JSON.stringify(card).length > LIMITS.cardBytes && card.ops.length) card.ops.pop();
   return card;
 }
 export const cardBytes = (/** @type {any} */ c) => JSON.stringify(c).length;

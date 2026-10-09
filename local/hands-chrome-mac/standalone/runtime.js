@@ -14,6 +14,7 @@ import chromeModule from "../index.js";
 import { createTrace, rungOf, nextRung, readConfig } from "./trace.js";
 import { callerKind } from "../caller.js";
 import { createSiteStore } from "./sitestore.js";
+import { opsOnly } from "../extension/shared/sk/site-knowledge.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const PKG = path.resolve(HERE, "..");
@@ -108,8 +109,10 @@ export async function createRuntime(o = {}) {
     if (tool === "hands.grant.list") return { data: [] };
     // Vyre Memory's site knowledge, answered from files in this folder when there is no Vyre to ask.
     if (tool === "memory.site.get") return sites.get(input || {});
-    if (tool === "memory.site.put") return readConfig(dataDir).learn !== true ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
-    if (tool === "memory.site.report") return readConfig(dataDir).learn !== true ? { data: { known: false } } : sites.report(input || {});
+    // Teaching an operation is deliberate work, not noticing: the learn switch governs only what Chrome notices on its own.
+    if (tool === "memory.site.put") return readConfig(dataDir).learn !== true && !opsOnly(input && input.patch) ? { data: { accepted: false, refused: [{ path: "", why: "learning is off" }] } } : sites.put(input || {});
+    if (tool === "memory.site.report") return readConfig(dataDir).learn !== true && !(input && input.part === "ops") ? { data: { known: false } } : sites.report(input || {});
+    if (tool === "memory.site.rollback") return sites.rollback(input || {});
     if (tool === "memory.site.list") return sites.list();
     if (tool === "memory.site.forget") return sites.forget(input || {});
     return { error: { code: "no_such_tool", message: `no tool ${tool}` } };

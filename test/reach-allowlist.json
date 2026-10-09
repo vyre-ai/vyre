@@ -388,6 +388,10 @@
    "module": "memory",
    "default": "limited by callers in code"
   },
+  "memory.site.rollback": {
+   "module": "memory",
+   "default": "limited by callers in code"
+  },
   "memory.site.sync": {
    "module": "memory",
    "default": "limited by callers in code"

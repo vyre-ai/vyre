@@ -11,6 +11,8 @@ import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
 import { provisionDrive } from "./storage/provision.js";
 import { sealedDrive } from "./storage/sealed-drive.js";
+import { Keys } from "../lib/keywrap.js";
+import { derive } from "../lib/databox.js";
 import { ProcessKeys } from "../lib/chat-keys.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
@@ -85,8 +87,12 @@ export async function bootHomeKernel(cfg) {
       // The Space's own Drive (kernel/storage/provision.js), with a chat's folders stored sealed over it (kernel/storage/sealed-drive.js): the keys are lent to this process by a participant's
       // device (kernel/gateway/chat-keys.js) and live in memory only.
       const base = await provisionDrive({ dir: id.dir, space: id.space, sealer });
+      // A project's own files (`Projects/<id>/files/`) are sealed under a key the server derives for that project from the Space's pool key and never stores: access is enforced at the guard (kernel/core/folders.js)
+      const pfMaster = base ? await sealer.poolKey({ owner: id.space }) : null;
+      const pfKeys = (/** @type {string} */ c) => new Keys(c, new Map([[1, derive(pfMaster, `project-files key ${c}`)]]), derive(pfMaster, `project-files names ${c}`), 1);
       drive = base ? sealedDrive(base, {
-        keysFor: (/** @type {string} */ chat) => { const k = chatKeys.get(chat); return k && chatGrants && k.epoch >= chatGrants.chats.epoch(chat) ? k : null; },
+        projectFiles: true,
+        keysFor: (/** @type {string} */ chat) => { if (chat.startsWith("project-files:")) return pfKeys(chat); const k = chatKeys.get(chat); return k && chatGrants && k.epoch >= chatGrants.chats.epoch(chat) ? k : null; },
         sealed: (/** @type {string} */ chat) => Boolean(chatGrants && chatGrants.chats.epoch(chat) > 0),
         projectKeysFor: () => null,
       }) : undefined;
