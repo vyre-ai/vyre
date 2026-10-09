@@ -32,7 +32,7 @@ test("a raw key sent through each surface's chat tools is refused before any tur
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const call = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ caller = "cli", /** @type {any} */ meta) => d.registry.call(tool, input, caller, meta);
-  /** @param {any} r */ const refused = r => { assert.equal(r.error && r.error.code, "secret_in_message", JSON.stringify(r)); assert.ok(!JSON.stringify(r).includes(KEY), "the refusal never repeats the key"); assert.match(r.error.message, /Anthropic key/); };
+  /** @param {any} r */ const refused = (r, who = "") => { assert.equal(r.error && r.error.code, "secret_in_message", `${who}: ${JSON.stringify(r)}`); assert.ok(!JSON.stringify(r).includes(KEY), "the refusal never repeats the key"); assert.match(r.error.message, /Anthropic key/); };
 
   // threads.start from the person's surfaces (cli, deck, capsule, mobile): no session is made
   for (const caller of ["cli", "local", "deck", "capsule", "mobile"]) refused(await call("threads.start", { cwd: work, prompt: `use ${KEY} please`, surface: "deck" }, caller));
@@ -43,7 +43,7 @@ test("a raw key sent through each surface's chat tools is refused before any tur
   const id = ok.data.id;
 
   // threads.send, by each surface and by a model's call
-  for (const caller of ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness"]) refused(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined));
+  for (const caller of ["cli", "local", "deck", "capsule", "mobile", "mcp", "harness"]) refused(await call("threads.send", { thread: id, text: `here: ${KEY}`, surface: "deck" }, caller, caller === "mcp" || caller === "harness" ? { thread: id } : undefined), caller);
   refused(await call("threads.edit-retry", { thread: id, text: `again ${KEY}` }));
   refused(await call("stream.send", { chat: "chat-none", text: `to the group ${KEY}` }));
   // the same reference a person sends goes through
