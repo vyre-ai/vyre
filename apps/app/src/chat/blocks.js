@@ -15,7 +15,7 @@
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
- *  | { block: "preview", id: string, title: string, state: string, source: string, mode: string, access: string }
+ *  | { block: "preview", id: string, title: string, state: string, source: string, mode: string, access: string, thumb: number }
  *  | { block: "operator", run: string, computer: string, title: string, state: "working" | "done" | "stuck" | "paused", line: string, ask: string, steps: { line: string, state: string }[] }
  *  | { block: "signin", id: string, computer: string, site: string, why: string, state: "waiting" | "done" | "cancelled" | "expired" }
  *  | { block: "questions", id: string, title: string, state: "waiting" | "answered" | "cancelled" | "expired", questions: { id: string, prompt: string, choices: { label: string, detail?: string }[], allowText: boolean, optional: boolean }[], answers: Record<string, { choice?: string, text?: string }> | null }
@@ -108,7 +108,7 @@ export function normalizeBlock(raw, fallback = "Done") {
     case "preview": {
       const id = str(o.id, 16), title = str(o.title, 120);
       if (!/^[0-9a-f]{8}$/.test(id) || !title) return text();
-      return { block: "preview", id, title, state: ["starting", "live", "stopped", "crashed"].includes(o.state) ? o.state : "starting", source: str(o.source, 12) || "port", mode: o.mode === "supervised" ? "supervised" : "session", access: ["me", "project", "team"].includes(o.access) ? o.access : "me" };
+      return { block: "preview", id, title, state: ["starting", "live", "stopped", "crashed"].includes(o.state) ? o.state : "starting", source: str(o.source, 12) || "port", mode: o.mode === "supervised" ? "supervised" : "session", access: ["me", "project", "team"].includes(o.access) ? o.access : "me", thumb: Number(o.thumb) > 0 ? Number(o.thumb) : 0 };
     }
     // One card of several questions, asked together (ask.many). The person answers once; the card then shows what they said.
     case "questions": {

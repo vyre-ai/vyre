@@ -102,6 +102,11 @@
         "name": "previews.frame",
         "effect": "read",
         "reach": "person"
+      },
+      {
+        "name": "previews.thumb",
+        "effect": "read",
+        "reach": "person"
       }
     ]
   },

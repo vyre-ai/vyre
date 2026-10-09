@@ -18,7 +18,7 @@ test("a card says one word for its state and offers one verb at a time", () => {
 
 test("a preview block keeps its id and title and never an address", () => {
   const b = normalizeBlock({ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", mode: "supervised", access: "team", url: "http://127.0.0.1:5100", port: 5100 });
-  assert.deepEqual(b, { block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "port", mode: "supervised", access: "team" });
+  assert.deepEqual(b, { block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "port", mode: "supervised", access: "team", thumb: 0 });
   assert.ok(!JSON.stringify(b).includes("5100") && !JSON.stringify(b).includes("http"));
   assert.equal(normalizeBlock({ block: "preview", id: "nope", title: "x" }).block, "text", "a malformed id degrades to text");
 });

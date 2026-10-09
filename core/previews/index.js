@@ -16,6 +16,8 @@ import { isPerson } from "../../lib/caller.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
 import { createBridge } from "./bridge.js";
+import { findChrome, capture } from "./thumb.js";
+import os from "node:os";
 import { createDocs } from "./docs.js";
 import { mayOpen, mayManage, ACCESS } from "./access.js";
 
@@ -35,6 +37,7 @@ export const MIGRATIONS = [
   // A preview of files: the folder it serves (and the one file at its root), and the capabilities it declared (JSON), none by default.
   `ALTER TABLE previews_items ADD COLUMN root TEXT; ALTER TABLE previews_items ADD COLUMN file TEXT; ALTER TABLE previews_items ADD COLUMN caps TEXT;`,
   // What each viewer allowed a preview to use: nothing is on by default; a no is kept too.
+  `ALTER TABLE previews_items ADD COLUMN thumb INTEGER;`,
   `CREATE TABLE previews_grants (preview TEXT NOT NULL, who TEXT NOT NULL, cap TEXT NOT NULL, allowed INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (preview, who, cap));`,
 ];
 
@@ -50,7 +53,7 @@ export default {
     const now = seam.now || Date.now;
     const emit = (/** @type {string} */ type, /** @type {any} */ payload, /** @type {any} */ where) => { try { ctx.events.emit(type, payload, where); } catch { /* an event nobody hears */ } };
     /** The chat's card: the thread's stream draws (and redraws) it from this. */
-    const card = (/** @type {any} */ r) => { if (r && r.thread) emit("thread.preview", { id: r.id, title: r.title, state: r.state, source: r.source, mode: r.mode, access: r.access }, { thread: r.thread }); };
+    const card = (/** @type {any} */ r) => { if (r && r.thread) emit("thread.preview", { id: r.id, title: r.title, state: r.state, source: r.source, mode: r.mode, access: r.access, thumb: r.thumb || 0 }, { thread: r.thread }); };
 
     const view = (/** @type {any} */ r, detail = false) => ({
       id: r.id, title: r.title, source: r.source, mode: r.mode, state: r.state, access: r.access, thread: r.thread || null, project: r.project || null,
@@ -61,7 +64,9 @@ export default {
     const mustRow = (/** @type {string} */ id) => { const r = row(id); if (!r) throw refuse("no such preview", "not_found"); return r; };
     const setState = (/** @type {string} */ id, /** @type {string} */ state, error = "") => {
       const r = row(id); if (!r) return;
+      const was = r.state;
       db.prepare("UPDATE previews_items SET state = ?, error = ?, updated = ? WHERE id = ?").run(state, error || null, now(), id);
+      if (state === "live" && was !== "live") soon(id);
       emit("preview.state", { id, state, title: r.title, thread: r.thread || null, project: r.project || null, ...(error ? { error } : {}) });
       card(row(id));
     };
@@ -109,6 +114,27 @@ export default {
     });
     await new Promise(resolve => { staticSrv.once("listening", resolve); staticSrv.once("error", resolve); staticSrv.listen(0, "127.0.0.1"); });
     const staticPort = () => { const a = staticSrv.address(); return a && typeof a !== "string" ? a.port : 0; };
+
+    // ---- the picture on the card (thumb.js) ---------------------------------------------------------------------------------------------------------------------------------------------
+    const thumbDir = path.join((ctx.paths && ctx.paths.root) || os.tmpdir(), "previews-thumbs");
+    try { fs.mkdirSync(thumbDir, { recursive: true, mode: 0o700 }); fs.chmodSync(thumbDir, 0o700); } catch { /* the next write says */ }
+    const thumbFile = (/** @type {string} */ id) => path.join(thumbDir, `${id}.png`);
+    const chrome = seam.chrome !== undefined ? seam.chrome : findChrome(process.env, ctx.config && ctx.config.previews && ctx.config.previews.chrome);
+    const shoot = seam.capture || capture;
+    /** @type {Set<string>} */ const shooting = new Set();
+    /** Take the preview's picture: its own address on this machine, one screenshot, the last good one kept. Quiet when there is no Chrome, or the page does not come up. @param {string} id */
+    const takeThumb = async id => {
+      if (!chrome || shooting.has(id)) return;
+      const r = row(id);
+      if (!r || r.state !== "live") return;
+      const url = r.source === "files" ? `http://pv-${id}.localhost:${staticPort()}/` : r.upstream ? `http://127.0.0.1:${r.upstream}/` : "";
+      if (!url) return;
+      shooting.add(id);
+      try {
+        if (await shoot({ chrome, url, out: thumbFile(id) })) { db.prepare("UPDATE previews_items SET thumb = ? WHERE id = ?").run(now(), id); card(row(id)); }
+      } catch (e) { ctx.log.warn(`previews: no picture for ${id}: ${/** @type {Error} */ (e).message}`); } finally { shooting.delete(id); }
+    };
+    const soon = (/** @type {string} */ id, ms = 1500) => { const t = setTimeout(() => { void takeThumb(id); }, ms); if (typeof t.unref === "function") t.unref(); };
 
     // ---- who ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** The person behind a call and their role in this Space: { id, role }, or null for anyone who is not a person. @param {any} meta */
@@ -171,6 +197,7 @@ export default {
         .run(id, ctx.space || null, i.project ? String(i.project) : null, thread, title, staticPort(), access, creator, t, t, root, file, caps ? JSON.stringify(caps).slice(0, 8000) : null);
       emit("preview.opened", { id, title, thread, project: i.project || null });
       card(row(id));
+      soon(id, 500);
       return { id, state: "live", preview: view(row(id)), message: `${title} is a preview now: a card is in the chat, and the person opens it from there.` };
     };
 
@@ -287,6 +314,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
         sup.forget(r.id);
+        try { fs.rmSync(thumbFile(r.id), { force: true }); } catch { /* none */ }
         bridge.forget(r.id);
         void docs.purge(r.id).catch(() => {});
         db.prepare("DELETE FROM previews_grants WHERE preview = ?").run(r.id);
@@ -303,6 +331,16 @@ export default {
         const w = await needPerson(meta); const r = mustRow(i.id);
         if (!mayOpen(r, w) && !mayManage(r, w)) throw refuse("no such preview", "not_found");
         return { log: sup.tail(r.id, Math.min(Number(i.lines) || 200, 1000)), supervised: r.mode === "supervised" };
+      },
+    });
+
+    ctx.tool("previews.thumb", {
+      description: "The picture on a preview's card: { image (base64 PNG), at }, or { image: null } when none has been taken (no browser on this machine, or it is not up yet). A person who may open the preview.",
+      input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const who = await needPerson(meta); const r = mustRow(i.id);
+        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
+        try { return { image: fs.readFileSync(thumbFile(r.id)).toString("base64"), at: r.thumb || 0 }; } catch { return { image: null }; }
       },
     });
 

@@ -1,7 +1,7 @@
 // @ts-check
 // The pure half of the preview card: the words for each state, who may be shown what, and which verbs the card offers when. Node tests it; PreviewCard.tsx draws it.
 
-/** @typedef {{ block: "preview", id: string, title: string, state: "starting"|"live"|"stopped"|"crashed", source: string, mode: "session"|"supervised", access: "me"|"project"|"team" }} PreviewBlock */
+/** @typedef {{ block: "preview", id: string, title: string, state: "starting"|"live"|"stopped"|"crashed", source: string, mode: "session"|"supervised", access: "me"|"project"|"team", thumb: number }} PreviewBlock */
 
 /** The one word a card shows for its state. @param {string} state */
 export const previewWord = (state) => ({ starting: "Starting", live: "Live", stopped: "Stopped", crashed: "Needs attention" }[state] ?? "Starting");

@@ -190,7 +190,7 @@ export function createAdapter() {
         case "thread.shell": return shell("shell", String(p.command ?? ""), String(p.output ?? ""));
         // A preview of this chat: one card, kept up to date by the same tool id (its state changes patch the card in place).
         case "thread.preview":
-          return typeof p.id === "string" && /^[0-9a-f]{8}$/.test(p.id) ? [spec("tool-finished", { tool_id: `preview:${p.id}`, ok: true, result: { block: "preview", id: p.id, title: String(p.title || "Preview").slice(0, 120), state: String(p.state || "starting"), source: String(p.source || "port"), mode: String(p.mode || "session"), access: String(p.access || "me") } })] : [];
+          return typeof p.id === "string" && /^[0-9a-f]{8}$/.test(p.id) ? [spec("tool-finished", { tool_id: `preview:${p.id}`, ok: true, result: { block: "preview", id: p.id, title: String(p.title || "Preview").slice(0, 120), state: String(p.state || "starting"), source: String(p.source || "port"), mode: String(p.mode || "session"), access: String(p.access || "me"), thumb: Number(p.thumb) || 0 } })] : [];
         // One card of several questions: patched in place as it is answered (the same tool id).
         case "thread.questions":
           return typeof p.id === "string" && /^[0-9a-f]{12}$/.test(p.id) && Array.isArray(p.questions) ? [spec("tool-finished", { tool_id: `ask:${p.id}`, ok: true, result: { block: "questions", id: p.id, title: String(p.title || "A few questions").slice(0, 120), state: String(p.state || "waiting"), questions: p.questions.slice(0, 6), ...(p.answers && typeof p.answers === "object" ? { answers: p.answers } : {}) } })] : [];
