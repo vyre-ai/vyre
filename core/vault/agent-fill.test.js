@@ -228,3 +228,28 @@ test("a # tag stops matching after 8 hours idle, and a use restarts the clock", 
   assert.ok(matchIntent(call(1_000_000 + USE_IDLE_MS + 1), [{ ...intent, used: 1_000_000 + 3_600_000 }], ["t-1"]), "a use an hour in restarts the clock");
   assert.equal(matchIntent(call(1_000_000), [intent], ["t-2"]), null, "another conversation");
 });
+
+test("the tools: who may sign an agent in, and the person's view and removal of a # tag", async t => {
+  const { register } = await import("./tools/agent-fill.js");
+  const user = "alex@harlow.test", pass = fake("password");
+  const w = await world(t, { origin: "http://127.0.0.1:9", user, pass });
+  const tools = new Map();
+  const asked = [];
+  register({ ctx: { call: async (n, i) => { asked.push(n); return { error: { code: "no_driver", message: "no computer here" } }; }, log: () => {} }, vault: w.v, said: w.said, tool: (name, callers, description, input, run) => tools.set(name, { callers, run }) });
+  const fill = tools.get("vault.agent.fill");
+  assert.deepEqual(fill.callers, ["mcp", "harness", "module"]);
+  // a module other than Vyre Computer, a model that names no agent, and a person's surface are all refused before anything is touched
+  await assert.rejects(fill.run({ item: "northwind-app", agent: "kit" }, { caller: "module:flows" }), /only Vyre Computer/);
+  await assert.rejects(fill.run({ item: "northwind-app" }, { caller: "mcp" }), /names no agent/);
+  await assert.rejects(fill.run({ item: "northwind-app", agent: "kit" }, { caller: "cli" }), /only an agent|names no agent/);
+  assert.deepEqual(asked, []);
+  // the tag is listed with names and hosts only, and ends when the person takes it back
+  const id = (await w.said.record({ thread: "t-1", said: "mention:northwind-app", kind: "use", to: ["northwind-app"], what: "use northwind-app", standing: false, limits: { hosts: ["http://127.0.0.1:9"] } }, "module:sessions")).id;
+  const listed = tools.get("vault.tagged").run({}, { caller: "cli" });
+  assert.deepEqual(listed.tags.map(x => [x.id, x.item, x.thread, x.hosts]), [[id, "northwind-app", "t-1", ["http://127.0.0.1:9"]]]);
+  assert.ok(!JSON.stringify(listed).includes(pass));
+  assert.deepEqual(tools.get("vault.tagged").run({ item: "other" }, { caller: "cli" }).tags, []);
+  assert.deepEqual(tools.get("vault.tagged").callers.includes("mcp"), false, "a model does not list who has what");
+  tools.get("vault.untag").run({ id }, { caller: "cli" });
+  assert.deepEqual(tools.get("vault.tagged").run({}, { caller: "cli" }).tags, []);
+});
