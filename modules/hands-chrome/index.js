@@ -24,7 +24,7 @@ import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
 import * as consequence from "./consequence.js";
 import * as selector from "./selector.js";
-import { runBoxOperation } from "./siteops.js";
+import { runBoxOperation, checkBoxOperation } from "./siteops.js";
 
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 const str = { type: "string" };
@@ -169,6 +169,7 @@ export default {
         if (!entry) throw Object.assign(new Error(`no operation ${String(i.name).slice(0, 40)} is kept for ${origin}`), { code: "not_found" });
         await mayAct(agent, "chrome.op.run");
         const { cdp, sessionId } = await session(agent);
+        if (i.check === true) return checkBoxOperation({ cdp, sessionId, op: entry.op });
         const res = await runBoxOperation({ cdp, sessionId, op: entry.op, inputs: i.inputs && typeof i.inputs === "object" ? i.inputs : {}, approved: i.approved === true });
         act_(meta, agent, "op", res.ok === true, res.ok ? undefined : String(res.reason || res.class), { summary: `${entry.name} on ${bareUrl(origin)}` });
         // the store's own count: a success raises the trust, a drift counts a miss (never an auth or rate failure: those are not the operation's fault)

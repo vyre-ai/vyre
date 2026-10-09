@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runBoxOperation } from "./siteops.js";
+import { runBoxOperation, checkBoxOperation } from "./siteops.js";
 import { learnOperation } from "../../lib/siteops/learn.js";
 import * as F from "../../lib/siteops/fixtures.js";
 
@@ -83,4 +83,16 @@ test("an outward operation runs only with the yes that was already given; withou
   assert.equal(done.ok, true, JSON.stringify(done));
   assert.equal(p.st.fetches.length, 1);
   assert.deepEqual(JSON.parse(p.st.fetches[0].init.body), { recipient: "alan-turing", body: "a fresh note", channel: "direct" });
+});
+
+test("a check says whether this Chrome can sign for the operation: on the site, signed in, and which references the page can supply, by name only", async () => {
+  const good = fakePage({ url: `${ORIGIN}/feed`, local: { csrf: F.CSRF } });
+  assert.deepEqual(await checkBoxOperation({ cdp: good.cdp, sessionId: "s1", op: read() }), { ok: true, onSite: true, refs: { "session:csrf": true } });
+  assert.equal(good.st.fetches.length, 0, "a check sends nothing");
+  const lacking = fakePage({ url: `${ORIGIN}/feed`, local: {} });
+  const c = await checkBoxOperation({ cdp: lacking.cdp, sessionId: "s1", op: read() });
+  assert.equal(c.ok, false); assert.deepEqual(c.refs, { "session:csrf": false });
+  const walled = fakePage({ wall: true });
+  const w = await checkBoxOperation({ cdp: walled.cdp, sessionId: "s1", op: read() });
+  assert.equal(w.ok, false); assert.match(String(w.reason), /sign-in page/);
 });

@@ -985,7 +985,7 @@
  "kernel/flows/site-flow.test.js": 3,
  "core/connectors/site-runner.test.js": 8,
  "lib/siteops/page.test.js": 4,
- "modules/hands-chrome/siteops.test.js": 3,
+ "modules/hands-chrome/siteops.test.js": 4,
  "test/site-mac-rung.test.js": 3,
  "core/connectors/governor.test.js": 6,
  "lib/siteops/kit-benchmark.test.js": 6,

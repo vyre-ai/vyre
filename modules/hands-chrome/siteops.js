@@ -96,3 +96,30 @@ export async function runBoxOperation({ cdp, sessionId, op, inputs, approved = f
     });
   } finally { cap.stop(); }
 }
+
+/**
+ * Can this Chrome sign for the operation right now? Opens the site if the page is elsewhere, reports a sign-in wall as not signed in, and names which credential references the page can supply
+ * (names only, never a value).
+ * @param {{ cdp: CdpLike, sessionId: string, op: any }} q
+ * @returns {Promise<{ ok: boolean, onSite: boolean, refs: Record<string, boolean>, reason?: string }>}
+ */
+export async function checkBoxOperation({ cdp, sessionId, op }) {
+  const origin = originOf(op.request.url);
+  const cap = capture(cdp, sessionId);
+  try {
+    await cdp.send("Network.enable", {}, sessionId);
+    let state = await evaluate(cdp, sessionId, STATE_EXPRESSION);
+    if (!state || state.origin !== origin) {
+      const loaded = cdp.waitFor(m => m.method === "Page.loadEventFired" && m.sessionId === sessionId);
+      await cdp.send("Page.navigate", { url: `${origin}/` }, sessionId);
+      await loaded; await cap.settle();
+      state = await evaluate(cdp, sessionId, STATE_EXPRESSION);
+    }
+    const wall = loginWall(state.url, `${origin}/`);
+    if (wall) return { ok: false, onSite: true, refs: {}, reason: `the browser is on a sign-in page (${wall})` };
+    const resolve = resolverFor(state, cap.recent(), op);
+    /** @type {Record<string, boolean>} */ const refs = {};
+    for (const r of refsOf(op)) refs[r] = resolve(r) !== undefined;
+    return { ok: Object.values(refs).every(Boolean), onSite: true, refs };
+  } finally { cap.stop(); }
+}
