@@ -106,7 +106,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
-| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 8 | capsule, cli, deck |
+| [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
@@ -1139,7 +1139,7 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Folder: `core/watchers`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#watchers)
+- Tools: [21](tools.md#watchers), 1 of them only for other modules
 - Emits: [8 events](events.md#watchers)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove"],"types":[{"name":"def-watcher","label":"Watcher","icon":"IconEye","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"project","kind":"text","label":"Project"},{"name":"schedule","kind":"text","label":"Runs"},{"name":"hash","kind":"text","label":"Hash"},{"name":"spec","kind":"text","label":"Settings (watcher.json)"},{"name":"code","kind":"text","label":"Code (watch.js)"}]}]}`

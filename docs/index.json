@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1556,"event":504,"config":290,"env":271,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1557,"event":504,"config":290,"env":271,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2831,6 +2831,7 @@
     {"kind":"tool","name":"watchers.duty.run","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersdutyrun","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.duty.update","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersdutyupdate","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.hook","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchershook","module":"watchers","mentions":[]},
+    {"kind":"tool","name":"watchers.hook.run","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchershookrun","module":"watchers","mentions":[]},
     {"kind":"tool","name":"watchers.items","definedIn":"core/watchers/index.js","page":"reference/tools.md#watchersitems","module":"watchers","mentions":[{"page":"using/watchers.md","line":159,"anchor":"which-surface-does-what"}]},
     {"kind":"tool","name":"watchers.list","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherslist","module":"watchers","mentions":[{"page":"using/watchers.md","line":157,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":224,"anchor":"51-the-manifest-five-verbs"},{"page":"architecture/spec.md","line":413,"anchor":"76-watchers--workstream"}]},
     {"kind":"tool","name":"watchers.logs","definedIn":"core/watchers/index.js","page":"reference/tools.md#watcherslogs","module":"watchers","mentions":[{"page":"using/watchers.md","line":159,"anchor":"which-surface-does-what"},{"page":"architecture/spec.md","line":413,"anchor":"76-watchers--workstream"}]},
