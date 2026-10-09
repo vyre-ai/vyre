@@ -414,6 +414,16 @@
           "label": "Project lead (an agent of the Space; a template may name one)"
         },
         {
+          "name": "template_stage",
+          "kind": "text",
+          "label": "Stage it is in (a template project)"
+        },
+        {
+          "name": "template_snapshot",
+          "kind": "text",
+          "label": "The template's stages as they were when it started (JSON)"
+        },
+        {
           "name": "personal_of",
           "kind": "text",
           "label": "The person whose private Personal project this is (blank for every other project)"

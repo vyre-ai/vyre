@@ -17,6 +17,7 @@
 // - A stuck or rejected task simply is not done: nothing advances, nothing is made twice. A record that was moved by hand before the tasks
 //   finished is left alone. Coming back into a stage later is a new entry with new tasks.
 
+import { createHash } from "node:crypto";
 import { holds, stagesFor } from "../../lib/expr/conditions.js";
 import { renderBrief, evalChecklist } from "./checklist.js";
 
@@ -43,6 +44,20 @@ const FINISHED = new Set(["done", "skipped"]);
  */
 export function createStages(o) {
   const now = o.clock || Date.now;
+  // A project started from a template carries the template's stages, pinned at the moment it started (`template_snapshot`, JSON: { stages }), so a running project keeps the version it began with; the
+  // stage it is in is `template_stage` (text, so the template's own names are its stage names). Such a record is driven by this module alone: the gateway's stage hook only sees `stage` fields.
+  /** @type {Map<string, any>} */ const pins = new Map();
+  /** @param {any} data @returns {{ stages: any[] } | null} */
+  const snapshotOf = data => {
+    const t = data && typeof data.template_snapshot === "string" ? data.template_snapshot : "";
+    if (!t) return null;
+    if (!pins.has(t)) { try { const j = JSON.parse(t); pins.set(t, j && Array.isArray(j.stages) ? j : null); } catch { pins.set(t, null); } }
+    return pins.get(t);
+  };
+  /** The entry a move into the next stage makes: short and stable (a task's idempotency key is built from it, and an entry's key holds the one before). @param {string} key */
+  const advEntry = key => `adv:${createHash("sha256").update(key).digest("hex").slice(0, 16)}`;
+  /** The field a record's stage is kept in. @param {any} data */
+  const fieldOf = data => (snapshotOf(data) ? "template_stage" : "stage");
   const emit = o.emit || (() => {});
   /** @type {Map<string, { key: string, urn: string, type: string, id: string, stage: string, tasks: { title: string, id: string, required: boolean, state?: string }[], advanced: boolean, waitingOn?: string, run?: string, owner?: string | null, next?: string | null }>} */
   const entries = new Map();
@@ -58,7 +73,7 @@ export function createStages(o) {
   /** The record's values, or undefined when it cannot be read. @param {string} type @param {string} id */
   const recordData = async (type, id) => { try { const r = await o.kernel.records.get(o.chain(), type, id); return r && r.data; } catch { return undefined; } };
   /** The stages one record follows: its stage set (the first whose `when` holds for its values) or the type's default stages. @param {string} type @param {any} [data] */
-  const stagesOfRecord = async (type, data) => { const c = await o.catalog(); const t = c.types && c.types[type]; if (!t) return []; return t.stage_sets && t.stage_sets.length && data ? stagesFor(t, data).stages : t.stages || []; };
+  const stagesOfRecord = async (type, data) => { const pinned = snapshotOf(data); if (pinned) return pinned.stages; const c = await o.catalog(); const t = c.types && c.types[type]; if (!t) return []; return t.stage_sets && t.stage_sets.length && data ? stagesFor(t, data).stages : t.stages || []; };
 
   /** @param {string} spec @param {string} space */
   async function actorFor(spec, space, ctx) {
@@ -124,7 +139,10 @@ export function createStages(o) {
         // goes to the kernel only where a checker or an outward send already guards the task; the module keeps its own required list either way.
         ...(t.required !== false && (t.checker || t.output.kind === "sent") ? { required: true } : {}),
       };
-      const task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` });
+      /** @type {any} */ let task;
+      // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
+      try { task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` }); }
+      catch (err) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` }); continue; }
       made.set(t.title, task.id);
       ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
       taskEntry.set(task.id, key);
@@ -184,7 +202,7 @@ export function createStages(o) {
     const stages = await stagesOfRecord(ent.type, cur.data);
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
-    if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage, why: "the stage is not in the set this record follows now" }); await closeGate(ent, { note: "the stage is not in the set this record follows now" }); return; }
+    if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data[fieldOf(cur.data)], why: "the stage is not in the set this record follows now" }); await closeGate(ent, { note: "the stage is not in the set this record follows now" }); return; }
     // The next stage has an entry condition the record does not meet yet: it stays where it is, and the gateway would refuse the move anyway.
     if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); ent.waitingOn = "condition"; await mark(ent, "condition", { status: "waiting", output: { say: `${next.name} cannot be entered yet: ${next.enter_if}` } }, { attention: { kind: "stale", message: `${next.name} cannot be entered yet: ${next.enter_if}` } }); return; }
     ent.waitingOn = undefined;
@@ -192,12 +210,14 @@ export function createStages(o) {
     ent.advanced = true;
     if (!next) { emit("stage.finished", { record: ent.urn, stage: ent.stage }); await closeGate(ent, { note: "the last stage" }); return; }
     // The record was moved by hand (or removed) while the tasks were open: leave it where the person put it.
-    if (cur.data.stage !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage }); await closeGate(ent, { note: `the record was moved to ${cur.data.stage} by hand` }); return; }
-    try { await o.kernel.records.update(chain, ent.type, ent.id, { stage: next.name }, cur.version, { idem: `advance:${key}` }); }
+    if (cur.data[fieldOf(cur.data)] !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data[fieldOf(cur.data)] }); await closeGate(ent, { note: `the record was moved to ${cur.data[fieldOf(cur.data)]} by hand` }); return; }
+    try { await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: next.name }, cur.version, { idem: `advance:${key}` }); }
     catch (e) { ent.advanced = false; throw e; }
     emit("stage.advanced", { record: ent.urn, from: ent.stage, to: next.name });
     await mark(ent, "move", { status: "done", output: { to: next.name } });
     await closeGate(ent);
+    // a template project's next stage is entered here: the gateway's hook does not see its text field
+    if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: next.name, entry: advEntry(key) });
   }
 
   /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[], owner?: string }} e */
@@ -283,12 +303,13 @@ export function createStages(o) {
       if (!reason || !String(reason).trim()) throw fail("bad_input", "reason is required: say why it moves on early");
       const chain = o.chain();
       const cur = await o.kernel.records.get(chain, ent.type, ent.id);
-      if (!cur || cur.data.stage !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
-      await o.kernel.records.update(chain, ent.type, ent.id, { stage: ent.next }, cur.version, { idem: `advance:${ent.key}` });
+      if (!cur || cur.data[fieldOf(cur.data)] !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
+      await o.kernel.records.update(chain, ent.type, ent.id, { [fieldOf(cur.data)]: ent.next }, cur.version, { idem: `advance:${ent.key}` });
       ent.advanced = true;
       await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
       await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
       emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
+      if (fieldOf(cur.data) === "template_stage") await enter({ urn: ent.urn, type: ent.type, id: ent.id, stage: ent.next, entry: advEntry(ent.key) });
       return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
     });
   }

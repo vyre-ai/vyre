@@ -20,6 +20,7 @@ import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
+import { createTemplates, registerTemplateTools } from "./templates.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -132,6 +133,9 @@ export default {
       // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
       void hubOf().personalProject().then(() => hubOf().migrateGeneral()).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
+    // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
+    registerTemplateTools({ ctx, chainOf, templates: createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
+      flows: () => { const h = ctx.flowsHost; return h && ctx.kernel ? h.get(ctx.kernel.space) : null; } }) });
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
       input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),

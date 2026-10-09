@@ -185,18 +185,38 @@ export function createFlowsHost(o) {
       mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
       apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("agents.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
     };
+    /** A template version put live, on its owner's yes (R031-11): the same card, with the work module keeping the versions. */
+    const templateKind = {
+      draft: async (/** @type {any} */ _chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {
+        const r = await callModule("work.template.change.draft", { template: String(spec.template || ""), version: Number(spec.version), proposer: proposer.id });
+        if (proposer.id !== r.owner && !(await isAdminOf(proposer))) throw Object.assign(new Error(`only ${r.template}'s owner or an admin proposes a version of it`), { code: "not_found" });
+        return { form: { template: r.template, version: r.version, draft: r.id, hash: r.hash, owner: r.owner || null }, title: r.title, idem: r.hash, checker: { kind: "person", id: r.owner || ownerOf(), space } };
+      },
+      title: async (/** @type {any} */ f) => callModule("work.template.change.title", { id: String(f.draft), hash: String(f.hash) }),
+      mayCheck: async (/** @type {any} */ checker, /** @type {any} */ f) => checker.id === f.owner || isAdminOf(checker),
+      apply: async (/** @type {any} */ checker, /** @type {any} */ f) => callModule("work.template.change.apply", { id: String(f.draft), hash: String(f.hash), approver: checker.id }),
+    };
     const proposals = {
       chain: flowsChain,
       isAdmin: isAdminOf,
       applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
       // the agents are this home's own: only the home's Space takes a change to one
-      kinds: o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {},
+      kinds: { template: templateKind, ...(o.agentsSpace && o.agentsSpace() === space ? { agent: agentKind } : {}) },
     };
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
     const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
-    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
+    // A template project's `role:x` doer is the agent or person its team gave that role (team-member rows), before the Space's own roles are asked.
+    const projectRoleDoer = async (/** @type {string} */ role, /** @type {any} */ c) => {
+      if (!c || c.type !== "project" || typeof c.record !== "string") return null;
+      try {
+        const rows = (await gw.records.query(owner(), "team-member", { filter: { field: "project", op: "eq", value: { urn: c.record } }, page: { limit: 100 } })).rows;
+        const hit = rows.find((/** @type {any} */ r) => r.data && r.data.role === role && r.data.actor && r.data.actor.actor);
+        return hit ? hit.data.actor.actor : null;
+      } catch { return null; }
+    };
+    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles, doer: projectRoleDoer }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
     flows.attachStages(stages);

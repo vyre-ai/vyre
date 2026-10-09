@@ -1,0 +1,114 @@
+{
+  "name": "Estate plan",
+  "description": "A client's estate plan from intake to signing: gather documents, check conflicts, draft the trust and the will, review with the client, sign, and fund.",
+  "tags": [
+    "estate"
+  ],
+  "roles": [
+    {
+      "role": "researcher",
+      "agent": "research"
+    },
+    {
+      "role": "drafter",
+      "agent": "drafting"
+    },
+    {
+      "role": "attorney",
+      "lead": false
+    }
+  ],
+  "stages": [
+    {
+      "name": "Intake",
+      "owner": "role:attorney",
+      "tasks": [
+        {
+          "title": "Gather the client's documents",
+          "doer": "role:researcher",
+          "output": {
+            "kind": "note"
+          },
+          "context": [
+            "the client's existing will, trust, deeds, account statements and insurance policies"
+          ],
+          "checklist": [
+            {
+              "say": "the project's folder has the existing documents",
+              "check": {
+                "field": "name != \"\""
+              }
+            }
+          ]
+        },
+        {
+          "title": "Run the conflict check",
+          "doer": "role:researcher",
+          "checker": "role:attorney",
+          "output": {
+            "kind": "decision"
+          },
+          "depends_on": [
+            "Gather the client's documents"
+          ],
+          "ask": "role:attorney"
+        }
+      ]
+    },
+    {
+      "name": "Drafting",
+      "owner": "role:attorney",
+      "tasks": [
+        {
+          "title": "Draft the trust and the will",
+          "doer": "role:drafter",
+          "checker": "role:attorney",
+          "output": {
+            "kind": "draft"
+          },
+          "needs_yes": [
+            "sending the drafts to the client"
+          ],
+          "ask": "role:attorney"
+        },
+        {
+          "title": "Prepare the funding schedule",
+          "doer": "role:drafter",
+          "output": {
+            "kind": "note"
+          },
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "Review",
+      "owner": "role:attorney",
+      "tasks": [
+        {
+          "title": "Review the drafts with the client",
+          "doer": "role:attorney",
+          "output": {
+            "kind": "decision"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Signing",
+      "owner": "role:attorney",
+      "tasks": [
+        {
+          "title": "Hold the signing ceremony",
+          "doer": "role:attorney",
+          "output": {
+            "kind": "decision"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Funding"
+    }
+  ]
+}
