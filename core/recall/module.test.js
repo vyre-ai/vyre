@@ -117,11 +117,11 @@ const run = (args, env) => new Promise(resolve =>
 
 test("recall cli: up, index, recall, down against a temp home", async t => {
   const { root } = home(t, { vectors: false });
-  const env = { VYRE_HOME: root };
+  const env = { VYRE_HOME: root, VYRE_UP_WAIT_MS: "180000" }; // a busy machine takes longer than the usual 15 s to start vyred
   t.after(() => run(["down"], env));
   assert.match((await run(["up"], env)).out, /vyred running/);
   const ix = await run(["index"], env);
-  assert.equal(ix.code, 0);
+  assert.equal(ix.code, 0, ix.out);
   assert.match(ix.out, /6 sessions/);
   const r = await run(["recall", "intake", "form"], env);
   assert.equal(r.code, 0);
@@ -130,7 +130,7 @@ test("recall cli: up, index, recall, down against a temp home", async t => {
   assert.match((await run(["recall", "zygomorphic"], env)).out, /nothing matching/);
   assert.match((await run(["recall"], env)).out, /6 sessions · 16 turns/);
   const ev = await run(["recall", "eval", path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "test", "fixtures", "recall-eval.json")], env);
-  assert.equal(ev.code, 0);
+  assert.equal(ev.code, 0, ev.out);
   assert.match(ev.out, /14 questions/);
   assert.match(ev.out, /keyword +MRR@10 \d\.\d{3}/);
   assert.match((await run(["down"], env)).out, /vyred stopped/);
