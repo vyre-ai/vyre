@@ -79,7 +79,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`skills`](#skills) | `core/skills` | `box`, `local` | 3 | 0 | cli |
+| [`skills`](#skills) | `core/skills` | `box`, `local` | 12 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 112 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -102,7 +102,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 50 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 52 | 0 | cli |
 
 ## about
 
@@ -815,14 +815,15 @@ The command line's sign-in: `vyre signin` asks the owner's phone to approve, and
 
 ## skills
 
-The skills a session may use, found by what it is about to do. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, the person's learned ones, a project's, an agent's. What a caller sees is cut by the permission system: it never sees a skill it may not use.
+The skills a session may use, found by what it is about to do, and the library they come from. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, or from the library at four levels (space, personal, agent, project), drafted by anyone and approved by the level's owner. What a caller sees is cut by the permission system: it never sees a skill it may not use.
 
 - Folder: `core/skills`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [3](tools.md#skills)
+- Tools: [12](tools.md#skills), 5 of them only for other modules
 - Emits: no events
 - Shows on: cli
+- Needs kernel: `{"membership":true,"actions":["records.read","records.create","records.update"]}`
 - Needs tools: `projects.reach`
 - Teaches tips: `[object Object]`
 
@@ -1091,7 +1092,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [50](tools.md#work), 3 of them only for other modules
+- Tools: [52](tools.md#work), 3 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`

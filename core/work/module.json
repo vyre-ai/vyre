@@ -323,6 +323,18 @@
         "summary": "put the version live on the owner's yes (proposals path)",
         "reach": "modules",
         "effect": "write"
+      },
+      {
+        "name": "work.chat.persistent",
+        "summary": "your pinned assistant or Engineer chat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.pin",
+        "summary": "make a chat your pinned assistant or Engineer chat",
+        "reach": "anyone",
+        "effect": "write"
       }
     ]
   },

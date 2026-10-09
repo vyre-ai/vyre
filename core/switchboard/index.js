@@ -991,6 +991,8 @@ export class Switchboard {
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
     at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o) };
+    at("skill library");
+    o = { ...o, libraryPlugin: await this.libraryPlugin(rec, o) };
     at("spawn");
     // A thread rolled over and not yet written to has a fresh native session waiting for its first message, and the seed that rides with it: a restart in between must not try
     // to resume a session that never began, and must not lose the seed.
@@ -1321,6 +1323,21 @@ export class Switchboard {
     st.idle.unref?.();
   }
 
+  /**
+   * The approved skills and plugins of the Space's library as a plugin folder for this thread (R031-19): Claude's `--plugin-dir`, or for Codex the folder its per-session CODEX_HOME links (`VYRE_SKILLS_DIR`, core/sessions/drivers/codex.js): the Space's, the person's, this agent's and this project's, written once per content by the
+   * skills module. Null for a job or lean thread that names its own plugins, for another provider's thread (it is given the same library in its own layout), or when nothing is approved.
+   * @param {any} rec @param {any} o
+   */
+  async libraryPlugin(rec, o) {
+    const ai = o.provider || rec.provider || "claude";
+    if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
+    try {
+      const r = await this.deps.call("skills.materialise", { ai, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
+      return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
+    } catch { return null; }
+  }
+
   spawn(id, o) {
     // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
     const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
@@ -1328,6 +1345,8 @@ export class Switchboard {
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
     Object.assign(env, o.env || {});
+    // another provider's session is told where its skills were written (its driver links them into the home it runs with)
+    if (o.libraryPlugin && o.provider && o.provider !== "claude") env.VYRE_SKILLS_DIR = o.libraryPlugin;
     // The session's commit identity and hooks (github.session.env). If the child already carries GIT_CONFIG_COUNT (vyred's own environment), the hooks entry
     // is appended after it, never over it. github's hook wrappers unset GIT_CONFIG_COUNT, KEY_0 and VALUE_0 when they run in another repo, which clears any entries the
     // person's own environment carried for that hook run only (nothing outside the hook), so appending at KEY_<n> stays correct.
@@ -1358,7 +1377,7 @@ export class Switchboard {
     if (sock) delete env.VYRE_HOME;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
-    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
+    const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugin === false || !o.libraryPlugin || (o.provider && o.provider !== "claude") ? [] : [o.libraryPlugin]), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
     // "Doesn't ask": nothing reaches a question, so the floor also runs here, in process, on every
     // call (the plugin's PreToolUse hook runs it too; this one needs no vyred round trip).
@@ -2101,7 +2120,7 @@ export class Switchboard {
     const budget = typeof fb.budget_usd === "number" ? fb.budget_usd : null;
     this.emit("thread.text", { message: "vyre", text: `The subscription's limit was reached. Continuing on the API key${budget != null ? `, with $${budget.toFixed(2)} of budget left` : ""}.`, done: true, notice: true }, id, rec ? rec.project : null);
     this.db.prepare("UPDATE threads_runs SET auth = 'api-key' WHERE id = ?").run(id);
-    this.spawn(id, { ...st.launch, sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
+    this.spawn(id, { ...st.launch, libraryPlugin: await this.libraryPlugin(rec, st.launch || {}), sandboxSpawn: await this.sandboxFor(id, rec, st.launch || {}), gitEnv: await this.gitEnv(rec && rec.project, id), env: fb.env, fallback: undefined, budget_usd: budget ?? undefined, resume: true, lastPrompt: st.lastPrompt });
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
