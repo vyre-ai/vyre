@@ -8,6 +8,8 @@ import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
 import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
+import { createItems } from "./items.js";
+import { clean } from "../../lib/waiting-text.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
@@ -22,7 +24,11 @@ const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {stri
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
-  async start(ctx) {
+  async start(base) {
+    // Any change to a card this queue holds says so on approvals.changed (items.touch), whichever tool made it.
+    /** @type {ReturnType<typeof createItems> | null} */ let items = null;
+    const ctx = Object.assign(Object.create(base), { tool: (/** @type {string} */ name, /** @type {any} */ def) => base.tool(name, name === "approvals.items" || !def || typeof def.run !== "function" ? def
+      : { ...def, run: async (/** @type {any} */ i, /** @type {any} */ m) => { try { return await def.run(i, m); } finally { if (items) items.touch(); } } }) });
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
     /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, redeemedAt?: number, covered?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
     const open = new Map();
@@ -337,6 +343,21 @@ export default {
       },
     });
 
-    return { async stop() { open.clear(); } };
+    // ---- the other things that wait on the person: held drafts, session asks, the vault's pending requests (items.js) -------------------------------------
+    /** A yes waiting on the phone, as a row of the waiting list. */
+    const cardRow = (/** @type {any} */ a) => ({ id: a.id, kind: "approval", title: clean(a.line || WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op), at: a.at, source: "approvals",
+      answer: { tool: "approvals.answer", input: { id: a.id }, fill: ["yes"] } });
+    items = createItems({ call: (tool, input) => ctx.call(tool, input), on: (pattern, fn) => (ctx.events && typeof ctx.events.on === "function" ? ctx.events.on(pattern, fn) : () => {}), now, log: ctx.log, emit: (type, payload) => { if (ctx.events && typeof ctx.events.emit === "function") ctx.events.emit(type, payload); },
+      extra: () => { sweep(); return [...open.values()].filter(a => a.state === "waiting").map(cardRow); } });
+    ctx.tool("approvals.items", {
+      description: "Everything else that waits on the person, as cards in this queue: the Gate's held drafts (draft), a session's asks (ask) and the vault's pending grants, passes and requests (access). Answers { items: [{ id, kind, title, detail?, project?, thread?, at, source, answer: { tool, input, fill } }], recent: [the same, settled, with outcome], partial? }. Each card names the owner's tool that settles it; the owner decides, and the card closes with what it decided. Titles never carry a value.",
+      input: obj({}),
+      effect: "read",
+      callers: [...SURFACES, "module"],
+      run: async () => /** @type {NonNullable<typeof items>} */ (items).list(),
+    });
+    items.start();
+
+    return { async stop() { open.clear(); if (items) await items.stop(); } };
   },
 };

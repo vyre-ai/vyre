@@ -171,6 +171,40 @@ export function passInput(n: NewPass, hostsOf: (item: string) => string[]): { in
     ...(n.mode === "relayed" && n.offHosts.length && narrowed.length ? { hosts: narrowed } : {}) } };
 }
 
+// ---- a pass for an outside agent (the Vault MCP) ----
+
+export type NewMcpPass = { name: string; items: string[]; days: 7 | 30 | 90; budget: string; offHosts: string[]; reveal: boolean };
+export const MCP_DAYS: [7 | 30 | 90, string][] = [[7, "7 days"], [30, "30 days"], [90, "90 days"]];
+
+/** The input of vault.mcp.pass.create, or the first thing wrong in words. Only api credentials are used through a pass; hosts are narrowed only when some were switched off. */
+export function mcpPassInput(n: NewMcpPass, hostsOf: (item: string) => string[]): { input: Record<string, unknown> } | { error: string } {
+  const name = n.name.trim();
+  if (!name) return { error: "Say who or what it is for." };
+  if (!n.items.length) return { error: "Choose at least one credential." };
+  const budget = n.budget.trim() ? Math.round(Number(n.budget)) : 0;
+  if (n.budget.trim() && !(budget >= 1)) return { error: "The calls it may make is a whole number, or leave it empty." };
+  const hosts = [...new Set(n.items.flatMap(hostsOf))];
+  const narrowed = hosts.filter((x) => !n.offHosts.includes(x));
+  if (hosts.length && !narrowed.length) return { error: "Leave at least one host switched on." };
+  return { input: { name, items: n.items, days: n.days, ...(budget ? { budget } : {}), ...(n.offHosts.length ? { hosts: narrowed } : {}), ...(n.reveal ? { reveal: true } : {}) } };
+}
+
+/** What vault.mcp.pass.create answers, for the sheet: the token and the two lines are shown once. */
+export function pickMcpMade(d: unknown): { token: string; claude: string; codex: string; expires: number | null; name: string } {
+  const o = (d && typeof d === "object" ? d : {}) as { token?: unknown; name?: unknown; expires?: unknown; lines?: { claude?: unknown; codex?: unknown } };
+  return { token: typeof o.token === "string" ? o.token : "", name: typeof o.name === "string" ? o.name : "", expires: typeof o.expires === "number" ? o.expires : null,
+    claude: typeof o.lines?.claude === "string" ? o.lines.claude : "", codex: typeof o.lines?.codex === "string" ? o.lines.codex : "" };
+}
+
+export type Reveal = { id: string; item: string; pass: string; why: string };
+/** vault.pending's mcpReveals: what an outside agent asked to see, waiting for the person. */
+export function pickReveals(d: unknown): Reveal[] {
+  const o = d as { mcpReveals?: unknown } | null;
+  return arr(o?.mcpReveals).map((r) => ({ id: str(r.id), item: str(r.item), pass: str(r.pass), why: str(r.why) })).filter((r) => r.id);
+}
+/** The line a waiting ask reads as. */
+export const revealLine = (r: Reveal): string => `${r.pass}'s agent asks to see ${r.item}${r.why ? `: ${r.why}` : ""}`;
+
 /** What revoking a pass tells the person: sealed ones left a copy, so those items must be replaced. */
 export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a sealed copy.` : `Ended. ${holder} cannot use it any more.`);
 

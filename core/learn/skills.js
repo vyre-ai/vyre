@@ -27,6 +27,7 @@
 // characters, a turn yields at most 40 hashes, and candidates() is one grouped query.
 
 import crypto from "node:crypto";
+import { skeletonOf } from "../../lib/skill-skeleton.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -199,10 +200,10 @@ export function fileClass(file) {
  * A turn's steps: each shell command's segments as shapes, each file write as `<Tool>:<class>`,
  * consecutive duplicates collapsed. Items with `at` are merged in time order; without, commands
  * come first, then files.
- * @param {{ commands?: (string|{command: string, at?: number})[], files?: (string|{tool?: string, path: string, at?: number})[] }} turn
+ * @param {{ commands?: (string|{command: string, at?: number})[], files?: (string|{tool?: string, path: string, at?: number})[], tools?: { steps: string[], at?: number }[] }} turn `tools` are Vyre tool calls, each already its steps (core/learn/signals.js vyreSteps)
  * @returns {string[]}
  */
-export function stepsOf({ commands = [], files = [] } = {}) {
+export function stepsOf({ commands = [], files = [], tools = [] } = {}) {
   /** @type {{at: number, n: number, steps: string[]}[]} */
   const items = [];
   let n = 0;
@@ -217,6 +218,10 @@ export function stepsOf({ commands = [], files = [] } = {}) {
     if (typeof p !== "string") continue;
     const tool = typeof f === "object" && f.tool && FILE_TOOLS.has(f.tool) ? (f.tool === "MultiEdit" ? "Edit" : f.tool) : "Edit";
     items.push({ at: typeof f === "object" && Number.isFinite(f.at) ? Number(f.at) : Infinity, n: n++, steps: [`${tool}:${fileClass(p)}`] });
+  }
+  for (const t of tools) {
+    if (!t || !Array.isArray(t.steps) || !t.steps.length) continue;
+    items.push({ at: Number.isFinite(t.at) ? Number(t.at) : Infinity, n: n++, steps: t.steps.map(String) });
   }
   items.sort((a, b) => a.at - b.at || a.n - b.n);
   const out = [];
@@ -255,6 +260,7 @@ export function fingerprints(steps) {
 
 /** One step, as an instruction. */
 function stepText(step) {
+  if (step.startsWith("vyre:")) { const b = step.slice(5); return b.startsWith("work.call:") ? `Run the Vyre records action \`${b.slice(10)}\` (work_call).` : `Call the Vyre tool \`${b}\`.`; }
   const m = /^(\w+):(\w+)$/.exec(step);
   if (m && FILE_TOOLS.has(m[1])) {
     const what = { test: "a test file", doc: "a doc", changelog: "the changelog", config: "a config file", style: "a stylesheet",
@@ -266,6 +272,7 @@ function stepText(step) {
 
 /** The words a step contributes to a skill's name. */
 function stepWords(step) {
+  if (step.startsWith("vyre:")) return step.slice(5).replace(/^work\.call:/, "").split(".").slice(-2);
   const m = /^(\w+):(\w+)$/.exec(step);
   if (m && FILE_TOOLS.has(m[1])) return [m[1].toLowerCase(), m[2]];
   return step.split(" ").filter(w => !w.startsWith("-") && !w.startsWith("<")).slice(0, 3);
@@ -283,6 +290,22 @@ function nameFor(steps) {
   return name === "learned" ? "learned-procedure" : name;
 }
 
+/** A Vyre step in the words someone would ask it in. @param {string} step */
+export function plainStep(step) {
+  if (!step.startsWith("vyre:")) return `\`${step}\``;
+  const body = step.slice("vyre:".length);
+  const words = (/** @type {string} */ x) => x.replace(/[_-]+/g, " ");
+  const rec = /^work\.call:([^.]+)\.([^.]+)$/.exec(body);
+  if (rec) { const v = /** @type {Record<string, string>} */ ({ find: "look up", create: "add", update: "change", move_stage: "move the stage of" })[rec[2]] || words(rec[2]); return `${v} ${words(rec[1])}`; }
+  const m = /^([^.:]+)\.([^.:]+)(?::.*)?$/.exec(body);
+  if (!m) return words(body);
+  const [, area, verb] = m;
+  if (verb === "add" || verb === "create") return `add to the ${words(area)}`;
+  if (["find", "list", "get", "search"].includes(verb)) return `look up in the ${words(area)}`;
+  if (verb === "send") return `send with ${words(area)}`;
+  return `${words(verb)} (${words(area)})`;
+}
+
 /**
  * A deterministic SKILL.md for a candidate, used when no model drafted one.
  * @param {{steps: string[], sessions?: number}} candidate
@@ -292,7 +315,11 @@ export function template(candidate) {
   const steps = candidate.steps;
   const name = nameFor(steps);
   const list = steps.map(s => /^\w+:\w+$/.test(s) ? stepText(s).replace(/\.$/, "").toLowerCase() : `\`${s}\``);
-  const description = `Use when the task is the procedure the user repeats: ${list.join(", then ")}.`.slice(0, 1024);
+  // A model picks a skill by what its description says in words. A Vyre procedure's steps are tool ids, which no request ever names, so say what they do ("look up clients, then look up matters,
+  // then add to the planner") and keep the ids for the body. A non-Vyre step keeps its own text.
+  const description = steps.some(x => x.startsWith("vyre:"))
+    ? `Use when asked to ${steps.map(plainStep).join(", then ")}. A procedure Vyre learned from repeats (${list.join(", then ")}); it ends in one tools_run.`.slice(0, 1024)
+    : `Use when the task is the procedure the user repeats: ${list.join(", then ")}.`.slice(0, 1024);
   const n = candidate.sessions || 0;
   return [
     "---",
@@ -307,7 +334,17 @@ export function template(candidate) {
     "",
     ...steps.map((s, i) => `${i + 1}. ${stepText(s)}`),
     "",
+    ...oneCall(candidate),
   ].join("\n");
+}
+
+/** The closing section of a skill whose steps are all Vyre calls: one tools_run in place of the calls one by one (R031-00s). Empty when there is no evidence of the arguments. @param {any} candidate @returns {string[]} */
+export function oneCall(candidate) {
+  const sk = skeletonOf(candidate.steps || [], candidate.evidence);
+  if (!sk) return [];
+  return ["## One call", "",
+    "Send these steps as one `tools_run` instead of calling each tool in turn. Fill every `<placeholder>`; where an argument reads an earlier step, look at that step's result for the id and write its path. It stops at a step the Gate holds, and you resume after the person decides.",
+    "", "```json", sk, "```", ""];
 }
 
 /** A SKILL.md's frontmatter name and description, or an error. */
@@ -502,7 +539,9 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
 
     /** A candidate becomes a proposed skill; the body is a model's draft or the template. */
     propose(candidate, { body } = {}) {
-      const text = body ?? template(candidate);
+      let text = body ?? template(candidate);
+      // A model's draft keeps the one-call section: it is built from the evidence, not written by the model.
+      if (body && !/tools_run/.test(text)) { const extra = oneCall(candidate); if (extra.length) text = text.replace(/\s*$/, "\n\n") + extra.join("\n"); }
       const fm = frontmatter(text);
       if (fm.error) throw new Error(fm.error);
       let name = fm.name, i = 2;

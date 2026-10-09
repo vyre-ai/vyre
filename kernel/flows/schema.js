@@ -64,7 +64,7 @@ function onlyKeys(o, allowed, path, out) {
 function checkTrigger(t, out) { checkTriggerKind(t, out, { onlyKeys, checkExpr, EVENT_RE, NAME_RE }); }
 
 /** Keys each step kind may carry (beyond id, kind, label). */
-const STEP_KEYS = {
+export const STEP_KEYS = {
   find: ["type", "where", "limit", "sort"], pick: ["type", "where"], filter: ["from", "where"],
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"],
@@ -76,13 +76,22 @@ const STEP_KEYS = {
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
 
+/**
+ * Keys any step but a block may carry for how it runs and how it is checked (R031 Flows reliability): a time limit for one attempt, a retry policy, what to do if it still fails, and a VERIFY.
+ * `wait` already has its own `timeout_ms` (its deadline, not an attempt's), which keeps its meaning.
+ */
+const POLICY_KEYS = ["timeout_ms", "retry", "on_fail", "verify"];
+/** Errors that may be retried by name. The runner refuses any other name (denied, outside_caps, taint, outcome_unknown, ... never retry). */
+export const RETRY_CODES = Object.freeze(["timeout", "unavailable", "rate_limited", "upstream_5xx", "connection_reset", "busy"]);
+export const POLICY_LIMITS = Object.freeze({ timeoutMin: 1, timeoutMax: 3_600_000, attempts: 8, backoffMax: 3_600_000, verifyExpr: 500 });
+
 const OUTPUT_KINDS = ["fields", "note", "draft", "sent", "decision", "file"];
 
 /**
  * @param {any} steps @param {string} path @param {Problem[]} out @param {Set<string>} ids @param {number} depth
- * @param {{ count: number }} budget
+ * @param {{ count: number }} budget @param {boolean} [inHandler] steps of a failure path: they may not carry a failure path of their own
  */
-function checkSteps(steps, path, out, ids, depth, budget) {
+function checkSteps(steps, path, out, ids, depth, budget, inHandler = false) {
   if (!Array.isArray(steps)) { out.push({ path, message: "steps are a list" }); return; }
   if (depth > LIMITS.depth) { out.push({ path, message: `steps nest at most ${LIMITS.depth} deep` }); return; }
   steps.forEach((s, i) => {
@@ -94,7 +103,10 @@ function checkSteps(steps, path, out, ids, depth, budget) {
     else ids.add(s.id);
     if (!STEP_KINDS.includes(s.kind)) { out.push({ path: `${p}.kind`, message: `a step is one of ${STEP_KINDS.join(", ")}` }); return; }
     const keys = STEP_KEYS[/** @type {keyof typeof STEP_KEYS} */ (s.kind)];
-    onlyKeys(s, ["id", "kind", "label", ...keys], p, out);
+    // (a decide or a repeat takes a failure path and a check, but no time limit or retry: a key the runner would ignore is refused, not accepted)
+    const policyKeys = BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
+    onlyKeys(s, ["id", "kind", "label", ...keys, ...policyKeys], p, out);
+    checkPolicy(s, p, out, ids, depth, budget, inHandler);
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });
     const need = (/** @type {string} */ k, /** @type {(v: any) => boolean} */ ok, /** @type {string} */ msg) => { if (s[k] === undefined || !ok(s[k])) out.push({ path: `${p}.${k}`, message: msg }); };
     const typeName = (/** @type {any} */ v) => typeof v === "string" && NAME_RE.test(v);
@@ -110,14 +122,14 @@ function checkSteps(steps, path, out, ids, depth, budget) {
       case "remove": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); break;
       case "decide":
         need("if", v => typeof v === "string", "give the condition"); exprOk("if");
-        for (const b of ["then", "else"]) if (s[b] !== undefined) checkSteps(s[b], `${p}.${b}`, out, ids, depth + 1, budget);
+        for (const b of ["then", "else"]) if (s[b] !== undefined) checkSteps(s[b], `${p}.${b}`, out, ids, depth + 1, budget, inHandler);
         if (s.then === undefined) out.push({ path: `${p}.then`, message: "give the steps to run when it holds" });
         break;
       case "repeat":
         need("over", v => typeof v === "string", "name the list (an expression)"); exprOk("over");
         need("as", v => typeof v === "string" && ID_RE.test(v), "name the item");
         if (s.max !== undefined && !(Number.isInteger(s.max) && s.max >= 1 && s.max <= LIMITS.repeatMax)) out.push({ path: `${p}.max`, message: `max is 1 to ${LIMITS.repeatMax}` });
-        checkSteps(s.steps, `${p}.steps`, out, ids, depth + 1, budget);
+        checkSteps(s.steps, `${p}.steps`, out, ids, depth + 1, budget, inHandler);
         break;
       case "wait": {
         const given = ["for_ms", "until", "event"].filter(k => s[k] !== undefined);
@@ -203,6 +215,50 @@ function checkSteps(steps, path, out, ids, depth, budget) {
   });
 }
 
+/**
+ * The policy keys of one step: its time limit, retry, failure path and VERIFY.
+ * @param {any} s @param {string} p @param {Problem[]} out @param {Set<string>} ids @param {number} depth @param {{ count: number }} budget @param {boolean} inHandler
+ */
+function checkPolicy(s, p, out, ids, depth, budget, inHandler) {
+  if (s.timeout_ms !== undefined && s.kind !== "wait" && !(Number.isInteger(s.timeout_ms) && s.timeout_ms >= POLICY_LIMITS.timeoutMin && s.timeout_ms <= POLICY_LIMITS.timeoutMax)) out.push({ path: `${p}.timeout_ms`, message: `timeout_ms is a whole number of milliseconds, 1 to ${POLICY_LIMITS.timeoutMax}` });
+  if (s.retry !== undefined && s.retry !== false) {
+    if (!isObj(s.retry)) out.push({ path: `${p}.retry`, message: "retry is false, or { attempts, backoff_ms, on }" });
+    else {
+      onlyKeys(s.retry, ["attempts", "backoff_ms", "on"], `${p}.retry`, out);
+      if (s.retry.attempts !== undefined && !(Number.isInteger(s.retry.attempts) && s.retry.attempts >= 1 && s.retry.attempts <= POLICY_LIMITS.attempts)) out.push({ path: `${p}.retry.attempts`, message: `attempts is 1 to ${POLICY_LIMITS.attempts} (the first try counts)` });
+      const b = s.retry.backoff_ms;
+      const okMs = (/** @type {any} */ n) => Number.isInteger(n) && n >= 0 && n <= POLICY_LIMITS.backoffMax;
+      if (b !== undefined && !(okMs(b) || (Array.isArray(b) && b.length >= 1 && b.length <= POLICY_LIMITS.attempts && b.every(okMs)))) out.push({ path: `${p}.retry.backoff_ms`, message: "backoff_ms is a number of milliseconds, or a list of them, one per retry" });
+      if (s.retry.on !== undefined && !(Array.isArray(s.retry.on) && s.retry.on.length >= 1 && s.retry.on.every((/** @type {any} */ c) => RETRY_CODES.includes(c)))) out.push({ path: `${p}.retry.on`, message: `on is a list of ${RETRY_CODES.join(", ")} (any other error is never retried)` });
+    }
+  }
+  if (s.on_fail !== undefined) {
+    if (inHandler) out.push({ path: `${p}.on_fail`, message: "a failure path cannot have a failure path of its own" });
+    else if (!isObj(s.on_fail)) out.push({ path: `${p}.on_fail`, message: "on_fail is { steps, then }" });
+    else {
+      onlyKeys(s.on_fail, ["steps", "then"], `${p}.on_fail`, out);
+      if (!Array.isArray(s.on_fail.steps) || !s.on_fail.steps.length) out.push({ path: `${p}.on_fail.steps`, message: "give the steps to run when this fails" });
+      else checkSteps(s.on_fail.steps, `${p}.on_fail.steps`, out, ids, depth + 1, budget, true);
+      if (s.on_fail.then !== undefined && !["stop", "continue"].includes(s.on_fail.then)) out.push({ path: `${p}.on_fail.then`, message: "then is stop (the run fails after the failure path) or continue" });
+    }
+  }
+  if (s.verify !== undefined) {
+    if (!isObj(s.verify)) out.push({ path: `${p}.verify`, message: "verify is { check, essential, say }" });
+    else {
+      onlyKeys(s.verify, ["check", "essential", "say", "readback"], `${p}.verify`, out);
+      if (s.verify.check === undefined && s.verify.readback !== true) out.push({ path: `${p}.verify`, message: "give a check (an expression over output) or readback: true" });
+      if (s.verify.check !== undefined) {
+        if (typeof s.verify.check !== "string" || s.verify.check.length > POLICY_LIMITS.verifyExpr) out.push({ path: `${p}.verify.check`, message: `check is an expression of at most ${POLICY_LIMITS.verifyExpr} characters` });
+        else checkExpr(s.verify.check, `${p}.verify.check`, out);
+      }
+      if (s.verify.essential !== undefined && typeof s.verify.essential !== "boolean") out.push({ path: `${p}.verify.essential`, message: "essential is true or false (a check is essential unless you say false)" });
+      if (s.verify.say !== undefined && (typeof s.verify.say !== "string" || s.verify.say.length > 200)) out.push({ path: `${p}.verify.say`, message: "say is a short sentence" });
+      if (s.verify.readback !== undefined && s.verify.readback !== true) out.push({ path: `${p}.verify.readback`, message: "readback is true" });
+      if (s.verify.readback === true && !["create", "update", "upsert", "stage"].includes(s.kind)) out.push({ path: `${p}.verify.readback`, message: "readback reads a record back, so it belongs on create, update, upsert or stage" });
+    }
+  }
+}
+
 /** @param {any} o @param {string} path @param {Problem[]} out */
 function checkOutput(o, path, out) {
   if (!isObj(o) || !OUTPUT_KINDS.includes(o.kind)) { out.push({ path, message: `an output is one of ${OUTPUT_KINDS.join(", ")}` }); return; }
@@ -220,7 +276,7 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "concurrency", "lock", "stuck_after_ms"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
@@ -234,7 +290,15 @@ export function checkFlow(flow) {
   }
   checkTrigger(flow.trigger, out);
   const ids = new Set();
-  checkSteps(flow.steps, "steps", out, ids, 0, { count: 0 });
+  const budget = { count: 0 };
+  checkSteps(flow.steps, "steps", out, ids, 0, budget);
+  if (flow.on_failure !== undefined) {
+    if (!Array.isArray(flow.on_failure) || !flow.on_failure.length) out.push({ path: "on_failure", message: "on_failure is a list of steps to run when the run is about to fail" });
+    else checkSteps(flow.on_failure, "on_failure", out, ids, 0, budget, true);
+  }
+  if (flow.concurrency !== undefined && !(Number.isInteger(flow.concurrency) && flow.concurrency >= 1 && flow.concurrency <= 32)) out.push({ path: "concurrency", message: "concurrency is 1 to 32 runs at once" });
+  if (flow.lock !== undefined) { if (typeof flow.lock !== "string") out.push({ path: "lock", message: "lock is an expression giving a key (runs with the same key never run at the same moment)" }); else checkExpr(flow.lock, "lock", out); }
+  if (flow.stuck_after_ms !== undefined && !(Number.isInteger(flow.stuck_after_ms) && flow.stuck_after_ms >= 10_000 && flow.stuck_after_ms <= 86_400_000)) out.push({ path: "stuck_after_ms", message: "stuck_after_ms is 10 seconds to 24 hours, in milliseconds" });
   return out;
 }
 
@@ -250,5 +314,7 @@ export function walkSteps(steps, f, path = "steps") {
     const p = `${path}[${i}]`;
     f(s, p);
     for (const b of /** @type {string[]} */ ((BLOCK_KINDS)[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || [])) if (Array.isArray(s[b])) walkSteps(s[b], f, `${p}.${b}`);
+    // a failure path's steps act too: their powers, effects and names are the Flow's, so every walker sees them
+    if (s.on_fail && Array.isArray(s.on_fail.steps)) walkSteps(s.on_fail.steps, f, `${p}.on_fail.steps`);
   });
 }

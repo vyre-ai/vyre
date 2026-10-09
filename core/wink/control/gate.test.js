@@ -483,3 +483,60 @@ test("gate apps over TLS: the SNI must be the Host; one label under the name is 
   assert.match(await via("localhost", "docuseal.alex.vyre.run"), /^HTTP\/1\.1 404 /, "SNI of something else");
   assert.equal(f.seen.length, 1);
 });
+
+// ---- the Vault MCP route: exactly POST /vault-mcp, the Authorization header through, nothing else opened ----
+
+/** A fake Vault MCP listener on loopback that records what reaches it. */
+async function mcpListener() {
+  /** @type {{ method: string, url: string, headers: Record<string, any>, body: string }[]} */ const seen = [];
+  const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => (b += d)); req.on("end", () => { seen.push({ method: /** @type {string} */ (req.method), url: /** @type {string} */ (req.url), headers: req.headers, body: b }); res.writeHead(200, { "content-type": "application/json" }); res.end("{}"); }); });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  return { seen, port: /** @type {net.AddressInfo} */ (srv.address()).port, close() { srv.close(); srv.closeAllConnections(); } };
+}
+const mcpPost = (body, extra = "") => `POST /vault-mcp HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n${extra}\r\n${body}`;
+
+test("gate ingress, Vault MCP: POST /vault-mcp reaches the vault's listener with the pass token, the real address and no spoofed header", async t => {
+  const m = await mcpListener(); t.after(() => m.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, vaultmcp: () => m.port } });
+  const r = (await raw(port, mcpPost('{"jsonrpc":"2.0"}', "Authorization: Bearer vmcp_abc\r\nX-Forwarded-For: 6.6.6.6\r\n"))).toString();
+  assert.match(r, /^HTTP\/1\.1 200 /);
+  assert.deepEqual(m.seen.map(s => [s.method, s.url, s.body]), [["POST", "/vault-mcp", '{"jsonrpc":"2.0"}']]);
+  assert.equal(m.seen[0].headers.authorization, "Bearer vmcp_abc", "the token reaches the vault");
+  assert.equal(m.seen[0].headers["x-forwarded-for"], "127.0.0.1", "the socket's address, not the client's claim");
+  assert.equal(be.seen.length, 0);
+});
+
+test("gate ingress, Vault MCP: every other shape under the gate is still the same 404, with the route on", async t => {
+  const m = await mcpListener(); t.after(() => m.close());
+  const ls = await listeners(); t.after(() => ls.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort, vaultmcp: () => m.port } });
+  const big = "x".repeat(64 * 1024 + 1);
+  const head = "Host: x\r\nContent-Length: 2\r\nConnection: close\r\n";
+  const cases = [
+    get("/vault-mcp", "Connection: close\r\n"), `PUT /vault-mcp HTTP/1.1\r\n${head}Content-Type: application/json\r\n\r\n{}`,
+    mcpPost("{}").replace("POST /vault-mcp ", "POST /vault-mcp?x=1 "), mcpPost("{}").replace("POST /vault-mcp ", "POST /vault-mcp/ "), mcpPost("{}").replace("POST /vault-mcp ", "POST /vault-mcp/x "),
+    mcpPost("{}").replace("POST /vault-mcp ", "POST /Vault-Mcp "), mcpPost("{}").replace("POST /vault-mcp ", "POST //vault-mcp "), mcpPost("{}").replace("POST /vault-mcp ", "POST /vault-mcp%2f "),
+    mcpPost("{}").replace("application/json", "text/plain"), mcpPost(big),
+    `POST /vault-mcp HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n`,
+    `POST /vault-mcp HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n`,
+    get("/mcp", "Connection: close\r\n"), get("/vault", "Connection: close\r\n"), post("/vault-mcp/hooks/abc", "{}"), get("/api/v1/node", "Connection: close\r\n"), get("/", "Connection: close\r\n"),
+  ];
+  for (const c of cases) assert.deepEqual(await raw(port, c), NOT_FOUND, c.split("\r\n")[0]);
+  assert.deepEqual(m.seen, [], "the vault's listener was reached by none of them");
+  assert.deepEqual(ls.seen, []);
+  assert.equal(be.seen.length, 0);
+  // off unless set, and a listener that is not up answers the same 404
+  const off = await setup(t, { ingress: { hooks: () => null, share: () => null } });
+  assert.deepEqual(await raw(off.port, mcpPost("{}")), NOT_FOUND);
+  const down = await setup(t, { ingress: { hooks: () => null, share: () => null, vaultmcp: () => null } });
+  assert.deepEqual(await raw(down.port, mcpPost("{}")), NOT_FOUND);
+});
+
+test("gate ingress, Vault MCP: the gate's own per-source limit sits in front of the vault's, and the hook limit is its own", async t => {
+  const m = await mcpListener(); t.after(() => m.close());
+  const { port } = await setup(t, { ingress: { hooks: () => m.port, share: () => null, vaultmcp: () => m.port } });
+  let limited = 0;
+  for (let i = 0; i < 62; i++) { const r = (await raw(port, mcpPost("{}"))).toString(); if (/^HTTP\/1\.1 429 /.test(r)) limited++; }
+  assert.ok(limited >= 1 && limited <= 3, `the 61st request from one source is refused (${limited})`);
+  assert.match((await raw(port, post("/hooks/abc", "{}"))).toString(), /^HTTP\/1\.1 200 /, "webhooks have their own window");
+});

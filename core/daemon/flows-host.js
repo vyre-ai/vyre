@@ -74,7 +74,9 @@ export function createFlowsHost(o) {
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
       const triggers = o.flowTriggers ? o.flowTriggers() : [];
-      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers };
+      // The light of each Connection (green, amber, red), by the name a Flow's service step uses (`conn-<id>`): a Flow that uses a red one says so in its health line.
+      const lights = o.lights ? await o.lights().catch(() => ({})) : {};
+      return { space, types, actions, tz, roles: [...ROLE_IDS], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {}, triggers, lights };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
@@ -176,10 +178,11 @@ export function createFlowsHost(o) {
     // Installed Kits and the proposals waiting for a yes are records (they survive a restart, with history and the log), written and removed by the Flows service's own chain: the kernel keeps those rows
     // (kit-proposal, kit-install) to whoever made them or an owner or admin.
     const kitStore = new RecordsKitStore({ kernel, chain: flowsChain() });
-    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals });
-    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
+    const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings });
+    const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit, gates: flows.runner.gatePort(), isAdmin: proposals && proposals.isAdmin,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
+    flows.attachStages(stages);
     // One subscription feeds triggers, waits, Kit approvals and stages.
     k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 

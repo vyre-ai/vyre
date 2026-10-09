@@ -13,6 +13,7 @@
 import { closeToAddedModules } from "../../lib/first-party-door.js";
 import { core as coreHolder } from "../presence/index.js";
 import { startForwarder } from "./forward.js";
+import { modelMayRead } from "./api-request.js";
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns, LAUNCHER_ITEMS, launcherItem, validModuleName } from "./vault.js";
 import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
@@ -30,6 +31,7 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
+import { Access } from "./access.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
 import { isDeviceGroupId } from "./devices.js";
@@ -40,11 +42,13 @@ import * as requestTools from "./request.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
+import * as mcpTools from "./tools/mcp.js";
+import { PassMcp } from "./passmcp.js";
+import { listenMcp } from "./passmcp-listener.js";
 import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
 import * as deckTools from "./tools/deck.js";
-import { gate } from "./prove.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
 
@@ -73,17 +77,15 @@ export default {
   async start(ctx) {
     // A first-party tool declared anyone is open to an added module that lists it in needs.tools (ADR 0047). These four
     // take or use secrets for Vyre's own modules only: an added module reaches a secret through ctx.vault.fetch.
-    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify"] });
+    closeToAddedModules(ctx, { only: ["vault.put", "vault.delete", "vault.totp", "vault.relay", "vault.request", "vault.verify", "vault.pending"] });
     // On a Mac with vyre-core, core holds the vault: forward, and never open the old store.
     if (coreHolder.link && typeof coreHolder.link.call === "function") return startForwarder(ctx, /** @type {any} */ (coreHolder.link));
     ctx.store.migrate(MIGRATIONS);
     ensureMacColumns(ctx.store.db);
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
-    // Every tool that returns or moves a value asks for presence first (prove.js), until the
-    // registry does it (ADR 0004). All registrations below go through this ctx.
-    const gated = gate({ ctx, vault });
-    const base = ctx;
-    ctx = Object.assign(Object.create(base), { tool: (name, def) => base.tool(name, gated(name, def)) });
+    // Who may use a login is a kernel grant (access.js); the vault keeps no table of it.
+    vault.access = new Access(vault, ctx);
+    // Every tool that returns or moves a value is held at the registry's floor, which asks the one yes (lib/one-yes.js) before the tool runs; nothing here asks twice.
 
     const opts = (ctx.config && ctx.config.vault) || {};
     // An existing home opens its agent vault now, so a v1 home is re-sealed as v2 at start
@@ -92,6 +94,8 @@ export default {
       try { if (await vault.keys.exists()) await vault.key(); }
       catch (e) { ctx.log(`vault: not opened at start: ${/** @type {Error} */ (e).message}`); }
     }
+    // Agent logins the vault stored itself before the one grant model become kernel grants (once; a locked vault does it at the next call).
+    if (vault.access) vault.access.carry().catch(e => ctx.log(`vault: agent logins were not carried over yet: ${/** @type {Error} */ (e).message}`));
     if (typeof ctx.provide === "function") ctx.provide("credentialsPort", credentialsPort(vault));
     let listener = null;
     if (opts.relay && (opts.relay.port !== undefined || opts.relay.host)) {
@@ -196,7 +200,7 @@ export default {
       }));
 
     tool("vault.list", null, "Every item's name, kind, description, field names, hosts and grants. Never a value.",
-      obj({ filter: str, kind: str, host: str }), (input, { caller, project }) => {
+      obj({ filter: str, kind: str, host: str }), (input, { caller, project, agentKind }) => {
         const r = cli.list(vault.list(input), input);
         // A named agent sees only the items granted to it or to its project, and only their names and kinds (reviewer-2 L-V3).
         // Grants go to MODULES (and narrow to a project), never to an agent as such, and an agent's name is its own choice, so it is
@@ -204,8 +208,19 @@ export default {
         // equals a grant's project. An agent with no project sees nothing.
         const who = /^mcp:agent:(.+)$/.exec(String(caller));
         if (!who || !r || !Array.isArray(r.items)) return r;
+        // The person's own assistant keeps its reach through vault.request (api-request: the assistant is not asked for a scope), so it is shown the credentials it can call: the name, kind,
+        // description and hosts of each api-credential, never a value and never another kind of item. Without this it reads an empty vault and gives up on a credential it may use.
         const mine = g => Boolean(project) && g.project === project;
-        return { ...r, items: r.items.filter(i => (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind })) };
+        // An api-credential is listed exactly when vault.request would let this caller read through it (modelMayRead: the one check), never more.
+        return (async () => {
+          const callable = [];
+          for (const i of r.items.filter(x => x.kind === "api-credential")) {
+            let config; try { config = (await vault.apiCredential(i.name)).config; } catch { continue; }
+            if (modelMayRead(config, { agent: who[1], project, agentKind })) callable.push({ name: i.name, kind: i.kind, ...(i.description ? { description: i.description } : {}), ...(i.hosts ? { hosts: i.hosts } : {}) });
+          }
+          const granted = r.items.filter(i => i.kind !== "api-credential" && (i.grants || []).some(mine)).map(i => ({ name: i.name, kind: i.kind }));
+          return { ...r, items: [...callable, ...granted] };
+        })();
       });
 
     // A provider's sign-in token (`claude setup-token`, or an Anthropic key) lives in the items core/onboard already makes (claude-setup-token, anthropic-api-key; LAUNCHER_ITEMS).
@@ -257,11 +272,12 @@ export default {
         return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
-    tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
+    // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
+    tool("vault.pending", [...SURFACES, "mcp", "module"], "Grants and passes an agent asked for, waiting for a person.",
       obj({}), () => vault.pending());
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, { caller, presence: how }) => { windowUse(how, "approve", input.id, caller); return vault.approve(input, caller); },
+      obj({ id: str }, ["id"]), (input, meta) => { windowUse(meta.presence, "approve", input.id, meta.caller); return vault.approve(input, meta.caller, meta); },
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
@@ -478,6 +494,15 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
 
+    // The Vault MCP for outside agents (passmcp.js): the endpoint is off unless `vault.mcp.port` is set; passes can be made and listed either way.
+    let mcpListener = null;
+    vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
+    mcpTools.register({ vault, tool, internal });
+    if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
+      mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
+      vault.mcp.listener = mcpListener;
+      ctx.log(`vault mcp listening on ${mcpListener.url}`);
+    }
     const kits = shareTools.register({ ctx, vault, tool });
     vaultsTools.register({ vault, tool });
     // Pull from homes on start, after each local write, on a poke, and every ten minutes at most.
@@ -506,6 +531,7 @@ export default {
       async stop() {
         if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
+        if (mcpListener) await mcpListener.close();
         reminders.stop();
         await conns.stop();
         await kits.stop();

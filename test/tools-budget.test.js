@@ -27,3 +27,9 @@ test("every core tool exists for an agent, and everything else is reached throug
   assert.deepEqual(names, [...CORE, ...META]);
   assert.ok(catalog.length > names.length * 10, "the rest of the tools are many times the core");
 });
+
+test("VYRE_MCP_LISTING=all lists every tool, for the token proof only", async (t) => {
+  const catalog = await agentCatalog(t);
+  assert.equal(listing(catalog, "all").length, catalog.length);
+  assert.ok(listing(catalog).length <= MAX_TOOLS);
+});

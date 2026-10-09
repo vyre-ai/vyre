@@ -4,7 +4,7 @@ summary: What a Flow is, the step kinds, how to propose a change to one, what th
 audience: agents
 owner: docs
 status: stable
-tokens: 800
+tokens: 1500
 when: You write, change, test or explain an automation, or a Flow step asks you to do something.
 ---
 
@@ -61,3 +61,21 @@ A Flow has up to 200 steps, nested up to 6 deep, and a repeat runs at most 1000 
 ## When a step runs as you
 
 An `agent` step gives you one job. Do exactly that job, write the result to the record the step names, and finish. Do not widen the job. If you cannot do it, say why in the result so a person can take it.
+
+## How a step fails, retries and is checked
+
+Every step runs under a time limit and a retry rule, with defaults per kind (reads 30 s and 3 tries, record writes 60 s and 3 tries, a module tool or a service write one try, code 10 s); say `timeout_ms` or `retry: { attempts, backoff_ms, on }` only to change them. Only `timeout`, `unavailable`, `rate_limited`, `upstream_5xx`, `connection_reset` and `busy` are ever retried; a refusal, a missing power, outside content and a write that may have gone out are not, and a Flow cannot say otherwise.
+- **If it fails.** `on_fail: { steps, then }` runs steps that read `error` (`error.code`, `error.message`, `error.step`): `then: "continue"` carries on (the step is `failed_handled`, `steps.<id>.failed` is true); `stop`, the default, fails the run after the steps ran. A Flow can also have `on_failure: [steps]`, run once before the run is called failed. A failure path cannot have one of its own. A `decide` or `repeat` takes `on_fail` and `verify` too (a check reads `output.branch` or `output.count`), but no `timeout_ms` or `retry`.
+- **Check what a step did.** `verify: { check: "<expression over output>", say: "what was checked" }` fails the step (`verify_failed`) when false; `essential: false` only flags it. On a write, `verify: { readback: true }` reads the record back and compares what was set. Put an essential verify on every step that changes something: a write that did not take is then a failure, not a success.
+- **After a failure.** `flows.retry` resumes at the step that stopped; finished steps are not repeated. `skip: true` skips it (if a later step reads its output, a person gives `value` to use instead; you propose the value, they accept it). `version: "latest"` moves the run to the active version when every step already done is still there. `flows.cancel` ends a run for good.
+
+## Reading how Flows are doing
+
+`flows.list` gives each Flow a one-line health (red when a Connection it uses is red or a saved test fails); `flows.health` the same for one; `flows.control` says whether everything is paused or draining. `flows.describe` reads a Flow or a run in a few lines; `flows.timeline { run }` reads a run one line a step (`step` for one in detail). `flows.diff { id, from, to }` says what changed between versions; `flows.rollback` goes back and a person approves. Read these before a whole Flow.
+
+## Write, test and stage Flows
+
+- Read `flows-cheatsheet.md` first. `flows.code`, `flows.define` and `flows.compile-text` take `format: "lines"`; change a Flow with `flows.patch { id, base, ops }`, not a rewrite.
+- `flows.test.save` keeps a test case (`{ id, name, event | input, expect }`, or `{ id, from_run }`); `flows.test.run` runs them. No version is approved while one fails. `flows.propose` also compiles the draft and replays last week first; you cannot skip that.
+- `flows.describe { run }` explains a run in four sentences. A stage with tasks is a gate run; `flows.advance { run, reason }` moves a record on early (the stage's owner or an admin, in their own name).
+- `flows.kit.test` tries a Kit on a sample with nothing sent. A task may carry a `brief` and a `checklist` that the gate checks.

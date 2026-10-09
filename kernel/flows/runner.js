@@ -11,18 +11,37 @@
 //   Loop control   depth of the `corr` chain (default 8), a per-Flow rate limit, a step cap per run. A runaway pauses the Flow and raises a card.
 //   Versioned      a run is pinned to the version it started on.
 
+import { expandConnections } from "./connection-step.js";
+import { runCases } from "./cases.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
 import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
-import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "./schema.js";
+import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
+import { redact as redactText } from "../../lib/credential-shapes.js";
+import { healthOf, connectorsOf } from "./health.js";
+import { timelineOf, stepDetail } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+/**
+ * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
+ * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
+ * moment, and a policy cannot name them (the schema refuses). A write is retried only where it carries an idempotency key the other side honours: a record write does; a module tool call and a service write
+ * default to one attempt and are retried only when the Flow's author says so. Human waits (ask, assign, agent, wait) have no attempt limit: the watchdog (f5) and their own deadlines cover them.
+ * `o.policy` overrides any of it, per kind (the host passes the Space's settings).
+ */
+export const POLICY = Object.freeze({
+  find: { timeout_ms: 30_000, attempts: 3, backoff_ms: [2000, 5000] }, pick: { timeout_ms: 30_000, attempts: 3, backoff_ms: [2000, 5000] }, filter: { timeout_ms: 30_000, attempts: 1, backoff_ms: [0] },
+  create: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, update: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, upsert: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] },
+  remove: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] }, stage: { timeout_ms: 60_000, attempts: 3, backoff_ms: [2000, 5000] },
+  call: { timeout_ms: 60_000, attempts: 1, backoff_ms: [2000, 5000] }, service: { timeout_ms: 30_000, attempts: 1, backoff_ms: [2000, 5000, 15_000], readAttempts: 3 },
+  classify: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, extract: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, fn: { timeout_ms: 10_000, attempts: 1, backoff_ms: [0] },
+});
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -36,6 +55,37 @@ class StepFail extends Error {
 function portFail(e) {
   if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
   throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
+}
+/** What went wrong, as a code and words, whatever was thrown. A port's own code is kept; the usual network faults get the names a retry policy knows. @param {any} e @returns {{ code: string, message: string }} */
+function failOf(e) {
+  if (e instanceof StepFail) return { code: e.code, message: e.message };
+  const raw = e && typeof e.code === "string" ? e.code : "error";
+  const code = /^(ETIMEDOUT|ESOCKETTIMEDOUT)$/.test(raw) ? "timeout" : /^(ECONNRESET|ECONNREFUSED|EPIPE|EAI_AGAIN)$/.test(raw) ? "connection_reset" : raw;
+  return { code, message: e instanceof Error ? e.message : String(e) };
+}
+/**
+ * An input as the timeline may show it: credential-shaped strings and the values of keys that name a secret are hidden, and the whole is cut to 2 KB. A sealed placeholder stays a placeholder.
+ * @param {any} v @returns {any}
+ */
+export function showable(v) {
+  if (v === undefined) return undefined;
+  const SECRET_KEY = /secret|token|password|passwd|api[_-]?key|authorization|cookie|private/i;
+  const walk = (/** @type {any} */ x, /** @type {number} */ depth) => {
+    if (depth > 6) return "…";
+    if (typeof x === "string") return redactText(x);
+    if (Array.isArray(x)) return x.slice(0, 50).map(y => walk(y, depth + 1));
+    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).slice(0, 50).map(([k, y]) => [k, SECRET_KEY.test(k) && typeof y !== "object" ? "[hidden]" : walk(y, depth + 1)]));
+    return x;
+  };
+  const out = walk(v, 0);
+  const text = JSON.stringify(out) ?? "null";
+  return text.length > 2048 ? { cut: true, head: text.slice(0, 2000) } : out;
+}
+
+/** The run stops at the next step boundary because the Space's switch says pause: it is held (state queued) and goes on, in order, when the switch is released. */
+class Hold extends Error {
+  /** @param {string} reason */
+  constructor(reason) { super(reason); this.name = "Hold"; this.reason = reason; }
 }
 class PauseFlow extends Error {
   /** @param {string} reason */
@@ -59,6 +109,8 @@ class PauseFlow extends Error {
  *     roles?: (space: string, role: string) => Promise<ActorRef[]> | ActorRef[],
  *     model?: { provider: string, model: string },
  *   },
+ *   settings?: (key: string) => Promise<any>,
+ *   policy?: Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>,
  *   limits?: Partial<typeof LIMITS>,
  * }} RunnerOptions
  */
@@ -71,11 +123,25 @@ export class FlowRunner {
     this.emitFn = o.emit || (() => {});
     this.ports = o.ports || {};
     this.limits = { ...LIMITS, ...(o.limits || {}) };
+    /** @type {Record<string, { timeout_ms?: number, attempts?: number, backoff_ms?: number[], readAttempts?: number }>} */
+    this.policy = Object.fromEntries(Object.entries(POLICY).map(([k, v]) => [k, { ...v, .../** @type {any} */ ((o.policy || {})[k] || {}) }]));
     /** @type {Map<string, Promise<any>>} */ this.locks = new Map();
     /** @type {Map<string, number[]>} */ this.rate = new Map();
     /** @type {Map<string, number>} */ this.lastFire = new Map();
     /** @type {{ at: number, flows: any[] } | null} */ this.cache = null;
     /** @type {Set<Promise<any>>} */ this.inflight = new Set();
+    /** Who is executing a slice now: the box, each Flow, each lock key. A run holds a place only while it executes, never while it waits for a person or a timer. */
+    this.slots = { box: /** @type {Set<string>} */ (new Set()), byFlow: /** @type {Map<string, Set<string>>} */ (new Map()), locks: /** @type {Map<string, string>} */ (new Map()) };
+    /** The Space's switch (running, paused, draining), cached a few seconds. @type {{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }} */ this.ctl = { mode: "running" };
+    this.ctlAt = -Infinity;
+    /** @type {Map<string, number>} runs the watchdog already ran once more, and when */ this.reexec = new Map();
+    /** Arrival order for held runs that were held in the same millisecond. */ this.seq = 0;
+    /** The run objects being executed now, so the watchdog can flag one that is silent without waiting behind it. @type {Map<string, Run>} */ this.live = new Map();
+    /** @type {Promise<void> | null} */ this.queueRun = null; this.queueAgain = false;
+    /** Reads the Space's settings (flows.concurrency, ...); the host gives it. @type {((key: string) => Promise<any>) | null} */ this.settingsFn = o.settings || null;
+    this.settingsAt = -Infinity;
+    /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
+    /** @type {Map<string, { key: string, at: number, bad?: string }>} the last replay of a Flow's saved test cases, for the health line */ this.testMemo = new Map();
   }
 
   // ------------------------------------------------------------------ definitions
@@ -100,10 +166,95 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const compiled = compileFlow(v.flow, cat);
     if (!compiled.ok) throw Object.assign(new Error("that version no longer compiles: " + compiled.errors[0].message), { code: "invalid" });
+    // a saved test case that fails holds the approval back (t2)
+    const cases = this.store.getTests ? await this.store.getTests(id) : [];
+    if (cases.length) {
+      const r = await runCases(this, v.flow, cases, approver);
+      if (!r.ok) throw Object.assign(new Error(`a saved test case fails, so this version is not approved: ${r.results.filter(x => !x.ok).map(x => x.line).slice(0, 3).join("; ")}`), { code: "invalid", cases: r });
+    }
     const row = await this.store.approve(id, version, approver, hash, this.now());
     this.cache = null;
     return row;
   }
+
+  // ------------------------------------------------------------------ stage gates (s1)
+  // A stage with tasks is a gate the record passes through. The stages module makes the tasks and decides when the record moves on; the gate is a run on THIS runner, so it is written down (a restart
+  // loses nothing), it shows on the timeline and in `flows.describe`, a task that is stuck raises attention, and a move made early is on its ledger with who and why. It is synthesized at stage
+  // entry from the stage as the Space defines it: no Flow is stored for it, and its steps are `tasks`, one `task:<title>` for each task, `condition` (the next stage's entry condition) and `move`.
+
+  /** Open (or find) the gate for one stage entry. @param {{ key: string, urn: string, type: string, id: string, stage: string, next: string | null, owner?: string, tasks: { id: string, title: string, required: boolean }[], approver?: any }} g */
+  async gateOpen(g) {
+    const cat = /** @type {any} */ (await this.catalogFn());
+    const id = runIdFor(`gate:${g.key}`, "gate");
+    const had = await this.store.getRun(id);
+    if (had) return had.id;
+    const now = this.now();
+    /** @type {Run} */
+    const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
+      state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks } };
+    run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
+    for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
+    await this.store.putRun(run);
+    this.#emit("gate.opened", { run: id, record: g.urn, stage: g.stage }, run, `vyre://${run.space}/flow-run/${id}`);
+    return id;
+  }
+
+  /**
+   * One read through a Connection, for a stage gate's checklist: the declared operation must be a read (GET or HEAD), and the gateway authorizes it as a read for the chain it is given. A check
+   * never writes, so there is no yes to ask for; anything outward is refused here and would be held by the gateway anyway.
+   * @param {{ connection: string, operation: string, input?: any }} spec @param {any} chain a kernel-built chain
+   */
+  async readConnection(spec, chain) {
+    const cat = /** @type {any} */ (await this.catalogFn());
+    const probe = expandConnections({ steps: [{ id: "check", kind: "service", connection: spec.connection, operation: spec.operation, ...(spec.input !== undefined ? { input: spec.input } : {}) }] }, cat);
+    if (probe.errors.length) throw Object.assign(new Error(probe.errors[0].message), { code: "bad_input" });
+    const s = probe.flow.steps[0];
+    const method = String(s.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") throw Object.assign(new Error(`a check only reads, and ${spec.operation} is ${method}`), { code: "not_allowed" });
+    if (!this.ports.service) throw Object.assign(new Error("this Space has no connectors yet"), { code: "unavailable" });
+    const val = (/** @type {any} */ v) => v;
+    return this.ports.service({ chain, connector: s.connector, request: { method, path: s.path, ...(s.query !== undefined ? { query: val(s.query) } : {}), ...(s.headers !== undefined ? { headers: val(s.headers) } : {}) } });
+  }
+
+  /** What the stages module writes its gates through. */
+  gatePort() { return { open: (/** @type {any} */ g) => this.gateOpen(g), mark: (/** @type {string} */ id, /** @type {string} */ k, /** @type {any} */ p, /** @type {any} */ x) => this.gateMark(id, k, p, x), close: (/** @type {string} */ id, /** @type {any} */ x) => this.gateClose(id, x), list: () => this.gates(), read: (/** @type {any} */ spec, /** @type {any} */ chain) => this.readConnection(spec, chain) }; }
+
+  /** The open gates. @returns {Promise<any[]>} */
+  async gates() { return (await this.store.listRuns({ state: "waiting", limit: 5000 })).filter((/** @type {any} */ r) => r.gate); }
+
+  /** Write one step of a gate. A step that is already in that status with that output is left alone, so a repeated look writes nothing. @param {string} id @param {string} key @param {Record<string, any>} patch @param {{ attention?: any }} [o] */
+  async gateMark(id, key, patch, o = {}) {
+    return this.#locked(id, async () => {
+      const run = await this.store.getRun(id);
+      if (!run || !run.gate) return null;
+      const cur = run.steps[key];
+      const same = cur && cur.status === patch.status && JSON.stringify(cur.output ?? null) === JSON.stringify(patch.output ?? cur.output ?? null);
+      if (same && !o.attention && !run.attention) return run;
+      run.steps[key] = { ...(cur || {}), at: this.now(), ...patch };
+      run.updated_at = this.now();
+      if (o.attention) run.attention = { since: this.now(), ...o.attention }; else if (patch.status !== "failed") run.attention = undefined;
+      await this.store.putRun(run);
+      return run;
+    });
+  }
+
+  /** The gate is over: the record moved on (or was moved, or the stage is no longer the record's). @param {string} id @param {{ state?: 'done'|'cancelled', note?: string }} o */
+  async gateClose(id, o = {}) {
+    return this.#locked(id, async () => {
+      const run = await this.store.getRun(id);
+      if (!run || !run.gate || run.finished_at) return;
+      run.state = o.state || "done"; run.finished_at = this.now(); run.updated_at = run.finished_at; run.waiting = undefined; run.attention = undefined;
+      if (o.note) run.error = { step: "move", code: "note", message: o.note };
+      await this.store.putRun(run);
+      this.#emit("gate.closed", { run: id, state: run.state }, run, `vyre://${run.space}/flow-run/${id}`);
+    });
+  }
+
+  /** The saved test cases of a Flow. @param {string} id */
+  async tests(id) { return this.store.getTests ? this.store.getTests(id) : []; }
+  /** @param {string} id @param {any[]} cases */
+  async saveTests(id, cases) { if (!this.store.putTests) throw Object.assign(new Error("this store keeps no test cases"), { code: "unavailable" }); await this.store.putTests(id, cases); }
 
   async #activeFlows() {
     if (this.cache && this.now() - this.cache.at < 30_000) return this.cache.flows;
@@ -112,17 +263,292 @@ export class FlowRunner {
     return flows;
   }
 
+  /** The Flows a trigger may reach: the active ones, and the paused ones (flagged `paused`), so what arrives for a paused Flow is held, in order, and not lost. */
+  async #triggerFlows() {
+    const active = await this.#activeFlows();
+    if (!this.store.pausedFlows) return active;
+    const paused = await this.store.pausedFlows().catch(() => []);
+    return paused.length ? [...active, ...paused] : active;
+  }
+
   /** @param {string} id @param {string} reason */
   async pauseFlow(id, reason) { await this.store.pause(id, reason, this.now()); this.cache = null; }
-  /** @param {string} id */
-  async resumeFlow(id) { await this.store.resume(id); this.cache = null; }
+  /**
+   * Resume a paused Flow. What arrived while it was paused and was held runs now, in order (`backlog: "run"`, the default), or is dropped and counted (`"drop"`).
+   * @param {string} id @param {{ backlog?: 'run'|'drop', by?: string|null }} [o]
+   */
+  async resumeFlow(id, o = {}) {
+    await this.store.resume(id); this.cache = null;
+    const dropped = o.backlog === "drop" ? await this.#dropHeld((r) => r.flow === id && r.queued !== undefined && r.queued.reason === "flow_paused", o.by || null) : 0;
+    await this.#drainQueue();
+    return { ok: true, dropped_now: dropped };
+  }
+
+  // ------------------------------------------------------------------ health and the timeline (f8, f12)
+
+  /**
+   * How each Flow is, in one line and a few numbers: last run, this week's successes, the next run, what needs a person, what is held, and red when a Connection it uses is red. One Flow with `id`, else all of
+   * them. Read from the runs the runner already keeps; nothing new is stored.
+   * @param {string} [id]
+   */
+  async health(id) {
+    const now = this.now(), cat = /** @type {any} */ (await this.catalogFn()), ctl = await this.#control();
+    const out = [];
+    for (const r of (await this.store.list()).filter((/** @type {any} */ x) => !id || x.id === id)) {
+      const ver = r.active !== null && r.active !== undefined ? await this.store.getVersion(r.id, r.active) : null;
+      const flow = ver ? ver.flow : null;
+      const runs = await this.store.listRuns({ flow: r.id, limit: 200 });
+      /** @type {number | null} */ let nextAt = null;
+      const t = flow && flow.trigger;
+      if (t && t.on === "time" && r.status === "active") {
+        const last = await this.#lastFire(r.id, now);
+        nextAt = t.cron !== undefined ? nextCron(t.cron, Math.max(last, now), this.#zone(t, cat)) : t.every_ms !== undefined ? Math.max(last + t.every_ms, now) : t.at !== undefined && t.at > now ? t.at : null;
+      }
+      out.push(healthOf({ id: r.id, label: (flow && (flow.label || flow.name)) || r.name || r.id, status: r.status, paused: r.paused || null, runs, now, nextAt, tz: cat.tz || "UTC",
+        lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, testFailing: ver && r.status === "active" ? await this.#testFailing(r.id, ver) : undefined, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
+    }
+    return id ? out[0] || null : out;
+  }
+
+  /** The first failing saved test case of the active version, or undefined (a minute's cache: health is read often and a replay is not free). @param {string} id @param {any} ver */
+  async #testFailing(id, ver) {
+    const cases = await this.tests(id);
+    if (!cases.length) return undefined;
+    const key = `${ver.hash}:${JSON.stringify(cases).length}`;
+    const hit = this.testMemo.get(id);
+    if (hit && hit.key === key && this.now() - hit.at < 60_000) return hit.bad;
+    const approver = ver.approver || { kind: "service", id: "flows", space: ver.space };
+    const r = await runCases(this, ver.flow, cases, approver).catch(() => null);
+    const bad = r && !r.ok ? r.results.find(x => !x.ok)?.name : undefined;
+    this.testMemo.set(id, { key, at: this.now(), bad });
+    return bad;
+  }
+
+  /** A run read back as lines (f12), or one step in detail. @param {string} runId @param {{ step?: string }} [o] */
+  async timeline(runId, o = {}) {
+    const run = await this.store.getRun(runId);
+    if (!run) throw Object.assign(new Error("no such run"), { code: "not_found" });
+    const ver = await this.store.getVersion(run.flow, run.version);
+    if (o.step) { const d = stepDetail(run, o.step); if (!d) throw Object.assign(new Error(`that run has no step ${o.step}`), { code: "not_found" }); return { run: run.id, step: d }; }
+    const t = timelineOf(run, ver ? ver.flow : null);
+    return { run: run.id, flow: run.flow, version: run.version, lines: t.lines };
+  }
+
+  // ------------------------------------------------------------------ the switch, the queue, concurrency and locks (f5, f6, f7)
+
+  /** The limits the Space's settings give, read at most every 30 seconds. A setting that is missing or not a number leaves the default. */
+  async #refreshSettings() {
+    if (!this.settingsFn || this.now() - this.settingsAt < 30_000) return;
+    this.settingsAt = this.now();
+    const pick = async (/** @type {string} */ key, /** @type {number} */ scale, /** @type {number} */ lo, /** @type {number} */ hi) => { try { const v = Number(await /** @type {any} */ (this.settingsFn)(key)); return Number.isFinite(v) && v >= lo && v <= hi ? v * scale : undefined; } catch { return undefined; } };
+    const set = (/** @type {string} */ k, /** @type {number|undefined} */ v) => { if (v !== undefined) /** @type {any} */ (this.limits)[k] = v; };
+    set("concurrency", await pick("flows.concurrency", 1, 1, 32));
+    set("box_concurrency", await pick("flows.concurrency_box", 1, 1, 256));
+    set("stuck_ms", await pick("flows.stuck_minutes", 60_000, 1, 1440));
+    set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
+    set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
+    const cap = await pick("flows.retry_attempts", 1, 1, 8);
+    if (cap !== undefined) this.retryCap = cap;
+  }
+
+  /** The Space's switch. @returns {Promise<{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }>} */
+  async #control() {
+    if (this.now() - this.ctlAt < 5000) return this.ctl;
+    this.ctlAt = this.now();
+    try { const c = this.store.getControl ? await this.store.getControl() : null; this.ctl = c && c.mode ? c : { mode: "running" }; } catch { /* the last known switch stands */ }
+    return this.ctl;
+  }
+
+  /** @param {{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }} c */
+  async #putControl(c) { this.ctl = c; this.ctlAt = this.now(); if (this.store.putControl) await this.store.putControl(c); }
+
+  /**
+   * Pause every Flow at once, or drain. Paused: nothing new starts (a trigger that arrives is held, in order, and runs when the switch is released) and a run in flight stops at its next step boundary.
+   * Draining: nothing new starts, and the runs already going finish. A person's own.
+   * @param {{ reason?: string, by?: string|null, drain?: boolean }} [o]
+   */
+  async pauseAll(o = {}) {
+    const prev = await this.#control();
+    await this.#putControl({ mode: o.drain ? "draining" : "paused", reason: String(o.reason || "").slice(0, 200), since: this.now(), by: o.by || null, dropped: prev.dropped || {} });
+    return this.controlState();
+  }
+
+  /**
+   * Release the switch. What was held while it was on runs now, in the order it came (`backlog: "run"`, the default), or is dropped and counted (`"drop"`).
+   * @param {{ backlog?: 'run'|'drop', by?: string|null }} [o]
+   */
+  async resumeAll(o = {}) {
+    const prev = await this.#control();
+    await this.#putControl({ mode: "running", since: this.now(), by: o.by || null, dropped: prev.dropped || {} });
+    const dropped = o.backlog === "drop" ? await this.#dropHeld((r) => r.queued.reason === "paused" || r.queued.reason === "draining", o.by || null) : 0;
+    await this.#drainQueue();
+    return { ...(await this.controlState()), dropped_now: dropped };
+  }
+
+  /** The switch, and what waits behind it, for a line a person reads first: how many runs are held and why, and how many events were dropped past the cap. */
+  async controlState() {
+    const c = await this.#control();
+    const held = await this.store.listRuns({ state: "queued", limit: 5000 });
+    const byReason = /** @type {Record<string, number>} */ ({});
+    for (const r of held) if (r.queued) byReason[r.queued.reason] = (byReason[r.queued.reason] || 0) + 1;
+    return { mode: c.mode, ...(c.reason ? { reason: c.reason } : {}), ...(c.since ? { since: c.since } : {}), ...(c.by ? { by: c.by } : {}), held: held.length, held_by: byReason, dropped: Object.values(c.dropped || {}).reduce((a, b) => a + b, 0) };
+  }
+
+  /** Mark queued runs cancelled (a person chose not to run what was held) and count them. @param {(r: Run) => boolean} pick @param {string|null} by */
+  async #dropHeld(pick, by) {
+    let n = 0;
+    for (const r of await this.store.listRuns({ state: "queued", limit: 5000 })) {
+      if (!r.queued || !pick(r)) continue;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "queued") return;
+        cur.state = "cancelled"; cur.finished_at = this.now(); cur.updated_at = cur.finished_at; cur.queued = undefined; cur.cancelled = { by, at: cur.finished_at, reason: "dropped when the backlog was released" };
+        await this.store.putRun(cur);
+        n++;
+      });
+    }
+    return n;
+  }
+
+  /** @param {Run} run @param {string} why */
+  async #queue(run, why) {
+    const was = run.state;
+    run.state = "queued"; run.queued = { reason: /** @type {any} */ (why), since: run.queued ? run.queued.since : this.now(), seq: run.queued ? run.queued.seq : ++this.seq }; run.updated_at = this.now();
+    await this.store.putRun(run);
+    if (was !== "queued") this.#emit("flow.queued", { run: run.id, flow: run.flow, reason: why }, run, `vyre://${run.space}/flow-run/${run.id}`);
+  }
+
+  /** The most runs of this Flow at once. @param {any} flow */
+  #flowLimit(flow) { return Math.min(flow && flow.concurrency ? flow.concurrency : this.limits.concurrency, this.limits.box_concurrency); }
+
+  /** A lock key from the Flow's expression, once per run. @param {Run} run @param {any} flow @returns {string|null} */
+  #lockKey(run, flow) {
+    if (run.lock_key !== undefined) return run.lock_key || null;
+    // No lock of its own: a run that a record's event started works on that record, and two such runs for one record take turns (they never interleave their writes). Events that are not about a record have no key.
+    if (!flow || typeof flow.lock !== "string") {
+      const subject = run.trigger && run.trigger.event && typeof run.trigger.event.subject === "string" ? run.trigger.event.subject : "";
+      const m = /^vyre:\/\/[^/]+\/([a-z][a-z0-9-]*)\/[^/]+$/.exec(subject);
+      run.lock_key = m && !["event", "flow", "flow-run", "task", "def-flow", "flow-state"].includes(m[1]) ? subject : "";
+      return run.lock_key || null;
+    }
+    let key = "";
+    try { const v = evaluate(parse(flow.lock), this.#scope({ run }, {})); key = v === null || v === undefined || v === "" ? "" : String(typeof v === "object" ? JSON.stringify(v) : v).slice(0, 200); } catch { key = ""; }
+    run.lock_key = key;
+    return key || null;
+  }
+
+  /**
+   * Take a place to execute: one of the Flow's, one of the box's, and the lock key if the Flow has one. Returns null when taken, else why not (the run is then queued).
+   * @param {Run} run @param {any} flow @returns {string | null}
+   */
+  #acquire(run, flow) {
+    if (this.slots.box.has(run.id)) return null;
+    if (this.slots.box.size >= this.limits.box_concurrency) return "box_limit";
+    const set = this.slots.byFlow.get(run.flow) || new Set();
+    if (set.size >= this.#flowLimit(flow)) return "concurrency";
+    const key = this.#lockKey(run, flow);
+    if (key) { const holder = this.slots.locks.get(key); if (holder && holder !== run.id) return "lock"; }
+    this.slots.box.add(run.id); set.add(run.id); this.slots.byFlow.set(run.flow, set);
+    if (key) this.slots.locks.set(key, run.id);
+    return null;
+  }
+
+  /** @param {Run} run */
+  #release(run) {
+    this.slots.box.delete(run.id);
+    const set = this.slots.byFlow.get(run.flow);
+    if (set) { set.delete(run.id); if (!set.size) this.slots.byFlow.delete(run.flow); }
+    if (run.lock_key && this.slots.locks.get(run.lock_key) === run.id) this.slots.locks.delete(run.lock_key);
+  }
+
+  /** Start what was held and can go now, oldest first. One pass at a time; a request that comes in during a pass makes another pass, and none is lost. */
+  #drainQueue() {
+    this.queueAgain = true;
+    if (this.queueRun) return this.queueRun;
+    /** @type {Promise<void>} */ const p = (async () => {
+      try { while (this.queueAgain) { this.queueAgain = false; await this.#drainOnce(); } }
+      catch { /* the next request tries again */ }
+      finally { this.queueRun = null; this.inflight.delete(p); }
+    })();
+    this.queueRun = p; this.inflight.add(p);
+    return p;
+  }
+
+  async #drainOnce() {
+    const c = await this.#control();
+    if (c.mode !== "running") return;
+    const held = (await this.store.listRuns({ state: "queued", limit: 5000 })).filter(r => r.queued).sort((a, b) => /** @type {any} */ (a.queued).since - /** @type {any} */ (b.queued).since || (/** @type {any} */ (a.queued).seq || 0) - (/** @type {any} */ (b.queued).seq || 0) || (a.id < b.id ? -1 : 1));
+    /** @type {Map<string, number>} */ const launched = new Map();
+    let box = this.slots.box.size;
+    for (const r of held) {
+      const f = await this.store.active(r.flow);
+      if (!f) continue;                                           // the Flow is paused or off: its runs wait with it
+      const view = await this.store.getVersion(r.flow, r.version);
+      const flow = view ? view.flow : f.flow;
+      const mine = (this.slots.byFlow.get(r.flow) ? this.slots.byFlow.get(r.flow)?.size || 0 : 0) + (launched.get(r.flow) || 0);
+      if (box >= this.limits.box_concurrency || mine >= this.#flowLimit(flow)) continue;
+      const key = this.#lockKey(r, flow);
+      if (key && this.slots.locks.has(key) && this.slots.locks.get(key) !== r.id) continue;
+      launched.set(r.flow, (launched.get(r.flow) || 0) + 1); box++;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "queued") return;
+        cur.state = "running"; cur.queued = undefined; cur.updated_at = this.now();
+        await this.store.putRun(cur);
+      });
+      this.#detach(r.id);
+    }
+  }
+
+  /**
+   * A run that stopped moving is never silent (f5). A run that says it is running but has not written to its ledger for `stuck_after_ms` is run once more (the ledger makes that safe, it is
+   * what a restart does) and, if it still does not move, flagged `stuck`. A run waiting for a person past `stale_after` is flagged `stale`, and left waiting: a person may simply be slow.
+   * Only the scheduler's own tick calls this, so there is no timer of its own.
+   */
+  async #watchdog() {
+    const now = this.now();
+    const stuckOf = async (/** @type {Run} */ r) => { const v = await this.store.getVersion(r.flow, r.version); return v && v.flow && v.flow.stuck_after_ms ? v.flow.stuck_after_ms : this.limits.stuck_ms; };
+    for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) {
+      if (now - r.updated_at < await stuckOf(r)) continue;
+      if (r.attention && r.attention.kind === "stuck") continue;
+      const going = this.locks.has(r.id);
+      const again = this.reexec.get(r.id);
+      if (!going && (again === undefined || again < r.updated_at)) { this.reexec.set(r.id, now); this.#detach(r.id); continue; }
+      // A run that is executing but silent cannot be written behind its own lock (that lock is held by the step that hangs): the flag goes on the live run, and the run's next write keeps it.
+      const live = this.live.get(r.id);
+      if (!live && !going) {                                  // run once more already and still not moving, with nothing executing it
+        await this.#locked(r.id, async () => {
+          const cur = await this.store.getRun(r.id);
+          if (!cur || cur.state !== "running" || cur.attention) return;
+          this.#attend(cur, { kind: "stuck", step: cur.error ? cur.error.step : "", message: "this run has not moved for a while" });
+          await this.store.putRun(cur);
+          this.#emit("flow.stuck", { run: cur.id, flow: cur.flow, step: cur.error ? cur.error.step : "" }, cur, `vyre://${cur.space}/flow-run/${cur.id}`);
+        });
+        continue;
+      }
+      if (!live || live.state !== "running") continue;
+      this.#attend(live, { kind: "stuck", step: live.error ? live.error.step : "", message: "this run has not moved for a while" });
+      await this.store.putRun(live);
+      this.#emit("flow.stuck", { run: live.id, flow: live.flow, step: live.error ? live.error.step : "" }, live, `vyre://${live.space}/flow-run/${live.id}`);
+    }
+    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
+      if (!r.waiting || r.waiting.kind !== "task" || r.attention || now - r.updated_at < this.limits.stale_ms) continue;
+      await this.#locked(r.id, async () => {
+        const cur = await this.store.getRun(r.id);
+        if (!cur || cur.state !== "waiting" || cur.attention) return;
+        this.#attend(cur, { kind: "stale", step: cur.waiting ? cur.waiting.step : "", message: "a person has not answered yet" });
+        await this.store.putRun(cur);
+        this.#emit("flow.stale", { run: cur.id, flow: cur.flow }, cur, `vyre://${cur.space}/flow-run/${cur.id}`);
+      });
+    }
+  }
 
   // ------------------------------------------------------------------ triggers
 
   /** An event from the log. Starts runs for matching Flows and resumes runs waiting on it. @param {any} env */
   async onEvent(env) {
     const work = [];
-    for (const f of await this.#activeFlows()) {
+    for (const f of await this.#triggerFlows()) {
       if (!triggerScope(f.flow.trigger, env)) continue;
       work.push(this.#start(f, { kind: f.flow.trigger.on, key: String(env.id), event: env }, env));
     }
@@ -154,6 +580,7 @@ export class FlowRunner {
    * the server was off runs ONCE when it comes back, with `caught_up` and how many times it skipped; never once per missed tick.
    */
   async tick() {
+    await this.#refreshSettings();
     const now = this.now();
     const cat = await this.catalogFn();
     const work = [];
@@ -182,7 +609,10 @@ export class FlowRunner {
       const dl = w.kind === "time" ? w.wake_at : w.deadline;
       if (dl !== undefined && dl <= now) work.push(this.#resume(r.id, { timeout: true }));
     }
-    return Promise.all(work);
+    const out = await Promise.all(work);
+    await this.#drainQueue();
+    await this.#watchdog();
+    return out;
   }
 
   /** The earliest time anything needs waking, so the host sets one timer and never polls. @returns {Promise<number|null>} */
@@ -199,7 +629,8 @@ export class FlowRunner {
       else if (t.every_ms !== undefined) take(last + t.every_ms);
       else if (t.at !== undefined && t.at > now) take(t.at);
     }
-    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline);
+    for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) { take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline); if (r.waiting.kind === "task" && !r.attention) take(r.updated_at + this.limits.stale_ms); }
+    for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) if (!r.attention) take(r.updated_at + this.limits.stuck_ms);
     return best;
   }
 
@@ -215,7 +646,7 @@ export class FlowRunner {
     const trust = w.trust || "external";
     const itemKey = w.key || (w.item.id !== undefined ? `${w.watcher}/${String(w.item.id)}` : `${w.watcher}/${crypto.createHash("sha256").update(canonicalOf(w.item)).digest("hex").slice(0, 24)}`);
     const out = [];
-    for (const f of await this.#activeFlows()) {
+    for (const f of await this.#triggerFlows()) {
       const t = f.flow.trigger;
       if (t.on !== "watcher" || t.watcher !== w.watcher) continue;
       const scope = { trigger: { watcher: w.watcher, item: w.item, at: this.now() } };
@@ -232,7 +663,7 @@ export class FlowRunner {
    * @param {string} path @param {{ body?: any, key?: string, trust?: 'member'|'external'|'untrusted' }} [req]
    */
   async handleWeb(path, req = {}) {
-    const f = (await this.#activeFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
+    const f = (await this.#triggerFlows()).find(x => x.flow.trigger.on === "web" && x.flow.trigger.path === path);
     if (!f) throw Object.assign(new Error("no Flow answers that address"), { code: "not_found" });
     const trust = req.trust || "untrusted";
     return this.#start(f, { kind: "web", key: req.key || newId("web_"), input: req.body ?? {}, path }, { trust, data: req.body ?? {} });
@@ -258,6 +689,7 @@ export class FlowRunner {
   /** Pick up after a restart: re-run what was mid-flight, and apply task results that arrived while we were down. */
   async recover() {
     for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) await this.#exec(r.id);
+    await this.#drainQueue();                                  // what was held when the server stopped goes on, if the switch is off
     const waiting = await this.store.listRuns({ state: "waiting", limit: 1000 });
     if (waiting.some(r => r.waiting && r.waiting.kind === "task")) {
       const chain = this.chains.forFlow({ flow: "system", space: waiting[0].space, approver: waiting[0].approver, tainted: false, run: "recover", source_spaces: [waiting[0].space] });
@@ -286,15 +718,35 @@ export class FlowRunner {
     const stamps = (this.rate.get(f.id) || []).filter(t => now - t < 60_000);
     if (stamps.length >= this.limits.rate_per_minute) { await this.#runaway(f, `it started more than ${this.limits.rate_per_minute} times in a minute`); return { run: null, refused: "rate" }; }
     stamps.push(now); this.rate.set(f.id, stamps);
+    // A paused Flow, a paused or draining Space: the trigger is held as a queued run (so a restart keeps it) and runs when the switch is released. Held runs are bounded per Flow; past the cap an event is
+    // dropped, counted, and the owner sees the count first (controlState).
+    const ctl = await this.#control();
+    const hold = f.paused ? "flow_paused" : ctl.mode !== "running" ? ctl.mode : null;
+    if (hold) {
+      const queued = await this.store.listRuns({ flow: f.id, state: "queued", limit: this.limits.backlog + 1 });
+      if (queued.length >= this.limits.backlog) {
+        const dropped = { ...(ctl.dropped || {}) }; dropped[f.id] = (dropped[f.id] || 0) + 1;
+        await this.#putControl({ ...ctl, dropped });
+        this.emitFn("flow.dropped", { flow: f.id, reason: hold, dropped: dropped[f.id] }, { chain: null, subject: `vyre://${f.space}/flow/${f.id}`, corr: "" });
+        return { run: null, refused: "backlog" };
+      }
+    }
     const trust = src && (src.trust || (src.data !== undefined ? "member" : undefined));
     const sourceSpaces = (src && src.source_spaces) || [f.space];
     const tainted = trust === "external" || trust === "untrusted" || sourceSpaces.length > 1;
     /** @type {Run} */
     const run = { id, flow: f.id, version: f.version, hash: f.hash, space: f.space, trigger: recordTrigger(f.flow.trigger, trig, slim),
       tainted, source_spaces: sourceSpaces, depth, state: "running", started_at: now, updated_at: now, steps: {}, approver: f.approver };
+    if (hold) {
+      run.state = "queued"; run.queued = { reason: /** @type {any} */ (hold), since: now, seq: ++this.seq };
+      await this.store.putRun(run);
+      this.#emit("flow.queued", { run: id, flow: f.id, reason: hold }, run, `vyre://${f.space}/flow-run/${id}`);
+      return { run: id, queued: true };
+    }
     await this.store.putRun(run);
     this.#emit("flow.started", { run: id, flow: f.id, version: f.version, trigger: trig.kind, source: run.trigger.source, tainted }, run, `vyre://${f.space}/flow-run/${id}`);
-    await this.#execLocked(id);
+    // The run executes on its own: a trigger's delivery is not held up by a slow step (one slow Flow must not stop the others' events), and the concurrency gate is what bounds how many go at once.
+    this.#detach(id);
     return { run: id };
   }
 
@@ -350,16 +802,77 @@ export class FlowRunner {
     });
   }
 
-  /** Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated. @param {string} runId */
-  async retry(runId) {
+  /**
+   * Put a paused or failed run back to work after its cause was fixed; finished steps are not repeated (their recorded outputs are used), so the run resumes at the step that failed.
+   *   skip     do not run the failed step: it is recorded as skipped. If a later step reads its output (`steps.<id>`), a `value` to use instead is required: typed by the person or accepted from an
+   *            agent's proposal, and recorded on the step with who supplied it (`by`). With no value the skip is refused, naming the step.
+   *   version  "latest" re-pins the run to the Flow's active version, only if every step already done is still there with the same id and kind; otherwise it is refused, naming the first that is not.
+   * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
+   */
+  async retry(runId, opts = {}) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
+      if (run && run.gate) throw Object.assign(new Error("a stage gate is not retried; it moves on by itself when its tasks are done"), { code: "bad_state" });
       if (!run || (run.state !== "paused" && run.state !== "failed")) return;
-      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now();
+      const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+      if (opts.version === "latest") {
+        const now = await this.store.active(run.flow);
+        if (!now) throw fail("not_active", "that Flow has no active version to move to");
+        if (now.version !== run.version) {
+          /** @type {Map<string, string>} */ const kinds = new Map();
+          const note = (/** @type {any} */ st) => kinds.set(st.id, st.kind);
+          walkSteps(now.flow.steps || [], note); walkSteps(now.flow.on_failure || [], note);
+          for (const [k, l] of Object.entries(run.steps)) {
+            if (!l || !["done", "skipped", "failed_handled"].includes(l.status) || k.includes("?")) continue;
+            const id = k.replace(/[@!].*$/, "");
+            const was = (await this.store.getVersion(run.flow, run.version));
+            /** @type {Map<string, string>} */ const old = new Map();
+            if (was) { const oldNote = (/** @type {any} */ st) => old.set(st.id, st.kind); walkSteps(was.flow.steps || [], oldNote); walkSteps(was.flow.on_failure || [], oldNote); }
+            if (kinds.get(id) !== old.get(id)) throw fail("version_mismatch", `step ${id} was already done, and version ${now.version} ${kinds.has(id) ? `makes it a ${kinds.get(id)} step` : "no longer has it"}: retry on the version the run started on, or start a new run`);
+          }
+          run.version = now.version; run.hash = now.hash;
+        }
+      }
+      if (opts.skip) {
+        const at = run.error && run.error.step;
+        const entry = Object.entries(run.steps).find(([k, l]) => l && l.status === "failed" && k.replace(/[@!].*$/, "") === at);
+        if (!at || !entry) throw fail("nothing_to_skip", "this run did not stop at a step that can be skipped");
+        const def = await this.store.getVersion(run.flow, run.version);
+        const readers = def && new RegExp(`steps\\.${at}\\b|steps\\[['"]${at}['"]\\]`).test(JSON.stringify(def.flow));
+        if (readers && opts.value === undefined) throw fail("skip_needs_value", `a later step reads what ${at} produces, so skipping it needs a value to use instead (give one, or retry)`);
+        run.steps[entry[0]] = { ...entry[1], status: "skipped", output: opts.value === undefined ? null : opts.value, skipped_by: opts.by || null, skipped_at: this.now(), ...(opts.value !== undefined ? { substitute: true } : {}), error: undefined, handling: undefined };
+      }
+      run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now(); run.attention = undefined; run.failing = undefined; run.failing_done = undefined; run.failing_error = undefined;
       // A person retrying a run whose write may or may not have gone out has looked and said go: the record that it might have been sent is cleared, so the call is made again.
-      for (const l of Object.values(run.steps)) if (l && l.status === "started" && l.sent_at) l.sent_at = null;
+      // The tries start again, and a failure path that ran for the last failure may run again for the next.
+      for (const [k, l] of Object.entries(run.steps)) {
+        if (!l) continue;
+        if ((l.status === "started" || l.status === "failed") && l.sent_at) l.sent_at = null;
+        if (l.status === "failed") { l.tries = 0; l.handling = undefined; }
+        if (k.includes("!")) delete run.steps[k];
+      }
       await this.store.putRun(run);
+      this.#emit("flow.retried", { run: run.id, flow: run.flow, ...(opts.skip ? { skipped: true } : {}), ...(opts.version === "latest" ? { version: run.version } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
       await this.#execLocked(runId);
+    });
+  }
+
+  /**
+   * Stop a run that is not running: paused, failed or waiting. It is kept (its ledger and error stay), marked cancelled, and any card it waits on is withdrawn where the kernel can. A run that already finished is left as it is.
+   * @param {string} runId @param {{ by?: string, reason?: string }} [o]
+   */
+  async cancel(runId, o = {}) {
+    return this.#locked(runId, async () => {
+      const run = await this.store.getRun(runId);
+      if (run && run.gate) throw Object.assign(new Error("a stage gate is not cancelled; move the record, or move it on early with flows.advance"), { code: "bad_state" });
+      if (!run || !["paused", "failed", "waiting"].includes(run.state)) return { ok: false, state: run ? run.state : null };
+      const w = run.waiting;
+      run.state = "cancelled"; run.waiting = undefined; run.finished_at = this.now(); run.updated_at = run.finished_at; run.attention = undefined;
+      run.cancelled = { by: o.by || null, at: run.finished_at, ...(o.reason ? { reason: String(o.reason).slice(0, 200) } : {}) };
+      await this.store.putRun(run);
+      if (w && w.task && this.k.ask && typeof this.k.ask.cancel === "function") { try { await this.k.ask.cancel(this.#chain({ run, cat: null, flow: null }), w.task); } catch { /* the card stays; the run is stopped anyway */ } }
+      this.#emit("flow.cancelled", { run: run.id, flow: run.flow, by: o.by || null }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return { ok: true, state: "cancelled" };
     });
   }
 
@@ -376,6 +889,24 @@ export class FlowRunner {
   }
   /** @param {string} id */
   #exec(id) { return this.#locked(id, () => this.#execLocked(id)); }
+  /**
+   * Run a run on its own. Whatever it throws (a store that failed while a run was being written, a bug) ends here: a detached run must never become an unhandled rejection, which would take the whole server down.
+   * The run is marked failed if it can be, and the fault is said in an event.
+   * @param {string} id
+   */
+  #detach(id) {
+    void this.#exec(id).catch(async (e) => {
+      try {
+        const r = await this.store.getRun(id);
+        if (r && (r.state === "running" || r.state === "queued")) {
+          const f = failOf(e);
+          r.state = "failed"; r.error = { step: r.error ? r.error.step : "", code: f.code, message: f.message }; r.finished_at = this.now(); r.updated_at = r.finished_at; this.#attend(r, { kind: "failed", step: r.error.step, code: f.code, message: f.message });
+          await this.store.putRun(r);
+        }
+      } catch { /* the store is the fault; the next recover() finds the run */ }
+      try { this.emitFn("flow.error", { run: id, message: String(e && /** @type {any} */ (e).message || e).slice(0, 200) }, { chain: null, subject: "", corr: id }); } catch { /* said if it can be */ }
+    });
+  }
 
   /** @param {string} runId */
   async #execLocked(runId) {
@@ -386,23 +917,51 @@ export class FlowRunner {
     const cat = await this.catalogFn();
     const caps = Array.isArray(view.flow.caps) ? view.flow.caps : deriveCaps(view.flow, cat);
     const ctx = { run, flow: view.flow, view, cat, caps, dry: false, count: 0, runnerPaused: false };
+    // A place to execute: the Flow's, the box's and the lock's. Without one the run is held, in order, and starts when a place frees.
+    const why = this.#acquire(run, view.flow);
+    if (why) { await this.#queue(run, why); return; }
+    this.live.set(run.id, run);
     try {
+      // A Flow-level failure path was started before a restart: carry on with it, not with the steps that failed.
+      if (run.failing) throw new StepFail(run.failing.code, run.failing.message);
       await this.#walk(ctx, view.flow.steps, "", {});
       run.state = "done"; run.error = undefined;
+      if (run.attention && run.attention.kind !== "verify") run.attention = undefined;
       await this.#finish(run);
     } catch (e) {
+      if (e instanceof Hold) { await this.#queue(run, e.reason); return; }
       if (e instanceof Suspend) { run.state = "waiting"; run.updated_at = this.now(); await this.store.putRun(run); return; }
       if (e instanceof PauseFlow) {
         run.state = "paused"; run.error = { step: run.error ? run.error.step : "", code: "paused", message: e.reason }; run.updated_at = this.now();
+        this.#attend(run, { kind: "paused", step: run.error.step, code: "paused", message: e.reason });
         await this.store.putRun(run);
         await this.pauseFlow(run.flow, e.reason);
         this.#emit("flow.paused", { run: run.id, flow: run.flow, reason: e.reason }, run, `vyre://${run.space}/flow-run/${run.id}`);
         return;
       }
-      const code = e instanceof StepFail ? e.code : "error";
-      const message = e instanceof Error ? e.message : String(e);
-      run.state = "failed"; run.error = { step: run.error && run.error.step || "", code, message };
+      const f = failOf(e);
+      run.error = { step: run.failing ? run.failing.step : (run.error && run.error.step || ""), code: f.code, message: f.message };
+      // The Flow's own failure path runs once, before the run is called failed. A person's answer in it resumes it here, not at the step that failed.
+      const failedAt = run.error.step;
+      if (Array.isArray(view.flow.on_failure) && view.flow.on_failure.length && !run.failing_done) {
+        run.failing = { step: run.error.step, code: f.code, message: f.message };
+        await this.store.putRun(run);
+        try { await this.#walk(ctx, view.flow.on_failure, "!onfail", { error: { code: f.code, message: f.message, step: run.error.step } }); }
+        catch (e2) {
+          if (e2 instanceof Suspend) { run.state = "waiting"; run.updated_at = this.now(); await this.store.putRun(run); return; }
+          // a failure path that itself fails does not hide the first failure
+          run.failing_error = failOf(e2);
+        }
+        run.failing = undefined; run.failing_done = true;
+        run.error = { step: failedAt, code: f.code, message: f.message };   // the failure path's own steps wrote their names here
+      }
+      run.state = "failed";
+      this.#attend(run, { kind: "failed", step: run.error.step, code: f.code, message: f.message });
       await this.#finish(run);
+    } finally {
+      this.live.delete(run.id);
+      this.#release(run);
+      void this.#drainQueue();
     }
   }
 
@@ -425,6 +984,7 @@ export class FlowRunner {
    */
   async #walk(ctx, steps, suffix, locals) {
     for (const s of steps) {
+      if (!ctx.dry && this.ctl.mode === "paused") throw new Hold("paused");
       if (++ctx.count > this.limits.steps_per_run) throw new StepFail("too_many_steps", `the run took more than ${this.limits.steps_per_run} steps`);
       await this.#step(ctx, s, s.id + suffix, suffix, locals);
     }
@@ -445,6 +1005,7 @@ export class FlowRunner {
     const run = ctx.run;
     run.steps[key] = { ...(run.steps[key] || {}), at: this.now(), ...patch };
     run.updated_at = this.now();
+    if (run.attention && (run.attention.kind === "stuck" || run.attention.kind === "stale")) run.attention = undefined;   // it moved
     if (!ctx.dry) await this.store.putRun(run);
   }
 
@@ -453,56 +1014,221 @@ export class FlowRunner {
     const run = ctx.run;
     const led = this.#led(ctx, key);
     if (led && (led.status === "done" || led.status === "skipped") && !(s.kind in BLOCK_KINDS)) return;
+    if (led && led.status === "failed_handled" && s.kind in BLOCK_KINDS) return;
     run.error = { step: s.id, code: "", message: "" }; // names the step in flight; cleared by a clean finish
     const scope = () => this.#scope(ctx, locals);
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
     const val = (/** @type {any} */ v) => resolveValue(v, scope());
 
     if (s.kind === "decide") {
-      let branch = led && led.output && led.output.branch;
-      if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
-      await this.#walk(ctx, s[branch] || [], suffix, locals);
-      await this.#mark(ctx, key, { status: "done", output: { branch } });
+      await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        let branch = led && led.output && led.output.branch;
+        if (!branch) { branch = truthy(ev(s.if)) ? "then" : "else"; await this.#mark(ctx, key, { status: "started", output: { branch } }); }
+        await this.#walk(ctx, s[branch] || [], suffix, locals);
+        return { branch };
+      });
       return;
     }
     if (s.kind === "repeat") {
-      let items = led && led.output && led.output.items;
-      if (!items) {
-        const list = ev(s.over);
-        items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
-        await this.#mark(ctx, key, { status: "started", output: { items } });
-      }
-      for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
-      await this.#mark(ctx, key, { status: "done", output: { count: items.length } });
+      await this.#block(ctx, s, key, suffix, locals, scope, async () => {
+        let items = led && led.output && led.output.items;
+        if (!items) {
+          const list = ev(s.over);
+          items = Array.isArray(list) ? list.slice(0, Math.min(s.max || SCHEMA_LIMITS.repeatMax, SCHEMA_LIMITS.repeatMax)) : [];
+          await this.#mark(ctx, key, { status: "started", output: { items } });
+        }
+        for (let i = 0; i < items.length; i++) await this.#walk(ctx, s.steps || [], `${suffix}@${i}`, { ...locals, [s.as]: items[i], [`${s.as}_index`]: i });
+        return { count: items.length };
+      });
       return;
     }
 
+    if (led && led.status === "failed_handled") return;
+    const dispatch = async () => {
+      /** @type {any} */ let out;
+      switch (s.kind) {
+        case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
+        case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
+        case "wait": out = await this.#wait(ctx, s, key, val); break;
+        case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
+        case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
+          if (ctx.dry) return { dry: true };
+          if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
+          // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
+          const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
+          if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
+          // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
+          const input = val(s.input);
+          const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
+          return draftAs ? { draft: true, via: draftAs, result: r } : r;
+        }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
+        case "classify": out = await this.#classify(ctx, s, key, val); break;
+        case "extract": out = await this.#extract(ctx, s, key, val); break;
+        case "service": out = await this.#service(ctx, s, key, val); break;
+        case "fn": out = await this.#fn(ctx, s, key, val); break;
+        default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
+      }
+      return out;
+    };
+    const t0 = this.now();
     /** @type {any} */ let out;
-    switch (s.kind) {
-      case "find": case "pick": case "filter": out = await this.#read(ctx, s, key, scope()); break;
-      case "create": case "update": case "upsert": case "remove": case "stage": out = await this.#write(ctx, s, key, scope(), val); break;
-      case "wait": out = await this.#wait(ctx, s, key, val); break;
-      case "ask": case "assign": case "agent": out = await this.#task(ctx, s, key, scope(), val); break;
-      case "call": out = await this.#effect(ctx, s, key, { action: s.action, resource: s.resource }, async (idem, approval, rules) => {
-        if (ctx.dry) return { dry: true };
-        if (!this.ports.call) throw new StepFail("unavailable", "this Space has no way to run actions yet");
-        // Draft only: the catalog says which action prepares a draft instead of sending (`draft_as`); without one the send does not happen at all.
-        const draftAs = rules && rules.draftOnly ? (ctx.cat.actions[s.action] || {}).draft_as : null;
-        if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
-        // The approval the person gave for exactly this act is presented WITH it (and the bind of what was approved), so the act's own gate spends the one use; a draft is not the approved send and carries none.
-        const input = val(s.input);
-        const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, input, { idem: draftAs ? `${idem}:draft` : idem, ...(approval && !draftAs ? { approval, bind: actBind({ action: s.action, resource: s.resource, input }) } : {}) });
-        return draftAs ? { draft: true, via: draftAs, result: r } : r;
-      }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
-      case "classify": out = await this.#classify(ctx, s, key, val); break;
-      case "extract": out = await this.#extract(ctx, s, key, val); break;
-      case "service": out = await this.#service(ctx, s, key, val); break;
-      case "fn": out = await this.#fn(ctx, s, key, val); break;
-      default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
+    if (ctx.dry) out = await dispatch();
+    else {
+      const r = await this.#guarded(ctx, s, key, suffix, locals, dispatch, scope);
+      if (r.handled) return;
+      out = r.out;
     }
-    await this.#mark(ctx, key, { status: "done", output: out });
+    await this.#mark(ctx, key, { status: "done", output: out, started_at: (this.#led(ctx, key) || {}).started_at ?? t0, finished_at: this.now(), error: undefined, handling: undefined });
     this.#emit("step.done", { run: run.id, step: key, kind: s.kind }, run, `vyre://${run.space}/flow-run/${run.id}`);
   }
+
+  /**
+   * A decide or a repeat under its failure path and its check (f1, f2 on blocks). A step inside that fails for good, or a check that fails, sends the block to its on_fail steps, which read
+   * `error`; `then: continue` lets the run go on after them, the default fails the run. Replay-safe like a step: the block's ledger entry records that the failure path was started.
+   * @param {any} ctx @param {any} s @param {string} key @param {string} suffix @param {Record<string, any>} locals @param {() => any} scope @param {() => Promise<any>} body
+   */
+  async #block(ctx, s, key, suffix, locals, scope, body) {
+    const run = ctx.run;
+    const led0 = this.#led(ctx, key);
+    /** @type {{ code: string, message: string } | null} */ let failure = null;
+    if (led0 && led0.status === "failed" && led0.handling && s.on_fail) failure = led0.error || { code: "error", message: "failed" };
+    if (!failure) {
+      try {
+        const out = await body();
+        const bad = ctx.dry ? null : await this.#verify(ctx, s, key, out, scope);
+        if (bad) throw new StepFail("verify_failed", bad);
+        await this.#mark(ctx, key, { status: "done", output: { ...((this.#led(ctx, key) || {}).output || {}), ...out } });
+        return;
+      } catch (e) {
+        if (e instanceof Suspend || e instanceof PauseFlow || e instanceof Hold || !s.on_fail) throw e;
+        failure = failOf(e);
+        await this.#mark(ctx, key, { status: "failed", error: failure, handling: true, finished_at: this.now() });
+      }
+    }
+    await this.#walk(ctx, s.on_fail.steps, `${suffix}!${s.id}`, { ...locals, error: { code: failure.code, message: failure.message, step: s.id } });
+    run.error = { step: s.id, code: failure.code, message: failure.message };
+    if (s.on_fail.then === "continue") {
+      await this.#mark(ctx, key, { status: "failed_handled", output: { failed: true, error: failure }, handling: undefined, finished_at: this.now() });
+      this.#emit("step.failed-handled", { run: run.id, step: key, code: failure.code }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return;
+    }
+    throw new StepFail(failure.code, failure.message);
+  }
+
+  /**
+   * One step under its policy (f1, f2): a time limit on each attempt, retries of a fault that is worth retrying (with a durable wait between, so a restart loses nothing and repeats nothing), then the
+   * step's VERIFY, then, if it still failed, its failure path. Replay-safe: the number of tries and the fact that a failure path was started are in the step's ledger entry.
+   * @param {any} ctx @param {any} s @param {string} key @param {string} suffix @param {Record<string, any>} locals @param {() => Promise<any>} dispatch @param {() => any} scope
+   * @returns {Promise<{ out?: any, handled?: boolean }>}
+   */
+  async #guarded(ctx, s, key, suffix, locals, dispatch, scope) {
+    const run = ctx.run;
+    const pol = this.#policyOf(ctx, s);
+    let led = this.#led(ctx, key);
+    /** @type {{ code: string, message: string } | null} */ let failure = null;
+    if (led && led.status === "failed" && led.handling && s.on_fail) failure = led.error || { code: "error", message: "failed" };
+    while (!failure) {
+      try {
+        const out = await this.#withTimeout(pol.timeout_ms, dispatch, s);
+        const bad = await this.#verify(ctx, s, key, out, scope);
+        if (bad) throw new StepFail("verify_failed", bad);
+        return { out };
+      } catch (e) {
+        if (e instanceof Suspend || e instanceof PauseFlow || e instanceof Hold) throw e;
+        const f = failOf(e);
+        led = this.#led(ctx, key);
+        const tries = ((led && led.tries) || 0) + 1;
+        const log = [...((led && led.attempts_log) || []), { at: this.now(), code: f.code }].slice(-8);
+        if (f.code !== "verify_failed" && pol.retryOn.has(f.code) && tries < pol.attempts) {
+          await this.#mark(ctx, key, { status: "started", tries, last_error: f, attempts_log: log });
+          const wait = pol.backoff_ms.length ? pol.backoff_ms[Math.min(tries - 1, pol.backoff_ms.length - 1)] : 0;
+          await this.#sleepOnce(ctx, `${key}?retry${tries}`, wait);   // suspends the run until the wake; the replay then tries again
+          continue;
+        }
+        failure = f;
+        await this.#mark(ctx, key, { status: "failed", error: f, tries, attempts_log: log, handling: Boolean(s.on_fail), started_at: (led && led.started_at) ?? this.now(), finished_at: this.now() });
+      }
+    }
+    // it failed for good
+    if (!s.on_fail) throw new StepFail(failure.code, failure.message);
+    await this.#walk(ctx, s.on_fail.steps, `${suffix}!${s.id}`, { ...locals, error: { code: failure.code, message: failure.message, step: s.id } });
+    run.error = { step: s.id, code: failure.code, message: failure.message };   // the handler's steps wrote their own names here
+    if (s.on_fail.then === "continue") {
+      await this.#mark(ctx, key, { status: "failed_handled", output: { failed: true, error: failure }, handling: undefined, finished_at: this.now() });
+      this.#emit("step.failed-handled", { run: run.id, step: key, code: failure.code }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      return { handled: true };
+    }
+    throw new StepFail(failure.code, failure.message);
+  }
+
+  /** The time limit, retry and the codes worth retrying for one step: the step's own words over the kind's defaults. @param {any} ctx @param {any} s */
+  #policyOf(ctx, s) {
+    const base = this.policy[s.kind] || {};
+    const read = s.kind === "service" && ["GET", "HEAD"].includes(String(s.method || "GET").toUpperCase());
+    let attempts = Math.min(read && base.readAttempts ? base.readAttempts : base.attempts ?? 1, this.retryCap);
+    let backoff = base.backoff_ms || [];
+    let on = new Set(RETRY_CODES);
+    if (s.retry === false) attempts = 1;
+    else if (s.retry && typeof s.retry === "object") {
+      if (s.retry.attempts !== undefined) attempts = s.retry.attempts;
+      if (s.retry.backoff_ms !== undefined) backoff = Array.isArray(s.retry.backoff_ms) ? s.retry.backoff_ms : [s.retry.backoff_ms];
+      if (Array.isArray(s.retry.on)) on = new Set(s.retry.on);
+    }
+    const timeout = s.kind === "wait" || ["ask", "assign", "agent"].includes(s.kind) ? 0 : (s.timeout_ms ?? base.timeout_ms ?? 0);
+    return { timeout_ms: timeout, attempts: Math.max(1, attempts), backoff_ms: backoff, retryOn: on };
+  }
+
+  /** @template T @param {number} ms @param {() => Promise<T>} fn @param {any} s @returns {Promise<T>} */
+  #withTimeout(ms, fn, s) {
+    if (!ms) return fn();
+    /** @type {any} */ let timer;
+    return Promise.race([fn(), new Promise((_, reject) => { timer = setTimeout(() => reject(new StepFail("timeout", `step ${s.id} took longer than ${describeSpan(ms)}`)), ms); if (timer.unref) timer.unref(); })]).finally(() => clearTimeout(timer));
+  }
+
+  /**
+   * A step's VERIFY, evaluated right after it acted: an expression over its output (and everything a step can read), or a read-back of the record it wrote. Returns the words of what is wrong, or null.
+   * An essential check that fails fails the step; an optional one is only written on the ledger and raises the Flow's attention.
+   * @param {any} ctx @param {any} s @param {string} key @param {any} out @param {() => any} scope
+   */
+  async #verify(ctx, s, key, out, scope) {
+    const v = s.verify;
+    if (!v) return null;
+    let problem = null;
+    if (v.check !== undefined) {
+      let ok = false;
+      try { ok = truthy(evaluate(parse(v.check), { ...scope(), output: out })); } catch { ok = false; }
+      if (!ok) problem = v.say || `the check ${v.check} did not hold`;
+    }
+    if (!problem && v.readback === true && out && out.record && out.record.id && s.type) {
+      const want = s.kind === "stage" ? null : this.#valuesOf(s, scope);
+      const cur = await this.k.records.get(this.#chain(ctx), s.type, out.record.id).catch(() => null);
+      if (!cur) problem = v.say || `the ${s.type} record could not be read back`;
+      else if (want) {
+        const data = cur.data || {};
+        const off = Object.keys(want).filter(k => JSON.stringify(data[k] ?? null) !== JSON.stringify(want[k] ?? null));
+        if (off.length) problem = v.say || `the saved ${s.type} differs from what was written in: ${off.join(", ")}`;
+      }
+    }
+    if (!problem) { await this.#mark(ctx, key, { verify: { ok: true } }); return null; }
+    if (v.essential === false) {
+      await this.#mark(ctx, key, { verify: { ok: false, say: problem } });
+      this.#attend(ctx.run, { kind: "verify", step: s.id, code: "verify_failed", message: problem });
+      this.#emit("step.verify-failed", { run: ctx.run.id, step: key, essential: false }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
+      return null;
+    }
+    await this.#mark(ctx, key, { verify: { ok: false, say: problem } });
+    return problem;
+  }
+
+  /** The fields a write step set, resolved, for a read-back. @param {any} s @param {() => any} scope */
+  #valuesOf(s, scope) { try { return s.set ? resolveValue(s.set, scope()) : s.match ? { ...resolveValue(s.match, scope()), ...(s.set ? resolveValue(s.set, scope()) : {}) } : null; } catch { return null; } }
+
+  /**
+   * Something needs a person's eye: a failed run, a stuck one, a check that failed. One field on the run (`attention`), set where the fault is found and cleared on progress, so the inbox,
+   * the health line and the timeline all read the same thing.
+   * @param {Run} run @param {{ kind: 'failed'|'stuck'|'stale'|'verify'|'paused', step?: string, code?: string, message: string }} a
+   */
+  #attend(run, a) { run.attention = { ...a, since: run.attention && run.attention.kind === a.kind && run.attention.step === a.step ? run.attention.since : this.now() }; }
 
   /** @param {any} ctx */
   #chain(ctx) {
@@ -531,7 +1257,7 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, askKey, asked.wait);
       if (res.timeout) throw new StepFail("timed_out", "nobody answered the question");
       const approved = res.task && res.task.outcome === "approved";
-      await this.#mark(ctx, askKey, { status: approved ? "done" : "failed", output: { outcome: res.task && res.task.outcome } });
+      await this.#mark(ctx, askKey, { status: approved ? "done" : "failed", output: { outcome: res.task && res.task.outcome }, answered: { by: res.task ? (res.task.checked_by ?? res.task.by ?? (res.task.checker && res.task.checker.id) ?? (res.task.doer && res.task.doer.id) ?? null) : null, at: this.now() } });
       if (!approved) throw new StepFail("refused", `a person said no to step ${s.id}`);
     }
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
@@ -582,7 +1308,7 @@ export class FlowRunner {
         throw new Suspend();
       }
     }
-    if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
+    if (!ctx.dry) await this.#mark(ctx, key, { status: "started", ...(info.input !== undefined ? { input: showable(info.input) } : {}) });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
     ctx.actAs = doerChain;
@@ -755,7 +1481,8 @@ export class FlowRunner {
       let cursor;
       let scanned = 0;
       do {
-        const page = await this.k.records.query(this.#chain(ctx), s.type, { ...(pushed ? { filter: pushed } : {}), ...(s.sort ? { sort: s.sort } : {}), page: { limit: Math.min(200, this.limits.scan - scanned), ...(cursor ? { cursor } : {}) } });
+        // (a Kit being tried out reads types the Space does not have yet: those read as empty)
+        const page = await this.k.records.query(this.#chain(ctx), s.type, { ...(pushed ? { filter: pushed } : {}), ...(s.sort ? { sort: s.sort } : {}), page: { limit: Math.min(200, this.limits.scan - scanned), ...(cursor ? { cursor } : {}) } }).catch((/** @type {any} */ e) => { if (ctx.softReads) return { rows: [], next_cursor: null }; throw e; });
         for (const r of page.rows) {
           scanned++;
           if (r.labels && (r.labels.trust === "external" || r.labels.trust === "untrusted")) ctx.run.tainted = true;
@@ -1010,10 +1737,10 @@ export class FlowRunner {
    * would have asked for, what it would have written, sent and run. Reads are real (as the approver, read-only), so a `find` sees today's data;
    * writes, tasks, calls, http, code and models are stubbed; waits do not wait. Nothing is stored and nothing is emitted.
    * @param {any} flow a stored Flow (a draft or an active one)
-   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[] }} o
+   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[], cat?: any, softReads?: boolean }} o
    */
   async simulate(flow, o) {
-    const cat = await this.catalogFn();
+    const cat = o.cat || await this.catalogFn();
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings };
     const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
@@ -1049,7 +1776,7 @@ export class FlowRunner {
       /** @type {Run} */
       const run = { id: "sim_" + h.key, flow: "simulation", version: 0, hash: "", space: cat.space, trigger: { kind: h.trigger, key: h.key, ...(h.env ? { event: slim(h.env) } : { input: h.scope.trigger }) },
         tainted: Boolean(h.env && (h.env.trust === "external" || h.env.trust === "untrusted")), source_spaces: (h.env && h.env.source_spaces) || [cat.space], depth: 0, state: "running", started_at: h.at, updated_at: h.at, steps: {}, approver: o.approver, dry: true };
-      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]) };
+      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]), softReads: Boolean(o.softReads) };
       /** @type {{ outcome: string, reason?: string }} */ let result = { outcome: "completed" };
       try { await this.#walk(ctx, flow.steps, "", {}); }
       catch (e) {
@@ -1063,7 +1790,8 @@ export class FlowRunner {
         if (/^records\.(create|update|remove)$/.test(eff.action)) { const ty = eff.resource.split("/")[3]; writes[ty] = (writes[ty] || 0) + 1; }
         if (OUTWARD.has(eff.risk)) { const k = eff.action; outward[k] = outward[k] || { action: eff.action, risk: eff.risk, count: 0 }; outward[k].count++; }
       }
-      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
+      const ran = [...new Set(Object.entries(run.steps).filter(([k, v]) => !k.includes("?") && !k.includes("!") && (/** @type {any} */ (v)).status === "done").map(([k]) => k.replace(/@.*$/, "")))];
+      runs.push({ event: h.env ? h.env.id : null, at: h.at, ...result, ran, asks: ctx.dryAsks, tasks: ctx.dryTasks.length, effects: ctx.dryEffects.length, tainted: run.tainted });
     }
     const span = o.since !== undefined && o.until !== undefined ? ` in ${describeSpan(o.until - o.since)}` : " in that window";
     return {
@@ -1107,7 +1835,8 @@ function outputs(run) {
   /** @type {Record<string, any>} */ const o = {};
   for (const [k, v] of Object.entries(run.steps)) {
     if (k.includes("?")) continue;
-    if (v.status !== "done" && v.status !== "started") continue;
+    if (v.status !== "done" && v.status !== "started" && v.status !== "skipped" && v.status !== "failed_handled") continue;
+    if (k.includes("!")) continue;                          // a failure path's own steps are read by the failure path, not by steps.<id> of the main line
     const id = k.replace(/@.*$/, "");
     if (v.output !== undefined) o[id] = v.output;
   }

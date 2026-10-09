@@ -25,16 +25,31 @@ const WHAT = {
   "flows.graph": "A Flow as a graph for the canvas.",
   "flows.simulate": "Replay recent events through a Flow without doing anything.",
   "flows.start": "Start a Flow now, with an input.",
-  "flows.pause": "Pause a Flow. A person's own.",
-  "flows.resume": "Resume a paused Flow. A person's own.",
+  "flows.pause": "Pause a Flow (id), or every Flow (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held, in order. A person's own.",
+  "flows.resume": "Resume a paused Flow (id) or all of them (all: true). What was held runs now, in order; backlog: \"drop\" drops it instead and counts it. A person's own.",
+  "flows.health": "How a Flow is, in one line (last run, this week, next run, what needs a person, red when a Connection it uses is red); with no id, every Flow and the Space's switch.",
+  "flows.cheatsheet": "The whole Flows language on one page, generated from the code: triggers, every step kind with an example, retry and failure paths, checks, expressions, limits. Read it before you write a Flow.",
+  "flows.advance": "Move a record on before its stage's tasks are done: { run (the stage gate), reason }. The stage's owner or an admin, in their own name; the reason is on the gate's ledger.",
+  "flows.patch": "Change a Flow with small named edits instead of rewriting it, stored as a new draft: { id, base (the version you read), ops: [{ op: set, step, key, value } | { op: insert, after | first | into+block, line } | { op: replace, step, line } | { op: remove, step } | { op: move, step, by } | { op: trigger, trigger } | { op: meta, key, value }] }. A line is one step in the lines form (flows.code with format lines). Nothing runs until a person approves the draft.",
+  "flows.test.save": "Save a test case for a Flow: { id, name, event: { type, data } | input, expect: { state, writes, outward, asks, steps_ran, steps_not_run } }, or { id, from_run } to keep what a real run did as the baseline. A Flow cannot be approved while a case fails. You add cases; changing one is a person's.",
+  "flows.test.run": "Run every saved test case of a Flow (id, optional version) with nothing done for real, one line a case.",
+  "flows.test.list": "The saved test cases of a Flow.",
+  "flows.test.remove": "Remove a saved test case. A person's own.",
+  "flows.timeline": "A run read back as a few lines, one a step: how long, tries, the check, who answered. step: one step in detail (its input with secrets hidden, its output, every attempt).",
+  "flows.diff": "What changed between two versions of a Flow (id, from, to), by step: added, removed, moved and changed steps with the keys that changed, and a plain-words summary.",
+  "flows.rollback": "Go back to an earlier version of a Flow (id, to) in one step: it is approved again by you, nothing is inherited from the old approval. Runs in flight keep their version; retry_failed: true moves failed runs that still match to it. A person's own.",
+  "flows.describe": "A Flow (id) or a run (run) in a few lines, for reading cheaply: the trigger, one line a step with its limits and checks, how it is doing; for a run, where it is and what happens next.",
+  "flows.control": "The Space's switch (running, paused or draining), how many runs are held and why, and how many events were dropped past the cap.",
   "flows.runs": "Recent runs of a Flow, newest first.",
   "flows.run": "One run: its trigger, its steps, what it did.",
   "flows.budget": "The Space's daily AI allowance for Flow steps and what is used today; an owner or an admin sets it with tokens_per_day, and with context_tokens how much of a record's world an agent is shown.",
-  "flows.retry": "Retry a failed run. A person's own.",
+  "flows.retry": "Retry a failed or paused run from the step that stopped it; finished steps are not repeated. skip: true skips the failed step (if a later step reads what it produces, give value: what to use instead, typed by the person or taken from an assistant's proposal; it is recorded on the step with who gave it). version: \"latest\" moves the run to the Flow's active version when every step already done is still there. A person's own.",
+  "flows.cancel": "Stop a failed, paused or waiting run for good. Its record stays, marked cancelled. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
   "flows.kit.propose": "Propose a Kit for approval: its types, templates, roles and Flows. A person, or their assistant for them; the person is asked and nothing installs until they say yes.",
   "flows.kit.remove": "Remove a Kit. A person's own.",
   "flows.kit.list": "The Kits of a Space.",
+  "flows.kit.test": "Try a Kit on a sample ({ kit, sample: { type, data } }) or on a real record, read only ({ kit, record: its address }), with nothing sent: every task and brief, each checklist, what holds the record in a stage, and what each Flow starting at a stage would do. Lines, then a totals line.",
   "flows.kit.diff": "What updating an installed Kit to a given version would change: parts added, changed and removed, what each can now do that it could not, and the risks. Read only.",
 };
 /** The Kit library ships with the build, so these two need no Space and no chain. */
@@ -42,7 +57,7 @@ const LIBRARY = {
   "flows.kit.library": "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds.",
   "flows.kit.library.get": "One Kit from the library in the form flows.kit.card, flows.kit.diff and flows.kit.propose take.",
 };
-const PERSONAL = new Set(["flows.approve", "flows.pause", "flows.resume", "flows.kit.remove"]);
+const PERSONAL = new Set(["flows.approve", "flows.rollback", "flows.pause", "flows.resume", "flows.kit.remove"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
 const INNER = (/** @type {string} */ n) => n.replace(/^flows\.kit\./, "kits.");
 
@@ -84,6 +99,7 @@ export default {
       ctx.tool(name, {
         description, input: open, callers: name === "flows.kit.propose" ? [...CALLERS, "module"] : ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"],
         ...(name === "flows.approve" ? { presence: { summary: async (/** @type {any} */ i) => `Approve Flow ${String(i && i.id || "")} version ${String(i && i.version || "")}` } } : {}),
+        ...(name === "flows.rollback" ? { presence: { summary: async (/** @type {any} */ i) => `Go back to version ${String(i && i.to || "")} of Flow ${String(i && i.id || "")}` } } : {}),
         run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
           const f = hostOf(input || {});
           const chain = await chainOf(f, meta);

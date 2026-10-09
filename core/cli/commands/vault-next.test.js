@@ -85,11 +85,13 @@ test("vault cli: import --rewrite, run, codes, sweep, health, history, agent log
 
   // Agent logins and the use log.
   await tool("vault.put", { name: "northwind-admin", kind: "login", url: "https://app.northwind.test", fields: { username: "orders-bot", password: v(hex(10)) } });
+  // an agent exists before a login is lent to it: the grant is the agent's, by its stable id
+  assert.equal((await vyre("agents", "create", "kit")).code, 0);
   const g = await vyre("vault", "agent", "grant", "kit", "northwind-admin", "https://app.northwind.test", "--expires", "7d");
   assert.equal(g.code, 0, g.out);
   assert.match(g.out, /kit signs in to https:\/\/app\.northwind\.test as northwind-admin/);
   const gs = await vyre("vault", "agent", "grants");
-  const id = (/(ag_[A-Za-z0-9_-]+)/.exec(gs.out) || [])[1];
+  const id = (/(gr_[A-Za-z0-9_-]+)/.exec(gs.out) || [])[1];
   assert.ok(id, gs.out);
   assert.match((await vyre("vault", "agent", "revoke", id)).out, /revoked/);
   const uses = await vyre("vault", "uses", "--since", "1d");

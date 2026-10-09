@@ -14,7 +14,7 @@ import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
-import { ACCESS_LEVELS } from "../seal/uses.js";
+import { ACCESS_LEVELS, SURFACE_GROUPS } from "../seal/uses.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
 /** The actions the grants calls register with the authorizer. All but `list` are risk `grant`. */
@@ -65,8 +65,8 @@ export const GRANT_ACTIONS = Object.freeze([
 ].map(a => Object.freeze(a)));
 
 
-/** The action a grant is gated under: an owner or an admin giving an assistant or a service access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
-export const grantActionOf = input => (input && !input.parent && input.subject && input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind) ? "grants.member" : "grants.create");
+/** The action a grant is gated under: an owner or an admin giving an assistant, a service or a surface access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
+export const grantActionOf = input => (input && !input.parent && input.subject && ((input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind)) || (input.subject.kind === "group" && String(input.subject.id).startsWith("surface:"))) ? "grants.member" : "grants.create");
 
 /** Does a resource match a rule's pattern: equal, or the pattern ends in `/*` and the resource is under it. @param {string} pattern @param {string} resource */
 const urnMatches = (pattern, resource) => (pattern.endsWith("/*") ? resource === pattern.slice(0, -2) || resource.startsWith(pattern.slice(0, -1)) : pattern === resource);
@@ -220,6 +220,15 @@ export function createGrantsStore(cfg) {
   const roleOf = (/** @type {any} */ a) => (a && a.kind === "person" && memberOk(a) ? memberships.get(a.id).role : null);
   const isAdmin = (/** @type {any} */ a) => { const r = roleOf(a); return r === "owner" || r === "admin"; };
 
+  /** Who is on a project: the people and agents holding `project.reach` on its record's address (an agent given every project holds it on `project/*`). Read from the grants, so a revoke ends it at once. @param {string} id */
+  const projectMembers = id => {
+    const out = { people: /** @type {string[]} */ ([]), agents: /** @type {string[]} */ ([]) };
+    for (const g of grants.values()) if (g.status === "active" && g.subject.kind === "actor" && g.actions.includes("project.reach")) {
+      const a = g.subject.actor;
+      if (g.resource.prefix === urn("project", id) || (a.kind === "agent" && g.resource.prefix === urn("project", "*"))) (a.kind === "agent" ? out.agents : out.people).push(a.id);
+    }
+    return out;
+  };
   /**
    * Is this actor in a team? A person is when the team lists them (and they are still a member of the Space). An assistant is by association: the person it acts for is in the chain, and
    * that person is in the team. The grant is then the team's, but an assistant's own authority is still cut by its person's (the chain is the intersection of every hop's grants) and by
@@ -227,12 +236,13 @@ export function createGrantsStore(cfg) {
    * @param {string} id @param {any} actor @param {any} [chain]
    */
   const inTeam = (id, actor, chain) => {
-    // A project's people and assistants are a group too (`project:<id>`), read from the project's own team by the host: "also let this project's members use it" is one grant to it.
+    if (typeof id === "string" && id.startsWith("surface:")) return Boolean(chain && Array.isArray(chain.hops)) && chain.hops.some((/** @type {any} */ x) => x.via && (/** @type {any} */ (SURFACE_GROUPS)[id.slice(8)] || []).includes(x.via.surface));
+    // A project's people and assistants are a group too (`project:<id>`): "also let this project's members use it" is one grant to it.
     if (typeof id === "string" && id.startsWith("project:")) {
-      const m = typeof cfg.projectMembers === "function" ? cfg.projectMembers(id.slice(8)) : null;
-      if (!m || !actor) return false;
-      if (actor.kind === "person") return (m.people || []).includes(actor.id) && memberOk(actor);
-      if (actor.kind === "agent") return (m.agents || []).includes(actor.id);
+      const m = projectMembers(id.slice(8));
+      if (!actor) return false;
+      if (actor.kind === "person") return m.people.includes(actor.id) && memberOk(actor);
+      if (actor.kind === "agent") return m.agents.includes(actor.id);
       return false;
     }
     const t = teams.get(id);
@@ -267,7 +277,7 @@ export function createGrantsStore(cfg) {
     // A named action must exist; a pattern is checked at use (it covers only what existed at action_set_version).
     for (const a of i.actions) if (!a.includes("*") && !reg().has(a)) throw new KernelError("bad_input", `${a} is not an action`);
     // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
-    if (s.kind === "group" && !(teams.has(String(s.id)) || (String(s.id).startsWith("project:") && typeof cfg.projectMembers === "function" && cfg.projectMembers(String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team or a project of this Space");
+    if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
     if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
   }
 
@@ -332,11 +342,46 @@ export function createGrantsStore(cfg) {
     return { membership, grants: made };
   }
 
+  /** Grants the vault module made and may take back: its own sources, never the maker's `manage`. */
+  const vaultMade = (/** @type {string} */ src) => (src.startsWith("vault:") ? src !== "vault:create" : /^install:[a-z0-9-]+:vault$/.test(src));
+  /** Revoke a grant and everything handed on from it, noting each; the revoked grants, the first being `x`. */
+  const killTree = async (/** @type {any} */ chain, /** @type {any} */ x, /** @type {any} */ reason, /** @type {any} */ decision) => {
+    const out = [], why = String(reason || "").slice(0, 200);
+    const kill = async (/** @type {any} */ y) => {
+      if (y.status === "revoked") return;
+      const n = freeze({ ...y, status: "revoked", revoked_at: clock(), reason: why });
+      grants.set(n.id, n); out.push(n);
+      await note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: why, ...(n.id !== x.id ? { because: x.id } : {}) }, decision);
+      for (const c of [...grants.values()]) if (c.parent === n.id) await kill(c);
+    };
+    await kill(x);
+    return out;
+  };
+  /** Keep a vault; a new one also gets its maker's `manage` and the right to hand any of it on (a share is a child of this grant: provably inside it), made by the kernel as a role's grants are, not by a proof. */
+  const putVault = async (/** @type {any} */ chain, /** @type {any} */ me, /** @type {any} */ rec, /** @type {boolean} */ isNew) => {
+    vaults.set(rec.id, rec);
+    await note(chain, "vault.set", urn("vault", rec.id), { vault: rec });
+    if (!isNew) return;
+    const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: me }, actions: [...VAULT_MANAGE_ACTIONS], action_set_version: version, resource: { prefix: urn("vault", rec.id) }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { ...me }, source: "vault:create", status: "active", created_at: clock() });
+    grants.set(g.id, g);
+    await note(chain, "grant.created", urn("grant", g.id), { grant: g });
+  };
+  /** The Space owner's personal vault, made the first time it is asked for: where the vault module's own items live (a person's, by their own session, is made with `vaultSet`). */
+  const personalOf = async () => {
+    const o = [...memberships.values()].find(m => m.role === "owner");
+    if (!o) throw new KernelError("not_found", "this Space has no owner yet");
+    const me = { kind: "person", id: o.person, space: cfg.space };
+    let v = [...vaults.values()].find(x => x.personal && x.owner === o.person);
+    if (!v) { v = freeze({ id: `vault_${mintUuid(clock())}`, space: cfg.space, name: "Personal", personal: true, owner: o.person, created: clock() }); await putVault(kernelChain(), me, v, true); }
+    return v;
+  };
+
   const api = {
     /** @param {any} chain @param {any} input @param {{ presence?: any }} [o] */
     async create(chain, input, o = {}) {
       validateInput(input);
       const issuer = person(chain);
+      if (input.subject.kind === "group" && input.subject.id.startsWith("project:") && cfg.projectExists && !(await cfg.projectExists(input.subject.id.slice(8)))) throw new KernelError("bad_input", "a grant to a team names a team or a project of this Space");
       // Giving an assistant or a service access (a Project's reach, an agent-reach grant) rides on the person's own authenticated call like adding the actor does; a grant to a person or a role, and a delegation, keep their presence.
       // A holder of `grants.create` on a resource (a vault's manage) passes it on within that resource: the act is judged against what they hold there, not against the Space's grants. Anyone else
       // is judged on the Space's grants, so only an owner or an admin gives access, as before.
@@ -368,16 +413,7 @@ export function createGrantsStore(cfg) {
       if (!g) throw new KernelError("not_found", "no such grant");
       // The holder, or an admin, may take a grant away; nobody else.
       if (!isAdmin(issuer) && !(g.issuer && sameActor(g.issuer, issuer))) throw new KernelError("not_allowed", "only an admin or the grant's maker revokes it");
-      const out = [];
-      const kill = async (/** @type {any} */ x) => {
-        if (x.status === "revoked") return;
-        const n = freeze({ ...x, status: "revoked", revoked_at: clock(), reason: String(reason || "").slice(0, 200) });
-        grants.set(n.id, n); out.push(n);
-        await note(chain, "grant.revoked", urn("grant", n.id), { id: n.id, reason: n.reason, ...(n.id !== id ? { because: id } : {}) }, d.decision);
-        for (const c of [...grants.values()]) if (c.parent === n.id) await kill(c);
-      };
-      await kill(g);
-      return out[0] || g;
+      return (await killTree(chain, g, reason, d.decision))[0] || g;
     },
 
     /** Narrow in place: fewer actions, a deeper prefix, more predicates, a shorter life, a smaller field list. Never wider. */
@@ -781,6 +817,32 @@ export function createGrantsStore(cfg) {
       }
       return last;
     },
+    /**
+     * What the vault module lends, made by the kernel for it after the person's yes at the Vault (no proof here, and no wider than these three shapes): an agent's login (`vault.fill` on one item at one exact origin), a module's
+     * release (`vault.release` on one item, for a watcher or a project when named) or an outside client's pass (`vault.read` and `vault.call` on one item, until an expiry, at a rate). A row already made (same id) is skipped. @param {string} module @param {{ id: string, kind?: string, who: string, item: string, watcher?: string, project?: string, origin?: string, expires?: number | null, rate?: number }[]} rows
+     */
+    async carryOver(module, rows) {
+      const k = kernelChain(), made = [], pv = await personalOf(), home = urn("vault", pv.id), NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+      for (const r of rows) {
+        const reason = `carried:${String(r.id)}`, rel = r.kind === "release", pass = r.kind === "pass", actor = { kind: rel ? "service" : "agent", id: String(r.who), space: cfg.space };
+        if (!NAME.test(String(r.item)) || (r.watcher && !NAME.test(String(r.watcher))) || (!rel && !pass && !/^https?:\/\/[^/]+$/.test(String(r.origin))) || (r.expires != null && !(r.expires > clock())) || [...grants.values()].some(g => g.reason === reason)) continue;
+        if (!actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }
+        const resource = { prefix: rel && r.watcher ? `${home}/watcher/${r.watcher}/item/${r.item}` : `${home}/item/${r.item}`, ...(rel && r.project ? { where: [{ attr: "project", op: "eq", value: String(r.project) }] } : {}) };
+        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor }, actions: pass ? ["vault.read", "vault.call"] : [rel ? "vault.release" : "vault.fill"], action_set_version: version, resource, conditions: rel ? {} : { ...(pass ? { ...(r.rate ? { rate: { n: r.rate, per_seconds: 60 } } : {}) } : { where: { origins: [r.origin] } }), ...(r.expires != null ? { when: { expires: r.expires } } : {}) }, issuer: pass ? { kind: "person", id: pv.owner, space: cfg.space } : { kind: "service", id: module, space: cfg.space }, ...(pass ? { parent: [...grants.values()].find(x => x.status === "active" && x.source === "vault:create" && x.resource.prefix === home).id } : {}), source: rel ? `install:${r.who}:vault` : pass ? `vault:pass:${r.who}` : "vault:agent", reason, status: "active", created_at: clock() });
+        grants.set(g.id, g); made.push(g.id);
+        await note(k, "grant.created", urn("grant", g.id), { grant: g });
+      }
+      return made;
+    },
+    /** The vault module ending what it lent (by id, or all under an address), and what was handed on from it: only grants it made (`vault:` but not the maker's own `manage`). Taking access away needs no person. @param {{ id?: string, prefix?: string, reason?: string }} q */
+    async takeBack(q) {
+      const out = [], why = String(q.reason || "taken back");
+      for (const g of [...grants.values()]) if (vaultMade(g.source) && (q.id ? g.id === q.id : q.prefix && (g.resource.prefix === q.prefix || g.resource.prefix.startsWith(`${q.prefix}/`)))) out.push(...await killTree(kernelChain(), g, why));
+      return out;
+    },
+    personalVault: async () => (await personalOf()).id,
+    /** The vault module reading its own live grants under an address. @param {string} prefix */
+    grantsOn: prefix => [...grants.values()].filter(g => g.status === "active" && vaultMade(g.source) && g.resource.prefix.startsWith(prefix)),
 
     /**
      * The home's claimed identity becomes THE owner, once. The Space has one owner (its first, a local id); when the person claims an identity, that identity's id takes the owner's place: the old
@@ -954,14 +1016,7 @@ export function createGrantsStore(cfg) {
       if (!prior && personal && [...vaults.values()].some(x => x.owner === owner && x.personal)) throw new KernelError("exists", "you already have a personal vault");
       if (!prior && vaults.size >= 1000) throw new KernelError("bad_input", "a Space holds up to 1000 vaults");
       const rec = freeze({ id: prior ? prior.id : `vault_${mintUuid(clock())}`, space: cfg.space, name, personal, owner, created: prior ? prior.created : clock() });
-      vaults.set(rec.id, rec);
-      await note(chain, "vault.set", urn("vault", rec.id), { vault: rec });
-      if (!prior) {
-        // The maker's `manage`, and the right to hand any of it on (a share is a child of this grant: provably inside it). Made by the kernel as a role's grants are, not by a proof.
-        const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "actor", actor: me }, actions: [...VAULT_MANAGE_ACTIONS], action_set_version: version, resource: { prefix: urn("vault", rec.id) }, conditions: { delegate: { allowed: true, max_depth: 2 } }, issuer: { ...me }, source: "vault:create", status: "active", created_at: clock() });
-        grants.set(g.id, g);
-        await note(chain, "grant.created", urn("grant", g.id), { grant: g });
-      }
+      await putVault(chain, me, rec, !prior);
       return rec;
     },
     /** Remove a vault and take back every grant on it. Its owner (or an admin, for a shared one) does it. @param {any} chain @param {string} id */
@@ -1347,7 +1402,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "lend", "unlend", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "lend", "unlend", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "carryOver", "takeBack", "personalVault", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {

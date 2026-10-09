@@ -187,3 +187,25 @@ test("errors keep their code", { skip: !strip }, async () => {
   const { vaultMoreSource } = await import("./more-source.ts");
   await assert.rejects(vaultMoreSource(box({ error: { "vault.devices": { code: "locked", message: "Locked." } } }).call).devices(), (e) => /** @type {any} */ (e).code === "locked");
 });
+
+test("a pass for an outside agent: its input, what is wrong in words, and the lines it answers with", async () => {
+  const { mcpPassInput, pickMcpMade } = await import("./more-model.ts");
+  const hostsOf = (/** @type {string} */ i) => (i === "Stripe" ? ["https://api.stripe.com", "https://dashboard.stripe.com"] : []);
+  const base = { name: "Dana's Claude", items: ["Stripe"], days: /** @type {7} */ (7), budget: "", offHosts: [], reveal: false };
+  assert.deepEqual(mcpPassInput(base, hostsOf), { input: { name: "Dana's Claude", items: ["Stripe"], days: 7 } });
+  assert.deepEqual(mcpPassInput({ ...base, budget: "50", offHosts: ["https://dashboard.stripe.com"], reveal: true }, hostsOf), { input: { name: "Dana's Claude", items: ["Stripe"], days: 7, budget: 50, hosts: ["https://api.stripe.com"], reveal: true } });
+  assert.deepEqual(mcpPassInput({ ...base, name: " " }, hostsOf), { error: "Say who or what it is for." });
+  assert.deepEqual(mcpPassInput({ ...base, items: [] }, hostsOf), { error: "Choose at least one credential." });
+  assert.deepEqual(mcpPassInput({ ...base, budget: "many" }, hostsOf), { error: "The calls it may make is a whole number, or leave it empty." });
+  assert.deepEqual(mcpPassInput({ ...base, offHosts: ["https://api.stripe.com", "https://dashboard.stripe.com"] }, hostsOf), { error: "Leave at least one host switched on." });
+  assert.deepEqual(pickMcpMade({ token: "vmcp_x", name: "Dana", expires: 5, lines: { claude: "claude mcp add a", codex: "codex mcp add a" } }), { token: "vmcp_x", name: "Dana", expires: 5, claude: "claude mcp add a", codex: "codex mcp add a" });
+  assert.deepEqual(pickMcpMade(null), { token: "", name: "", expires: null, claude: "", codex: "" });
+});
+
+test("an outside agent's ask to see a value: read from vault.pending, and the line it shows", async () => {
+  const { pickReveals, revealLine } = await import("./more-model.ts");
+  const rows = pickReveals({ mcpReveals: [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }, { item: "x" }], grants: [] });
+  assert.deepEqual(rows, [{ id: "vr_1", item: "stripe-live", pass: "Dana's Claude", why: "to debug" }]);
+  assert.equal(revealLine(rows[0]), "Dana's Claude's agent asks to see stripe-live: to debug");
+  assert.deepEqual(pickReveals(null), []);
+});

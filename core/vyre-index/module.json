@@ -4,7 +4,7 @@
   "description": "The live index of Vyre's modules: what each one is for, where it lives, where it runs and whether it is running here now. Read from the architecture map's generated table (which is generated from each module.json) and the daemon's own module list, so it cannot drift from either.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "reads": ["vyre.core"], "tools": [{ "name": "vyre.core", "effect": "read" }] },
+  "does": { "reads": ["vyre.core"], "tools": [{ "name": "vyre.core", "effect": "read", "reach": "anyone" }] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": {},

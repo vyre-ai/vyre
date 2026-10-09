@@ -1825,6 +1825,14 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller"
   },
+  "vault.mcp.pass.list": {
+   "module": "vault",
+   "reason": "read-only: names and states, never a token or a value"
+  },
+  "vault.mcp.pass.revoke": {
+   "module": "vault",
+   "reason": "callers list: no caller list narrows it because it only ever takes access away (ends a pass), and it names a pass by id; a pass cannot be made or widened here"
+  },
   "vault.members.accept": {
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"

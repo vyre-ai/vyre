@@ -4,7 +4,7 @@
   "description": "The docs, found and read from inside Vyre: docs.find takes an intent in plain words and returns the best pages with what each is for and what it costs to read; docs.read returns a page, or one section of it, within a token budget. People get the human docs. A session or an agent also gets the agent docs, which are never offered to a person.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "reads": ["docs.find", "docs.read"], "tools": [{ "name": "docs.find", "effect": "read" }, { "name": "docs.read", "effect": "read" }] },
+  "does": { "reads": ["docs.find", "docs.read"], "tools": [{ "name": "docs.find", "effect": "read", "reach": "anyone" }, { "name": "docs.read", "effect": "read", "reach": "anyone" }] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": {},

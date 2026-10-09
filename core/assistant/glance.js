@@ -16,11 +16,14 @@ export function dayStart(now, at = Date.now()) {
 
 /** @param {(tool: string, input?: any) => Promise<any>} call */
 export async function glance(call, { at = Date.now() } = {}) {
-  const [now, w, t] = await Promise.all([
+  const [now, w, t, sk] = await Promise.all([
     call("context.now", {}).catch(() => null),
     call("waiting.list", { limit: 20 }).catch(() => null),
     call("threads.list", { all: false }).catch(() => null),
+    call("learn.skills", { status: "proposed" }).catch(() => null),
   ]);
+  // R031-00s: procedures the person repeats that Vyre drafted as skills and nobody has answered yet. A count only: a skill's name can be made from the person's own commands.
+  const proposed = sk && !sk.error && sk.data && Array.isArray(sk.data.skills) ? sk.data.skills.length : 0;
   const n = now && !now.error ? now.data : null;
   const since = dayStart(n, at);
   const wr = w && !w.error && w.data ? w.data : { rows: [], count: 0 };
@@ -35,5 +38,6 @@ export async function glance(call, { at = Date.now() } = {}) {
   if (wr.count) lines.push(`${wr.count} waiting on you`);
   if (finished.length) lines.push(finished.length === 1 ? `${finished[0].title} finished` : `${finished.length} threads finished`);
   if (running.length) lines.push(`${running.length} running`);
-  return { day: n && n.day || null, waiting, running, finished, next: null, lines: lines.slice(0, SHOW) };
+  if (proposed) lines.push(proposed === 1 ? "You repeat something Vyre could save as a skill" : `You repeat ${proposed} things Vyre could save as skills`);
+  return { day: n && n.day || null, waiting, running, finished, next: null, ...(proposed ? { skills: proposed } : {}), lines: lines.slice(0, SHOW) };
 }

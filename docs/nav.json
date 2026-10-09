@@ -219,6 +219,7 @@
     "agents/tools.md",
     "agents/records.md",
     "agents/flows.md",
+    "agents/flows-cheatsheet.md",
     "agents/sessions-and-context.md",
     "agents/connections.md",
     "agents/computers-and-files.md",

@@ -323,7 +323,7 @@ export default {
     /** The Project record id a `project` input names (the id, or its address); a short name is not one, and callers that hold only that ask work.project.ref first. */
     const needId = v => {
       const id = projectRecordIdOf(v);
-      if (!id) throw Object.assign(new Error("project must be a Project record id (or its address)"), { code: "bad_input" });
+      if (!id) throw Object.assign(new Error("project must be a Project record id (or its address), not its name: team_list { all: true } shows each teammate with its project id"), { code: "bad_input" });
       return id;
     };
     /**
@@ -397,7 +397,7 @@ export default {
         const t = await threadRecord(thread);
         // A thread's record names its project by short name (sessions' own column): the id is what Records says for it.
         if (t && t.project) return (await refOf(t.project)).id;
-        throw Object.assign(new Error("this session is not in a project"), { code: "bad_input" });
+        throw Object.assign(new Error("this session is not in a project: give project, the Project record id (team_list { all: true } shows each teammate with its project id)"), { code: "bad_input" });
       }
       const tm = callerTeammate(agent);
       if (tm) return tm.project;

@@ -18,6 +18,7 @@
 //   finished is left alone. Coming back into a stage later is a new entry with new tasks.
 
 import { holds, stagesFor } from "../../lib/expr/conditions.js";
+import { renderBrief, evalChecklist } from "./checklist.js";
 
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
@@ -36,17 +37,21 @@ const FINISHED = new Set(["done", "skipped"]);
  *   ports?: { roles?: (space: string, role: string) => any[] | Promise<any[]>, doer?: (role: string, ctx: any) => any },
  *   clock?: () => number, emit?: (type: string, data: any) => void,
  *   hook?: boolean,  // the gateway calls onStageEnter itself, so the record.stage-entered event is not a second way in
+ *   gates?: { open: (g: any) => Promise<string>, mark: (id: string, key: string, patch: any, o?: any) => Promise<any>, close: (id: string, o?: any) => Promise<any>, list: () => Promise<any[]> },  the runner's stage gates (s1): each stage entry with tasks is a run there, so it is written down, shown and logged
+ *   isAdmin?: (who: any) => Promise<boolean> | boolean,  who may move a record on early besides the stage owner
  * }} o
  */
 export function createStages(o) {
   const now = o.clock || Date.now;
   const emit = o.emit || (() => {});
-  /** @type {Map<string, { key: string, urn: string, type: string, id: string, stage: string, tasks: { title: string, id: string, required: boolean, state?: string }[], advanced: boolean }>} */
+  /** @type {Map<string, { key: string, urn: string, type: string, id: string, stage: string, tasks: { title: string, id: string, required: boolean, state?: string }[], advanced: boolean, waitingOn?: string, run?: string, owner?: string | null, next?: string | null }>} */
   const entries = new Map();
   /** @type {Map<string, string>} task id -> entry key */
   const taskEntry = new Map();
   /** The latest entry per record and stage, so a late task event finds its entry. @type {Map<string, string>} */
   const latest = new Map();
+  /** The last events seen (type and time), for a checklist item that waits for an answer to arrive. @type {{ type: string, at: number }[]} */
+  const seen = [];
   /** @type {Promise<void>} */ let queue = Promise.resolve();
   const serial = (/** @type {() => Promise<void>} */ fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 
@@ -75,6 +80,15 @@ export function createStages(o) {
     return undefined;
   };
 
+  /** The note a task carries: its brief with the record filled in, what must hold before it is done, and the Connections it may use. @param {any} t @param {Record<string, any>} data */
+  function noteOf(t, data) {
+    const parts = [];
+    if (t.brief) parts.push(renderBrief(t.brief, data));
+    if (Array.isArray(t.checklist) && t.checklist.length) parts.push(`Before this counts as done:\n${t.checklist.map((/** @type {any} */ c) => `- ${c.say}`).join("\n")}`);
+    if (Array.isArray(t.credentials) && t.credentials.length) parts.push(`Connections you may use: ${t.credentials.join(", ")}.`);
+    return parts.join("\n\n");
+  }
+
   /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[], owner?: string }} e */
   async function enter(e) {
     const stage = e.templates ? { tasks: e.templates, owner: e.owner } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
@@ -88,6 +102,7 @@ export function createStages(o) {
     if (!templates.length) return;
     const chain = o.chain();
     // The stage owner (role:x or person:x) is told when one of its tasks is not done by its due offset: the task's escalate_to, read by the planner.
+    const data = (await recordData(e.type, e.id)) || {};
     const owner = stage && stage.owner ? await actorFor(stage.owner, space, { record: e.urn, type: e.type, stage: e.stage }) : null;
     /** @type {Map<string, string>} */ const made = new Map();
     for (const t of templates) {
@@ -100,6 +115,7 @@ export function createStages(o) {
         ...(checkerFor(t.checker, space) ? { checker: checkerFor(t.checker, space) } : {}),
         output: { kind: t.output.kind, ...(t.output.target !== undefined ? { target: t.output.target } : {}) },
         ...(t.how ? { how: t.how } : {}),
+        ...(noteOf(t, data) ? { note: noteOf(t, data) } : {}),
         ...(t.template ? { template: `vyre://${space}/template/${t.template}` } : {}),
         ...(deps.length ? { depends_on: deps } : {}),
         ...(t.due_offset_ms ? { due: now() + t.due_offset_ms } : {}),
@@ -110,11 +126,28 @@ export function createStages(o) {
       };
       const task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` });
       made.set(t.title, task.id);
-      ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false });
+      ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
       taskEntry.set(task.id, key);
     }
     emit("stage.tasks-made", { record: e.urn, stage: e.stage, tasks: ent.tasks.map(t => t.id) });
+    await openGate(ent, stage && stage.owner ? String(stage.owner) : null);
   }
+
+  /** The gate for this entry on the runner. A gate is a record of what happened, so a fault in it never stops the stage. @param {any} ent @param {string | null} owner */
+  async function openGate(ent, owner) {
+    if (!o.gates || !ent.tasks.length) return;
+    try {
+      const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
+      const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
+      ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+    } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
+  }
+
+  /** Write a gate step; never throws into the stage. @param {any} ent @param {string} key @param {any} patch @param {any} [opts] */
+  async function mark(ent, key, patch, opts) { if (!o.gates || !ent.run) return; try { await o.gates.mark(ent.run, key, patch, opts); } catch { /* the gate is a record, not a rule */ } }
+  /** @param {any} ent @param {any} [opts] */
+  async function closeGate(ent, opts) { if (!o.gates || !ent.run) return; try { await o.gates.close(ent.run, opts); } catch { /* as above */ } }
 
   /** Is the entry's stage done? If so, move the record on, once. @param {string} key */
   async function settle(key) {
@@ -123,25 +156,48 @@ export function createStages(o) {
     const chain = o.chain();
     const rows = [];
     for (const t of ent.tasks) { const row = await o.kernel.ask.get(chain, t.id); if (!row) return; t.state = row.state; rows.push({ ...t, state: row.state }); }
+    // A task the kernel calls done counts only when its checklist holds (s2): the gate looks, the doer's word is not enough.
+    let listed = false;
+    for (const r of rows) {
+      const t = ent.tasks.find(/** @param {any} x */ x => x.id === r.id);
+      if (!DONE.has(r.state) || !t || !t.checklist) continue;
+      const data = (await recordData(ent.type, ent.id)) || {};
+      const ev = await evalChecklist(t.checklist, { data, since: t.since || 0, now: now(), seen, memo: t.memo, ...(o.gates && o.gates.read ? { read: (/** @type {any} */ spec) => /** @type {any} */ (o.gates).read(spec, o.chain()) } : {}) });
+      t.memo = ev.memo; t.due = ev.due;
+      if (!ev.ok) {
+        r.state = "checking"; t.state = "checking"; listed = true;
+        const missing = ev.results.filter(x => !x.ok);
+        emit("stage.checklist-failed", { record: ent.urn, stage: ent.stage, task: t.title, missing: missing.map(x => x.say) });
+        await mark(ent, `task:${t.title}`, { status: "waiting", output: { required: t.required, checklist: ev.results.map(x => ({ say: x.say, ok: x.ok })), memo: ev.memo, since: t.since } });
+        r.checkedFail = true;
+      } else await mark(ent, `task:${t.title}`, { status: "done", output: { required: t.required, checklist: ev.results.map(x => ({ say: x.say, ok: true })), memo: ev.memo, since: t.since } });
+    }
+    ent.waitingOn = listed ? "checklist" : ent.waitingOn === "checklist" ? undefined : ent.waitingOn;
+    for (const r of rows) if (!r.checkedFail && !((ent.tasks.find(/** @param {any} t */ t => t.id === r.id) || {}).checklist && r.state === "done")) await mark(ent, `task:${r.title}`, DONE.has(r.state) ? { status: "done" } : r.state === "skipped" ? { status: "skipped" } : r.state === "stuck" ? { status: "failed", error: { code: "stuck", message: "the task is stuck" } } : { status: "waiting" });
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
-    if (!ok) { if (rows.some(r => r.state === "stuck")) emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); return; }
+    if (!ok) { if (rows.some(r => r.state === "stuck")) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); await mark(ent, "tasks", { status: "waiting" }, { attention: { kind: "stuck", message: `a task of ${ent.stage} is stuck: ${rows.filter(r => r.state === "stuck").map(r => r.title).join(", ")}` } }); } return; }
+    await mark(ent, "tasks", { status: "done" });
     const cur = await o.kernel.records.get(chain, ent.type, ent.id);
     // The stages this record follows: its stage set when the type has sets, else the type's own list.
-    if (!cur) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: undefined }); return; }
+    if (!cur) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: undefined }); await closeGate(ent, { note: "the record is gone" }); return; }
     const stages = await stagesOfRecord(ent.type, cur.data);
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
-    if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage, why: "the stage is not in the set this record follows now" }); return; }
+    if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage, why: "the stage is not in the set this record follows now" }); await closeGate(ent, { note: "the stage is not in the set this record follows now" }); return; }
     // The next stage has an entry condition the record does not meet yet: it stays where it is, and the gateway would refuse the move anyway.
-    if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); return; }
+    if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); ent.waitingOn = "condition"; await mark(ent, "condition", { status: "waiting", output: { say: `${next.name} cannot be entered yet: ${next.enter_if}` } }, { attention: { kind: "stale", message: `${next.name} cannot be entered yet: ${next.enter_if}` } }); return; }
+    ent.waitingOn = undefined;
+    if (next && typeof next.enter_if === "string") await mark(ent, "condition", { status: "done", output: { say: `${next.enter_if} holds` } });
     ent.advanced = true;
-    if (!next) { emit("stage.finished", { record: ent.urn, stage: ent.stage }); return; }
+    if (!next) { emit("stage.finished", { record: ent.urn, stage: ent.stage }); await closeGate(ent, { note: "the last stage" }); return; }
     // The record was moved by hand (or removed) while the tasks were open: leave it where the person put it.
-    if (cur.data.stage !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage }); return; }
+    if (cur.data.stage !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage }); await closeGate(ent, { note: `the record was moved to ${cur.data.stage} by hand` }); return; }
     try { await o.kernel.records.update(chain, ent.type, ent.id, { stage: next.name }, cur.version, { idem: `advance:${key}` }); }
     catch (e) { ent.advanced = false; throw e; }
     emit("stage.advanced", { record: ent.urn, from: ent.stage, to: next.name });
+    await mark(ent, "move", { status: "done", output: { to: next.name } });
+    await closeGate(ent);
   }
 
   /** The gateway's onStageEnter hook: the record, the stage and the stage's task templates, handed over right after the write. Never throws into the write. @param {{ record: string, stage: string, templates: any[], owner?: string }} e */
@@ -163,6 +219,7 @@ export function createStages(o) {
 
   /** One kernel event in. Safe to call with every event; it reads only the ones it needs. @param {any} env */
   function onEvent(env) {
+    if (env && typeof env.type === "string") { seen.push({ type: env.type, at: now() }); if (seen.length > 400) seen.splice(0, seen.length - 400); }
     return serial(async () => {
       if (!env || typeof env.type !== "string") return;
       if (env.type === "record.stage-entered" && env.data && env.data.stage) {
@@ -181,5 +238,60 @@ export function createStages(o) {
     });
   }
 
-  return { onEvent, onStageEnter, stageTasks, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
+  /** After a restart: the open gates on the runner are the entries this module lost, so it takes them back and looks at each once. */
+  async function resume() {
+    if (!o.gates) return 0;
+    let n = 0;
+    for (const run of await o.gates.list()) {
+      const g = run.gate;
+      if (!g || entries.has(g.key)) continue;
+      const ent = { key: g.key, urn: g.urn, type: g.type, id: g.record, stage: g.stage, tasks: g.tasks.map((/** @type {any} */ t) => ({ ...t, memo: run.steps[`task:${t.title}`] && run.steps[`task:${t.title}`].output ? run.steps[`task:${t.title}`].output.memo : undefined })), advanced: false, run: run.id, owner: g.owner, next: g.next };
+      entries.set(g.key, ent);
+      latest.set(`${g.urn}|${g.stage}`, g.key);
+      for (const t of ent.tasks) taskEntry.set(t.id, g.key);
+      n++;
+    }
+    for (const ent of [...entries.values()]) if (ent.run && !ent.advanced) await serial(() => settle(ent.key));
+    return n;
+  }
+
+  /** A gate held back by the next stage's entry condition is looked at again (nothing tells this module a record changed, so the host's tick asks). */
+  function tick() { return serial(async () => { for (const ent of [...entries.values()]) if (ent.run && !ent.advanced && ent.waitingOn) await settle(ent.key); }); }
+
+  /** Who may move a record on early: the stage's owner (a person, or anyone holding the role), or an admin. @param {any} ent @param {any} who */
+  async function mayAdvance(ent, who) {
+    if (ent.owner) {
+      const [kind, name] = String(ent.owner).split(":");
+      if (kind === "person" && name === who.id) return true;
+      if (kind === "role" && o.ports && o.ports.roles) { const holders = (await o.ports.roles((await o.catalog()).space, name)) || []; if (holders.some((/** @type {any} */ a) => a.id === who.id)) return true; }
+    }
+    return o.isAdmin ? Boolean(await o.isAdmin(who)) : false;
+  }
+
+  /**
+   * Move a record on before its tasks are done, by the person who may (the stage's owner or an admin). It is on the gate's ledger with who and why, and the move itself is the same write
+   * the stage would have made, so the next stage's entry condition still holds it back. @param {string} runId @param {any} who @param {string} reason
+   */
+  function advance(runId, who, reason) {
+    return serial(async () => {
+      const ent = [...entries.values()].find(e => e.run === runId);
+      const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+      if (!ent) throw fail("not_found", "no open stage gate has that id (flows.runs shows the gates)");
+      if (ent.advanced) throw fail("bad_state", "that gate is already over");
+      if (!ent.next) throw fail("bad_state", "this is the last stage; there is nowhere to move it");
+      if (!(await mayAdvance(ent, who))) throw fail("not_allowed", "only the stage's owner or an admin moves a record on early");
+      if (!reason || !String(reason).trim()) throw fail("bad_input", "reason is required: say why it moves on early");
+      const chain = o.chain();
+      const cur = await o.kernel.records.get(chain, ent.type, ent.id);
+      if (!cur || cur.data.stage !== ent.stage) throw fail("bad_state", "the record is not in that stage any more");
+      await o.kernel.records.update(chain, ent.type, ent.id, { stage: ent.next }, cur.version, { idem: `advance:${ent.key}` });
+      ent.advanced = true;
+      await mark(ent, "move", { status: "done", output: { to: ent.next, early: true, by: who.id, reason: String(reason).slice(0, 300) } });
+      await closeGate(ent, { note: `moved on early by ${who.id}: ${String(reason).slice(0, 120)}` });
+      emit("stage.advanced-early", { record: ent.urn, from: ent.stage, to: ent.next, by: who.id, reason: String(reason).slice(0, 300) });
+      return { ok: true, record: ent.urn, from: ent.stage, to: ent.next };
+    });
+  }
+
+  return { resume, tick, advance, onEvent, onStageEnter, stageTasks, idle: () => queue, enter: (/** @type {any} */ e) => serial(() => enter(e)), settle: (/** @type {string} */ k) => serial(() => settle(k)), entries: () => [...entries.values()] };
 }

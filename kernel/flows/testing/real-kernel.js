@@ -213,11 +213,11 @@ export class RealKernel {
   }
 
   /** An external event, as the Ingress door would label it. @param {string} type @param {any} data @param {'system'|'member'|'external'|'untrusted'} [trust] */
-  inbound(type, data, trust = "member") {
+  inbound(type, data, trust = "member", subject = undefined) {
     this.addActor({ kind: "service", id: "ingress" });
     const base = this.chains.appendService(undefined, "ingress", true);
     const chain = trust === "member" ? base : this.chains.weaken(base, { trust, red: "internal", source_spaces: [this.space] });
-    return this.logw.append(chain, { type, sv: 1, subject: `vyre://${this.space}/event/${mintUuid(this.now())}`, data, red: "internal" });
+    return this.logw.append(chain, { type, sv: 1, subject: subject || `vyre://${this.space}/event/${mintUuid(this.now())}`, data, red: "internal" });
   }
 
   /** Let the log deliver to its consumers. */

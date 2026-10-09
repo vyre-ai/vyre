@@ -271,6 +271,16 @@ Taking access away never needs presence; giving it does.
 > `vault.release`, which no surface or model can call. Every use is written to the audit log, by
 > name.
 
+## Lend a login to an agent
+
+```
+vyre vault agent grant kit harlow-drive https://app.harlow.test --expires 7d
+vyre vault agent grants
+vyre vault agent revoke <id>
+```
+
+The agent `kit` may sign in to that one site with that one login until the expiry, and never reads the login. It is a grant in your Space, the same kind as every other: the agent, the action (fill), the login, the exact origin and the expiry. Only you give it, on your own session. When Claude asks, the request waits and you approve it with `vyre vault approve <id>`. Taking it away needs no one, and deleting the login ends every grant on it.
+
 ## Connecting a key
 
 A module says what it needs in its manifest (`needs.credentials`), and you fill each need in one

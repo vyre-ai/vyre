@@ -30,6 +30,7 @@
 // production defaults are the strict ones, and no seam turns a check off.
 
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 import https from "node:https";
 import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
@@ -39,7 +40,7 @@ import { buildRequest } from "../../records/connectors/format.js";
 import { rowMac, same } from "./crypto.js";
 import {
   checkTarget, classify, presetFor, presetRead, parseFields, summarize, approvalHash, checkHeaders, checkQuery, buildUrl, pinnedOptions,
-  readerMayRead, scopeAllows,
+  readerMayRead, scopeAllows, modelMayRead,
 } from "./api-request.js";
 import { scrub, scrubAll } from "../../lib/scrub.js";
 
@@ -627,8 +628,8 @@ export class ApiRequests {
     // a module with a grant keep their reach. A read inside scope still runs with no prompt.
     const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
     const isModel = caller === "mcp" || caller.startsWith("mcp:");
-    if (isModel && plan.kind === "read" && (agentName || meta.project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged
-        && !scopeAllows(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project })) {
+    if (isModel && plan.kind === "read" && !tagged
+        && !modelMayRead(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project, agentKind: /** @type {any} */ (meta).agentKind })) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
       throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");
     }
@@ -683,8 +684,7 @@ export class ApiRequests {
 
   /** A module needs an active grant for the credential (a watcher's is its own); a person's surface does not. */
   granted(name, mod, watcher, audit) {
-    const rows = /** @type {any[]} */ (this.vault.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher));
-    if (rows.some(g => this.vault.rowOk("vault_grants", g))) return;
+    if (this.vault.releases.allowed({ name, module: mod, watcher })) return;
     audit(false, "no grant");
     throw bad(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} for vault.request · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`, "denied");
   }
@@ -773,13 +773,24 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
 /**
+ * DEVELOPMENT ONLY: a stand-in network for the vendor calls (the transport and the DNS lookup), set by code running in the same process as the daemon (the token proof's seeded world, scripts/token-proof-world.mjs)
+ * so a fake vendor on this machine can answer. It is honoured only while VYRE_SEAL_DEV=1 (a development build's switch, never set in a release build), and nothing outside the process can set it:
+ * there is no file, setting or request that reaches it. Every check on the address still runs against what the injected lookup returns.
+ * @type {{ deps: RequestDeps | null }}
+ */
+export const devNet = { deps: null };
+
+/** The request dependencies, with the development network seam laid over them only while VYRE_SEAL_DEV=1; anywhere else they come back exactly as given. A release-kind build ignores it even with the variable set (devSwitch). @param {RequestDeps} deps @param {Record<string, string | undefined>} [env] @param {string} [root] build folder, tests only */
+export const withDevNet = (deps, env = process.env, root = undefined) => (devNet.deps && devSwitch(env.VYRE_SEAL_DEV, root) ? { ...deps, ...devNet.deps } : deps);
+
+/**
  * @param {{ vault: import("./vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void,
  *   internal: (name: string, description: string, input: any, run: Function) => void,
  *   call?: (tool: string, input: any) => Promise<any>, said?: any, deps?: RequestDeps, log?: (m: string) => void }} o
  */
 export function register({ vault, tool, internal, call, said, deps = {}, log }) {
-  const api = new ApiRequests(vault, { call, said, log, ...deps });
+  const api = new ApiRequests(vault, { call, said, log, ...withDevNet(deps) });
 
   internal("vault.forward", "The kernel's lease module forwards one request from a lent computer's program: { credential, method, url, query?, headers?, body?, session }. It runs here, at the home, through the same checks as vault.request, and returns { status, headers, body (base64) } or { held } for an outward call. Never returns a credential value.",
     obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, allow_headers: strs, query: { type: "object" }, body: { anyOf: [str, { type: "object" }, { type: "array" }] }, session: str }, ["credential", "method", "url", "session"]),

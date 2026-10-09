@@ -44,7 +44,7 @@ test("every agent page is agents-only, has a budget and a `when`, is within its 
 test("the generated blocks are current, and every step kind and error code has words", async () => {
   const out = await renderAll();
   for (const [name, text] of Object.entries(out)) {
-    const file = { outward: "outward-acts.md", tools: "tools.md", records: "records.md", flows: "flows.md", connections: "connections.md", errors: "errors.md" }[name];
+    const file = { outward: "outward-acts.md", tools: "tools.md", records: "records.md", flows: "flows.md", cheatsheet: "flows-cheatsheet.md", connections: "connections.md", errors: "errors.md" }[name];
     assert.equal(fs.readFileSync(path.join(ROOT, "docs/agents", file), "utf8"), text, `docs/agents/${file} is out of date: run node scripts/gen-agent-docs.mjs`);
   }
   const idx = await renderPage("index", fs.readFileSync(path.join(ROOT, "docs/agents/index.md"), "utf8"));

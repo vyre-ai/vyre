@@ -81,6 +81,8 @@ const HOOK_TYPES = new Set(["application/json", "application/x-www-form-urlencod
 export const INGRESS_BODY_LIMIT = 256 * 1024;
 /** Per address, per window: a public link or a webhook sender never needs more. */
 const INGRESS_PER_WINDOW = 120;
+/** The Vault MCP (core/vault/passmcp.js): exactly POST /vault-mcp, a JSON body of at most 64 KB, its own per-source limit in front of the vault's own. The Authorization header goes through to that listener and nowhere else. */
+const VAULTMCP_PATH = "/vault-mcp", VAULTMCP_BODY_LIMIT = 64 * 1024, VAULTMCP_PER_WINDOW = 60;
 /** An app's screens load dozens of files per page, so an app host has its own, larger per-address budget in the same window (override with limits.appsPerWindow). */
 const APPS_PER_WINDOW = 600;
 export const APPS_BODY_LIMIT = 64 * 1024 * 1024;
@@ -111,7 +113,7 @@ export function parseHeadscaleLog(line) {
  *   upstream: { host?: string, port: number, tls?: boolean, pin?: string },
  *   derp?: boolean,
  *   forwarder?: { trust: string[], header: string },
- *   ingress?: { hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
+ *   ingress?: { vaultmcp?: () => number | null | Promise<number | null>, hooks: () => number | null | Promise<number | null>, share: () => number | null | Promise<number | null>, apps?: () => ({ port: number, hosts: string[] } | null) | Promise<{ port: number, hosts: string[] } | null>, appsSuffix?: string },   loopback ports of the hooks listener and the share server, asked per request (null: not listening, answered as 404); `apps` answers the apps' front port and the hosts of the installed RUNNING apps
  *   limits?: Partial<{ maxHeaderBytes: number, headersMs: number, requestMs: number, idleMs: number, upgradedIdleMs: number,
  *     handshakeMs: number, maxBodyBytes: number, windowMs: number, upgradesPerWindow: number, maxConcurrentUpgrades: number,
  *     maxConcurrentDerp: number, maxConnsPerAddr: number, maxConns: number, failThreshold: number, failWindowMs: number, blockMs: number }>,
@@ -195,6 +197,10 @@ export function createGate(o) {
       return n >= 0 && n <= INGRESS_BODY_LIMIT && HOOK_TYPES.has(type) ? "hooks" : null;
     }
     if (SHARE_PATH.test(url) && (m === "GET" || m === "HEAD")) return cl === undefined || cl === "0" ? "share" : null;
+    if (url === VAULTMCP_PATH && m === "POST" && o.ingress.vaultmcp) {
+      const n = /^\d{1,6}$/.test(String(cl)) ? Number(cl) : -1;
+      return n >= 0 && n <= VAULTMCP_BODY_LIMIT && String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase() === "application/json" ? "vaultmcp" : null;
+    }
     return null;
   }
 
@@ -253,11 +259,12 @@ export function createGate(o) {
   }
 
   /** Carry one ingress request to its loopback listener and the answer back. The head is the client's minus every spoofable and hop-by-hop header, plus the real address. */
-  async function ingress(/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res, /** @type {"hooks"|"share"} */ kind, /** @type {string} */ addr) {
+  async function ingress(/** @type {import("node:http").IncomingMessage} */ req, /** @type {import("node:http").ServerResponse} */ res, /** @type {"hooks"|"share"|"vaultmcp"} */ kind, /** @type {string} */ addr) {
     const sock = req.socket, k = addrKey(addr), t = now();
-    const w = (windows.get("i:" + k) || []).filter(x => x > t - L.windowMs);
-    if (w.length >= INGRESS_PER_WINDOW) { stats.limited++; emit({ type: "limit", addr: k, what: "ingress" }); req.resume(); refuse(sock, TOO_MANY); return; }
-    w.push(t); windows.set("i:" + k, w);
+    const wk = (kind === "vaultmcp" ? "m:" : "i:") + k;
+    const w = (windows.get(wk) || []).filter(x => x > t - L.windowMs);
+    if (w.length >= (kind === "vaultmcp" ? VAULTMCP_PER_WINDOW : INGRESS_PER_WINDOW)) { stats.limited++; emit({ type: "limit", addr: k, what: "ingress" }); req.resume(); refuse(sock, TOO_MANY); return; }
+    w.push(t); windows.set(wk, w);
     let port = null;
     try { port = await o.ingress[kind](); } catch { port = null; }
     if (!Number.isInteger(port) || /** @type {number} */ (port) < 1) { stats.notFound++; emit({ type: "notfound", addr: k }); req.resume(); refuse(sock, NOT_FOUND); return; }
@@ -282,7 +289,7 @@ export function createGate(o) {
     up.on("timeout", () => up.destroy());
     up.on("error", () => { stats.timeouts++; if (!res.headersSent) refuse(sock, UNAVAILABLE); else sock.destroy(); });
     req.on("aborted", () => up.destroy());
-    if (kind === "hooks") req.pipe(up); else up.end();
+    if (kind === "hooks" || kind === "vaultmcp") req.pipe(up); else up.end();
   }
 
   /** The request head for the upstream: the client's headers minus every spoofable one, plus ours. */

@@ -9,6 +9,7 @@
 // Kit text, including instructions, descriptions and templates, is `external` until a person has reviewed it (R6-10), and the card says so.
 // Records owns the Kit language and its compiler; this file takes a Kit in its stored form and owns install, update and remove.
 
+import { checkTaskExtras } from "./checklist.js";
 import { canonical, flowHash } from "./schema.js";
 import { compileFlow } from "./compile.js";
 import { ROLE_BUNDLES } from "../contracts/index.js";
@@ -79,6 +80,10 @@ export function checkKit(kit, cat) {
     if (p.kind === "type") {
       if (!Array.isArray(p.def.fields) || !p.def.fields.length) errors.push({ path: `type ${p.name}`, message: "a type has fields" });
       for (const f of p.def.fields || []) if (f.kind === "sealed" && !f.seal) errors.push({ path: `type ${p.name}.${f.name}`, message: "a sealed field names its class and level" });
+      // Task briefs, checklists and credentials are checked against the Space (s2).
+      const stageLists = [p.def.stages || [], ...((p.def.stage_sets || []).map((/** @type {any} */ x) => x.stages || []))];
+      const env = { fields: (p.def.fields || []).map((/** @type {any} */ f) => f.name), connections: Object.keys(merged.connectors || {}).map(c => c.replace(/^conn-/, "")) };
+      for (const st of stageLists.flat()) for (const task of (st && st.tasks) || []) for (const e of checkTaskExtras(task, `type ${p.name} stage ${st.name} task "${task.title}"`, env)) errors.push(e);
     }
     if (p.kind === "role") {
       const b = Object.values(ROLE_BUNDLES).find(x => x.role === p.def.base);

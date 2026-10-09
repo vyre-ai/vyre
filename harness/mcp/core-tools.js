@@ -27,8 +27,8 @@ export const CORE = [
   "vyre_core",
 ];
 
-/** The two tools the server answers itself. They are listed beside the core. */
-export const META = ["tools_find", "tools_call"];
+/** The four tools the server answers itself (find, run many in one call, read a result by handle, call one by name). They are listed beside the core. */
+export const META = ["tools_find", "tools_run", "results_read", "tools_call"];
 
 /**
  * Every tool a caller may use, by the name it is called with: a module tool under its own name, the memory tools under theirs (their raw twins are not offered beside them).
@@ -47,8 +47,18 @@ export function catalogOf(offered) {
 export const META_TOOLS = [
   {
     name: "tools_find",
-    description: "Find the Vyre tool for what you are about to do. Describe it in plain words (\"remind me at 6\", \"search my inbox\"): you get the best three, each with a ready example call. Only tools you may use are found. Run one with tools_call.",
+    description: "Find the Vyre tool for what you are about to do. Describe it in plain words (\"remind me at 6\", \"search my inbox\"): you get the best three, each with a ready example call, and two more in brief. Only tools you may use are found. Run one with tools_call.",
     inputSchema: { type: "object", required: ["query"], properties: { query: { type: "string", maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 10 } } },
+  },
+  {
+    name: "tools_run",
+    description: "Run up to 20 tool calls in one go and get one answer. steps: [{id, call, input, when?} or {id, fn: \"JS body returning an object\", inputs?}]. A value {expr:\"steps.<id>.rows[0].id\"} reads an earlier result; return:{name:{expr}} shapes the answer. Each step is judged as if you called it alone; it stops at a held, refused or failed step and says where.",
+    inputSchema: { type: "object", required: ["steps"], properties: { steps: { type: "array", maxItems: 20, items: { type: "object" } }, return: { type: "object" } } },
+  },
+  {
+    name: "results_read",
+    description: "Read part of a big result you were given a handle for: { handle, select?, where?, sort?, fields?, offset?, limit? }. select is a path (result.records); on a list, where {\"data.stage\":\"Open\"}, sort (\"data.name\", \"-\" for descending) and fields [\"data.name\"] narrow it first, so one read can be all you need. Drop one with tools_call results_drop.",
+    inputSchema: { type: "object", required: ["handle"], properties: { handle: { type: "string", maxLength: 80 }, select: { type: "string", maxLength: 200 }, where: { type: "object" }, sort: { type: "string", maxLength: 100 }, fields: { type: "array", maxItems: 20, items: { type: "string" } }, offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 200 } } },
   },
   {
     name: "tools_call",
@@ -57,11 +67,24 @@ export const META_TOOLS = [
   },
 ];
 
-/** The MCP listing: the core that this caller has, then the two meta tools. @param {ReturnType<typeof catalogOf>} catalog */
-export function listing(catalog) {
+/**
+ * Which of the two batching features a session has. Unset (every real session): tools_run only; results by reference is OFF until a paid run proves it pays (lead ruling 9 Oct). Set, for measuring:
+ * "" both, "run" (tools_run), "ref" (results by reference), "none".
+ * @param {string} [v]
+ */
+export const featuresOf = (v) => (v === undefined ? { run: true, ref: false } : { run: v === "" || v === "run", ref: v === "" || v === "ref" });
+
+/**
+ * The MCP listing: the core that this caller has, then the meta tools. With `mode` "all" (VYRE_MCP_LISTING=all) every tool is listed, as before 0.3.1: only the token proof
+ * (scripts/token-proof.mjs) sets it, to measure the old listing against the new one.
+ * @param {ReturnType<typeof catalogOf>} catalog @param {string} [mode] @param {string} [features]
+ */
+export function listing(catalog, mode = "", features = "") {
+  if (mode === "all") return catalog.map((c) => ({ name: c.name, description: c.description, inputSchema: c.input }));
   const by = new Map(catalog.map((c) => [c.name, c]));
   const core = CORE.filter((n) => by.has(n)).map((n) => { const c = /** @type {any} */ (by.get(n)); return { name: c.name, description: c.description, inputSchema: c.input }; });
-  return [...core, ...META_TOOLS];
+  const f = featuresOf(features);
+  return [...core, ...META_TOOLS.filter((t) => (t.name === "tools_run" ? f.run : t.name === "results_read" ? f.ref : true))];
 }
 
 /** The search index over a catalog (and any hub tools handed in the same shape). @param {{ name: string, tool?: string, description: string, input: any }[]} catalog */
@@ -73,6 +96,20 @@ export function indexOf(catalog) {
 }
 
 /** The best tools for an intent, named as they are called. @param {ReturnType<typeof indexOf>} index @param {string} query @param {number} [limit] */
-export function find(index, query, limit = 3) {
-  return findTools(index, query, { limit });
+export function find(index, query, limit = 3, boost = undefined) {
+  return findTools(index, query, { limit, boost });
+}
+
+/** A weak answer: nothing found, a low top score, or the top two nearly tied. The numbers come from the held-out sets (about half of such answers are wrong). @param {{ score: number }[]} found */
+export const weak = (found) => !found.length || found[0].score < 25 || (found.length > 1 && found[0].score / found[1].score < 1.1);
+
+/**
+ * What tools_find sends back: the best three in full, with a ready call each, then the next ones compactly (name, a short description, the arguments they need), so a near miss is still on the
+ * page. A weak answer also points at vyre_core, the map of modules, so the model can browse instead of guessing again.
+ * @param {ReturnType<typeof find>} found @param {(name: string) => any} [inputOf] the input schema of a tool, for the compact entries
+ */
+export function shapeFind(found, inputOf = () => null) {
+  const full = found.slice(0, 3).map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } }));
+  const more = found.slice(3).map((f) => { const inp = inputOf(f.name); const need = inp && Array.isArray(inp.required) ? inp.required.slice(0, 6) : []; return { name: f.name, description: f.description.slice(0, 80), ...(need.length ? { needs: need } : {}) }; });
+  return { tools: full, ...(more.length ? { also: more } : {}), ...(weak(found) ? { browse: "Not sure these fit? Call vyre_core for the map of Vyre's modules, then tools_find again with a module's name." } : {}) };
 }

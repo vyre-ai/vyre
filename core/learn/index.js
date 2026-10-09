@@ -44,6 +44,7 @@ import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
 import * as sig from "./signals.js";
+import { callsOf, runFor, evidenceOf } from "../../lib/skill-skeleton.js";
 import { claudeHome } from "../config/index.js";
 
 const MIGRATIONS = [
@@ -650,9 +651,21 @@ export default {
     /** Does the Switchboard answer here? Only then can a job draft anything. */
     const switchboard = async () => { const r = await ctx.call("threads.list", {}); return Boolean(r && !r.error); };
     /** A procedure clean in 3 sessions: drafted by a job when the Switchboard can, else the template. */
+    /** R031-00s: for a procedure of Vyre calls, the argument names and data flow seen in the Vyre-run threads that did it (their receipts), never a value. @param {any} c */
+    const evidenceFor = c => {
+      if (!c.steps.some((/** @type {string} */ s) => s.startsWith("vyre:"))) return null;
+      const sessions = db.prepare("SELECT DISTINCT session FROM learn_procs WHERE hash = ? AND clean = 1 LIMIT 3").all(c.hash).map((/** @type {any} */ r) => String(r.session));
+      /** @type {any[]} */ const runs = [];
+      for (const sid of sessions) {
+        try { const run = runFor(callsOf(ctx.events.ofThread(sid, { types: ["thread.tool"] })), c.steps); if (run) runs.push(run); } catch { /* no thread log for this session */ }
+      }
+      return runs.length ? evidenceOf(runs) : null;
+    };
     const skillCandidates = async () => {
       const c = skills.candidates({ min: 3 })[0];
       if (!c) return;
+      const ev = evidenceFor(c);
+      if (ev) c.evidence = ev;
       const key = "skill:" + c.hash;
       const job = /** @type {any} */ (db.prepare("SELECT status FROM learn_jobs WHERE key = ? ORDER BY id DESC LIMIT 1").get(key));
       if (job && ["queued", "running"].includes(String(job.status))) return;
@@ -1042,10 +1055,18 @@ export default {
       }
       saveTurn({ ...t, owed: JSON.stringify([...new Set(owe)]) });
       // The call, by its shape, so PostToolUse (or its absence by Stop) says what became of it.
-      if (session && tool_use_id && sig.TRACKED.has(tool_name)) {
-        const command = tool_name === "Bash" && typeof tool_input.command === "string" ? tool_input.command : null;
-        addCall.run(String(tool_use_id), session, tool_name, command ? sig.shape(command) || null : null, command && sig.isTest(command) ? 1 : 0,
-          verdict.lesson ?? null, verdict.decision ?? null, now());
+      const tracked = sig.TRACKED.has(tool_name);
+      if (session && tool_use_id && (tracked || sig.isVyreTool(tool_name))) {
+        const callId = String(tool_use_id);
+        if (tracked) {
+          const command = tool_name === "Bash" && typeof tool_input.command === "string" ? tool_input.command : null;
+          addCall.run(callId, session, tool_name, command ? sig.shape(command) || null : null, command && sig.isTest(command) ? 1 : 0,
+            verdict.lesson ?? null, verdict.decision ?? null, now());
+        } else {
+          // R031-00s: a Vyre tool call is a step of the turn. Its row holds the steps (tool names, one a line; never an argument), and only the repeated-work detector reads it.
+          const steps = sig.vyreSteps(tool_name, tool_input);
+          if (steps.length) addCall.run(callId, session, tool_name, steps.join("\n"), 0, null, null, now());
+        }
       }
       return verdict;
     };
@@ -1097,6 +1118,8 @@ export default {
       const calls = db.prepare("SELECT * FROM learn_calls WHERE session = ? AND at >= ? ORDER BY at").all(session, t.started || 0);
       for (const c of calls) {
         if (c.outcome != null) continue;
+        // A Vyre tool call has no PostToolUse here (only its failure is passed on): it is a step of the turn and says nothing about being declined.
+        if (sig.isVyreTool(String(c.tool))) continue;
         // Headless, no one was there to say no: a call that did not run was refused by settings or
         // the permission mode, and a real answer comes as ask.answered. Nothing is inferred.
         if (headless) { setOutcome(c.id, "unanswered"); continue; }
@@ -1129,7 +1152,10 @@ export default {
             source: { kind: "untested" }, key, session, why: "untested" });
         }
       }
-      const steps = stepsOf({ commands, files: rows.map(f => ({ tool: String(f.tool), path: String(f.path), at: Number(f.at) })) });
+      // R031-00s: the turn's Vyre tool calls are steps too, unless one failed (a sequence with a failed step is not what the person wants repeated).
+      const vyre = calls.filter(c => sig.isVyreTool(String(c.tool)));
+      const tools = vyre.some(c => c.outcome === "failed") ? [] : vyre.map(c => ({ steps: String(c.shape || "").split("\n").filter(Boolean), at: Number(c.at) }));
+      const steps = stepsOf({ commands, files: rows.map(f => ({ tool: String(f.tool), path: String(f.path), at: Number(f.at) })), tools });
       skills.record({ session, seq: t.seq, project, steps });
       await sweep(project);
       housekeep();

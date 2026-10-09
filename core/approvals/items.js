@@ -1,0 +1,135 @@
+// @ts-check
+// approvals items: the other things that wait on the person, in the same queue as the cards a yes opens (DESIGN-one-yes: one queue; inventory item 4, step C).
+//
+// The Gate's held drafts, a session's asks and the vault's pending grants, passes and requests used to be three queues, each read by its own surface and joined only for display by core/waiting.
+// Each is now an ITEM CARD in this queue: it appears the moment its owner holds it, carries the owner's tool that settles it (`answer`), and is closed with the outcome when the owner
+// settles it. The owner still holds the content and still decides (its detail screen, its edit, its own answer tool); this module holds the one list, so a surface reads one place.
+// A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
+import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
+
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access"]);
+const DEBOUNCE_MS = 200;
+/** How long a settled card stays readable (its outcome), and how many. */
+const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
+
+/** threads.asks rows. A question is answered with a decision and its answers; a permission with a decision. */
+export const fromAsks = rows => rows.map(a => {
+  const question = a.kind === "question";
+  const first = question && Array.isArray(a.questions) && a.questions[0] ? a.questions[0].question : "";
+  const title = clean(a.summary) || clean(first) || (question ? "A question from a session" : `Allow ${clean(a.tool, 40) || "a tool"}?`);
+  const who = [clean(a.agent, 40), clean(a.thread_name, 80)].filter(Boolean).join(" in ");
+  // An ask from a session on the paired Mac is answered on that Mac: the box cannot forward an answer yet (threads.answer {machine} arrives with federation). Until then the row names the machine
+  // and its answer has no tool, so a surface says "Answer it on <mac>".
+  const mac = a.source === "mac";
+  const machine = mac && a.machine ? clean(a.machine, 80) : "";
+  return { id: `threads:${a.id}`, kind: "ask", title, ...opt("detail", cap(who, DETAIL_MAX)), ...opt("project", a.project), ...opt("thread", a.thread),
+    ...(mac ? { machine: machine || "your Mac" } : {}), at: at(a.at), source: "threads",
+    answer: mac ? { tool: null, input: null, fill: [], on: machine || "your Mac" }
+      : { tool: "threads.answer", input: { ask: a.id }, fill: question ? ["decision", "answers"] : ["decision"] } };
+});
+
+/** gate.held rows. Only the sender's own summary and where it goes, never the draft. */
+export const fromHeld = rows => rows.map(h => {
+  const to = (Array.isArray(h.to) ? h.to : [h.to]).map(x => one(x)).filter(Boolean).join(", ");
+  const via = clean(h.via, 40);
+  const title = clean(h.summary) || `A ${clean(h.kind, 20) || "draft"}${via ? ` via ${via}` : ""}`;
+  const detail = clean([via, to && `to ${to}`].filter(Boolean).join(" "), DETAIL_MAX);
+  return { id: `gate:${h.id}`, kind: "draft", title, ...opt("detail", detail), ...opt("project", h.project), ...opt("thread", h.thread),
+    at: at(h.at), source: "gate", answer: { tool: "gate.approve", input: { id: h.id }, fill: [] } };
+});
+
+const names = (/** @type {any} */ xs) => (Array.isArray(xs) ? xs : []).slice(0, 4).map(x => clean(x && typeof x === "object" ? x.name : x, 60)).filter(Boolean).join(", ");
+/** vault.pending: what an agent asked the vault for and a person has not settled (grants, passes, agent logins, people to trust, passes to accept). Names only, never a value. */
+export const fromVault = (/** @type {any} */ p) => {
+  const row = (/** @type {string} */ id, /** @type {string} */ title, /** @type {string} */ detail, /** @type {any} */ when) =>
+    ({ id: `vault:${id}`, kind: "access", title: clean(title) || "The vault is asked for access", ...opt("detail", clean(detail, DETAIL_MAX)), at: at(when), source: "vault",
+      answer: { tool: "vault.approve", input: { id }, fill: [] } });
+  const list = (/** @type {any} */ x) => (Array.isArray(x) ? x.filter(y => y && typeof y === "object" && y.id) : []);
+  return [
+    ...list(p && p.grants).map(g => row(g.id, `Let ${clean(g.module, 40)}${g.watcher ? `/${clean(g.watcher, 40)}` : ""} use "${clean(g.name, 60)}"`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
+    ...list(p && p.agentGrants).map(g => row(g.id, `Let agent ${clean(g.agent, 40)} use "${clean(g.item ?? g.name, 60)}"${g.origin ? ` at ${clean(g.origin, 60)}` : ""}`, clean(g.by, 40) && `asked by ${clean(g.by, 40)}`, g.at)),
+    ...list(p && p.passes).map(s => row(s.id, `Share ${names(s.items)} with ${clean(s.holder, 60)}`, [s.mode, clean(s.by, 40) && `asked by ${clean(s.by, 40)}`].filter(Boolean).join(", "), s.created)),
+    ...list(p && p.people).map(x => row(x.id, `Trust the card for ${clean(x.name, 60)}`, x.fingerprint ? `fingerprint ${clean(x.fingerprint, 40)}` : "", x.at)),
+    ...list(p && p.accepts).map(x => row(x.id, `Accept a pass from ${clean(x.owner, 60)}`, x.items ? names(x.items) : "", x.at)),
+  ];
+};
+
+/**
+ * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
+ * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
+ */
+export const OWNERS = [
+  { name: "threads", tool: "threads.asks", map: d => fromAsks(Array.isArray(d) ? d : []), watch: [
+    ["ask.*", (t, p) => (t === "ask.answered" ? [`threads:${p && p.ask}`, one(p && p.decision) || "answered"] : t === "ask.cancelled" ? [`threads:${p && p.ask}`, "cancelled"] : null)]] },
+  { name: "gate", tool: "gate.held", map: d => fromHeld(Array.isArray(d) ? d : []), watch: [
+    ["gate.*", (t, p) => (t === "gate.released" ? [`gate:${p && p.id}`, "sent"] : t === "gate.rejected" ? [`gate:${p && p.id}`, "refused"] : t === "gate.settled" ? [`gate:${p && p.id}`, one(p && p.outcome) || "sent"] : t === "gate.failed" ? [`gate:${p && p.id}`, "failed"] : null)]] },
+  { name: "vault", tool: "vault.pending", map: fromVault, watch: [
+    ["vault.granted", null], ["vault.revoked", null], ["vault.agent-granted", null], ["vault.agent-revoked", null], ["grant.*", null], ["pass.*", null], ["person.*", null]] },
+];
+
+/**
+ * @param {{ call: (tool: string, input?: any) => Promise<any>, on: (pattern: string, fn: (e: any) => void) => (() => void), now: () => number, log?: (m: string) => void, emit?: (type: string, payload: any) => void, extra?: () => any[] }} deps `extra`: the cards this queue holds itself (a yes waiting on the phone), which need no owner
+ */
+export function createItems({ call, on, now, log = () => {}, emit = () => {}, extra = () => [] }) {
+  /** @type {Map<string, any>} */ const open = new Map();
+  /** @type {Map<string, any>} */ const recent = new Map();
+  /** Outcomes the owners' events told us, until the card they belong to closes. @type {Map<string, string>} */ const hints = new Map();
+  /** Owners whose list could not be read now: their cards are left as they were, and named. @type {Set<string>} */ const partial = new Set();
+  let said = "", timer = /** @type {any} */ (null), running = /** @type {Promise<void> | null} */ (null), again = false, stopped = false;
+
+  const read = async (/** @type {typeof OWNERS[number]} */ o) => {
+    try {
+      const r = await call(o.tool, {});
+      if (!r || r.error || r.data === undefined || r.data === null) return null;
+      return o.map(r.data);
+    } catch { return null; }
+  };
+  const reconcile = async () => {
+    const got = await Promise.all(OWNERS.map(read));
+    const t = now();
+    for (let i = 0; i < OWNERS.length; i++) {
+      const o = OWNERS[i], rows = got[i];
+      if (rows === null) { partial.add(o.name); continue; }
+      partial.delete(o.name);
+      const live = new Set(rows.map(r => r.id));
+      for (const [id, card] of open) if (card.source === o.name && !live.has(id)) {
+        open.delete(id);
+        recent.set(id, { ...card, state: "settled", outcome: hints.get(id) || "settled", settled_at: t });
+        hints.delete(id);
+      }
+      for (const r of rows) open.set(r.id, { ...(open.get(r.id) || {}), ...r, state: "waiting" });
+    }
+    for (const [id, c] of recent) if (t - c.settled_at > RECENT_MS) recent.delete(id);
+    while (recent.size > RECENT_MAX) recent.delete(/** @type {string} */ (recent.keys().next().value));
+    for (const id of hints.keys()) if (!open.has(id) && !recent.has(id)) hints.delete(id);
+    const own = extra();
+    const key = JSON.stringify([...open.keys(), ...own.map(r => r.id)].sort());
+    if (key !== said) { said = key; try { emit("approvals.changed", { count: open.size + own.length }); } catch (e) { log(`approvals: could not say approvals.changed: ${/** @type {Error} */ (e).message}`); } }
+  };
+  const refresh = async () => {
+    if (running) { again = true; return running; }
+    running = (async () => { do { again = false; await reconcile(); } while (again && !stopped); })();
+    try { await running; } finally { running = null; }
+  };
+  const schedule = () => { if (stopped || timer) return; timer = setTimeout(() => { timer = null; refresh().catch(() => {}); }, DEBOUNCE_MS); timer.unref?.(); };
+
+  const offs = [];
+  for (const o of OWNERS) for (const [pattern, hint] of o.watch) offs.push(on(pattern, e => {
+    const h = hint ? hint(e.type, e.payload) : null;
+    if (h) hints.set(h[0], h[1]);
+    schedule();
+  }));
+
+  return {
+    /** Everything waiting now, oldest owner first as the owners hold it; `recent` the settled ones with what became of them. */
+    async list() {
+      if (timer) { clearTimeout(timer); timer = null; }
+      await refresh();
+      return { items: [...extra(), ...open.values()], recent: [...recent.values()], ...(partial.size ? { partial: [...partial] } : {}) };
+    },
+    start() { schedule(); },
+    /** Something this queue holds itself changed (a card was held, answered or ended): say so after the owners' own changes are read too. */
+    touch() { schedule(); },
+    async stop() { stopped = true; for (const off of offs) off(); if (timer) clearTimeout(timer); try { if (running) await running; } catch { /* stopping */ } },
+  };
+}

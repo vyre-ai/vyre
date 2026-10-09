@@ -19,10 +19,14 @@ import { newPrefixedId } from "../../lib/id.js";
  *   id: string, flow: string, version: number, hash: string, space: string,
  *   trigger: { kind: string, key: string, source?: string, event?: any, input?: any, path?: string, at?: number, caught_up?: boolean, missed?: number, tz?: string },
  *   tainted: boolean, source_spaces: string[], depth: number,
- *   state: 'running'|'waiting'|'paused'|'done'|'failed'|'cancelled',
+ *   state: 'running'|'waiting'|'paused'|'queued'|'done'|'failed'|'cancelled',
  *   started_at: number, updated_at: number, finished_at?: number,
- *   steps: Record<string, { status: 'started'|'waiting'|'done'|'skipped'|'failed', output?: any, error?: { code: string, message: string }, at: number, wait?: any, task?: string }>,
- *   waiting?: { step: string, kind: 'task'|'time'|'event', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
+ *   steps: Record<string, { status: 'started'|'waiting'|'done'|'skipped'|'failed'|'failed_handled', output?: any, error?: { code: string, message: string }, at: number, wait?: any, task?: string, tries?: number, last_error?: any, attempts_log?: { at: number, code: string }[], handling?: boolean, started_at?: number, finished_at?: number, verify?: { ok: boolean, say?: string }, skipped_by?: string|null, skipped_at?: number, substitute?: boolean, [k: string]: any }>,
+ *   queued?: { reason: 'concurrency'|'box_limit'|'lock'|'paused'|'draining'|'flow_paused', since: number, seq?: number }, lock_key?: string,
+ *   attention?: { kind: 'failed'|'stuck'|'stale'|'verify'|'paused', step?: string, code?: string, message: string, since: number },
+ *   failing?: { step: string, code: string, message: string }, failing_done?: boolean, failing_error?: { code: string, message: string }, cancelled?: { by: string|null, at: number, reason?: string },
+ *   gate?: { key: string, urn: string, type: string, record: string, stage: string, next: string | null, owner: string | null, tasks: { id: string, title: string, required: boolean }[] },  a stage gate (s1): a run with no stored Flow
+ *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
  *   error?: { step: string, code: string, message: string },
  *   approver: ActorRef, dry?: boolean,
  * }} Run
@@ -39,7 +43,14 @@ export class MemoryFlowStore {
     /** @type {Map<string, FlowRow>} */ this.flows = new Map();
     /** @type {Map<string, Run>} */ this.runs = new Map();
     /** @type {Map<string, number>} flow id -> when its schedule last ran (so a restart catches up once instead of forgetting) */ this.schedules = new Map();
+    /** @type {any} */ this.control = null;
+    /** @type {Map<string, any[]>} saved test cases by flow id */ this.tests = new Map();
   }
+
+  /** @param {string} flow */
+  async getTests(flow) { return structuredClone(this.tests.get(flow) || []); }
+  /** @param {string} flow @param {any[]} cases */
+  async putTests(flow, cases) { this.tests.set(flow, structuredClone(cases)); }
 
   /** @param {string} flow @returns {Promise<number|null>} */
   async getSchedule(flow) { return this.schedules.has(flow) ? /** @type {number} */ (this.schedules.get(flow)) : null; }
@@ -103,6 +114,16 @@ export class MemoryFlowStore {
 
   /** @param {string} id @param {string} reason @param {number} at */
   async pause(id, reason, at) { const r = this.flows.get(id); if (r) { r.status = "paused"; r.paused = { reason, since: at }; } }
+  /** Flows with an approved version that are paused: a trigger that arrives for one is held, not lost. */
+  async pausedFlows() {
+    const out = [];
+    for (const row of this.flows.values()) if (row.status === "paused" && row.active !== null) { const v = this.#view(row, row.active); if (v && v.approver) out.push({ ...v, paused: true }); }
+    return out;
+  }
+  /** The Space-wide switch (pause all, drain): null when nothing was ever set. @returns {Promise<any>} */
+  async getControl() { return this.control ? structuredClone(this.control) : null; }
+  /** @param {any} c */
+  async putControl(c) { this.control = structuredClone(c); }
   /** @param {string} id */
   async resume(id) { const r = this.flows.get(id); if (r) { r.status = "active"; delete r.paused; } }
   /** @param {string} id */
@@ -140,6 +161,10 @@ export const FLOW_TYPES = Object.freeze([
   { name: "flow-state", label: "Flow state", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "status", kind: "text", label: "Status" }, { name: "active", kind: "number", label: "Active version" },
     { name: "reason", kind: "text", label: "Reason" }, { name: "since", kind: "number", label: "Since" } ] },
+  { name: "flow-control", label: "Flow control", fields: [
+    { name: "key", kind: "text", label: "Key" }, { name: "mode", kind: "text", label: "Mode" }, { name: "since", kind: "number", label: "Since" }, { name: "body", kind: "text", label: "Control" } ] },
+  { name: "flow-tests", label: "Flow test cases", fields: [
+    { name: "flow_id", kind: "text", label: "Flow" }, { name: "body", kind: "text", label: "Cases" } ] },
   { name: "flow-schedule", label: "Flow schedule", fields: [
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
   { name: "flow-run", label: "Flow run", icon: "run", fields: [
@@ -219,13 +244,44 @@ export class RecordsFlowStore {
   }
   /** @param {string} id @param {string} reason @param {number} at */
   async pause(id, reason, at) { await this.#known(id); await this.#setState(id, { status: "paused", reason, since: at, active: undefined }); }
+  /** Flows with an approved version that are paused: a trigger that arrives for one is held, not lost. */
+  async pausedFlows() {
+    const r = await this.k.records.query(this.chain, "flow-state", { filter: { field: "status", op: "eq", value: "paused" }, page: { limit: 1000 } });
+    const out = [];
+    for (const st of r.rows) if (st.data.active !== null) { const v = await this.#viewOf(st, Number(st.data.active)); if (v && v.approver) out.push({ ...v, paused: true }); }
+    return out;
+  }
+  /** @param {string} flow */
+  async getTests(flow) { const r = (await this.#find("flow-tests", "flow_id", flow))[0]; return r ? JSON.parse(r.data.body) : []; }
+  /** @param {string} flow @param {any[]} cases */
+  async putTests(flow, cases) {
+    const r = (await this.#find("flow-tests", "flow_id", flow))[0];
+    const data = { flow_id: flow, body: JSON.stringify(cases) };
+    if (r) await this.k.records.update(this.chain, "flow-tests", r.id, data, r.version); else await this.k.records.create(this.chain, "flow-tests", data);
+  }
+  /** The Space-wide switch (pause all, drain): null when nothing was ever set. */
+  async getControl() { const r = (await this.#find("flow-control", "key", "space"))[0]; return r ? JSON.parse(r.data.body) : null; }
+  /** @param {any} c */
+  async putControl(c) {
+    const r = (await this.#find("flow-control", "key", "space"))[0];
+    const data = { key: "space", mode: c.mode, since: c.since || 0, body: JSON.stringify(c) };
+    if (r) await this.k.records.update(this.chain, "flow-control", r.id, data, r.version); else await this.k.records.create(this.chain, "flow-control", data);
+  }
   /** @param {string} id */
   async resume(id) { await this.#known(id); await this.#setState(id, { status: "active", reason: "", since: 0, active: undefined }); }
   /** @param {string} id */
   async disable(id) { await this.#setState(id, { status: "disabled", active: null }); }
+  /** The Flow with its versions (newest last), as the memory store keeps it. @param {string} id */
+  async flowRow(id) {
+    const defs = await this.#find("def-flow", "flow_id", id);
+    if (!defs.length) return null;
+    const st = (await this.#find("flow-state", "flow_id", id))[0];
+    const versions = defs.map((/** @type {any} */ d) => ({ version: Number(d.data.version), hash: d.data.hash, at: Number(d.data.at) || 0 })).sort((/** @type {any} */ a, /** @type {any} */ b) => a.version - b.version);
+    return { id, name: defs[0].data.name, space: defs[0].data.space, versions, active: st && st.data.active !== null ? Number(st.data.active) : null, status: st ? st.data.status : "draft" };
+  }
   async list() {
     const r = await this.k.records.query(this.chain, "flow-state", { page: { limit: 1000 } });
-    return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active }));
+    return r.rows.map((/** @type {any} */ s) => ({ id: s.data.flow_id, status: s.data.status, active: s.data.active, paused: s.data.status === "paused" ? { reason: s.data.reason || "", since: Number(s.data.since) || 0 } : null }));
   }
 
   /** @param {string} flow @returns {Promise<number|null>} */

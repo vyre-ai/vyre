@@ -1,13 +1,14 @@
 // @ts-check
-// The waiting module against fake threads, gate, planner and link modules in a temp home. The fakes
-// answer with the owners' real shapes (core/switchboard/asks.js shape, core/gate/gate.js brief,
-// core/planner/index.js planner.ringing, core/link/box.js link.pending).
+// The waiting module and the real approvals queue against fake threads, gate, vault, planner and link modules in a temp home. The fakes
+// answer with the owners' real shapes (core/switchboard/asks.js shape, core/gate/gate.js brief, core/vault vault.pending,
+// core/planner/index.js planner.ringing, core/link/box.js link.pending). Asks, drafts and vault requests reach waiting as cards of the approvals queue.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { clean, tally, fromPending } from "./index.js";
+import { fromAsks } from "../approvals/items.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
@@ -30,10 +31,12 @@ const PAIR = { id: "p1", name: "alex's MacBook", login: "alex@example.com", node
 const fake = (name, tool, key, extra = "") => [name, [tool],
   `export default { async start(ctx) { ctx.tool(${JSON.stringify(tool)}, { effect: "read", ${extra} run: async () => { globalThis.calls[${JSON.stringify(tool)}] = (globalThis.calls[${JSON.stringify(tool)}] || 0) + 1;
     const v = globalThis.fake[${JSON.stringify(key)}]; if (v instanceof Error) throw v; return v; } }); return {}; } };`];
-const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
+const GRANT = { id: "g_1", name: "billing-key", module: "mail", status: "pending", by: "mcp", at: T + 5000 };
+const VAULT = { grants: [GRANT], passes: [], agentGrants: [], people: [], accepts: [] };
+const ALL = [fake("threads", "threads.asks", "asks"), fake("gate", "gate.held", "held"), fake("vault", "vault.pending", "vault"), fake("planner", "planner.ringing", "ringing"), fake("link", "link.pending", "pending")];
 
 async function world(t, fakes = ALL, data = {}, role = "box") {
-  /** @type {any} */ (globalThis).fake = { asks: [], held: [], ringing: [], pending: [], ...data };
+  /** @type {any} */ (globalThis).fake = { asks: [], held: [], vault: { grants: [], passes: [], agentGrants: [], people: [], accepts: [] }, ringing: [], pending: [], ...data };
   /** @type {any} */ (globalThis).calls = {};
   const home = tempHome(t);
   const root = path.join(home, "mods");
@@ -43,7 +46,7 @@ async function world(t, fakes = ALL, data = {}, role = "box") {
   const said = [];
   events.on("waiting.changed", e => said.push(e.payload));
   const reg = new Registry({ db, events, config: { role }, paths: { root: home }, log: () => {} });
-  const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => f.manifest?.name === "waiting");
+  const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["waiting", "approvals"].includes(f.manifest?.name));
   await reg.start([...core, ...discover([root])], { role });
   t.after(async () => { await reg.stop?.(); db.close(); });
   const call = async (tool, input = {}, caller = "cli") => (await reg.call(tool, input, caller));
@@ -56,12 +59,12 @@ test("waiting.list: the four sources in one list, newest first, with source-pref
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2", "gate:g1", "planner:f1", "threads:a1", "link:p1"]);
   assert.deepEqual(r.rows.map(x => x.kind), ["ask", "draft", "reminder", "ask", "pairing"]);
   assert.equal(r.count, 5);
-  assert.deepEqual(r.by_kind, { ask: 2, draft: 1, reminder: 1, pairing: 1 });
+  assert.deepEqual(r.by_kind, { approval: 0, ask: 2, draft: 1, access: 0, reminder: 1, pairing: 1 });
   assert.equal(r.partial, undefined);
   assert.deepEqual(r.rows.find(x => x.id === "gate:g1"), { id: "gate:g1", kind: "draft", title: "Re: the Harlow Legal retainer", detail: "mail to dana@harlowlegal.com",
     project: "harlow-legal", thread: "t-harlow", at: T + 3000, source: "gate", answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] } });
   assert.ok(!JSON.stringify(r).includes("the client asked"), "nothing from the draft beyond the summary");
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { ask: 2, draft: 1, reminder: 1, pairing: 1 } });
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { approval: 0, ask: 2, draft: 1, access: 0, reminder: 1, pairing: 1 } });
   for (const who of ["deck", "capsule", "local", "module:push"]) assert.ok((await w.call("waiting.list", {}, who)).data, who);
   assert.equal((await w.call("waiting.list", {}, "mcp")).error.code, "denied", "a model does not read the queue");
 });
@@ -98,8 +101,8 @@ test("waiting.list: a failing, refused or missing source leaves its name in part
     { asks: [ASK_P], held: new Error("gate broke"), ringing: [RING] });
   const r = (await w.call("waiting.list")).data;
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2"]);
-  assert.deepEqual(r.partial, ["gate", "planner", "link"], "threw, refused module callers, not running here");
-  assert.deepEqual(r.by_kind, { ask: 1, draft: 0, reminder: 0, pairing: 0 });
+  assert.deepEqual([...r.partial].sort(), ["gate", "link", "planner", "vault"], "threw, refused module callers, not running here");
+  assert.deepEqual(r.by_kind, { approval: 0, ask: 1, draft: 0, access: 0, reminder: 0, pairing: 0 });
 });
 
 test("waiting.list: limit cuts the rows, never the count", async t => {
@@ -114,7 +117,7 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
   assert.equal(clean("export API_KEY=" + "x".repeat(10)), "");
   assert.equal(clean("  Bash   npm test "), "Bash npm test");
   assert.equal(clean("a ".repeat(200)).length, 120);
-  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { ask: 2, draft: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { approval: 0, ask: 2, draft: 0, access: 0, reminder: 0, pairing: 0 } });
   const leaky = { ...ASK_P, summary: "Bash deploy --token " + "sk-" + "z".repeat(30) };
   const w = await world(t, ALL, { asks: [leaky] });
   const [row] = (await w.call("waiting.list")).data.rows;
@@ -123,60 +126,87 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
 
 test("waiting.changed: after the owners' events, coalesced, and only when the count or the kinds move", async t => {
   const w = await world(t, ALL, { asks: [ASK_P] });
-  await wait(450);                                              // the first computation at start
-  assert.deepEqual(w.said, [{ count: 1, by_kind: { ask: 1, draft: 0, reminder: 0, pairing: 0 } }]);
-  const before = w.calls["threads.asks"];
+  await wait(900);                                              // the first computation at start
+  assert.deepEqual(w.said, [{ count: 1, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, reminder: 0, pairing: 0 } }]);
 
-  // A burst of events is one computation.
+  // A burst of events is one change: a draft is held, and the approvals queue says so once.
   w.data.held = [HELD];
   for (let i = 0; i < 5; i++) w.events.emit("gate", "gate.held", { id: `g${i}` });
   w.events.emit("switchboard", "ask.raised", { ask: "a9" });
-  await wait(150);
-  assert.equal(w.calls["threads.asks"], before, "nothing before the debounce");
-  await wait(300);
-  assert.equal(w.calls["threads.asks"], before + 1, "one computation for six events");
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0, pairing: 0 } });
+  await wait(1000);
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, reminder: 0, pairing: 0 } });
   assert.equal(w.said.length, 2);
 
   // waiting.count after the event reads the cache, with no call to any owner.
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { ask: 1, draft: 1, reminder: 0, pairing: 0 } });
-  assert.equal(w.calls["threads.asks"], before + 1);
+  const before = w.calls["gate.held"];
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, reminder: 0, pairing: 0 } });
+  assert.equal(w.calls["gate.held"], before);
 
-  // An event that changes nothing recomputes but says nothing.
+  // An event that changes nothing says nothing.
   w.events.emit("gate", "gate.revised", { id: "g1" });
-  await wait(450);
-  assert.equal(w.calls["threads.asks"], before + 2);
+  await wait(1000);
   assert.equal(w.said.length, 2);
+
+  // The vault's pending request is a card of the same queue.
+  w.data.vault = VAULT;
+  w.events.emit("vault", "grant.requested", { name: "billing-key", module: "mail" });
+  await wait(1000);
+  assert.deepEqual(w.said.at(-1), { count: 3, by_kind: { approval: 0, ask: 1, draft: 1, access: 1, reminder: 0, pairing: 0 } });
+  w.data.vault = { grants: [], passes: [], agentGrants: [], people: [], accepts: [] };
+  w.events.emit("vault", "vault.granted", { name: "billing-key", module: "mail" });
+  await wait(1000);
+  assert.equal(w.said.at(-1).by_kind.access, 0);
 
   // The same count with the kinds swapped is a change.
   w.data.held = [];
   w.data.ringing = [RING];
+  w.events.emit("gate", "gate.released", { id: "g1" });
   w.events.emit("planner", "planner.fired", { firing: "f1" });
-  await wait(450);
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { ask: 1, draft: 0, reminder: 1, pairing: 0 } });
+  await wait(1000);
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, reminder: 1, pairing: 0 } });
 
   // Events that never change what waits do not recompute at all.
-  const n = w.calls["threads.asks"];
+  const n = w.calls["planner.ringing"];
   w.events.emit("planner", "planner.added", { item: "i2" });
   w.events.emit("link", "link.connected", {});
   w.events.emit("switchboard", "thread.text", { text: "hi" });
-  await wait(450);
-  assert.equal(w.calls["threads.asks"], n);
+  await wait(800);
+  assert.equal(w.calls["planner.ringing"], n);
 
   // A pairing request and its approval.
+  const count = w.said.length;
   w.data.pending = [PAIR];
   w.events.emit("link", "link.pair-requested", { id: "p1" });
-  await wait(450);
+  await wait(600);
   assert.equal(w.said.at(-1).by_kind.pairing, 1);
   w.data.pending = [];
   w.events.emit("link", "link.paired", { peer: "x" });
-  await wait(450);
+  await wait(600);
   assert.equal(w.said.at(-1).by_kind.pairing, 0);
-  assert.equal(w.said.length, 5);
+  assert.equal(w.said.length, count + 2);
+});
+
+test("approvals.items: a held draft is a card, the owner's settling closes it, and the card keeps what became of it", async t => {
+  const w = await world(t, ALL, { held: [HELD], asks: [ASK_P], vault: VAULT });
+  const open = (await w.call("approvals.items")).data;
+  assert.deepEqual(open.items.map(x => x.id).sort(), ["gate:g1", "threads:a2", "vault:g_1"]);
+  assert.deepEqual(open.items.find(x => x.id === "vault:g_1"), { id: "vault:g_1", kind: "access", title: 'Let mail use "billing-key"', detail: "asked by mcp", at: T + 5000, source: "vault",
+    state: "waiting", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] } });
+  assert.deepEqual(open.recent, []);
+  w.data.held = [];
+  w.events.emit("gate", "gate.rejected", { id: "g1", by: "cli" });
+  await wait(500);
+  const next = (await w.call("approvals.items")).data;
+  assert.deepEqual(next.items.map(x => x.id).sort(), ["threads:a2", "vault:g_1"]);
+  assert.equal(next.recent.length, 1);
+  assert.equal(next.recent[0].id, "gate:g1");
+  assert.equal(next.recent[0].outcome, "refused");
+  assert.equal(next.recent[0].state, "settled");
+  assert.ok(!JSON.stringify(open).includes("the client asked"), "nothing from the draft beyond its summary");
+  assert.equal((await w.call("approvals.items", {}, "mcp")).error.code, "denied", "a model does not read the queue");
 });
 
 test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
-  const { fromAsks } = await import("./index.js");
   const [mac, box] = fromAsks([
     { id: "a1", kind: "permission", tool: "Bash", summary: "npm test", source: "mac", machine: "alex-mbp", at: 2 },
     { id: "a2", kind: "permission", tool: "Bash", summary: "ls", at: 1 },

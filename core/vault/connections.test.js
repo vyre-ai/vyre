@@ -18,6 +18,7 @@ import { surfaceOf, words, toolCapabilities, usesOf, checkUse, Connections, modu
 import { needsCredential, needsCredentialError, isNeedsCredential } from "../modules/needs-credential.js";
 import { validate } from "../modules/index.js";
 import { PROVIDERS, checkProviderFields } from "./providers.js";
+import { kernelRig } from "./kernel-rig.js";
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 const ID = /^cn_[A-Za-z0-9_-]+$/;
@@ -492,19 +493,21 @@ test("connections: google.accounts and mcp.servers are read on their events; reg
 });
 
 /** A Connections over an in-memory table, with a vault that signs nothing and trusts every row. */
-function bare(now) {
+async function bare(now) {
   const db = new DatabaseSync(":memory:");
   db.exec(CONNECTIONS_MIGRATION); db.exec(CONNECTIONS_PICKER_MIGRATION); db.exec(DEFAULT_SUGGEST_MIGRATION);
   const vault = { db, key: async () => {}, list: () => ({ items: [] }), rowOk: () => true, sign: () => {}, audit: () => {}, emit: () => {},
     tx: fn => { db.exec("BEGIN"); try { fn(); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } } };
-  const c = new Connections(/** @type {any} */ (vault), { now: () => now.t });
+  // a real kernel behind it: where a person opens a connection to a surface is a grant
+  const rig = await kernelRig();
+  const c = new Connections(/** @type {any} */ (vault), { now: () => now.t, kernel: rig.K });
   c.synced = new Set(["vault", "google", "mcp"]);
-  return { db, c };
+  return { db, c, rig };
 }
 
 test("connections: one default per capability, the picker's order, and last_used at most once a minute", async () => {
   const now = { t: 1_000_000 };
-  const { db, c } = bare(now);
+  const { db, c } = await bare(now);
   const reg = (ref, label) => c.register({ ref, provider: "mcp", account: `${ref}@harlowlegal.test`, auth: "oauth", label, capabilities: ["send_mail", "read_mail"] }, "module:hub");
   const a = await reg("alpha", "Beta mail"), b = await reg("bravo", "Alpha mail"), z = await reg("zulu", "Zed mail");
   // A module's own row starts closed; a person opens each to capsule and chat before it is used.
@@ -548,4 +551,24 @@ test("connections: one default per capability, the picker's order, and last_used
   now.t += 1;
   await c.allowed({ id: b.id, caller: "cli" });
   assert.equal(used(b.id), now.t, "a minute on: written, a person's check too");
+});
+
+test("connections: where a connection may be used is a kernel grant: made by the person, taken back by the surface itself, and gone with the connection", async () => {
+  const now = { t: 1_000_000 };
+  const { c, rig } = await bare(now);
+  const { id } = await c.register({ ref: "alpha", provider: "mcp", account: "alpha@harlowlegal.test", auth: "oauth", label: "Alpha mail", capabilities: ["send_mail"] }, "module:hub");
+  const mine = async () => (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source === "vault:connection" && g.status === "active").map(g => [g.subject.id, g.resource.prefix.split("/connection/")[1]]).sort();
+  assert.deepEqual(await mine(), [], "a module's own row starts open to no surface");
+  assert.deepEqual((await c.grant({ id, surface: "chat" }, "cli")).connection.surfaces, ["chat"]);
+  assert.deepEqual((await c.grant({ id, surface: "agents" }, "cli")).connection.surfaces, ["chat", "agents"]);
+  assert.deepEqual(await mine(), [["surface:agents", id], ["surface:chat", id]], "one grant to each surface's group, on the connection's address");
+  // the chat surface takes only its own away; the grant goes with it
+  assert.deepEqual((await c.revoke({ id, surface: "chat" }, "mcp", false, { caller: "mcp" })).connection.surfaces, ["agents"]);
+  assert.deepEqual(await mine(), [["surface:agents", id]]);
+  await assert.rejects(() => c.revoke({ id, surface: "agents" }, "mcp", false, { caller: "mcp" }), /cannot revoke agents/);
+  assert.equal((await c.allowed({ id, caller: "mcp:agent:kit" })).allowed, true);
+  assert.equal((await c.allowed({ id, caller: "mcp" })).allowed, false);
+  // the connection goes: whatever was granted on it goes too, and one made later at that address inherits nothing
+  await c.unregister({ ref: "alpha" }, "module:hub");
+  assert.deepEqual(await mine(), []);
 });

@@ -30,6 +30,7 @@ export function expandConnections(flow, cat) {
     if (Array.isArray(out.steps)) out = { ...out, steps: walk(out.steps, `${p}.steps`) };
     if (Array.isArray(out.then)) out = { ...out, then: walk(out.then, `${p}.then`) };
     if (Array.isArray(out.else)) out = { ...out, else: walk(out.else, `${p}.else`) };
+    if (isObj(out.on_fail) && Array.isArray(out.on_fail.steps)) out = { ...out, on_fail: { ...out.on_fail, steps: walk(out.on_fail.steps, `${p}.on_fail.steps`) } };
     return out;
   }) : steps);
   /** @param {any} s @param {string} p */
@@ -68,7 +69,8 @@ export function expandConnections(flow, cat) {
     return { ...step, connection: String(connection), operation: op };
   }
   const steps = walk(flow && flow.steps, "steps");
-  return { flow: errors.length ? flow : { ...flow, steps }, errors };
+  const onFailure = flow && Array.isArray(flow.on_failure) ? walk(flow.on_failure, "on_failure") : undefined;
+  return { flow: errors.length ? flow : { ...flow, steps, ...(onFailure ? { on_failure: onFailure } : {}) }, errors };
 }
 
 /** @param {any} o @param {string[]} keys */

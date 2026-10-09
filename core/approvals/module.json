@@ -57,11 +57,12 @@
       {
         "name": "approvals.status", "effect": "read",
         "reach": "person"
-      }
+      },
+      "approvals.items"
     ]
   },
   "watches": {
-    "emits": []
+    "emits": ["approvals.changed"]
   },
   "shows": {
     "cli": []

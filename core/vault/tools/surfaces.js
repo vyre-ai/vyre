@@ -185,7 +185,7 @@ export function register({ ctx, vault }) {
     run: async ({ name, field, session, version }, { caller }) => {
       const surface = surfaceFor(session, caller);
       // Floor rule 8 (SPEC 11): a value may be shown to a person who has just proved presence on
-      // their own device, for that one value. prove.js asks for that proof before this runs.
+      // their own device, for that one value. the registry's floor asks for that yes before this runs.
       let want = field || "value";
       try {
         const p = pick(name, field);

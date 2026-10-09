@@ -4,7 +4,7 @@
   "description": "The skills a session may use, found by what it is about to do. skills.list lists them and skills.find ranks them for an intent in plain words, with the same ranker as the docs tool; skills.get reads one. A skill is a SKILL.md: Vyre's own, the person's learned ones, a project's, an agent's. What a caller sees is cut by the permission system: it never sees a skill it may not use.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "reads": ["skills.list", "skills.find", "skills.get"], "tools": [{ "name": "skills.list", "effect": "read" }, { "name": "skills.find", "effect": "read" }, { "name": "skills.get", "effect": "read" }] },
+  "does": { "reads": ["skills.list", "skills.find", "skills.get"], "tools": [{ "name": "skills.list", "effect": "read", "reach": "anyone", "projectArg": "project" }, { "name": "skills.find", "effect": "read", "reach": "anyone", "projectArg": "project" }, { "name": "skills.get", "effect": "read", "reach": "anyone" }] },
   "watches": { "emits": [] },
   "shows": { "cli": [] },
   "needs": { "tools": ["projects.reach"] },
