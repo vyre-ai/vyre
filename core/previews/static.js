@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
-import { build, entryIn, shell, failing, JSX_EXT } from "./jsx.js";
+import { build, entryIn, shell, failing, libFile, JSX_EXT } from "./jsx.js";
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8",
@@ -65,6 +65,12 @@ export function createStatic(o) {
       const pv = id ? o.lookup(id) : null;
       if (!id || !pv) return void gone();
       const url = new URL(req.url || "/", "http://x");
+      if (url.pathname.startsWith("/__vyre/lib/")) {
+        const buf = ["GET", "HEAD"].includes(String(req.method)) ? libFile(decodeURIComponent(url.pathname.slice("/__vyre/lib/".length))) : null;
+        if (!buf) return void gone();
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "content-length": buf.length, "cache-control": "public, max-age=31536000, immutable", "x-content-type-options": "nosniff" });
+        return void res.end(req.method === "HEAD" ? undefined : buf);
+      }
       if (url.pathname.startsWith("/__vyre/")) {
         if (o.api && (await o.api(req, res, id, url))) return;
         return void gone();

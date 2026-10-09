@@ -5,19 +5,34 @@
 // whatever it names. An import the table does not have is a plain message on the page, never a silent blank.
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-/** The libraries a page may import, and where the browser gets each (a pinned version; react and react-dom are one copy for all). Claude's artifact list, with the versions it documents where it documents one. */
-const R = "react@18.3.1", RD = "react-dom@18.3.1";
-const CDN = "https://esm.sh";
-export const LIBS = Object.freeze({
-  "react": `${CDN}/${R}`, "react/jsx-runtime": `${CDN}/${R}/jsx-runtime`, "react/jsx-dev-runtime": `${CDN}/${R}/jsx-dev-runtime`,
-  "react-dom": `${CDN}/${RD}?deps=${R}`, "react-dom/client": `${CDN}/${RD}/client?deps=${R}`,
-  "recharts": `${CDN}/recharts@2.15.0?deps=${R},${RD}`,
-  "lucide-react": `${CDN}/lucide-react@0.263.1?deps=${R}`,
-  "d3": `${CDN}/d3@7.9.0`, "lodash": `${CDN}/lodash@4.17.21`, "papaparse": `${CDN}/papaparse@5.4.1`, "mathjs": `${CDN}/mathjs@12.4.2`,
-  "three": `${CDN}/three@0.160.0`, "chart.js": `${CDN}/chart.js@4.4.3`, "date-fns": `${CDN}/date-fns@3.6.0`, "xlsx": `${CDN}/xlsx@0.18.5`,
-});
-const TAILWIND = "https://cdn.tailwindcss.com/3.4.17";
+/**
+ * The libraries a page may import: the ones in vendor/manifest.json, built by vendor-src/build.mjs, committed with the release and served by this box from /__vyre/lib/.
+ * Nothing is fetched from anyone else, so a box with no internet runs the same page and nothing a CDN changes can change what runs. Each file is checked against its
+ * recorded sha256 the first time it is read; a file that does not match is never served.
+ */
+const VENDOR = path.join(path.dirname(fileURLToPath(import.meta.url)), "vendor");
+/** @type {{ versions: Record<string, string>, files: Record<string, { file: string, sha256: string, bytes: number }> } | null} */ let manifest = null;
+const loadManifest = () => (manifest ||= JSON.parse(fs.readFileSync(path.join(VENDOR, "manifest.json"), "utf8")));
+/** The import name -> address table for the page's import map (not Tailwind, which is a script). */
+export const libs = () => Object.fromEntries(Object.entries(loadManifest().files).filter(([n]) => n !== "tailwind").map(([n, f]) => [n, `/__vyre/lib/${f.file}`]));
+/** The import names a page may use, without the sub-paths. */
+export const libNames = () => Object.keys(libs()).filter(n => !n.includes("/"));
+/** @type {Map<string, Buffer>} */ const verified = new Map();
+/** One vendored file by its name in the manifest, or null: not listed, missing, or not what the manifest recorded. @param {string} file */
+export function libFile(file) {
+  const hit = verified.get(file);
+  if (hit) return hit;
+  const entry = Object.values(loadManifest().files).find(f => f.file === file);
+  if (!entry) return null;
+  let buf;
+  try { buf = fs.readFileSync(path.join(VENDOR, entry.file)); } catch { return null; }
+  if (crypto.createHash("sha256").update(buf).digest("hex") !== entry.sha256) return null;
+  verified.set(file, buf);
+  return buf;
+}
 export const JSX_EXT = /\.(jsx|tsx|ts)$/i;
 const LOADER = /** @type {Record<string, "jsx"|"tsx"|"ts">} */ ({ ".jsx": "jsx", ".tsx": "tsx", ".ts": "ts" });
 
@@ -50,9 +65,9 @@ export async function build(file) {
   try {
     const { transform } = await esbuild();
     const r = await transform(fs.readFileSync(file, "utf8"), { loader, jsx: "automatic", target: "es2022", format: "esm", sourcefile: path.basename(file), logLevel: "silent" });
-    const unknown = bareImports(r.code).filter(n => !(n in LIBS));
+    const unknown = bareImports(r.code).filter(n => !(n in libs()));
     result = unknown.length
-      ? { ok: /** @type {const} */ (false), error: `This page imports ${unknown.map(n => `"${n}"`).join(", ")}, which Vyre does not provide. It provides: ${Object.keys(LIBS).filter(n => !n.includes("/")).join(", ")}.` }
+      ? { ok: /** @type {const} */ (false), error: `This page imports ${unknown.map(n => `"${n}"`).join(", ")}, which Vyre does not provide. It provides: ${libNames().join(", ")}.` }
       : { ok: /** @type {const} */ (true), js: r.code };
   } catch (e) {
     const err = /** @type {any} */ (e);
@@ -76,8 +91,8 @@ export function entryIn(root) {
  * @param {{ title: string, entry: string, bridge: boolean }} o
  */
 export function shell({ title, entry, bridge }) {
-  const imports = JSON.stringify({ imports: LIBS });
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${bridge ? '<script src="/__vyre/claude.js"></script>' : ""}<script type="importmap">${imports}</script><script src="${TAILWIND}"></script><style>html,body{margin:0}#vyre-problem{display:none;max-width:560px;margin:48px auto;padding:16px 18px;border:1px solid #dcd9d1;border-radius:12px;font:15px/1.5 -apple-system,system-ui,sans-serif;color:#171716;background:#fff}</style></head><body><div id="root"></div><div id="vyre-problem" role="alert"></div><script type="module">
+  const imports = JSON.stringify({ imports: libs() });
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>${bridge ? '<script src="/__vyre/claude.js"></script>' : ""}<script type="importmap">${imports}</script><script src="/__vyre/lib/tailwind.js"></script><style>html,body{margin:0}#vyre-problem{display:none;max-width:560px;margin:48px auto;padding:16px 18px;border:1px solid #dcd9d1;border-radius:12px;font:15px/1.5 -apple-system,system-ui,sans-serif;color:#171716;background:#fff}</style></head><body><div id="root"></div><div id="vyre-problem" role="alert"></div><script type="module">
 const problem = (m) => { const e = document.getElementById("vyre-problem"); e.style.display = "block"; e.textContent = m; };
 try {
   const [{ default: React }, { createRoot }, mod] = await Promise.all([IMPORT("react"), IMPORT("react-dom/client"), IMPORT(${JSON.stringify("/" + entry)})]);

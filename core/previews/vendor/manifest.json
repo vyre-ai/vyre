@@ -1,0 +1,104 @@
+{
+  "versions": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "recharts": "2.15.0",
+    "lucide-react": "0.263.1",
+    "d3": "7.9.0",
+    "lodash": "4.17.21",
+    "papaparse": "5.4.1",
+    "mathjs": "12.4.2",
+    "three": "0.160.0",
+    "chart.js": "4.4.3",
+    "date-fns": "3.6.0",
+    "xlsx": "0.18.5",
+    "@tailwindcss/browser": "4.1.11"
+  },
+  "files": {
+    "react": {
+      "file": "react.js",
+      "sha256": "a54474af4dfb73f4afa5acd69d538d3310576ae4273b749cdb13e948ca18f009",
+      "bytes": 8357
+    },
+    "react/jsx-runtime": {
+      "file": "react__jsx-runtime.js",
+      "sha256": "785167e224fd6b690676928ca391177cc21a81948ef93ac4e47da8cdc0917420",
+      "bytes": 1649
+    },
+    "react/jsx-dev-runtime": {
+      "file": "react__jsx-dev-runtime.js",
+      "sha256": "cfe16212dbd022dad5d79f533bd93cb9d5d70977b2a380faa074dc92bc16e96e",
+      "bytes": 795
+    },
+    "react-dom": {
+      "file": "react-dom.js",
+      "sha256": "1c54ac08244a7326db94f167ef26cd6efbf2db2870a4b269b9ae40244df5615a",
+      "bytes": 135359
+    },
+    "react-dom/client": {
+      "file": "react-dom__client.js",
+      "sha256": "55f70aa2a3f5706519cea535e606440e0365cff2288488e3e964454e626f8d8b",
+      "bytes": 1121
+    },
+    "recharts": {
+      "file": "recharts.js",
+      "sha256": "9b490bbcb5f9e983ad92baa7ca96d95d9f626e9f1250082819e6fb85e0b9e78e",
+      "bytes": 520867
+    },
+    "lucide-react": {
+      "file": "lucide-react.js",
+      "sha256": "f846cab30d5265321a6344406b4a8d7f921129ad20c6dcb8ece01f97a2ad64d9",
+      "bytes": 393349
+    },
+    "d3": {
+      "file": "d3.js",
+      "sha256": "3b1beb9383ea3e0d437c6bffe6eaad7d479e8b9b5b5bd66472296f9a3c567ef2",
+      "bytes": 283064
+    },
+    "lodash": {
+      "file": "lodash.js",
+      "sha256": "36f48756fe81105d39d9942f16e2275a0dd3b98d66ec4431372b5c01df7ee595",
+      "bytes": 81169
+    },
+    "papaparse": {
+      "file": "papaparse.js",
+      "sha256": "0f24cff03d988e904cdb83e48b9068eb6e9799ade63a6d4841dc93926114a1fd",
+      "bytes": 20686
+    },
+    "mathjs": {
+      "file": "mathjs.js",
+      "sha256": "54b01f9085611ededb382960e650cfad277eb4e825592ccda524fcd39bfa3577",
+      "bytes": 719827
+    },
+    "three": {
+      "file": "three.js",
+      "sha256": "d542ac31648768e96c5b008d147e2333421b906b47d69de3d17688891368f49a",
+      "bytes": 663194
+    },
+    "chart.js": {
+      "file": "chart.js.js",
+      "sha256": "a8d6bc264cb42ea5f7211022984a30f0accdabd2bc98d9bd5bc3340234c6524b",
+      "bytes": 201763
+    },
+    "chart.js/auto": {
+      "file": "chart.js__auto.js",
+      "sha256": "27a22b3a6cf5d05d23541a5d708df59ebaf5717e83672a16926c48dee2e7bd6a",
+      "bytes": 201782
+    },
+    "date-fns": {
+      "file": "date-fns.js",
+      "sha256": "770e72a694a8387503b22a51d229f4981f1d8270ffa8c7ec82c323154807e668",
+      "bytes": 71281
+    },
+    "xlsx": {
+      "file": "xlsx.js",
+      "sha256": "61f660897298d1156ee0e11968d01e20940575703819ac9cad7db876bb9e7171",
+      "bytes": 432131
+    },
+    "tailwind": {
+      "file": "tailwind.js",
+      "sha256": "7933e213b39f3434b04eb24d219f279596a9c7d9f7833f7e3a8db3cebe7e69d3",
+      "bytes": 259295
+    }
+  }
+}

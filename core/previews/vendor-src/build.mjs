@@ -30,7 +30,7 @@ const LIBS = {
   "chart.js": { from: "chart.js" },
   "chart.js/auto": { from: "chart.js/auto" },
   "date-fns": { from: "date-fns" },
-  "xlsx": { from: "xlsx", cjs: true },
+  "xlsx": { from: "xlsx" },
 };
 const EXTERNAL = ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "react-dom/client"];
 const fileOf = name => name.replace(/[\/]/g, "__") + ".js";
@@ -48,8 +48,17 @@ for (const [name, lib] of Object.entries(LIBS)) {
   } else entry = `export * from ${JSON.stringify(lib.from)};\n`;
   // react and react-dom stay external for the libraries that use them; they bundle their own copy only when they ARE react
   const external = EXTERNAL.filter(e => e !== lib.from);
-  const r = await esbuild.build({ stdin: { contents: entry, resolveDir: path.join(here, "node_modules"), loader: "js" }, bundle: true, format: "esm", platform: "browser", target: "es2022",
-    minify: true, external, write: false, legalComments: "none", define: { "process.env.NODE_ENV": '"production"' }, logLevel: "error" });
+  // A CommonJS library's own require("react") would become a call the browser cannot make; this turns it into an import the page's import map answers.
+  const viaMap = { name: "via-import-map", setup(b) {
+    b.onResolve({ filter: /.*/ }, a => {
+      if (!external.includes(a.path)) return null;
+      if (a.namespace === "ext") return { path: a.path, external: true };
+      return { path: a.path, namespace: "ext" };
+    });
+    b.onLoad({ filter: /.*/, namespace: "ext" }, a => ({ contents: `export * from ${JSON.stringify(a.path)}; export { default } from ${JSON.stringify(a.path)};`, loader: "js" }));
+  } };
+  const r = await esbuild.build({ plugins: [viaMap], stdin: { contents: entry, resolveDir: path.join(here, "node_modules"), loader: "js" }, bundle: true, format: "esm", platform: "browser", target: "es2022",
+    minify: true, write: false, legalComments: "none", define: { "process.env.NODE_ENV": '"production"' }, logLevel: "error" });
   const buf = Buffer.from(r.outputFiles[0].contents);
   const f = fileOf(name);
   fs.writeFileSync(path.join(out, f), buf);

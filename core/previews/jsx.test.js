@@ -5,7 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { build, bareImports, entryIn, shell, failing, LIBS } from "./jsx.js";
+import { build, bareImports, entryIn, shell, failing, libs, libFile } from "./jsx.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "vyre-jsx-"));
@@ -40,8 +40,11 @@ test("an import the list does not have is a plain message naming what is provide
 });
 
 test("the import list is one reviewed table, pinned, and the page that mounts a component says what is wrong on the page itself", () => {
-  for (const [k, v] of Object.entries(LIBS)) assert.match(v, /^https:\/\/esm\.sh\/[a-z0-9@./-]+@\d+\.\d+\.\d+/, k);
-  assert.ok(["react", "react-dom/client", "react/jsx-runtime", "recharts", "lucide-react", "d3", "lodash"].every(k => k in LIBS));
+  const L = libs();
+  for (const [k, v] of Object.entries(L)) { assert.match(v, /^\/__vyre\/lib\/[A-Za-z0-9._-]+\.js$/, `${k} comes from this box`); assert.ok(libFile(v.slice("/__vyre/lib/".length)), `${k} is the file the manifest recorded`); }
+  assert.ok(["react", "react-dom/client", "react/jsx-runtime", "recharts", "lucide-react", "d3", "lodash"].every(k => k in L));
+  assert.equal(libFile("../manifest.json"), null, "only listed files are served");
+  assert.ok(libFile("tailwind.js"));
   const html = shell({ title: "Case <tasks>", entry: "src/App.jsx", bridge: true });
   assert.match(html, /<title>Case &lt;tasks&gt;<\/title>/);
   assert.match(html, /<script src="\/__vyre\/claude\.js"><\/script><script type="importmap">/, "the bridge comes before the page's own code");
@@ -59,4 +62,9 @@ test("a folder's React page is index.jsx, index.tsx, App.jsx or App.tsx", () => 
   fs.writeFileSync(path.join(dir, "index.jsx"), "export default () => null");
   assert.equal(entryIn(dir), "index.jsx");
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("a page that imports nothing from anyone else: no address outside this box in the shell", () => {
+  const html = shell({ title: "x", entry: "App.jsx", bridge: true });
+  assert.doesNotMatch(html, /https?:\/\//, "no third-party address in the page");
 });
