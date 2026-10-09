@@ -157,3 +157,22 @@ test("an assistant proposes a website Connection; nothing is made until the pers
   assert.equal((await w.model("connectors.connection.list")).data.connections[0].transport, "site");
   assert.equal((await w.model("connectors.site.propose", { site: "https://nothing-taught.example.com", label: "Empty" })).error?.code, "not_found");
 });
+
+test("an account's limits are a person's setting: read by anyone, set and resumed only by the person, and a call counts against the day", async t => {
+  const w = await world(t);
+  await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
+  assert.deepEqual((await w.model("connectors.site.limits", { id: "linkedin" })).data, { id: "linkedin", settings: null }, "a site nobody watches is not governed by default");
+  assert.equal((await w.model("connectors.site.limits.set", { id: "linkedin", settings: { reads_per_day: 5 } })).error?.code, "denied");
+  assert.equal((await w.model("connectors.site.resume", { id: "linkedin" })).error?.code, "denied");
+  const set = await w.cli("connectors.site.limits.set", { id: "linkedin", settings: { reads_per_day: 5, writes_per_day: 2, gap_read_s: [0, 0], quiet: null, tz: "UTC" } });
+  assert.equal(set.data.settings.reads_per_day, 5, JSON.stringify(set));
+  seen = [];
+  const x = await extension(w.sockPath);
+  t.after(() => { x.sock.destroy(); });
+  await online(w.d);
+  for (let i = 0; i < 2; i++) assert.equal((await w.cli("connectors.operation.run", { connection: "linkedin", operation: "search_people", input: { query: { query: `gamma labs ${i}` } } })).data.status, 200);
+  const lim = (await w.model("connectors.site.limits", { id: "linkedin" })).data;
+  assert.deepEqual([lim.usage.reads, lim.usage.writes, lim.usage.stopped], [2, 0, false]);
+  assert.equal((await w.cli("connectors.site.resume", { id: "linkedin" })).data.resumed, false, "nothing was stopped");
+  assert.equal((await w.cli("connectors.site.limits.set", { id: "linkedin", settings: null })).data.settings, null, "back to the default");
+});

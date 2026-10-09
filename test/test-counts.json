@@ -981,7 +981,7 @@
  "local/hands-chrome-mac/ops-tool.test.js": 6,
  "records/connectors/site.test.js": 5,
  "core/vault/service-site.test.js": 4,
- "core/connectors/site-daemon.test.js": 6,
+ "core/connectors/site-daemon.test.js": 8,
  "kernel/flows/site-flow.test.js": 3,
  "core/connectors/site-runner.test.js": 8,
  "lib/siteops/page.test.js": 4,
