@@ -12,7 +12,7 @@ const chainOf = () => ({ hops: [{ actor: ALEX }] });
 
 test("R031-43: a Connection lists the Flows that use it, with health, and a red Connection shows red on each", async () => {
   const cat0 = (await (await world({})).runner.catalogFn());
-  const w = await world({ cat: { ...cat0, connectors: { "conn-orbit": { host: "api.orbit.test", routes: [{ methods: ["GET"], paths: ["/v1/*"] }] }, "conn-acme": { host: "api.acme.test", routes: [{ methods: ["GET"], paths: ["/v1/*"] }] } }, lights: { "conn-orbit": "red" } } });
+  const w = await world({ cat: { ...cat0, connectors: { "conn-orbit": { allow: [{ method: "GET", path: "/v1/*" }] }, "conn-acme": { allow: [{ method: "GET", path: "/v1/*" }] } }, lights: { "conn-orbit": "red" } } });
   const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.chainFor(x) }, store: w.store, catalog: () => w.cat });
   await install(w, flowOf("uses_orbit", [svc("a", "conn-orbit")]));
   await install(w, flowOf("uses_both", [svc("a", "conn-orbit"), svc("b", "conn-acme")]));

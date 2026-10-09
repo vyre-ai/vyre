@@ -267,7 +267,7 @@ export function createFlows(o) {
       await runner.retry(i.run, { skip: i.skip === true, ...(i.value !== undefined ? { value: i.value } : {}), by: who.id, ...(i.version === "latest" ? { version: "latest" } : {}) }); return { ok: true };
     },
     // Needs attention (f3): the runs a person has to look at, and the one answer (the approvals queue draws a card from the first and answers with the second).
-    "flows.attention": async () => ({ runs: await runner.attention() }),
+    "flows.attention": async () => ({ runs: await runner.attention(), ...(o.stuckTasks ? { tasks: await Promise.resolve(o.stuckTasks()).catch(() => []) } : {}) }),
     "flows.settle": async (chain, i) => {
       const who = personOf(chain);
       const run = need(i, "run", "the run's id (flows.attention)");

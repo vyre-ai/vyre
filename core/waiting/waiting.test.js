@@ -59,12 +59,12 @@ test("waiting.list: the four sources in one list, newest first, with source-pref
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2", "gate:g1", "planner:f1", "threads:a1", "link:p1"]);
   assert.deepEqual(r.rows.map(x => x.kind), ["ask", "draft", "reminder", "ask", "pairing"]);
   assert.equal(r.count, 5);
-  assert.deepEqual(r.by_kind, { approval: 0, ask: 2, draft: 1, access: 0, run: 0, reminder: 1, pairing: 1 });
+  assert.deepEqual(r.by_kind, { approval: 0, ask: 2, draft: 1, access: 0, run: 0, task: 0, reminder: 1, pairing: 1 });
   assert.equal(r.partial, undefined);
   assert.deepEqual(r.rows.find(x => x.id === "gate:g1"), { id: "gate:g1", kind: "draft", title: "Re: the Harlow Legal retainer", detail: "mail to dana@harlowlegal.com",
     project: "harlow-legal", thread: "t-harlow", at: T + 3000, source: "gate", answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] } });
   assert.ok(!JSON.stringify(r).includes("the client asked"), "nothing from the draft beyond the summary");
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { approval: 0, ask: 2, draft: 1, access: 0, run: 0, reminder: 1, pairing: 1 } });
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { approval: 0, ask: 2, draft: 1, access: 0, run: 0, task: 0, reminder: 1, pairing: 1 } });
   for (const who of ["deck", "capsule", "local", "module:push"]) assert.ok((await w.call("waiting.list", {}, who)).data, who);
   assert.equal((await w.call("waiting.list", {}, "mcp")).error.code, "denied", "a model does not read the queue");
 });
@@ -102,7 +102,7 @@ test("waiting.list: a failing, refused or missing source leaves its name in part
   const r = (await w.call("waiting.list")).data;
   assert.deepEqual(r.rows.map(x => x.id), ["threads:a2"]);
   assert.deepEqual([...r.partial].sort(), ["flows", "gate", "link", "planner", "vault"], "threw, refused module callers, not running here");
-  assert.deepEqual(r.by_kind, { approval: 0, ask: 1, draft: 0, access: 0, run: 0, reminder: 0, pairing: 0 });
+  assert.deepEqual(r.by_kind, { approval: 0, ask: 1, draft: 0, access: 0, run: 0, task: 0, reminder: 0, pairing: 0 });
 });
 
 test("waiting.list: limit cuts the rows, never the count", async t => {
@@ -117,7 +117,7 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
   assert.equal(clean("export API_KEY=" + "x".repeat(10)), "");
   assert.equal(clean("  Bash   npm test "), "Bash npm test");
   assert.equal(clean("a ".repeat(200)).length, 120);
-  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { approval: 0, ask: 2, draft: 0, access: 0, run: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual(tally([{ kind: "ask" }, { kind: "ask" }]), { count: 2, by_kind: { approval: 0, ask: 2, draft: 0, access: 0, run: 0, task: 0, reminder: 0, pairing: 0 } });
   const leaky = { ...ASK_P, summary: "Bash deploy --token " + "sk-" + "z".repeat(30) };
   const w = await world(t, ALL, { asks: [leaky] });
   const [row] = (await w.call("waiting.list")).data.rows;
@@ -127,19 +127,19 @@ test("titles: an owner's summary shaped like a credential is dropped whole, not 
 test("waiting.changed: after the owners' events, coalesced, and only when the count or the kinds move", async t => {
   const w = await world(t, ALL, { asks: [ASK_P] });
   await wait(900);                                              // the first computation at start
-  assert.deepEqual(w.said, [{ count: 1, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, run: 0, reminder: 0, pairing: 0 } }]);
+  assert.deepEqual(w.said, [{ count: 1, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, run: 0, task: 0, reminder: 0, pairing: 0 } }]);
 
   // A burst of events is one change: a draft is held, and the approvals queue says so once.
   w.data.held = [HELD];
   for (let i = 0; i < 5; i++) w.events.emit("gate", "gate.held", { id: `g${i}` });
   w.events.emit("switchboard", "ask.raised", { ask: "a9" });
   await wait(1000);
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, run: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, run: 0, task: 0, reminder: 0, pairing: 0 } });
   assert.equal(w.said.length, 2);
 
   // waiting.count after the event reads the cache, with no call to any owner.
   const before = w.calls["gate.held"];
-  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, run: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual((await w.call("waiting.count")).data, { count: 2, by_kind: { approval: 0, ask: 1, draft: 1, access: 0, run: 0, task: 0, reminder: 0, pairing: 0 } });
   assert.equal(w.calls["gate.held"], before);
 
   // An event that changes nothing says nothing.
@@ -151,7 +151,7 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   w.data.vault = VAULT;
   w.events.emit("vault", "grant.requested", { name: "billing-key", module: "mail" });
   await wait(1000);
-  assert.deepEqual(w.said.at(-1), { count: 3, by_kind: { approval: 0, ask: 1, draft: 1, access: 1, run: 0, reminder: 0, pairing: 0 } });
+  assert.deepEqual(w.said.at(-1), { count: 3, by_kind: { approval: 0, ask: 1, draft: 1, access: 1, run: 0, task: 0, reminder: 0, pairing: 0 } });
   w.data.vault = { grants: [], passes: [], agentGrants: [], people: [], accepts: [] };
   w.events.emit("vault", "vault.granted", { name: "billing-key", module: "mail" });
   await wait(1000);
@@ -163,7 +163,7 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   w.events.emit("gate", "gate.released", { id: "g1" });
   w.events.emit("planner", "planner.fired", { firing: "f1" });
   await wait(1000);
-  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, run: 0, reminder: 1, pairing: 0 } });
+  assert.deepEqual(w.said.at(-1), { count: 2, by_kind: { approval: 0, ask: 1, draft: 0, access: 0, run: 0, task: 0, reminder: 1, pairing: 0 } });
 
   // Events that never change what waits do not recompute at all.
   const n = w.calls["planner.ringing"];

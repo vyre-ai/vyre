@@ -98,3 +98,21 @@ test("a run card opens when the owner lists it and closes with an outcome when t
   assert.equal(closed.outcome, "stopped");
   await items.stop();
 });
+
+test("R031-45: a stuck task is one `task` card with its reason, answered by tasks.move, and it closes when the task is unblocked", async () => {
+  const { fromStuckTasks } = await import("./items.js");
+  const rows = fromStuckTasks([{ task: "t1", label: "Send the engagement letter", reason: "the client has no email on file", since: 7 }]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail]), [["tasks:t1", "task", "Send the engagement letter is stuck", "the client has no email on file"]]);
+  assert.deepEqual(rows[0].answer, { tool: "tasks.move", input: { id: "t1" }, fill: ["to", "reason"], choices: ["ready", "skipped"] });
+  /** @type {any} */ const world = { tasks: [{ task: "t1", label: "Send the engagement letter", reason: "no email", since: 7 }] };
+  /** @type {Map<string, (e: any) => void>} */ const handlers = new Map();
+  const items = createItems({ now: () => Date.now(), call: async tool => (tool === "flows.attention" ? { data: { runs: [], tasks: world.tasks } } : { data: [] }), on: (p, fn) => { handlers.set(p, fn); return () => handlers.delete(p); } });
+  assert.deepEqual((await items.list()).items.filter((/** @type {any} */ x) => x.kind === "task").map((/** @type {any} */ x) => x.id), ["tasks:t1"]);
+  world.tasks = [];
+  /** @type {any} */ (handlers.get("task.*"))({ type: "task.unblocked", payload: { task: "t1" } });
+  await wait(300);
+  const after = await items.list();
+  assert.equal(after.items.filter((/** @type {any} */ x) => x.kind === "task").length, 0);
+  assert.equal(after.recent.find((/** @type {any} */ x) => x.id === "tasks:t1").outcome, "unblocked");
+  await items.stop();
+});

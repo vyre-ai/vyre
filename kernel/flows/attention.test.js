@@ -62,3 +62,11 @@ test("f3: a stale wait is a quiet row, and a stage gate that is stuck shows with
   assert.equal(rows.length, 1);
   assert.deepEqual([rows[0].kind, rows[0].loud], ["stale", false]);
 });
+
+test("R031-45: flows.attention also lists the stuck tasks the host reads for it", async () => {
+  const w = await world();
+  const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.chainFor(x) }, store: w.store, catalog: () => w.runner.catalogFn(), stuckTasks: async () => [{ task: "t9", label: "Call the client", reason: "no phone", since: 3 }] });
+  const r = await f.tools["flows.attention"](chainOf(), {});
+  assert.deepEqual(r.tasks, [{ task: "t9", label: "Call the client", reason: "no phone", since: 3 }]);
+  assert.deepEqual(r.runs, []);
+});
