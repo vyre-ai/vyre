@@ -1,5 +1,5 @@
 // @ts-check
-// `node scripts/eval/assistant-fit/run.js --model <id> --yes --out <dir> [--budget 5]`
+// `node scripts/eval/assistant-fit/run.js --model <id> --yes --out <dir> [--budget 5] [--suite engineer]`
 // Runs the fit eval against the real Claude API: five short conversations, about five dollars at the most. It refuses to run without ANTHROPIC_API_KEY
 // in the environment and an explicit --yes, because it spends money. Tests never run this file.
 
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { evaluateModel, formatFit } from "./fit.js";
 import { claudeAdapter } from "./adapter-claude.js";
 import { openrouterAdapter } from "./adapter-openrouter.js";
+import { ENGINEER_TASKS, buildEngineerFixture } from "./engineer.js";
 
 /** Dollars per million tokens, by model id; an unknown model uses the eval's high default so the cap errs on stopping early. */
 export const PRICES = {
@@ -36,11 +37,11 @@ export async function main(argv, env, say) {
   const budgetUsd = a.budget && a.budget !== true ? Number(a.budget) : 5;
   const cap = env.GITHUB_ACTIONS ? 5 : 20;
   if (!(budgetUsd > 0 && budgetUsd <= cap)) { say(`Not run: the budget must be above 0 and at most ${cap} dollars.`); return 2; }
-  const r = await evaluateModel({ adapter: viaOpenRouter ? openrouterAdapter({ apiKey: String(env.OPENROUTER_EVAL_KEY), model: String(a.model) }) : claudeAdapter({ apiKey: String(env.ANTHROPIC_API_KEY), model: String(a.model) }), budgetUsd, prices: PRICES });
+  const r = await evaluateModel({ adapter: viaOpenRouter ? openrouterAdapter({ apiKey: String(env.OPENROUTER_EVAL_KEY), model: String(a.model) }) : claudeAdapter({ apiKey: String(env.ANTHROPIC_API_KEY), model: String(a.model) }), budgetUsd, prices: PRICES, ...(a.suite === "engineer" ? { kernelFixture: buildEngineerFixture, tasks: ENGINEER_TASKS } : {}) });
   say(formatFit(r));
   if (a.out && a.out !== true) {
     fs.mkdirSync(String(a.out), { recursive: true });
-    const file = path.join(String(a.out), `fit-${String(a.model).replace(/[^a-z0-9._-]/gi, "_")}.json`);
+    const file = path.join(String(a.out), `${a.suite === "engineer" ? "engineer" : "fit"}-${String(a.model).replace(/[^a-z0-9._-]/gi, "_")}.json`);
     fs.writeFileSync(file, JSON.stringify(r, null, 2));
     say(`Wrote ${file}`);
   }
