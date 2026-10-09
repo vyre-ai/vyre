@@ -10,6 +10,8 @@
 
 import { diffFlows } from "./diff.js";
 import { testKit } from "./kit-test.js";
+import { flowFromCalls } from "../../lib/flow-from-calls.js";
+import { printLines } from "./lines.js";
 import { connectorsOf } from "./health.js";
 import { cheatsheet } from "./cheatsheet.js";
 import { applyPatch, PatchError } from "./patch.js";
@@ -48,6 +50,8 @@ function need(i, key, where) {
   if (!i || i[key] === undefined || i[key] === null || i[key] === "") throw Object.assign(new Error(`${key} is required: ${where}`), { code: "bad_input" });
   return i[key];
 }
+
+const isPlain = (/** @type {any} */ v) => v && typeof v === "object" && !Array.isArray(v);
 
 function personOf(chain) {
   const hops = chain && chain.hops;
@@ -283,6 +287,21 @@ export function createFlows(o) {
         return { ...(await stagesRef.advance(run, who, need(i, "reason", "why it moves on early"))), action };
       }
       throw Object.assign(new Error("action is retry, skip, stop or advance"), { code: "bad_input" });
+    },
+    // "Turn this into a Flow" (R031-42): the calls an assistant made by hand become a stored draft (and, with propose, a checked proposal). The draft is an ordinary one: define's errors name the place.
+    "flows.from-chat": async (chain, i) => {
+      const name = need(i, "name", "a short name for the Flow");
+      if (!Array.isArray(i.calls) || !i.calls.length || i.calls.length > 40) throw Object.assign(new Error("calls is the list of { tool, input } the assistant made, 1 to 40"), { code: "bad_input" });
+      const c = await cat();
+      const m = flowFromCalls({ name: String(name), ...(i.label ? { label: String(i.label) } : {}), calls: i.calls, ...(isPlain(i.variables) ? { variables: i.variables } : {}) }, { types: c.types, actions: c.actions });
+      if (!m.flow.steps.length) return { ok: false, errors: [{ path: "calls", message: "none of those calls can be a step of a Flow" }], unmapped: m.unmapped };
+      const by = chain.hops[chain.hops.length - 1].actor;
+      const d = await runner.define(null, normalizeFlow(m.flow), by);
+      if (!d.ok) return { ...d, unmapped: m.unmapped };
+      const out = { ok: true, id: d.id, version: d.version, hash: d.hash, lines: printLines(normalizeFlow(m.flow)), inputs: m.inputs, unmapped: m.unmapped, warnings: d.warnings,
+        next: "Read the lines, add what is unmapped (flows.patch), save a test case (flows.test.save), then flows.propose, which checks it before a person is asked." };
+      if (i.propose === true) return { ...out, proposal: await tools["flows.propose"](chain, { what: "flow", id: d.id, version: d.version }) };
+      return out;
     },
     "flows.cancel": async (chain, i) => { const who = personOf(chain); need(i, "run", "the run's id (flows.runs)"); return runner.cancel(i.run, { by: who.id, reason: i.reason }); },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),

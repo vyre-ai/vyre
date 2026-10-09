@@ -63,3 +63,22 @@ test("e5: a checked proposal carries the checked line on its card", async () => 
   const task = w.kernel.tasks.find((/** @type {any} */ t) => t.id === p.task);
   assert.match(task.form.note, /^Checked: compiles; no saved test cases; .* please$/);
 });
+
+test("R031-42: flows.from-chat stores a draft from the calls an assistant made, says what it could not map, and with propose goes through the checks", async () => {
+  const { w, f, assistant } = await setup();
+  const calls = [{ tool: "work_call", input: { tool: "matters.create", input: { data: { client: "Dana" } } } }, { tool: "planner_add", input: { title: "x" } }];
+  const r = await f.tools["flows.from-chat"](assistant, { name: "Open a matter", calls, variables: { client: "Dana" } });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.deepEqual(r.inputs, ["client"]);
+  assert.deepEqual(r.unmapped.map((/** @type {any} */ u) => u.tool), ["planner.add"]);
+  assert.match(r.lines, /s1 create type=matter set=\{client: `trigger.client`\}/);
+  const v = await w.store.getVersion(r.id, r.version);
+  assert.equal(v.approver, null, "a draft, never approved");
+  const p = await f.tools["flows.from-chat"](assistant, { name: "Open a matter again", calls: [calls[0]], propose: true });
+  assert.equal(p.ok, true);
+  assert.match(p.proposal.checked, /^Checked: compiles; no saved test cases; /);
+  const none = await f.tools["flows.from-chat"](assistant, { name: "nothing", calls: [calls[1]] });
+  assert.equal(none.ok, false);
+  assert.match(none.errors[0].message, /none of those calls/);
+  await assert.rejects(() => f.tools["flows.from-chat"](assistant, { name: "x", calls: [] }), /1 to 40/);
+});

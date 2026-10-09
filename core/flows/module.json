@@ -29,6 +29,7 @@
       { "name": "flows.health", "effect": "read", "reach": "anyone" },
       { "name": "flows.timeline", "effect": "read", "reach": "anyone" },
       { "name": "flows.cheatsheet", "effect": "read", "reach": "anyone" },
+      { "name": "flows.from-chat", "effect": "write", "reach": "anyone" },
       { "name": "flows.connections", "effect": "read", "reach": "anyone" },
       { "name": "flows.attention", "effect": "read", "reach": "anyone" },
       { "name": "flows.settle", "effect": "write", "reach": "person" },
