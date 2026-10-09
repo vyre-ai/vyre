@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
 import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, movedLine, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, movedLine, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
@@ -17,8 +17,10 @@ export function usePlacement(thread: string, real: boolean) {
     runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
     const off = listen((e: any) => {
       if (e?.type !== "thread.moved" || String(e?.payload?.thread ?? "") !== thread) return;
-      const to = e.payload.to === "mac" ? "mac" : "server";
-      setP({ where: to, computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now() });
+      const to = e.payload.to === "mac" ? "mac" : e.payload.to === "paused" ? "paused" : "server";
+      const epoch = Number.isInteger(e.payload.epoch) ? e.payload.epoch : undefined;
+      // A higher epoch wins: an update that arrives late never moves the chip back.
+      setP((cur) => (fresher(cur?.epoch, epoch) ? { where: to === "mac" ? "mac" : "server", computer: e.payload.computer, reason: e.payload.reason ?? null, since: e.payload.at ?? Date.now(), ...(to === "paused" ? { state: "paused" as const } : {}), ...(epoch !== undefined ? { epoch } : {}) } : cur));
       setLines((l) => [...l.slice(-4), { at: Number(e.payload.at ?? Date.now()), text: movedLine({ to, reason: e.payload.reason }) }]);
     });
     return () => { live = false; off?.(); };
@@ -33,7 +35,9 @@ export function usePlacement(thread: string, real: boolean) {
 export function PlacementChip({ placement, onMove }: { placement: Placement | null; onMove: (to: "mac" | "server") => void }) {
   const c = chipOf(placement);
   if (!c) return null;
-  const items = [...(c.why ? [{ label: `On the server because ${c.why}`, onPress: () => {} }] : []), { label: c.moveLabel, onPress: () => onMove(c.moveTo) }];
+  if (!c.moveTo) return <View accessibilityLabel={c.label} style={{ minHeight: 44, justifyContent: "center" }}><Chip tone={c.tone}>{c.label}</Chip></View>;
+  const moveTo = c.moveTo;
+  const items = [...(c.why ? [{ label: `On the server because ${c.why}`, onPress: () => {} }] : []), { label: c.moveLabel, onPress: () => onMove(moveTo) }];
   return <Menu trigger={<View accessibilityRole="button" accessibilityLabel={`${c.label}. Tap to change.`} style={{ minHeight: 44, justifyContent: "center" }}><Chip tone={c.tone} icon={placement?.where === "mac" ? "laptop" : "server"}>{c.label}</Chip></View>} items={items} />;
 }
 

@@ -7,22 +7,38 @@
 export const REASON_WORDS = /** @type {Record<string, string>} */ ({
   "lid-closed": "lid closed", asleep: "this Mac went to sleep", unplugged: "this Mac is on battery", "cpu-cap": "it used more processor than you allow", "mem-cap": "it used more memory than you allow",
   "switched-off": "running on this Mac is switched off", offline: "this Mac is offline", crash: "it stopped unexpectedly, and was resumed from its last step", you: "you moved it",
+  "lease-expired": "this Mac stopped checking in", "version-skew": "this Mac runs an older Vyre", folder: "this chat works in a folder on your Mac",
 });
-const why = (/** @type {string | null | undefined} */ r) => (r ? REASON_WORDS[r] || "this Mac could not run it" : "");
+/** The reason in words; a code this app does not know says nothing (the line stays "Moved to the server."), never the code. */
+const why = (/** @type {string | null | undefined} */ r) => (r ? REASON_WORDS[r] || "" : "");
 
-/** @typedef {{ where: "mac" | "server", computer?: string, reason?: string | null, since?: number | null }} Placement */
+/** @typedef {{ where: "mac" | "server", computer?: string, reason?: string | null, since?: number | null, state?: "here" | "moving" | "server" | "locked" | "updating" | "paused", offer?: "mac" | null, epoch?: number }} Placement */
 
-/** The chip on a session. Tapping it offers the other place. @param {Placement | null | undefined} p */
+/**
+ * The chip on a session. Tapping it offers the other place. While it is moving the chip says only that; "locked", "updating" and "paused" say so without a menu; and when the lid has opened the
+ * session stays on the server with an offer to bring it back, which the chip asks as a question.
+ * @param {Placement | null | undefined} p
+ */
 export function chipOf(p) {
   if (!p) return null;
   const mac = p.where === "mac";
   const name = (p.computer || "").trim();
-  return { label: mac ? (name ? `On ${name}` : "On this Mac") : "On the server", tone: /** @type {"ok" | "plain"} */ (mac ? "ok" : "plain"), moveTo: /** @type {"mac" | "server"} */ (mac ? "server" : "mac"),
+  const fixed = (/** @type {string} */ label, /** @type {"ok" | "plain"} */ tone = "plain") => ({ label, tone, moveTo: /** @type {"mac" | "server" | null} */ (null), moveLabel: "", why: "" });
+  if (p.state === "moving") return fixed("Moving");
+  if (p.state === "locked") return fixed("Locked");
+  if (p.state === "updating") return fixed("This Mac is updating");
+  if (p.state === "paused") return fixed("Paused on this Mac", "ok");
+  if (!mac && p.offer === "mac") return { label: "Bring back to this Mac?", tone: /** @type {"ok" | "plain"} */ ("plain"), moveTo: /** @type {"mac" | "server" | null} */ ("mac"), moveLabel: "Bring it back to this Mac", why: why(p.reason) };
+  return { label: mac ? (name ? `On ${name}` : "On this Mac") : "On the server", tone: /** @type {"ok" | "plain"} */ (mac ? "ok" : "plain"), moveTo: /** @type {"mac" | "server" | null} */ (mac ? "server" : "mac"),
     moveLabel: mac ? "Move to the server" : "Move to this Mac", why: mac ? "" : why(p.reason) };
 }
 
-/** The one line in the chat when a session moves. @param {{ to: string, reason?: string | null }} e */
+/** Whether an update from the box is newer than what is shown: a higher epoch wins, and an update with none is taken. @param {number | undefined} have @param {number | undefined} incoming */
+export const fresher = (have, incoming) => incoming === undefined || have === undefined || incoming >= have;
+
+/** The one line in the chat when a session moves (or, for a session pinned to a folder, pauses). @param {{ to: string, reason?: string | null }} e */
 export function movedLine(e) {
+  if (e.reason === "folder" && e.to === "paused") return "Paused: this chat works in a folder on your Mac.";
   const where = e.to === "mac" ? "this Mac" : "the server";
   const w = why(e.reason);
   return `Moved to ${where}${w ? `: ${w}` : ""}.`;
@@ -56,7 +72,7 @@ export function switchNote(s) {
 export function pickHere(d) {
   const list = Array.isArray(d) ? d : d && Array.isArray(d.sessions) ? d.sessions : [];
   return list.filter((/** @type {any} */ x) => x && typeof x.thread === "string").map((/** @type {any} */ x) => ({
-    thread: String(x.thread), title: String(x.title || "A session"), state: /** @type {"running" | "waiting" | "paused"} */ (x.state === "waiting" || x.state === "paused" ? x.state : "running"),
+    thread: String(x.thread), title: String(x.title || "A session"), computer: typeof x.computer === "string" ? x.computer : "", state: /** @type {"running" | "waiting" | "paused"} */ (x.state === "waiting" || x.state === "paused" ? x.state : "running"),
     cpuPercent: typeof x.cpuPercent === "number" ? Math.round(x.cpuPercent) : 0, memoryMb: typeof x.memoryMb === "number" ? Math.round(x.memoryMb) : 0 }));
 }
 
@@ -68,3 +84,12 @@ export function hereLine(s) {
 
 /** The line for a session that did not run here. @param {string | null | undefined} code */
 export const whyNotLine = (code) => (code ? `It did not run on this Mac because ${why(code)}.` : "It ran where it was meant to.");
+
+const STATES = ["here", "moving", "server", "locked", "updating", "paused"];
+
+/** A placement as the box sent it, kept to what is known; anything that is not on this Mac or the server is no placement. @param {any} d @returns {Placement | null} */
+export function pickPlacement(d) {
+  if (!d || (d.where !== "mac" && d.where !== "server")) return null;
+  return { where: d.where, ...(typeof d.computer === "string" && d.computer ? { computer: d.computer } : {}), reason: typeof d.reason === "string" ? d.reason : null, since: typeof d.since === "number" ? d.since : null,
+    ...(STATES.includes(d.state) ? { state: d.state } : {}), ...(d.offer === "mac" ? { offer: /** @type {"mac"} */ ("mac") } : {}), ...(Number.isInteger(d.epoch) ? { epoch: d.epoch } : {}) };
+}
