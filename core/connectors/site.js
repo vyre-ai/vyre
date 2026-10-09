@@ -168,7 +168,11 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     const host = new URL(/** @type {string} */ (decl.base_url)).hostname;
     const first = Object.values(decl.ops).find(o => o.site);
     if (!first || !first.site) return { light: "red", words: "no operations are kept for this site yet" };
-    const res = await pageRung(/** @type {string} */ (decl.base_url), first.site.name, {}, false, true);
+    // on a box the browser that holds the login is an agent's computer (the Connection's agent); a Mac is asked only when a call needs it, never to "check"
+    /** @type {{ agent?: string }} */ const form = (() => { try { return JSON.parse(row.form || "{}"); } catch { return {}; } })();
+    const agent = typeof form.agent === "string" ? form.agent : "";
+    if (role === "box" && !agent) return { light: "red", words: `no agent's computer is named to hold the login for ${host}: name one when you connect it, or run it from your Mac` };
+    const res = await pageRung(/** @type {string} */ (decl.base_url), first.site.name, {}, false, true, role === "box" ? agent : "");
     if (res && res.class === "no_browser") return lightFor("no_browser", host);
     if (res && res.onSite === false) return { light: "red", words: `open ${host} in Chrome first` };
     return res && res.ok ? { light: "green", words: "signed in and ready" } : lightFor("auth", host);
