@@ -20,9 +20,9 @@ test("the app's callers can preview, import and scan; the bytes of a file come f
     for (const c of ["capsule", "deck", "mobile", "device"]) assert.ok(callers.includes(c), `${name} is open to ${c}`);
   }
   const content = Buffer.from("name,url,username,password\nAcme,https://acme.test,juno,pw\n").toString("base64");
-  await assert.rejects(run("vault.import.preview", { content, filename: "x.csv" }, "mcp"), /never passed through Claude/);
-  await assert.rejects(run("vault.import", { content, filename: "x.csv" }, "mcp"), /never passed through Claude/);
-  await assert.rejects(run("vault.import.preview", {}), /give a file path, or the file's content/);
+  await assert.rejects(async () => run("vault.import.preview", { content, filename: "x.csv" }, "mcp"), /never passed through Claude/);
+  await assert.rejects(async () => run("vault.import", { content, filename: "x.csv" }, "mcp"), /never passed through Claude/);
+  await assert.rejects(async () => run("vault.import.preview", {}), /give a file path, or the file's content/);
 });
 
 test("an export sent as bytes previews and imports like a file, with a token bound to those bytes and no value in the answers", async t => {
@@ -70,5 +70,5 @@ test("several .env files import and rewrite under one call; a bad path is report
   assert.ok(!fs.readFileSync(path.join(a, ".env"), "utf8").includes(keyA));
   assert.match(fs.readFileSync(path.join(a, ".env"), "utf8"), /^STRIPE_SECRET_KEY=vault:\/\//m);
   assert.ok(!JSON.stringify(r).includes(keyA) && !JSON.stringify(r).includes(keyB));
-  await assert.rejects(run("vault.import", { files: ["relative/.env"] }, "capsule"), /absolute paths/);
+  await assert.rejects(async () => run("vault.import", { files: ["relative/.env"] }, "capsule"), /absolute paths/);
 });
