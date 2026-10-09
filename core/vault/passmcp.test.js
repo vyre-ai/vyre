@@ -118,14 +118,19 @@ test("gate 4: through a use pass a read runs with the key added at home, a write
 });
 
 test("gate 5: the pass is inside its issuer: take the owner's manage of the vault away and the pass stops at the next call", async t => {
-  const { mk: make, tool, rig, net } = await mk(t);
+  const { mk: make, tool, rig, net, v } = await mk(t);
   const p = await make();
   assert.equal((await tool(p.token, "vault_request", { item: "graph-api", method: "GET", path: "/v1/a" })).data.status, 200);
   const manage = (await rig.gw.grants.list(rig.owner(), {})).find(g => g.source === "vault:create");
+  // the pass grants record the issuer's manage as their parent and the owner as their issuer; the audit names who made the pass
+  const mine = (await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source.startsWith("vault:pass:"));
+  assert.ok(mine.length && mine.every(g => g.parent === manage.id && g.issuer.kind === "person" && g.issuer.id === rig.K.owner));
+  assert.equal(v.db.prepare("SELECT who FROM vault_audit WHERE action = 'pass-mcp-create'").get().who, "cli");
   await rig.gw.grants.revoke(rig.owner(), manage.id, "no longer", { presence: { n: 1 } });
   const after = await tool(p.token, "vault_request", { item: "graph-api", method: "GET", path: "/v1/a" });
   assert.equal(after.isError, true);
   assert.equal(net.calls.length, 1);
+  assert.equal((await rig.gw.grants.list(rig.owner(), {})).filter(g => g.source.startsWith("vault:pass:") && g.status === "active").length, 0, "the pass grants went with their parent");
 });
 
 test("gate 6: every use is on record with the pass, and no key, username or token is in any event, audit row, answer or error", async t => {

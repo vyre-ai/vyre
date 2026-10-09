@@ -70,6 +70,8 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
   const [busy, setBusy] = useState(false);
   const [made, setMade] = useState<{ ticket: string; pending: boolean; holder: string } | null>(null);
   const [agent, setAgent] = useState(false);
+  const [apiHosts, setApiHosts] = useState<Record<string, string[]>>({});
+  useEffect(() => { if (open) vaultMore.mcpItems().then((xs) => setApiHosts(Object.fromEntries(xs.map((x) => [x.name, x.hosts])))).catch(() => {}); }, [open]);
   const apiOf = (name: string) => rows.find((r) => r.name === name)?.kind === "api-credential";
   const blankMcp = (): NewMcpPass => ({ name: "", items: preset.filter((x) => apiOf(x)), days: 7, budget: "", offHosts: [], reveal: false });
   const [m, setM] = useState<NewMcpPass>(blankMcp);
@@ -83,9 +85,10 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
     setBusy(true); setProblem("");
     vaultMore.createPass(p.input).then((r) => { setMade({ ...r, holder: n.holder.trim() }); onMade(); }).catch((e) => setProblem(say(e, "shared"))).finally(() => setBusy(false));
   };
-  const mcpHosts = [...new Set(m.items.flatMap(hostsOf))];
+  const mcpHostsOf = (name: string) => apiHosts[name] ?? [];
+  const mcpHosts = [...new Set(m.items.flatMap(mcpHostsOf))];
   const goMcp = () => {
-    const p = mcpPassInput(m, hostsOf);
+    const p = mcpPassInput(m, (i) => apiHosts[i] ?? []);
     if ("error" in p) { setProblem(p.error); return; }
     setBusy(true); setProblem("");
     vaultMore.createMcpPass(p.input).then((r) => { setMadeMcp(r); onMade(); }).catch((e) => setProblem(say(e, "shared"))).finally(() => setBusy(false));
@@ -105,7 +108,8 @@ function NewPassSheet({ open, preset, rows, people, onClose, onMade }: { open: b
         <View className="gap-s3">
           <Segmented label="For" value="agent" onChange={(v) => { if (v === "vyre") setAgent(false); }} options={[["vyre", "Another Vyre"], ["agent", "An outside agent"]]} />
           <Field label="Name" value={m.name} onChangeText={(name) => setM({ ...m, name })} help="Who or what it is for, such as Dana's Claude." />
-          <Segmented label="Ends" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
+          <Text size="caption" strong tone="label">Ends after</Text>
+          <Segmented label="Ends after" value={m.days} onChange={(days) => setM({ ...m, days })} options={MCP_DAYS} />
           <View className="gap-s1">
             <Text size="caption" strong tone="label">Credentials</Text>
             <View className="flex-row flex-wrap gap-s2">{rows.filter((r) => r.kind === "api-credential").map((r) => <Chip key={r.name} selected={m.items.includes(r.name)} onPress={() => setM({ ...m, items: m.items.includes(r.name) ? m.items.filter((x) => x !== r.name) : [...m.items, r.name] })}>{r.name}</Chip>)}</View>

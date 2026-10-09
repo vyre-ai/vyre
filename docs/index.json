@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1392,"event":477,"config":273,"env":256,"screen":0,"concept":39},
+  "counts": {"command":344,"tool":1395,"event":477,"config":273,"env":256,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1893,10 +1893,13 @@
     {"kind":"event","name":"vault.mcp-pass-ended","definedIn":"core/vault/passmcp.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.mcp-pass-made","definedIn":"core/vault/passmcp.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.mcp-refused","definedIn":"core/vault/passmcp.js","page":"reference/events.md#vault","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.mcp.base","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcpbase","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.mcp.items","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcpitems","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.pass.create","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppasscreate","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.pass.list","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppasslist","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.pass.revoke","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcppassrevoke","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.mcp.reveal.clear","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcprevealclear","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.mcp.status","definedIn":"core/vault/tools/mcp.js","page":"reference/tools.md#vaultmcpstatus","module":"vault","mentions":[]},
     {"kind":"event","name":"vault.member-added","definedIn":"core/vault/shared.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":238,"anchor":"7-contract-fit"}]},
     {"kind":"event","name":"vault.member-removed","definedIn":"core/vault/shared.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":239,"anchor":"7-contract-fit"}]},
     {"kind":"tool","name":"vault.members.accept","definedIn":"core/vault/tools/vaults.js","page":"reference/tools.md#vaultmembersaccept","module":"vault","mentions":[]},

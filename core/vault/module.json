@@ -7,7 +7,7 @@
   ],
   "requires": [],
   "does": {
-    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.history", "vault.list", "vault.pass.list", "vault.mcp.pass.list", "vault.search", "vault.vaults.list"],
+    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.history", "vault.list", "vault.pass.list", "vault.mcp.pass.list", "vault.mcp.items", "vault.search", "vault.vaults.list"],
     "tools": [
       { "name": "vault.put", "effect": "write", "reach": "anyone" },
       { "name": "vault.list", "reach": "anyone" },
@@ -35,8 +35,11 @@
       { "name": "vault.state", "effect": "read", "reach": "anyone" },
       { "name": "vault.lock", "effect": "write", "reach": "person" },
       { "name": "vault.identity", "effect": "read", "reach": "anyone" },
+      { "name": "vault.mcp.status", "reach": "modules" },
+      { "name": "vault.mcp.base", "effect": "write", "reach": "modules" },
       { "name": "vault.mcp.pass.create", "outward": true, "effect": "write", "reach": "person" },
       { "name": "vault.mcp.pass.list", "reach": "anyone" },
+      { "name": "vault.mcp.items", "reach": "person" },
       { "name": "vault.mcp.pass.revoke", "effect": "write", "reach": "anyone" },
       { "name": "vault.mcp.reveal.clear", "effect": "write", "reach": "person" },
       { "name": "vault.pass.create", "outward": true, "effect": "write", "reach": "anyone" },

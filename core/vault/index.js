@@ -467,9 +467,10 @@ export default {
     // The Vault MCP for outside agents (passmcp.js): the endpoint is off unless `vault.mcp.port` is set; passes can be made and listed either way.
     let mcpListener = null;
     vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
-    mcpTools.register({ vault, tool });
+    mcpTools.register({ vault, tool, internal });
     if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
       mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
+      vault.mcp.listener = mcpListener;
       ctx.log(`vault mcp listening on ${mcpListener.url}`);
     }
     const kits = shareTools.register({ ctx, vault, tool });

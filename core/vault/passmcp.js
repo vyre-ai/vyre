@@ -46,6 +46,12 @@ export class PassMcp {
     /** @type {Map<string, Bucket>} */ this.sources = new Map();
   }
 
+  /** The loopback listener, set by index.js; the public address, set by the gate through vault.mcp.base. @type {{ port: number } | null} */ listener = null;
+  /** @type {string | null} */ publicBase = null;
+  listening() { return { listening: Boolean(this.listener), port: this.listener ? this.listener.port : null }; }
+  /** Where an outsider reaches it: the public gate's address when there is one, else the loopback listener's. */
+  addr() { return this.publicBase ? `${this.publicBase}/vault-mcp` : this.deps.url ? this.deps.url() : ""; }
+
   get K() { return this.v.access && this.v.access.K; }
   now() { return this.v.clock(); }
   actor(/** @type {string} */ id) { return `ext_${id.replace(/^vp_/, "")}`; }
@@ -75,7 +81,7 @@ export class PassMcp {
     await K.vault.carryOver(items.map(item => ({ id: `${id}:${item}`, kind: "pass", who, item, expires: until, rate })));
     this.v.audit("pass-mcp-create", null, issuer, true, `${name}: ${items.join(", ")}`);
     this.v.emit("vault.mcp-pass-made", { id, name, items });
-    return { id, token, name, items, expires: until, rate, budget, reveal: Boolean(i.reveal), url: this.deps.url ? this.deps.url() : "" };
+    return { id, token, name, items, expires: until, rate, budget, reveal: Boolean(i.reveal), url: this.addr() };
   }
 
   /** What outside agents asked to see, waiting for the person (vault.pending). The value is never sent to them. */

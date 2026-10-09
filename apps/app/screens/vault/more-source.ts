@@ -33,6 +33,8 @@ export function vaultMoreSource(call: Call) {
     },
     /** Make a pass for an outside agent (Claude Code, Codex): the token and the lines to give them, shown once. */
     async createMcpPass(input: Record<string, unknown>) { return pickMcpMade(await ask("vault.mcp.pass.create", input)); },
+    /** The api credentials a pass can share and the hosts each is pinned to (names and hosts only). */
+    async mcpItems(): Promise<{ name: string; hosts: string[] }[]> { const r = await maybe<{ items?: { name?: unknown; hosts?: unknown }[] }>("vault.mcp.items"); return (r?.items ?? []).filter((x) => typeof x.name === "string").map((x) => ({ name: String(x.name), hosts: list(x.hosts) })); },
     /** End an outside agent's pass. Needs no one. */
     async revokeMcpPass(id: string): Promise<void> { await ask("vault.mcp.pass.revoke", { id }); },
     /** End a pass. A sealed one left a copy, so the items to replace come back. */
