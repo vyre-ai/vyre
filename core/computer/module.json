@@ -7,7 +7,7 @@
   "requires": [],
   "does": {
     "tools": [
-      { "name": "computer", "effect": "write", "reach": "anyone" },
+      { "name": "computer.use", "effect": "write", "reach": "anyone" },
       { "name": "computer.targets", "effect": "read", "reach": "anyone" },
       { "name": "computer.exec", "reach": "modules" }
     ]

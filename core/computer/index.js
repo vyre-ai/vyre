@@ -1,6 +1,6 @@
 // @ts-check
 // computer: Vyre Computer's one front door (R031-90). Chrome on the person's Mac, their Mac's apps, the cloud computer's own browser and desktop, and the screen service are the same thing
-// to a person: a computer. This module is one tool, `computer`, over the engines that already exist; it adds no engine.
+// to a person: a computer. This module is one tool, `computer.use`, over the engines that already exist; it adds no engine.
 //
 //   which computer   `on` names one ("my Mac", "the office computer"); nothing named is the cloud computer. Two matches or none is a question with the real names (route.js), never a guess.
 //   which way        interface first, screen last: a Connection or a learned operation that covers the site is offered before the screen is touched, once; `screen: true` ("do it on the screen") skips it.
@@ -95,7 +95,7 @@ export default {
       run: async () => ({ computers: (await targets()).map(t => ({ name: t.name, kind: t.kind, ...(t.online !== undefined ? { online: t.online } : {}) })) }),
     });
 
-    ctx.tool("computer", {
+    ctx.tool("computer.use", {
       description: "Work on a computer: the cloud computer by default, or one you name in `on` (\"my Mac\", \"office computer\"). `do`: look (read the page or app), shot, tabs, open {url}, click, type, fill, act, find/get (files), signin {login} (a login lent to you; you never see it), route {goal, site} (what already covers this without the screen). Connections and learned operations come first: if one covers the site you are told once, and `screen: true` keeps the screen. `args` are the engine's own inputs (a selector, a ref, text).",
       input: obj({ do: { type: "string", enum: ["look", "shot", "tabs", "open", "click", "type", "fill", "act", "press", "find", "get", "signin", "route"] }, on: str, url: str, app: str, goal: str, site: str, login: str, screen: { type: "boolean" }, args: { type: "object" }, agent: str }, ["do"]),
       effect: "write", callers: CALLERS,

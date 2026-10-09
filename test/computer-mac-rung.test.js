@@ -31,7 +31,7 @@ const KIT = "mcp agent:kit";
 
 test("'on my Mac' runs in the Mac's Chrome only for a class the person allowed there, and stops when it is taken back", { timeout: 120_000 }, async t => {
   const s = await world(t);
-  const look = () => s.boxCall("computer", { do: "look", on: s.name }, KIT);
+  const look = () => s.boxCall("computer.use", { do: "look", on: s.name }, KIT);
   const before = await look();
   assert.ok(before.error, JSON.stringify(before));
   assert.match(JSON.stringify(before), /has not allowed the box|link\.computer\.allow/);
@@ -46,7 +46,7 @@ test("'on my Mac' runs in the Mac's Chrome only for a class the person allowed t
   assert.ok(s.seen.some(x => x.op === "page.snapshot"), "the Mac's own Chrome was read");
 
   // another class is its own yes
-  const open = await s.boxCall("computer", { do: "open", on: s.name, url: "https://example.org/" }, KIT);
+  const open = await s.boxCall("computer.use", { do: "open", on: s.name, url: "https://example.org/" }, KIT);
   assert.ok(open.error, JSON.stringify(open));
   assert.match(JSON.stringify(open), /act on this Mac|link\.computer\.allow act/);
 

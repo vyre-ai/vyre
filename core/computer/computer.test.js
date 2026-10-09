@@ -20,7 +20,7 @@ async function boot({ role = "box", macs = [], connections = [], answers = {} } 
       return { data: { ok: true, via: tool } };
     } };
   await mod.start(ctx);
-  const run = (input, caller = "mcp agent:kit", meta = {}) => tools.get("computer").run(input, { caller, ...meta });
+  const run = (input, caller = "mcp agent:kit", meta = {}) => tools.get("computer.use").run(input, { caller, ...meta });
   return { tools, calls, run };
 }
 
