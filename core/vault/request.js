@@ -270,6 +270,7 @@ export class ApiRequests {
    */
   async plan(input, name) {
     const { row, config, secret } = await this.vault.apiCredential(name);
+    if (config.auth.type === "browser") throw bad(`${name} is a website signed in through a browser: its operations run in that browser (the connectors module), never through the vault`);
     const method = String(input.method || "").toUpperCase();
     if (!METHODS.includes(method)) throw bad(`method must be one of ${METHODS.join(", ")}`);
     const headers = checkHeaders(input.headers);

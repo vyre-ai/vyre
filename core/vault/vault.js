@@ -1272,7 +1272,7 @@ export class Vault {
       let cfg;
       try { cfg = JSON.parse(clean.config); } catch { throw new Error("config must be JSON: { auth, hosts, endpoints? }"); }
       const n = normalizeApiCredential(cfg);
-      if (n.auth.type !== "oauth" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
+      if (n.auth.type !== "oauth" && n.auth.type !== "browser" && !n.auth.item && !clean.secret) throw new Error("give the credential its secret (fields.secret), or name the vault item that holds it (auth.item)");
       clean.config = JSON.stringify(n);
     }
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
