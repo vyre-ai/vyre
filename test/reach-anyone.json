@@ -2208,6 +2208,10 @@
   "documents.generate": {
    "module": "documents",
    "reason": "guard: under the caller's own chain (a call that proved no person is refused); the kernel's Drive and records grants decide what it may read and file, a missing value refuses by name, nothing leaves the Space (callers list, check, owner)"
+  },
+  "comms.send": {
+   "module": "comms",
+   "reason": "held: outward, so the registry holds it as a card for the person's yes and the message waits at the Gate for the final words; nothing is sent from here (callers list, gate)"
   }
  }
 }
