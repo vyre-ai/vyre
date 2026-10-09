@@ -11,6 +11,7 @@
 //   Loop control   depth of the `corr` chain (default 8), a per-Flow rate limit, a step cap per run. A runaway pauses the Flow and raises a card.
 //   Versioned      a run is pinned to the version it started on.
 
+import { expandConnections } from "./connection-step.js";
 import { runCases } from "./cases.js";
 import crypto from "node:crypto";
 import { parse, evaluate, truthy, roots } from "./expr.js";
@@ -140,6 +141,7 @@ export class FlowRunner {
     /** Reads the Space's settings (flows.concurrency, ...); the host gives it. @type {((key: string) => Promise<any>) | null} */ this.settingsFn = o.settings || null;
     this.settingsAt = -Infinity;
     /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
+    /** @type {Map<string, { key: string, at: number, bad?: string }>} the last replay of a Flow's saved test cases, for the health line */ this.testMemo = new Map();
   }
 
   // ------------------------------------------------------------------ definitions
@@ -173,6 +175,80 @@ export class FlowRunner {
     const row = await this.store.approve(id, version, approver, hash, this.now());
     this.cache = null;
     return row;
+  }
+
+  // ------------------------------------------------------------------ stage gates (s1)
+  // A stage with tasks is a gate the record passes through. The stages module makes the tasks and decides when the record moves on; the gate is a run on THIS runner, so it is written down (a restart
+  // loses nothing), it shows on the timeline and in `flows.describe`, a task that is stuck raises attention, and a move made early is on its ledger with who and why. It is synthesized at stage
+  // entry from the stage as the Space defines it: no Flow is stored for it, and its steps are `tasks`, one `task:<title>` for each task, `condition` (the next stage's entry condition) and `move`.
+
+  /** Open (or find) the gate for one stage entry. @param {{ key: string, urn: string, type: string, id: string, stage: string, next: string | null, owner?: string, tasks: { id: string, title: string, required: boolean }[], approver?: any }} g */
+  async gateOpen(g) {
+    const cat = /** @type {any} */ (await this.catalogFn());
+    const id = runIdFor(`gate:${g.key}`, "gate");
+    const had = await this.store.getRun(id);
+    if (had) return had.id;
+    const now = this.now();
+    /** @type {Run} */
+    const run = { id, flow: `gate:${g.type}:${g.stage}`, version: 0, hash: "", space: cat.space, trigger: { kind: "gate", key: g.key, source: `stage:${g.type}.${g.stage}`, input: { record: g.urn, stage: g.stage } }, tainted: false, source_spaces: [cat.space], depth: 0,
+      state: "waiting", started_at: now, updated_at: now, steps: {}, waiting: { step: "tasks", kind: "gate" }, approver: g.approver || { kind: "service", id: "stages", space: cat.space },
+      gate: { key: g.key, urn: g.urn, type: g.type, record: g.id, stage: g.stage, next: g.next, owner: g.owner || null, tasks: g.tasks } };
+    run.steps.tasks = { status: "waiting", at: now, output: { count: g.tasks.length, required: g.tasks.filter(t => t.required).length } };
+    for (const t of g.tasks) run.steps[`task:${t.title}`] = { status: "waiting", at: now, task: t.id, output: { required: t.required } };
+    await this.store.putRun(run);
+    this.#emit("gate.opened", { run: id, record: g.urn, stage: g.stage }, run, `vyre://${run.space}/flow-run/${id}`);
+    return id;
+  }
+
+  /**
+   * One read through a Connection, for a stage gate's checklist: the declared operation must be a read (GET or HEAD), and the gateway authorizes it as a read for the chain it is given. A check
+   * never writes, so there is no yes to ask for; anything outward is refused here and would be held by the gateway anyway.
+   * @param {{ connection: string, operation: string, input?: any }} spec @param {any} chain a kernel-built chain
+   */
+  async readConnection(spec, chain) {
+    const cat = /** @type {any} */ (await this.catalogFn());
+    const probe = expandConnections({ steps: [{ id: "check", kind: "service", connection: spec.connection, operation: spec.operation, ...(spec.input !== undefined ? { input: spec.input } : {}) }] }, cat);
+    if (probe.errors.length) throw Object.assign(new Error(probe.errors[0].message), { code: "bad_input" });
+    const s = probe.flow.steps[0];
+    const method = String(s.method || "GET").toUpperCase();
+    if (method !== "GET" && method !== "HEAD") throw Object.assign(new Error(`a check only reads, and ${spec.operation} is ${method}`), { code: "not_allowed" });
+    if (!this.ports.service) throw Object.assign(new Error("this Space has no connectors yet"), { code: "unavailable" });
+    const val = (/** @type {any} */ v) => v;
+    return this.ports.service({ chain, connector: s.connector, request: { method, path: s.path, ...(s.query !== undefined ? { query: val(s.query) } : {}), ...(s.headers !== undefined ? { headers: val(s.headers) } : {}) } });
+  }
+
+  /** What the stages module writes its gates through. */
+  gatePort() { return { open: (/** @type {any} */ g) => this.gateOpen(g), mark: (/** @type {string} */ id, /** @type {string} */ k, /** @type {any} */ p, /** @type {any} */ x) => this.gateMark(id, k, p, x), close: (/** @type {string} */ id, /** @type {any} */ x) => this.gateClose(id, x), list: () => this.gates(), read: (/** @type {any} */ spec, /** @type {any} */ chain) => this.readConnection(spec, chain) }; }
+
+  /** The open gates. @returns {Promise<any[]>} */
+  async gates() { return (await this.store.listRuns({ state: "waiting", limit: 5000 })).filter((/** @type {any} */ r) => r.gate); }
+
+  /** Write one step of a gate. A step that is already in that status with that output is left alone, so a repeated look writes nothing. @param {string} id @param {string} key @param {Record<string, any>} patch @param {{ attention?: any }} [o] */
+  async gateMark(id, key, patch, o = {}) {
+    return this.#locked(id, async () => {
+      const run = await this.store.getRun(id);
+      if (!run || !run.gate) return null;
+      const cur = run.steps[key];
+      const same = cur && cur.status === patch.status && JSON.stringify(cur.output ?? null) === JSON.stringify(patch.output ?? cur.output ?? null);
+      if (same && !o.attention && !run.attention) return run;
+      run.steps[key] = { ...(cur || {}), at: this.now(), ...patch };
+      run.updated_at = this.now();
+      if (o.attention) run.attention = { since: this.now(), ...o.attention }; else if (patch.status !== "failed") run.attention = undefined;
+      await this.store.putRun(run);
+      return run;
+    });
+  }
+
+  /** The gate is over: the record moved on (or was moved, or the stage is no longer the record's). @param {string} id @param {{ state?: 'done'|'cancelled', note?: string }} o */
+  async gateClose(id, o = {}) {
+    return this.#locked(id, async () => {
+      const run = await this.store.getRun(id);
+      if (!run || !run.gate || run.finished_at) return;
+      run.state = o.state || "done"; run.finished_at = this.now(); run.updated_at = run.finished_at; run.waiting = undefined; run.attention = undefined;
+      if (o.note) run.error = { step: "move", code: "note", message: o.note };
+      await this.store.putRun(run);
+      this.#emit("gate.closed", { run: id, state: run.state }, run, `vyre://${run.space}/flow-run/${id}`);
+    });
   }
 
   /** The saved test cases of a Flow. @param {string} id */
@@ -229,9 +305,23 @@ export class FlowRunner {
         nextAt = t.cron !== undefined ? nextCron(t.cron, Math.max(last, now), this.#zone(t, cat)) : t.every_ms !== undefined ? Math.max(last + t.every_ms, now) : t.at !== undefined && t.at > now ? t.at : null;
       }
       out.push(healthOf({ id: r.id, label: (flow && (flow.label || flow.name)) || r.name || r.id, status: r.status, paused: r.paused || null, runs, now, nextAt, tz: cat.tz || "UTC",
-        lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
+        lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, testFailing: ver && r.status === "active" ? await this.#testFailing(r.id, ver) : undefined, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
     }
     return id ? out[0] || null : out;
+  }
+
+  /** The first failing saved test case of the active version, or undefined (a minute's cache: health is read often and a replay is not free). @param {string} id @param {any} ver */
+  async #testFailing(id, ver) {
+    const cases = await this.tests(id);
+    if (!cases.length) return undefined;
+    const key = `${ver.hash}:${JSON.stringify(cases).length}`;
+    const hit = this.testMemo.get(id);
+    if (hit && hit.key === key && this.now() - hit.at < 60_000) return hit.bad;
+    const approver = ver.approver || { kind: "service", id: "flows", space: ver.space };
+    const r = await runCases(this, ver.flow, cases, approver).catch(() => null);
+    const bad = r && !r.ok ? r.results.find(x => !x.ok)?.name : undefined;
+    this.testMemo.set(id, { key, at: this.now(), bad });
+    return bad;
   }
 
   /** A run read back as lines (f12), or one step in detail. @param {string} runId @param {{ step?: string }} [o] */
@@ -722,6 +812,7 @@ export class FlowRunner {
   async retry(runId, opts = {}) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
+      if (run && run.gate) throw Object.assign(new Error("a stage gate is not retried; it moves on by itself when its tasks are done"), { code: "bad_state" });
       if (!run || (run.state !== "paused" && run.state !== "failed")) return;
       const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
       if (opts.version === "latest") {
@@ -773,6 +864,7 @@ export class FlowRunner {
   async cancel(runId, o = {}) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
+      if (run && run.gate) throw Object.assign(new Error("a stage gate is not cancelled; move the record, or move it on early with flows.advance"), { code: "bad_state" });
       if (!run || !["paused", "failed", "waiting"].includes(run.state)) return { ok: false, state: run ? run.state : null };
       const w = run.waiting;
       run.state = "cancelled"; run.waiting = undefined; run.finished_at = this.now(); run.updated_at = run.finished_at; run.attention = undefined;
@@ -1389,7 +1481,8 @@ export class FlowRunner {
       let cursor;
       let scanned = 0;
       do {
-        const page = await this.k.records.query(this.#chain(ctx), s.type, { ...(pushed ? { filter: pushed } : {}), ...(s.sort ? { sort: s.sort } : {}), page: { limit: Math.min(200, this.limits.scan - scanned), ...(cursor ? { cursor } : {}) } });
+        // (a Kit being tried out reads types the Space does not have yet: those read as empty)
+        const page = await this.k.records.query(this.#chain(ctx), s.type, { ...(pushed ? { filter: pushed } : {}), ...(s.sort ? { sort: s.sort } : {}), page: { limit: Math.min(200, this.limits.scan - scanned), ...(cursor ? { cursor } : {}) } }).catch((/** @type {any} */ e) => { if (ctx.softReads) return { rows: [], next_cursor: null }; throw e; });
         for (const r of page.rows) {
           scanned++;
           if (r.labels && (r.labels.trust === "external" || r.labels.trust === "untrusted")) ctx.run.tainted = true;
@@ -1644,10 +1737,10 @@ export class FlowRunner {
    * would have asked for, what it would have written, sent and run. Reads are real (as the approver, read-only), so a `find` sees today's data;
    * writes, tasks, calls, http, code and models are stubbed; waits do not wait. Nothing is stored and nothing is emitted.
    * @param {any} flow a stored Flow (a draft or an active one)
-   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[] }} o
+   * @param {{ approver: ActorRef, events?: any[], since?: number, until?: number, limit?: number, samples?: any[], cat?: any, softReads?: boolean }} o
    */
   async simulate(flow, o) {
-    const cat = await this.catalogFn();
+    const cat = o.cat || await this.catalogFn();
     const compiled = compileFlow(flow, cat);
     if (!compiled.ok) return { ok: false, errors: compiled.errors, warnings: compiled.warnings };
     const caps = Array.isArray(flow.caps) ? flow.caps : deriveCaps(flow, cat);
@@ -1683,7 +1776,7 @@ export class FlowRunner {
       /** @type {Run} */
       const run = { id: "sim_" + h.key, flow: "simulation", version: 0, hash: "", space: cat.space, trigger: { kind: h.trigger, key: h.key, ...(h.env ? { event: slim(h.env) } : { input: h.scope.trigger }) },
         tainted: Boolean(h.env && (h.env.trust === "external" || h.env.trust === "untrusted")), source_spaces: (h.env && h.env.source_spaces) || [cat.space], depth: 0, state: "running", started_at: h.at, updated_at: h.at, steps: {}, approver: o.approver, dry: true };
-      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]) };
+      const ctx = { run, flow, view: { flow, id: "simulation" }, cat, caps, dry: true, count: 0, dryEffects: /** @type {any[]} */ ([]), dryAsks: 0, dryTasks: /** @type {any[]} */ ([]), softReads: Boolean(o.softReads) };
       /** @type {{ outcome: string, reason?: string }} */ let result = { outcome: "completed" };
       try { await this.#walk(ctx, flow.steps, "", {}); }
       catch (e) {

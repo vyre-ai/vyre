@@ -4,7 +4,7 @@ summary: What a Flow is, the step kinds, how to propose a change to one, what th
 audience: agents
 owner: docs
 status: stable
-tokens: 1700
+tokens: 1500
 when: You write, change, test or explain an automation, or a Flow step asks you to do something.
 ---
 
@@ -71,13 +71,11 @@ Every step runs under a time limit and a retry rule, with defaults per kind (rea
 
 ## Reading how Flows are doing
 
-`flows.list` gives each Flow a one-line health (last run, this week, what needs a person, red when a Connection it uses is red); `flows.health` the same for one Flow; `flows.control` whether everything is paused or draining and how many runs are held. `flows.describe` reads a Flow or a run in a few lines; `flows.timeline { run }` reads a run back one line a step, and `step` gives one step in detail (its input with secrets hidden, every attempt). `flows.diff { id, from, to }` says what changed between two versions by step; going back is `flows.rollback`, which a person approves. Read these before you read a whole Flow.
+`flows.list` gives each Flow a one-line health (red when a Connection it uses is red or a saved test fails); `flows.health` the same for one; `flows.control` says whether everything is paused or draining. `flows.describe` reads a Flow or a run in a few lines; `flows.timeline { run }` reads a run one line a step (`step` for one in detail). `flows.diff { id, from, to }` says what changed between versions; `flows.rollback` goes back and a person approves. Read these before a whole Flow.
 
-## Test a Flow before it goes live
+## Write, test and stage Flows
 
-- `flows.test.save { id, name, event: { type, data } | input, expect }` keeps a case; `expect` may say `state`, `writes: { <type>: n }`, `outward`, `asks`, `steps_ran`, `steps_not_run`. `{ id, from_run }` keeps what a real run did. You add cases; changing one is a person's.
-- `flows.test.run { id }` runs them with every action stubbed, one line each. A version cannot be approved while a case fails.
-- `flows.describe { run }` also answers `explain` in four sentences. A problem reads `Step 3 (make_letter): ...; did you mean client?` and carries `step` and `fix`.
-- Read `flows-cheatsheet.md` (or `flows.cheatsheet`) before you write one. Read and write a Flow in the lines form: `flows.code { id, format: "lines" }`, and `format: "lines"` on `flows.define` and `flows.compile-text`. Change one with `flows.patch { id, base, ops }` (set, insert, replace, remove, move) instead of rewriting it; a patch made against an older version is refused.
-- `flows.propose` compiles the draft, runs its test cases and replays last week's events before a person is asked, and puts one line on the card. You cannot skip it.
-
+- Read `flows-cheatsheet.md` first. `flows.code`, `flows.define` and `flows.compile-text` take `format: "lines"`; change a Flow with `flows.patch { id, base, ops }`, not a rewrite.
+- `flows.test.save` keeps a test case (`{ id, name, event | input, expect }`, or `{ id, from_run }`); `flows.test.run` runs them. No version is approved while one fails. `flows.propose` also compiles the draft and replays last week first; you cannot skip that.
+- `flows.describe { run }` explains a run in four sentences. A stage with tasks is a gate run; `flows.advance { run, reason }` moves a record on early (the stage's owner or an admin, in their own name).
+- `flows.kit.test` tries a Kit on a sample with nothing sent. A task may carry a `brief` and a `checklist` that the gate checks.

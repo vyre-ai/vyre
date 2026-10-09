@@ -91,6 +91,12 @@ export interface TaskTemplateDef {
   readonly depends_on?: readonly string[];
   readonly due_offset_ms?: Ms;
   readonly required?: boolean;
+  /** Words for the doer, with `{record.field}` filled in when the task is made. */
+  readonly brief?: string;
+  /** What must hold before the task counts as done; the stage gate checks it (kernel/flows/checklist.js). */
+  readonly checklist?: readonly { readonly say: string; readonly check: Readonly<Record<string, unknown>> }[];
+  /** The Connections the doer may use for this task. */
+  readonly credentials?: readonly string[];
 }
 
 export interface StageDef {

@@ -34,7 +34,7 @@ export async function world(o = {}) {
   });
   // stages made of tasks: a module over the same events, working under [ALEX, service:stages]
   const stageEvents = [];
-  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }),
+  const stages = createStages({ kernel, catalog: () => cat, chain: () => kernel.moduleChain({ module: "stages", approver: ALEX }), clock: () => clock.t, hook: which === "real", emit: (type, data) => stageEvents.push({ type, data }), gates: runner.gatePort(), isAdmin: who => who.id === ALEX.id,
     ports: { roles: (space, role) => (role === "attorney" ? [ALEX, BOB] : role === "manager" ? [BOB] : []) } });
   /** @type {Array<() => void>} */ const offs = [];
   offs.push(kernel.onEvent(e => stages.onEvent(e), "stages"));

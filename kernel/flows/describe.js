@@ -53,6 +53,7 @@ export function describeFlow(flow, o = {}) {
  */
 export function describeRun(run, flow) {
   const t = timelineOf(run, flow);
+  if (run.gate) return describeGate(run, t);
   /** @type {string[]} */ const lines = [`Run ${run.id} of ${flow ? flow.label || flow.name : run.flow} (v${run.version}), started by ${run.trigger ? run.trigger.kind : "a trigger"}${run.tainted ? ", from outside this Space" : ""}.`];
   lines.push(t.lines[0]);
   if (run.error && run.error.code && run.error.code !== "note" && ["failed", "paused"].includes(run.state)) lines.push(`Stopped at ${run.error.step}: ${run.error.code}: ${run.error.message}`);
@@ -72,6 +73,7 @@ const DID = { create: "made", update: "updated", upsert: "saved", remove: "remov
  * @returns {string}
  */
 export function explainRun(run, flow) {
+  if (run.gate) return explainGate(run);
   const idx = stepIndex(flow);
   const why = whyRan(run.trigger);
   /** @type {string[]} */ const did = [];
@@ -103,4 +105,36 @@ export function explainRun(run, flow) {
   else parts.push("It is running.");
   if (run.attention && run.attention.kind) parts.push(`Needs attention: ${run.attention.kind}.`);
   return parts.slice(0, 5).join(" ");
+}
+
+/** @param {any} run */
+function gateCounts(run) {
+  const g = run.gate;
+  const tasks = Object.entries(run.steps || {}).filter(([k]) => k.startsWith("task:")).map(([k, v]) => ({ title: k.slice(5), status: /** @type {any} */ (v).status, required: Boolean(/** @type {any} */ (v).output && /** @type {any} */ (v).output.required) }));
+  const req = tasks.filter(t => t.required);
+  const pool = req.length ? req : tasks;
+  return { g, tasks, done: pool.filter(t => t.status === "done" || t.status === "skipped").length, of: pool.length, stuck: tasks.filter(t => t.status === "failed") };
+}
+
+/** A stage gate as lines: where the record is, how many tasks are done, what holds it, and who may move it on. @param {any} run @param {{ lines: string[] }} t */
+function describeGate(run, t) {
+  const { g, done, of, stuck } = gateCounts(run);
+  /** @type {string[]} */ const lines = [`Stage gate for ${g.type} ${g.record} in ${g.stage}${g.next ? `, then ${g.next}` : ", the last stage"}.`];
+  lines.push(...t.lines.slice(0, 1));
+  if (run.state === "waiting") {
+    lines.push(`${done} of ${of} ${of === 1 ? "task" : "tasks"} done${stuck.length ? `; stuck: ${stuck.map(x => x.title).join(", ")}` : ""}.`);
+    const cond = run.steps.condition;
+    if (cond && cond.status === "waiting") lines.push(`Held by the next stage: ${cond.output && cond.output.say}.`);
+    if (g.owner) lines.push(`${g.owner} (or an admin) can move it on early with flows.advance.`);
+  } else lines.push(run.error && run.error.code === "note" ? `Over: ${run.error.message}.` : "Over: the record moved on.");
+  return lines;
+}
+
+/** @param {any} run */
+function explainGate(run) {
+  const { g, done, of } = gateCounts(run);
+  const move = run.steps.move;
+  if (run.state !== "waiting") return `${g.type} ${g.record} entered ${g.stage}. ${move && move.output && move.output.early ? `${move.output.by} moved it on early to ${move.output.to}: ${move.output.reason}.` : move ? `Its tasks were done, so it moved on to ${g.next}.` : run.error && run.error.message ? `It is over: ${run.error.message}.` : "It is over."}`;
+  const cond = run.steps.condition;
+  return `${g.type} ${g.record} entered ${g.stage}, which has ${of} ${of === 1 ? "task" : "tasks"}; ${done} done. ${cond && cond.status === "waiting" ? `${g.next} cannot be entered yet: ${cond.output && cond.output.say}.` : g.next ? `When they are done it moves on to ${g.next}.` : "This is the last stage."}${g.owner ? ` ${g.owner} or an admin can move it on early.` : ""}`;
 }
