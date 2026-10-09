@@ -36,7 +36,6 @@ function world(extra = {}) {
     ...extra,
   } });
   let n = 0;
-  /** @type {any} */ (k.ctx).stopped = () => false;
   /** @type {any} */ (k.ctx).call = async (/** @type {string} */ op, /** @type {any} */ a) => {
     world.calls.push([op, a]);
     if (op === "tabs.navigate") {
@@ -163,7 +162,10 @@ test("ops.call of a send is held until asked, then made exactly once; a lost ans
   assert.equal(world.fetches[0].init.headers["x-csrf-token"], F.CSRF);
   const k2 = world({ "Runtime.evaluate": (/** @type {any} */ p) => { const e = String(p.expression); if (e.includes("localStorage")) return { result: { value: { origin: ORIGIN, url: ORIGIN, cookie: {}, local: { csrf: F.CSRF }, session: {} } } }; if (e.includes("fetch(P.url")) { world.fetches.push(1); return { exceptionDetails: { text: "Failed to fetch" } }; } return { result: { value: 1 } }; } });
   world.fetches.length = 0;
-  await assert.rejects(T(opsCap.ops["ops.call"])({ tab: 1, op: learned.operation, inputs, asked: true }, k2.ctx), (/** @type {any} */ e) => /could not make that request/.test(e.message) || e.code === "bad_request");
+  const lost = await T(opsCap.ops["ops.call"])({ tab: 1, op: learned.operation, inputs, asked: true }, k2.ctx);
+  assert.equal(lost.ok, false);
+  assert.equal(lost.ambiguous, true, "the request may have left: the outcome is unknown, not 'failed'");
+  assert.match(lost.next, /check the site before any retry/);
   assert.equal(world.fetches.length, 1, "no retry");
 });
 
