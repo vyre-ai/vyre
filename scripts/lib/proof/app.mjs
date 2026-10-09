@@ -164,6 +164,13 @@ export function createApp(o) {
     return s;
   }
 
+  /** The same sign-in as openSession over a caller's own transport (a direct connection, no relay). @param {(tool: string, input: any, headers?: Record<string, string>) => Promise<any>} call */
+  async function startDirect(call) {
+    if (!pairing) throw new Error("this app is not paired with a server");
+    const s = await startPaired({ device: pairing.device, call, sign: signPerson, label: o.label });
+    return { token: Boolean(s && s.token) };
+  }
+
   /** One tool call on the paired server, as this device's signed-in session. @param {string} tool @param {Record<string, unknown>} [input] */
   async function callTool(tool, input = {}) {
     if (!session) await openSession();
@@ -292,7 +299,7 @@ export function createApp(o) {
   return {
     label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
-    reserve, becomeYourself, addServer, pairWithServer, openSession, callTool, installLine, until, claimServerSpace,
+    reserve, becomeYourself, addServer, pairWithServer, openSession, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
   };
 }
