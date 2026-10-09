@@ -29,6 +29,7 @@ export function taskIdOf(env) {
 }
 
 const DONE = new Set(["done"]);
+const DAY = 86_400_000;
 const FINISHED = new Set(["done", "skipped"]);
 
 /**
@@ -38,6 +39,7 @@ const FINISHED = new Set(["done", "skipped"]);
  *   clock?: () => number, emit?: (type: string, data: any) => void,
  *   hook?: boolean,  // the gateway calls onStageEnter itself, so the record.stage-entered event is not a second way in
  *   gates?: { open: (g: any) => Promise<string>, mark: (id: string, key: string, patch: any, o?: any) => Promise<any>, close: (id: string, o?: any) => Promise<any>, list: () => Promise<any[]> },  the runner's stage gates (s1): each stage entry with tasks is a run there, so it is written down, shown and logged
+ *   leases?: { lend: (q: { task: string, agent: string, connections: string[], until: number }) => Promise<any>, end: (task: string, reason: string) => Promise<any> },  lends a Connection to a task's doer for the task's life (the vault module makes and takes back the kernel grant)
  *   isAdmin?: (who: any) => Promise<boolean> | boolean,  who may move a record on early besides the stage owner
  * }} o
  */
@@ -126,7 +128,8 @@ export function createStages(o) {
       };
       const task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` });
       made.set(t.title, task.id);
-      ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
+      const leased = await lend(t, task, doer, e);
+      ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}), ...(leased ? { leased: true } : {}) });
       taskEntry.set(task.id, key);
     }
     emit("stage.tasks-made", { record: e.urn, stage: e.stage, tasks: ent.tasks.map(t => t.id) });
@@ -140,14 +143,35 @@ export function createStages(o) {
       const stages = await stagesOfRecord(ent.type, await recordData(ent.type, ent.id));
       const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
       ent.owner = owner; ent.next = at >= 0 && stages[at + 1] ? stages[at + 1].name : null;
-      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}) })) });
+      ent.run = await o.gates.open({ key: ent.key, urn: ent.urn, type: ent.type, id: ent.id, stage: ent.stage, next: ent.next, owner: owner || undefined, tasks: ent.tasks.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, required: t.required, ...(t.since ? { since: t.since } : {}), ...(t.checklist ? { checklist: t.checklist } : {}), ...(t.leased ? { leased: true } : {}) })) });
     } catch (err) { emit("stage.error", { record: ent.urn, stage: ent.stage, why: `the gate could not be written: ${err instanceof Error ? err.message : String(err)}` }); }
+  }
+
+  /**
+   * A task that names `credentials` and has an agent for its doer lends those Connections to that doer for the task's life: until the task's due time and a day after it (a week with no due time).
+   * The vault module makes the kernel grant and takes it back (a port, `leases`); a stage never makes a grant itself. A lease that cannot be made never stops the stage: the task is made, the doer
+   * is told which Connections it was meant to have (the task's note), and the event says so. @returns {Promise<boolean>} whether a lease is out
+   * @param {any} t the template @param {any} task the made task @param {any} doer @param {any} e the entry
+   */
+  async function lend(t, task, doer, e) {
+    if (!Array.isArray(t.credentials) || !t.credentials.length || !doer || doer.kind !== "agent") return false;
+    if (!o.leases) { emit("stage.lease-unavailable", { record: e.urn, stage: e.stage, task: t.title, why: "this Space cannot lend a Connection to a task yet" }); return false; }
+    try {
+      await o.leases.lend({ task: task.id, agent: String(doer.id), connections: t.credentials.map(String), until: (task.due || now() + 7 * DAY) + DAY });
+      emit("stage.lease-made", { record: e.urn, stage: e.stage, task: t.title, connections: t.credentials.length });
+      return true;
+    } catch (err) { emit("stage.lease-unavailable", { record: e.urn, stage: e.stage, task: t.title, why: err instanceof Error ? err.message.slice(0, 120) : "the lease could not be made" }); return false; }
+  }
+  /** End the leases of a gate's tasks (every one, or those whose ids are given). Never throws into the stage. @param {any} ent @param {string} reason @param {string[]} [only] */
+  async function endLeases(ent, reason, only) {
+    if (!o.leases) return;
+    for (const t of ent.tasks) if (t.leased && (!only || only.includes(t.id))) { try { await o.leases.end(t.id, reason); t.leased = false; } catch { /* the grant expires on its own */ } }
   }
 
   /** Write a gate step; never throws into the stage. @param {any} ent @param {string} key @param {any} patch @param {any} [opts] */
   async function mark(ent, key, patch, opts) { if (!o.gates || !ent.run) return; try { await o.gates.mark(ent.run, key, patch, opts); } catch { /* the gate is a record, not a rule */ } }
   /** @param {any} ent @param {any} [opts] */
-  async function closeGate(ent, opts) { if (!o.gates || !ent.run) return; try { await o.gates.close(ent.run, opts); } catch { /* as above */ } }
+  async function closeGate(ent, opts) { await endLeases(ent, "the stage is over"); if (!o.gates || !ent.run) return; try { await o.gates.close(ent.run, opts); } catch { /* as above */ } }
 
   /** Is the entry's stage done? If so, move the record on, once. @param {string} key */
   async function settle(key) {
@@ -172,6 +196,8 @@ export function createStages(o) {
         r.checkedFail = true;
       } else await mark(ent, `task:${t.title}`, { status: "done", output: { required: t.required, checklist: ev.results.map(x => ({ say: x.say, ok: true })), memo: ev.memo, since: t.since } });
     }
+    // a task that is over no longer needs what was lent for it
+    await endLeases(ent, "the task is over", rows.filter(r => DONE.has(r.state) || r.state === "skipped").map(r => r.id));
     ent.waitingOn = listed ? "checklist" : ent.waitingOn === "checklist" ? undefined : ent.waitingOn;
     for (const r of rows) if (!r.checkedFail && !((ent.tasks.find(/** @param {any} t */ t => t.id === r.id) || {}).checklist && r.state === "done")) await mark(ent, `task:${r.title}`, DONE.has(r.state) ? { status: "done" } : r.state === "skipped" ? { status: "skipped" } : r.state === "stuck" ? { status: "failed", error: { code: "stuck", message: "the task is stuck" } } : { status: "waiting" });
     const required = rows.filter(r => r.required);

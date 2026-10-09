@@ -267,7 +267,11 @@ async function startLocked(opts, root, p, release) {
     const { createFlowsHost } = await import("./flows-host.js");
     const catalogOfConnectors = async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; };
     const { createCalendarSyncHost } = await import("./calendar-sync.js");
-    const flowsHost = createFlowsHost({ log, publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    const flowsHost = createFlowsHost({ log,
+      // Lending a Connection to a task's doer is the vault module's act (it makes the kernel grant and takes it back); Flows asks for it by tool. A build whose vault does not offer
+      // these yet answers "unknown tool", and the stage says so and goes on.
+      leases: { lend: async (/** @type {any} */ q) => { const r = await registry.call("vault.connections.lend", q, "module:flows"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; },
+        end: async (/** @type {string} */ task, /** @type {string} */ reason) => { const r = await registry.call("vault.connections.end", { task, reason }, "module:flows"); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } }, publish: (/** @type {string} */ type, /** @type {any} */ payload) => events.emit("flows", type, payload), tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: catalogOfConnectors,
       // The registered tools a Flow's call step may run (their module listed them in flow.steps), the triggers it offers (flow.triggers), and the one way to run a step: as the person, through the registry.
