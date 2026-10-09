@@ -44,6 +44,7 @@ import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { ACCESS_REQUESTS_MIGRATION } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
+import { MCP_PASSES_MIGRATION } from "./passmcp.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
@@ -145,6 +146,8 @@ export const MIGRATIONS = [
   ACCESS_REQUESTS_MIGRATION,
   // The one grant model, module release: a grant in the kernel's shape beside the older columns, and the requests an assistant made (release.js).
   RELEASE_BODY_MIGRATION,
+  // The Vault MCP: passes made for outside agents, and what they asked to see (passmcp.js).
+  MCP_PASSES_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -371,6 +374,7 @@ export class Vault {
     /** Agent logins: what a grant is checked against, the words, the log of uses (ADR 0028, decision 2). Who may use a login is `access`. */
     this.agents = new AgentGrants(this);
     /** Who may use a login: kernel grants (access.js), set by index.js where there is a kernel. @type {import("./access.js").Access | null} */ this.access = null;
+    /** The Vault MCP for outside agents (passmcp.js), set by index.js. @type {import("./passmcp.js").PassMcp | null} */ this.mcp = null;
     /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */
     this.releases = new Release(this);
     /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
@@ -1821,6 +1825,7 @@ export class Vault {
       grants: /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grant_requests ORDER BY at").all()).map(g => ({ ...this.grantOut({ ...g, status: "pending" }), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
       agentGrants: this.access ? this.access.pending() : [],
+      ...(this.mcp ? { mcpReveals: this.mcp.reveals() } : {}),
       ...this.share.requests(),
     };
   }

@@ -184,6 +184,7 @@ export const DECLARED = Object.freeze({
     "chrome.net", "chrome.open", "chrome.parallel", "chrome.plan", "chrome.point", "chrome.recipe", "chrome.screenshot", "chrome.site", "chrome.snapshot", "chrome.sources", "chrome.state",
     "chrome.status", "chrome.stop", "chrome.summary", "chrome.tabs", "chrome.type", "chrome.wait"].map(t => [t, "cb69aea6d"])),
   ...Object.fromEntries(["threads.release", "github.accounts"].map(t => [t, "3c2ce3bcf"])),
+  ...Object.fromEntries(["list", "get", "check", "export", "import", "propose"].map(t => [`connectors.connection.${t}`, "565e81d11"])),
   "vault.revoke": "59980bf43",
   "pluginagent.ask": "2bbe50159",
   "pluginagent.status": "2bbe50159",

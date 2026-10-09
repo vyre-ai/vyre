@@ -34,9 +34,9 @@ export async function kernelRig(o = {}) {
     proofFrom: () => ({ presence: { n: Math.random() } }),
     vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => gs.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => gs.takeBack(q), personalVault: () => gs.personalVault(), grantsOn: (/** @type {string} */ p) => gs.grantsOn(p) }),
     // the same question the kernel's handle answers (kernel/index.js agentMay): the agent acting for the owner
-    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin) => {
+    agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource, /** @type {string} */ origin, /** @type {boolean} */ full) => {
       if (!AGENT_ACTIONS.includes(action)) return false;
-      try { return (await gw.authorize({ chain: assistant(agent), action, resource, ...(origin ? { origin } : {}) })).effect === "allow"; } catch { return false; }
+      try { const e = (await gw.authorize({ chain: assistant(agent), action, resource, ...(origin ? { origin } : {}) })).effect; return full ? e : e === "allow"; } catch { return false; }
     },
   };
   const ctx = { kernel: K, log: () => {}, call: async (/** @type {string} */ tool, /** @type {any} */ input) => {

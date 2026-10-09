@@ -2,7 +2,7 @@
 // the person), vault.pass.list / create / revoke and vault.offboard, vault.devices and vault.device.revoke, vault.health and vault.breach.check (Watchtower), vault.history,
 // vault.audit for an item, vault.update (replace a value, or make a new one on the box) and vault.ssh.generate. Acts that need the person are answered by the app's call
 // with the device's own proof, so a refusal that reaches here is a real one. A value never comes back from any of these.
-import { pickBreach, pickCaps, pickDevices, pickHealth, pickHistory, pickPasses, pickPending } from "./more-model.ts";
+import { pickReveals, pickMcpMade, pickBreach, pickCaps, pickDevices, pickHealth, pickHistory, pickPasses, pickPending } from "./more-model.ts";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 
@@ -20,7 +20,7 @@ export function vaultMoreSource(call: Call) {
     /** The passes, and what waits for the person (a box without vault.pending has none). */
     async passes() {
       const [p, w] = await Promise.all([ask("vault.pass.list"), maybe("vault.pending")]);
-      return { passes: pickPasses(p), pending: w ? pickPending(w) : [] };
+      return { passes: pickPasses(p), pending: w ? pickPending(w) : [], reveals: w ? pickReveals(w) : [] };
     },
     approve: (id: string) => ask("vault.approve", { id }),
     /** Deny an ask: a grant is revoked, a pass is ended. Taking access away is always allowed. */
@@ -31,6 +31,15 @@ export function vaultMoreSource(call: Call) {
       const r = await ask<{ ticket?: string; pass?: { status?: string } }>("vault.pass.create", input);
       return { ticket: typeof r?.ticket === "string" ? r.ticket : "", pending: r?.pass?.status === "pending" };
     },
+    /** Make a pass for an outside agent (Claude Code, Codex): the token and the lines to give them, shown once. */
+    async createMcpPass(input: Record<string, unknown>) { return pickMcpMade(await ask("vault.mcp.pass.create", input)); },
+    /** The api credentials a pass can share and the hosts each is pinned to (names and hosts only). */
+    async mcpItems(): Promise<{ name: string; hosts: string[] }[]> { const r = await maybe<{ items?: { name?: unknown; hosts?: unknown }[] }>("vault.mcp.items"); return (r?.items ?? []).filter((x) => typeof x.name === "string").map((x) => ({ name: String(x.name), hosts: list(x.hosts) })); },
+    /** Allow an outside agent to see one value, once (your fresh yes), or decline. */
+    allowReveal: (id: string) => ask("vault.mcp.reveal.allow", { id }),
+    declineReveal: (id: string) => ask("vault.mcp.reveal.clear", { id }),
+    /** End an outside agent's pass. Needs no one. */
+    async revokeMcpPass(id: string): Promise<void> { await ask("vault.mcp.pass.revoke", { id }); },
     /** End a pass. A sealed one left a copy, so the items to replace come back. */
     async revokePass(id: string): Promise<string[]> { return list((await ask<{ rotate?: unknown }>("vault.pass.revoke", { id }))?.rotate); },
     async offboard(person: string): Promise<{ ended: number; rotate: string[] }> {

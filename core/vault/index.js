@@ -41,6 +41,9 @@ import * as requestTools from "./request.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
+import * as mcpTools from "./tools/mcp.js";
+import { PassMcp } from "./passmcp.js";
+import { listenMcp } from "./passmcp-listener.js";
 import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
@@ -461,6 +464,15 @@ export default {
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
       presence("Offboard someone", ({ person }) => `Revoke every pass ${String(person).slice(0, 64)} holds and forget their card`));
 
+    // The Vault MCP for outside agents (passmcp.js): the endpoint is off unless `vault.mcp.port` is set; passes can be made and listed either way.
+    let mcpListener = null;
+    vault.mcp = new PassMcp(vault, { requests, log: ctx.log, url: () => (opts.mcp && opts.mcp.url ? String(opts.mcp.url) : mcpListener ? mcpListener.url : "") });
+    mcpTools.register({ vault, tool, internal });
+    if (opts.mcp && (opts.mcp.port !== undefined || opts.mcp.host)) {
+      mcpListener = await listenMcp({ host: opts.mcp.host || "127.0.0.1", port: Number(opts.mcp.port || 0), handle: q => vault.mcp.handle(q) });
+      vault.mcp.listener = mcpListener;
+      ctx.log(`vault mcp listening on ${mcpListener.url}`);
+    }
     const kits = shareTools.register({ ctx, vault, tool });
     vaultsTools.register({ vault, tool });
     // Pull from homes on start, after each local write, on a poke, and every ten minutes at most.
@@ -489,6 +501,7 @@ export default {
       async stop() {
         if (typeof ctx.provide === "function") ctx.provide("credentialsPort", null); // a stopped vault has no port: the launcher sees none and says so, never a stale answer
         requests.stop();
+        if (mcpListener) await mcpListener.close();
         reminders.stop();
         await conns.stop();
         await kits.stop();
