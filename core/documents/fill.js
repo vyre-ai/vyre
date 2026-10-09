@@ -61,7 +61,7 @@ function plainText(zip) {
 }
 
 /**
- * The names a template asks for, in the order they first appear: { names: ["client.name", ...], loops: ["items"] }. A name inside a loop is listed with the loop (items.label).
+ * The names a template asks for, in the order they first appear: { names: ["client.name", ...], loops: ["items"], loopFields: { items: ["label"] } }. The fields of a loop belong to the loop.
  * @param {Buffer} buf
  */
 export function placeholders(buf) {
@@ -71,15 +71,19 @@ export function placeholders(buf) {
   catch (e) { throw templateError(e); }
   const loops = [...new Set([...plainText(zip).matchAll(/\{[#^]\s*([A-Za-z0-9_.]+)\s*\}/g)].map(m => m[1]))];
   /** @type {Set<string>} */ const names = new Set();
+  /** @type {Record<string, string[]>} */ const loopFields = {};
   const walk = (/** @type {any} */ node, /** @type {string} */ prefix) => {
     for (const [k, v] of Object.entries(node || {})) {
       const full = prefix ? `${prefix}.${k}` : k;
-      if (v && typeof v === "object" && Object.keys(v).length) walk(v, full); else if (!loops.includes(full)) names.add(full);
+      if (v && typeof v === "object" && Object.keys(v).length) {
+        // A loop's own fields belong to the loop (listed under it), not to the document.
+        if (loops.includes(full)) loopFields[full] = Object.keys(v); else walk(v, full);
+      } else if (!loops.includes(full)) names.add(full);
     }
   };
   // getTags() answers per part of the file: { document: { tags, target }, header1: { ... } }.
   for (const part of Object.values(doc.getTags() || {})) walk(part && /** @type {any} */ (part).tags, "");
-  return { names: [...names], loops };
+  return { names: [...names], loops, loopFields };
 }
 
 /** A template that will not compile, said in plain words: where Word split a tag, the tag. @param {any} e */

@@ -24,7 +24,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
       async listPage(_c, prefix) { return { entries: [...files.keys()].filter(k => k.startsWith(prefix)).map(k => ({ path: k, size: files.get(k)?.at(-1)?.length })), next: null }; },
     },
     async definitions() { return types.map(n => ({ name: n, fields: [{ name: "name" }, { name: "status" }, { name: "template" }, { name: "template_version" }, { name: "file" }, { name: "contact" }, { name: "project" }, { name: "sha256" }, { name: "source" }] })); },
-    records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; }, async create(_c, type, data) { made.push({ type, data }); return { urn: `${SPACE}/${type}/rec${made.length}` }; } },
+    records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; }, async create(_c, type, data) { made.push({ type, data }); return { urn: `vyre://${SPACE}/${type}/rec${made.length}` }; } },
   };
   /** @type {Map<string, any>} */ const tools = new Map();
   const ctx = { config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async () => ({}), log: () => {},
@@ -40,7 +40,7 @@ const code = (/** @type {Promise<any>} */ p) => p.then(() => null, e => e);
 test("a template is added to the Drive, a new version when the name is used again, and lists with what it asks for", async () => {
   const r = rig();
   const a = await r.run("documents.template.add", { name: "Engagement letter", base64: b64(LETTER()) });
-  assert.deepEqual([a.name, a.version, a.placeholders.sort(), a.loops], ["Engagement letter", 1, ["client.name", "matter.fee"], ["fees"]]);
+  assert.deepEqual([a.name, a.version, a.placeholders.sort(), a.loops, a.loopFields], ["Engagement letter", 1, ["client.name", "matter.fee"], ["fees"], { fees: ["label", "amount"] }]);
   assert.equal((await r.run("documents.template.add", { name: "Engagement letter", base64: b64(LETTER()) })).version, 2);
   assert.deepEqual((await r.run("documents.template.list", {})).templates.map((/** @type {any} */ t) => t.name), ["Engagement letter"]);
   const g = await r.run("documents.template.get", { name: "Engagement letter", version: 1 });
@@ -53,17 +53,17 @@ test("a template is added to the Drive, a new version when the name is used agai
 test("generate fills the template from values and a record, files it in the Drive and as a Document record", async () => {
   const r = rig({ records: { "client/c1": { data: { name: "Dana Harlow" } } } });
   await r.run("documents.template.add", { name: "Letter", base64: b64(LETTER()) });
-  const out = await r.run("documents.generate", { template: "Letter", records: { client: `${SPACE}/client/c1` }, values: { matter: { fee: 1500 }, fees: [{ label: "filing", amount: 100 }] }, project: "Harlow estate", contact: `${SPACE}/contact/k1` });
+  const out = await r.run("documents.generate", { template: "Letter", records: { client: `vyre://${SPACE}/client/c1` }, values: { matter: { fee: 1500 }, fees: [{ label: "filing", amount: 100 }] }, project: "Harlow estate", contact: `vyre://${SPACE}/contact/k1` });
   assert.match(out.path, /^Documents\/harlow-estate\/letter-[0-9a-f]{8}\.docx$/);
   assert.equal(out.template_version, 1);
   assert.equal(out.sha256, crypto.createHash("sha256").update(r.files.get(out.path)[0]).digest("hex"));
   assert.deepEqual(textOf(r.files.get(out.path)[0]), ["Dear Dana Harlow,", "Your fee is 1500.", "filing 100; "]);
   assert.equal(r.made.length, 1);
   assert.deepEqual([r.made[0].type, r.made[0].data.name, r.made[0].data.template, r.made[0].data.template_version, r.made[0].data.file, r.made[0].data.contact, r.made[0].data.project, r.made[0].data.source],
-    ["document", "Letter", "Letter", 1, out.path, `${SPACE}/contact/k1`, "Harlow estate", "generated"]);
+    ["document", "Letter", "Letter", 1, out.path, `vyre://${SPACE}/contact/k1`, "Harlow estate", "generated"]);
   assert.ok(out.record);
   // the same inputs file the same bytes at the same path: a second run is the same document, not a second file
-  const again = await r.run("documents.generate", { template: "Letter", records: { client: `${SPACE}/client/c1` }, values: { matter: { fee: 1500 }, fees: [{ label: "filing", amount: 100 }] }, project: "Harlow estate" });
+  const again = await r.run("documents.generate", { template: "Letter", records: { client: `vyre://${SPACE}/client/c1` }, values: { matter: { fee: 1500 }, fees: [{ label: "filing", amount: 100 }] }, project: "Harlow estate" });
   assert.equal(again.sha256, out.sha256);
   assert.equal(again.path, out.path);
 });
@@ -71,7 +71,7 @@ test("generate fills the template from values and a record, files it in the Driv
 test("a template with one missing field refuses with its name, and nothing is filed", async () => {
   const r = rig({ records: { "client/c1": { data: { name: "Dana Harlow" } } } });
   await r.run("documents.template.add", { name: "Letter", base64: b64(LETTER()) });
-  const e = await code(r.run("documents.generate", { template: "Letter", records: { client: `${SPACE}/client/c1` }, values: { fees: [] } }));
+  const e = await code(r.run("documents.generate", { template: "Letter", records: { client: `vyre://${SPACE}/client/c1` }, values: { fees: [] } }));
   assert.equal(e.code, "missing_values");
   assert.match(e.message, /matter\.fee/);
   assert.deepEqual([...r.files.keys()], ["Templates/Letter.docx"], "no document file");
@@ -81,9 +81,9 @@ test("a template with one missing field refuses with its name, and nothing is fi
 test("a record the caller cannot see is said, not guessed; the Space with no Document type still files the file", async () => {
   const r = rig({ types: [] });
   await r.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
-  const e = await code(r.run("documents.generate", { template: "Letter", records: { who: `${SPACE}/client/gone` } }));
+  const e = await code(r.run("documents.generate", { template: "Letter", records: { who: `vyre://${SPACE}/client/gone` } }));
   assert.equal(e.code, "not_found");
-  assert.equal((await code(r.run("documents.generate", { template: "Letter", records: { "bad alias": `${SPACE}/client/c1` } }))).code, "bad_input");
+  assert.equal((await code(r.run("documents.generate", { template: "Letter", records: { "bad alias": `vyre://${SPACE}/client/c1` } }))).code, "bad_input");
   assert.equal((await code(r.run("documents.generate", { template: "Letter", records: { who: "nonsense" } }))).code, "bad_input");
   const ok = await r.run("documents.generate", { template: "Letter", values: { who: "Dana" } });
   assert.equal(ok.record, null);

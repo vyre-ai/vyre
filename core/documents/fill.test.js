@@ -36,6 +36,8 @@ test("a loop repeats for each item; a loop with no list is missing, not silently
   const e = (() => { try { fill(t, {}); } catch (x) { return /** @type {any} */ (x); } return null; })();
   assert.deepEqual(e.missing, ["fees"]);
   assert.deepEqual(placeholders(t).loops, ["fees"]);
+  assert.deepEqual(placeholders(t).loopFields, { fees: ["label", "amount"] });
+  assert.deepEqual(placeholders(t).names, []);
 });
 
 test("the same template and values give the same bytes, and the template is not changed", () => {

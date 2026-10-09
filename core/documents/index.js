@@ -38,7 +38,7 @@ export function registerDocuments(ctx) {
   /** The newest version number of a Drive file, or 0. */
   const latest = async (/** @type {any} */ d, /** @type {string} */ p) => { try { const h = await d.gateway.drive.history(d.chain, p); const v = Array.isArray(h) ? h : h && h.versions; return v && v.length ? Number(v[v.length - 1].ver) : 0; } catch (e) { if (/** @type {any} */ (e).code === "not_found") return 0; throw e; } };
 
-  tool("documents.template.add", `Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most ${MAX_BYTES / 1048576} MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops }.`,
+  tool("documents.template.add", `Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most ${MAX_BYTES / 1048576} MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops, loopFields }.`,
     obj({ space: str, name: str, base64: str }, ["name", "base64"]), async (i, d) => {
       const name = nameOf(i.name), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
@@ -46,7 +46,7 @@ export function registerDocuments(ctx) {
       const bytes = Buffer.from(text, "base64");
       const p = placeholders(bytes);
       const r = await d.gateway.drive.put(d.chain, templatePath(name), new Uint8Array(bytes), { base: null });
-      return { name, version: r.version, placeholders: p.names, loops: p.loops };
+      return { name, version: r.version, placeholders: p.names, loops: p.loops, loopFields: p.loopFields };
     });
 
   tool("documents.template.list", "The Word templates in the Space's Drive: { templates: [{ name, size }] }.", obj({ space: str }), async (_i, d) => {
@@ -65,7 +65,7 @@ export function registerDocuments(ctx) {
     const version = i.version ?? (await latest(d, p));
     if (!version) throw refuse(`no template named ${name}`, "not_found");
     const bytes = Buffer.from(await d.gateway.drive.get(d.chain, p, { version, maxBytes: MAX_BYTES }));
-    return { name, version, ...(({ names, loops }) => ({ placeholders: names, loops }))(placeholders(bytes)) };
+    return { name, version, ...(({ names, loops, loopFields }) => ({ placeholders: names, loops, loopFields }))(placeholders(bytes)) };
   }, { effect: "read" });
 
   tool("documents.generate", "Make a document from a template and values, and file it: { template, values?, records?: { alias: record reference }, name?, project?, contact?, format? (docx or pdf), version?, space? }. `values` and the fields of each record (under its alias, {client.name}) fill the {placeholders}. A missing value stops it and names every one; nothing is guessed. Files the result in the Drive under Documents/<project>/ and, when the Space has a Document type, a Document record linked to `contact` and `project`. Answers { path, version, size, sha256, format, record? }.",
