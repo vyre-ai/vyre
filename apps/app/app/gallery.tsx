@@ -5,6 +5,8 @@ import { useLocalSearchParams } from "expo-router";
 import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
+import { RunHereView } from "../screens/runner/RunHere";
+import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
@@ -45,6 +47,20 @@ function Sample({ name }: { name: string }) {
       { person: "Kit Lee", waitDays: 1, state: "denied" as const, requested: null, opens: null, denied: t0 - 3 * day, released: null, items: "x" },
     ];
     return <View style={{ padding: 0 }}><EmergencyView list={list} problem="" onDeny={() => {}} onRemove={() => {}} onRefresh={() => {}} onAdd={() => {}} /></View>;
+  }
+  if (name === "runner-settings") {
+    const s = { enabled: true, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 };
+    const here = [{ thread: "t1", title: "Intake call notes", state: "running" as const, cpuPercent: 14, memoryMb: 900 }, { thread: "t2", title: "Smith engagement letter", state: "waiting" as const, cpuPercent: 0, memoryMb: 512 }];
+    return <RunHereView s={s} here={here} cpu="50" mem="4096" problem="" setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
+  }
+  if (name === "runner-chip") {
+    return (
+      <View style={{ gap: 12, alignItems: "flex-start" }}>
+        <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
+        <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }]} />
+      </View>
+    );
   }
   return null;
 }

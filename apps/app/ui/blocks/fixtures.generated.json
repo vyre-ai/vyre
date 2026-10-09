@@ -3755,6 +3755,34 @@
     }
    }
   },
+  "runner-settings": {
+   "title": "Run on this computer",
+   "screens": {
+    "full": {
+     "component": "runner-settings"
+    },
+    "compact": {
+     "component": "runner-settings"
+    },
+    "glance": {
+     "component": "runner-settings"
+    }
+   }
+  },
+  "runner-chip": {
+   "title": "Session placement",
+   "screens": {
+    "full": {
+     "component": "runner-chip"
+    },
+    "compact": {
+     "component": "runner-chip"
+    },
+    "glance": {
+     "component": "runner-chip"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {
