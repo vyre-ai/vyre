@@ -186,6 +186,9 @@ export const PERSON_ONLY = new Map([
   ["design.proposals", "the owner's list of proposed screen changes, with what each reads and runs"],
   ["design.decide", "the yes or no to a proposed screen is the screen owner's alone"],
   ["design.screen.remove", "removing a space screen is the person's act"],
+  ["brand.set", "the space's identity is saved by a person: an agent drafts it and the person says yes"],
+  ["design.css.status", "the owner's view of custom styling and why one was turned off"],
+  ["design.css.verify", "re-checking custom CSS turns one off: the person's call"],
   ["connectors.connection.create", "connects an app: writes a vault credential with the person's own key"],
   ["connectors.connection.update", "changes what a Connection reaches and rebuilds its credential: the person's own act"],
   ["connectors.connection.proposals", "the person reads what an assistant proposed before saying yes"],
@@ -330,7 +333,7 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "design.catalogue", "design.validate", "design.screens", "design.propose", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
+  "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
   "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",

@@ -13,10 +13,14 @@
       { "name": "design.proposals", "reach": "person", "effect": "read" },
       { "name": "design.decide", "reach": "person", "effect": "write" },
       { "name": "design.screens", "reach": "anyone", "effect": "read" },
-      { "name": "design.screen.remove", "reach": "person", "effect": "write" }
+      { "name": "design.screen.remove", "reach": "person", "effect": "write" },
+      { "name": "design.css.propose", "reach": "anyone", "effect": "write" },
+      { "name": "design.css", "reach": "anyone", "effect": "read" },
+      { "name": "design.css.status", "reach": "person", "effect": "read" },
+      { "name": "design.css.verify", "reach": "person", "effect": "write" }
     ]
   },
-  "watches": { "emits": ["design.proposed", "design.changed"] },
+  "watches": { "emits": ["design.proposed", "design.changed", "design.css-disabled"] },
   "shows": { "cli": [] },
   "needs": {},
   "teaches": {}
