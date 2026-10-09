@@ -47,3 +47,34 @@ test("every answer carries a ready example call", async (t) => {
   assert.equal(got.length, 3);
   for (const g of got) { assert.equal(typeof g.call.tool, "string"); assert.equal(typeof g.call.arguments, "object"); }
 });
+
+// Held-out sets (R031-00q): 51 intents written by an author who had not seen the ranker or the ask table (fresh4) and 49 by another (fresh5, scored once, after all tuning). The
+// ask table was then tuned on fresh4's misses, so fresh4 is a regression pin; fresh5 is the honest number and is only reported, because a held-out score that gates a build stops being held out.
+for (const name of ["fresh4", "fresh5"]) {
+  test(`tools_find on the held-out set ${name} (reported)`, async (t) => {
+    const catalog = await agentCatalog(t);
+    const index = indexOf(catalog);
+    const set = JSON.parse(fs.readFileSync(new URL(`./fixtures/tools-find-intents-${name}.json`, import.meta.url), "utf8"));
+    const have = new Set(catalog.map((c) => c.name));
+    let n = 0, top1 = 0, top3 = 0;
+    for (const x of set) {
+      const want = new Set(x.expect.filter((/** @type {string} */ e) => have.has(e)));
+      if (!want.size) continue;
+      n++;
+      const got = find(index, x.intent, 3);
+      if (got[0] && want.has(got[0].name)) top1++;
+      if (got.some((g) => want.has(g.name))) top3++;
+    }
+    console.log(`tools_find ${name}: top-1 ${top1} of ${n} (${Math.round((100 * top1) / n)}%), top-3 ${top3} of ${n} (${Math.round((100 * top3) / n)}%)`);
+    assert.ok(n >= 40);
+  });
+}
+
+test("every line of the ask table names a tool an agent has, so a renamed tool does not leave a stale ask", async (t) => {
+  const { TOOL_ASKS } = await import("../lib/tools-asks.js");
+  const have = new Set((await agentCatalog(t)).map((c) => c.name));
+  const stale = Object.keys(TOOL_ASKS).filter((k) => !have.has(k));
+  assert.deepEqual(stale, []);
+  const covered = [...have].filter((n) => TOOL_ASKS[n]).length;
+  console.log(`ask table covers ${covered} of ${have.size} tools`);
+});
