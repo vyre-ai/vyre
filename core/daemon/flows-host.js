@@ -183,6 +183,8 @@ export function createFlowsHost(o) {
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
     flows.attachStages(stages);
+    // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
+    const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
     // One subscription feeds triggers, waits, Kit approvals and stages.
     k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
@@ -208,7 +210,7 @@ export function createFlowsHost(o) {
       personChain: () => personChain(ownerOf()),
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
-      stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
+      stop: () => { stopped = true; if (timer) clearTimeout(timer); if (typeof offDevice === "function") offDevice(); } });
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }

@@ -797,6 +797,7 @@ export class FlowRunner {
       if (!led || led.status !== "waiting") return;
       led.wait = { ...(led.wait || {}), result };
       run.state = "running"; run.waiting = undefined; run.updated_at = this.now();
+      if (run.attention && run.attention.kind === "device") run.attention = undefined;
       await this.store.putRun(run);
       await this.#execLocked(runId);
     });
@@ -810,6 +811,8 @@ export class FlowRunner {
    * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
    */
   async retry(runId, opts = {}) {
+    // Retry on a run that waits for a Chrome means: try now, do not wait for the Mac to say it is back.
+    { const w = await this.store.getRun(runId); if (w && w.state === "waiting" && w.attention && w.attention.kind === "device") return this.#resume(runId, { event: null }); }
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
       if (run && run.gate) throw Object.assign(new Error("a stage gate is not retried; it moves on by itself when its tasks are done"), { code: "bad_state" });
@@ -1383,6 +1386,8 @@ export class FlowRunner {
           await this.#sleepOnce(ctx, rkey, Math.max(1, Number(x.retryAfter) || 5) * 1000);
           throw e;
         }
+        // A website Connection run on the person's own Chrome through a Mac that is off: the run WAITS (the durable wait, the same one a person or a timer uses) and wakes when the Mac comes online.
+        if (r && deviceOffline(r)) await this.#awaitDevice(ctx, key, deviceOffline(r));
         if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
         // A 503 can come AFTER the provider did the work, so a write that cannot be repeated safely (no idempotency key) is never sent again on one: it stops and tells the owner, as after a crash.
         // A 429 is a refusal before anything happened, and a read has nothing to duplicate, so those wait and go again.
@@ -1557,6 +1562,22 @@ export class FlowRunner {
     await this.#mark(ctx, key, { status: "waiting", wait });
     this.#emit("step.waiting", { run: ctx.run.id, step: key, until: wait.until ?? wait.deadline }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
     throw this.#suspendOn(ctx, key, wait);
+  }
+
+  /**
+   * The Chrome this step needs is on a Mac that is off. The run waits on the event "link.mac-online" with a deadline (the longest wait a Flow may have), shows as one card that needs the person
+   * ("Needs your Chrome", with Retry to try now and Stop to end it), and tries the same step again when it wakes. If the deadline passes it fails plainly.
+   * @param {any} ctx @param {string} key @param {string} message
+   */
+  async #awaitDevice(ctx, key, message) {
+    const dk = `${key}?device`;
+    const l = this.#led(ctx, dk);
+    if (l && l.status === "waiting" && l.wait && l.wait.result && l.wait.result.timeout) throw new StepFail("device_offline", "the Chrome this step needs did not come online in time");
+    const wait = { kind: "event", event: "link.mac-online", deadline: this.now() + this.limits.wait_max_ms };
+    await this.#mark(ctx, dk, { status: "waiting", wait });
+    this.#attend(ctx.run, { kind: "device", step: key, message: `Needs your Chrome: ${message}` });
+    this.#emit("step.waiting", { run: ctx.run.id, step: dk, until: wait.deadline }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
+    throw this.#suspendOn(ctx, dk, wait);
   }
 
   /** @param {any} ctx @param {string} key @param {any} wait */
@@ -1878,6 +1899,12 @@ const plain = r => (r ? { id: r.id, type: r.type, version: r.version, data: r.da
 const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, actor: e.actor, time: e.time, trust: e.trust, corr: e.corr, data: e.data });
 
 /** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
+/** Does a service answer say the Chrome it needs is on a Mac that is off? Returns the plain reason, or null. @param {any} r */
+function deviceOffline(r) {
+  if (!r || r.status !== 503 || typeof r.body !== "string") return null;
+  try { const j = JSON.parse(Buffer.from(r.body, "base64").toString("utf8")); return j && j.error && j.error.class === "no_browser" && j.error.mac === true ? String(j.error.reason || "the Mac is offline").slice(0, 160) : null; } catch { return null; }
+}
+
 const SERVICE_BODY_CAP = 64 * 1024;
 /** A model's value as the declared kind, or null when it is not that kind (an extracted field is never a guess dressed as another type). @param {any} v @param {string} kind */
 function coerce(v, kind) {

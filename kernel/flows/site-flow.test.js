@@ -96,3 +96,61 @@ test("the Flow is checked at define time against the operation's inputs: a typo 
   const ok = await w.runner.define(null, flowOf([{ id: "f", kind: "service", connection: "linkedin", operation: "send_message", input: { body: { recipient: "a", text: "b" } } }]), { kind: "person", id: "per_alex" });
   if (ok.ok) assert.ok(ok.effects.outward.some((/** @type {any} */ o) => o.step === "f" && o.action === "service.call"), "the approval card lists the send");
 });
+
+// ---- a Mac that is off: the run waits on the Flows engine's own durable wait ----
+const offlineBody = Buffer.from(JSON.stringify({ error: { class: "no_browser", mac: true, reason: "needs your Chrome: the Mac \"studio\" is offline" } })).toString("base64");
+const okBody = Buffer.from(JSON.stringify([{ name: "gamma labs one" }])).toString("base64");
+function deviceWorld(/** @type {{ online: boolean }} */ st) {
+  /** @type {any[]} */ const seen = [];
+  const port = async (/** @type {any} */ q) => { seen.push(q); return st.online ? { status: 200, ok: true, headers: { "content-type": "application/json" }, body: okBody } : { status: 503, ok: false, headers: { "content-type": "application/json" }, body: offlineBody }; };
+  return { port, seen };
+}
+const readFlow = () => flowOf([{ id: "find", kind: "service", connection: "linkedin", operation: "search_people", input: { query: { query: "gamma labs" } } }, { id: "m", kind: "create", type: "payment", set: { client: { expr: "steps.find.response.json[0].name" }, amount: 1 } }]);
+
+test("a read on the Mac rung with the Mac off WAITS (the durable wait), shows as one card that needs the person, and finishes when the Mac comes online", async () => {
+  const st = { online: false };
+  const d = deviceWorld(st);
+  const w = await world({ ports: { service: d.port }, cat: cat() });
+  const { id } = await install(w, readFlow());
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  let run = (await w.runner.listRuns({ flow: id }))[0];
+  assert.equal(run.state, "waiting", JSON.stringify(run.error));
+  assert.deepEqual([run.waiting.kind, run.waiting.event], ["event", "link.mac-online"]);
+  assert.equal(run.attention.kind, "device");
+  assert.match(run.attention.message, /^Needs your Chrome: needs your Chrome: the Mac "studio" is offline|^Needs your Chrome/);
+  assert.equal(d.seen.length, 1);
+  // the Mac comes back: the same step tries again and the run finishes
+  st.online = true;
+  w.kernel.inbound("link.mac-online", {});
+  await settle(w);
+  run = (await w.runner.listRuns({ flow: id }))[0];
+  assert.equal(run.state, "done", JSON.stringify(run.error));
+  assert.equal(run.attention, undefined);
+  assert.equal(mine(w, "payment")[0].data.client, "gamma labs one");
+  assert.equal(d.seen.length, 2, "one retry, not a storm");
+});
+
+test("Retry on the card tries now; Stop ends the run plainly", async () => {
+  const st = { online: false };
+  const d = deviceWorld(st);
+  const w = await world({ ports: { service: d.port }, cat: cat() });
+  const { id } = await install(w, readFlow());
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const first = (await w.runner.listRuns({ flow: id }))[0];
+  st.online = true;
+  await w.runner.retry(first.id);
+  await settle(w);
+  assert.equal((await w.runner.getRun(first.id)).state, "done", "Retry tried the step now");
+  const st2 = { online: false };
+  const d2 = deviceWorld(st2);
+  const w2 = await world({ ports: { service: d2.port }, cat: cat() });
+  const f2 = await install(w2, readFlow());
+  w2.kernel.inbound("payment.received", {});
+  await settle(w2);
+  const r2 = (await w2.runner.listRuns({ flow: f2.id }))[0];
+  await w2.runner.cancel(r2.id);
+  assert.equal((await w2.runner.getRun(r2.id)).state, "cancelled");
+  assert.equal(d2.seen.length, 1, "nothing was sent after Stop");
+});

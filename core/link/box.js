@@ -390,7 +390,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     run: async ({ key }, meta) => {
       const row = byKey(key, meta);
       if (!row) return { paired: false };
+      // A Mac that was away and asks again is back: a Flow waiting for a Chrome to come online wakes on this.
+      const wasOnline = online(row.id);
       lastServe.set(row.id, now());
+      if (!wasOnline) ctx.events.emit("link.mac-online", { peer: row.id, name: row.name });
       // One held request per Mac: a newer one means the older is gone or abandoned.
       release(row.id, null);
       const q = next(row.id);

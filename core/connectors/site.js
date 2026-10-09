@@ -154,7 +154,7 @@ export function createSiteRunner({ call, made, emit = () => {}, log = () => {}, 
     if (cls === "ok") return { status: 200, data: res.data === undefined ? null : res.data };
     log("site operation did not answer", { id, op: op.name, class: cls });
     const status = cls === "no_browser" ? 503 : STATUS_OF[cls] || 502;
-    return { status, data: { error: { class: cls, reason: res && res.reason ? String(res.reason) : cls, ...(res && res.next ? { next: String(res.next) } : {}) } } };
+    return { status, data: { error: { class: cls, reason: res && res.reason ? String(res.reason) : cls, ...(res && res.mac ? { mac: true } : {}), ...(res && res.next ? { next: String(res.next) } : {}) } } };
   }
 
   /** @param {{ credential: string, method: string, path: string, query?: any, body?: any, approved?: boolean }} q */
