@@ -7,7 +7,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { imapAdapter, smtpData, searchCriteria } from "./imap.js";
+import { imapAdapter, smtpData, searchCriteria, guardedLookup } from "./imap.js";
 import { parseQuery } from "../../lib/connectors/message.js";
 import { startFakeMail } from "./testing/fake-imap.js";
 
@@ -326,4 +326,26 @@ test("a server that never answers times out", async t => {
   const r = await a.test(fake.config(), pw());
   assert.equal(r.code, "timeout");
   assert.ok(Date.now() - started < 3000);
+});
+
+test("the default dial resolves the host through netguard and connects to the address it checked", async () => {
+  const lookup = guardedLookup(async h => ({ "mail.example.com": [{ address: "93.184.216.34" }], "evil.example": [{ address: "127.0.0.1" }], "meta.example": [{ address: "169.254.169.254" }] }[h] || []));
+  const ask = (/** @type {string} */ h, /** @type {any} */ o) => new Promise(res => lookup(h, o, (/** @type {any} */ e, /** @type {any} */ a, /** @type {any} */ f) => res({ e, a, f })));
+  assert.deepEqual(await ask("mail.example.com", {}), { e: null, a: "93.184.216.34", f: 4 });
+  assert.deepEqual(await ask("mail.example.com", { all: true }), { e: null, a: [{ address: "93.184.216.34", family: 4 }], f: undefined }, "all: the one checked address");
+  assert.deepEqual(await ask("127.0.0.1", {}), { e: null, a: "127.0.0.1", f: 4 }, "the person's own loopback host (the test fakes)");
+  for (const h of ["evil.example", "meta.example"]) {
+    const r = /** @type {any} */ (await ask(h, {}));
+    assert.equal(r.e.code, "ENOTALLOWED", h);
+    assert.match(r.e.message, /not an address a mail server can be at/);
+  }
+});
+
+test("a mail host that is the cloud metadata address is never dialled, and the error says so", async () => {
+  const mail = imapAdapter({ lookup: async () => [{ address: "169.254.169.254" }], timeout: 2000 });
+  const cfg = { address: "alex@harlow.example", imap: { host: "meta.example", port: 993, tls: "implicit" }, smtp: { host: "meta.example", port: 465, tls: "implicit" }, auth: { item: "mail-pw" } };
+  const r = await mail.test(cfg, pw());
+  assert.equal(r.ok, false);
+  assert.deepEqual(r.can, { search: false, read: false, send: false });
+  assert.match(String(r.error), /not an address a mail server can be at/);
 });

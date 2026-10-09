@@ -25,6 +25,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 import { scrub } from "../../lib/connectors/auth.js";
+import { resolveUserHost } from "../../lib/netguard.js";
 import { addresses, checkContent, htmlToText, rfc822Text, EMAIL } from "../../lib/connectors/message.js";
 
 const TIMEOUT_MS = 30_000;
@@ -50,7 +51,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * @typedef {{ host: string, port: number, tls: "implicit" | "starttls" | "none" }} Resolved
  * @typedef {{ write: (d: string | Buffer) => any, on: Function, removeListener: Function, destroy: () => any, setNoDelay?: Function }} SocketLike
  * @typedef {{ connect?: (o: { host: string, port: number, tls: boolean, servername: string }) => SocketLike,
- *   upgrade?: (socket: SocketLike, servername: string) => SocketLike, timeout?: number, now?: () => number }} ImapDeps
+ *   upgrade?: (socket: SocketLike, servername: string) => SocketLike, timeout?: number, now?: () => number, lookup?: (h: string) => Promise<{ address: string }[]> }} ImapDeps
  */
 
 // ---------------------------------------------------------------- config
@@ -190,11 +191,27 @@ class Wire {
   }
 }
 
+/**
+ * The lookup every default dial uses: the host the person gave is resolved HERE by lib/netguard (resolveUserHost: public, private-network and tailnet addresses pass; loopback only for a loopback
+ * host; link-local, unspecified and special ranges never) and the socket connects to the address that was checked, so a name cannot change its answer between the check and the dial. The connected
+ * socket's remote address is compared to it as well (see `open`).
+ * @param {((h: string) => Promise<{ address: string }[]>) | undefined} lookup a test's resolver
+ */
+function guardedLookup(lookup) {
+  return (/** @type {string} */ hostname, /** @type {any} */ options, /** @type {any} */ cb) => {
+    resolveUserHost(hostname, lookup ? { lookup } : {}).then(r => {
+      const family = net.isIP(r.address);
+      if (options && options.all) cb(null, [{ address: r.address, family }]); else cb(null, r.address, family);
+    }, e => cb(Object.assign(new Error(`${hostname} is not an address a mail server can be at: ${/** @type {Error} */ (e).message}`), { code: "ENOTALLOWED" })));
+  };
+}
+export { guardedLookup };
+
 /** @param {Resolved} ep @param {ImapDeps} deps */
 function open(ep, deps) {
-  const connect = deps.connect || (o => o.tls
-    ? tls.connect({ host: o.host, port: o.port, servername: o.servername || undefined })
-    : net.connect({ host: o.host, port: o.port }));
+  const connect = deps.connect || (o => (o.tls
+    ? tls.connect({ host: o.host, port: o.port, servername: o.servername || undefined, lookup: guardedLookup(deps.lookup) })
+    : net.connect({ host: o.host, port: o.port, lookup: guardedLookup(deps.lookup) })));
   const servername = net.isIP(ep.host) ? "" : ep.host;
   let socket;
   try { socket = connect({ host: ep.host, port: ep.port, tls: ep.tls === "implicit", servername }); }
