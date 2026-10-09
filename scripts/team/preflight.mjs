@@ -120,11 +120,15 @@ if (!STATIC) {
   // The files that failed, or ran fewer tests than recorded, from the runner's own summary.
   /** @type {Set<string>} */ const red = new Set();
   let section = "";
+  /** @type {Set<string>} */ const short = new Set();
   for (const l of `${r.stdout}\n${r.stderr}`.split("\n")) {
-    if (/^test-counts: (files that failed|tests that did not run)/.test(l)) { section = "x"; continue; }
-    if (section && /^  \S/.test(l)) { red.add(l.trim().replace(/:.*$/, "")); continue; }
+    if (/^test-counts: files that failed/.test(l)) { section = "failed"; continue; }
+    if (/^test-counts: tests that did not run/.test(l)) { section = "short"; continue; }
+    if (section && /^  \S/.test(l)) { const f = l.trim().replace(/:.*$/, ""); (section === "short" ? short : red).add(f); continue; }
     section = "";
   }
+  // A file that ran fewer tests than recorded is this branch's only when it touched that file or the counts.
+  for (const f of short) if (changed.includes(f) || changed.includes("test/test-counts.json")) red.add(f); else warns.push(`base red (count): ${f} runs fewer tests than test/test-counts.json records, before your change`);
   if (r.status !== 0 && !red.size) red.add("(the runner failed; see above)");
   // A red that is also red on the integration tip without this branch is not this branch's: it is reported, not blocking.
   /** @type {string[]} */ const baseRed = [];
