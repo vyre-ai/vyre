@@ -26,6 +26,8 @@ export const MIGRATIONS = [
    );`,
   `ALTER TABLE appmods_apps ADD COLUMN connection_id TEXT;`,
   `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
+  // Signed-in browser sessions on an app's own origin (and a preview's): kept by the hash of the cookie so a restart or an update does not sign anyone out.
+  `CREATE TABLE appmods_sessions (h TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, exp INTEGER NOT NULL, who_w TEXT, who_r TEXT);`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -319,7 +321,12 @@ export default {
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
 
     // The apps' own screens, each on its own origin (<module>.<base>), answered by Host before any Vyre route (proxy.js). Only an installed app that is running is served.
-    const tickets = createTickets();
+    const tickets = createTickets({ store: {
+      put: (/** @type {string} */ h, /** @type {any} */ r) => { db.prepare("INSERT OR REPLACE INTO appmods_sessions (h, name, host, exp, who_w, who_r) VALUES (?,?,?,?,?,?)").run(h, r.name, r.host, r.exp, r.who ? r.who.w : null, r.who ? r.who.r : null); },
+      get: (/** @type {string} */ h) => { const r = db.prepare("SELECT * FROM appmods_sessions WHERE h = ?").get(h); return r ? { name: r.name, host: r.host, exp: Number(r.exp), who: r.who_w ? { w: r.who_w, r: r.who_r || "" } : null } : null; },
+      dropName: (/** @type {string} */ n) => { db.prepare("DELETE FROM appmods_sessions WHERE name = ?").run(n); },
+      sweep: (/** @type {number} */ t) => { db.prepare("DELETE FROM appmods_sessions WHERE exp < ?").run(t); },
+    } });
     const hostProxy = createHostProxy({
       tickets,
       log: m => ctx.log.warn(m),

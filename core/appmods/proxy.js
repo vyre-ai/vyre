@@ -58,12 +58,24 @@ export function viewerHeader(key, who, at = Date.now()) {
   return `${body}.${crypto.createHmac("sha256", key).update(body).digest("base64url")}`;
 }
 
-/** One-time tickets and the sessions they are traded for. In memory: a restart means opening the app again from Vyre. @param {{ now?: () => number }} [o] */
+/** One-time tickets and the sessions they are traded for. Tickets live a minute in memory; a session (8 hours) is also kept in the store when there is one, so a restart or an update does not sign anyone out. @param {{ now?: () => number, store?: any }} [o] */
 export function createTickets(o = {}) {
   const now = o.now || Date.now;
+  /** Signed-in sessions survive a restart when a store is given: kept by the hash of the cookie, never the cookie itself. @type {{ put: (h: string, r: any) => void, get: (h: string) => any, dropName: (n: string) => void, sweep: (t: number) => void } | undefined} */
+  const store = o.store;
+  const hash = (/** @type {string} */ sid) => crypto.createHash("sha256").update(String(sid)).digest("hex");
   /** @type {Map<string, { name: string, host: string, next: string, exp: number, who: { w: string, r: string } | null }>} */ const tickets = new Map();
   /** @type {Map<string, { name: string, host: string, exp: number, who: { w: string, r: string } | null }>} */ const sessions = new Map();
-  const sweep = () => { const t = now(); for (const [k, v] of tickets) if (v.exp < t) tickets.delete(k); for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k); };
+  const sweep = () => { const t = now(); for (const [k, v] of tickets) if (v.exp < t) tickets.delete(k); for (const [k, v] of sessions) if (v.exp < t) sessions.delete(k); if (store) store.sweep(t); };
+  /** A live session by its cookie: in memory, else from the store (after a restart). @param {string | undefined} sid */
+  const load = sid => {
+    if (!sid) return null;
+    const m = sessions.get(sid);
+    if (m) return m;
+    const r = store ? store.get(hash(sid)) : null;
+    if (r && r.exp > now()) { sessions.set(sid, r); return r; }
+    return null;
+  };
   return {
     /** A ticket for this app at this exact host; good once, for a minute. `who` is the person it was made for (their id and their role), which a preview's page is told on every request. @param {string} name @param {string} host @param {string} next @param {{ w: string, r: string } | null} [who] */
     issue(name, host, next, who = null) { sweep(); const t = crypto.randomBytes(24).toString("base64url"); tickets.set(t, { name, host, next, exp: now() + TICKET_MS, who }); return t; },
@@ -75,13 +87,14 @@ export function createTickets(o = {}) {
       if (!v || v.host !== host) return null;
       const sid = crypto.randomBytes(32).toString("base64url");
       sessions.set(sid, { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
+      if (store) store.put(hash(sid), { name: v.name, host, exp: now() + SESSION_MS, who: v.who });
       return { sid, next: v.next, maxAge: Math.floor(SESSION_MS / 1000) };
     },
     /** @param {string | undefined} sid @param {string} name @param {string} host */
-    valid(sid, name, host) { const v = sid ? sessions.get(sid) : null; return Boolean(v && v.name === name && v.host === host && v.exp > now()); },
+    valid(sid, name, host) { const v = load(sid); return Boolean(v && v.name === name && v.host === host && v.exp > now()); },
     /** Who a live session is for, or null. @param {string | undefined} sid */
-    whoOf(sid) { const v = sid ? sessions.get(sid) : null; return v && v.exp > now() ? v.who : null; },
-    drop(/** @type {string} */ name) { for (const [k, v] of sessions) if (v.name === name) sessions.delete(k); for (const [k, v] of tickets) if (v.name === name) tickets.delete(k); },
+    whoOf(sid) { const v = load(sid); return v && v.exp > now() ? v.who : null; },
+    drop(/** @type {string} */ name) { for (const [k, v] of sessions) if (v.name === name) sessions.delete(k); for (const [k, v] of tickets) if (v.name === name) tickets.delete(k); if (store) store.dropName(name); },
   };
 }
 

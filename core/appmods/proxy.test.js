@@ -56,3 +56,27 @@ test("a ticket is good once, for a minute, only at the host it was made for; its
   assert.equal(k.valid(s.sid, "documents", "h.x"), false, "removing the app ends its sessions");
   assert.equal(ENTER, "/__vyre/enter");
 });
+
+test("a signed-in session survives a restart when a store keeps it (by the hash of the cookie), ends at its time, and is dropped with its name", () => {
+  /** @type {Map<string, any>} */ const rows = new Map();
+  const store = { put: (/** @type {string} */ h, /** @type {any} */ r) => rows.set(h, r), get: (/** @type {string} */ h) => rows.get(h) || null, dropName: (/** @type {string} */ n) => { for (const [k, v] of rows) if (v.name === n) rows.delete(k); }, sweep: (/** @type {number} */ t) => { for (const [k, v] of rows) if (v.exp < t) rows.delete(k); } };
+  let at = 1_000_000;
+  const a = createTickets({ now: () => at, store });
+  const t = a.issue("pv-0a1b2c3d", "pv-0a1b2c3d.localhost", "/", { w: "per_a", r: "member" });
+  const got = a.trade(t, "pv-0a1b2c3d.localhost");
+  assert.ok(got);
+  assert.ok(![...rows.keys()].includes(got.sid), "the cookie itself is never kept, only its hash");
+  assert.equal(rows.size, 1);
+  // a new process: no memory, the same store
+  const b = createTickets({ now: () => at + 60_000, store });
+  assert.equal(b.valid(got.sid, "pv-0a1b2c3d", "pv-0a1b2c3d.localhost"), true, "still signed in after a restart");
+  assert.deepEqual(b.whoOf(got.sid), { w: "per_a", r: "member" });
+  assert.equal(b.valid(got.sid, "pv-0a1b2c3d", "other.localhost"), false, "only at its own host");
+  assert.equal(b.valid("not-a-session", "pv-0a1b2c3d", "pv-0a1b2c3d.localhost"), false);
+  // its time
+  const later = createTickets({ now: () => at + 9 * 3_600_000, store });
+  assert.equal(later.valid(got.sid, "pv-0a1b2c3d", "pv-0a1b2c3d.localhost"), false, "eight hours is eight hours");
+  // access taken away: dropped everywhere
+  b.drop("pv-0a1b2c3d");
+  assert.equal(createTickets({ now: () => at, store }).valid(got.sid, "pv-0a1b2c3d", "pv-0a1b2c3d.localhost"), false);
+});
