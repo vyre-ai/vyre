@@ -123,7 +123,7 @@ export default function RealVault() {
       <View className="gap-s3">
         <View className="gap-s1">
           <View className="flex-row flex-wrap items-center gap-s2">
-            <Text size="title" strong>{cur.name}</Text><Chip>{kindWord(cur.kind)}</Chip>
+            <Text size="title" strong>{cur.title}</Text><Chip>{kindWord(cur.kind)}</Chip>
             {cur.unverified ? <Chip tone="warn">Not verified</Chip> : null}
             {cur.rotate ? <Chip tone="warn">Rotate</Chip> : null}
           </View>
@@ -131,6 +131,7 @@ export default function RealVault() {
         </View>
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
           <Text size="caption" strong tone="label">The values</Text>
+          {claimBlocked() ? <Text size="caption" tone="label">Reveal them in Vyre on your phone.</Text> : null}
           {cur.fields.length ? cur.fields.map((f) => {
             const on = shown?.key === `${cur.id}/${f}`;
             return (
@@ -139,7 +140,7 @@ export default function RealVault() {
                   <Text size="caption" tone="label">{f}</Text>
                   {on ? <Text mono size="headline" selectable>{shown!.value}</Text> : <SealedMask label={`${cur.name} ${f}`} />}
                 </View>
-                {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? <Text size="caption" tone="label">Reveal in Vyre on your phone</Text> : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}
+                {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? null : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}
               </View>
             );
           }) : <Text tone="muted">This item has no fields.</Text>}
@@ -177,13 +178,13 @@ export default function RealVault() {
   const editSheet = <EditSheet item={editing && cur ? { name: cur.id, description: rows?.find((r) => r.name === cur.id)?.description ?? "", fields: cur.fields } : null} onClose={() => setEditing(false)} onSaved={load} />;
 
   if (phone && pushed && cur) {
-    return <Frame title={cur.name} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
+    return <Frame title={cur.title} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
   }
 
   return (
     <Frame title="Vault" sub="Logins, keys and cards.">
       <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
-      {!err && rows && !locked && section !== "import" ? <Segmented label="Vault" value={section} onChange={(v) => { hide(); setSection(v); }} options={[["items", "Items"], ["passes", "Passes"], ["shared", "Shared"], ["devices", "Devices"], ["health", "Health"]]} /> : null}
+      {!err && rows && !locked && section !== "import" ? <Tabs<typeof section> value={section} onChange={(v) => { hide(); setSection(v); }} items={[["items", "Items"], ["passes", "Passes"], ["shared", "Shared"], ["devices", "Devices"], ["health", "Health"]]} /> : null}
       {!err && rows && !locked && section === "passes" ? <PassesPage rows={rows} reload={load} openItem={openFrom} /> : null}
       {!err && rows && !locked && section === "shared" ? <SharedPage rows={rows} reload={load} openItem={openFrom} /> : null}
       {!err && rows && !locked && section === "devices" ? <DevicesPage rows={rows} reload={load} openItem={openFrom} /> : null}
@@ -195,8 +196,10 @@ export default function RealVault() {
       </View> : null}
       {section !== "items" ? null : <>
       {!err && rows && !locked && health && health.total ? <Card><View className="flex-row items-center gap-s3"><View className="min-w-0 flex-1"><Text strong>Health</Text><Text size="secondary" tone="label">{health.line}</Text></View><Button kind="primary" size={phone ? "md" : "sm"} label="Fix" onPress={() => { hide(); setSection("health"); }} /></View></Card> : null}
-      {!err && rows && !locked ? <Field label="Search the vault" value={query} onChangeText={(q) => { hide(); setQuery(q); setSel(null); }} placeholder="A name, a site or a kind" /> : null}
-      <Tabs<Tab | "Held"> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held fields"]]} />
+      <View className="flex-row flex-wrap items-center gap-s2">
+        <Segmented<Tab | "Held"> label="Kind" value={tab} onChange={(t) => { hide(); setSel(null); setQuery(""); setTab(t); }} options={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"], ["Held", "Held"]]} />
+        {!err && rows && !locked ? <View style={{ flexGrow: 1, flexBasis: 220 }}><Field value={query} onChangeText={(q) => { hide(); setQuery(q); setSel(null); }} placeholder="Search by name, site or kind" /></View> : null}
+      </View>
       {!err && rows && !locked && personal === "locked" ? <Card><View className="gap-s3">
         <Text strong>Your personal vault is locked</Text>
         {claimBlocked() ? <Text tone="muted">{ON_PHONE.replace("Do this", "Unlock it")}</Text> : <>
@@ -242,7 +245,7 @@ export default function RealVault() {
             <Card flush>
               {items.length ? items.map((v, i) => (
                 <View key={v.id}>{i ? <Divider inset={60} /> : null}
-                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
+                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.title}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
               )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : claimBlocked() ? "No items yet. Add items in Vyre on your phone." : "No items yet. Use Add an item, or bring them in from 1Password, LastPass or a browser under Import."} />}

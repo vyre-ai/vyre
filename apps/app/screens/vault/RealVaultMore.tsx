@@ -289,7 +289,8 @@ export function SharedVaultsSection() {
             {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`} />)}
           </View>
         </Card>
-      )) : <Text size="secondary" tone="label">None yet. Make one with vyre vault vaults create.</Text>}
+      )) : <Text size="secondary" tone="label">None yet.</Text>}
+      <View className="flex-row flex-wrap items-center gap-s2"><Button size="sm" disabled label="Make a shared vault" /><Button size="sm" disabled label="Invite someone" /><Text size="caption" tone="label">Coming in this release.</Text></View>
       {people.length ? <><Text strong size="secondary">People you share with</Text><Card flush>{people.map((p, i) => <View key={p.name}>{i ? <Divider /> : null}<Row dense title={p.name} sub={personLine(p)} /></View>)}</Card></> : null}
     </View>
   );
