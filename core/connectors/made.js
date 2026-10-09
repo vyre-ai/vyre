@@ -24,7 +24,9 @@ export function madeConnections({ db, call, now = Date.now, emit = () => {}, log
     return { id: r.id, label: r.label, host: d.app ? appHost(d.app) : new URL(d.base_url).hostname, ...(d.app ? { app: d.app } : {}), auth, credential: { item: r.credential_item, ...(r.credential_field ? { field: r.credential_field } : {}) }, headers: f.headers || {}, vars: f.vars || {},
       check: { method: "GET", path: r.check_path }, origin: r.origin,
       light: stale ? "out_of_step" : r.light, reason: stale ? "the Vault credential was changed outside this connection; save the connection again to rebuild it" : r.reason, checked_at: r.checked_at, created: r.created,
-      operations: operationsOf(d) };
+      operations: operationsOf(d),
+      // How an assistant calls this API: vault.request with this credential, a method and a full address on the host; the key is attached outside it and never seen. (The Connection's own key item is not what to pass.)
+      use: { tool: "vault.request", credential: `conn-${r.id}`, url: `https://${d.app ? appHost(d.app) : new URL(d.base_url).hostname}/...` } };
   };
 
   /** The vault item names and when each was last written, for spotting drift. */
