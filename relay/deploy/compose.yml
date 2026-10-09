@@ -1,0 +1,47 @@
+# The public edge: the relay that carries signers, previews and published pages to a box (team/contracts/ingress.md). One small VM runs this file; runbook in README.md.
+#   docker compose --env-file .env up -d --build
+# The relay holds no certificate and reads nothing past the first TLS record (it routes by server name). Caddy gives the boxes' control link its certificate (8443) and answers port 80.
+name: vyre-edge
+services:
+  relay:
+    build: { context: ../.., dockerfile: relay/Dockerfile }
+    image: vyre-relay:edge
+    restart: unless-stopped
+    ports:
+      - "${EDGE_TLS_BIND:-0.0.0.0:443}:9443"          # public TLS passthrough
+      - "${EDGE_HTTP_BIND:-127.0.0.1:9080}:9080"      # port 80 behind Caddy: the fixed redirect to https, or 400
+      - "${EDGE_CONTROL_BIND:-127.0.0.1:8080}:8080"   # the boxes' control link behind Caddy (TLS on 8443)
+    environment:
+      VYRE_DIRECTORY_PORT: "0"                         # the real directory is the Worker at names.vyre.run
+      VYRE_TRUST_PROXY: "1"                            # Caddy sets x-forwarded-for on the control link
+      VYRE_TUNNEL_DIRECTORY: "${VYRE_TUNNEL_DIRECTORY:-https://names.vyre.run}"
+      VYRE_RELAY_SECRET: "${VYRE_RELAY_SECRET:?set it in .env: 32 or more characters, the same value as the Worker's RELAY_SECRET}"
+      VYRE_TUNNEL_TLS_PORT: "9443"
+      VYRE_TUNNEL_HTTP_PORT: "9080"
+    read_only: true
+    tmpfs: [ /tmp ]
+    cap_drop: [ ALL ]
+    security_opt: [ "no-new-privileges:true" ]
+    pids_limit: 256
+    mem_limit: 512m
+    volumes: [ "relay-data:/data" ]
+  caddy:
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f   # 2.11.7
+    restart: unless-stopped
+    network_mode: host
+    depends_on: [ relay ]
+    read_only: true
+    tmpfs: [ /tmp ]
+    cap_drop: [ ALL ]
+    cap_add: [ NET_BIND_SERVICE ]
+    security_opt: [ "no-new-privileges:true" ]
+    pids_limit: 128
+    mem_limit: 256m
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+volumes:
+  relay-data: {}
+  caddy-data: {}
+  caddy-config: {}
