@@ -28,6 +28,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { EXIT, UsageError, json, emit, fail, usage, parse } from "../kit.js";
 import * as R from "../../../lib/releases.js";
 import { RELEASE_KEY, sumsSigned } from "../../../lib/release-sig.js";
+import { httpFetch, allowFor } from "../../../lib/http.js";
 
 const REPO_PATH = "repos/vyre-ai/vyre/releases";
 
@@ -66,7 +67,7 @@ const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [-
 
 /** Fetch with a time limit, as the one client Vyre is to GitHub. */
 async function get(url, accept = "application/octet-stream") {
-  const r = await fetch(R.safeUrl(url), { headers: { accept, "user-agent": "vyre-update" }, redirect: "follow", signal: AbortSignal.timeout(60_000) });
+  const r = await httpFetch(R.safeUrl(url), { headers: { accept, "user-agent": "vyre-update" }, redirect: "follow", signal: AbortSignal.timeout(60_000), allow: allowFor(url), maxBytes: 1024 ** 3 });
   if (!r.ok) throw new Error(`${r.status} from ${new URL(url).host}`);
   return r;
 }
