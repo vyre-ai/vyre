@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { fail } from "../../lib/publish/util.js";
-import { withSecretGrants } from "../../lib/publish/grants.js";
+import { withSecretGrants, moveSecretsToGrants } from "../../lib/publish/grants.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
 import { edgePlan, runPlan, stopEdge } from "../../lib/publish/runner.js";
@@ -104,6 +104,11 @@ export default {
     };
     /** @param {string} space */
     const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space);
+
+    // Records from before secrets were grants move now, once. If a move fails the record stays readable as it is (reads add the old list) and the next start tries again; Publish still starts.
+    for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {
+      try { await moveSecretsToGrants(rawStoreFor(space), storeFor(space)); } catch { /* retried at the next start */ }
+    }
 
     // ---- who is who: memberships come from the spaces module ----
     /** @type {Map<string, any>} */ const members = new Map();
