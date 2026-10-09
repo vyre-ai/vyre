@@ -22,6 +22,10 @@ The result is filed in the Drive under `Documents/<project>/` and, when your Spa
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (you say yes to the final words), waits for the signature and moves the record to the stage you name. It sends once per record. Define it with the Flows tools like any other Flow.
 
+## Signing pages
+
+When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours.
+
 ## Send an email or a text
 
 `comms.send` sends an email through your own mail account or a text through your own Twilio account. It is held at the Gate until you say yes to the final words; a text to several numbers is one yes. Texts need `comms.sms` in `config.json` (`{ "account": "AC…", "from": "+1…" }`) and your Twilio key in the Vault. Once sent, the message is logged on the client it went to.
