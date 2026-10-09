@@ -154,3 +154,30 @@ test("Retry on the card tries now; Stop ends the run plainly", async () => {
   assert.equal((await w2.runner.getRun(r2.id)).state, "cancelled");
   assert.equal(d2.seen.length, 1, "nothing was sent after Stop");
 });
+
+// ---- the card, end to end through f3 ----
+import { createFlows } from "./index.js";
+import { ALEX } from "./testing/world.js";
+test("f3: the run waiting for a Chrome is listed by flows.attention as kind device, and flows.settle retry and stop work on it", async () => {
+  for (const action of ["retry", "stop"]) {
+    const st = { online: false };
+    const d = deviceWorld(st);
+    const w = await world({ ports: { service: d.port }, cat: cat() });
+    const f = createFlows({ kernel: w.kernel, chains: { forFlow: (/** @type {any} */ x) => w.kernel.chainFor(x), forModule: (/** @type {any} */ x) => w.kernel.moduleChain(x), forDoer: (/** @type {any} */ x) => w.kernel.chainFor(x) }, store: w.store, catalog: () => w.runner.catalogFn(), ports: { service: d.port, roles: async () => [ALEX] } });
+    const { id } = await install(w, readFlow());
+    w.kernel.inbound("payment.received", {});
+    await settle(w);
+    const chain = { hops: [{ actor: ALEX }] };
+    const rows = (await f.tools["flows.attention"](chain, {})).runs;
+    assert.equal(rows.length, 1, JSON.stringify(rows));
+    assert.deepEqual([rows[0].kind, rows[0].loud], ["device", true]);
+    assert.match(rows[0].message, /Needs your Chrome/);
+    const run = (await w.runner.listRuns({ flow: id }))[0];
+    if (action === "retry") st.online = true;
+    await f.tools["flows.settle"](chain, { run: run.id, action });
+    await settle(w);
+    const after = await w.runner.getRun(run.id);
+    assert.equal(after.state, action === "retry" ? "done" : "cancelled");
+    assert.deepEqual(await w.runner.attention(), [], "the card is gone");
+  }
+});

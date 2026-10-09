@@ -982,7 +982,7 @@
  "records/connectors/site.test.js": 5,
  "core/vault/service-site.test.js": 4,
  "core/connectors/site-daemon.test.js": 8,
- "kernel/flows/site-flow.test.js": 5,
+ "kernel/flows/site-flow.test.js": 6,
  "core/connectors/site-runner.test.js": 8,
  "lib/siteops/page.test.js": 4,
  "modules/hands-chrome/siteops.test.js": 4,
