@@ -636,6 +636,14 @@
   "documents.signed-link": {
    "class": "held",
    "why": "outward: held as a card for the person's yes before any link to a signed copy is made"
+  },
+  "documents.send": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the signing request and the email that carries its link"
+  },
+  "documents.send-signed": {
+   "class": "held",
+   "why": "outward: the registry holds it as a card for the person's yes, and that one yes covers the expiring link and the email that carries it"
   }
  }
 }

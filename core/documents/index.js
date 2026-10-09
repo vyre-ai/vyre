@@ -121,7 +121,7 @@ export function registerDocuments(ctx) {
   const address = (/** @type {any} */ i) => { const e = String(i.email || "").trim(); if (!e) throw refuse("email is the signer's address, such as dana@example.com", "bad_input"); return e; };
 
   ctx.tool("documents.send", {
-    description: "Send a document for signature: { template_id, email, signer? (their name), subject? } -> { submission, slug, url, sent }. Makes the signing request and emails the signer their link through Comms; one yes covers both. Outward.",
+    description: "Send a document for signature: { template_id, email, signer?, subject? }. Makes the signing request and emails the signer their link; one yes covers both.",
     input: obj({ space: str, template_id: { type: "integer" }, email: str, signer: str, subject: str }, ["template_id", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -134,7 +134,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email, days? (1 to 30) } -> { url, expires, sent }. Makes the expiring link to the finished file and sends it through Comms; one yes covers both. Outward.",
+    description: "Email the signer their signed copy: { slug, email, days? }. Makes the expiring link and emails it; one yes covers both.",
     input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
@@ -149,7 +149,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.signing.flow", {
-    description: "The Flow that signs a document from a stage, ready to define: { type, out_stage, signed_stage, template_id, email_field?, name_field?, submission_field?, wait_days?, subject? } -> a Flow definition. A record entering out_stage is sent for signature (one yes), waits, moves to signed_stage when signed, and the signer is emailed the signed copy (one yes). Nothing is created: define it with the Flows tools.",
+    description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field?, name_field?, submission_field?, wait_days?, subject? }. Creates nothing.",
     input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),

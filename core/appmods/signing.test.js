@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -211,4 +211,13 @@ test("the signed copy opens only by its link: the slug no longer lists or downlo
   assert.equal(gone.body, EXPIRED_HTML);
   assert.ok(!gone.body.includes("abc123"), "the expired page does not repeat the slug");
   void crypto;
+});
+
+test("a signing request tells the app to send nothing, and the answer is read for the signer's number and slug only", () => {
+  assert.deepEqual(requestBody(12, "dana@harlow.test", "Dana Harlow"), { template_id: 12, send_email: false, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow" }] });
+  assert.deepEqual(requestBody(12, "dana@harlow.test").submitters, [{ email: "dana@harlow.test" }]);
+  for (const bad of [[0, "a@b.test"], [1.5, "a@b.test"], [12, "nope"], [12, "a@b.test, c@d.test"], [12, "a b@c.test"]]) assert.throws(() => requestBody(/** @type {any} */ (bad[0]), /** @type {any} */ (bad[1])));
+  assert.deepEqual(readRequest([{ id: 7, submission_id: 4411, slug: "abc123" }]), { submission: 4411, slug: "abc123" });
+  assert.deepEqual(readRequest({ submitters: [{ submission_id: 5, slug: "x_y-z" }] }), { submission: 5, slug: "x_y-z" });
+  for (const junk of [null, [], [{}], [{ submission_id: 0, slug: "a" }], [{ submission_id: 4, slug: "../x" }], "text"]) assert.equal(readRequest(junk), null);
 });

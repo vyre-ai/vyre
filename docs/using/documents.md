@@ -18,15 +18,19 @@ A template is a Word file in your Drive under `Templates/`, with `{placeholders}
 
 The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; elsewhere a PDF says plainly that it needs the Records server, and the Word file is still made.
 
+## Send for signature
+
+`documents.send` sends a template for signature: it makes the signing request and emails the signer their link through Comms. That is one act with one yes: you read the words once, and the signing app sends nothing of its own. When the signer has signed, `documents.send-signed` makes a link to the finished copy that stops working after 30 days and emails it to the signer, again one yes. A new link is one call away.
+
 ## Sign from a stage
 
-`documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it asks Documents for a signature, remembers it on the record, emails the signer their link through Comms (you say yes to the final words), waits for the signature and moves the record to the stage you name. It sends once per record. Define it with the Flows tools like any other Flow.
+`documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
 
 ## Signing pages
 
 A signer outside your network needs a way in. With a public address for your server (the relay your server is connected to), their browser reaches your server directly and the relay sees only encrypted traffic: it cannot read the page or the signed contract.
 
-When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer, held for your yes), and a new one is one call away.
+When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer for your yes), and a new one is one call away.
 
 ## Send an email or a text
 

@@ -13,7 +13,7 @@ import { allowLoopbackForTests } from "../../lib/http.js";
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
 
-function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {} } = {}) {
+function rig({ chain = /** @type {any} */ (person), types = ["document"], records = /** @type {Record<string, any>} */ ({}), config = {}, call = /** @type {(tool: string, input: any) => Promise<any>} */ (async () => ({})) } = {}) {
   /** @type {Map<string, Buffer[]>} */ const files = new Map();
   const made = /** @type {any[]} */ ([]);
   const gateway = {
@@ -27,7 +27,7 @@ function rig({ chain = /** @type {any} */ (person), types = ["document"], record
     records: { async get(_c, type, id) { return records[`${type}/${id}`] || null; }, async create(_c, type, data) { made.push({ type, data }); return { urn: `vyre://${SPACE}/${type}/rec${made.length}` }; } },
   };
   /** @type {Map<string, any>} */ const tools = new Map();
-  const ctx = { config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async () => ({}), log: () => {},
+  const ctx = { config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call, log: () => {},
     kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; } } };
   registerDocuments(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
@@ -120,10 +120,10 @@ test("a PDF needs the converter: refused in plain words without one, filed as a 
 
 test("the signing Flow comes back ready to define, and a bad ask is said", async () => {
   const r = rig();
-  const out = await r.run("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, base: "https://harlow.vyre.run" });
+  const out = await r.run("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12 });
   assert.deepEqual(out.flow.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
   assert.equal(out.flow.steps.at(-1).id, "once");
-  assert.equal((await code(r.run("documents.signing.flow", { type: "matter", out_stage: "A", signed_stage: "B", template_id: 0, base: "https://x.test" }))).code, "bad_input");
+  assert.equal((await code(r.run("documents.signing.flow", { type: "matter", out_stage: "A", signed_stage: "B", template_id: 0 }))).code, "bad_input");
 });
 
 test("a link to the signed copy: the person's chain is needed, the slug is checked, and the app's own module makes it", async () => {
@@ -135,4 +135,59 @@ test("a link to the signed copy: the person's chain is needed, the slug is check
   const none = rig({ chain: null });
   assert.equal((await code(none.run("documents.signed-link", { slug: "abc123" }))).code, "denied");
   void asked;
+});
+
+test("documents.send makes the signing request and emails the link in one act; a refusal from either is passed on in its own words", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const r = rig({ call: async (tool, input) => {
+    seen.push({ tool, input });
+    if (tool === "appmods.signing.request") return { data: { submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123" } };
+    return { data: { held: "gi_1", via: "email" } };
+  } });
+  const out = await r.run("documents.send", { template_id: 12, email: "dana@harlow.test", signer: "Dana Harlow" });
+  assert.deepEqual(seen.map(s => s.tool), ["appmods.signing.request", "comms.send"], "the request first, then the email that carries its link");
+  assert.deepEqual(seen[0].input, { name: "documents", template_id: 12, email: "dana@harlow.test", signer: "Dana Harlow" });
+  assert.deepEqual(seen[1].input, { via: "email", to: "dana@harlow.test", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123", why: "signing request" });
+  assert.equal(out.submission, 4411); assert.equal(out.slug, "abc123"); assert.equal(out.sent.held, "gi_1");
+  assert.equal((await code(r.run("documents.send", { template_id: 12, email: " " }))).code, "bad_input");
+  const none = rig({ chain: null });
+  assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
+  const down = rig({ call: async tool => (tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
+  const e = await code(down.run("documents.send", { template_id: 12, email: "dana@harlow.test" }));
+  assert.equal(e.code, "not_found"); assert.match(e.message, /not running/);
+});
+
+test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const r = rig({ call: async (tool, input) => {
+    seen.push({ tool, input });
+    return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: Date.now() + 30 * 86_400_000 } } : { data: { held: "gi_2" } };
+  } });
+  const out = await r.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test" });
+  assert.deepEqual(seen.map(s => s.tool), ["appmods.signed.link", "comms.send"]);
+  assert.equal(seen[1].input.subject, "Your signed copy");
+  assert.match(seen[1].input.body, /works for 30 days.*signed\/1\.abc\.sig$/);
+  assert.equal(out.sent.held, "gi_2");
+  const before = seen.length;
+  assert.equal((await code(r.run("documents.send-signed", { slug: "../x", email: "dana@harlow.test" }))).code, "bad_input");
+  assert.equal(seen.length, before, "nothing was made for a bad slug");
+});
+
+test("one yes: the card for documents.send rides down to the mail module's own send, and a tool that is not named is held as ever", async () => {
+  const { coveredRide } = await import("../modules/index.js");
+  const { COVERED } = await import("../../lib/covered.js");
+  const { readFileSync } = await import("node:fs");
+  const declared = (/** @type {string} */ dir) => JSON.parse(readFileSync(new URL(`../${dir}/module.json`, import.meta.url), "utf8")).does.tools.filter((/** @type {any} */ t) => typeof t === "object");
+  const tools = new Map([...declared("documents"), ...declared("comms"), ...declared("mail")].map(t => [t.name, { covers: t.covers || [] }]));
+  const card = { card: "ap_1", tool: "documents.send", input_sha256: "x", asker: "mcp>agent" };
+  const meta = (/** @type {any} */ mark) => ({ [COVERED]: mark });
+  const toComms = coveredRide(tools, meta(card), "comms.send", "module:documents");
+  assert.ok(toComms && toComms.via.includes("comms"), "documents.send names comms.send, so the email rides the card");
+  const toMail = coveredRide(tools, meta(toComms), "mail.send", "module:comms");
+  assert.ok(toMail && toMail.via.includes("mail"), "and comms.send's own mail.send rides it too");
+  assert.equal(coveredRide(tools, meta(card), "mail.send", "module:billing"), null, "another module's send is not the same act");
+  assert.equal(coveredRide(tools, meta(card), "documents.signed-link", "module:documents"), null, "a tool the card does not name is held as its own card");
+  const signed = { ...card, tool: "documents.send-signed" };
+  assert.ok(coveredRide(tools, meta(signed), "comms.send", "module:documents"));
+  assert.equal(coveredRide(tools, meta(signed), "appmods.signing.request", "module:documents"), null);
 });
