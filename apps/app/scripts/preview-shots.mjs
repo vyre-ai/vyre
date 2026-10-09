@@ -33,7 +33,7 @@ try {
     await page.goto(base, { waitUntil: "networkidle" }); await page.waitForTimeout(800);
     await shot(pageName === "shots-previews" ? "cards-all" : "cards");
     if (pageName === "shots-previews") { await page.getByRole("button", { name: "Share" }).first().click(); await shot("share-sheet"); }
-    else {
+    else if (pageName === "shots-questions") {
       await page.getByRole("radio", { name: "report-final.pdf" }).first().click();
       await page.getByRole("radio", { name: "Sam Lee" }).first().click();
       await shot("cards-picked");
