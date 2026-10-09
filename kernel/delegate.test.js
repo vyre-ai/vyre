@@ -158,3 +158,21 @@ test("R031-03: a Personal project (a project record with an owner attribute) is 
   assert.equal((await k.gateway.records.get(owner, "project", shared.id)).data.name, "Shared", "an ordinary project is unchanged");
   assert.equal((await k.gateway.records.get(modules.reports, "project", shared.id)).data.name, "Shared");
 });
+
+test("created_by on a record is set by the kernel from the creating chain: input cannot name it, and no update changes it, so only the module that made a Personal row keeps it", async () => {
+  const { k, owner, bob } = await rig();
+  const type = { name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name" }] };
+  await k.gateway.records.define(owner, { add_types: [type] });
+  // a caller cannot supply it
+  await assert.rejects(() => k.gateway.records.create(owner, "project", { name: "X" }, { attrs: { created_by: "service:work", owner: BOB } }), { code: "bad_input" });
+  const rec = await k.gateway.records.create(owner, "project", { name: "Mine" }, { attrs: { owner: BOB } });
+  const attrOf = () => k.gateway.records.attrsOf(rec.urn);
+  assert.equal(attrOf().created_by, `person:${OWNER}`, "taken from the chain that created it");
+  // updates by the owner and by the person it belongs to leave it
+  await assert.rejects(() => k.gateway.records.update(owner, "project", rec.id, { name: "Changed" }, rec.version), { code: "not_found" }, "the Space owner cannot even reach it");
+  const mine = await k.gateway.records.get(bob, "project", rec.id);
+  await k.gateway.records.update(bob, "project", rec.id, { name: "Renamed" }, mine.version);
+  assert.equal(attrOf().created_by, `person:${OWNER}`, "an update does not change it");
+  await assert.rejects(() => k.gateway.records.update(bob, "project", rec.id, { name: "again", created_by: "service:work" }, mine.version + 1), (e) => ["bad_input", "unknown_field", "invalid"].includes(e.code), "nor can a field of that name");
+  assert.equal(attrOf().created_by, `person:${OWNER}`);
+});

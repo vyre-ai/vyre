@@ -15,7 +15,7 @@ import { ROLE_IDS } from "../../kernel/contracts/index.js";
 const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "event", "project", "project-template", "chat-record", "session-summary", "task"]);
+export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "event", "project", "project-template", "skill", "chat-record", "session-summary", "task"]);
 
 /**
  * A Kit may add fields to a core type (a Kit's `contact` carries the fields its practice needs). The stored type is the whole thing: the core fields first, then

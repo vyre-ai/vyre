@@ -127,7 +127,7 @@ test("slack: a server that does not answer is unreachable, never \"no such chann
 test("slack: the same message already waiting at the Gate is that item again, never a second", async () => {
   const draft = { server: "slack", tool: "slack_post_message", arguments: { channel_id: "C0001GENERAL", text: "the ovens are in" } };
   const { env, calls } = fakeEnv(OFFICIAL, {}, null, {
-    "gate.held": () => ({ data: [{ id: "gt_1", via: "mcp:slack", at: 5 }, { id: "gt_2", via: "email" }] }),
+    "approvals.items": () => ({ data: { items: [{ source: "gate", facts: { id: "gt_1", via: "mcp:slack", at: 5 } }, { source: "gate", facts: { id: "gt_2", via: "email" } }] } }),
     "gate.get": i => ({ data: i.id === "gt_1" ? { draft, final: null } : { draft: {} } }),
   });
   const out = await slack.actions.send.run({ to: "#general", text: "the ovens are in" }, env);

@@ -234,13 +234,10 @@ test("R5: with the relay gone for good, the stream and the outbox move to a dire
   assert.deepEqual(w.applied(), [9]);
 });
 
-// Known bugs in relay/ and core/relay/, owned by the relay team (marked todo until fixed there).
-// Node 22's WebSocket (undici) answers a refused connection with `error` and never `close`.
-// Both sides wait only for `close` (`ws.onerror = () => {}`), so a dial that lands on a dead relay
-// is never seen to fail.
+// Node 22's WebSocket (undici) answers a refused connection with `error` and never `close`: both sides fail the dial on `error` (relay/client/client.js, core/relay/link.js), so a dial that lands on a dead relay is seen to fail and the next retry is scheduled.
 
 test("R5: kit redials within its backoff after dialing a dead relay, not after the 15 s handshake timeout",
-  { timeout: 30_000, todo: "relay/client/client.js openChannel ignores ws.onerror; a refused dial waits HANDSHAKE_MS (15 s)" }, async t => {
+  { timeout: 30_000 }, async t => {
     const w = await world(t);
     const conn = w.connect();
     await until(() => conn.state === "open", "kit's first connection");
@@ -253,7 +250,7 @@ test("R5: kit redials within its backoff after dialing a dead relay, not after t
   });
 
 test("R5: the box's relay link comes back after an outage longer than its first retry",
-  { timeout: 30_000, todo: "core/relay/link.js connect ignores ws.onerror; a retry that hits a dead relay never schedules the next" }, async t => {
+  { timeout: 30_000 }, async t => {
     const w = await world(t);
     let back = false;
     const off = w.d.events.on("relay.connected", () => { back = true; });
