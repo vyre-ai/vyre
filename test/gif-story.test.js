@@ -54,10 +54,10 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
   // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
-  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }] }, needs: { tools: ["gate.request", "reminder.send"] } },
-    `export default { async start(ctx) { ctx.tool("billing.relay", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.send", i); return r.data || r; } }); ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
-  writeModule(mods, "reminder", { version: "0.1.0", does: { tools: [{ name: "reminder.send", reach: "anyone", effect: "write", summary: "send a reminder" }] }, needs: { tools: ["gate.request"] } },
-    `export default { async start(ctx) { ctx.tool("reminder.send", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "reminder" }); return r.data || r; } }); return {}; } };`);
+  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }, { name: "billing.nested", reach: "anyone", outward: true, covers: ["reminder.push"], effect: "write", summary: "sends through the reminder module as one act" }, { name: "billing.uncovered", reach: "anyone", outward: true, effect: "write", summary: "sends through the reminder module and says nothing about it" }] }, needs: { tools: ["gate.request", "reminder.send", "reminder.push"] } },
+    `export default { async start(ctx) { ctx.tool("billing.relay", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.send", i); return r.data || r; } }); ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); for (const n of ["billing.nested", "billing.uncovered"]) ctx.tool(n, { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.push", i); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
+  writeModule(mods, "reminder", { version: "0.1.0", does: { tools: [{ name: "reminder.send", reach: "anyone", effect: "write", summary: "send a reminder" }, { name: "reminder.push", reach: "anyone", outward: true, effect: "write", summary: "send a reminder now" }] }, needs: { tools: ["gate.request"] } },
+    `export default { async start(ctx) { ctx.tool("reminder.push", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "push" }); return r.data || r; } }); ctx.tool("reminder.send", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "reminder" }); return r.data || r; } }); return {}; } };`);
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
@@ -247,4 +247,25 @@ test("a card for one module's tool does not release a send another first-party m
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.equal(await gateHeld(w), 1, "the reminder module's send is held: the card was for billing's tool");
   assert.deepEqual(w.sent, []);
+});
+
+test("a tool that names the tool it files as part of the same act rides one yes: one card, one send, no second card; one that names nothing is held again", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const input = { to: "ap@northwind.example" };
+  // covered: the nested outward tool is not held a second time, the Gate sends now, and nothing waits
+  const card = await approved(w, "billing.nested", input);
+  const r = await w.d.registry.call("billing.nested", input, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  await until(() => w.sent.length === 1, "the nested send reached the mail server");
+  assert.equal(await gateHeld(w), 0, "no second card at the Gate");
+  assert.equal((await w.asPerson("approvals.pending", {})).items?.length ?? 0, 0, "no second card in the queue");
+  // the card is spent: the same call again is refused and sends nothing more
+  const again = await w.d.registry.call("billing.nested", input, "mcp", { approval: card });
+  assert.equal(again.error && again.error.code, "approval_refused", JSON.stringify(again));
+  assert.equal(w.sent.length, 1);
+  // a tool that does not name it: the nested outward tool is held as its own card (nothing was said it was the same act)
+  const card2 = await approved(w, "billing.uncovered", input);
+  const r2 = await w.d.registry.call("billing.uncovered", input, "mcp", { approval: card2 });
+  assert.equal(r2.error && r2.error.code, "held_for_approval", JSON.stringify(r2));
+  assert.equal(w.sent.length, 1);
 });
