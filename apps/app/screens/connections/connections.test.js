@@ -298,3 +298,14 @@ test("one list of what is connected: apps and MCP servers together, each with a 
   assert.equal(all.find((c) => c.label === "Acme")?.words, "the key was refused (401)");
   assert.deepEqual(unifyConnected([], []), []);
 });
+
+test("Any app: the GitHub preset fills the form and says which token scopes clone, worktree and push need", async () => {
+  const { PRESETS, withPreset, formProblem } = await import("./any-app.ts");
+  const gh = PRESETS.find((p) => p.id === "github");
+  assert.ok(gh);
+  const f = withPreset(gh);
+  assert.deepEqual([f.label, f.baseUrl, f.how, f.checkPath], ["GitHub", "https://api.github.com", "bearer", "/user"]);
+  assert.match(gh.hint, /repo scope/);
+  assert.match(gh.hint, /Contents \(read and write\)/);
+  assert.match(formProblem(f) || "", /key|Vault/i, "the person still has to pick the key");
+});

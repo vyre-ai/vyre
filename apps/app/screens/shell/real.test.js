@@ -73,10 +73,10 @@ test("a space is never called by its id: its name, label or address; Personal fo
     assert.equal(warned, 1, "the gap is logged");
     assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "SPC_9ZK4", name: "spc_9zk4" }), "Space");
   } finally { console.warn = warn; }
-  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", setup: { who: "personal" } }), "Personal");
-  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "Personal");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", setup: { who: "personal" } }), "My Home");
+  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "My Home");
   assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "cloud", setup: { who: "personal" } }), "My Cloud");
-  assert.equal(spaceNameOf({ id: "s2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" } }), "juniper");
+  assert.equal(spaceNameOf({ id: "s2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" } }), "juniper's Cloud");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "example.vyre.run" }), "example");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "juniper" }), "juniper");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Juniper Studio" }), "Juniper Studio");
@@ -89,7 +89,7 @@ test("the switcher: Personal, then a team space with its Cloud tag; nobody sees 
     { id: "spc_1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" }, role: "owner", status: "done" },
     { id: "spc_2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" }, role: "member", status: "done" },
   ]);
-  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["All spaces", "One list, everything"], ["Personal", "Owner"], ["juniper", "Cloud · Member"]]);
+  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["All spaces", "One list, everything"], ["My Home", "Owner"], ["juniper's Cloud", "Member"]]);
   assert.equal(rows[1].basic, true);
   assert.ok(!rows.map((r) => `${r.name} ${r.sub}`).join(" ").match(/Basic|Pro\b|spc_/));
 });

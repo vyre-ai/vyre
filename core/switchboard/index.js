@@ -31,7 +31,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from ".
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { prepareSandbox } from "../../lib/agent-sandbox.js";
+import { prepareSandbox, sessionCliEnv } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
@@ -1373,7 +1373,7 @@ export class Switchboard {
     // The session's own socket (option A): its plugin, hooks and any vyre it runs talk to vyred on
     // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
     const sock = this.socks.get(id);
-    if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
+    if (sock) { env.VYRE_SOCKET = sock.path; if (this.confinedBy.get(id) === "uid") Object.assign(env, sessionCliEnv(env)); } else delete env.VYRE_SOCKET;
     // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
     // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
     if (sock) delete env.VYRE_HOME;
@@ -1410,7 +1410,7 @@ export class Switchboard {
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
     const foreign = o.provider && o.provider !== "claude";
-    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
+    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null, sessionCli: this.confinedBy.has(id) });
     const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
@@ -1542,11 +1542,11 @@ export class Switchboard {
     // rules at PreToolUse for calls that never reach a question.
     if (t.ask && t.ask.kind === "permission") {
       let v = null;
-      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
-      if (v && v.decision === "deny") {
+      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined, sessionCli: this.confinedBy.has(id) }); } catch {}
+      if (v && v.decision === "allow" && t.ask.tool === "Bash") { st.proc.write(answerLine(t.ask.request_id, "allow", t.ask.input)); t.ask = null; }   // the session's own vyre; the registry still holds a send
+      else if (v && v.decision === "deny") {
         st.proc.write(answerLine(t.ask.request_id, "deny", t.ask.input, `Vyre's security floor refused this: ${v.reason || "not allowed"}`));
-        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project);
-        t.ask = null;
+        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project); t.ask = null;
       }
     }
     if (t.ask && t.ask.kind === "permission") {
@@ -1974,10 +1974,9 @@ export class Switchboard {
     /** @type {ReturnType<typeof receiptsOf> | null} */ let receipts = null;
     /** @type {string[]} */ let facts = [];
     /** @type {string[]} */ let waiting = [];
-    // The receipts and the ledger are OFF unless VYRE_MANAGED_CONTEXT=on (lead ruling, 9 Oct, after token proof round 5): no valid long-session run has shown they help (the long task is one turn, and a
-    // rollover only happens between turns, so none fired). They come back on by default when a multi-turn run shows a seed with them beats one without.
-    const managed = process.env.VYRE_MANAGED_CONTEXT === "on";
-    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET === "on"))) {
+    // The receipts and the ledger are ON unless VYRE_MANAGED_CONTEXT=off (0.3.3 G12; they were opt-in after the 9 Oct token proof, and the lead ruled them on for every person). The rollover sheet is on the same way: VYRE_ROLLOVER_SHEET=off.
+    const managed = process.env.VYRE_MANAGED_CONTEXT !== "off";
+    if (thread && (managed || (kind === "roll" && process.env.VYRE_ROLLOVER_SHEET !== "off"))) {
       if (managed) receipts = receiptsOf(this.deps.ofThread(thread, { types: ["thread.tool"] }));
       const [w, g] = await Promise.all([
         this.deps.call("memory.writes", { limit: 100 }).catch(() => null),
