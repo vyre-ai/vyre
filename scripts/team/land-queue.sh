@@ -30,7 +30,7 @@ for ref in "${refs[@]}"; do
   base=$(git rev-parse "origin/$TARGET")
   if git diff --name-only "$base" HEAD | grep -qE '(^|/)package-lock\.json$'; then npm ci --no-audit --no-fund >/dev/null 2>&1; (cd apps/app && npm ci --ignore-scripts --no-audit --no-fund >/dev/null 2>&1); fi
   if ! node scripts/team/preflight.mjs --ci --base "$base" > preflight.log 2>&1; then
-    { echo "### $ref: preflight red, not landed"; echo '```'; grep -aE "^(not ok|✖)|AssertionError|Error:|actual:|expected:" preflight.log | head -40; echo "..."; tail -40 preflight.log; echo '```'; } | tee -a "$SUM"
+    { echo "### $ref: preflight red, not landed"; echo '```'; tail -40 preflight.log; echo '```'; } | tee -a "$SUM"
     drop "$ref"; refused=$((refused+1)); continue
   fi
   node scripts/team/regen.mjs >/dev/null 2>&1

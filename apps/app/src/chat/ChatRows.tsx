@@ -5,7 +5,7 @@
 
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Button, Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
 import { sizeWord } from "./attach-model.js";
@@ -113,10 +113,13 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
 
 /** Highlight to assistant: the message, or the part of it the person selected, goes above the composer as a quoted reference. Nothing is sent. */
 /** The one renderer for words that may name a Vault item (vault://name): the name is a small shield chip wherever it sits, in a person's message or an assistant's reply. Plain words stay plain text. */
-export function RefText({ text, style }: { text: string; style?: object }) {
+export function refNodes(text: string): React.ReactNode {
   const parts = partsOf(text);
-  if (!parts.some((p) => "vault" in p)) return <Text size="read" selectable style={style}>{text}</Text>;
-  return <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text))}</Text>;
+  if (!parts.some((p) => "vault" in p)) return text;
+  return parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text));
+}
+export function RefText({ text, style }: { text: string; style?: object }) {
+  return <Text size="read" selectable style={style}>{refNodes(text)}</Text>;
 }
 
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
@@ -189,17 +192,11 @@ function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
   );
 }
 
-function StreamText({ store, k, text, done }: { store: ChatStore; k: string; text: string; done: boolean }) {
+/** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
+function StreamText({ store, k, text, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
-  if (cut >= text.length) return <RefText text={text} />;
-  // The rest is laid out, so the height is the final height; it is only not drawn yet.
-  return (
-    <Text size="read">
-      {text.slice(0, cut)}
-      <Text size="read" style={S.s5}>{text.slice(cut)}</Text>
-    </Text>
-  );
+  return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} />;
 }
 
 export function Skeleton({ w, h = 12, r = 6 }: { w: number | `${number}%`; h?: number; r?: number }) {
@@ -421,13 +418,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const fo = store.group.fanoutAt(k);
       if (fo) {
         if (!fo.first) return null;
-        return <Frame wide={wide} indent={wide}><FanoutSet store={store} fanout={fo.fanout} wide={wide} renderText={(key) => { const x = store.item(key); return x ? <StreamText store={store} k={key} text={x.text} done={x.done} /> : null; }} /></Frame>;
+        return <Frame wide={wide} indent={wide}><FanoutSet store={store} fanout={fo.fanout} wide={wide} renderText={(key) => { const x = store.item(key); return x ? <StreamText store={store} k={key} text={x.text} done={x.done} ctx={ctx} /> : null; }} /></Frame>;
       }
       const w = whoOf(store, k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
-          <StreamText store={store} k={k} text={it.text} done={it.done} />
+          <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
           {it.done ? (
             <ActionRow>
               <AnswerActions text={it.text} ctx={ctx} />

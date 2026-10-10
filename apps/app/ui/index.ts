@@ -4,6 +4,8 @@ export { ThemeProvider, useUiTheme, useAppearance, PHONE_MAX } from "./theme";
 export type { SpaceTheme, PersonTheme, Resolved } from "./theme";
 export { cn } from "./lib/cn";
 export { Text } from "./components/Text";
+export { Markdown, openOutside } from "./components/Markdown";
+export { CodeBlock } from "./components/CodeBlock";
 export { Icon, ICON_NAMES } from "./components/Icon";
 export type { IconName } from "./components/Icon";
 export { Button, IconButton } from "./components/Button";
