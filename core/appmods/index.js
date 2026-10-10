@@ -430,6 +430,7 @@ export default {
         const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
         if (!(await ownerOrAdmin(meta))) throw refuse("only the owner or an admin of this Space opens this app", "denied");
         const m = known(r.name);
+        if (m.app.service) throw refuse(`${r.name} is a service other modules use; it has no screen to open`, "unsupported");
         const screen = (m.screens || []).find((/** @type {any} */ s) => s.id === i.screen) || (m.screens || [])[0];
         let base = baseHost();
         if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
