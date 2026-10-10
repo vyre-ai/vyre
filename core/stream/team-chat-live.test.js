@@ -31,6 +31,7 @@ async function world(t) {
 test("a member speaks in a team chat with an assistant and the assistant answers there, in the team's chat and not the home's", { timeout: 150_000 }, async t => {
   const { w, as } = await world(t);
   const made = await as(ANA, "create", { title: "Team huddle", people: [BEN], agents: ["assistant"] });
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   await as(ANA, "send", { chat: made.chat, text: "hello team, please answer" });
   let lastSeen = "";
   const got = await until(async () => { const c = lastSeen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return /hello team/.test(c) && /echo|hello/i.test(c.replace(/hello team, please answer/g, "")) ? c : null; }, "the assistant's answer in the team's chat").catch(e => { throw new Error(`${e.message} :: ${lastSeen.slice(0, 1500)}`); });
