@@ -45,3 +45,4 @@ echo "a frame was drawn by the phone's Glass page in relay mode"
 # run on the APK with the reason shown
 # rerun on the build with the richer proof page
 # rerun with the cleartext flag read at prebuild
+# rerun with socket diagnostics
