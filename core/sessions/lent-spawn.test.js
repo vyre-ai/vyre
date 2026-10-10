@@ -47,6 +47,7 @@ test("nothing could start on the lender (lent_unavailable): the box runs it, and
   const spawned = new Promise(res => p.once("spawn", res));
   lent.emit("error", Object.assign(new Error("no computer of yours took this session in time"), { code: "lent_unavailable" }));
   lent.emit("close", null, null);
+  box.emit("spawn");
   await spawned;
   p.stdin.write("{\"user\":1}\n");
   await tick();
