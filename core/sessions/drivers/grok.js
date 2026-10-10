@@ -51,7 +51,9 @@ export function grokProvider(o = {}) {
   return acpProvider({
     id: "grok",
     bin: o.bin || "grok",
-    args: () => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", "stdio"],
+    // The Space's approved skills (R031-19), written by the skills module as a plugin folder (`VYRE_SKILLS_DIR`): Grok loads it with `agent --plugin-dir` (the flag sits between `agent` and `stdio`;
+    // after `stdio` it is refused). Measured live 10 Oct: with it a skill only the library holds answers, without it the session never sees it.
+    args: run => ["--no-auto-update", ...(o.custom ? ["-m", o.custom.id || "custom"] : []), "agent", ...(run && run.env && run.env.VYRE_SKILLS_DIR ? ["--plugin-dir", String(run.env.VYRE_SKILLS_DIR)] : []), "stdio"],
     ...(o.custom ? { seed: { ".grok/config.toml": grokConfigToml(o.custom) } } : {}),
     secretEnv: () => ["XAI_API_KEY", ...(o.custom ? [o.custom.envKey] : [])],
     // Grok imports MCP servers from ~/.claude.json and ~/.cursor/mcp.json by default (measured with `grok inspect`, 1.0.46: the person's Claude
