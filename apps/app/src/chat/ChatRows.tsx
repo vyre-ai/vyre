@@ -6,11 +6,13 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Caret, Turning } from "./Live";
+import { runWords } from "./tool-runs.js";
 import { showsCaret, thoughtWord } from "./feel.js";
 import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
-import { sizeWord } from "./attach-model.js";
+import { sizeWord, thumbFor } from "./attach-model.js";
+import { Thumb } from "./Thumb";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
@@ -276,7 +278,10 @@ export function TurnChip({ it, ctx, session, defaultOpen = false }: { it: any; c
     .catch((e) => setSaid((m) => ({ ...m, [path]: e instanceof Error && e.message ? e.message : "That did not go through." })));
   return (
     <View>
-      <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+        {it.vyreCalls >= 2 && ctx.onTurnIntoFlow ? <Button size="sm" kind="ghost" label="Turn this into a Flow" onPress={ctx.onTurnIntoFlow} /> : null}
+      </View>
       {has ? (
         <Sheet open={open} onClose={() => setOpen(false)} title="Changes in this turn">
           <View style={{ padding: 16, gap: 12 }}>
@@ -408,7 +413,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} />
-          {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>)}</View> : null}
+          {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
           {it.pending ? null : (
             <ActionRow>
@@ -494,9 +499,30 @@ function ArtifactLink({ title, href }: { title: string; href: string }) {
   );
 }
 
+/** Three or more steps in a row, folded: one quiet line ("Ran 4 steps", or what is running now and how many so far) that opens to the steps. */
+function ToolRun({ store, keys, wide }: { store: ChatStore; keys: string[]; wide: boolean }) {
+  const [open, setOpen] = useState(false);
+  useSyncExternalStore((f) => { const offs = keys.map((k) => store.subscribeRow(k, f)); return () => offs.forEach((o) => o()); }, () => keys.map((k) => store.rowRev(k)).join(","));
+  const its = keys.map((k) => store.item(k)).filter(Boolean);
+  const w = runWords(its);
+  return (
+    <Frame wide={wide} indent dense>
+      <View style={{ gap: 2 }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${w.title}. ${open ? "Hide" : "Show"} the steps`} onPress={() => setOpen((v) => !v)} style={{ minHeight: wide ? 28 : 44, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {w.running ? <Turning name="refresh" /> : <Icon name={w.failed ? "failed" : "check"} tone={w.failed ? "warn" : "text-2"} />}
+          <Text size="caption" tone={w.running ? "default" : "muted"} numberOfLines={1} style={{ flexShrink: 1 }}>{w.title}</Text>
+          <Text size="caption" tone="label">{open ? "\u25BE" : "\u25B8"}</Text>
+        </Pressable>
+        {open ? <View style={{ paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: "transparent", gap: 2 }}>{its.map((it: any) => <ToolLine key={it.key} it={it} running={it.status === "running"} />)}</View> : null}
+      </View>
+    </Frame>
+  );
+}
+
 export const ChatRow = memo(
   function ChatRow({ store, row, ctx }: { store: ChatStore; row: LayoutRow; ctx: BlockCtx }) {
+    if (row.kind === "toolrun") return <ToolRun store={store} keys={(row as unknown as { keys: string[] }).keys} wide={ctx.wide} />;
     return <ItemBody store={store} k={row.key} ctx={ctx} />;
   },
-  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && a.ctx === b.ctx,
+  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && a.ctx === b.ctx && (a.row as unknown as { keys?: string[] }).keys?.length === (b.row as unknown as { keys?: string[] }).keys?.length,
 );

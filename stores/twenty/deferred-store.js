@@ -12,7 +12,7 @@ export const MAX_DEFS = 500;
 const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable", name: "StoreError" });
 
 /**
- * @param {{ reason: () => string, log?: (m: string) => void }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on)
+ * @param {{ reason: () => string, log?: (m: string) => void, waitMs?: number, waits?: () => boolean }} o `reason`: the plain sentence every refused call carries (read each time, it changes as attempts go on). `waitMs` (default 56 s, the first start) is how long a definition or a type read made after the kernel booted waits for the store to attach before it is refused in those words; `waits()` (default: never wait) says whether one is on its way at all (a store that failed to start is not waited for)
  * @returns {any} the store (a Proxy: it forwards to the real store once attached) with `attach(real)`, `bootDone()`, `attached()`, `kind: "twenty"`
  */
 export function createDeferredStore(o) {
@@ -22,6 +22,9 @@ export function createDeferredStore(o) {
   /** @type {any[]} */ const defs = [];
   let attaching = false;
   const refuse = () => unavailable(o.reason());
+  const waitMs = o.waitMs ?? 56_000;
+  /** After boot, a caller that needs the store waits for it a bounded while (the first start is about a minute) rather than failing on the first second. True once attached. */
+  const settle = () => real ? Promise.resolve(true) : (o.waits ? o.waits() : false) && waitMs > 0 ? new Promise(res => { const t = setTimeout(() => res(false), waitMs); if (t.unref) t.unref(); ready.push(() => { clearTimeout(t); res(true); }); }) : Promise.resolve(false);
   /** @type {Array<() => any>} work the kernel could not do while the store was away (its task records), run once the real store is attached */
   const ready = [];
   // The kernel's per-record attributes (`store.meta`, a Map the gateway reads and writes as it goes). The gateway takes hold of this object when it is built, which is
@@ -60,12 +63,12 @@ export function createDeferredStore(o) {
     features: () => ({ aggregate: true, search: true, changes: true, cursor_paging: true, attr_filter: true }),
     async define(/** @type {any} */ diff, /** @type {any} */ opt) {
       if (real) return real.define(diff, opt);
-      if (!booting) throw refuse();
+      if (!booting) { if (await settle()) return real.define(diff, opt); throw refuse(); }
       if (defs.length >= MAX_DEFS) throw unavailable("the store is not ready and too many changes are waiting");
       defs.push(diff);
       return { applied: false, changes: [] };
     },
-    async types() { if (real) return real.types(); throw refuse(); },
+    async types() { if (real) return real.types(); if (!booting && await settle()) return real.types(); throw refuse(); },
     async health() { return real ? real.health() : { ok: false, detail: o.reason() }; },
   };
   return new Proxy(own, {

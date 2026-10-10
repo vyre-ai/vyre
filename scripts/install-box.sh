@@ -406,6 +406,7 @@ dev_sign() {
   # others, kernel/devbuild.js) and runs its modules by the path rule (VYRE_KERNEL_PATH_RULE=1). For a throwaway test box only; a signed or released build ignores every one of those switches.
   SIGN=1; [ "${VYRE_DEV_SIGN:-1}" != unsigned ] || SIGN=0
   if [ "$SIGN" = 1 ]; then say "packing the checkout and signing it with a throwaway key (this install only)"; else say "packing the checkout as a development build (not signed)"; fi
+  # shellcheck disable=SC2016  # the script in single quotes is for the container's shell: nothing in it should expand here
   dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e "SIGN=$SIGN" -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
     set -e
     mkdir /tmp/w /tmp/u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /tmp/w -xf -

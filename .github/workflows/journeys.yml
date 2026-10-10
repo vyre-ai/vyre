@@ -28,6 +28,8 @@ jobs:
         with: { node-version: 24 }
       - run: npm ci --no-audit --no-fund
       - run: (cd apps/app && npm ci --ignore-scripts --no-audit --no-fund)
+      # The pinned chrome-headless-shell the published-React-page journey draws with (the same one node.yml installs)
+      - run: node scripts/install-test-chrome.mjs
       # The saved Twenty database a new Space starts from: without it each Space makes Twenty's database and every core type (7 to 9 minutes each, 16 with the team Space), with it about 3 (issue #136).
       - uses: ./.github/actions/twenty-golden
       - name: The journeys

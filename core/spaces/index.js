@@ -82,7 +82,6 @@ import path from "node:path";
 import { entryProof } from "../../kernel/seal/entry-proof.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { httpFetch } from "../../lib/http.js";
-
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,

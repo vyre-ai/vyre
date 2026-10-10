@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme, type IconName } from "@vyre/ui";
 import { Face } from "./Face";
+import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
@@ -40,7 +41,7 @@ export type ComposerProps = {
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
   /** The files added to the next message, as chips (name, a line under it, and where it is), and how to take one off. Sending with files and no words is allowed. */
-  attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed" }[];
+  attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed"; thumb?: string }[];
   onRemoveAttachment?: (key: string) => void;
   /** Why the last file was not added, in words. */
   attachProblem?: string | null;
@@ -144,7 +145,7 @@ export function ChatComposer(p: ComposerProps) {
         onBlur={() => setFocused(false)}
         autoFocus={p.autoFocus}
         multiline
-        placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, or / for commands"}
+        placeholder={askAll ? (p.phone ? "Ask everyone" : "Ask every assistant here at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); const ne = e.nativeEvent; send(ne.metaKey || ne.ctrlKey ? "steer" : undefined); } }}
@@ -206,14 +207,16 @@ export function ChatComposer(p: ComposerProps) {
           ))}
         </View>
       ) : null}
-      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: 10, gap: 6 }}>
+      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
         {p.attachments?.length ? (
           <View accessibilityLabel="Files for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {p.attachments.map((a) => (
+            {p.attachments.map((a) => (a.thumb ? (
+              <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
+            ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
                 <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : "file"}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
-            ))}
+            )))}
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
