@@ -1,6 +1,6 @@
 // @ts-check
 // R031-00r errors that teach: every refusal says what to do next. A refusal written in the code as a literal message (refuse("...", "denied") and the like) must name a real tool, say who decides,
-// or give an instruction, so a caller is never left to guess. A dotted name in a message must be a tool that exists (a stale hint is worse than none). A refusal or two that landed since the last sweep are tolerated (GRACE); more fails. bad_input is left out: its message names the field and what it must be.
+// or give an instruction, so a caller is never left to guess. A dotted name in a message must be a tool that exists (a stale hint is worse than none). None is tolerated: it is a preflight guard. bad_input is left out: its message names the field and what it must be.
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -56,8 +56,8 @@ test("ready calls for the tools a message names, by the name the agent calls the
   assert.deepEqual(nextCall("flows.list flows.list work.team.add flows.list", cat, { max: 2 }).length, 2);
 });
 
-/** Teams land every few minutes, so a refusal or two that arrived since the last sweep are reported and tolerated; more than this means refusals are being written without a next step. */
-const GRACE = 6;
+/** None is tolerated (a preflight guard): a refusal without a next step fails the branch that adds it. */
+const GRACE = 0;
 
 test("no refusal without a next step, and no stale tool name in a message (a few in flight are tolerated)", () => {
   const found = findings();
