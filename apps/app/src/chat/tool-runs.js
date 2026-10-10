@@ -32,13 +32,14 @@ export function groupToolRuns(rows, itemOf, min = 3) {
  */
 export function plainToolWords(text, tool) {
   const t = String(text ?? "").trim() || String(tool ?? "").trim();
-  const m = /^mcp__(.+?)__([A-Za-z0-9_]+)(?:\s+\w+:\s*(.*))?$/.exec(t) || /^(work|records|tasks|flows|comms|mail|calendar|projects|stream|threads|agents|artifacts|files|vault)[._]([a-z0-9_.-]+)(?:\s+\w+:\s*(.*))?$/.exec(t);
+  const m = /^mcp__(.+?)__([A-Za-z0-9_]+)(?:\s+\w+:\s*(.*?))?(?:\s+(finished|failed))?$/.exec(t) || /^(work|records|tasks|flows|comms|mail|calendar|projects|stream|threads|agents|artifacts|files|vault)[._]([a-z0-9_.-]+)(?:\s+\w+:\s*(.*?))?(?:\s+(finished|failed))?$/.exec(t);
   if (!m) return t || "Working";
   const name = String(m[2]).replace(/^[a-z]+_(?=screenshot)/, "").replace(/[_.-]+/g, " ").trim();
   const arg = m[3] ? String(m[3]).trim() : "";
-  if (/screenshot|screen ?capture/i.test(name)) { let page = ""; if (arg) { try { page = new URL(arg).host; } catch { page = arg.slice(0, 60); } } return page ? `Screenshot of ${page}` : "Screenshot"; }
+  if (/screenshot|screen ?capture/i.test(name)) { let page = ""; if (arg) { try { page = new URL(arg).host; } catch { page = arg.slice(0, 60); } } return (page ? `Screenshot of ${page}` : "Screenshot") + (m[4] === "failed" ? " failed" : ""); }
   const words = name ? name[0].toUpperCase() + name.slice(1) : "Working";
-  return arg ? `${words}: ${arg.slice(0, 60)}` : words;
+  const tail = m[4] === "failed" ? " failed" : "";
+  return (arg ? `${words}: ${arg.slice(0, 60)}` : words) + tail;
 }
 
 /**

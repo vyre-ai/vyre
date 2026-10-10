@@ -460,6 +460,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     case "block": {
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, plainToolWords(it.summary, it.tool)) : null;
+      if (block && block.block === "text") block = { ...block, text: plainToolWords(block.text, it.tool) };
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
       const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
       const shotMime = it.block && typeof it.block.mime === "string" && /^image\//.test(it.block.mime) ? String(it.block.mime) : null;

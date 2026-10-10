@@ -44,3 +44,11 @@ test("no internal words: a tool's own name never reaches a person's line", async
   const live = runWords([{ status: "running", summary: "mcp__vyre__records_query type: client", tool: "mcp__vyre__records_query" }]);
   assert.doesNotMatch(live.title, /mcp__|_query/);
 });
+
+test("no internal words: a finished or failed step with only a tool's name reads in words", async () => {
+  const { plainToolWords } = await import("./tool-runs.js");
+  assert.equal(plainToolWords("mcp__vyre-chrome__chrome_screenshot url: https://example.com/pricing", "x"), "Screenshot of example.com");
+  assert.equal(plainToolWords("mcp__vyre-chrome__chrome_screenshot finished", "x"), "Screenshot");
+  assert.equal(plainToolWords("mcp__vyre-chrome__chrome_screenshot failed", "x"), "Screenshot failed");
+  assert.equal(plainToolWords("Fixed the build", "x"), "Fixed the build");
+});
