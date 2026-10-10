@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import tls from "node:tls";
 import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
 import { createRelay } from "../../relay/node/server.js";
 import { tempHome } from "../../test/helpers.js";
 
@@ -35,7 +36,8 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const d = await start({ presence: lenient, root, log: (m) => { lines.push(String(m)); } });
   t.after(() => d.stop());
   const status = async () => (await d.registry.call("relay.status", {}, "cli")).data;
-  return { d, relay, tlsPort, route, asked, lines, status };
+  const cli = (/** @type {string} */ tool, /** @type {any} */ input) => call(tool, input, { root, caller: "cli", timeout: 20_000 });
+  return { d, relay, tlsPort, route, asked, lines, status, cli, base };
 }
 
 test("the box dials the edge by itself once an address is set and a name is claimed, and takes a visitor the edge hands it", async t => {
@@ -61,4 +63,16 @@ test("with no edge address set, the box dials nothing and says the door is shut"
   await new Promise(r => setTimeout(r, 1500));
   const s = await w.status();
   assert.deepEqual(s.tunnel, { url: null, connected: false });
+});
+
+test("the edge address is a live setting: set it and the box dials, clear it and the door shuts, with no restart", async t => {
+  const w = await world(t, false);
+  assert.deepEqual((await w.status()).tunnel, { url: null, connected: false });
+  const set = await w.cli("settings.set", { key: "relay.tunnel_url", value: w.base.replace(/^http/, "ws") });
+  assert.ok(!set.error, JSON.stringify(set.error));
+  const s = await until(async () => { const x = await w.status(); return x.tunnel && x.tunnel.connected ? x : null; }, "the box dialled the edge after the setting changed");
+  assert.match(s.tunnel.url, /^ws:\/\/127\.0\.0\.1:\d+$/);
+  const off = await w.cli("settings.set", { key: "relay.tunnel_url", value: "" });
+  assert.ok(!off.error, JSON.stringify(off.error));
+  await until(async () => { const x = await w.status(); return x.tunnel && !x.tunnel.connected && x.tunnel.url === null; }, "the door shut when the address was cleared");
 });

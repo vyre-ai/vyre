@@ -10,7 +10,7 @@ import { Screen } from "../../src/ui/Screen";
 
 /**
  * Settings, Autofill (Android only): pair this phone with the box's fill listener, then pick Vyre
- * as the phone's autofill service. The code comes from `vyre vault pair --phone` on the box.
+ * as the phone's autofill service. The code comes from the Vault on your computer.
  */
 export default function AutofillSettings() {
   const { color } = useTheme();
@@ -96,7 +96,7 @@ export default function AutofillSettings() {
             <TextInput
               value={code}
               onChangeText={setCode}
-              placeholder="From vyre vault pair --phone"
+              placeholder="The pairing code"
               placeholderTextColor={color.label}
               autoCapitalize="characters"
               autoCorrect={false}
@@ -131,7 +131,7 @@ export default function AutofillSettings() {
 
 function describe(s: Autofill.AutofillStatus | null, enabled: boolean): string {
   if (!s) return "Checking this phone";
-  if (!s.paired) return "Not paired. Run vyre vault pair --phone on your home, then enter its address and code.";
+  if (!s.paired) return "Not paired. Make a pairing code in Vyre on your computer (Vault, Browsers; coming in this release), then enter its address and code.";
   const parts = [`Paired as ${s.name ?? "this phone"}`];
   if (s.revoked) parts.push("your home unpaired this phone, so pair again");
   else if (!s.reachable) parts.push("your home is not answering");
