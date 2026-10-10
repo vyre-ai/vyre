@@ -28,7 +28,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { readInside, listInside, writeInside, parts } from "./safefs.js";
+import { readInside, listInside, writeInside, parts, plantable } from "./safefs.js";
 
 /** The folders the sync carries, relative to the mounted workspace, and where each lands in the space. */
 export const ROOTS = [
@@ -233,6 +233,7 @@ export async function restore(o) {
     let rel; try { rel = parts(remote.slice(root.remote.length + 1)).join("/"); } catch { continue; }
     // What comes back from another computer is an ALLOWLIST: the work files, and the provider's transcripts (projects/<folder>/<session>.jsonl). Nothing else of that computer's agent home: a settings file, a hook, an MCP
     // server list or an instructions file written there would run on the next computer, or the box, with this session's authority (trust row 17).
+    if (root.dir === "files" && plantable(rel)) { refused++; continue; }   // the work folder's own settings, hooks, MCP list and instructions are not brought back either (row 29)
     if (root.dir !== "files" && !(root.dir === "home/.claude" && /^projects\/[^/]+\/[A-Za-z0-9_-]{1,100}\.jsonl$/.test(rel))) { refused++; continue; }
     // A link planted in the workspace refuses that one file (and is counted), it never redirects the write.
     try { writeInside(o.work, `${root.dir}/${rel}`, Buffer.from(await o.space.getFile(o.session, remote, m.version))); } catch (e) { if (!/unsafe_path|EEXIST|ENOTDIR|ELOOP/.test(String(e.code))) throw refusal(e); refused++; }

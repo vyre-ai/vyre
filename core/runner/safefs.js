@@ -90,3 +90,17 @@ export function writeInside(root, rel, data) {
   try { fs.writeFileSync(tmp, data, { mode: 0o600, flag: "wx" }); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }   // a full disk leaves no half file
   try { fs.renameSync(tmp, dest); } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
 }
+
+/**
+ * Is this path in a work folder a file a session LOADS as its own configuration (project settings and hooks, an MCP server list, instructions, a git hook)? What comes back from another computer never includes
+ * these, in the work folder at any depth: a file the agent there wrote would run here with this session's authority on the next turn (trust rows 17 and 29). One set for restore and for resume-lent.
+ * @param {string} rel
+ */
+export function plantable(rel) {
+  const p = String(rel).split(/[\\/]+/).filter(Boolean).map(x => x.toLowerCase());
+  if (p.some(x => x === ".claude" || x === ".codex" || x === ".cursor" || x === ".vyre" || x === ".gemini")) return true;
+  const last = p[p.length - 1] || "";
+  if (last === ".mcp.json" || last === "claude.md" || last === "claude.local.md" || last === "agents.md" || last === "gemini.md" || last === ".envrc") return true;
+  const g = p.indexOf(".git");
+  return g >= 0 && (p[g + 1] === "hooks" || p[g + 1] === "config" || p[g + 1] === "info");
+}

@@ -101,3 +101,37 @@ test("on the packaged box the transcript is placed for the thread's account by t
   const no = createResumeLent({ target, port: () => w.own });
   await assert.rejects(() => no({ space: SPACE, session: LENT, thread: "thread_a", view: w.lentView }), (/** @type {any} */ e) => e.code === "unavailable");
 });
+
+test("a link planted in the chat's folder sends no file anywhere (trust row 28), and the packaged box's folder is not written by the server", async t => {
+  const w = await world(t, { files: { "data/x": "planted", "ok.txt": "fine" } });
+  const outside = path.join(w.dir, "outside"); fs.mkdirSync(outside);
+  fs.symlinkSync(outside, path.join(w.cwd, "data"));
+  const r = await w.go();
+  assert.deepEqual(fs.readdirSync(outside), [], "nothing was written through the link");
+  assert.equal(fs.readFileSync(path.join(w.cwd, "ok.txt"), "utf8"), "fine", "a clean file still comes");
+  assert.ok(r.conflicts.includes("data/x"));
+  // a link in the place of the file itself is not followed either
+  const w2 = await world(t, { files: { "f.txt": "x" } });
+  const target = path.join(w2.dir, "target.txt"); fs.writeFileSync(target, "mine");
+  fs.symlinkSync(target, path.join(w2.cwd, "f.txt"));
+  await w2.go();
+  assert.equal(fs.readFileSync(target, "utf8"), "mine");
+  // packaged box: the account's folder gets nothing from vyred
+  const w3 = await world(t, { whole: 3, extra: 0, files: { "a.txt": "x" } });
+  const resume = createResumeLent({ target: async () => ({ file: w3.file, root: path.dirname(path.dirname(w3.file)), native: NATIVE, cwd: w3.cwd, account: 2007 }), port: () => w3.own, place: async (tg, bytes) => { fs.mkdirSync(path.dirname(tg.file), { recursive: true }); fs.writeFileSync(tg.file, bytes); } });
+  const r3 = await resume({ space: SPACE, session: LENT, thread: "thread_a", view: w3.lentView });
+  assert.deepEqual([r3.files, r3.held], [0, 1]);
+  assert.ok(!fs.existsSync(path.join(w3.cwd, "a.txt")));
+});
+
+test("settings, hooks, MCP lists and instructions in the work folder are never carried on (trust row 29), by resume-lent or by restore", async t => {
+  const names = [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/x.sh", ".mcp.json", "CLAUDE.md", "sub/CLAUDE.md", ".git/hooks/pre-commit", ".codex/config.toml"];
+  const w = await world(t, { files: Object.fromEntries([...names, "src/app.js"].map(n => [n, "x"])) });
+  await w.go();
+  for (const n of names) assert.ok(!fs.existsSync(path.join(w.cwd, n)), `${n} is not carried`);
+  assert.ok(fs.existsSync(path.join(w.cwd, "src", "app.js")));
+  const { plantable } = await import("./safefs.js");
+  for (const n of names) assert.equal(plantable(n), true, n);
+  assert.equal(plantable("docs/claude-notes.md"), false);
+  assert.equal(plantable("src/app.js"), false);
+});
