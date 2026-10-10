@@ -23,7 +23,7 @@ function rig(/** @type {any} */ o = {}) {
     if (tool === "chrome.op.run") return o.page ? o.page(input) : { data: { ok: true, class: "ok", data: [{ name: "page one" }] } };
     return { error: { code: "no_such_tool", message: tool } };
   };
-  const made = { row: (/** @type {string} */ id) => (id === "linkedin" ? { id, declaration: JSON.stringify(decl), ...(o.agent ? { form: JSON.stringify({ site: ORIGIN, agent: o.agent }) } : {}) } : null), touch: (/** @type {string} */ id, /** @type {string} */ l, /** @type {string} */ w) => lights.push([id, l, w]) };
+  const made = { row: (/** @type {string} */ id) => (id === "linkedin" ? { id, declaration: JSON.stringify(decl), ...(o.agent ? { form: JSON.stringify({ site: ORIGIN, agent: o.agent }) } : {}) } : null), touch: (/** @type {string} */ id, /** @type {string} */ l, /** @type {string} */ w, /** @type {string} */ cls) => lights.push([id, l, w, cls]) };
   const runner = createSiteRunner({ call, made, emit: (type, p) => events.push([type, p]), entries: async (_o, names) => entries.filter(e => !names || names.includes(e.name)), role: o.role || "local" });
   return { runner, calls, events, lights };
 }
@@ -73,6 +73,8 @@ test("on a box the login lives in an agent's own Chrome: that rung runs it with 
   const card = walled.events.find(e => e[0] === "connectors.site-needs-signin")[1];
   assert.deepEqual([card.id, card.rung, card.agent], ["linkedin", "box", "ops"]);
   assert.match(walled.lights.at(-1)[2], /ops's computer: open its screen and sign in once/);
+  assert.equal(walled.lights.at(-1)[3], "auth", "the class is kept with the light, so Needs you can say what to do");
+  assert.equal(r.lights.at(-1)[3], "ok");
   const noAgent = rig({ role: "box" });
   assert.ok((await noAgent.runner.run(q("search_people"))).status >= 400);
   assert.equal(noAgent.calls.filter(c => c[0] === "chrome.op.run").length, 0, "a box with no agent named for the login has no box-browser rung");
