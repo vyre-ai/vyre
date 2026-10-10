@@ -4,7 +4,7 @@ import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
 import { Avatar, type AvatarKind } from "../components/Avatar";
 import { StageMini } from "../components/StageSteps";
-import { addrText, actorIdOf, fmtDate, linkHref, linkLabel, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
+import { addrText, actorIdOf, actorName, fmtDate, linkHref, linkLabel, fmtMoney, fmtTime, isEmpty, listOf, marks, relDate, toDate, urnOf } from "./logic.js";
 import type { ViewProps } from "./types";
 
 const Empty = () => <Text tone="faint">Empty</Text>;
@@ -108,7 +108,7 @@ export function LinkView({ p, env }: ViewProps) {
 export function ActorView({ p, env }: ViewProps) {
   if (isEmpty(p.value)) return <Empty />;
   const id = actorIdOf(p.value), a = (env.actors || []).find((x) => x.id === id);
-  const name = a ? a.name : p.value?.actor?.name || id;
+  const name = actorName(p.value, env);
   return (
     <View className="flex-row items-center gap-s2">
       <Avatar of={{ kind: familyOf(a?.family), id: id || name, name, seed: a?.seed }} size={24} />
