@@ -13,14 +13,14 @@ export function usePlacement(thread: string, real: boolean) {
   const [lines, setLines] = useState<{ at: number; text: string }[]>([]);
   // While the process starts on a computer the status line says so (thread.placing); it is gone once it is up or has fallen back to the server.
   const [starting, setStarting] = useState("");
-  // Two modules say the same fact (thread.placing from the switchboard, thread.starting from the link module): a line is never put twice in a row.
+  // The same fact can arrive twice: a line is never put twice in a row.
   const say = useCallback((at: number, text: string) => setLines((l) => (l.length && l[l.length - 1].text === text ? l : [...l.slice(-4), { at, text }])), []);
   useEffect(() => {
     if (!real) return;
     let live = true;
     runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
     const off = listen((e: any) => {
-      if ((e?.type === "thread.placing" || e?.type === "thread.starting") && String(e?.payload?.thread ?? "") === thread) {
+      if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
         setStarting(placingWords(e.payload));
         const line = placingLine(e.payload);
         if (line) say(Date.now(), line);
