@@ -143,3 +143,16 @@ test("privacy lists the sealed fields from the record types, and nothing else", 
   const ts = await settingsSource(b.call).types();
   assert.deepEqual(sealedFields(ts).map((x) => [x.typeLabel, x.label]), [["Contact", "SSN"], ["Contact", "Account"]]);
 });
+
+test("assistants list: each assistant is a list row with its face, a Paused chip, and Pause or Resume only when it has a thread", { skip: !strip }, async () => {
+  const { assistantRows } = await import("./agents-model.ts");
+  const a = (/** @type {any} */ o) => ({ name: "Kit", kind: "agent", projects: [], model: "claude-sonnet", status: "running", thread: "t1", ...o });
+  const rows = assistantRows([a({}), a({ name: "Vyre Assistant", kind: "assistant", status: "stopped" }), a({ name: "Scout", thread: null })]);
+  assert.deepEqual(rows[0].faces, [{ kind: "teammate", name: "Kit" }]);
+  assert.deepEqual(rows[0].actions, [{ id: "flip", title: "Pause" }]);
+  assert.equal(rows[0].accessories, undefined);
+  assert.deepEqual(rows[1].faces, [{ kind: "assistant", name: "Vyre Assistant" }]);
+  assert.deepEqual([rows[1].actions[0].title, rows[1].accessories], ["Resume", [{ label: "Paused", tone: "warn" }]]);
+  assert.equal(rows[2].actions, undefined, "no thread, nothing to pause");
+  assert.match(rows[0].subtitle, /^Agent\. /);
+});

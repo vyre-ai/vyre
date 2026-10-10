@@ -39,3 +39,9 @@ export function providerRows(ps: Provider[]): { id: string; name: string; on: bo
 
 /** What the agents together have spent, for the top of AI accounts. */
 export const totalSpent = (us: Usage[]): number => us.reduce((n, u) => n + (u.spent_usd || 0), 0);
+
+/** The assistants as rows of a list block: the face, what it does, a Paused chip, and Pause or Resume when it has a thread. */
+export const assistantRows = (list: Agent[]) => list.map((a) => ({
+  id: a.name, title: a.name, subtitle: `${roleOf(a)}. ${agentLine(a)}`, faces: [{ kind: a.kind === "assistant" ? "assistant" : "teammate", name: a.name }],
+  ...(isStopped(a) ? { accessories: [{ label: "Paused", tone: "warn" }] } : {}), ...(a.thread ? { actions: [{ id: "flip", title: isStopped(a) ? "Resume" : "Pause" }] } : {}),
+}));
