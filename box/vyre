@@ -2169,6 +2169,40 @@ sp_pub_rec_load() {
   # shellcheck disable=SC2034 # the A_* variables are read by the app functions
   A_NAME=$PR_NAME; A_IMAGE=$PR_TAG; A_PORT=$PR_PORT; A_MEM=$PR_MEM; A_CPUS=$PR_CPUS; A_PIDS=$PR_PIDS; A_HOOK=0; A_SCRIPT=-; A_EXEC=-; A_OUTS=-; A_HPATH=$PR_HPATH; A_HOK=$PR_HOK; A_HSTART=$PR_HSTART
 }
+# The build's network (trust row 37): the rootless BuildKit runs a Dockerfile's RUN and ADD steps, which are the author's code. It gets a bridge of its own (vyrepub0) with the public internet
+# (base images, package installs) and nothing else: the metadata address and every other private, link-local, loopback or carrier range are dropped in DOCKER-USER, the host itself in INPUT,
+# and other containers are other private addresses. DNS to the host's own configured (non-loopback) resolvers is the one exception. The rules are checked before every build, and a probe from a
+# throwaway container on that network must find the metadata address, the bridge's gateway and the vyre container closed, or the build is refused.
+PUB_NET=vyre-pub-build
+PUB_BR=vyrepub0
+PUB_DENY="0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/3"
+hfw() { env -i PATH="$PATH" iptables -w "$@"; }
+# sp_pub_rule CHAIN RULE...: the rule is there, or it is added at the top, and then it is looked for again.
+sp_pub_rule() {
+  _ch=$1; shift
+  hfw -C "$_ch" "$@" >/dev/null 2>&1 || hfw -I "$_ch" 1 "$@" >/dev/null 2>&1 || { MSG="the build's network rules could not be added"; return 1; }
+  hfw -C "$_ch" "$@" >/dev/null 2>&1 || { MSG="the build's network rule is not there after it was added"; return 1; }
+}
+sp_pub_net() {
+  hdock network inspect "$PUB_NET" >/dev/null 2>&1 || hdock network create --driver bridge --opt "com.docker.network.bridge.name=$PUB_BR" --opt com.docker.network.bridge.enable_icc=false --label run.vyre=1 "$PUB_NET" >/dev/null 2>&1 \
+    || { MSG="the build's own network could not be made"; return 1; }
+  _br=$(hdock network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$PUB_NET" 2>/dev/null || true)
+  [ "$_br" = "$PUB_BR" ] || { MSG="the build's network is not the one this helper made; remove it with: docker network rm $PUB_NET"; return 1; }
+  # drops first, then the DNS exceptions go in above them (each rule is put at the top)
+  for _c in $PUB_DENY; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -d "$_c" -j DROP || return 1; done
+  sp_pub_rule INPUT -i "$PUB_BR" -j DROP || return 1
+  for _ns in $(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /etc/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3); do
+    for _pr in udp tcp; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -p "$_pr" -d "$_ns" --dport 53 -j ACCEPT || return 1; done
+  done
+  # the probe: from a throwaway container on that network, none of these may answer
+  _gw=$(hdock network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "$PUB_NET" 2>/dev/null || true)
+  _vy=$(hdock inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$CTR_NAME" 2>/dev/null | tr -s ' ' '\n' | sed -n '/^[0-9][0-9.]*$/p' | head -n 4)
+  for _t in 169.254.169.254 $_gw $_vy; do
+    sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$_t" || continue
+    _r=$(timeout 20 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network "$PUB_NET" --cap-drop ALL --entrypoint sh "$PUB_BUILDKIT" -c "nc -w 2 -z $_t 80 >/dev/null 2>&1 && echo OPEN || echo CLOSED" 2>/dev/null | tail -n 1)
+    [ "$_r" = CLOSED ] || { MSG="the build's network can reach $_t, so no build was started"; return 1; }
+  done
+}
 # sp_pub_build DEP: claim, vet, judge, build, load, record. MSG ends with the image id the daemon starts the server from.
 # Each "A && B || C" below means: if A and B do not both hold, take the refusal.
 # shellcheck disable=SC2015
@@ -2191,9 +2225,10 @@ sp_pub_build() {
   out=$SP_PUB/$dep/out
   rm -rf -- "$out"; { mkdir -p "$out" && chmod 777 "$out"; } 2>/dev/null || { MSG="the helper's build folder could not be made"; return 1; }
   hdock rm -f vyre-pub-build >/dev/null 2>&1 || true
+  sp_pub_net || { rm -rf -- "$out"; return 1; }
   sp_status "$ID" running "building"
   # rootless BuildKit as an unprivileged container: SETUID and SETGID kept only for its user namespace, the context read-only, nothing else mounted, bounded in memory, processes and time
-  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-pub-build --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-pub-build --network "$PUB_NET" --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
     --cap-drop ALL --cap-add SETUID --cap-add SETGID --memory 2g --cpus 2 --pids-limit 1024 -e BUILDKITD_FLAGS=--oci-worker-no-process-sandbox -v "$bc/ctx:/ctx:ro" -v "$out:/out" \
     --entrypoint buildctl-daemonless.sh "$PUB_BUILDKIT" build --frontend dockerfile.v0 --local context=/ctx --local dockerfile=/ctx --output "type=docker,name=$tag,dest=/out/image.tar" >/dev/null 2>"$SP_PUB/$dep/build.log"
   brc=$?
