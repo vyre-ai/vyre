@@ -175,7 +175,7 @@ export async function kernelTeamSpaces(K, person) {
 export async function membersComputers(d) {
   const { i, meta, row, h, caller, self, role, kctxOf, answerChallenge, refuse } = d;
   const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
-  if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here.", "unavailable");
+  if (!offers || typeof offers.find !== "function") throw refuse("This Space cannot say whether its members' computers are allowed here: ask the owner of this server to update it.", "unavailable");
   const find = () => offers.find({ side: "space_allows", member: "*", device: null });
   if (i.allow === undefined) { if (!role) throw refuse("You are not a member of this space.", "not_a_member"); return { space: row.id, allowed: Boolean(await find()) }; }
   if (caller !== self) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
