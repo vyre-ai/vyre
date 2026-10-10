@@ -57,3 +57,14 @@ test("vault stop: a waiting sync never runs, a running one is awaited, and no ke
   assert.deepEqual(ran, ["soon", "soon done"]);
   assert.equal(fs.existsSync(path.join(root, "vault", "key")), false);
 });
+
+test("vault stop: the connector list asks for no key when there is no api-credential item, so a home with none gets none", async t => {
+  const root = tempHome(t);
+  const db = open(path.join(root, "vyre.db"));
+  migrate(db, "vault", MIGRATIONS);
+  t.after(() => { try { db.close(); } catch {} });
+  const vault = new Vault({ db, dir: path.join(root, "vault"), config: { vault: { keystore: "file" } }, emit: () => {} });
+  assert.deepEqual(await vault.apiCredentialNames(), []);
+  assert.equal(fs.existsSync(path.join(root, "vault", "key")), false, "asking which connectors there are made no key");
+  await vault.stop();
+});

@@ -1112,8 +1112,10 @@ export class Vault {
 
   /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
   async apiCredentialNames() {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all());
+    if (!rows.length) return []; // no such item, no key needed: asking which connectors there are must not make the vault's key
     await this.key();
-    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
+    return rows.filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
   }
 
   /**
