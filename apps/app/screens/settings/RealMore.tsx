@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
-import { autoLine, checkedLine, howLine, KIND_ROWS, QUIET_DEFAULT, quietLine, updateLine, type PushDevice, type PushSettings, type UpdateStatus } from "./real-model";
+import { autoLine, checkedLine, howLine, KIND_ROWS, noteLines, QUIET_DEFAULT, quietLine, updateLine, type PushDevice, type PushSettings, type UpdateStatus } from "./real-model";
 import { pushDevices, pushSet, pushSettings, updateApply, updateCheck, updateStatus } from "./real";
 
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
@@ -25,7 +25,7 @@ export function RealUpdates() {
             <Text strong>{`Vyre ${s.current}`}</Text>
             <Text tone="muted">{updateLine(s)}</Text>
             <Text size="caption" tone="label">{`${checkedLine(s.checkedAt, Date.now())} Channel: ${s.channel}.`}</Text>
-            {s.notes.length ? <View className="gap-s1 pt-s1">{s.notes.map((n, i) => <Text key={i} size="secondary">{n}</Text>)}</View> : null}
+            {noteLines(s.notes).length ? <View className="gap-s1 pt-s1">{noteLines(s.notes).map((n, i) => <Text key={i} size="secondary">{n}</Text>)}</View> : null}
             <View className="flex-row gap-s2 pt-s2">
               <Button size="sm" label={busy ? "Checking" : "Check for updates"} disabled={busy} onPress={check} />
               {s.available && s.canApply ? <Button size="sm" kind="primary" label="Update now" disabled={busy} onPress={apply} /> : null}

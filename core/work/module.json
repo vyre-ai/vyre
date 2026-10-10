@@ -91,6 +91,12 @@
         "effect": "read"
       },
       {
+        "name": "work.project.people",
+        "summary": "who the project's people are, for previews shared with the project",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.project.ref",
         "summary": "the Project a record id, address or short name names: its id, address, short name and name",
         "reach": "anyone",

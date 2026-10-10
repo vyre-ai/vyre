@@ -151,16 +151,26 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       ...(entered && entered.skipped.length ? { tasks_skipped: entered.skipped } : {}) };
   }
 
+  /** The stages a free-flow project would have been given as a template: one working stage holding its tasks (title, and the note as the brief), then Done. @param {any} chain @param {any} proj @param {{ role: string }[]} roles */
+  async function freeFlowSnapshot(chain, proj, roles) {
+    const tasks = (await kernel().records.query(chain, "task", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 100 } })).rows
+      .filter((/** @type {any} */ r) => r.data && typeof r.data.title === "string" && r.data.title.trim())
+      .sort((/** @type {any} */ a, /** @type {any} */ b) => String(a.data.created_at || a.id) < String(b.data.created_at || b.id) ? -1 : 1).slice(0, 30);
+    const doer = roles.length ? `role:${roles[0].role}` : "person:owner";
+    const text = (/** @type {any} */ v) => String(v == null ? "" : typeof v === "string" ? v : JSON.stringify(v)).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 500);
+    return { name: proj.data.name, stages: [{ name: "Working", ...(tasks.length ? { tasks: tasks.map((/** @type {any} */ r) => ({ title: String(r.data.title).trim().slice(0, 200), doer, output: { kind: "note" }, ...(text(r.data.note) ? { brief: text(r.data.note) } : {}) })) } : {}) }, { name: "Done" }] };
+  }
+
   /** A draft template made from a project that ran one: the stages it was pinned to (their briefs kept as written) and the roles its team filled. */
   async function fromProject(chain, i) {
     const k = kernel();
     const projects = (await k.records.query(chain, "project", { filter: { field: "slug", op: "eq", value: String(i.project || "") }, page: { limit: 1 } })).rows;
     const proj = projects[0];
     if (!proj) throw fail("not_found", `no project ${i.project}`);
-    if (!proj.data.template_snapshot) throw fail("bad_state", "that project did not start from a template, so there are no stages to copy; a free-flow project is chats and files");
-    const snap = JSON.parse(String(proj.data.template_snapshot));
     const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 100 } })).rows;
     const roles = rows.filter((/** @type {any} */ r) => r.data.role && r.data.actor && r.data.actor.actor && r.data.actor.actor.kind === "agent").map((/** @type {any} */ r) => ({ role: String(r.data.role), agent: r.data.actor.actor.id, ...(proj.data.lead === r.data.actor.actor.id ? { lead: true } : {}) }));
+    // A free-flow project has no stages to copy (it is chats and files), but it has a team and the work it did: its tasks become the tasks of one working stage, its team the roles, and the person edits the draft in the studio.
+    const snap = proj.data.template_snapshot ? JSON.parse(String(proj.data.template_snapshot)) : await freeFlowSnapshot(chain, proj, roles);
     const body = { name: String(i.name || `${snap.name || proj.data.name} (copy)`), roles, tags: parseTags(proj.data.tags).filter((/** @type {string} */ t) => !t.startsWith("from-")), stages: snap.stages.map((/** @type {any} */ s, /** @type {number} */ n) => ({ name: s.name, ...(s.owner ? { owner: s.owner } : {}), ...(snap.stages[n + 1] && snap.stages[n + 1].enter_if ? { moves_on_when: snap.stages[n + 1].enter_if } : {}), ...(s.tasks ? { tasks: s.tasks } : {}) })) };
     return define(chain, { body, note: `saved from the project ${proj.data.slug}` });
   }
