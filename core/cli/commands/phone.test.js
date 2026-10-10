@@ -295,7 +295,11 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   const subscribe = async () => (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
   const arrivals = () => svc.got.filter(p => p === "/push/pixel").length;
   const device = await subscribe();
-  // push.subscribed from the push module moves the check, with no Enter.
+  // push.subscribed from the push module moves the check, with no Enter. The command opens its event stream a moment after its code line and an event before that is not replayed, so a first
+  // subscribe that lands early gets no test notification: subscribe again (harmless) until one comes.
+  for (let tries = 0; !svc.got.includes("/push/pixel") && tries < 8; tries++) {
+    try { await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter", 4_000); } catch { await subscribe(); }
+  }
   await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter", 20_000);
   await shows(svc, root, "/push/pixel");
   // The command opens its event stream a moment after its code line, and an event before that is not
