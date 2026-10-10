@@ -87,20 +87,20 @@ test("a stop is passed to whichever process has the chat, and an error of a runn
   assert.equal(/** @type {any} */ (await seen).code, "unavailable");
 });
 
-test("only a chat the home's book places on a computer gets a lent spawn; a new chat, or a daemon that is not the home, runs on the box", () => {
+test("only a chat the home's book places on a computer gets a lent spawn; a new chat, or a daemon that is not the home, runs on the box", async () => {
   const calls = /** @type {any[]} */ ([]);
   const row = { where: "mac", session: "ses_native", chat: "chat_1", person: "per_bob" };
   const kernel = (/** @type {any} */ rows) => ({ runnerHost: () => ({ lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { calls.push({ space, ...i }); return {}; }, placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null } }) });
   const q = { thread: "thr_1", chat: "chat_1", native: "ses_native" };
-  assert.equal(lentSpawnFor(kernel({}), q), null, "no row: the server's");
-  assert.equal(lentSpawnFor(kernel({ chat_1: { ...row, where: "server" } }), q), null, "a row that says server");
-  assert.equal(lentSpawnFor(null, q), null, "no kernel");
-  assert.equal(lentSpawnFor({ runnerHost: () => { throw new Error("no runner host"); } }, q), null, "a computer that is not a home");
-  const fn = lentSpawnFor(kernel({ chat_1: row }), q);
+  assert.equal(await lentSpawnFor(kernel({}), q), null, "no row: the server's");
+  assert.equal(await lentSpawnFor(kernel({ chat_1: { ...row, where: "server" } }), q), null, "a row that says server");
+  assert.equal(await lentSpawnFor(null, q), null, "no kernel");
+  assert.equal(await lentSpawnFor({ runnerHost: () => { throw new Error("no runner host"); } }, q), null, "a computer that is not a home");
+  const fn = await lentSpawnFor(kernel({ chat_1: row }), { ...q, title: "Harlow intake" });
   assert.ok(fn, "a chat placed on a computer");
   const ac = new AbortController();
   fn?.("claude", ["--output-format", "stream-json"], { SECRET: "no" }, "/box/work", { signal: ac.signal });
-  assert.deepEqual(Object.keys(calls[0]).sort(), ["args", "chat", "command", "person", "session", "signal", "space"]);
+  assert.deepEqual(Object.keys(calls[0]).sort(), ["args", "chat", "command", "person", "session", "signal", "space", "title"]);
   assert.deepEqual([calls[0].session, calls[0].chat, calls[0].person, calls[0].space], ["ses_native", "chat_1", "per_bob", "spc_a"], "the row's own person; the box's env and folder are not sent");
 });
 
@@ -145,4 +145,38 @@ test("the switchboard asks for a lent spawn for a claude session only, and a fai
   assert.equal(await ask(sb(async () => null), { provider: "claude" }), undefined);
   assert.equal(await ask(sb(async () => { throw new Error("no host"); }), { provider: "claude" }), undefined);
   assert.equal(await ask({ deps: {}, chatOf: () => null, nativeOf: () => "x" }, {}), undefined);
+});
+
+test("a new chat of the home's owner is placed once at creation: a ready computer gets the row, none ready leaves it on the box, and another person's chat or one that already ran is never placed", async () => {
+  const rows = /** @type {Record<string, any>} */ ({});
+  const placed = /** @type {any[]} */ ([]);
+  const make = (/** @type {{ where: string }} */ answer) => ({
+    owner: "per_owner", id: { space: "spc_a", owner: "per_owner" },
+    runnerHost: () => ({
+      lentSpawn: () => ({}),
+      placeNew: async (/** @type {string} */ space, /** @type {any} */ i) => { placed.push({ space, ...i }); if (answer.where === "mac") rows[i.chat] = { where: "mac", session: i.session, chat: i.chat, person: i.person }; return answer; },
+      placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null },
+    }),
+  });
+  const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true };
+  assert.equal(await lentSpawnFor(make({ where: "box" }), q), null, "none ready: the box");
+  assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "ses_9", "chat_9", "per_owner"]]);
+  assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, asker: "per_member" }), null, "another person's chat is not placed on the owner's computer");
+  assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, fresh: false }), null, "a chat that already ran is not placed now");
+  assert.equal(placed.length, 1);
+  const fn = await lentSpawnFor(make({ where: "mac" }), q);
+  assert.ok(fn, "a ready computer: the row is written and the process is lent");
+  assert.equal(placed.length, 2);
+});
+
+test("the lent process says it is starting on its computer from the first moment, and the SDK's object passes it on", async () => {
+  const lent = fake(); lent.lent = { device: "dev_1", computer: "Office Mac", state: "starting", epoch: 1 };
+  const p = lentOrBox({ lent, box: () => fake() });
+  assert.equal(p.lent.computer, "Office Mac");
+  const said = new Promise(res => p.once("starting", res));
+  lent.emit("starting");
+  assert.equal(/** @type {any} */ (await said).state, "starting");
+  lent.lent = { ...lent.lent, state: "up" };
+  lent.emit("spawn");
+  assert.equal(p.lent.state, "up");
 });

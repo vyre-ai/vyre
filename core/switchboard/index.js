@@ -1174,7 +1174,7 @@ export class Switchboard {
    */
   async lentFor(id, rec) {
     if (!this.deps.lentFor || (rec && rec.provider && rec.provider !== "claude")) return undefined;
-    try { return (await this.deps.lentFor({ thread: id, chat: this.chatOf(id), native: this.nativeOf(id) })) || undefined; } catch { return undefined; }
+    try { return (await this.deps.lentFor({ thread: id, chat: this.chatOf(id), native: this.nativeOf(id), title: rec && rec.name ? String(rec.name) : null, fresh: !(Number(rec && rec.turns) > 0), asker: this.turnAsker.get(id) || null })) || undefined; } catch { return undefined; }
   }
 
   /** The confined spawner for this session (deps.sandbox: { sandbox, platform, home, vyreHome, probes, temp, binFor }), or null when sandboxing is not on. Throws one plain reason when the check fails. */
@@ -3826,7 +3826,7 @@ export default {
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       // A chat placed on the person's own computer runs its agent process there (the home's placement book says where; contracts/lent-spawn.md). Null where this daemon is not the Space's home.
-      lentFor: (/** @type {{ thread: string, chat: string | null, native: string }} */ q) => lentSpawnFor(ctx.kernel, q),
+      lentFor: (/** @type {{ thread: string, chat: string | null, native: string, title?: string | null, fresh?: boolean, asker?: string | null }} */ q) => lentSpawnFor(ctx.kernel, q),
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".

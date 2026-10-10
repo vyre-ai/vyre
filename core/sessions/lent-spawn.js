@@ -72,6 +72,9 @@ export function lentOrBox({ lent, box }) {
     proc.emit("spawn");
   };
 
+  // The lender's process knows its computer from the first moment (`lent`, state "starting"): the chat says "Starting on <computer>" until `spawn`.
+  proc.lent = lent.lent;
+  lent.on("starting", () => { if (!settled) { proc.lent = lent.lent; proc.emit("starting", lent.lent); } });
   lent.on("spawn", lentUp);
   lent.on("error", (/** @type {any} */ e) => {
     if (settled) { if (up) proc.emit("error", e); return; }
