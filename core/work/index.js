@@ -24,7 +24,6 @@ import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
-import { retryWhileAway, storeAway } from "./retry-away.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -131,12 +130,11 @@ export default {
             note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project${per ? `: ${per}` : ""}. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
           });
           dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
-        } catch (e) { if (storeAway(e)) throw e; ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
+        } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
-      const t = setTimeout(() => { void retryWhileAway(raiseRestore).catch(() => {}); }, 1500); if (typeof t.unref === "function") t.unref();
+      const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
       // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
-      // (a team Space's own record store may still be starting: this is tried again until it is there, not given up on until the next restart)
-      void retryWhileAway(() => hubOf().personalProject().then(() => hubOf().migrateGeneral())).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
+      void hubOf().personalProject().then(() => hubOf().migrateGeneral()).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
     // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
     registerTemplateTools({ ctx, chainOf, templates: createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
