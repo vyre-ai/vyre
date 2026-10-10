@@ -39,6 +39,13 @@ http.createServer((q, r) => {
   const k = process.env.GREETING_PHRASE;
   r.setHeader("set-cookie", "s=1; Path=/; Domain=.localhost");
   r.end(JSON.stringify({ root, data, key: k ? crypto.createHash("sha256").update(k).digest("hex").slice(0, 8) : null, cookie: q.headers.cookie || null, host: q.headers.host || null, xff: q.headers["x-forwarded-for"] || null, method: q.method, url: q.url, vyre: Object.keys(q.headers).filter(h => h.startsWith("x-vyre")) }));
+}).on("upgrade", (q, sock) => {
+  // a WebSocket by hand: the handshake, then one text frame that says which cookie the page was opened with
+  const accept = crypto.createHash("sha1").update(q.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+  sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + "\r\n\r\n");
+  const msg = Buffer.from(JSON.stringify({ ws: true, cookie: q.headers.cookie || null }));
+  sock.write(Buffer.concat([Buffer.from([0x81, msg.length]), msg]));
+  sock.on("error", () => {});
 }).listen(8080);
 `;
 
@@ -111,6 +118,17 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.deepEqual([got.method, got.url], ["GET", "/hello?a=1"]);
   assert.deepEqual(hit.headers["set-cookie"], ["s=1; Path=/"], "its cookie stays on its own host");
   assert.equal(/** @type {any} */ (await visit("POST", "/orders")).status, 200, "every method");
+
+  // a stranger's WebSocket, through the front: the page keeps its own cookie, never Vyre's
+  const frame = await new Promise(resolve => {
+    const c = net.connect(frontPort, "127.0.0.1", () => c.write(`GET /live HTTP/1.1\r\nHost: ${H}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: vyre_app=FORGED; theme=dark\r\n\r\n`));
+    let buf = Buffer.alloc(0);
+    c.on("data", dd => { buf = Buffer.concat([buf, dd]); const i = buf.indexOf("\r\n\r\n"); if (i >= 0 && buf.length > i + 6) { const n = buf[i + 5]; if (buf.length >= i + 6 + n) { c.destroy(); resolve({ head: buf.subarray(0, i).toString(), payload: buf.subarray(i + 6, i + 6 + n).toString() }); } } });
+    c.on("error", () => resolve(null)); setTimeout(() => { c.destroy(); resolve(null); }, 5000).unref();
+  });
+  assert.ok(frame, "the WebSocket opened");
+  assert.match(/** @type {any} */ (frame).head, /^HTTP\/1\.1 101 /);
+  assert.deepEqual(JSON.parse(/** @type {any} */ (frame).payload), { ws: true, cookie: "theme=dark" });
 
   // the container, as inspected
   const ins = JSON.parse(docker(["inspect", names.container]).stdout)[0];
