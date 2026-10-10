@@ -419,5 +419,22 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(turn.turns[0].text, first.trim());
     assert.match(turn.turns[0].text, /marzipan-7$/);
   });
+
+  test(`${driver}: the person's words in a threads.switch reach the event log whole, however long the seed in front of them`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    withGrok(t, w);
+    noMemoryBlocks(w);
+    assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Codex", kind: "login" })).error, undefined);
+    const pad = "padding words ".repeat(430);
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: `plan the Northwind menu ${pad}`, surface: "deck" })).data;
+    await w.finished(th.id);
+    const words = "now the prices, and mention the marzipan-7 special";
+    assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "grok", text: words })).error, undefined);
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /marzipan-7 special$/, "the provider got the words");
+    const rec = (await w.tool("threads.get", { thread: th.id })).data;
+    const sent = rec.events.filter(e => e.type === "thread.sent").map(e => e.payload.text);
+    assert.equal(sent.at(-1), words, "and the log keeps the person's words, not the first 2,000 characters of the seed");
+  });
 }
 
