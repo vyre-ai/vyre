@@ -500,6 +500,7 @@ test("a published server: only Publish runs it, from the secrets Publish wrote, 
   assert.equal(seen.cookie, "mine=1");
   // the next version replaces the running one (the old container goes, the data stays)
   w.log.length = 0;
+  fs.mkdirSync(path.join(w.root, "publish", SP, "secrets", "dep_fedcba9876543210"), { recursive: true }); fs.writeFileSync(path.join(w.root, "publish", SP, "secrets", "dep_fedcba9876543210", "API_KEY"), "k-live-456", { mode: 0o600 });
   const v2 = await asPublish("appmods.publish.install", { deployment: dep({ id: "dep_fedcba9876543210", version: 2, runtime: { kind: "image", image: "sha256:" + "b".repeat(64), port: 8080 } }) });
   assert.equal(v2.error, undefined, JSON.stringify(v2.error));
   assert.deepEqual(w.log.map(l => l[0]).filter(x => x === "down" || x === "up"), ["down", "up"]);
