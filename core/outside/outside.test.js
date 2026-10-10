@@ -81,7 +81,7 @@ test("an outside agent reaches only what it was given, and sealed values come ba
 });
 
 test("a write waits at the Gate: nothing changes until the person says yes, and a no changes nothing", { timeout: 120_000 }, async t => {
-  const { ok, call, rpc, use, events, heldList } = await rig(t);
+  const { ok, call, rpc, use, events, heldList, jane } = await rig(t);
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"] } });
   assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes" } })).text, /needs the person to give you more access|write access/, "read access is not write access");
@@ -100,6 +100,15 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
   assert.equal(made.length, 1, "approved: it was made");
   assert.equal((await use(reg.token, "held_get", { held: asked.json.held })).json.state, "done");
 
+  // a change to a record it can read: held, approved, and made as the agent
+  const upd = await use(reg.token, "records_update", { urn: jane.urn, fields: { age: 41 } });
+  assert.ok(upd.json && /^hd_/.test(upd.json.held), JSON.stringify(upd));
+  assert.equal((await ok("records.get", { urn: jane.urn })).record.data.age, 40, "nothing changed yet");
+  const item3 = (await heldList()).find(x => /Muse wants to change a contact/.test(x.summary || ""));
+  assert.ok(item3, "the card says it is a change");
+  assert.equal((await ok("gate.approve", { id: item3.id })).state, "sent");
+  assert.equal((await ok("records.get", { urn: jane.urn })).record.data.age, 41, "approved: it was changed");
+  assert.equal((await use(reg.token, "held_get", { held: upd.json.held })).json.state, "done");
   // a no
   const second = await use(reg.token, "records_create", { type: "contact", fields: { name: "Nope Person" } });
   const item2 = (await heldList()).find(x => /Nope Person/.test(x.summary || ""));
@@ -180,4 +189,14 @@ test("memory and files of a project it was given are asked and read through the 
   assert.deepEqual(asked.facts.map(f => f.text), ["Harlow settles on the 15th"]);
   assert.match((await use(reg.token, "memory_ask", { project: other.slug, question: "settles" })).text, /not a project you were given/);
   void call; void rpc;
+});
+
+test("an outside agent cannot flood the Gate: a few changes waiting at a time, each of a sane size", { timeout: 120_000 }, async t => {
+  const { ok, use, heldList } = await rig(t);
+  const reg = await ok("outside.register", { name: "Muse" });
+  await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
+  assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "x", notes: "y".repeat(25_000) } })).text, /too large/);
+  for (let i = 0; i < 20; i++) assert.ok((await use(reg.token, "records_create", { type: "contact", fields: { name: `Person ${i}` } })).json, `request ${i}`);
+  assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "one too many" } })).text, /20 of your requests are already waiting/);
+  assert.equal((await heldList()).filter(x => /Muse wants to add/.test(x.summary || "")).length, 20);
 });
