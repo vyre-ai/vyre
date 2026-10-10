@@ -137,14 +137,14 @@ test("on the real home: with no computer of the person's ready the process start
 
 test("the switchboard asks for a lent spawn for a claude session only, and a failing lookup is the box's", async () => {
   const fn = () => ({});
-  const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native" });
+  const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native", turnAsker: new Map() });
   const ask = (/** @type {any} */ self, /** @type {any} */ rec) => /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", rec);
   assert.equal(await ask(sb(async () => fn), { provider: "claude" }), fn);
   assert.equal(await ask(sb(async () => fn), {}), fn, "claude is the default");
   assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
   assert.equal(await ask(sb(async () => null), { provider: "claude" }), undefined);
   assert.equal(await ask(sb(async () => { throw new Error("no host"); }), { provider: "claude" }), undefined);
-  assert.equal(await ask({ deps: {}, chatOf: () => null, nativeOf: () => "x" }, {}), undefined);
+  assert.equal(await ask({ deps: {}, chatOf: () => null, nativeOf: () => "x", turnAsker: new Map() }, {}), undefined);
 });
 
 test("a new chat of the home's owner is placed once at creation: a ready computer gets the row, none ready leaves it on the box, and another person's chat or one that already ran is never placed", async () => {
