@@ -18,7 +18,7 @@ export async function startInstallerServer(o) {
   const dir = process.env.VYRE_DIR || "/srv/vyre";
   sh(`sudo mkdir -p ${dir} && sudo chown "$(id -u):$(id -g)" ${dir}`);
   // the box's home volume with its config, made before the first start so it never talks to a production service
-  sh("docker volume create --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null");
+  sh("docker volume create --label run.vyre=1 --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null");
   const cfg = JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } });
   const seeded = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e C='${cfg}' busybox sh -c 'mkdir -p /home/vyre/.vyre && printf "%s\\n" "$C" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'`);
   if (seeded.status !== 0) throw new Error(`could not seed the box's home: ${seeded.stderr}`);
