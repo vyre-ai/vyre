@@ -20,6 +20,20 @@ export const TOOLS = {
   tasks: "tasks.list", task: "tasks.get", request: "tasks.request", decide: "tasks.decide", move: "tasks.move", submit: "tasks.submit",
 };
 
+/**
+ * An actor the kernel knows only by its id reads as a word, never as the id: "You" for the signed-in person, "Someone" for another person, "An assistant" or "An agent" for the rest. An actor with
+ * a name keeps it. @param {any[]} actors @param {string} me
+ */
+export function readableActors(actors, me) {
+  return actors.map((a) => {
+    if (!a || typeof a !== "object") return a;
+    const id = String(a.id ?? "");
+    const named = typeof a.name === "string" && a.name.trim() !== "" && a.name !== id;
+    if (named) return a;
+    return { ...a, name: a.family === "person" || !a.family ? (me && id === me ? "You" : "Someone") : a.family === "assistant" ? "An assistant" : "An agent" };
+  });
+}
+
 /** A tool answer that may be the thing itself or wrapped one level ({record}, {task}, {field}): the platform has not frozen the wrapping, so read both. @param {any} d @param {string} k */
 const one = (d, k) => (d && typeof d === "object" && k in d ? d[k] : d);
 /** The rows of a page. @param {any} d */
@@ -45,6 +59,7 @@ export function createGatewayStore({ rpc }) {
   const notify = () => { for (const f of [...subs]) { try { f(); } catch { /* a screen's redraw must not stop the others */ } } };
   /** @type {any | null} */ let meCache = null;
   const meAnswer = async () => (meCache ??= await rpc.read(TOOLS.me, {}));
+  const meId = async () => { const p = (await meAnswer())?.person; return typeof p === "string" ? p : p?.id ?? ""; };
   /** The spaces on this Vyre, named by spaces.list (windows' tool); records.me names the home's own space, which is added when the list does not have it. */
   const spaces = async () => {
     const d = await meAnswer();
@@ -72,7 +87,7 @@ export function createGatewayStore({ rpc }) {
 
   return {
     spaces,
-    actors: async () => { const d = await rpc.read(TOOLS.actors, {}); return Array.isArray(d) ? d : d?.actors ?? []; },
+    actors: async () => { const d = await rpc.read(TOOLS.actors, {}); return readableActors(Array.isArray(d) ? d : d?.actors ?? [], await meId()); },
     types,
     async list(type, q = {}) {
       /** @type {any[]} */ const out = [];
@@ -128,7 +143,7 @@ export function createGatewayStore({ rpc }) {
       if (!stop && rpc.events) stop = rpc.events(() => { meCache = null; notify(); });
       return () => { subs.delete(fn); if (!subs.size && stop) { stop(); stop = null; } };
     },
-    async me() { const p = (await meAnswer())?.person; return typeof p === "string" ? p : p?.id ?? ""; },
+    me: meId,
   };
 }
 
