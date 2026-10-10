@@ -3729,7 +3729,6 @@ export async function spendCheck(ctx, caller, provider) {
 }
 const spendDown = { day: "" };
 
-
 /** The person a call is from, for the author a sent message records: the verified peer, else the owner's own surface. */
 export const authorOf = (/** @type {any} */ peer) => { const raw = peer && (peer.login || peer.stableId || peer.node); return raw ? `person:${String(raw).replace(/\s+/g, "-").slice(0, 120)}` : "person:owner"; };
 
