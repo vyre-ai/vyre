@@ -30,8 +30,10 @@ if (relayPort > 0) {
   const resolve = async (/** @type {string} */ h) => {
     const r = await fetch(`${tunnelDir.replace(/\/$/, "")}/v1/tunnel/resolve?host=${encodeURIComponent(h)}`, { headers: { "x-vyre-relay": secret }, signal: AbortSignal.timeout(3000) });
     if (!r.ok) return null;
+    // the directory wraps every answer as { data: ... } (names/worker)
     const j = /** @type {any} */ (await r.json());
-    return j && typeof j.route === "string" ? { route: j.route } : null;
+    const route = j && j.data && j.data.route;
+    return typeof route === "string" ? { route } : null;
   };
   const relay = createRelay({ ...(tunnelDir ? { tunnel: { resolve } } : {}), log, clientAddress: req => (trust && String(req.headers["x-forwarded-for"] || "").split(",").pop()?.trim()) || String(req.socket.remoteAddress || "") });
   log(`relay on ${await relay.listen(relayPort, host)}`);

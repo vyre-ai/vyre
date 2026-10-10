@@ -16,7 +16,9 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { relayLink } from "../../core/relay/link.js";
 import { keyPair } from "../../core/relay/noise.js";
-import { newRouteKey, routeId } from "../../core/relay/wire.js";
+import { newRouteKey, routeId, signRoute } from "../../core/relay/wire.js";
+import { directory } from "../../core/names/directory.js";
+import { createDirectoryServer } from "../../relay/node/directory.js";
 import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { createGate } from "../../core/wink/control/gate.js";
 import { selfSigned } from "../../core/wink/control/testing/selfsigned.js";
@@ -30,20 +32,18 @@ const sh = (args, o = {}) => spawnSync("docker", args, { encoding: "utf8", ...o 
 
 test("the edge container carries a signer to a box, refuses what is not declared, and runs hardened", { skip: !LIVE, timeout: 600_000 }, async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "edge-live-"));
-  // the directory, as the relay asks it: which route serves a host (a stand-in for the Worker at names.vyre.run)
+  // the directory: the Worker's own code over HTTP (relay/node/directory.js), with the box's name seeded as an older setup gave it, then published through the tunnel by the box's own signed call
   const k = newRouteKey(), route = routeId(k.pub);
-  let suspended = false;
-  /** @type {string[]} */ const asked = [];
-  const directory = http.createServer((req, res) => {
-    const u = new URL(String(req.url), "http://x");
-    const h = String(u.searchParams.get("host"));
-    if (u.pathname !== "/v1/tunnel/resolve" || req.headers["x-vyre-relay"] !== SECRET) { res.writeHead(401).end(); return; }
-    asked.push(h);
-    res.setHeader("content-type", "application/json");
-    res.end(JSON.stringify({ route: h === APP_HOST || (h === LATE && !suspended) ? route : null }));
-  });
-  await new Promise(r => directory.listen(0, "0.0.0.0", () => r(undefined))); t.after(() => directory.close());
-  const dirPort = /** @type {any} */ (directory.address()).port;
+  const ADMIN = "a".repeat(40);
+  const dirSrv = await createDirectoryServer({ port: 0, host: "0.0.0.0", zone: "vyre.run", relaySecret: SECRET, tunnelIpv4: "93.184.216.99", adminSecret: ADMIN });
+  t.after(() => dirSrv.close());
+  const store = dirSrv.rt.object("v1", "DIRECTORY").ctx.storage.map;
+  store.set("n/harlow", { name: "harlow", route, state: "claimed", claimedAt: Date.now(), everPointed: false, pointedAt: null, ips: {}, notices: [], log: [] });
+  store.set(`r/${route}`, "harlow");
+  const signer = { identity: async () => ({ route, pub: k.pub }), sign: async (/** @type {Buffer} */ m) => signRoute(k.priv, m) };
+  const pointed = await directory({ base: `http://127.0.0.1:${dirSrv.port}`, signer }).publish("harlow", { apps: true, via: "tunnel" });
+  assert.deepEqual([pointed.via, pointed.ip, pointed.apps], ["tunnel", "93.184.216.99", true], "the name points at the edge's address, which the operator set");
+  const dirPort = dirSrv.port;
 
   const override = path.join(dir, "override.yml");
   fs.writeFileSync(override, "services:\n  relay:\n    extra_hosts: [ \"host.docker.internal:host-gateway\" ]\n");
@@ -96,7 +96,6 @@ test("the edge container carries a signer to a box, refuses what is not declared
   // a name the directory does not know is closed at the container: no byte reaches the box
   const stranger = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: "evil.vyre.run", rejectUnauthorized: false }); stranger.on("error", () => {});
   await new Promise(r => stranger.once("close", r));
-  assert.ok(asked.includes("evil.vyre.run"), "the container asked the directory, and was told no");
 
   // port 80 is the fixed redirect, never the box
   const plain = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port: httpPort, path: "/x", headers: { host: APP_HOST }, timeout: 5000 }, res => { res.resume(); resolve({ status: res.statusCode, location: String(res.headers.location || "") }); }).on("error", reject));
@@ -111,9 +110,9 @@ test("the edge container carries a signer to a box, refuses what is not declared
   }
   assert.equal(/** @type {any} */ (served) && /** @type {any} */ (served).status, 200, "after the edge restarted, the box reconnected and the signer is served");
 
-  // a name suspended before its first visit is refused (the container keeps an answer for 60 s, so an already-visited name closes within a minute)
-  suspended = true;
-  const after = tls.connect({ host: "127.0.0.1", port: tlsPort, servername: LATE, rejectUnauthorized: false }); after.on("error", () => {});
+  // the support switch: a name suspended in the directory is refused for any host the edge has not answered for in the last minute (it keeps an answer 60 s; an open stream closes at its next re-check)
+  const sus = await fetch(`http://127.0.0.1:${dirPort}/v1/names/admin/suspend`, { method: "POST", headers: { "content-type": "application/json", "x-vyre-admin": ADMIN }, body: JSON.stringify({ name: "harlow", on: true }) });
+  assert.equal(sus.status, 200);
+  const after = tls.connect({ host: "127.0.0.1", port: tlsP, servername: LATE, rejectUnauthorized: false }); after.on("error", () => {});
   await new Promise(r => after.once("close", r));
-  assert.ok(asked.includes(LATE), "and it asked the directory, which said no");
 });
