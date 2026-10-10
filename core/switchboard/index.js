@@ -1030,7 +1030,7 @@ export class Switchboard {
       await slow();
       at("first prompt send");
       if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
-      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(withoutVyre(String(o.prompt)), 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -2469,7 +2469,7 @@ export class Switchboard {
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
     const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
+    this.emit("thread.sent", { text: cut(withoutVyre(text), 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
 
