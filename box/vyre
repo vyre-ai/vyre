@@ -2233,11 +2233,12 @@ sp_pub_up() {
   m=$PR_NAME
   [ -z "$(sp_app_line "$m")" ] || { MSG="that name is an app that ships with Vyre"; return 1; }
   # A name is one server on this box: one Space's server may be replaced by a newer deployment of the same Space, never taken over by another Space (its compose, secrets and data volume are named by it).
-  if [ -e "$SP_APPS/$m" ]; then
-    _pf=$SP_APPS/$m/pubdep
-    { [ -f "$_pf" ] && [ ! -L "$_pf" ]; } || { MSG="that name is already used on this server by something that is not a published server"; return 1; }
+  _pf=$SP_APPS/$m/pubdep
+  if [ -f "$_pf" ] && [ ! -L "$_pf" ]; then
     _ps=$(awk 'NR == 1 { print $2; exit }' "$_pf" 2>/dev/null || true)
     [ "$_ps" = "$PR_SPACE" ] || { MSG="another Space already has a server with that name on this server; choose another name"; return 1; }
+  elif [ -e "$SP_APPS/$m/compose.yml" ] || [ -L "$SP_APPS/$m/compose.yml" ]; then
+    MSG="that name is already used on this server by something that is not a published server"; return 1
   fi
   # shellcheck disable=SC2015 # a failed mkdir or chmod both take the same exit
   mkdir -p "$SP_APPS/$m" && chmod 700 "$SP_APPS/$m" || { MSG="could not make the server's folder"; return 1; }
