@@ -442,7 +442,7 @@ export function WatchtowerPage({ openItem }: Props) {
         <Text strong size="secondary">Known breaches</Text>
         <Text size="secondary" tone="muted">Compares your passwords with public lists of leaked ones. Only a short fingerprint of each leaves your server, never a password, and the match is made here.</Text>
         {caps && caps.breach !== "ask"
-          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><Button kind="secondary" size="sm" label="Turn on" onPress={comingSoon} /></View>
+          ? <View className="gap-s2 self-start"><Text size="caption" tone="label">Not turned on. It makes a call to the outside, so it asks you each time once it is.</Text><View className="self-start"><Button kind="secondary" size="sm" label="Turn on" onPress={comingSoon} /></View></View>
           : <View className="self-start"><Button kind="primary" size="sm" label={checking ? "Checking" : "Check now"} disabled={checking} onPress={check} /></View>}
         {breach ? <><Text>{breach.line}</Text>{breach.names.map((n) => <Row key={n} dense title={n} onPress={() => openItem(n)} />)}</> : null}
       </View>
