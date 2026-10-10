@@ -45,7 +45,7 @@ test("a confined session: the shim's forms are allowed without a question, every
   assert.equal(claude.pathDirs[0], path.join(REPO, "bin", "session"), "the shim folder is first on the session's PATH");
   assert.ok(claude.readOnly.includes(REPO), "the code the shim runs is readable");
   assert.equal(claude.env.VYRE_NODE, process.execPath);
-  assert.equal(claude.env.VYRE_SESSION_CLI, path.join(REPO, "core", "session-cli", "index.js"));
+  assert.equal(claude.env.VYRE_BIN, path.join(REPO, "bin", "vyre"));
 
   assert.equal(await ask(w, th.id, `vyre tools describe mail.send`, 2), "allowed");
   assert.equal(await ask(w, th.id, `vyre call mail.send '{"to":"a@b.c","subject":"s","body":"b"}'`, 3), "allowed", "the call is allowed to REACH the registry, which holds it");

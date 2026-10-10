@@ -438,7 +438,7 @@ async function turn(prompt, uuid = null) {
     const { spawnSync } = await import("node:child_process");
     const { fileURLToPath } = await import("node:url");
     const root = fileURLToPath(new URL("../../..", import.meta.url));
-    const r = spawnSync("/bin/sh", ["-c", `vyre ${cli[1]}`], { encoding: "utf8", env: { PATH: `${root}/bin/session:${process.env.PATH}`, VYRE_SOCKET: process.env.VYRE_SOCKET || "", VYRE_NODE: process.execPath, VYRE_SESSION_CLI: `${root}/core/session-cli/index.js`, ...(process.env.VYRE_AGENT ? { VYRE_AGENT: process.env.VYRE_AGENT } : {}) } });
+    const r = spawnSync("/bin/sh", ["-c", `vyre ${cli[1]}`], { encoding: "utf8", env: { PATH: `${root}/bin/session:${process.env.PATH}`, VYRE_SOCKET: process.env.VYRE_SOCKET || "", VYRE_NODE: process.execPath, VYRE_BIN: `${root}/bin/vyre`, VYRE_THREAD: process.env.VYRE_THREAD || "", ...(process.env.VYRE_AGENT ? { VYRE_AGENT: process.env.VYRE_AGENT } : {}) } });
     const out = JSON.stringify({ status: r.status, out: r.stdout, err: r.stderr });
     await say(out);
     return result(true, out);

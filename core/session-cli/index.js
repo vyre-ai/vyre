@@ -1,5 +1,6 @@
 // @ts-check
-// The limited `vyre` a model's shell has inside a session sandbox: three verbs and nothing else.
+// The regular `vyre` in SESSION MODE (VYRE_SOCKET and VYRE_THREAD set, as in a session Vyre started): bin/vyre and core/cli/index.js hand the whole command line to run() below before anything else loads,
+// so the CLI's own local and human commands (update, up, down, setup, vault, grants, keys, anything that reads VYRE_HOME or touches docker or systemd) are refused before they run. Three verbs work:
 //
 //   vyre tools find "<words>"         the tools that fit what you are about to do, each with a ready call
 //   vyre tools describe <tool>        what one tool does and the input it takes
@@ -8,7 +9,8 @@
 // It is a client of the session's OWN socket (VYRE_SOCKET, core/daemon/threadsock.js): vyred binds the caller there (mcp:thread:<id>, mcp:agent:<name>), checks the connecting process belongs to the
 // session, carries the session's own kernel token and refuses every person-only and human-only tool. The CLI never reads the person's session file, never opens vyred's own socket, never reads
 // Vyre's home, and never says who it is: the same registry path as a call made through Vyre's MCP server (harness/mcp/server.js), so the one-yes floor, the Gate that holds a send and the
-// agent-reach lists judge it identically. Output is short plain text for a model. The shim that puts it on a sandboxed session's PATH is bin/session/vyre.
+// agent-reach lists judge it identically. The daemon stays the security boundary; the refusals here are a convenience. Output is short plain text for a model. The shim that puts bin/vyre first on a
+// sandboxed session's PATH is bin/session/vyre.
 
 import { request } from "../daemon/client.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../presence/index.js";
@@ -21,6 +23,9 @@ const USAGE = `vyre tools find "<words>"      find the tool for what you want to
 vyre tools describe <tool>   what a tool does and what it needs
 vyre call <tool> '<json>'    run a tool (a send is held for the person's approval)`;
 const DRIVES = /^(threads|agents)\./;
+
+/** Is this process a session Vyre started? The same pair the client uses to talk on the session\'s own socket. @param {Record<string, string | undefined>} [env] */
+export const inSession = (env = process.env) => Boolean(env.VYRE_SOCKET && env.VYRE_THREAD);
 
 /** The identity this process calls under: the session's own socket binds it, so the label is only the form the daemon expects. @param {Record<string, string | undefined>} env */
 const callerOf = env => (env.VYRE_AGENT ? `mcp:agent:${env.VYRE_AGENT}` : "mcp");
@@ -101,8 +106,9 @@ export async function run(argv, d = {}) {
     err(`vyre: ${/** @type {Error} */ (e).message}`);
     return 1;
   }
-  return usage();
+  if (a === undefined || a === "help" || a === "--help" || a === "-h") { out(`vyre, inside a session: three commands.\n${USAGE}`); return a === undefined ? 2 : 0; }
+  if (a === "version" || a === "--version" || a === "-v") { out((await import("../daemon/index.js")).VERSION); return 0; }
+  if (a === "tools" || a === "call") return usage();
+  err(`vyre ${a}: not available inside a session. Find the tool for what you want: vyre tools find "<words>"`);
+  return 2;
 }
-
-// Run as a program (the shim execs this file).
-if (import.meta.url === `file://${process.argv[1]}`) run(process.argv.slice(2)).then(code => process.exit(code));

@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { run } from "./index.js";
+import { run, inSession } from "./index.js";
 
 const TOOLS = [
   { name: "comms.send", description: "Send an email or a text as the person; it is held for their approval.", input: { type: "object", properties: { to: { type: "string", description: "who gets it" }, subject: { type: "string" }, body: { type: "string" } }, required: ["to", "body"] } },
@@ -76,4 +76,21 @@ test("an agent's thread calls under its agent label; an agent that is not the as
   const r = rig({ env: { VYRE_AGENT: "kit", VYRE_AGENT_KIND: "agent" } });
   assert.equal(await r.go(["tools", "find", "ask a question"]), 0);
   assert.equal(r.seen[0].opts.caller, "mcp:agent:kit");
+});
+
+test("session mode refuses the CLI's own local and human commands before anything runs, and points at tools find", async () => {
+  const r = rig();
+  for (const argv of [["update"], ["up"], ["down"], ["setup"], ["uninstall"], ["vault", "get", "x"], ["grants", "list"], ["keys"], ["config", "set", "a", "b"], ["box", "status"], ["doctor"], ["--tty", "call", "x.y"]]) {
+    assert.equal(await r.go(argv), 2, argv.join(" "));
+    assert.match(r.errs.at(-1) || "", /not available inside a session.*vyre tools find/, argv.join(" "));
+  }
+  assert.equal(r.seen.length, 0, "no socket call was made for any of them");
+  assert.equal(await r.go(["help"]), 0);
+  assert.match(r.outs.at(-1) || "", /vyre tools find/);
+});
+
+test("session mode is on exactly when the session's socket and thread are both set", () => {
+  assert.equal(inSession({ VYRE_SOCKET: "/s", VYRE_THREAD: "t" }), true);
+  assert.equal(inSession({ VYRE_SOCKET: "/s" }), false, "a Capsule or a daemon child has a socket but no thread");
+  assert.equal(inSession({}), false);
 });

@@ -279,13 +279,13 @@ where sessions run as their own user.
 
 ## Vyre from the shell, inside a session
 
-A session that runs in the sandbox has a small `vyre` on its path, for models that work through the shell. It has three forms and no others:
+A session that runs in the sandbox has `vyre` on its path, for models that work through the shell. It is the same `vyre` you use, in session mode, with three forms:
 
 - `vyre tools find "send an email"` lists the tools that fit those words, each with a ready call.
 - `vyre tools describe mail.send` says what a tool does and what input it takes.
 - `vyre call mail.send '{"to":"dana@example.com","subject":"Hello","body":"Hi"}'` runs it.
 
-It acts as the session, over the session's own socket: the same registry, the same one-yes rule, the same Gate. A send is held for your approval and the output says nothing ran. Your own tools and the vault are not there, and the shell still cannot read Vyre's home or data folders. The floor lets these three forms through without a question; a longer shell line that merely mentions `vyre` is judged like any other. A session that is not in the sandbox does not get it.
+It acts as the session, over the session's own socket: the same registry, the same one-yes rule, the same Gate. A send is held for your approval and the output says nothing ran. Your own tools and the vault are not there, and every command that works on the computer itself (update, up, down, setup, vault, keys, config) is refused with a line that points at `vyre tools find`, and the shell still cannot read Vyre's home or data folders. The floor lets these three forms through without a question; a longer shell line that merely mentions `vyre` is judged like any other. A session that is not in the sandbox does not get it.
 
 ## Open in terminal
 
