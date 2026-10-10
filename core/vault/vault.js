@@ -907,11 +907,8 @@ export class Vault {
   }
 
   grantedNames() {
-    const t = now();
-    // A login lent to an agent is filled while nobody is here, so it stays in the agent vault too.
-    const lent = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE status = 'active' AND revoked IS NULL").all())
-      .filter(g => (g.expires == null || g.expires > t) && this.rowOk("vault_agent_grants", g)).map(g => String(g.item));
-    return new Set([...lent, ...this.releases.items()]);
+    // A login lent to an agent (a kernel grant) is filled while nobody is here, so it stays in the agent vault too.
+    return new Set([...(this.access ? this.access.items() : []), ...this.releases.items()]);
   }
 
   /** Move agent-vault items that belong in the personal vault there. Needs it unlocked. */

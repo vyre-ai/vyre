@@ -108,7 +108,8 @@ export function createRunner(o) {
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
   const usage = o.usage || createUsage({ platform });
-  let paused = false;
+  /** Why every session here is frozen right now ("pause": the person's Pause all; "offline": this computer cannot reach the Space's server and must not run ahead of it). Empty: they run. @type {Set<string>} */
+  const frozen = new Set();
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
@@ -157,7 +158,10 @@ export function createRunner(o) {
     vault: o.vault, space: o.space, device: o.device, retryMs: o.retryMs, setTimer: o.setTimer, clearTimer: o.clearTimer, now,
     onArm: at => { try { fs.mkdirSync(path.dirname(deadlineFile), { recursive: true, mode: 0o700 }); fs.writeFileSync(deadlineFile, JSON.stringify({ gen, at }), { mode: 0o600 }); } catch {} },
     async onLock(why) {
-      // The key is gone: stop every session, close the workspace. The data stays encrypted on disk (expired, slept or released).
+      // The key is going: hand each session to the space's server first, from its last whole turn, so it carries on there (an expired lease, a Mac that slept, the person locking the workspace). Access ended
+      // (revoked) hands nothing over: the work is not this computer's to give. Then stop every session and close the workspace; the data stays encrypted on disk.
+      const reason = why === "expired" ? "lease-expired" : why === "slept" ? "asleep" : why === "released" ? "you" : null;
+      if (reason && o.requestServer) for (const s of [...live.keys()]) { try { await moveToServer(s, reason); } catch { /* the server takes it after the lapse */ } }
       for (const s of [...live.keys()]) await stop(s, { final: false });
       if (await lockHard()) { emit({ type: "locked", why }); } else { emit({ type: "lock-pending", why }); chase(why === "revoked" ? "revoked" : why); }
     },
@@ -281,6 +285,7 @@ export function createRunner(o) {
       if (!h.stopped) await finish(h);
       resolve({ code, signal: sig });
     }));
+    if (frozen.size) signal(h, "SIGSTOP");
     emit({ type: "started", session: s.session, pid: child.pid });
     return { pid: child.pid, child, resumed, done: h.done, send: line => child.stdin.write(line.endsWith("\n") ? line : line + "\n"), stop: () => stop(s.session), labels: () => h.labels };
   }
@@ -315,6 +320,34 @@ export function createRunner(o) {
     await finish(h);
   }
 
+    /**
+     * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
+     * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
+     * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
+     */
+  const freeze = (/** @type {string} */ why) => { frozen.add(why); for (const h of live.values()) signal(h, "SIGSTOP"); };
+  const thawAll = (/** @type {string} */ why) => { frozen.delete(why); if (!frozen.size) for (const h of live.values()) signal(h, "SIGCONT"); };
+
+  /**
+   * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
+   * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
+   * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
+   */
+  async function moveToServer(session, reason = "you") {
+    const h = live.get(session);
+    if (h) {
+      signal(h, "SIGSTOP");
+      try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
+    }
+    const thaw = () => { if (h && !frozen.size) signal(h, "SIGCONT"); };
+    let r;
+    try { r = await o.requestServer?.(session, reason); } catch (e) { thaw(); throw e; }
+    if (r && r.moved === false) { thaw(); return { moved: false, why: /** @type {any} */ (r).why }; }
+    if (h) { h.released = true; await stop(session); }
+    emit({ type: "moved", session, to: "server", reason });
+    return { moved: true };
+  }
+
   async function stopAll() { for (const s of [...live.keys()]) await stop(s); }
 
   return {
@@ -325,30 +358,17 @@ export function createRunner(o) {
     async revoke() { await lease.revoke(); },
     /** Ask the vault again. If access ended while this computer was locked or offline, the workspace is deleted now. */
     async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
-    /**
-     * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
-     * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
-     * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
-     */
-    async moveToServer(session, reason = "you") {
-      const h = live.get(session);
-      if (h) {
-        signal(h, "SIGSTOP");
-        try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
-      }
-      let r;
-      try { r = await o.requestServer?.(session, reason); } catch (e) { if (h) signal(h, "SIGCONT"); throw e; }
-      if (r && r.moved === false) { if (h) signal(h, "SIGCONT"); return { moved: false, why: /** @type {any} */ (r).why }; }
-      if (h) { h.released = true; await stop(session); }
-      emit({ type: "moved", session, to: "server", reason });
-      return { moved: true };
-    },
+    moveToServer,
     /** The sessions running here, with what each uses now. */
-    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, pid: h.child.pid, paused: paused, ...usage.sample(Number(h.child.pid)) })); },
+    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
     /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
-    pause() { paused = true; for (const h of live.values()) signal(h, "SIGSTOP"); },
-    resume() { paused = false; for (const h of live.values()) signal(h, "SIGCONT"); },
-    get paused() { return paused; },
+    pause() { freeze("pause"); },
+    resume() { thawAll("pause"); },
+    get paused() { return frozen.has("pause"); },
+    /** This computer cannot reach the Space's server: its sessions wait where they are rather than run ahead of the server, which takes them after a lapse. @param {string} why */
+    freeze(why) { freeze(why); },
+    thaw(why) { thawAll(why); },
+    get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
     async fence(session) { const h = live.get(session); if (!h) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },

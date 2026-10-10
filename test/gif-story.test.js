@@ -54,7 +54,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects"), vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: `http://127.0.0.1:${/** @type {any} */ (outbox.address()).port}` } } } }));
   // A stand-in for the mail module (the real one needs a vault account), with the same shape: an outward tool that files the message at the Gate, as mail.send does.
-  writeModule(mods, "billing", { version: "0.1.0", does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }, { name: "billing.nested", reach: "anyone", outward: true, covers: ["reminder.push"], effect: "write", summary: "sends through the reminder module as one act" }, { name: "billing.uncovered", reach: "anyone", outward: true, effect: "write", summary: "sends through the reminder module and says nothing about it" }, { name: "billing.chain", reach: "anyone", outward: true, covers: ["reminder.hop", "courier.send"], effect: "write", summary: "sends through two modules as one act" }, { name: "billing.shallow", reach: "anyone", outward: true, covers: ["reminder.hop"], effect: "write", summary: "names the first hop but not the send behind it" }] }, needs: { tools: ["gate.request", "reminder.send", "reminder.push", "reminder.hop"] } },
+  writeModule(mods, "billing", { version: "0.1.0", flow: { steps: ["billing.email", "billing.twice", "billing.nested", "billing.uncovered"].map(name => ({ name, label: name, outward: true, inputs: { to: "string", to2: "string" }, outputs: {} })) }, does: { tools: [{ name: "billing.email", reach: "anyone", outward: true, effect: "write", summary: "email a client about an overdue invoice" }, { name: "billing.relay", reach: "anyone", outward: true, effect: "write", summary: "asks the reminder module to send" }, { name: "billing.twice", reach: "anyone", outward: true, effect: "write", summary: "files two sends in one call" }, { name: "billing.nested", reach: "anyone", outward: true, covers: ["reminder.push"], effect: "write", summary: "sends through the reminder module as one act" }, { name: "billing.uncovered", reach: "anyone", outward: true, effect: "write", summary: "sends through the reminder module and says nothing about it" }, { name: "billing.chain", reach: "anyone", outward: true, covers: ["reminder.hop", "courier.send"], effect: "write", summary: "sends through two modules as one act" }, { name: "billing.shallow", reach: "anyone", outward: true, covers: ["reminder.hop"], effect: "write", summary: "names the first hop but not the send behind it" }] }, needs: { tools: ["gate.request", "reminder.send", "reminder.push", "reminder.hop"] } },
     `export default { async start(ctx) { ctx.tool("billing.relay", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.send", i); return r.data || r; } }); ctx.tool("billing.email", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: i.subject, body: i.body, ...(i.cc ? { cc: i.cc } : {}) }, why: "overdue invoice" }); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); for (const n of ["billing.nested", "billing.uncovered"]) ctx.tool(n, { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.push", i); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); for (const n of ["billing.chain", "billing.shallow"]) ctx.tool(n, { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("reminder.hop", i); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("billing.twice", { callers: ["cli", "mcp", "harness", "module"], input: { type: "object" }, run: async (i) => { const out = []; for (const to of [i.to, i.to2]) { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to, content: { subject: "s", body: "b" }, why: "twice" }); out.push(r.data || r); } return out; } }); return {}; } };`);
   writeModule(mods, "reminder", { version: "0.1.0", does: { tools: [{ name: "reminder.send", reach: "anyone", effect: "write", summary: "send a reminder" }, { name: "reminder.push", reach: "anyone", outward: true, effect: "write", summary: "send a reminder now" }, { name: "reminder.hop", reach: "anyone", outward: true, effect: "write", summary: "hands the send on to the courier" }] }, needs: { tools: ["gate.request", "courier.send"] } },
     `export default { async start(ctx) { ctx.tool("reminder.hop", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("courier.send", i); if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data || r; } }); ctx.tool("reminder.push", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "push" }); return r.data || r; } }); ctx.tool("reminder.send", { callers: ["module"], input: { type: "object" }, run: async (i) => { const r = await ctx.call("gate.request", { kind: "send", via: "mail", to: i.to, content: { subject: "s", body: "b" }, why: "reminder" }); return r.data || r; } }); return {}; } };`);
@@ -285,4 +285,53 @@ test("a card rides two hops down (the tool names each module's send it files), s
   const r2 = await w.d.registry.call("billing.shallow", input, "mcp", { approval: card2 });
   assert.equal(r2.error && r2.error.code, "held_for_approval", JSON.stringify(r2));
   assert.equal(w.sent.length, 1, "the send behind an unnamed hop did not go");
+});
+
+/** A Flow whose one step calls an outward tool: define it, start it, say yes to its held act as the person, and give the daemon a moment. */
+async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** @type {any} */ input) {
+  const space = w.d.kernel.id.space;
+  const host = w.d.registry.deps.flowsHost.get(space);
+  const admin = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.owner, path: "direct", session: "s" });
+  const meta = async () => ({ token: (await w.d.kernel.surfaces.open(admin, {})).token });
+  const flow = { format: 1, name: `step_${action.replace(/\W/g, "_")}`, label: action, authorship: "human", trigger: { on: "manual" }, steps: [{ id: "go", kind: "call", action, resource: "vyre://space/billing", input }] };
+  const def = await w.d.registry.call("flows.define", { flow }, "cli", await meta());
+  assert.ok(def.data && def.data.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  await w.d.registry.call("flows.start", { id: def.data.id }, "cli", await meta());
+  // the run must be waiting on its question before the person answers it (an answer in the instant between the question and the wait is a race a person never wins)
+  await until(async () => { const r = (await w.d.registry.call("flows.runs", { id: def.data.id }, "cli", await meta())).data; return r && r.length && r[0].state === "waiting"; }, `the Flow run for ${action} to wait on its question`);
+  const task = await until(async () => (await w.d.kernel.gateway.ask.list(admin, { state: ["needs_check"] })).find((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.form.action === action), `the Flow's held act for ${action}`);
+  const row = await w.d.kernel.gateway.ask.get(admin, task.id);
+  await w.d.kernel.gateway.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: `n${Math.random()}` } });
+  await until(async () => { const r = (await w.d.registry.call("flows.runs", { id: def.data.id }, "cli", await meta())).data; return r && r.length && ["done", "failed"].includes(r[0].state) ? r[0] : null; }, `the Flow run for ${action} to finish`);
+}
+
+test("a Flow's approved call is one yes: the person's answer to the Flow's own question is the Gate's, so the send goes out and nothing is held again", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  await flowStep(w, "billing.email", { to: "ap@northwind.example", subject: "Invoice 1042", body: "Overdue." });
+  await until(() => w.sent.length === 1, "the email reached the mail server");
+  assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+});
+
+test("a Flow's yes covers one send, and only the sends its tool names: a second send is held, and so is one behind a hop the tool does not name", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  await flowStep(w, "billing.twice", { to: "ap@northwind.example", to2: "billing@oakline.example" });
+  await until(() => w.sent.length === 1, "the first send went");
+  assert.equal(await gateHeld(w), 1, "the second send of the same act waits for its own yes");
+  await flowStep(w, "billing.uncovered", { to: "accounts@brightwell.example" });
+  assert.equal(w.sent.length, 1, "the send behind an unnamed hop did not go");
+  assert.equal(await gateHeld(w), 2);
+  await flowStep(w, "billing.nested", { to: "ap@northwind.example" });
+  await until(() => w.sent.length === 2, "the nested send the tool names rode the Flow's yes");
+  assert.equal(await gateHeld(w), 2);
+});
+
+test("a Flow's receipt cannot be made by anyone but the registry, and a receipt made for one call opens no other", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const mine = { card: "flowtask:01a12326-6b9a-43f8-b32b-443ebbfbd155", tool: "billing.email", input_sha256: "a".repeat(32), asker: "module:flows>deck" };
+  for (const caller of ["cli", "mcp", "module:billing", "module:flows"]) assert.ok((await w.d.registry.call("approvals.receipt", mine, caller)).error, `${caller} was refused`);
+  // a made-up flow mark at the Gate is held: no receipt stands behind it
+  const r = await w.d.registry.call("gate.request", { kind: "send", via: "mail", to: "ap@northwind.example", content: { subject: "s", body: "b" }, why: "forged", covered: mine }, "module:billing");
+  assert.ok(r.error || (r.data && r.data.state === "held"), JSON.stringify(r));
+  assert.equal(w.sent.length, 0);
 });

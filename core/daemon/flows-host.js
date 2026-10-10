@@ -97,7 +97,7 @@ export function createFlowsHost(o) {
           }
         }
         const session = await k.surfaces.open(personChain(person.actor.id), { ttl_ms: 60_000 });
-        const r = await o.callFlow(action, input, { token: session.token });
+        const r = await o.callFlow(action, input, { token: session.token, ...(tool.risk === "outward" && opts.approval ? { task: opts.approval } : {}) });
         if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code)), { code: r.error.code || "failed" });
         return r ? r.data : null;
       },
