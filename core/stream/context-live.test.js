@@ -46,10 +46,11 @@ test("a message with a named record and attached files reaches the assistant as 
   assert.deepEqual((await ok("attachments.list", { thread: chat })).attachments.map(a => a.id).sort(), [pdf.id, png.id].sort());
 
   // refused before anything is stored: a file that is not this chat's
-  const before = (await ok("stream.open", { chat })).frames?.length;
+  const frames = () => /** @type {any[]} */ (d.registry.modules.get("stream").handle.logs.get(chat).read(0));
+  const before = frames().length;
   const bad = await call("stream.send", { chat, text: "this", attachments: [{ ...pdf, id: "att_Nope0000000000000000" }] });
   assert.equal(bad.error && bad.error.code, "bad_input", JSON.stringify(bad));
-  if (before !== undefined) assert.equal((await ok("stream.open", { chat })).frames.length, before, "nothing was stored");
+  assert.equal(frames().length, before, "nothing was stored");
 
   const sent = await call("stream.send", { chat, text: "What is Dana Whitfield's age? Read the files.", attachments: [pdf, png] });
   assert.ok(!sent.error, JSON.stringify(sent));
@@ -64,8 +65,7 @@ test("a message with a named record and attached files reaches the assistant as 
   assert.ok(said.includes(file) && fs.existsSync(file), "the pdf is a path in the assistant folder: " + said);
   assert.match(said, /\(\+1 images?\)/, "the image went with the words");
   // the chat shows the person's words and the names of the files, nothing the assistants were told besides
-  const open = await ok("stream.open", { chat });
-  const mine = (open.frames || []).filter(f => f.type === "chat.user-message").at(-1);
+  const mine = frames().filter(f => f.type === "chat.user-message").at(-1);
   assert.equal(mine.data.text, "What is Dana Whitfield's age? Read the files.");
   assert.deepEqual(mine.data.attachments.map(a => a.name), [F.pdf.name, F.image.name]);
 });
