@@ -37,6 +37,8 @@ A Flow is a list of steps. In plain words, a step can:
 
 Open **Flows** in the Vyre app to see yours. Each one shows whether it runs on its own, its run history, and the steps. **See as code** shows the same Flow as text, for people who like that.
 
+A run is about the record that started it. Open that record or its project and its timeline lists the run in plain words, next to the emails, tasks and documents: "Welcome the client: done", or "Welcome the client: did not finish".
+
 ## You say yes before it runs
 
 A Flow does nothing until a person approves it. Approving covers exactly the version you read. If someone changes it, it waits for your yes again.
