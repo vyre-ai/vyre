@@ -159,6 +159,14 @@ test("lent-spawn v1.1: on a real daemon the host names the Spaces this computer 
   put("server-hosted/spc_otherscomputer", { device: "srv_home0000000001" }); put("lend/spc_otherscomputer/eid_another", { lent: true });
   const host = /** @type {any} */ (d.kernel).kernelFor({ name: "runner", needs: { kernel: { actions: [] } } }).runnerHost();
   assert.deepEqual(await host.lentTo(), ["spc_lendedspace1"], "only a Space reached over a wire, lent from this computer, and still on");
+  // a screen hears a chat's process fall back to the server when no computer is ready: thread.starting with state fallback
+  const team = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "team" });
+  /** @type {any[]} */ const heard = [];
+  /** @type {any} */ (d.registry.deps).events.on("*", (/** @type {any} */ e) => { if (e && e.type === "thread.starting") heard.push(e.payload || e.data || e); });
+  /** @type {any} */ (d.registry.deps).lentHome(team.space);
+  const proc = host.lentSpawn(team.space, { session: "s_heard", chat: "chat_00000000-0000-4000-8000-0000000000c1", person: d.kernel.id.owner });
+  await new Promise(res => proc.on("close", res));
+  assert.deepEqual(heard.map(x => [x.state, x.reason || null, x.thread]), [["fallback", "no_computer_ready", "chat_00000000-0000-4000-8000-0000000000c1"]]);
   assert.deepEqual(await host.placeNew(d.kernel.id.space, { session: "s_x1", person: d.kernel.id.owner }), { where: "box" });
 });
 
