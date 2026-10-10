@@ -294,7 +294,7 @@ export function createRunner(o) {
     const killed = new Promise(r => h.child.once("close", () => r(undefined)));
     const sig = s => { try { process.kill(-Number(pid), s); } catch { try { h.child.kill(s); } catch {} } };
     sig("SIGCONT"); sig("SIGTERM");
-    const t = setTimeout(() => sig("SIGKILL"), 3000);
+    const t = setTimeout(() => { sig("SIGKILL"); signalTree(Number(pid), "SIGKILL"); }, 3000);   // the whole tree: the sandbox's second process is in a session of its own
     if (h.child.exitCode === null && h.child.signalCode === null) await killed;
     clearTimeout(t);
     await finish(h);
