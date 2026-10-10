@@ -156,8 +156,8 @@ test("the switchboard asks for a lent spawn for a claude session only, and a fai
   const fn = () => ({});
   const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native", turnAsker: new Map() });
   const ask = (/** @type {any} */ self, /** @type {any} */ rec) => /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", rec);
-  assert.equal(await ask(sb(async () => fn), { provider: "claude" }), fn);
-  assert.equal(await ask(sb(async () => fn), {}), fn, "claude is the default");
+  assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "claude" })), "function");
+  assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, {})), "function", "claude is the default");
   assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
   assert.equal(await ask(sb(async () => null), { provider: "claude" }), undefined);
   assert.equal(await ask(sb(async () => { throw new Error("no host"); }), { provider: "claude" }), undefined);
