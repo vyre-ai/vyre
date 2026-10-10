@@ -29,3 +29,19 @@ test("lifeWord: the agent's own server ends with the chat; a kept one keeps runn
   assert.equal(lifeWord("supervised", "live"), "Keeps running");
   assert.equal(lifeWord("session", "stopped"), "");
 });
+
+test("publish from the card: only a preview of files can be published; the site's name is a plain slug of the title; the address is the first domain or the url", async () => {
+  const { canPublish, siteNameOf, addressOf, publishWords } = await import("./preview-model.js");
+  assert.equal(canPublish({ source: "files", state: "live" }), true);
+  assert.equal(canPublish({ source: "files", state: "stopped" }), true, "its folder is still there");
+  assert.equal(canPublish({ source: "files", state: "starting" }), false);
+  assert.equal(canPublish({ source: "port", state: "live" }), false, "an agent's own server is not a folder of ready files");
+  assert.equal(siteNameOf("Intake form: Smith & Co!"), "intake-form-smith-co");
+  assert.equal(siteNameOf("  "), "site");
+  assert.equal(siteNameOf("A".repeat(80)).length, 40);
+  assert.equal(addressOf({ url: "https://x.example", domains: [{ host: "intake.example.com" }] }), "intake.example.com");
+  assert.equal(addressOf({ url: "http://pv.localhost:1/", domains: [] }), "http://pv.localhost:1/");
+  assert.equal(addressOf(null), "");
+  assert.equal(publishWords({ public: false }).later, "Public once the public door is on. Until then the address works on your own devices only.");
+  assert.equal(publishWords({ public: true }).later, "");
+});
