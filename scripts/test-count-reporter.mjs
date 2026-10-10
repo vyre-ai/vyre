@@ -6,6 +6,7 @@ import path from "node:path";
 /** @param {AsyncIterable<{ type: string, data: any }>} source */
 export default async function* countReporter(source) {
   /** @type {Record<string, number>} */ const counts = {};
+  /** @type {Record<string, string[]>} the tests that reported skip or todo, by file (test/must-run.json names the ones that may not) */ const skipped = {};
   const root = process.cwd();
   for await (const ev of source) {
     if (ev.type !== "test:pass" && ev.type !== "test:fail") continue;
@@ -16,9 +17,12 @@ export default async function* countReporter(source) {
     // A file that crashed or was cancelled reports itself as one failed "test" whose name is its path; it is not a counted test.
     if (d.nesting === 0 && d.name === d.file && ev.type === "test:fail") { counts[rel] ||= 0; continue; }
     counts[rel] = (counts[rel] || 0) + 1;
+    if (d.skip || d.todo) (skipped[rel] ||= []).push(String(d.name));
   }
   const out = process.env.VYRE_TEST_COUNTS_OUT;
   if (out) fs.writeFileSync(out, JSON.stringify(counts, null, 1) + "\n");
+  const skips = process.env.VYRE_TEST_SKIPS_OUT;
+  if (skips) fs.writeFileSync(skips, JSON.stringify(skipped) + "\n");
   return;
   yield "";
 }
