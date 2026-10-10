@@ -22,7 +22,7 @@ Vyre's own ports are refused. The card shows one word for the state (Starting, L
 
 ## Who can open it
 
-A preview is private to you by default, or to the project when it was made for one. Share changes it to the project or to everyone in the Space. Nothing leaves your Space from here: a public link is Publish, and it waits for your yes.
+A preview is private to you by default, or to the project when it was made for one. "The project" means the project's people: its owner, the people on its team and the people in its chats, not everyone in the Space; a Personal project is yours alone. Share changes it to the project or to everyone in the Space. "Anyone with the link" hands a folder of files to Publish, which builds it and holds it for your one yes; nothing is public until you give it.
 
 ## What a page may ask for
 

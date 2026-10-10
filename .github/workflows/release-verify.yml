@@ -123,8 +123,14 @@ jobs:
           sh /tmp/install-box.sh --yes </dev/null
           unset VYRE_BOX_URL
           echo "installed: $(vyre version)"
+          # THE GATE: a plain `vyre update` as a NORMAL USER, no sudo, with the default wait, on a default Records install. v0.3.0's updater stopped Vyre and then died on a root-owned
+          # file when run this way; it must never be possible again. Do not add sudo or a longer wait here to make it pass: if it fails, the release fails.
+          [ "$(id -u)" != 0 ] || { echo "::error::this gate must run as a normal user"; exit 1; }
           vyre update </dev/null
           i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i+1)); [ $i -ge 120 ] && { echo "vyred did not come back"; exit 1; }; sleep 1; done
           got=$(tr -d ' \r\n' </srv/vyre/VERSION)
           echo "after update: $got"
           [ "$got" = "${TAG#v}" ]
+          # every module running: none failed, none missing (the updater checked the signed ones; this is the whole list as a person sees it)
+          vyre status
+          if vyre status 2>&1 | grep -Eq '[1-9][0-9]* failed'; then echo "::error::modules failed after the update"; exit 1; fi
