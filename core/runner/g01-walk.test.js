@@ -79,7 +79,7 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   const handlers = new Map();
   const ctx = {
     paths: { root: lenderRoot }, config: { role: "local", name: "Office Mac" },
-    events: { emit: (/** @type {string} */ type) => { for (const f of handlers.get(type) || []) f({ type }); }, on: (/** @type {string} */ type, /** @type {any} */ f) => { handlers.set(type, [...(handlers.get(type) || []), f]); return () => handlers.set(type, (handlers.get(type) || []).filter((/** @type {any} */ x) => x !== f)); } },
+    events: { emit: (/** @type {string} */ type, /** @type {any} */ payload) => { if (/checkpoint|runner\./.test(type)) say(`   [computer] ${type} ${JSON.stringify(payload || {}).slice(0, 220)}`); for (const f of handlers.get(type) || []) f({ type }); }, on: (/** @type {string} */ type, /** @type {any} */ f) => { handlers.set(type, [...(handlers.get(type) || []), f]); return () => handlers.set(type, (handlers.get(type) || []).filter((/** @type {any} */ x) => x !== f)); } },
     tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def),
     call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: null }),
     kernel: { owner: ownerId, chain: async () => ({ hops: [{ actor: { kind: "person", id: ownerId } }] }), for: () => ({ call: (/** @type {string} */ name, /** @type {any[]} */ args) => remote.call(name, args) }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }) }) },
@@ -117,6 +117,7 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   assert.match(said, /noted/i, "a real Claude answered on the computer");
   say(`   where it runs: ${where()} (placing: ${JSON.stringify(placing.map(p => p.state))})`);
   assert.equal(where(), "mac");
+  { const cp0 = await home.view(th.id).checkpoint(); say(`   the home holds the computer's checkpoint: ${cp0 ? JSON.stringify({ seq: cp0.seq, turn: cp0.turn, files: Object.keys(cp0.manifest || {}).length }) : "NONE"}`); }
   assert.ok(placing.some(p => p.state === "up"), "the chat said it is up on the computer");
   say("2. the person moves the chat to the server; the server carries on from the computer's last whole turn, and a new fact is told there");
   await ok("runner.move", { thread: chatId, to: "server" });
