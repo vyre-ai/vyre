@@ -49,6 +49,21 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
   if (sub === "down") { fs.rmSync(F + "/app-running-" + m, { force: true }); fs.rmSync(F + "/app-net-" + m, { force: true }); process.exit(0); }
   process.exit(0);
 }
+// published servers (pub-build, pub-up): the rootless BuildKit run, docker load, the image id of root's tag
+if (a[0] === "run" && a.includes("--name") && a[a.indexOf("--name") + 1] === "vyre-pub-build") {
+  fs.appendFileSync(F + "/pub-builds", a.join(" ") + "\n");
+  if (has("build-fails")) { process.stderr.write("#7 ERROR: process \"npm ci\" did not complete successfully: exit code: 1\n"); process.exit(1); }
+  const mnt = a.filter((x, i) => a[i - 1] === "-v" && x.endsWith(":/out"))[0];
+  const o = (/--output type=docker,name=([^,]+),dest=\/out\/image.tar/.exec(a.join(" ")) || [])[1];
+  fs.writeFileSync(F + "/pub-tag", o || "");
+  if (!has("no-tar") && mnt) fs.writeFileSync(mnt.split(":")[0] + "/image.tar", "TAR".repeat(10));
+  process.exit(0);
+}
+if (a[0] === "load") { if (has("load-fails")) process.exit(1); fs.writeFileSync(F + "/pub-loaded", "1"); out("Loaded image: " + rd("pub-tag")); }
+if (a[0] === "image" && a[1] === "inspect" && /^vyre-pub\//.test(a[2])) {
+  if (has("pub-image-gone") || !has("pub-loaded")) process.exit(1);
+  out("sha256:" + require("crypto").createHash("sha256").update(a[2]).digest("hex"));
+}
 if (a[0] === "pull" && a[a.length - 1].includes("docuseal/docuseal")) {
   if (has("pull-fails-app")) { process.stderr.write("pull access denied\\n"); process.exit(1); }
   fs.appendFileSync(F + "/pulled", a[a.length - 1] + "\\n"); fs.writeFileSync(F + "/app-image-have", "1"); process.exit(0);
@@ -74,6 +89,13 @@ if (a[0] === "run" && a.includes("--entrypoint")) {
   const i = a.indexOf("-e");
   if (ep === "node" && i > 0) {
     const script = a[i + 1], args = a.slice(i + 2);
+    if (script.includes("host-pub.js")) {
+      fs.appendFileSync(F + "/pubplans", args.join(" ") + "\n");
+      if (has("hostpub-fails")) process.exit(1);
+      const mnt = a.filter((x, k) => a[k - 1] === "-v" && x.endsWith(":/ctx:ro"))[0];
+      const r = cp.spawnSync("node", ["-e", 'import(process.env.REPO + "/core/appmods/host-pub.js").then(m=>process.stdout.write(m.run(process.argv.slice(1))))', ...args], { encoding: "utf8", env: { ...process.env, REPO, ...(mnt ? { VYRE_PUB_CTX: mnt.split(":")[0] } : {}) } });
+      process.stdout.write(r.stdout || ""); process.exit(0);
+    }
     if (script.includes("host-plan.js")) {
       if (args[0] === "list" && has("hostplan-list")) out(rd("hostplan-list"));
       if (args[0] === "compose" && has("hostplan-compose-" + args[1])) out(rd("hostplan-compose-" + args[1]));

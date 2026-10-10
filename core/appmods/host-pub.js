@@ -30,7 +30,7 @@ export function check(a) {
     if (problems.length) return `refused: ${problems.map(p => `${p.path}: ${p.message}`).join("; ")}`;
     const hs = Number(a[7]);
     if (!(Number.isInteger(hs) && hs >= 1 && hs <= 600)) return "refused: the start time is 1 to 600 seconds";
-    let text; try { text = fs.readFileSync("/ctx/Dockerfile", "utf8"); } catch { return "refused: the folder has no Dockerfile at its top"; }
+    let text; try { text = fs.readFileSync(`${process.env.VYRE_PUB_CTX || "/ctx"}/Dockerfile`, "utf8"); } catch { return "refused: the folder has no Dockerfile at its top"; }
     if (text.length > 262144) return "refused: the Dockerfile is too long";
     checkDockerfile(text, { allow: [] });
     return "ok";
