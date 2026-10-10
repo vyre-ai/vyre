@@ -31,3 +31,4 @@ echo "grey share $share; the fake screen server saw $(cat "$out/connections.txt"
 awk "BEGIN{exit !($share >= 0.05)}" || { echo "no frame was drawn"; exit 1; }
 echo "a frame was drawn by the phone's Glass page in relay mode"
 # re-run after the APK is green
+# run on the APK with the setup-gate fix
