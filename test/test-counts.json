@@ -804,6 +804,7 @@
  "stores/twenty/space-store.test.js": 9,
  "stores/twenty/specific-suite.js": 9,
  "stores/twenty/twenty.test.js": 6,
+ "test/a5-no-copies.test.js": 2,
  "test/add-server.test.js": 1,
  "test/added-module-never.test.js": 1,
  "test/agent-docs.test.js": 5,
