@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { explainText, APPROVE_LABEL, healthBanner, healthRow, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
@@ -50,4 +50,11 @@ test("a Flow's own page leads with a banner when it is red or amber, and says ho
   assert.equal(healthBanner({ level: "grey", line: "Not approved yet" }).tone, "quiet");
   assert.equal(healthBanner(null), null);
   assert.equal(healthBanner({ level: "red" }), null, "no line, nothing to say");
+});
+
+test("explain a run: the box's paragraph is the card's words, and nothing else draws a card", () => {
+  assert.equal(explainText({ explain: "  It ran because the stage moved to Engagement. It made Welcome note. It finished. ", lines: ["x"] }), "It ran because the stage moved to Engagement. It made Welcome note. It finished.");
+  assert.equal(explainText({ lines: ["only lines"] }), "");
+  assert.equal(explainText(null), "");
+  assert.equal(explainText({ explain: 5 }), "");
 });

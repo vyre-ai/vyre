@@ -4019,6 +4019,34 @@
     }
    }
   },
+  "explain-card": {
+   "title": "Explain this run",
+   "screens": {
+    "full": {
+     "component": "explain-card"
+    },
+    "compact": {
+     "component": "explain-card"
+    },
+    "glance": {
+     "component": "explain-card"
+    }
+   }
+  },
+  "record-timeline": {
+   "title": "A record's timeline",
+   "screens": {
+    "full": {
+     "component": "record-timeline"
+    },
+    "compact": {
+     "component": "record-timeline"
+    },
+    "glance": {
+     "component": "record-timeline"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
