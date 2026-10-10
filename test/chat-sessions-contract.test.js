@@ -36,7 +36,8 @@ function names(files, re) {
 }
 const read = f => fs.readFileSync(path.join(root, f), "utf8");
 
-const core = sources("core");
+// the server side is core/ and the lib/ files the switchboard emits through (lib/lent-placement.js says thread.placing)
+const core = [...sources("core"), ...sources("lib")];
 const serverTools = names(core, /\btool\(\s*"([a-z]+\.[a-z.-]+)"/g);
 // an event is emitted by emit("x.y", ...) or built as an event object ({ type: "x.y", ... }), as the plan is
 const serverEvents = new Set([...names(core, /\b(?:emit|emitRaw|fire)\??\.?\(\s*"([a-z]+\.[a-z._-]+)"/g), ...names(core, /\btype:\s*"((?:thread|ask|mode|model|thinking)\.[a-z._-]+)"/g)]);
