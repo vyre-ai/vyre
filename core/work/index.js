@@ -100,9 +100,10 @@ export default {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
       // a project made through the old project list (the CLI, the app) gets its record
       hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
-      hear("thread.started", p => hubOf().onStarted(p));
-      hear("thread.stopped", p => hubOf().onStopped(p));
-      hear("thread.status", p => hubOf().onStatus(p));
+      // a TEAM chat's run says its Space: that chat's record is the team Space's own, written there, never a record of the home's
+      hear("thread.started", p => (p && p.space ? null : hubOf().onStarted(p)));
+      hear("thread.stopped", p => (p && p.space ? null : hubOf().onStopped(p)));
+      hear("thread.status", p => (p && p.space ? null : hubOf().onStatus(p)));
       // a terminal session's chat was made (the switchboard, from the Harness's SessionStart)
       hear("thread.chat", p => hubOf().onChatLinked(p));
       // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
@@ -110,7 +111,7 @@ export default {
       hear("chat.changed", p => hubOf().onChatChanged(p));
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
-      hear("thread.renamed", p => hubOf().onThreadRenamed(p));
+      hear("thread.renamed", p => (p && p.space ? null : hubOf().onThreadRenamed(p)));
       // a /rename inside Claude Code reaches the transcript, which Recall indexes: checked at each turn's end
       hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;

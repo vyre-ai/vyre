@@ -478,7 +478,7 @@ export class Switchboard {
     this.shellContext = new Map();
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
-    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map(); this.turnSpace = new Map(); /** @type {Map<string, string>} thread -> the TEAM Space its current chat turn belongs to (none for the home's own) */
     /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
@@ -569,6 +569,7 @@ export class Switchboard {
       const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
       if (row && row.chat) payload = { ...payload, chat: row.chat };
     }
+    if (payload && /^thread\.(started|stopped|renamed|status)$/.test(type) && this.turnSpace.get(thread)) payload = { ...payload, space: this.turnSpace.get(thread) };
     if (type === "thread.sent" && payload && payload.tz === undefined) {
       const row = /** @type {any} */ (this.db.prepare("SELECT tz FROM threads_runs WHERE id = ?").get(thread));
       if (row && row.tz) payload = { ...payload, tz: row.tz };
@@ -1151,7 +1152,7 @@ export class Switchboard {
   async renewKernelSession(id, rec, turn) {
     if (!this.deps.kernelSession) return;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch(() => null);
-    if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id);
+    if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) this.turnSpace.set(id, turn.space); else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     // the turn before may still be streaming its reply under its session: the session itself is released, not cut (lib/kernel-session ends it when that reply closes)
