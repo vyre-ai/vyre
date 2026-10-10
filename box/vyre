@@ -2456,6 +2456,7 @@ sp_pub_down_run() {
   sp_pub_rec_load "$1" || return 1
   sp_pub_owns "$1" || { MSG="that is not the server running under that name"; return 1; }
   sp_app_down "$PR_NAME" || return 1
+  rm -f "$SP_APPS/$PR_NAME/jobok" "$SP_APPS/$PR_NAME/jobran" "$SP_STATE/jobout-$1"
   MSG="removed; the data is kept"
 }
 # sp_pub_do ID VERB DEP: one request, with its status before and after; builds one at a time.

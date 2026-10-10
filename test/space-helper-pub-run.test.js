@@ -94,3 +94,13 @@ test("a job's limit is 60 to 3600 seconds: the settings say so before anything i
   }
   assert.equal((await r.build(DEP, { request: JOB({ job: "3600" }) })).state, "ok");
 });
+
+test("pub-down of a job takes its approval, its run stamp and its output with it", opts, async t => {
+  const { r } = await jobReady(t);
+  r.flag("job-out", "x\n");
+  assert.equal((await r.ask(`pub-run ${DEP}`)).state, "ok");
+  assert.equal((await r.ask(`pub-down ${DEP}`)).state, "ok");
+  const d = path.join(r.priv, "apps", "northwind");
+  assert.ok(!fs.existsSync(path.join(d, "jobok")) && !fs.existsSync(path.join(d, "jobran")) && !fs.existsSync(path.join(r.priv, "..", "status", `jobout-${DEP}`)));
+  assert.match((await r.ask(`pub-run ${DEP}`)).message, /never set up|not the job set up/);
+});
