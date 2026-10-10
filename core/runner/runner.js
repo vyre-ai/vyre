@@ -24,6 +24,7 @@ import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
+import { signalTree } from "./proctree.js";
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
 /** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
@@ -303,7 +304,11 @@ export function createRunner(o) {
   }
 
   /** Send a signal to a session's whole process group. */
-  function signal(h, sig) { try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } } }
+  function signal(h, sig) {
+    // the sandbox gives the agent a session of its own, so the group of the process Vyre started is not enough to freeze or thaw it: walk the tree under it too
+    if (sig === "SIGSTOP" || sig === "SIGCONT") { signalTree(Number(h.child.pid), sig); return; }
+    try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } }
+  }
 
   /** Stop one session: ask nicely, then end it. */
   async function stop(session, _o = {}) {
