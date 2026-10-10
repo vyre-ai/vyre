@@ -32,3 +32,4 @@ awk "BEGIN{exit !($share >= 0.05)}" || { echo "no frame was drawn"; exit 1; }
 echo "a frame was drawn by the phone's Glass page in relay mode"
 
 # Re-run after the mock build allowed cleartext (plugins/mock-cleartext.js): the page now reaches the fake server.
+# (the proof page is an open route of the setup gate)
