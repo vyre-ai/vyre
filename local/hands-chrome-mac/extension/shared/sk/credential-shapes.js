@@ -58,7 +58,7 @@ export const SHAPES = Object.freeze([
   { id: "digitalocean-2", provider: "digitalocean", type: "oauth", value: /^do[or]_v1_[a-f0-9]{64}$/ },
   { id: "perplexity", provider: "perplexity", type: "api-key", value: /^pplx-[A-Za-z0-9]{40,}$/ },
   { id: "shopify", provider: "shopify", type: "api-key", value: /^shp(at|ca|pa)_[a-fA-F0-9]{32}$/ },
-  { id: "shopify-2", provider: "shopify", type: "secret", value: /^shpss_[a-fA-F0-9]{32}$/ },
+  { id: "shopify-2", provider: "shopify", type: "api-key", value: /^shpss_[a-fA-F0-9]{32}$/ },
   { id: "square", provider: "square", type: "api-key", value: /^sq0atp-[\w-]{20,}$/ },
   { id: "square-2", provider: "square", type: "oauth", value: /^sq0csp-[\w-]{20,}$/ },
   { id: "linear", provider: "linear", type: "api-key", value: /^lin_api_[A-Za-z0-9]{32,}$/ },
@@ -134,7 +134,7 @@ export function finders(use) {
   /** @type {Array<{ name: string, re: RegExp }>} */ const out = [];
   for (const id of USES[use]) {
     const s = shapeOf(id);
-    const src = use === "share" ? (s && s.share === true ? s.find : s && s.share) : s && (s.scan || s.find);
+    /** @type {RegExp | undefined} */ const src = !s ? undefined : use === "share" ? (s.share === true ? s.find : s.share instanceof RegExp ? s.share : undefined) : (s.scan || s.find);
     if (!s || !src) throw new Error(`credential-shapes: ${use} has no rule for ${id}`);
     out.push({ name: (use === "share" && s.shareName) || s.name || s.id, re: new RegExp(src.source, src.flags.replace("g", "")) });
   }
@@ -208,7 +208,7 @@ export function findRegExp(id) { const s = shapeOf(id); if (!s || !s.find) throw
 const MAX = 8192;
 
 /** @type {Array<[RegExp, Omit<Classification, "secret"> & { secret?: boolean }]>} The anchored vendor shapes, in the order the table lists them. */
-const PREFIXES = SHAPES.filter(s => s.value && !s.noClassify).map(s => [s.value, { type: s.type, provider: s.provider, ...(s.mode ? { mode: s.mode } : {}), ...(s.secret === false ? { secret: false } : {}) }]);
+const PREFIXES = SHAPES.flatMap(s => (s.value && !s.noClassify ? [/** @type {[RegExp, Omit<Classification, "secret"> & { secret?: boolean }]} */ ([s.value, { type: /** @type {Type} */ (s.type), provider: s.provider, ...(s.mode ? { mode: s.mode } : {}), ...(s.secret === false ? { secret: false } : {}) }])] : []));
 
 /** @type {Record<string, string>} */
 const DB_SCHEMES = {
@@ -519,9 +519,12 @@ export function locateSecrets(text) {
       for (let u; (u = q.exec(w));) hit(u[2], at + u.index + 1);
       continue;
     }
-    const pair = /^[A-Za-z0-9_.-]{1,64}[=:]/.exec(w);
-    if (pair) { w = w.slice(pair[0].length); at += pair[0].length; }
+    // The whole word first: a token that ends in "=" (base64 padding: a Stripe signing secret, a Sentry token) is one credential, not a NAME= with nothing after it.
+    const before = out.length;
     hit(w, at);
+    if (out.length > before) continue;
+    const pair = /^[A-Za-z0-9_.-]{1,64}[=:]/.exec(w);
+    if (pair) { w = w.slice(pair[0].length); at += pair[0].length; hit(w, at); }
   }
   return out.sort((a, b) => a.start - b.start);
 }

@@ -80,8 +80,8 @@ export default {
 
     ctx.tool("connectors.catalog", {
       effect: "read",
-      description: "Every app Vyre can connect, each run by the vendor's own hosted server: id, label, group, who can use it, how the sign-in goes (setup: none, app or token; modes oauth and token), and which of the person's connections already use it. { all: true } adds the vendors checked and ruled out, each with the reason. Never a value.",
-      input: obj({ group: str, all: { type: "boolean" } }),
+      description: "Every app Vyre can connect: id, label, group, who can use it, sign-in setup, and which of the person's connections use it.",
+      input: obj({ group: str, all: { type: "boolean", description: "also list the vendors checked and ruled out, each with the reason" } }),
       run: input => conn.catalog(input),
     });
 
@@ -278,7 +278,7 @@ export default {
     ctx.tool("connectors.connection.check", {
       effect: "read",
       callers: READERS,
-      description: "Run a Connection's check request and say in plain words whether it works: { id } -> { light: green | red, words } (\"the key was refused (401)\", \"that id was not found (404)\", \"no answer from the host (timeout)\" ...).",
+      description: "Run a Connection's check request: { id } -> { light: green | red, words }, the result in plain words.",
       input: obj({ id: str }, ["id"]),
       run: ({ id }) => made.check(String(id)),
     });
@@ -299,7 +299,7 @@ export default {
     ctx.tool("connectors.connection.propose", {
       effect: "write",
       callers: ["cli", "local", "deck", "capsule", "module", "mcp", "harness"],
-      description: "Propose a Connection for the person to approve, with the same fields as connectors.connection.create. This is how an assistant connects an app after reading its documentation: it names the Vault item that holds the key (it never sees the key), the host, how the key is sent and the operations. Nothing is made or called until the person approves it on their own screen. Operations get the kind their method gives (GET reads, POST PUT PATCH change, DELETE deletes); only the person can relabel one.",
+      description: "Propose a Connection with the fields of connectors.connection.create. Name the Vault item, never the key. Nothing is made until the person approves it.",
       input: formShape,
       run: (input, meta) => made.propose(input, String(meta && meta.caller || "unknown"), input && input.why),
     });
@@ -324,8 +324,8 @@ export default {
     ctx.tool("connectors.connection.import", {
       effect: "read",
       callers: READERS,
-      description: "A draft Connection from an API description: { text } is an OpenAPI (3 or 2) or Postman collection file (JSON or YAML), or { url } is its public https address; JSON or YAML, which only the person may ask for (vyred fetches it, at most 5 MB, nothing of theirs sent). Answers { source, label, base_url, operations, notes, skipped }: the operations the file lists, as the form takes them. Nothing is saved and nothing is called; the person keeps the operations they want and connectors.connection.create makes the Connection. A POST in the file is a change, never a read.",
-      input: obj({ text: str, url: str }),
+      description: "Draft a Connection from an OpenAPI or Postman file: { text } or { url }. Answers label, base_url, operations, notes, skipped. Saves nothing.",
+      input: obj({ text: { type: "string", description: "an OpenAPI (3 or 2) or Postman collection file, JSON or YAML" }, url: { type: "string", description: "public https address of the file (at most 5 MB); only the person may use it" } }),
       run: async ({ text, url }, meta) => {
         let body = text;
         if (url !== undefined) {
@@ -342,7 +342,7 @@ export default {
     ctx.tool("connectors.connection.export", {
       effect: "read",
       callers: READERS,
-      description: "A Connection as a template to hand to another team: { id } -> the record without its id, key reference, fixed values (kept as {{name}} placeholders), light and dates. The key is never in it.",
+      description: "A Connection as a shareable template: { id } -> the record without its id, key reference, light and dates. Never the key.",
       input: obj({ id: str }, ["id"]),
       run: ({ id }) => made.exportTemplate(String(id)),
     });
@@ -396,8 +396,8 @@ export default {
     let cached = null;
     ctx.tool("connectors.calendar.today", {
       effect: "read",
-      description: "Today's next meetings across every connected calendar, for a next-meeting line: { events: [{ id, account, title, start, end, when, join?, link }] }. Empty when none is connected. Read only; cached for a minute.",
-      input: obj({ limit: { type: "integer" } }),
+      description: "Today's next meetings across connected calendars: { events: [{ id, account, title, start, end, when, join?, link }] }. Empty when none connected.",
+      input: obj({ limit: { type: "integer", description: "meetings to return, 1 to 10 (default 3)" } }),
       run: async ({ limit } = {}) => {
         const at = Date.now();
         const n = Number.isInteger(limit) ? Math.min(10, Math.max(1, limit)) : 3;

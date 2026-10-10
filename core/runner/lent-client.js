@@ -10,7 +10,7 @@ const BATCH_BYTES = 120 * 1024;
 
 /**
  * @param {{ invoke: (call: string, args: any[]) => Promise<any>, device: string, deviceKey: string, eid?: string, cap?: () => ("provider" | "internet" | undefined) }} o
- *   eid: this computer's identity-list entry, the device whose presence key signs the lease request; with it the request carries a signed hello (device, key, limit, runner version, protocol)
+ *   eid: this computer's identity-list entry, the device whose presence key signs the lease request; it names the entry in the identity list (not needed to get a lease; the lend is the permit)
  */
 export function createLentClient(o) {
   let lease = "";
@@ -55,9 +55,9 @@ export function createLentClient(o) {
     sync,
     vault: {
       lease: async () => {
-        // The hello names exactly what the lease is for; the home asks this computer's own presence key to sign it (the remote call answers the challenge) and refuses a request that is not.
+        // The hello is what this computer says about itself (its limit, runner version, protocol). The member's lend is the permit; the home takes the tightest of the hello and the Offers.
         const cap = o.cap ? o.cap() : undefined;
-        const hello = o.eid ? { device: o.device, device_key: o.deviceKey, eid: o.eid, cap: cap || null, runner_version: runnerVersion(), protocol: RUNNER_PROTOCOL } : undefined;
+        const hello = { device: o.device, device_key: o.deviceKey, eid: o.eid || o.device, cap: cap || null, runner_version: runnerVersion(), protocol: RUNNER_PROTOCOL };
         const r = await o.invoke("leases.issue", [{ device: o.device, device_key: o.deviceKey, ...(hello ? { hello } : {}) }]);
         if (r && r.id) lease = r.id; return r;
       },

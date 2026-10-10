@@ -60,7 +60,7 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
   assistant. It is the phone's Lumen: open it from the bar at the bottom or by pulling down. `@kit ...` asks an agent,
   `tell <session> to ...` types into a session, and `watch <session>` notifies you when it
   finishes or asks. The line under the box says what Enter will do.
-- **Watch a computer's screen**: when an agent works on a computer for you, the card in the chat shows its screen live, and you can take over, sign in privately and hand back, as on the web. On the phone the screen comes from your server directly, so it works when the phone is on the same network or the tailnet as the server; away from both it says so and tries again (the same screen over the relay is not built yet).
+- **Watch a computer's screen**: when an agent works on a computer for you, the card in the chat shows its screen live, and you can take over, sign in privately and hand back, as on the web. On the phone the screen comes from your server directly when the phone is on the same network or the tailnet; away from both it says so and tries again (the same screen over the relay is built but not proven on a phone yet).
 - **Ask**: talk to your assistant or any agent, at `/ask`.
 - **Drive**: browse the folders your box shares as Vyre Drive, at `/files`. A phone cannot mount a
   share, so it reads them: a preview for a picture, text or PDF up to 8 MB, otherwise a download.

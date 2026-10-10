@@ -516,7 +516,7 @@ shardTest("a software device key's presence proof is refused by the server witho
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,
     channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
   t.after(() => links.close());
-  await assert.rejects(() => links.sessionFor("srv").call("vault.put", { name: "juniper", kind: "secret", fields: { value: "fixture-value-0123456789" } }), e => /software|phone/i.test(e.message)); // (a tool that asks for presence: a Vault write is a moment; vault.delete and spaces.host-here are not)
+  await assert.rejects(() => links.sessionFor("srv").call("vault.reveal", { name: "juniper" }), e => /software|phone/i.test(e.message)); // a vault moment (a reveal); vault.put is not one since step B: the person alone saves an item, nothing is shown
 });
 
 

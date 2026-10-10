@@ -330,8 +330,8 @@ export default {
         return { path: `/v1/glass/raw?ticket=${ticket}`, name: st.name, size: Number(st.size) || 0 };
       });
 
-    tool("glass.files.upload", "A one-use path (60 s) to PUT a file of exactly `size` bytes into a folder on a target. Refuses to replace a file unless overwrite.",
-      obj({ ...target, dir: str, name: str, size: { type: "integer" }, overwrite: { type: "boolean" } }, ["target", "dir", "name", "size"]), async (i, { caller }) => {
+    tool("glass.files.upload", "A one-use path (60 s) to PUT a file of exactly `size` bytes into a target folder. Refuses to replace a file unless overwrite.",
+      obj({ ...target, dir: str, name: str, size: { type: "integer" }, overwrite: { type: "boolean", description: "allow replacing an existing file" } }, ["target", "dir", "name", "size"]), async (i, { caller }) => {
         const name = checkName(i.name);
         if (i.size < 0) throw new Error("size must be zero or more");
         if (i.size > cap) throw new Error(`that file is larger than the ${capMb} MB Glass accepts (glass.maxUploadMb)`);

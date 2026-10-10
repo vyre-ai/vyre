@@ -268,8 +268,8 @@ export default {
       },
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`, { when: ({ name }) => { const r = vault.row(name); return Boolean(r && r.vault !== "personal"); } }));
 
-    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. `project` scopes it to one project; omitted, it is good for every project. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
+    tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
+      obj({ name: str, module: str, watcher: str, project: { type: "string", description: "scope the grant to this project; omit for every project" } }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
@@ -338,8 +338,8 @@ export default {
           session: input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); } }));
 
     // The leak sweep (ADR 0028): where the vault's values, and credentials it lacks, sit in plain text.
-    tool("vault.sweep", ["cli", "local", "deck", "mcp"], "Look in a folder, its git history (history) and the shell's history (shell) for values the vault holds and for credentials it does not hold yet. Returns places and item names or credential types, never a value.",
-      obj({ path: str, history: { type: "boolean" }, shell: { type: "boolean" } }, ["path"]), (input, { caller }) => sweep(vault, input, caller),
+    tool("vault.sweep", ["cli", "local", "deck", "mcp"], "Search a folder, its git history and the shell history for values the vault holds and credentials it lacks. Returns places and names, never values.",
+      obj({ path: str, history: { type: "boolean", description: "also search the folder's git history" }, shell: { type: "boolean", description: "also search the shell history" } }, ["path"]), (input, { caller }) => sweep(vault, input, caller),
       presence("Look for leaked secrets", ({ path: p, history, shell }) => `Compare every value in the vault with the files in ${path.resolve(String(p))}${history ? ", its git history" : ""}${shell ? " and your shell history" : ""}`));
 
     // The authenticator (ADR 0028): every code at once, current and next, on the same window as one.
@@ -368,8 +368,8 @@ export default {
     // The app sends the bytes of the file the person picked (`content`, base64, with its `filename`); an assistant never does, so a value cannot pass through Claude.
     const noContentFromClaude = (input, caller) => { if (input.content !== undefined && callerKind(caller) === "mcp") throw new Error("Claude reads a file by its path on this machine; the bytes are never passed through Claude"); };
     const what = ({ file, filename }) => (file ? path.resolve(String(file)) : String(filename || "the exported file"));
-    tool("vault.import.preview", [...SURFACES, ...PHONE, "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file. A folder is scanned for .env files; each file's variables come back with their type and whether they are secret, never a value.",
-      obj({ file: str, format: str, content: str, filename: str }), (input, { caller }) => { noContentFromClaude(input, caller); if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content"); return vault.importPreview(input, caller); },
+    tool("vault.import.preview", [...SURFACES, ...PHONE, "mcp"], "Preview an import by name and count only: what it adds, skips or finds in conflict, plus a token binding vault.import to this file.",
+      obj({ file: { type: "string", description: "path to a file, or a folder scanned for .env files (variables come back with type and secret flag)" }, format: str, content: str, filename: str }), (input, { caller }) => { noContentFromClaude(input, caller); if (!input.file && input.content === undefined) throw new Error("give a file path, or the file's content"); return vault.importPreview(input, caller); },
       presence("Preview a file for import", input => `Preview the items in ${what(input)}`));
 
     // Several .env files in one call, so one yes covers a whole scan (vault.env.scan lists them). Each is imported on its own and the answers are merged; a file that fails is reported, and the rest still go.
@@ -385,8 +385,8 @@ export default {
       }
       return out;
     };
-    tool("vault.import", [...SURFACES, ...PHONE, "mcp"], "Import a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and the other managers vyred reads. vyred reads the files itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing item; rewrite swaps each imported .env value for a vault:// reference once it is stored. `files` imports several .env files at once, under one yes.",
-      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] }, rewrite: { type: "boolean" }, content: str, filename: str, files: strs }),
+    tool("vault.import", [...SURFACES, ...PHONE, "mcp"], "Import a .env file, a folder of them, or a password manager export. vyred reads the files; values never pass through Claude.",
+      obj({ file: { type: "string", description: "path to a .env file, a folder of them, or an export from 1Password, Bitwarden, LastPass, Dashlane, Chrome, Apple Passwords and other managers" }, format: str, token: { type: "string", description: "the token from vault.import.preview; refuses a file that changed since" }, conflicts: { type: "string", enum: ["skip", "update"], description: "update makes a new version of the existing item" }, rewrite: { type: "boolean", description: "swap each imported .env value for a vault:// reference once stored" }, content: str, filename: str, files: { type: "array", items: { type: "string" }, description: "absolute paths of several .env files, imported under one yes" } }),
       (input, { caller }) => {
         noContentFromClaude(input, caller);
         if (input.files !== undefined) return importMany(input, caller);

@@ -995,10 +995,10 @@ export default {
 
     const str = { type: "string" }, int = { type: "integer" }, bool = { type: "boolean" };
     const when = { description: "an ISO time (with an offset, or read in the item's zone without one), YYYY-MM-DD, or ms since 1970" };
-    const repeatSchema = { type: "object", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
+    const repeatSchema = { type: "object", description: "every: day|weekday|week|month|year, with optional days, interval, until", properties: { every: { type: "string", enum: ["day", "weekday", "week", "month", "year"] },
       days: { type: "array", items: int }, interval: int, until: str } };
     const itemFields = { title: str, body: str, list: str, priority: int, parent: str, project: str, thread: str, tags: { type: "array", items: str },
-      pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
+      pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number", description: "a timer's length in ms" }, wall: { type: "string", description: "wall-clock HH:MM, with date" }, date: { type: "string", description: "YYYY-MM-DD, with wall" }, due: when, repeat: repeatSchema, tz: str, floating: bool,
       // /later: waits_on chains a task after another item's own done, instead of a time; paused
       // stops just this one item (rule 2) without deleting it or losing its run history.
       waits_on: str, paused: bool,
@@ -1038,12 +1038,12 @@ export default {
       },
     });
 
-    tool("planner.add", "Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms for a timer, or wall \"HH:MM\" with date \"YYYY-MM-DD\" and repeat {every: day|weekday|week|month|year, days?, interval?, until?}. Or give text (\"alarm 7am\") to read it, with kind as a hint. Anyone may add alarms, timers, reminders, todos and notes.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, text: str, ...itemFields } },
+    tool("planner.add", "Add an alarm, timer, reminder, todo, note or event, from times (at, in_ms, or wall with date) or plain words in text.",
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, text: { type: "string", description: "plain words such as \"alarm 7am\", read into an item; kind is a hint" }, ...itemFields } },
       async (i, w) => await add(i, w), { agents: true });
 
-    tool("planner.list", "Items, newest time first: filter by kind, state (open by default; all), list, project, pinned, tag; limit up to 500. cursor: true returns { items, last_event }, the event cursor the list is current to.",
-      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"] }, list: str, project: str, pinned: bool, tag: str, limit: int, cursor: bool } },
+    tool("planner.list", "Items, newest time first, filtered by kind, state, list, project, pinned or tag. cursor: true returns { items, last_event }.",
+      { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"], description: "open by default; all for every state" }, list: str, project: str, pinned: bool, tag: str, limit: { type: "integer", description: "up to 500" }, cursor: { type: "boolean", description: "true returns { items, last_event }, the event cursor the list is current to" } } },
       async i => {
         const last_event = i.cursor ? cursor() : 0;
         const items = st.list({ ...i, limit: Math.min(500, Math.max(1, i.limit || 100)) }).map(shape);
@@ -1077,11 +1077,11 @@ export default {
         return i.cursor ? { ringing, last_event } : ringing;
       }, { agents: true });
 
-    tool("planner.update", "Change an item: title, body, list, priority, pinned, tags, project, thread, parent, state (open, done, cancelled) or its time. An agent may change only the items it added.",
+    tool("planner.update", "Change an item's fields, state (open, done, cancelled) or time. An agent may change only items it added.",
       { type: "object", required: ["item"], properties: { item: str, kind: str, state: { type: "string", enum: STATES }, ...itemFields } },
       async (i, w) => await update(i, w), { agents: true });
 
-    tool("planner.done", "Done: acknowledge a firing (an alarm stops ringing; a repeating one keeps its schedule) or finish a todo or reminder. Give firing, item, or the ring's key (a device answering a ring it rang itself).",
+    tool("planner.done", "Acknowledge a firing or finish a todo or reminder. Give firing, item, or key.",
       ref, async (i, w) => { const out = done(i, w); await Promise.all(spawning.splice(0)); return out; }, { agents: true });
 
     tool("planner.snooze", "Snooze a firing or an item: it rings again after minutes (9 by default).",
@@ -1090,8 +1090,8 @@ export default {
     tool("planner.dismiss", "Stop a firing without finishing a todo. A one-off alarm, timer or reminder ends.",
       ref, async (i, w) => dismiss(i, w), { agents: true });
 
-    tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days. An event goes to the records' bin and can be restored from there (restore: true with its id).",
-      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => {
+    tool("planner.delete", "Delete an item; restore: true brings it back within 30 days, events from the records' bin.",
+      { type: "object", required: ["item"], properties: { item: str, restore: { type: "boolean", description: "true restores it; an event comes back from the records' bin by id" } } }, async (i, w) => {
         // An event is a record of the Space's calendar, not a planner row: its delete and restore go through the records' bin.
         if (!st.item(i.item) && (cal.row(i.item) || (i.restore && i.item))) return removeEvent(i, w);
         return remove(i, w);
@@ -1100,22 +1100,22 @@ export default {
     tool("planner.bin", "The events you deleted that can still be restored (planner.delete with restore: true and the id), newest first.",
       { type: "object", properties: {} }, async (i, w) => ({ events: await st.cal.binned(w.chain) }), { agents: true });
 
-    tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
-      { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
+    tool("planner.agenda", "What is on between from and to (default today): planner items, calendar events and due todos, each with source, start and end. Returns last_event too.",
+      { type: "object", properties: { from: when, to: when, busy: { type: "boolean", description: "true returns only the merged busy intervals" }, next: { type: "integer", description: "n returns the next n entries from now" } } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
 
-    tool("planner.upcoming", "Every ring expected in the next hours (48 by default, 1 to 72), for a device to schedule as its own notifications so alarms ring with the box out of reach. Entries: key (planner-<item>-<due>, the push's tag too), item, kind, title, due (seconds), at (ms), loud, snoozed?, start and account for events. Refresh on any planner event but planner.fired, and on foreground. Also returns last_event.",
-      { type: "object", properties: { hours: int } }, async i => upcoming(i), { agents: true });
+    tool("planner.upcoming", "Rings expected in the next hours, for a device to schedule as its own notifications. Returns entries (key, item, kind, title, due) and last_event.",
+      { type: "object", properties: { hours: { type: "integer", description: "default 48, 1 to 72" } } }, async i => upcoming(i), { agents: true });
 
-    tool("planner.calendar.sync", "Read the connected Google calendars (a day back to 14 days ahead) into the planner's copy now. It also runs every 15 minutes while an account is connected.",
+    tool("planner.calendar.sync", "Read the connected Google calendars (a day back to 14 days ahead) into the planner's copy now.",
       { type: "object", properties: {} }, async () => cal.sync(), { agents: true });
 
-    tool("planner.calendar.create", "Make an event. Without account it is the planner's own event. With account it is written to that Google calendar through google.calendar.create; attendees mean invites, which wait at the Gate for the user (returns { held, message }). Agents may only ask for an invite (account and attendees).",
+    tool("planner.calendar.create", "Make an event: the planner's own, or on a Google calendar when account is given. Attendees send invites, held at the Gate for the user.",
       { type: "object", required: ["title", "start"], properties: { title: str, start: when, end: when, where: str, attendees: { anyOf: [str, { type: "array", items: str }] },
-        account: str, tz: str, why: str, project: str, thread: str, rrule: str, url: str } },
+        account: { type: "string", description: "Google account whose calendar gets the event; agents may only ask for an invite (account with attendees)" }, tz: str, why: str, project: str, thread: str, rrule: str, url: str } },
       async (i, w) => createEvent(i, w), { agents: true });
 
-    tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item { kind, title, at (ms), tz, duration?, repeat? }, { ambiguous, reason } when they cannot be placed, or null. kind is a hint. Answers where it is asked, never forwarded.",
-      { type: "object", required: ["text"], properties: { text: str, kind: { type: "string", enum: KINDS } } }, async i => parseText(i.text, now(), i.kind), { agents: true, local: true });
+    tool("planner.parse", "Read words like \"alarm 7am\" into a proposed item { kind, title, at, tz }, { ambiguous, reason }, or null. kind is a hint.",
+      { type: "object", required: ["text"], properties: { text: str, kind: { type: "string", enum: KINDS, description: "a hint when the words are unclear" } } }, async i => parseText(i.text, now(), i.kind), { agents: true, local: true });
 
     tool("planner.settings", "The planner's zone (floating alarms follow it), escalate_after (minutes, from 1), escalate_max (rings after the first) and event_lead (minutes). With no input, the current settings.",
       { type: "object", properties: { timezone: str, follow_device: bool, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));

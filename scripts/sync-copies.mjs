@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // scripts/sync-copies.mjs: code that must run where it cannot import from lib/ is GENERATED from lib/, never edited by hand. Today:
 //   - local/hands-chrome-mac/extension/shared/sk/ (the credential shapes and the site-knowledge store; the extension runs inside Chrome),
+//   - apps/app/src/store-core/credential-shapes.js (the phone app's redactor reads the same table),
 //   - core/computers/image/computerd/ws.js (the computers image is built from that folder alone),
 //   - relay/client/bytes.js (the Windows capsule ships relay/client/*.js on its own).
 // They are byte copies behind a one-line header; test/generated-copies.test.js fails when one drifts.
@@ -31,6 +32,9 @@ export function generatedFiles() {
     const text = fs.readFileSync(path.join(ROOT, "lib/siteops", f), "utf8");
     out[`${DEST}/siteops/${f}`] = `// GENERATED from lib/siteops/${f} by scripts/sync-copies.mjs (the extension cannot import from lib/). Do not edit here: change the original and run the script.\n${text}`;
   }
+  // The phone app's bundle cannot import from lib/ either: its redactor (screens/connections/model.ts) reads this copy of the table, so it hides every shape the table knows, not a short list of its own.
+  const shapes = fs.readFileSync(path.join(ROOT, "lib/credential-shapes.js"), "utf8");
+  out["apps/app/src/store-core/credential-shapes.js"] = `// GENERATED from lib/credential-shapes.js by scripts/sync-copies.mjs (the app's bundle cannot import from lib/). Do not edit here: change the original and run the script.\n${shapes}`;
   const bytes = fs.readFileSync(path.join(ROOT, "lib/bytes.js"), "utf8");
   out["relay/client/bytes.js"] = `// GENERATED from lib/bytes.js by scripts/sync-copies.mjs (the Windows capsule ships relay/client/*.js on its own, so this folder cannot import from lib/). Do not edit here.\n${bytes}`;
   const ws = fs.readFileSync(path.join(ROOT, "lib/ws.js"), "utf8");

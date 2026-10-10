@@ -75,8 +75,8 @@ export default {
 
     ctx.tool("docs.find", {
       effect: "read",
-      description: "Find the docs pages for an intent in plain words (\"send an email to a client\", \"why was my call refused\"). Returns up to `limit` pages, best first: { page, title, when, tokens, set }. `when` says what the page is for; `tokens` is what reading it costs. Read one with docs.read.",
-      input: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300 }, limit: { type: "integer", minimum: 1, maximum: 8 }, set: { type: "string", enum: ["human", "agent", "both"] } }, required: ["query"] },
+      description: "Find docs pages for an intent: { query, limit? } -> best-first { page, title, when, tokens, set }. Read one with docs.read.",
+      input: { type: "object", properties: { query: { type: "string", minLength: 1, maxLength: 300, description: "what you want to do, in plain words" }, limit: { type: "integer", minimum: 1, maximum: 8, description: "default 5" }, set: { type: "string", enum: ["human", "agent", "both"] } }, required: ["query"] },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const c = corpus();
         const aud = audienceOf(meta);
@@ -92,8 +92,8 @@ export default {
 
     ctx.tool("docs.read", {
       effect: "read",
-      description: "Read a docs page, or one section of it. `page` is the path from docs.find (\"using/box-care.md\"); `heading` returns only that section. A page longer than `max_tokens` (default 3000) comes back as its outline and the first sections that fit, with `more` listing the rest: ask for those by heading.",
-      input: { type: "object", properties: { page: { type: "string", minLength: 1, maxLength: 200 }, heading: { type: "string", maxLength: 200 }, max_tokens: { type: "integer", minimum: 200, maximum: MAX_READ } }, required: ["page"] },
+      description: "Read a docs page, or one section: { page (path from docs.find), heading? }. A long page returns an outline and the first sections.",
+      input: { type: "object", properties: { page: { type: "string", minLength: 1, maxLength: 200 }, heading: { type: "string", maxLength: 200, description: "return only this section" }, max_tokens: { type: "integer", minimum: 200, maximum: MAX_READ, description: "default 3000; a longer page returns an outline and the first sections that fit, `more` listing the rest to ask for by heading" } }, required: ["page"] },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const c = corpus();
         const pool = audienceOf(meta) === "human" ? c.all.filter((p) => p.set === "human") : c.all;

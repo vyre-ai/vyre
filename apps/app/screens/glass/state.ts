@@ -32,7 +32,10 @@ const slowNet = (): boolean => {
   return Boolean(c && (c.saveData || /^(slow-2g|2g|3g)$/.test(c.effectiveType || "")));
 };
 /** The stream's address: the box's own origin as a socket. "" when the box is only reached over the relay (the stream is direct). */
-const wsBase = (): string => { const o = boxOrigin(); return o ? o.replace(/^http/, "ws") : ""; };
+const wsBase = (): string => { const o = boxOrigin(); return o ? o.replace(/^http/, "ws") : relayOnly() ? RELAY_HOST : ""; };
+/** The phone away from the server: no address of the box, only the relay channel. The page opens `ws://<anything>` + path and the app's bridge keeps only the path (contracts/glass-relay.md). */
+export const relayOnly = (): boolean => Platform.OS !== "web" && !boxOrigin();
+const RELAY_HOST = "ws://box.invalid";
 
 export type Note = { tone: "ok" | "err"; title?: string; text: string };
 

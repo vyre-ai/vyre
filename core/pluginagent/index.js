@@ -58,7 +58,7 @@ export default {
     const keyPath = () => path.join(root, KEY_FILE);
 
     ctx.tool("pluginagent.ask", {
-      description: "Claude Code on this computer asks, once, to read the person's memory and the sessions of their projects. Files a request for the person to approve (the computer is named by the daemon, one pending ask at a time); changes nothing else. Answers { state: 'granted' | 'waiting' | 'declined' | 'quiet' }.",
+      description: "Claude Code on this computer asks once to read the person's memory and project sessions. Answers state: granted, waiting, declined or quiet.",
       input: obj(),
       callers: [...PEOPLE, "mcp", "harness"],
       run: async () => {

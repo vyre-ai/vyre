@@ -162,7 +162,7 @@ export default {
     // ---- accounts ----
 
     ctx.tool("mail.accounts", {
-      description: "The mail accounts this caller may use: account (the id every mail tool takes), adapter (google, mcp, imap, apps-script), the address, a label. Never a value. With several, name one in mail.send.",
+      description: "The mail accounts this caller may use: account (the id every mail tool takes), adapter, address, label. With several, name one in mail.send.",
       input: obj({ on_behalf: behalf }),
       run: async (input, meta) => (await usable(meta, input)).list.map(view),
     });
@@ -246,8 +246,8 @@ export default {
     }
 
     ctx.tool("mail.search", {
-      description: "Messages matching words, from:, to:, subject:, newer_than:7d or is:unread, newest first, across every account this caller may use unless one is named: { messages: [{ account, id, from, to, subject, date, snippet }], errors? }. Read one with mail.read { account, id }.",
-      input: obj({ q: str, account, limit: int, on_behalf: behalf }, ["q"]),
+      description: "Search mail newest first, across every account this caller may use unless account is named. Returns id, from, subject, snippet. Read one with mail.read.",
+      input: obj({ q: { ...str, description: "words, from:, to:, subject:, newer_than:7d, is:unread" }, account, limit: int, on_behalf: behalf }, ["q"]),
       run: async (input, meta) => {
         const { list } = await usable(meta, input);
         const accts = named(input.account) ? [pickFor(list, input.account)] : list;
@@ -320,7 +320,7 @@ export default {
 
     ctx.tool("mail.send", {
       callers: WITH_MODELS,
-      description: "Send an email as the user from one of their accounts. It is always held at the Gate until the user approves it (and may edit it); returns { held, account, message }. With several accounts, name one from mail.accounts; a send never guesses.",
+      description: "Send an email as the user, always held at the Gate until they approve it. With several accounts, name one from mail.accounts.",
       input: obj(mailInput, ["to", "subject", "body"]),
       run: async (input, meta) => {
         const { filing, list } = await usable(meta, input);
