@@ -32,6 +32,7 @@ async function world(t) {
 
 test("a member speaks in a team chat with an assistant and the assistant answers there, in the team's chat and not the home's", { timeout: 150_000 }, async t => {
   const { w, as, firm } = await world(t);
+  const homeSpace = w.d.kernel.id.space;
   const made = await as(ANA, "create", { title: "Team huddle", people: [BEN], agents: ["assistant"] });
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   await as(ANA, "send", { chat: made.chat, text: "hello team, please answer" });
@@ -46,5 +47,5 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   const db = w.d.registry.deps.db;
   const lines = (() => { try { return db.prepare("SELECT COUNT(*) n FROM memory_engine_lines WHERE text LIKE ?").get("%hello team, please answer%"); } catch { return { n: 0 }; } })();
   const which = (() => { try { return JSON.stringify(db.prepare("SELECT * FROM memory_engine_lines WHERE text LIKE ?").all("%hello team, please answer%")).slice(0, 700); } catch { return ""; } })();
-  assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory: ${which}`);
+  assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory (home ${homeSpace}, team ${firm.space}): ${which}`);
 });
