@@ -61,10 +61,12 @@ export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs)
 export function killTree(root, o = {}) {
   const procs = o.procs || (() => allProcs());
   const kill = o.kill || ((/** @type {number} */ pid, /** @type {NodeJS.Signals} */ s) => process.kill(pid, s));
+  // never signal this process or pid 1, whatever the walk reaches: a wrong root or a re-parented walk must not stop vyred itself
+  if (!(root > 1) || root === process.pid) return 0;
   const seen = new Set();
   for (let pass = 0; pass < (o.passes ?? 8); pass++) {
     let fresh = 0;
-    for (const p of treeOf(root, procs())) { if (seen.has(p.pid)) continue; seen.add(p.pid); fresh++; try { kill(p.pid, "SIGSTOP"); } catch { /* gone */ } }
+    for (const p of treeOf(root, procs())) { if (seen.has(p.pid) || p.pid <= 1 || p.pid === process.pid) continue; seen.add(p.pid); fresh++; try { kill(p.pid, "SIGSTOP"); } catch { /* gone */ } }
     if (!fresh) break;
   }
   for (const pid of seen) { try { kill(pid, "SIGKILL"); } catch { /* gone */ } }
