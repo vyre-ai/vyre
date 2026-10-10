@@ -297,6 +297,7 @@ export default {
     const moveTick = () => {
       /** @type {any[]} */ const rows = [];
       for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x });
+      if (!rows.length) { mover.reset(); return; }   // nothing runs here: nothing to ask the machine about
       for (const d of mover.tick({ settings: limits, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
     };
     // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts; when it wakes, check in at once.
@@ -308,6 +309,8 @@ export default {
       if (beating) return;
       beating = true;
       try {
+        // an idle computer (no Space lent to, no session) does nothing at all: no settings read, no power query, every few seconds for ever
+        if (!lenders.size && !runners.size) return;
         await refreshSettings().catch(() => {});
         moveTick();
         const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: (seam.state || deviceState)(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
