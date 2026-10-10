@@ -2074,6 +2074,7 @@ sp_pub_claim() {
   mv -T -- "$SRC" "$CLAIM" 2>/dev/null || { MSG="the server's folder could not be taken"; return 1; }
 }
 # sp_pub_request FILE: the settings, one `key=value` per line, every value from its own anchored pattern, no key twice and none unknown. They land in PB_*; nothing else is read from the file.
+# shellcheck disable=SC2015  (each "A && B || C" here means: if A and B fail, take the refusal)
 sp_pub_request() {
   f=$1; PB_NAME=""; PB_VERSION=""; PB_PORT=""; PB_MEM=""; PB_CPUS=""; PB_PIDS=""; PB_HPATH=""; PB_HOK=""; PB_HSTART=""; PB_SECRETS=""
   { [ -f "$f" ] && [ ! -L "$f" ]; } || { MSG="the settings are missing"; return 1; }
@@ -2121,12 +2122,14 @@ sp_pub_plan() {
   [ -s "$out_" ]
 }
 # sp_pub_rec_save DEP TAG ID: root's record of what it built, one line, 0600. It is what pub-up starts from; the daemon's settings only have to AGREE with it.
+# shellcheck disable=SC2015  (each "A && B || C" here means: if A and B fail, take the refusal)
 sp_pub_rec_save() {
   t=$(mktemp "$SP_PUB/$1/rec.XXXXXX") || return 1
   printf '%s %s %s %s %s %s %s %s %s %s %s %s\n' "$PB_NAME" "$2" "$3" "$PB_PORT" "$PB_MEM" "$PB_CPUS" "$PB_PIDS" "$PB_HPATH" "$PB_HOK" "$PB_HSTART" "$PB_VERSION" "$PB_SECRETS" >"$t"
   chmod 600 "$t" && rename_over "$t" "$SP_PUB/$1/rec" || { rm -f "$t"; return 1; }
 }
 # sp_pub_rec_load DEP: root's record back into PR_* (every field checked again) and A_* (what the app functions read). `A_HOOK=0`: a published server has no door in.
+# shellcheck disable=SC2015,SC2034  (each "A && B || C" here means: if A and B fail, take the refusal)
 sp_pub_rec_load() {
   r=$SP_PUB/$1/rec
   { [ -f "$r" ] && [ ! -L "$r" ]; } || { MSG="that server was never built here"; return 1; }
@@ -2138,6 +2141,7 @@ sp_pub_rec_load() {
   A_NAME=$PR_NAME; A_IMAGE=$PR_TAG; A_PORT=$PR_PORT; A_MEM=$PR_MEM; A_CPUS=$PR_CPUS; A_PIDS=$PR_PIDS; A_HOOK=0; A_SCRIPT=-; A_EXEC=-; A_OUTS=-; A_HPATH=$PR_HPATH; A_HOK=$PR_HOK; A_HSTART=$PR_HSTART
 }
 # sp_pub_build DEP: claim, vet, judge, build, load, record. MSG ends with the image id the daemon starts the server from.
+# shellcheck disable=SC2015  (each "A && B || C" here means: if A and B fail, take the refusal)
 sp_pub_build() {
   dep=$1
   sp_pub_claim "$dep" build || return 1
@@ -2180,6 +2184,7 @@ sp_pub_build() {
   MSG="built $id"
 }
 # sp_pub_up DEP: the server from root's record, with the secrets the daemon wrote read by root.
+# shellcheck disable=SC2015  (each "A && B || C" here means: if A and B fail, take the refusal)
 sp_pub_up() {
   dep=$1
   sp_pub_rec_load "$dep" || return 1
