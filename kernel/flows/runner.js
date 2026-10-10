@@ -859,6 +859,7 @@ export class FlowRunner {
    * @param {string} runId @param {{ skip?: boolean, value?: any, by?: string, version?: 'pinned'|'latest' }} [opts]
    */
   async retry(runId, opts = {}) {
+    { const up = await this.joins.retryTarget(runId); if (up) return this.retry(up, opts); }
     // Retry on a run that waits for a Chrome means: try now, do not wait for the Mac to say it is back.
     { const w = await this.store.getRun(runId); if (w && w.state === "waiting" && w.attention && w.attention.kind === "device") return this.#resume(runId, { event: null }); }
     return this.#locked(runId, async () => {
