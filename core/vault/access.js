@@ -95,6 +95,14 @@ export class Access {
     return all.filter((/** @type {any} */ g) => g.status === "active" && g.source === SOURCE && (!f.uid || g.subject.actor.id === f.uid) && (!f.res || g.resource.prefix === f.res) && (!f.origin || g.conditions.where.origins[0] === f.origin));
   }
 
+  /** The names of the logins lent to an agent right now, read live from the kernel (none without one). @returns {string[]} */
+  items() {
+    const K = this.K;
+    if (!K) return [];
+    const t = this.v.clock();
+    return K.vault.grantsOn(`vyre://${K.space}/vault/`).filter((/** @type {any} */ g) => g.source === SOURCE && !(g.conditions && g.conditions.when && g.conditions.when.expires <= t)).map((/** @type {any} */ g) => String(g.resource.prefix).split("/item/")[1]);
+  }
+
   /** Requests waiting for a person, for vault.pending. */
   pending() {
     return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_access_requests ORDER BY at").all()).map(g => ({ id: g.id, agent: g.agent, item: g.item, origin: g.origin, expires: g.expires, status: "pending", by: g.by, at: g.at }));

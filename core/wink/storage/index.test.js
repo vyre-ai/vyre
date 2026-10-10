@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { migrate } from "../../store/index.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS } from "./index.js";
-import { storageGrants } from "./grants.js";
+import { createGrants } from "../grants.js";
+import { fakeMint } from "../../../test/fake-chain-kernel.js";
 import { storageCard, size } from "./cards.js";
 import { FORBIDDEN } from "../cards.js";
 import { fakeS3 } from "./testing/fake-s3.js";
@@ -21,7 +22,8 @@ async function world(t, o = {}) {
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   migrate(db, "wink-storage", MIGRATIONS);
   const events = [], logs = [];
-  const ctx = { store: { db }, events: { emit: (type, payload) => events.push({ type, payload }) }, log: m => logs.push(m), config: { name: "Alex's Mac" }, tools: new Map(), tool(name, def) { this.tools.set(name, def); } };
+  const mint = fakeMint();
+  const ctx = { kernel: { mint, space: SPACE }, store: { db }, events: { emit: (type, payload) => events.push({ type, payload }) }, log: m => logs.push(m), config: { name: "Alex's Mac" }, tools: new Map(), tool(name, def) { this.tools.set(name, def); } };
   const items = new Map();
   const vault = {
     put: async ({ name, fields, description }) => { if (o.vaultFails) throw new Error("vault locked"); items.set(name, { fields, description }); },
@@ -35,17 +37,18 @@ async function world(t, o = {}) {
   const candidates = [{ name: "Office drive", kind: "smb", host: "nas.local", share: "Files", size: 2e12 }, { name: "Spare disk", kind: "usb-disk", path: "/Volumes/Spare" }];
   const admins = new Set([SPACE]);
   const s = createStorageDevices({
-    ctx, vault, grants: storageGrants({ ctx, space: () => SPACE, now: () => clock }), space: () => SPACE, now: () => clock,
+    ctx, vault, grants: createGrants({ ctx }), space: () => SPACE, now: () => clock,
     scanners: [{ name: "fake", scan: async () => ({ found: candidates }) }], from: () => "Alex's Mac mini",
     reach: { tcp: async () => reachState.tcp, path: () => reachState.path },
     admin: { self: async () => SELF, isAdmin: async (p, sp) => p === SELF.id && admins.has(sp), nameOf: async ow => (ow.kind === "space" ? "Harlow Legal" : "Personal") },
   });
   const pairArgs = { kind: "s3", endpoint: bucket.endpoint, bucket: "harlow-backup", region: "us-east-1", accessKey: ACCESS, secretKey: SECRET, capacity: 1.5e12, owner: `space:${SPACE}`, residency: "US only" };
-  return { s, db, events, logs, vault, items, bucket, ctx, reachState, admins, pairArgs, tick: ms => { clock += ms; } };
+  return { s, db, mint, events, logs, vault, items, bucket, ctx, reachState, admins, pairArgs, tick: ms => { clock += ms; } };
 }
 /** Everything the world wrote anywhere, as one string. */
 function everything(w, ...results) {
-  const rows = ["wink_storage_devices", "wink_storage_grants", "_migrations"].map(n => JSON.stringify(w.db.prepare(`SELECT * FROM ${n}`).all()));
+  const rows = ["wink_storage_devices", "_migrations"].map(n => JSON.stringify(w.db.prepare(`SELECT * FROM ${n}`).all()));
+  rows.push(JSON.stringify([...w.mint.made.values()]));
   return [...rows, JSON.stringify(w.events), JSON.stringify(w.logs), ...results.map(r => JSON.stringify(r))].join("\n");
 }
 
@@ -71,7 +74,7 @@ test("pairing a bucket: tried first, saved in the vault only, a device with a st
   assert.ok(!JSON.stringify(w.s.offers()).includes("vault://"), "a person's offer list carries no reference");
   // events and the grant
   assert.deepEqual(w.events.filter(e => e.type.startsWith("storage.")).map(e => e.type), ["storage.paired"]);
-  const grant = JSON.parse(w.db.prepare("SELECT body FROM wink_storage_grants").get().body);
+  const grant = [...w.mint.made.values()][0];
   assert.equal(grant.subject.actor.kind, "device");
   assert.equal(grant.source, "wink:W3");
   assert.deepEqual(grant.actions, ["storage.hold"]);
@@ -168,7 +171,7 @@ test("remove now: the grant is revoked, the saved login is deleted, one event; r
   assert.deepEqual(w.s.offers().map(o => o.id), [b.device.id]);
   const gone = w.events.filter(e => e.type === "storage.removed");
   assert.deepEqual(gone[0].payload, { id: a.device.id, kind: "s3", name: a.device.name, owner: { kind: "space", id: SPACE }, drain: false, final: true });
-  assert.equal(w.events.filter(e => e.type === "grant.revoked").length, 1);
+  assert.equal([...w.mint.made.values()].filter(g => g.status === "revoked").length, 1, "the kernel holds the end of that grant");
 
   const d = await w.s.remove({ id: b.device.id, drain: true });
   assert.equal(d.removed, false);
