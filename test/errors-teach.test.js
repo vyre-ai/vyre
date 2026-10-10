@@ -53,7 +53,7 @@ test("the refusals in the code are found as literals, with template parts blanke
 test("ready calls for the tools a message names, by the name the agent calls them, listed ones directly", () => {
   const cat = [{ name: "flows_list", tool: "flows.list", input: { type: "object" } }, { name: "work_team_add", tool: "work.team.add", input: { type: "object", required: ["role"], properties: { role: { type: "string" } } } }];
   assert.deepEqual(nextCall("no such Flow (flows.list shows them)", cat), ['tools_call { tool: "flows_list", arguments: {} }']);
-  assert.deepEqual(nextCall("use work.team.add or flows.list", cat, { listed: new Set(["flows_list"]) }), ['work_team_add {"role":"<role>"}'.replace("work_team_add ", 'tools_call { tool: "work_team_add", arguments: ') + " }", 'flows_list {}']);
+  assert.deepEqual(nextCall("use work.team.add or flows.list", cat, { listed: new Set(["flows_list"]) }), ['tools_call { tool: "work_team_add", arguments: {"role":"<role>"} }', "flows_list {}"]);
   assert.deepEqual(nextCall("no tool named nothing.here", cat), []);
   assert.deepEqual(nextCall("flows.list flows.list work.team.add flows.list", cat, { max: 2 }).length, 2);
 });
