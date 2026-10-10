@@ -146,7 +146,7 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   assert.ok(w.seamCalls.indexOf("BEGIN") < w.seamCalls.indexOf(`${kit}:appendOpen`), "and before the reply opened");
   assert.ok(!w.seamCalls.includes(`${kit}:beginTurn`), "the stream does not begin it again itself");
   const kernelLog = w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened");
-  assert.ok(kernelLog.some((/** @type {any} */ e) => e.data.by.agent === "assistant"), "the kernel recorded the assistant's reply, opened under the assistant's own session");
+  assert.ok(kernelLog.some((/** @type {any} */ e) => String(e.data.by.agent || "").startsWith("model:")), "the kernel recorded the reply, opened under the model slot's own session");
   await b.stop();
 });
 
@@ -167,7 +167,7 @@ test("a turn asked by carol is stamped with carol's session, and chat and asker 
   assert.match(textOf(carol.frames), /hello from carol/);
   const kit = kitThread(b, chat.id);
   assert.deepEqual(w.asked.filter(a => a.thread === kit).map(a => ({ chat: a.chat, asker: a.asker })), [{ chat: chat.id, asker: CAROL }], "the Switchboard was asked to open carol's session in this chat");
-  const opened = w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && e.data.by.agent === "assistant");
+  const opened = w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && String(e.data.by.agent || "").startsWith("model:"));
   assert.ok(opened.length >= 1 && opened.every((/** @type {any} */ e) => e.data.by.person === CAROL && e.data.chat === chat.id), "every reply the kernel recorded was opened under carol's session, not the owner's or bob's");
   await b.stop();
 });
@@ -248,7 +248,7 @@ test("a restart where the person can no longer be reopened: the turn is given up
 const personOfSession = async (w, b, id) => (await w.k.surfaces.verify(await b.ks.tokenFor(id)())).person;
 const userMsgs = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.user-message" && f.data.state === "sent").map(f => String(f.data.text));
 const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, string>} */ const by = new Map(); const done = new Set(); for (const f of frames) { if ((f.type !== "chat.text-delta" && f.type !== "chat.text-done") || f.data.reasoning) continue; const id = String(f.data.message); if (f.type === "chat.text-delta") by.set(id, (by.get(id) || "") + f.data.text); else done.add(id); } return [...by].filter(([id]) => done.has(id)).map(([, t]) => t); };
-const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && e.data.by.agent === "assistant").map((/** @type {any} */ e) => e.data.by.person);
+const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && String(e.data.by.agent || "").startsWith("model:")).map((/** @type {any} */ e) => e.data.by.person);
 
 test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
   const w = await world(t);
