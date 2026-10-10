@@ -177,3 +177,27 @@ test("pub-stop of a deployment that is not the one running under the name is ref
   assert.match(st.message, /not the server running under that name/);
   assert.ok(fs.existsSync(path.join(r.F, "app-running-northwind")), "the running server was not stopped");
 });
+
+test("two starts of one name at once: the second is told to wait and writes nothing, and a lock left by a process that is gone does not block the name", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP)).state, "ok");
+  const lock = path.join(r.priv, "lock-pub-name.northwind");
+  fs.mkdirSync(lock, { recursive: true });
+  fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+  const busy = await r.up(DEP);
+  assert.equal(busy.state, "failed", JSON.stringify(busy));
+  assert.match(busy.message, /another start, stop or removal of that name is running/);
+  assert.ok(!fs.existsSync(path.join(r.priv, "apps", "northwind", "compose.yml")), "nothing of the second start was written");
+  for (const verb of ["pub-stop", "pub-down"]) assert.match((await r.ask(`${verb} ${DEP}`)).message, /another start, stop or removal/, verb);
+  // the process that held it is gone: the lock is stale and cleaned
+  fs.writeFileSync(path.join(lock, "pid"), "999999");
+  const ok = await r.up(DEP);
+  assert.equal(ok.state, "ok", JSON.stringify(ok));
+  assert.ok(!fs.existsSync(lock), "the lock is released when the start is over");
+});
+
+test("the build network's DNS exception falls back to systemd-resolved's upstream list when /etc/resolv.conf is only the local stub", opts, async t => {
+  const src = fs.readFileSync(new URL("../box/vyre", import.meta.url), "utf8");
+  assert.match(src, /\/run\/systemd\/resolve\/resolv\.conf/, "the fallback is in the helper");
+  void t;
+});

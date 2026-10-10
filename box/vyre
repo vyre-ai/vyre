@@ -2172,7 +2172,8 @@ sp_pub_rec_load() {
 # The build's network (trust row 37): the rootless BuildKit runs a Dockerfile's RUN and ADD steps, which are the author's code. It gets a bridge of its own (vyrepub0) with the public internet
 # (base images, package installs) and nothing else: the metadata address and every other private, link-local, loopback or carrier range are dropped in DOCKER-USER, the host itself in INPUT,
 # and other containers are other private addresses. DNS to the host's own configured (non-loopback) resolvers is the one exception. The rules are checked before every build, and a probe from a
-# throwaway container on that network must find the metadata address, the bridge's gateway and the vyre container closed, or the build is refused.
+# throwaway container on that network must find the metadata address, the bridge's gateway and the vyre container closed, or the build is refused. The network has no IPv6 (it is made without --ipv6), so there is no
+# second path to filter; the daemon must never enable IPv6 on user networks.
 PUB_NET=vyre-pub-build
 PUB_BR=vyrepub0
 PUB_DENY="0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/3"
@@ -2191,7 +2192,10 @@ sp_pub_net() {
   # drops first, then the DNS exceptions go in above them (each rule is put at the top)
   for _c in $PUB_DENY; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -d "$_c" -j DROP || return 1; done
   sp_pub_rule INPUT -i "$PUB_BR" -j DROP || return 1
-  for _ns in $(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /etc/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3); do
+  # the host's resolvers; when /etc/resolv.conf is only a local stub (127.0.0.53), the upstream list systemd-resolved keeps is used instead
+  _nss=$(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /etc/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3 || true)
+  [ -n "$_nss" ] || _nss=$(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /run/systemd/resolve/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3 || true)
+  for _ns in $_nss; do
     for _pr in udp tcp; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -p "$_pr" -d "$_ns" --dport 53 -j ACCEPT || return 1; done
   done
   # the probe: from a throwaway container on that network, none of these may answer
@@ -2251,7 +2255,26 @@ sp_pub_build() {
 # sp_pub_up DEP: the server from root's record, with the secrets the daemon wrote read by root.
 # Each "A && B || C" below means: if A and B do not both hold, take the refusal.
 # shellcheck disable=SC2015
+# A name is one server on this box, so starting, stopping or removing it is one at a time: a lock per name (stale ones cleaned like the others), taken from the Space check through the pubdep write.
+sp_pub_namelock() {
+  _nl=$SP_PRIV/lock-pub-name.$1
+  if [ -d "$_nl" ] && [ -n "$(find "$_nl" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rm -rf "${_nl:?}" 2>/dev/null || true; fi
+  if [ -d "$_nl" ]; then _lp=$(cat "$_nl/pid" 2>/dev/null || true); case "$_lp" in ""|*[!0-9]*) ;; *) kill -0 "$_lp" 2>/dev/null || rm -rf "${_nl:?}" 2>/dev/null ;; esac; fi
+  mkdir "$_nl" 2>/dev/null || { MSG="another start, stop or removal of that name is running; try again in a moment"; return 1; }
+  printf '%s\n' "$$" >"$_nl/pid" 2>/dev/null || true
+}
+sp_pub_nameunlock() { rm -rf "${SP_PRIV:?}/lock-pub-name.$1" 2>/dev/null || true; }
 sp_pub_up() {
+  dep=$1
+  sp_pub_rec_load "$dep" || return 1
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_up_run "$dep"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+# shellcheck disable=SC2015
+sp_pub_up_run() {
   dep=$1
   sp_pub_rec_load "$dep" || return 1
   cur=$(hdock image inspect "$PR_TAG" --format '{{.Id}}' 2>/dev/null || true)
@@ -2318,12 +2341,28 @@ sp_pub_owns() {
 }
 sp_pub_stop() {
   sp_pub_rec_load "$1" || return 1
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_stop_run "$1"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+sp_pub_stop_run() {
+  sp_pub_rec_load "$1" || return 1
   sp_pub_owns "$1" || { MSG="that is not the server running under that name"; return 1; }
   [ -f "$SP_APPS/$PR_NAME/compose.yml" ] || { MSG="that server was never started"; return 1; }
   sp_app_dc "$PR_NAME" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }
   MSG=stopped
 }
 sp_pub_down() {
+  sp_pub_rec_load "$1" || return 1
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_down_run "$1"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+sp_pub_down_run() {
   sp_pub_rec_load "$1" || return 1
   sp_pub_owns "$1" || { MSG="that is not the server running under that name"; return 1; }
   sp_app_down "$PR_NAME" || return 1
