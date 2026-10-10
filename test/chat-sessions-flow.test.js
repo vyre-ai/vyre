@@ -1,6 +1,6 @@
 // @ts-check
 // The sessions contract by behaviour (guard audit #126): a real daemon runs a real turn on a fake Claude, and the events the box emits for it are fed, as a client receives them, through the app's own reducer. What a
-// person would see is asserted: the question as said, the answer as it streamed, the turn finished and the session idle. A renamed event or a changed payload key changes this state and fails here; no source text is read.
+// person would see is asserted: the question as said, the answer as it streamed, the turn finished and the session waiting. A renamed event or a changed payload key changes this state and fails here; no source text is read.
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 
-test("a turn on a real daemon, read through the app's reducer: the words said, the answer streamed, the turn finished, the session idle", { timeout: 180_000 }, async t => {
+test("a turn on a real daemon, read through the app's reducer: the words said, the answer streamed, the turn finished, the session waiting", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
   const transcripts = path.join(root, "transcripts");
@@ -45,5 +45,5 @@ test("a turn on a real daemon, read through the app's reducer: the words said, t
   assert.ok(touched.size > 0, "the reducer drew something from the events the box emitted");
   assert.ok(said.length >= 1 || answered.length >= 1, "the person's words or the answer are items: " + JSON.stringify(items).slice(0, 400));
   assert.ok(answered.length === 1, "the answer the fake Claude streamed is one item, whole: " + JSON.stringify(items).slice(0, 600));
-  assert.equal(s.state, "idle", "the turn finished and the session is idle");
+  assert.equal(s.state, "waiting", "the turn finished: the session waits for the next words");
 });
