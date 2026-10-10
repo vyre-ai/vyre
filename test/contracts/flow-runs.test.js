@@ -41,6 +41,8 @@ test("flow-runs contract: one stage move, one entry, one run; the run names its 
   const hit = story.find((/** @type {any} */ e) => e.type === "flow-run");
   assert.ok(hit, `the record's timeline shows the run: ${JSON.stringify(story)}`);
   for (const k of Object.keys(TIMELINE_ENTRY)) assert.equal(hit[k], /** @type {any} */ (TIMELINE_ENTRY)[k], k);
+  assert.equal(hit.run, runs[0].id, "the entry names its run, so the line opens the run page");
+  assert.equal(hit.flow, def.data.id, "and its Flow");
 });
 
 test("flow-runs contract v2: a lane and a sub-flow are runs with a parent, listed beside the run that started them; the parent's detail gives the result the sub-flow returned", { timeout: 180_000 }, async t => {

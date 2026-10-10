@@ -232,7 +232,7 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const w = shared || await world(t, { kernel: true });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
   const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
@@ -379,7 +379,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const w = await world(t, { kernel: true, realPresence, kernelSealer, kernelDoor });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
@@ -600,7 +600,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   let shown = "";
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const pairing = pairServer({ payload: code.qr, owner, deviceKind: "phone", presenceKey, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, ...(sign ? { signIdentity: sign } : {}), onWords: x => { shown = x; } });
   pairing.catch(() => {});
   const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 3000).catch(() => null);

@@ -736,7 +736,7 @@ export function createRecords(cfg) {
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
-      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
+      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true || (/** @type {any} */ (e) && /** @type {any} */ (e).code === "unavailable" && /** @type {any} */ (e).message)) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
         diff = withInverses(diff, known); }
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };

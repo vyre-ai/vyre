@@ -37,3 +37,19 @@ test("chips go from adding to ready or failed, and a send carries the ready ones
   assert.equal(sizeWord(10), "1 KB");
   assert.deepEqual([defaultWords(1), defaultWords(2)], ["Here is a file.", "Here are some files."]);
 });
+
+test("thumbnails: a picture of up to 2 MB has one from its own bytes, any other file has none, and a sent picture is remembered by id", async () => {
+  const { thumbOf, uploading, isImage, rememberThumb, thumbFor } = await import("./attach-model.js");
+  const png = { name: "a.png", mime: "image/png", bytes: 1000, base64: "iVBOR" };
+  assert.equal(thumbOf(png), "data:image/png;base64,iVBOR");
+  assert.equal(thumbOf({ ...png, mime: "IMAGE/JPEG" }), "data:image/jpeg;base64,iVBOR");
+  assert.equal(thumbOf({ ...png, bytes: 3 * 1024 * 1024 }), undefined, "a big picture shows its name, not a heavy thumbnail");
+  assert.equal(thumbOf({ name: "x.pdf", mime: "application/pdf", bytes: 10, base64: "JVBER" }), undefined);
+  assert.equal(thumbOf({ name: "a.png", mime: "image/png", bytes: 10 }), undefined, "no bytes read, no thumbnail");
+  assert.equal(uploading("k", png).thumb, "data:image/png;base64,iVBOR");
+  assert.equal(uploading("k", { ...png, mime: "text/plain" }).thumb, undefined);
+  assert.deepEqual([isImage("image/gif"), isImage("application/pdf")], [true, false]);
+  rememberThumb("att_1", "data:image/png;base64,AA");
+  assert.equal(thumbFor("att_1"), "data:image/png;base64,AA");
+  assert.equal(thumbFor("att_none"), undefined);
+});
