@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { namesIn, cardText, createCards, LIMITS } from "../../lib/record-cards.js";
+import { namesIn, cardText, createCards, ownerChain, LIMITS } from "../../lib/record-cards.js";
 import { boot, until } from "../sessions/testing/boot.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 
@@ -131,4 +131,13 @@ test("one message cannot make the box search for every capitalised word: kernel 
   const words = Array.from({ length: 60 }, (_, i) => `"Name Number${String.fromCharCode(97 + (i % 26))}${i}"`).join(" ");
   await cards.note({ chain: person, thread: "t1", text: `Ask about ${words}` });
   assert.ok(calls > 0 && calls <= LIMITS.calls, `${calls} kernel calls`);
+});
+
+test("a card is made in the box's own session only under the owner's chain, never a member's", () => {
+  const kernel = { owner: "per_owner" };
+  const person = (/** @type {string} */ id) => ({ hops: [{ actor: { kind: "person", id } }] });
+  assert.ok(ownerChain(kernel, person("per_owner")));
+  assert.equal(ownerChain(kernel, person("per_member")), null, "what a member may read is not for the owner's session");
+  assert.equal(ownerChain(kernel, { hops: [{ actor: { kind: "person", id: "per_owner" } }, { actor: { kind: "agent", id: "kit" } }] }), null);
+  assert.equal(ownerChain(kernel, null), null);
 });
