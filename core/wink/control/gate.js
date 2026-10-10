@@ -375,6 +375,12 @@ export function createGate(o) {
   // The listening socket is a plain TCP server in front of the HTTP(S) one, so a trusted peer's PROXY header is read and taken off before any TLS or HTTP byte is parsed.
   const front = net.createServer(sock => {
     if (!inList(norm(sock.remoteAddress), proxyTrust)) { server.emit("connection", sock); return; }
+    // Until the header names a visitor the connection is counted under the loopback address it came from, so a peer that sends nothing still spends its own share.
+    const pre = addrKey(norm(sock.remoteAddress));
+    if (bump(conns, pre, 1) > L.maxConnsPerAddr) { stats.limited++; bump(conns, pre, -1); sock.destroy(); emit({ type: "limit", addr: pre, what: "connections" }); return; }
+    let counted = true;
+    const release = () => { if (counted) { counted = false; bump(conns, pre, -1); } };
+    sock.once("close", release);
     /** @type {Buffer} */ let got = Buffer.alloc(0);
     const timer = setTimeout(() => { stats.timeouts++; sock.destroy(); }, L.handshakeMs);
     timer.unref();
@@ -388,6 +394,7 @@ export function createGate(o) {
         const rest = h.state === "ok" ? got.subarray(h.length) : got;
         if (h.state === "ok" && h.addr !== null) named.set(sock, norm(h.addr));
         if (rest.length) sock.unshift(rest);
+        release();
         server.emit("connection", sock);
         if (!o.tls) sock.resume();
         return;
