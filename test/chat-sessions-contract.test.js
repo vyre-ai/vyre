@@ -4,9 +4,8 @@
 // Server side: every tool("name", ...) registered under core/ and every event name emitted there.
 // Chat side: every "threads.*" / "sessions.*" tool name chat's code names, every event name it
 // listens for or reduces, and caps.js's lists. A name chat uses must exist on the server, unless
-// caps.js says the server does not offer it yet (NOT_OFFERED); then the control starts off. AHEAD
-// names what chat already calls live (SESSION_TOOLS) and hears, shipped on work/sessions and not
-// yet on this tree's core: allowed missing here, strict again once core has it.
+// caps.js says the server does not offer it yet (NOT_OFFERED); then the control starts off. There is no
+// other excuse: an event chat hears is emitted, or the listener goes.
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -39,28 +38,14 @@ const read = f => fs.readFileSync(path.join(root, f), "utf8");
 
 const core = sources("core");
 const serverTools = names(core, /\btool\(\s*"([a-z]+\.[a-z.-]+)"/g);
-const serverEvents = names(core, /\b(?:emit|emitRaw|fire)\??\.?\(\s*"([a-z]+\.[a-z._-]+)"/g);
+// an event is emitted by emit("x.y", ...) or built as an event object ({ type: "x.y", ... }), as the plan is
+const serverEvents = new Set([...names(core, /\b(?:emit|emitRaw|fire)\??\.?\(\s*"([a-z]+\.[a-z._-]+)"/g), ...names(core, /\btype:\s*"((?:thread|ask|mode|model|thinking)\.[a-z._-]+)"/g)]);
 
 const chat = [...sources("apps/app/src/chat"), ...sources("apps/app/src/session"), ...sources("apps/app/screens/chat-tools")];
 const chatTools = names(chat, /"((?:threads|sessions)\.[a-z_-]+(?:\.[a-z_-]+)*)(?::[a-z]+)?"/g);
 // A name the app passes to `tool(...)` (ask.answer) is a tool the server has, not an event it must emit.
 const chatEvents = new Set([...names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g)].filter(e => !serverTools.has(e)));
 
-/** Events chat reduces ahead of the server (older names it still accepts; nothing sends them yet). */
-const FUTURE_EVENTS = new Set(["thread.model", "thread.mode", "thread.status"]);
-/** Events older boxes emit that this one no longer does (a cancelled ask is now ask.answered, decision "cancelled"). */
-const LEGACY_EVENTS = new Set(["ask.cancelled"]);
-
-// Ships with sessions 7543952e (threads.model, threads.commands, rewind restore) and 468af69f
-// (thread.usage context); remove when on main. Missing from core here is allowed; once core has
-// one, every check on it is strict (AHEAD only excuses absence).
-// Ships with sessions 034c71e5 (images on threads.send, threads.shell, threads.remember,
-// threads.thinking, threads.tasks, threads.kill-task; thread.task, thinking.switched,
-// thread.shell, thread.remembered) and db44749b (thread.thinking); remove when on main.
-const AHEAD_TOOLS = new Set(["threads.continue-here", "threads.model", "threads.commands",
-  "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task"]);
-// thread.plan: core/switchboard/translate.js builds it as an event object ({ type: "thread.plan", ... }), which the emit("...") scan above does not see.
-const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered", "thread.artifact", "teammate.charter-changed", "vault.used", "spend.capped", "thread.plan", "link.mac-offline", "link.mac-online"]);
 
 test("the sessions layer is on this tree (merge pre/3a first)", () => {
   assert.ok(serverTools.has("threads.send"), "core registers threads.send");
@@ -73,10 +58,9 @@ test("no tool name uses an underscore: the registry refuses it", () => {
 
 test("every live tool chat calls is registered on the server", () => {
   const future = new Set(NOT_OFFERED.map(t => String(t).split(":")[0]));
-  const missing = [...chatTools].filter(t => !serverTools.has(t) && !future.has(t) && !AHEAD_TOOLS.has(t));
+  const missing = [...chatTools].filter(t => !serverTools.has(t) && !future.has(t) );
   assert.deepEqual(missing, [], `chat calls tools the server does not register: ${missing.join(", ")}`);
-  for (const t of SESSION_TOOLS) assert.ok(serverTools.has(t) || AHEAD_TOOLS.has(t), `caps.js says ${t} is live, the server lacks it`);
-  for (const t of AHEAD_TOOLS) assert.ok(SESSION_TOOLS.includes(t) && !NOT_OFFERED.includes(t), `${t} is ahead: caps.js learns it lazily (SESSION_TOOLS)`);
+  for (const t of SESSION_TOOLS) assert.ok(serverTools.has(t), `caps.js says ${t} is live, the server lacks it`);
 });
 
 test("a tool in NOT_OFFERED that the server now has is switched on", () => {
@@ -85,7 +69,7 @@ test("a tool in NOT_OFFERED that the server now has is switched on", () => {
 });
 
 test("every event chat listens for is emitted, or is a known future one", () => {
-  const missing = [...chatEvents].filter(e => !serverEvents.has(e) && !FUTURE_EVENTS.has(e) && !LEGACY_EVENTS.has(e) && !AHEAD_EVENTS.has(e));
+  const missing = [...chatEvents].filter(e => !serverEvents.has(e));
   assert.deepEqual(missing, [], `chat listens for events nobody emits: ${missing.join(", ")}`);
 });
 
@@ -95,7 +79,7 @@ test("chat hears every session event the sessions layer emits", () => {
     "ask.raised", "ask.answered", "mode.changed", "model.changed", "model.switched",
     "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"];
   for (const e of needed) {
-    assert.ok(serverEvents.has(e) || AHEAD_EVENTS.has(e), `the server no longer emits ${e}: update this test and chat together`);
+    assert.ok(serverEvents.has(e), `the server no longer emits ${e}: update this test and chat together`);
     assert.ok(chatEvents.has(e), `chat does not listen for ${e}`);
   }
 });

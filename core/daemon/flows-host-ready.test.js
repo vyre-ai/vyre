@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { whenStoreReady } from "./flows-host.js";
+import { whenStoreReady, storeIsAway } from "./flows-host.js";
 
 test("whenStoreReady: a store still starting runs the work in order when it joins, never before", async () => {
   const waiting = [];
@@ -21,4 +21,11 @@ test("whenStoreReady: a store still starting runs the work in order when it join
 test("whenStoreReady: an attached store, and a store with no deferral, run the work now and give back its answer", async () => {
   assert.equal(await whenStoreReady({ attached: () => true, whenReady: () => { throw new Error("not needed"); } }, async () => 7), 7);
   assert.equal(await whenStoreReady({}, () => 8), 8);
+});
+
+test("storeIsAway: only a deferred store that has not attached is away, so the Flows host skips events (and does not log one failure each) while it starts", () => {
+  assert.equal(storeIsAway({ attached: () => false }), true);
+  assert.equal(storeIsAway({ attached: () => true }), false);
+  assert.equal(storeIsAway({}), false, "a store with no deferral is never away");
+  assert.equal(storeIsAway(undefined), false);
 });

@@ -188,7 +188,6 @@ export function applyNeedsEvent(list: readonly Need[], e: NeedsEvent, ctx: Needs
       return { list: order([...list, n]), refetch: !n.agent && !!n.thread };
     }
     case "ask.answered":
-    case "ask.cancelled":
       return { list: without("ask:" + String(p.ask ?? "")), refetch: false };
     case "gate.held": {
       const n = fromGate({ ...p, thread: p.thread ?? e.thread ?? null, project: p.project ?? e.project ?? null }, ctx, e.at);

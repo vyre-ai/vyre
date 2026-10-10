@@ -79,7 +79,7 @@ export default {
     await J.step(C, async () => {
       for (const name of NAMES) {
         const c = await whenStoreIsUp(w, "records.create", { type: "contact", space: team.space, data: { name } });
-        const cl = await whenStoreIsUp(w, "records.create", { type: "client", space: team.space, data: { contact: c.record.urn } });
+        const cl = await whenStoreIsUp(w, "records.create", { type: "client", space: team.space, data: { contact: { urn: c.record.urn } } });
         made.push({ name, client: cl.record.urn });
       }
       const rows = (await w.call("records.list", { type: "client", space: team.space })).rows;

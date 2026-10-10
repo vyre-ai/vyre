@@ -1,0 +1,65 @@
+# The security tests that need something a plain node job does not have, run for real (issue #128). A skip in any of them is a red run, not a green one that never ran the test.
+#   computers-isolation  a real computer container: the agent's uid cannot reach what the uid split protects (core/computers/image/isolation.test.js, through scripts/computers-proof)
+#   planner-twenty       the planner on a real, pinned Twenty (core/planner/live-twenty.test.js, through core/planner/live-twenty.sh)
+#   mac-sandbox          the macOS home and lent sandbox profiles on a hosted runner (VYRE_TEST_HOSTED=1; they raise permission dialogs, so never on a person's Mac)
+name: security-live
+on:
+  push:
+    branches: ["work/lead-031-w", "work/operations-078"]
+    paths: ["core/computers/**", "core/dockerproxy/**", "core/planner/**", "core/runner/**", "lib/sandbox/**", "stores/twenty/**", "records/**", "scripts/computers-proof/**", ".github/workflows/security-live.yml"]
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: security-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  computers-isolation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      # builds the image, makes a computer through the real Docker driver, and runs isolation.test.js on it: the proof fails when any of its checks skips (scripts/computers-proof/proof.mjs)
+      - run: sh scripts/computers-proof/run.sh "$RUNNER_TEMP/computers-proof"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: computers-proof, path: "${{ runner.temp }}/computers-proof/out", if-no-files-found: ignore, retention-days: 14 }
+
+  planner-twenty:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/twenty-golden
+      - name: The planner on a real Twenty, with no skipped test
+        run: |
+          set -o pipefail
+          sh core/planner/live-twenty.sh plv 2>&1 | tee "$RUNNER_TEMP/planner-live.txt"
+          grep -Eq "^ℹ skipped 0$" "$RUNNER_TEMP/planner-live.txt" || { echo "a planner live test skipped: it did not run against Twenty"; exit 1; }
+          grep -Eq "^ℹ pass [1-9]" "$RUNNER_TEMP/planner-live.txt" || { echo "no planner live test passed"; exit 1; }
+
+  mac-sandbox:
+    runs-on: macos-14
+    timeout-minutes: 30
+    env:
+      VYRE_TEST_HOSTED: "1"
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --no-audit --no-fund
+      - name: The macOS profile and sandbox tests
+        run: node --test --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/home-network.test.js core/runner/rv2-seatbelt.test.js core/runner/hardening.test.js 2>&1 | tee "$RUNNER_TEMP/mac-sandbox.txt"

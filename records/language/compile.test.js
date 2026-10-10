@@ -92,7 +92,9 @@ test("a hostile file cannot hold the daemon: the worker parse enforces the limit
 
 test("kit checks: references, sealed fields and expressions", () => {
   fails(kitOf("", 't: defineField.link({ to: "ghost" })'), "invalid_definition", /ghost/);
-  fails(kitOf("", 't: defineField.link()'), "invalid_definition", /name/);
+  fails(kitOf("", 't: defineField.link({ to: "Bad Name" })'), "invalid_definition", /name/);
+  fails(kitOf("", 't: defineField.link({ inverse: { name: "ts", label: "Ts" } })'), "invalid_definition", /inverse/);
+  assert.doesNotThrow(() => compile(kitOf("", 't: defineField.link({ many: true })')), "a link to any record");
   fails(kitOf("", 't: defineField.ref({ to: "a" })'), "unknown_function");
   fails(wrap(`export const A = defineType({ name: "a", fields: { s: defineField.sealed({ class: "us-ssn" }) }, rules: [defineRule({ require: "s == 'x'" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /sealed and cannot be used/);
   fails(wrap(`export const A = defineType({ name: "a", fields: { t: defineField.text() }, rules: [defineRule({ require: "nope == 1" })] });\nexport default defineKit({ id: "k", version: 1, includes: [A] });`), "invalid_definition", /not a field/);
