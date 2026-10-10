@@ -24,7 +24,7 @@ export const reported = r => (r.state === "waiting" ? "running" : r.state);
 /** The module's tools while it waits: each answers, in the store's words, that records are not up yet. @param {any} reg @param {any} m the manifest @param {string} words */
 export function stubTools(reg, m, words) {
   const ctx = reg.context(m);
-  for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: async () => { throw Object.assign(new Error(`${m.name} is waiting for the records: ${words}`), { code: "unavailable" }); } });
+  for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: async () => { throw Object.assign(new Error(`${m.name} is waiting for the records: ${words}. Try again in a minute; vyre modules shows when it is up.`), { code: "unavailable" }); } });
 }
 
 /** The record store has joined: start every waiting module again, in turn, until none of them moves (a module that requires another starts after it). @param {any} reg */
