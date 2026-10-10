@@ -177,7 +177,7 @@ test("a new chat of the home's owner is placed once at creation: a ready compute
   });
   const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true };
   assert.equal(await lentSpawnFor(make({ where: "box" }), q), null, "none ready: the box");
-  assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "ses_9", "chat_9", "per_owner"]]);
+  assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "thr_9", "chat_9", "per_owner"]]);
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, asker: "per_member" }), null, "another person's chat is not placed on the owner's computer");
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, fresh: false }), null, "a chat that already ran is not placed now");
   assert.equal(placed.length, 1);
