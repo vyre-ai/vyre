@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// app-walk-vault-shots: the Vault as a person sees it, against a real vyred with real items (never the sample world). One picture per page at 1280 and 390, light and dark. TEST ONLY; ssh login shell, foreground.
-//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--seed] [--old]
+// app-walk-vault-shots: the Vault as a person sees it, against a real vyred with real items (never the sample world); with --routes, any other route the same way. One picture per page at 1280 and 390, light and dark. TEST ONLY; ssh login shell, foreground.
+//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--seed] [--old] [--routes u/now,u/chats]
 // --seed puts a handful of believable items in the vault first (vault.put with the dev stand-in), so a fresh box has something to draw.
 import fs from "node:fs";
 import http from "node:http";
@@ -15,6 +15,7 @@ const DIST = path.resolve(flag("--dist", "apps/app/dist"));
 const SOCKET = flag("--socket", "");
 const OUT = path.resolve(flag("--out", "vault-shots-out"));
 const ONLY = flag("--only", "");
+const ROUTES = (flag("--routes", "") || "").split(",").filter(Boolean); // draw these routes (u/now, u/chats) instead of the Vault's pages
 const OLD = args.includes("--old"); // the layout before R031-76: its own labels, for before and after pictures
 if (!SOCKET) { console.error("give --socket"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
@@ -74,6 +75,10 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
 
   const menu = async (item) => { await click("Add"); await pg.getByRole("menuitem", { name: item, exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(700); };
   const section = async (label) => { await pg.getByRole("button", { name: label, exact: true }).first().click({ timeout: 8000 }).catch(async () => { await pg.getByText(label, { exact: true }).first().click({ timeout: 8000 }); }); await pg.waitForTimeout(1500); };
+  if (ROUTES.length) {
+    for (const r of ROUTES) await step(r.replace(/\//g, "_"), async () => { await pg.goto(`${BASE}/${r}`, { waitUntil: "domcontentloaded" }); await pg.waitForTimeout(3500); await shot(r.replace(/\//g, "_")); });
+    await ctx.close(); continue;
+  }
   await step("1-home", async () => { await home(); await shot("1-home"); });
   await step("2-item", async () => { if (OLD) await pg.getByRole("tab", { name: "Keys" }).first().click({ timeout: 8000 }).catch(() => {}); await pg.getByText("stripe-live", { exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(900); await shot("2-item"); });
   await step("3-add", async () => { await home(); if (OLD) await click("Add an item"); else await menu("Login"); await shot("3-add"); });
