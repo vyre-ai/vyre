@@ -5,8 +5,8 @@
 // is not repeated for the same record until 20 turns have passed in that thread (it is already in the model's context). The model can still fetch anything the card leaves out.
 import { isSystemType } from "../../lib/record-types.js";
 
-/** Records Vyre keeps about its own working (agents, chats, shares, sessions, tasks, calendar events): a name that matches one is not a client or a matter. */
-export const NOT_CARDS = Object.freeze(new Set(["team-member", "chat-record", "file-share", "session", "task", "event"]));
+/** Records Vyre keeps about its own working (agents, chats, shares, reminders, notes, sessions, tasks, calendar events): a name that matches one is not a client or a matter. */
+export const NOT_CARDS = Object.freeze(new Set(["agent", "team-member", "chat-record", "file-share", "reminder", "note", "session", "task", "event", "goal"]));
 export const LIMITS = Object.freeze({ chars: 800, fields: 6, value: 60, again: 20, names: 12, looked: 5, others: 3 });
 
 const WORD = "[A-Z][A-Za-z0-9'’.-]*";
