@@ -434,6 +434,11 @@ For a team, `vyre vault vaults create <name>` makes a shared vault and
 `vyre vault members invite <vault> <person>` adds people to it. Its items appear as
 `<vault>/<item>`.
 
+Your phone does the same from the app: it makes a shared vault, lists and syncs them with no
+question, and asks for your yes (the same one as for showing a secret) before it invites someone,
+changes a role, removes a member or changes the vault's key. An assistant or an outside agent can
+read the list and pull changes, and can do nothing else here.
+
 ## Emergency access
 
 Emergency access lets someone you trust open your items if something happens to you. They have
