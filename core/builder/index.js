@@ -10,9 +10,9 @@ const NEEDS_CONTAINER = "this server builds a folder of ready files; a repo, a D
 /** What a deployment asks of a build, and the plain refusal when it is more than this builder does. @param {any} d @returns {{ dir: string, outputDir: string }} */
 export function planOf(d) {
   const src = (d && d.source) || {}, b = (d && d.build) || {};
-  if (src.kind !== "folder") throw refuse(NEEDS_CONTAINER, "not_available");
-  if (b.command) throw refuse(`a build command (${String(b.command).slice(0, 40)}) needs the container builder, which is not installed here yet; publish a folder of ready files instead`, "not_available");
-  if (b.image && b.image !== "static") throw refuse(`the ${b.image} image needs the container builder, which is not installed here yet`, "not_available");
+  if (src.kind !== "folder") throw refuse(NEEDS_CONTAINER, "refused");
+  if (b.command) throw refuse(`a build command (${String(b.command).slice(0, 40)}) needs the container builder, which is not installed here yet; publish a folder of ready files instead`, "refused");
+  if (b.image && b.image !== "static") throw refuse(`the ${b.image} image needs the container builder, which is not installed here yet`, "refused");
   return { dir: String(src.ref || ""), outputDir: String(b.output_dir || ".") };
 }
 
