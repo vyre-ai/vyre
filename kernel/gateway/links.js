@@ -79,7 +79,7 @@ export function withInverses(diff, known) {
     const fields = (t.fields || []).map((/** @type {any} */ f) => {
       if (f.kind !== "link") { if (f.many !== undefined || f.inverse !== undefined) throw bad(`${t.name}.${f.name}: only a link has many or an inverse`); return f; }
       if (f.many !== undefined && typeof f.many !== "boolean") throw bad(`${t.name}.${f.name}: many is true or false`);
-      if (!f.to) { if (f.many === true || f.inverse !== undefined) throw bad(`${t.name}.${f.name}: a link to any record cannot be a list and has no inverse; name the type it links to`); return f; }
+      if (!f.to) { if (f.inverse !== undefined) throw bad(`${t.name}.${f.name}: a link to any record has no inverse; name the type it links to`); return f; }
       if (!byName.has(f.to)) throw bad(`${t.name}.${f.name} links to ${f.to}, which is not a type here`);
       if (f.inverse !== undefined) {
         const i = f.inverse;
