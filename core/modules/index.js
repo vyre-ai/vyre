@@ -231,8 +231,6 @@ export function validate(m, { firstParty = false } = {}) {
   // of a load (ADR 0047 section 8) stay: no "vyre" reads as "1", and what is only deprecated
   // (string tool entries, a missing description) warns through addedWarnings(), never fails.
   if (!firstParty) out.push(...addedCheck(m).problems);
-  // What only the daemon can hand a module (a session credential maker, the agent registration, the Flows host ...) comes to Vyre's own modules only: an added module that declares any is refused at load.
-  if (!firstParty && m.needs && Array.isArray(m.needs.daemon) && m.needs.daemon.length) out.push(`needs.daemon ${JSON.stringify(m.needs.daemon.map(String))}: the daemon's own services are for Vyre's own modules; an added module can't ask for them`);
   if (!firstParty && m.needs && Array.isArray(m.needs.tools)) for (const t of m.needs.tools) if (typeof t === "string" && addedNever(t)) out.push(`needs.tools "${t}": an added module can never use a tool that pairs, admits or drops a device or sets the server up`);
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
   // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
