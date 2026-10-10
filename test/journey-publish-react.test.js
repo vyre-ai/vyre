@@ -17,6 +17,8 @@ import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
 import { whileSettingUp } from "../apps/app/src/chat/preview-model.js";
 
+// a rejection that lands after the daemon is stopped is printed with its stack (CI showed only "database is not open")
+process.on("unhandledRejection", e => { console.error("UNHANDLED after the test:", e && /** @type {any} */ (e).stack || e); });
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "scripts", "standin-directory.mjs");

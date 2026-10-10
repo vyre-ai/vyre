@@ -56,6 +56,8 @@ export function walkTestFile(J, file, owner, o = {}) {
     /** one journey step per case of the file */
     async report() {
       if (!cases.length) await J.step(`${file} ran`, () => { throw new Error(`the test file reported no cases (exit ${r.status}): ${this.tail}`); }, { owner });
+      // the step's message is cut short on the journey's report: a file that ended badly gets its last output in full in the job log
+      if (cases.some(c => !c.ok && /\.m?js$/.test(c.name))) console.error(`---- ${file}: the end of its output ----\n${out.split("\n").slice(-120).join("\n")}\n---- end ----`);
       for (const c of cases) await J.step(c.name, () => { if (!c.ok) throw new Error(/\.m?js$/.test(c.name) ? `${c.why} (the process ended badly after its cases; exit ${r.status}; its last output: ${long})` : c.why || `the case failed and the test file gave no reason; the end of its output: ${this.tail}`); return file; }, { owner });
     },
   };
