@@ -16,10 +16,10 @@ export const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
 
 /**
  * Who can own a new repo for this account: the account itself and the organisations it belongs to.
- * @param {{ token: string, login: string, fetch?: typeof httpFetch }} p @returns {Promise<{ login: string, kind: "user" | "org" }[]>}
+ * @param {{ token: string, login: string, http?: typeof httpFetch }} p @returns {Promise<{ login: string, kind: "user" | "org" }[]>}
  */
-export async function ownersOf({ token, login, fetch = httpFetch }) {
-  const res = await fetch(`${API}/user/orgs?per_page=100`, { headers: headers(token), signal: AbortSignal.timeout(TIMEOUT_MS) });
+export async function ownersOf({ token, login, http = httpFetch }) {
+  const res = await http(`${API}/user/orgs?per_page=100`, { headers: headers(token), signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (res.status === 401) throw fail("GitHub did not accept the saved sign-in; connect the account again", "no_account");
   if (!res.ok) throw fail(`GitHub answered ${res.status} listing organisations.`, "refused");
   const rows = await res.json();
@@ -29,16 +29,16 @@ export async function ownersOf({ token, login, fetch = httpFetch }) {
 
 /**
  * Make an empty repo. `owner` is the account's own login or an organisation it belongs to; private unless `visibility` is "public".
- * @param {{ token: string, login: string, owner?: string, name: string, visibility?: "private" | "public", description?: string, fetch?: typeof httpFetch }} p
+ * @param {{ token: string, login: string, owner?: string, name: string, visibility?: "private" | "public", description?: string, http?: typeof httpFetch }} p
  * @returns {Promise<{ full_name: string, name: string, owner: string, private: boolean, html_url: string, clone_url: string }>}
  */
-export async function createRepo({ token, login, owner, name, visibility = "private", description, fetch = httpFetch }) {
+export async function createRepo({ token, login, owner, name, visibility = "private", description, http = httpFetch }) {
   if (!REPO_NAME.test(String(name || ""))) throw fail("a repo name is letters, digits, dot, dash and underscore, up to 100", "bad_input");
   if (!["private", "public"].includes(visibility)) throw fail("visibility is private or public", "bad_input");
   const who = owner ? String(owner) : login;
   if (!OWNER.test(who)) throw fail("that is not a GitHub account or organisation name", "bad_input");
   const own = who.toLowerCase() === login.toLowerCase();
-  const res = await fetch(own ? `${API}/user/repos` : `${API}/orgs/${encodeURIComponent(who)}/repos`, {
+  const res = await http(own ? `${API}/user/repos` : `${API}/orgs/${encodeURIComponent(who)}/repos`, {
     method: "POST", headers: headers(token), signal: AbortSignal.timeout(TIMEOUT_MS), retries: 0,
     body: JSON.stringify({ name, private: visibility !== "public", ...(description ? { description: String(description).slice(0, 350) } : {}), auto_init: false }),
   });
