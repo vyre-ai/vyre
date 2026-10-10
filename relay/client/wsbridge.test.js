@@ -97,3 +97,11 @@ test("messages from a page that is not speaking the protocol are ignored; closeA
   w.bridge.closeAll();
   assert.deepEqual(w.opened[0].closedWith, [1001, "page closed"]); assert.equal(w.bridge.open, 0);
 });
+
+test("a page that sends bad base64 sends nothing and breaks nothing", () => {
+  const w = world();
+  const ws = new w.WS("ws://h/v1/streams/computers/glass?ticket=1"); w.opened[0].open(); w.flush();
+  w.bridge.fromPage(JSON.stringify({ t: "send", id: 1, b64: "%%%not base64%%%" }));
+  assert.deepEqual(w.opened[0].sent, []);
+  ws.send("still works"); assert.deepEqual(w.opened[0].sent, ["still works"]);
+});

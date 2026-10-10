@@ -60,3 +60,12 @@ test("a record that is not a process we can read, or whose pid is gone, is clear
   assert.deepEqual(fs.readdirSync(path.join(base, "run")), []);
   fs.rmSync(base, { recursive: true, force: true });
 });
+
+test("a record whose pid now belongs to a different process (another start time) is left alone", async t => {
+  const w = world(t), pid = w.left("aaaa", "s1");
+  const file = path.join(w.base, "run", "aaaa.s1.pid");
+  fs.writeFileSync(file, JSON.stringify({ pid, started: "not-when-it-started", session: "s1" }));
+  assert.equal(endOrphans(w.base), 0);
+  assert.equal(alive(pid), true, "somebody else's process is not ours to end");
+  assert.deepEqual(fs.readdirSync(path.join(w.base, "run")), [], "the stale record is cleared");
+});

@@ -502,3 +502,10 @@ test("gate: the same ask again while it waits is the same item, so a turn re-run
   assert.notEqual(third.id, first.id);
   assert.equal(gate.held({ thread: "t-1" }).filter(h => h.id === third.id).length, 1);
 });
+
+test("gate: two identical asks with no chat behind them are two asks (a person's own sends are not re-runs of a turn)", () => {
+  const { gate } = setup();
+  const a = ask(gate, { thread: undefined }), b = ask(gate, { thread: undefined });
+  assert.notEqual(a.id, b.id);
+  assert.equal(gate.held().length, 2);
+});
