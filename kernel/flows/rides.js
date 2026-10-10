@@ -11,6 +11,19 @@ import { walkSteps } from "./schema.js";
 const isSend = (cat, action) => { const a = (cat.actions || {})[action]; return Boolean(a && a.tool && /^outward/.test(String(a.risk))); };
 
 /**
+ * Does the earlier send's yes cover the later one? Its manifest names the later tool in `covers`, or the later tool files only sends the earlier one files too (Documents' request and its signed copy both go
+ * out through Comms, which the request's `covers` already names, so the signed copy needs no place of its own in a list that is at most four long).
+ * @param {any} cat @param {string} earlier @param {string} later
+ */
+function covered(cat, earlier, later) {
+  const a = (cat.actions || {})[earlier] || {}, b = (cat.actions || {})[later] || {};
+  const have = a.covers || [];
+  if (have.includes(later)) return true;
+  const need = b.covers || [];
+  return need.length > 0 && need.every((/** @type {string} */ t) => have.includes(t));
+}
+
+/**
  * Check every `with` in a Flow. The earlier step must be a send step before this one on the same path: not in another branch, not outside a repeat or a lane this step sits in, and not itself.
  * @param {any[]} steps @param {any} cat @param {{ path: string, message: string, bad?: string, choices?: string[] }[]} errors
  */
@@ -26,7 +39,7 @@ export function checkRides(steps, cat, errors) {
         else if (s.with === s.id) errors.push({ path: `${p}.with`, message: "a step cannot ride its own yes" });
         else if (!early) errors.push({ path: `${p}.with`, message: `${s.with} is not an earlier send step on this path (a step rides only the yes of a send before it, in the same branch, repeat or lane)`, bad: String(s.with), choices: [...here.keys()] });
         else if (!isSend(cat, s.action)) errors.push({ path: `${p}.with`, message: `${s.action} is not a send, so it needs no yes to ride` });
-        else if (!(((cat.actions || {})[early.action] || {}).covers || []).includes(s.action)) errors.push({ path: `${p}.with`, message: `${early.action} does not name ${s.action} among the sends it covers, so its yes cannot cover it` });
+        else if (!covered(cat, early.action, s.action)) errors.push({ path: `${p}.with`, message: `${early.action} does not name ${s.action} among the sends it covers, so its yes cannot cover it` });
       }
       if (s.kind === "call" && isSend(cat, s.action)) here.set(s.id, s);
       if (s.kind === "decide") { visit(s.then || [], `${p}.then`, here); if (s.else) visit(s.else, `${p}.else`, here); }

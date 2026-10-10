@@ -35,6 +35,8 @@ A document you sent that nobody has signed shows in Needs you as a quiet row: "D
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
 
 The signer is either on the record (`email_field`, and `name_field` for the name) or is the Contact the record links to (`contact_field`, such as a project's `client`). With a Contact, Documents reads the address and the name from the Contact itself, so a Kit's own types (a client, a project) work as they are: the Flow needs no e-mail field and no field to remember the request in, and the stage's one run per entry is what sends it once. A Contact with no e-mail address is said plainly and nothing is sent. `documents.send` and `documents.send-signed` take `contact` in place of `email` the same way.
+The signed copy goes out with the same yes as the request: the card for the request says "and then email the signer their signed copy with this same yes", so you answer once, even if the signature comes days later. If the type has a rule that asks for the signature (the Estate matter's `engagement_signed` has to be yes before Drafting), name that yes/no field as `signed_field` and the Flow sets it just before it moves the record.
+
 
 ## Signing pages
 
