@@ -5,7 +5,7 @@
 //   DIGITALOCEAN_TOKEN=... node scripts/proof-live-droplet.mjs [--expect-version X.Y.Z] [--region nyc3] [--size s-4vcpu-8gb] [--out DIR] [--keep]
 //
 // Run it on a test box (the app side of the walk runs here). The token comes from the environment and is never printed or written. The droplet carries a throwaway ssh key made for this run
-// (cloud-init puts the public half in root's authorized_keys), and the tag vyre-live-walk so a stray one can be found: `doctl compute droplet list --tag-name vyre-live-walk`.
+// (registered on the account for the run and removed again), and the tag vyre-live-walk so a stray one can be found: `doctl compute droplet list --tag-name vyre-live-walk`.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -39,15 +39,19 @@ const sshConfig = path.join(out, "ssh_config");
 const name = `vyre-live-walk-${crypto.randomBytes(3).toString("hex")}`;
 
 /** @type {number | null} */ let id = null;
+/** @type {number | null} */ let keyId = null;
 let code = 1;
 const destroy = async () => {
+  if (keyId !== null) { try { await api("DELETE", `/account/keys/${keyId}`); } catch (e) { console.error(`could not remove the account key ${keyId}: ${/** @type {Error} */ (e).message}`); } }
   if (id === null || keep) { if (keep && id !== null) console.log(`kept droplet ${id} (${name}); destroy it with: curl -X DELETE -H "Authorization: Bearer $DIGITALOCEAN_TOKEN" https://api.digitalocean.com/v2/droplets/${id}`); return; }
   try { await api("DELETE", `/droplets/${id}`); console.log(`destroyed droplet ${id}`); } catch (e) { console.error(`COULD NOT DESTROY droplet ${id} (${name}): ${/** @type {Error} */ (e).message}`); }
 };
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { destroy().finally(() => process.exit(130)); });
 try {
   const t0 = Date.now();
-  const made = await api("POST", "/droplets", { name, region, size, image: "ubuntu-24-04-x64", tags: ["vyre-live-walk"], user_data: `#cloud-config\nssh_authorized_keys:\n  - ${pub}\n` });
+  // DigitalOcean puts an account key in root's authorized_keys at first boot (a cloud-init key is not honoured for root there); the key is removed from the account again at the end.
+  keyId = (await api("POST", "/account/keys", { name, public_key: pub })).ssh_key.id;
+  const made = await api("POST", "/droplets", { name, region, size, image: "ubuntu-24-04-x64", tags: ["vyre-live-walk"], ssh_keys: [keyId] });
   id = made.droplet.id;
   let ip = "";
   for (let i = 0; i < 60 && !ip; i++) {
