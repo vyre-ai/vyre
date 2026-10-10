@@ -100,15 +100,32 @@ export function registerDocuments(ctx) {
       return { path, version: put.version, size: out.length, sha256, format, template: tname, template_version: tver, used, ...(rec ? { record: rec } : { record: null, note: "no Document record type here yet: install Documents from Apps to file these on the client" }) };
     });
 
+  /** How long a link to a signed copy lasts when the call names no days: the setting documents.signed_link_days, and with it off, for good (a link to a signed contract is one the client keeps in their mail). @returns {number | undefined} */
+  const linkDays = () => { const n = Number(cfg().signed_link_days); return Number.isInteger(n) && n >= 1 ? n : undefined; };
+  const daysFor = (/** @type {any} */ i) => (i.days !== undefined ? i.days : linkDays());
+
   ctx.tool("documents.signed-link", {
-    description: "A link to a signed copy that stops working after 30 days: { slug, days? }. Whoever holds the link can open the file.",
+    description: "A link to a signed copy: { slug, days? }. With no days it lasts until you end the links (documents.signed-link.revoke), unless the setting documents.signed_link_days gives a number of days. Whoever holds the link can open the file.",
     input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await door.open(i || {}, meta);
       const slug = String(i.slug || "");
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw refuse("slug is the signer's code from the signing request", "bad_input");
-      const r = await ctx.call("appmods.signed.link", { name: "documents", slug, ...(i.days !== undefined ? { days: i.days } : {}) });
+      const days = daysFor(i);
+      const r = await ctx.call("appmods.signed.link", { name: "documents", slug, ...(days !== undefined ? { days } : {}) });
+      if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
+      return r.data;
+    },
+  });
+
+  ctx.tool("documents.signed-link.revoke", {
+    description: "End every link to a signed copy made so far: {}. Anyone holding one gets the same plain refusal as a made-up link; links made afterwards work.",
+    input: obj({ space: str }),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const r = await ctx.call("appmods.signed.revoke", { name: "documents" });
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" });
       return r.data;
     },
@@ -141,16 +158,18 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email, days? }. Makes the expiring link and emails it; one yes covers both.",
+    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes covers both. The link does not expire unless days is given or documents.signed_link_days is set.",
     input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await door.open(i || {}, meta);
       const email = address(i), slug = String(i.slug || "");
       if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw refuse("slug is the signer's code from the signing request", "bad_input");
-      const link = await use("appmods.signed.link", { name: "documents", slug, ...(i.days !== undefined ? { days: i.days } : {}) });
-      const days = Math.max(1, Math.round((link.expires - Date.now()) / 86_400_000));
-      const sent = await use("comms.send", { via: "email", to: email, subject: "Your signed copy", body: `Thank you for signing. Your signed copy is here, and the link works for ${days} days (reply if you need a new one): ${link.url}`, why: "signed copy" });
+      const asked = daysFor(i);
+      const link = await use("appmods.signed.link", { name: "documents", slug, ...(asked !== undefined ? { days: asked } : {}) });
+      const days = typeof link.expires === "number" ? Math.max(1, Math.round((link.expires - Date.now()) / 86_400_000)) : null;
+      const words = days === null ? `Thank you for signing. Your signed copy is here: ${link.url}` : `Thank you for signing. Your signed copy is here, and the link works for ${days} days (reply if you need a new one): ${link.url}`;
+      const sent = await use("comms.send", { via: "email", to: email, subject: "Your signed copy", body: words, why: "signed copy" });
       ctx.events.emit("documents.copy-sent", { days });
       return { ...link, sent };
     },

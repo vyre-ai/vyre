@@ -463,7 +463,7 @@ export default {
     });
     ctx.tool("appmods.signed.link", {
       internal: true, callers: ["module"],
-      description: "An expiring link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 30, default 30) } -> { url, expires }. Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else.",
+      description: "A link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 3650; left out, the link does not expire) } -> { url, expires } (expires is null for a link with no end). Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else. appmods.signed.revoke ends every link made so far.",
       input: obj({ name: str, slug: str, days: { type: "integer" } }, ["name", "slug"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const name = String(i.name || "");
@@ -471,11 +471,22 @@ export default {
         const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
         const m = known(name);
         if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link", "unsupported");
-        const days = i.days === undefined ? MAX_LINK_DAYS : i.days;
-        if (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days`, "bad_input");
-        const expires = Date.now() + days * 86_400_000;
+        const days = i.days === undefined || i.days === null ? null : i.days;
+        if (days !== null && (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS)) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days, or does not expire`, "bad_input");
+        const expires = days === null ? null : Date.now() + days * 86_400_000;
         let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
         return { url: `${await signerOrigin(name)}${SIGNED}${token}`, expires };
+      },
+    });
+    ctx.tool("appmods.signed.revoke", {
+      internal: true, callers: ["module"],
+      description: "End every link made so far to an app's signed copies: { name } -> { revoked }. The key they were made under is thrown away; links made afterwards use a new one. Only the app's own module asks (documents for Documents).",
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module ends the links to its signed copies", "denied");
+        const gone = db.prepare("DELETE FROM appmods_link_keys WHERE name = ?").run(name).changes;
+        return { revoked: gone > 0 };
       },
     });
     ctx.tool("appmods.signing.request", {

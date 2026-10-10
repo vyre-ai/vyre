@@ -387,6 +387,30 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
 });
 
+test("appmods.signed.link: no days is a link with no end, days gives one, only the app's own module asks; appmods.signed.revoke makes every earlier link useless", async t => {
+  const w = await world(t);
+  const link = (input = {}, caller = "module:documents") => w.d.registry.call("appmods.signed.link", { name: "documents", slug: "abc123", ...input }, caller);
+  await w.cli("appmods.install", { name: "documents" });
+  const a = await link();
+  assert.equal(a.error, undefined, JSON.stringify(a.error));
+  assert.equal(a.data.expires, null);
+  assert.match(a.data.url, /\/signed\/0\.abc123\.[A-Za-z0-9_-]{43}$/);
+  const b = await link({ days: 7 });
+  assert.ok(b.data.expires > Date.now() && b.data.expires < Date.now() + 8 * 86_400_000);
+  for (const days of [0, 3651, 1.5, "7"]) assert.equal((await link({ days })).error.code, "bad_input", String(days));
+  assert.equal((await link({}, "module:comms")).error.code, "denied");
+  assert.ok((await w.cli("appmods.signed.link", { name: "documents", slug: "abc123" })).error, "nor a person at the terminal");
+  const same = await link();
+  assert.equal(same.data.url, a.data.url, "the same key makes the same link");
+  assert.equal((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:comms")).error.code, "denied");
+  assert.ok((await w.cli("appmods.signed.revoke", { name: "documents" })).error, "nor a person at the terminal");
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: true });
+  const c = await link();
+  assert.notEqual(c.data.url, a.data.url, "a link made after the revoke is under a new key, so the earlier one no longer matches");
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: true });
+  assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: false }, "nothing left to end");
+});
+
 test("own domains: the owner points a domain at the signing app, the front answers it by alias and nothing else, and a model or a bad host is refused", async t => {
   const w = await world(t, { config: { relay: { tunnel_url: "wss://edge.test:8443" } } });
   const none = await world(t);

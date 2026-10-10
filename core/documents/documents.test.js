@@ -166,19 +166,35 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal(e.code, "unavailable"); assert.match(e.message, /install or start it from Apps/, "and a missing app says what to do");
 });
 
-test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {
+test("documents.send-signed makes the link (no end unless the setting or the call gives one) and emails it; the slug is checked before anything is made", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
-  const r = rig({ call: async (tool, input) => {
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
     if (tool === "spaces.self") return {};
     seen.push({ tool, input });
-    return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: Date.now() + 30 * 86_400_000 } } : { data: { held: "gi_2" } };
-  } });
+    return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: input.days === undefined ? null : Date.now() + input.days * 86_400_000 } } : { data: { held: "gi_2" } };
+  };
+  const r = rig({ call });
   const out = await r.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test" });
   assert.deepEqual(seen.map(s => s.tool), ["appmods.signed.link", "comms.send"]);
+  assert.deepEqual(seen[0].input, { name: "documents", slug: "abc123" }, "no days: the link has no end");
   assert.equal(seen[1].input.subject, "Your signed copy");
-  assert.match(seen[1].input.body, /works for 30 days.*signed\/1\.abc\.sig$/);
+  assert.equal(seen[1].input.body, "Thank you for signing. Your signed copy is here: https://documents.harlow.vyre.run/signed/1.abc.sig");
   assert.equal(out.sent.held, "gi_2");
-  assert.deepEqual(r.emitted, [{ type: "documents.copy-sent", payload: { days: 30 } }]);
+  assert.equal(out.expires, null);
+  assert.deepEqual(r.emitted, [{ type: "documents.copy-sent", payload: { days: null } }]);
+  // the setting gives every new link an end; a call that names days wins over it; 0 is off
+  seen.length = 0;
+  const set = rig({ call, config: { documents: { signed_link_days: 7 } } });
+  await set.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test" });
+  assert.equal(seen[0].input.days, 7);
+  assert.match(seen[1].input.body, /works for 7 days.*signed\/1\.abc\.sig$/);
+  await set.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test", days: 2 });
+  assert.equal(seen[2].input.days, 2);
+  assert.equal((await set.run("documents.signed-link", { slug: "abc123" })).expires > Date.now(), true);
+  const off = rig({ call, config: { documents: { signed_link_days: 0 } } });
+  seen.length = 0; await off.run("documents.signed-link", { slug: "abc123" });
+  assert.equal(seen[0].input.days, undefined);
+  seen.length = 0;
   const before = seen.length;
   assert.equal((await code(r.run("documents.send-signed", { slug: "../x", email: "dana@harlow.test" }))).code, "bad_input");
   assert.equal(seen.length, before, "nothing was made for a bad slug");

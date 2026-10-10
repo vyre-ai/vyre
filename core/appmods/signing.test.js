@@ -186,6 +186,26 @@ test("a link to the signed copy is made under a key, ends on its day, and is che
   assert.deepEqual(filePaths([{ url: "/file/AA==--b/proof.pdf" }, { url: "/s/x/documents" }, { nested: { u: "/blobs_proxy/id/c/d.pdf" } }, { u: "/file/x/../etc" }, "javascript:1"]), ["/file/AA==--b/proof.pdf", "/blobs_proxy/id/c/d.pdf"]);
 });
 
+test("a link with no end opens the signed copy years later, only for the key it was made under, and cannot be given an end by changing it", async t => {
+  const f = await front(t, { now: () => Date.UTC(2026, 9, 10) });
+  const forever = mintLink(KEY, "abc123", null);
+  assert.match(forever, /^0\.abc123\.[A-Za-z0-9_-]{43}$/);
+  for (const when of [Date.UTC(2026, 9, 10), Date.UTC(2026, 10, 10) + 31 * 86_400_000, Date.UTC(2046, 0, 1)]) assert.deepEqual(checkLink(KEY, forever, when), { ok: true, slug: "abc123" }, new Date(when).toISOString());
+  const m = forever.split(".")[2];
+  // the end is under the MAC: neither a made-up end nor another signer's slug passes, and another key (the links were ended) refuses it
+  for (const bad of [`9999999999.abc123.${m}`, `0.other.${m}`, `1.abc123.${m}`]) assert.equal(checkLink(KEY, bad, 0).ok, false, bad);
+  assert.deepEqual(checkLink(Buffer.alloc(32, 9), forever, 0), { ok: false, expired: false });
+  // through the real front, after 31 days and after ten years
+  let now = Date.UTC(2026, 9, 10);
+  const g = await front(t, { now: () => now });
+  now += 31 * 86_400_000;
+  assert.equal((await g.call("GET", `/signed/${forever}`)).status, 200, "still opens after 31 days");
+  now += 10 * 365 * 86_400_000;
+  assert.equal((await g.call("GET", `/signed/${forever}`)).status, 200, "and after ten years");
+  assert.equal((await g.call("GET", "/s/abc123/documents")).status, 404, "the slug alone still does not reach the file");
+  void f;
+});
+
 test("the signed copy opens only by its link: the slug no longer lists or downloads it, an expired link says so, a bad one is a 404", async t => {
   let now = Date.UTC(2026, 9, 10);
   const f = await front(t, { now: () => now });

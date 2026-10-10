@@ -87,27 +87,29 @@ import crypto from "node:crypto";
 
 /** Where an expiring link to the signed copy lives on the app's host. */
 export const SIGNED = "/signed/";
-export const MAX_LINK_DAYS = 30;
+/** The longest a link may be asked to last; a link with no end is made by leaving the days out. */
+export const MAX_LINK_DAYS = 3650;
 const b64u = (/** @type {Buffer} */ b) => b.toString("base64url");
 const mac = (/** @type {Buffer} */ key, /** @type {string} */ exp, /** @type {string} */ slug) => b64u(crypto.createHmac("sha256", key).update(`vyre-signed-link\n${exp}\n${slug}`).digest());
 
 /**
- * A link to the signed copy of one document: the signer's slug and an end time, under a key only the box holds. The signing page's own address keeps working; this is the only way to the finished PDF.
- * @param {Buffer} key @param {string} slug @param {number} expiresMs
+ * A link to the signed copy of one document: the signer's slug and an end time (none: it works until the box's key for the app is replaced), under a key only the box holds. The signing page's own
+ * address keeps working; this is the only way to the finished PDF.
+ * @param {Buffer} key @param {string} slug @param {number | null} expiresMs
  */
 export function mintLink(key, slug, expiresMs) {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw new Error("not a signer's slug");
-  const exp = String(Math.floor(expiresMs / 1000));
+  const exp = expiresMs === null ? "0" : String(Math.floor(expiresMs / 1000));
   return `${exp}.${slug}.${mac(key, exp, slug)}`;
 }
 
 /** @param {Buffer} key @param {string} token @param {number} now @returns {{ ok: true, slug: string } | { ok: false, expired: boolean }} */
 export function checkLink(key, token, now) {
-  const m = /^(\d{9,11})\.([A-Za-z0-9_-]{1,80})\.([A-Za-z0-9_-]{43})$/.exec(String(token));
+  const m = /^(0|\d{9,11})\.([A-Za-z0-9_-]{1,80})\.([A-Za-z0-9_-]{43})$/.exec(String(token));
   if (!m) return { ok: false, expired: false };
   const want = Buffer.from(mac(key, m[1], m[2])), got = Buffer.from(m[3]);
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return { ok: false, expired: false };
-  return Number(m[1]) * 1000 > now ? { ok: true, slug: m[2] } : { ok: false, expired: true };
+  return m[1] === "0" || Number(m[1]) * 1000 > now ? { ok: true, slug: m[2] } : { ok: false, expired: true };
 }
 
 /** What the signed-copy answer looks like when the link has run out: plain, without the slug, and it says what to do. */
