@@ -22,7 +22,7 @@
     "public": ["/manifest.json"],
     "signing": {
       "routes": [
-      { "methods": ["GET", "HEAD", "PUT", "PATCH"], "path": "/s/:slug" },
+      { "methods": ["GET", "HEAD", "PUT", "PATCH", "POST"], "path": "/s/:slug" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/completed" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/values" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/metadata" },

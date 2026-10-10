@@ -11,21 +11,25 @@ import { outside } from "./outside";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const copy = (text: string) => { Clipboard.setStringAsync(text).catch(() => {}); showToast("Copied"); };
 
-export default function OutsideScreen() {
-  const [agents, setAgents] = useState<Agent[] | null>(null);
+/** Sample world only (the screenshot pass): the screen as it looks with these agents and open states, calling nothing. */
+export type OutsideSample = { agents: Agent[]; shown?: Registered; giving?: string; types?: RecordType[]; picked?: string[]; write?: boolean; ending?: string };
+
+export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {}) {
+  const [agents, setAgents] = useState<Agent[] | null>(sample ? sample.agents : null);
   const [err, setErr] = useState("");
   const [problem, setProblem] = useState("");
   const [name, setName] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState("");
-  const [shown, setShown] = useState<Registered | null>(null);
-  const [giving, setGiving] = useState("");
-  const [types, setTypes] = useState<RecordType[]>([]);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [write, setWrite] = useState(false);
-  const [ending, setEnding] = useState("");
+  const [shown, setShown] = useState<Registered | null>(sample?.shown ?? null);
+  const [giving, setGiving] = useState(sample?.giving ?? "");
+  const [types, setTypes] = useState<RecordType[]>(sample?.types ?? []);
+  const [picked, setPicked] = useState<string[]>(sample?.picked ?? []);
+  const [write, setWrite] = useState(sample?.write ?? false);
+  const [ending, setEnding] = useState(sample?.ending ?? "");
+  const [project, setProject] = useState("");
   const load = useCallback(() => { setErr(""); outside.list().then(setAgents).catch((e) => { setAgents([]); setErr(say(e, "Your outside agents could not be read.")); }); }, []);
-  useEffect(load, [load]);
+  useEffect(() => { if (!sample) load(); }, [load, sample]);
 
   const act = async (id: string, fn: () => Promise<unknown>) => {
     setBusy(id); setProblem("");
@@ -67,7 +71,7 @@ export default function OutsideScreen() {
               <View className="gap-s2 p-s3">
                 <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text><Chip>{a.status === "active" ? "Active" : a.status === "expired" ? "Expired" : "Ended"}</Chip></View>
                 {a.note ? <Text size="caption" tone="muted">{a.note}</Text> : null}
-                <Text size="caption" tone="label">{a.reach ? `It ${a.reach}.` : "It can reach nothing yet."}</Text>
+                {a.gives.length ? null : <Text size="caption" tone="label">It can reach nothing yet.</Text>}
                 <Text size="caption" tone="muted">{`${endsLine(a, now)}. ${usedLine(a, now)}.`}</Text>
                 {a.gives.map((g) => (
                   <Row key={g.id} dense title={givesLine(g)} end={a.status === "revoked" ? undefined : <Button size="sm" kind="ghost" label="Take back" disabled={busy === a.id} onPress={() => void act(a.id, () => outside.ungrant(a.id, g.id))} />} />
@@ -78,6 +82,12 @@ export default function OutsideScreen() {
                     {types.map((t) => <Row key={t.name} dense title={t.label} end={<Switch label={t.label} on={picked.includes(t.name)} onChange={(on) => setPicked(on ? [...picked, t.name] : picked.filter((x) => x !== t.name))} />} />)}
                     <Row dense title="It may ask to add or change them" sub="Each change still waits for your yes." end={<Switch label="It may ask to add or change them" on={write} onChange={setWrite} />} />
                     <View className="flex-row flex-wrap gap-s2"><Button size="sm" label="Give access" disabled={busy === a.id} onPress={() => give(a.id)} /><Button size="sm" kind="ghost" label="Cancel" onPress={() => setGiving("")} /></View>
+                    <Text size="caption" tone="label">Or one project's memory or files</Text>
+                    <Field name="The project's name" value={project} onChangeText={setProject} placeholder="Harlow v. Harlow" />
+                    <View className="flex-row flex-wrap gap-s2">
+                      <Button size="sm" kind="ghost" label="Give its memory" disabled={busy === a.id || !project.trim()} onPress={() => void act(a.id, async () => { await outside.grant(a.id, { kind: "memory", project: project.trim() }); setGiving(""); setProject(""); })} />
+                      <Button size="sm" kind="ghost" label="Give its files" disabled={busy === a.id || !project.trim()} onPress={() => void act(a.id, async () => { await outside.grant(a.id, { kind: "files", project: project.trim() }); setGiving(""); setProject(""); })} />
+                    </View>
                   </View>
                 ) : ending === a.id ? (
                   <View className="gap-s2">
@@ -86,7 +96,7 @@ export default function OutsideScreen() {
                   </View>
                 ) : (
                   <View className="flex-row flex-wrap gap-s2">
-                    <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} />
+                    {a.status === "active" ? <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} /> : null}
                     <Button size="sm" kind="ghost" label="New token" disabled={busy === a.id} onPress={() => void act(a.id, async () => setShown(await outside.token(a.id)))} />
                     <Button size="sm" kind="ghost" label="End it" onPress={() => setEnding(a.id)} />
                   </View>
