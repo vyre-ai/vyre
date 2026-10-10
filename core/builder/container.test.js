@@ -122,3 +122,32 @@ test("what a Dockerfile build cannot do is refused in words: no Dockerfile, no p
   assert.equal(built, 1, "nothing was built for a refused Dockerfile");
   await assert.rejects(build({ ...dep(d), source: { kind: "repo", ref: "https://x.test/r.git" } }), /container builder, which is not installed/);
 });
+
+test("on a server that builds through its host helper: the context and the settings go into the deployment's folder, `pub-build <deployment>` is asked, and the answer is the image id; a build secret is refused; the folder is removed", async t => {
+  const d = tmp(t);
+  fs.writeFileSync(path.join(d, "Dockerfile"), OK); fs.writeFileSync(path.join(d, "server.js"), "x"); fs.writeFileSync(path.join(d, ".env"), "KEY=nope");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-")); t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const SPC = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  /** @type {any[]} */ const asked = [];
+  seam.helper = { present: () => true, ask: /** @type {any} */ (async (/** @type {string} */ verb, /** @type {string} */ name, /** @type {any} */ o) => {
+    const dir = path.join(home, "publish", SPC, "servers", name);
+    asked.push({ verb, name, o, files: fs.readdirSync(path.join(dir, "ctx")).sort(), request: fs.readFileSync(path.join(dir, "request"), "utf8") });
+    return { state: "ok", message: "built sha256:" + "9".repeat(64) };
+  }) };
+  const tools = new Map();
+  const mod = await builder.start({ config: {}, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
+  t.after(() => { seam.helper = null; return mod.stop(); });
+  const build = (/** @type {string[]} */ secretArgs = []) => tools.get("builder.build").run({ deployment: { id: DEP, space: SPC, name: "northwind", version: 3, source: { kind: "folder", ref: d }, build: { command: "", output_dir: ".", image: "dockerfile" } }, secretArgs });
+  const r = await build();
+  assert.deepEqual(r.runtime, { kind: "image", image: "sha256:" + "9".repeat(64), port: 8080, health: { path: "/", ok: [...HEALTH.ok] } });
+  assert.deepEqual([asked[0].verb, asked[0].name, asked[0].files], ["pub-build", DEP, ["Dockerfile", "server.js"]], "the .env is not in the context");
+  assert.match(asked[0].request, /^name=northwind\nversion=3\nport=8080\nmem=512\n/);
+  assert.ok(asked[0].o.timeoutMs >= 15 * 60_000);
+  assert.ok(!fs.existsSync(path.join(home, "publish", SPC, "servers", DEP)), "the folder is removed");
+  await assert.rejects(build(["--secret", "id=a,src=/p/a"]), /build secrets are not supported/);
+  seam.helper = { present: () => true, ask: /** @type {any} */ (async () => ({ state: "ok", message: "built something" })) };
+  await assert.rejects(build(), /did not say which/);
+  seam.helper = { present: () => true, ask: /** @type {any} */ (async () => { throw Object.assign(new Error("the server could not pub-build this site's image: the build failed: npm ERR"), { code: "failed" }); }) };
+  await assert.rejects(build(), (/** @type {any} */ e) => { assert.equal(e.code, "build_failed"); assert.match(e.message, /npm ERR/); return true; });
+  assert.ok(!fs.existsSync(path.join(home, "publish", SPC, "servers", DEP)), "and nothing is left after a failure");
+});
