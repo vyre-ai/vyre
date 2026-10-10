@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(perf): perf-check gates the startup HEAP peak (live heap read after each collection in the first 30 s, budget 110 MB) instead of the startup RSS peak, which is reported and not gated. Startup RSS varies by 60 MB run to run for identical code (150 to 216 MB on one box, 199.9 to 203.5 on CI) because it counts what V8 and the allocator reserve; the heap peak is stable (47.6, 51.2, 53.0 MB over three runs). The settled RSS (150) and heap-after-GC (50) gates are unchanged.
 - fix(vault): the connector list asks for no key when there is no api-credential item (as on the tip). With the Flows timer now waking at start, the list was asked in the first second and made the vault's key on a home with nothing to list (core/vault/stop.test.js).
 - fix(vault): an agent inside the person's own CLI (`cli:agent:kit`) is held to a credential's scope in vault.request like any model; the check stopped at the label mcp, so such an agent read through any credential.
 - test(ci): when scripts/perf-check is over budget on the first shard, the job runs it once more with a CPU profile of vyred (PERF_CPU_PROF_DIR) and uploads the profile, so the red names what ran at idle.

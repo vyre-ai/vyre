@@ -23,3 +23,24 @@ if (out && gc) {
     });
   });
 }
+
+// The startup heap peak: what vyred itself holds at its fullest in its first STARTUP_S seconds, read right after each garbage collection (the live heap, not the pages V8 and the allocator
+// reserve around it). RSS over the same window varies by 60 MB between runs of identical code; this does not. Written once, at the end of the window, to VYRE_PERF_HEAPPEAK_FILE.
+import { PerformanceObserver } from "node:perf_hooks";
+import v8 from "node:v8";
+const peakOut = process.env.VYRE_PERF_HEAPPEAK_FILE;
+if (peakOut) {
+  const STARTUP_S = 30, mbOf = (/** @type {number} */ n) => Math.round(n / 1024 / 1024 * 10) / 10;
+  let peak = 0, collections = 0;
+  const obs = new PerformanceObserver(() => {
+    if (process.uptime() > STARTUP_S) return;
+    collections++;
+    peak = Math.max(peak, v8.getHeapStatistics().used_heap_size);
+  });
+  obs.observe({ entryTypes: ["gc"] });
+  const done = setTimeout(() => {
+    obs.disconnect();
+    try { fs.writeFileSync(peakOut, JSON.stringify({ heapUsedPeak: mbOf(peak), collections })); } catch { /* perf-check reports a missing file */ }
+  }, Math.max(0, STARTUP_S * 1000 - process.uptime() * 1000) + 500);
+  done.unref();
+}

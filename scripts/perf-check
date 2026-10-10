@@ -68,7 +68,7 @@ const QUIET_PCT = 0.3, QUIET_SAMPLES = 3, QUIET_MAX_SECONDS = 45;
 // run) with a heap V8 simply hasn't collected yet, so there RSS is informational.
 // CPU budgets: three idle runs per Node on a quiet hosted runner (perf-idle.yml, 3 Oct, run 37142372546) gave p95 0 to 0.66%, sustained 0.13 to 1.33%
 // (one 100 ms blip in a 1.5 s sample is 6.6%, and 1.3% over five); each budget is the worst run plus a third.
-const BUDGET = { cpuPct: 0.9, rssMB: 150, startupRssMB: 200, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.8, cpuSustainedWindow: 5 };
+const BUDGET = { cpuPct: 0.9, rssMB: 150, startupHeapMB: 110, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.8, cpuSustainedWindow: 5 };
 
 /** The Node major the box image runs, from box/Dockerfile, or null. */
 function shippedNodeMajor() {
@@ -92,12 +92,13 @@ async function main() {
   let expected;
   let child;
   let timersFile;
-  let gcFile;
+  let gcFile, heapPeakFile;
   try {
     expected = await seed(home, transcriptsDir);
     timersFile = path.join(home, "timers.json");
     gcFile = path.join(home, "gc.json");
-    child = spawnDaemon(home, timersFile, gcFile);
+    heapPeakFile = path.join(home, "heap-peak.json");
+    child = spawnDaemon(home, timersFile, gcFile, heapPeakFile);
     log(`vyred starting (pid ${child.pid}), home ${home}`);
     const startup = watchStartup(child.pid, STARTUP_SECONDS, 500);
 
@@ -139,12 +140,14 @@ async function main() {
     // (Registry.stop races each module's stop() against a 5 s bound), which are not idle polling.
     const startupPeakMB = await startup;
     const afterGc = await gcSnapshot(child, gcFile);
+    let heapPeak = null;
+    try { heapPeak = JSON.parse(fs.readFileSync(heapPeakFile, "utf8")); } catch { /* reported as missing */ }
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
     // (see that file), so reading it any earlier always finds nothing.
     await stopChild(child);
     const timers = readTimers(timersFile);
 
-    const exitCode = report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc);
+    const exitCode = report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc, heapPeak);
     process.exitCode = exitCode;
   } finally {
     if (child && child.exitCode === null) await stopChild(child);
@@ -180,14 +183,14 @@ async function seed(home, transcriptsDir) {
   return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
 }
 
-function spawnDaemon(home, timersFile, gcFile) {
+function spawnDaemon(home, timersFile, gcFile, heapPeakFile) {
   const entry = path.join(REPO, "core", "daemon", "main.js");
   const hook = path.join(HERE, "lib", "timer-hook.mjs");
   const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
   const prof = process.env.PERF_CPU_PROF_DIR ? ["--cpu-prof", `--cpu-prof-dir=${process.env.PERF_CPU_PROF_DIR}`, "--cpu-prof-interval=500"] : [];   // a profile of vyred's whole run, to name what a red idle CPU was doing
   const child = spawn(process.execPath, ["--expose-gc", ...prof, `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
-    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
+    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile, VYRE_PERF_HEAPPEAK_FILE: heapPeakFile },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";
@@ -386,7 +389,7 @@ async function stopChild(child) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /** Print the pass/fail table and return the process exit code. */
-function report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc) {
+function report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc, heapPeak) {
   const shipped = shippedNodeMajor();
   const node = Number(process.versions.node.split(".")[0]);
   // No box/Dockerfile (a packed tree): gate RSS as before.
@@ -434,9 +437,11 @@ function report(samples, timers, idleStart, idleEnd, startupPeakMB, afterGc) {
     // Gating on the shipped Node: the settled size, once RSS is flat; a size that never settles fails too.
     { name: `RSS (settled, last ${RSS_FLAT_SAMPLES})`, value: flat ? `${settledRss.toFixed(1)} MB` : `not flat in ${IDLE_MAX_SECONDS}s`,
       budget: rssBudget(BUDGET.rssMB), pass: !rssGates || (flat && settledRss < BUDGET.rssMB), gate: rssGates },
-    // Gating on the shipped Node: the first 30 s from spawn, indexing included, so a real blowup still fails.
-    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: rssBudget(BUDGET.startupRssMB),
-      pass: !rssGates || startupPeakMB < BUDGET.startupRssMB, gate: rssGates },
+    // The first 30 s from spawn, indexing included. Gated on the live heap at its fullest (read after each collection): startup RSS reads 150 to 216 MB for identical code, because it counts what V8 and
+    // the allocator reserve, not what Vyre holds. A real blowup still fails the heap peak; the RSS peak is reported for reading, not gated.
+    { name: `heap used (startup peak, ${STARTUP_SECONDS}s)`, value: heapPeak ? `${heapPeak.heapUsedPeak.toFixed(1)} MB` : "no reading", budget: `< ${BUDGET.startupHeapMB} MB`,
+      pass: !!heapPeak && heapPeak.heapUsedPeak < BUDGET.startupHeapMB, gate: true },
+    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,
