@@ -1539,6 +1539,18 @@ export class Registry {
     // An agent that only proposes (the Engineer: agents.scope names its `only` list, vyred puts it on meta.agentOnly from the stored row, never from the call) reaches those tools and no others. This is
     // judged before the static gates, whichever of the two paths below decides them: it used to sit inside the path without the kernel retrofit, so a daemon with the kernel on never applied it.
     if (Array.isArray(meta.agentOnly) && !meta.agentOnly.includes(tool)) return { error: { code: "denied", message: `${tool} is not one of the tools this assistant works with: it drafts and proposes, and a person approves` } };
+    // The person narrowed their own assistant (G23): a tool, a family of tools or a whole area they turned off is refused for the assistant acting for them, with the reason in plain words. Only the proven default
+    // assistant (a session of the person's, no named agent: a named agent has its own grants) and only for tools it may otherwise reach; the check is the assistant module's, which keeps the person's rows.
+    // No assistant module running means nothing was narrowed. A check that fails is a refusal: never a way round the person's limit.
+    if (!door && claimsAgent(caller) && proven(meta) && !(meta.agent && meta.agentKind !== "assistant") && !(agentClaim(caller) && meta.agentKind !== "assistant")) {
+      const chk = this.tools.get("assistants.access.check");
+      if (chk) {
+        let said = null;
+        try { said = await chk.run({ tool }, { ...meta, caller: "module:registry" }); }
+        catch { return { error: { code: "denied", message: `${tool} could not be checked against what you let your assistant do, so it did not run` } }; }
+        if (said && said.stopped) return { error: { code: "access_narrowed", message: said.words } };
+      }
+    }
     // The static permission gates, up to the input schema. With deps.gates (the kernel retrofit, kernel/retrofit/gates.js)
     // they are decided by `authorize` over grants compiled from the rules below; without it the rules below run as written.
     // The golden set (kernel/golden) proves the two give the same answer for every tool, caller and world.

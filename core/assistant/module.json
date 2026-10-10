@@ -50,6 +50,27 @@
         "name": "assistant.welcome",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "assistants.access.get",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "assistants.access.narrow",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "assistants.access.restore",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "assistants.access.check",
+        "reach": "modules",
+        "effect": "read",
+        "internal": true
       }
     ]
   },
@@ -57,7 +78,8 @@
     "emits": [
       "assistant.briefed",
       "assistant.rolled",
-      "push.proactive"
+      "push.proactive",
+      "assistant.access-narrowed"
     ]
   },
   "shows": {
