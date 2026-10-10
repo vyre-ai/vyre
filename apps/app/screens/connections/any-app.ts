@@ -87,6 +87,10 @@ export function pickProposals(raw: unknown): Proposal[] {
 
 export type Connected = { key: string; kind: "api" | "mcp"; label: string; where: string; status: "ok" | "bad" | "idle"; words: string };
 
+/** The line under a connection: how it is doing, in a plain word, then what it says. */
+export const connectedLine = (c: Connected): string => `${c.status === "ok" ? "Working" : c.status === "bad" ? "Needs attention" : "Idle"}: ${c.words}`;
+export const connectedKind = (c: Connected): string => (c.kind === "mcp" ? "MCP server" : "App");
+
 /**
  * One list of what is connected over HTTP APIs and MCP servers: the person does not need to know which is which to see that it works. Each row says where to open it (its own tab). MCP servers stay
  * the hub's rows (one mechanism); this only reads them beside the Connections.

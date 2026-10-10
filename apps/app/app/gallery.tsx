@@ -77,6 +77,15 @@ function Sample({ name }: { name: string }) {
   if (name === "runner-settings-off") {
     return <RunHereView s={{ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 }} here={[]} cpu="50" mem="4096" problem="Not turned on: it needs your approval. Approve on this computer, then try again." setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
   }
+  if (name === "connected-list") {
+    const list = [
+      { key: "a", kind: "api" as const, label: "GoHighLevel Sales", where: "services.leadconnectorhq.com", status: "ok" as const, words: "connected" },
+      { key: "b", kind: "mcp" as const, label: "tracker", where: "tracker.example.com", status: "ok" as const, words: "Running, 4 tools" },
+      { key: "c", kind: "api" as const, label: "Acme", where: "api.acme.example", status: "bad" as const, words: "the key was refused (401)" },
+      { key: "d", kind: "mcp" as const, label: "docs", where: "", status: "idle" as const, words: "not started yet" },
+    ];
+    return <ConnectedList list={list} onOpen={() => {}} />;
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
