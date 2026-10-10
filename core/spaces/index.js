@@ -1395,7 +1395,7 @@ export default {
     const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
-      if ((!st0 || !st0.exists || (who && who !== st0.id)) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
+      if ((!st0 || !st0.exists || who !== st0.id) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
         for (const id of K.spaces.list()) {
           // the kernel's own answer for the CALLER (the person on the call's chain; a terminal with no chain of its own is the home's owner): never the owner's list for someone else

@@ -55,5 +55,9 @@ test("a member's assistant cannot lend or stop the owner's computer, and every S
   assert.deepEqual(idsOf(await alice.registry.call("spaces.list", {}, "cli", { token: (await alice.kernel.surfaces.open(bobChain, {})).token })), [sp.space], "Bob himself, the same");
   assert.ok(idsOf(await alice.registry.call("spaces.list", {}, "cli", {})).includes(alice.kernel.id.space), "the local terminal is the owner's own list");
   assert.deepEqual(((await asBobsAssistant("spaces.records.status", {})).data || { spaces: [] }).spaces.map((/** @type {any} */ x) => x.space), [sp.space]);
+  const nobody = await alice.registry.call("spaces.list", {}, "mcp", {});
+  assert.deepEqual(nobody.error ? [] : idsOf(nobody), [], "a caller with no chain that is not the local terminal is told nothing, even on an identity box");
+  const bobList = (await asBobsAssistant("spaces.list", {})).data;
+  assert.equal(bobList[0].role, "member", "and sees his own role there");
 });
 
