@@ -26,7 +26,7 @@
       },
       {
         "name": "names.domain.check",
-        "reach": "person",
+        "reach": "anyone",
         "effect": "read"
       },
       {
