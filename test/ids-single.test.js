@@ -19,6 +19,7 @@ const ALLOWED = new Map([
   ["core/team/index.js", "a short code a person reads and types (`r_ab12cd34`)"],
   ["lib/spaces/move-pull.js", "a pull ticket is a bearer: full-width random, with no time in it"],
   ["core/vault/passmcp.js", "a Vault MCP pass token is a bearer secret, full-width random with no time in it; the `vmcp_` prefix only lets a leaked one be recognised (the pass id itself is newPrefixedId)"],
+  ["core/outside/store.js", "an outside agent's bearer token is a secret, full-width random with no time in it; the `vext_` prefix only lets a leaked one be recognised (the agent's id is random letters and digits, its other ids are newPrefixedId)"],
   ["lib/connectors/testing/", "test support: a fake OAuth server's codes and tokens"],
 ]);
 const PATTERNS = [
