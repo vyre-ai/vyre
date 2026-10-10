@@ -318,7 +318,7 @@ test("R-14: too many files or bytes refuses the checkpoint, and a slow reader is
   const small = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { maxTotal: 5000 } });
   assert.deepEqual(await small({ roots, have: {} }, async () => {}), { truncated: true });
   const slow = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { deadlineMs: 1 } });
-  await assert.rejects(() => slow({ roots, have: {} }, async () => {}), /too long/);
+  for (let i = 0; i < 12; i++) await assert.rejects(() => slow({ roots, have: {} }, async () => {}), /too long/);   // the leak was a race: kill it at its first instant, many times
   // a reader killed the instant it started leaves nothing behind: the sandbox's second process used to outlive the first and hold the test (and a runner) open
   if (process.platform === "linux") {
     const left = () => execFileSync("ps", ["-axo", "pid=,args="], { encoding: "utf8" }).split("\n").filter(l => l.includes(a));
