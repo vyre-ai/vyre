@@ -599,7 +599,8 @@ export function createGrantsStore(cfg) {
       if (o.network_cap !== undefined && (o.side !== "member_accepts" || !["provider", "internet"].includes(o.network_cap))) throw new KernelError("bad_input", "the lender's network cap is provider or internet, on the member's own acceptance");
       const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
       const m = { kind: "person", id: o.member, space: cfg.space };
-      if (!memberOk(m)) throw new KernelError("not_found", "no such member");
+      const everyone = o.member === "*" && o.side === "space_allows" && (o.device ?? null) === null;   // the Space's allow for every member's own computers (an owner's or admin's act)
+      if (!everyone && !memberOk(m)) throw new KernelError("not_found", "no such member");
       if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
       const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, ...(o.side === "member_accepts" && o.network_cap ? { network_cap: o.network_cap } : {}), status: "active", made_by: issuer.id, at: clock() });
       offers.set(rec.id, rec);
@@ -685,7 +686,7 @@ export function createGrantsStore(cfg) {
 
     /** Are both sides of the compute pair active for this member and computer? Read at every session start. Sync: it reads the store, never the network. */
     active(/** @type {{ member: string, device: string, device_key?: string }} */ q) {
-      const live = (/** @type {any} */ o) => o.status === "active" && o.member === q.member;
+      const live = (/** @type {any} */ o) => o.status === "active" && (o.member === q.member || (o.member === "*" && o.side === "space_allows" && o.device === null));
       // A bound offer answers only for the key it was made for; the caller presents the key of the connected device (verified by the network layer), never a bare id.
       const keyOk = (/** @type {any} */ o) => !o.device_key || (typeof q.device_key === "string" && o.device_key === q.device_key);
       const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || (o.device === q.device && keyOk(o))));

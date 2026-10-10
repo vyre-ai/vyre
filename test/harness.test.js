@@ -405,7 +405,7 @@ test("mcp: the hub's tools are offered through the one vyre entry; a read reache
   const byName = new Map(tools.map(x => [x.name, x]));
   assert.ok(byName.has("tools_find") && byName.has("tools_call"), "the rest is reached through tools_find and tools_call");
   assert.ok(!byName.has("system_echo") && !byName.has("issues__list_issues"), "module and hub tools are not listed");
-  const found = (q, id) => rpc(id, "tools/call", { name: "tools_find", arguments: { query: q, limit: 10 } }).then(r => new Map(r.result.structuredContent.tools.map(x => [x.name, x])));
+  const found = (q, id) => rpc(id, "tools/call", { name: "tools_find", arguments: { query: q, limit: 10 } }).then(r => new Map([...r.result.structuredContent.tools, ...(r.result.structuredContent.also || [])].map(x => [x.name, x])));
   assert.equal((await found("list open issues", 20)).get("issues__list_issues")?.description, "List open issues.");
   assert.match((await found("send a message to someone", 21)).get("issues__send_message")?.description || "", /^\(held for approval\) Send a message/);
   for (const x of tools) assert.match(x.name, /^[A-Za-z0-9_-]{1,64}$/);
