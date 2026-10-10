@@ -44,7 +44,6 @@ const PEOPLE_AND_AGENTS = [...PEOPLE, "mcp"];
 /** Which module callers each tool actually accepts, checked against the raw meta.caller. */
 const MODULE_CALLERS = {
   "github.repos": new Set(["module:sessions"]),
-  "github.repo.create": new Set(["module:publish"]),
   "github.project.of": new Set(["module:sessions", "module:threads"]),
   "github.project.local-init": new Set(["module:projects", "module:sessions", "module:threads"]),
   // The "#" picker's fan-out and the turn that attaches a tag.
@@ -320,18 +319,10 @@ export default {
     ctx.tool("github.repo.create", {
       description: "Make a GitHub repo for a folder (private unless public is asked), under the account or an organisation, and send the folder there.",
       input: obj({ account: str, owner: str, name: str, visibility: { type: "string", enum: ["private", "public"] }, dir: str, description: str }, ["name", "dir"]),
-      callers: PEOPLE_AND_MODULES,
+      callers: PEOPLE,
       presence: { summary: async (i) => `Make the ${i && i.visibility === "public" ? "public" : "private"} GitHub repo ${String((i && i.owner) ? i.owner + "/" : "")}${String((i && i.name) || "")} and send a folder there` },
       run: async (input, meta = {}) => {
-        checkModuleCaller("github.repo.create", meta, MODULE_CALLERS["github.repo.create"]);
-        let dir = path.resolve(String(input.dir || ""));
-        // A module names a folder of its own under Vyre's home (as it really is on disk: a link out of the home does not count); only a person may point at any folder they can read.
-        if (String(meta.caller || "").startsWith("module:")) {
-          let real, home;
-          try { real = fs.realpathSync(dir); home = fs.realpathSync(ctx.paths.root); } catch { throw fail("that folder is not there", "not_found"); }
-          if (!(real === home || real.startsWith(home + path.sep))) throw fail("a module may send only a folder kept under Vyre's home", "denied");
-          dir = real;
-        }
+        const dir = path.resolve(String(input.dir || ""));
         const acct = forOne(accounts.all(), named(input.account));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         // The folder is made ready and scanned first: nothing is made on GitHub for a folder that would be refused.
