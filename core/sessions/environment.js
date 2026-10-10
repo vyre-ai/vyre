@@ -136,7 +136,7 @@ export function environmentOf(s, { budget = BUDGET } = {}) {
   ]);
 
   if (has("show")) add("show", 12, [
-    "To show the person something you built or started, tools_call previews.open (the port your server listens on, or a file or folder you wrote): a card appears in the chat and they open it from there. When more than one thing is unclear, ask them all at once with ask.many.",
+    "To show the person something you built or started, tools_call previews.open (the port your server listens on, or a file or folder you wrote): a card appears in the chat and they open it from there. When more than one thing is unclear, ask them all at once with tools_call ask.many.",
   ]);
 
   const more = [...new Set(families.filter(f => (FAMILIES[f] || {}).more).map(f => f))];

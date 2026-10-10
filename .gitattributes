@@ -14,7 +14,7 @@ CHANGELOG.md merge=union
 # Generated files: keep ours on merge; scripts/team/regen.mjs rebuilds them right after.
 docs/index.json merge=regen
 docs/reference/** merge=regen
-docs/agents/** merge=regen
+# docs/agents/ pages are hand-written prose with generated blocks: they merge as text, and the queue regenerates the blocks after.
 docs/architecture/map.md merge=regen
 kernel/golden/allow.json merge=regen
 kernel/golden/presence.json merge=regen

@@ -40,7 +40,17 @@ const existing = changed.filter(f => fs.existsSync(f));
 console.log(`preflight: ${changed.length} files changed since ${BASE} (${mergeBase.slice(0, 9)})`);
 
 // ---- G1: generated files are never committed by hand (the merge queue regenerates them)
-const gen = changed.filter(f => GENERATED.some(re => re.test(f)));
+// docs/agents/ pages are hand-written prose around generated blocks (<!-- agent:NAME:start -->): prose may be committed, as long as the
+// generator leaves the page unchanged, i.e. the generated blocks are current.
+const agentPages = changed.filter(f => /^docs\/agents\//.test(f) && fs.existsSync(f));
+const agentStale = agentPages.length ? (() => {
+  const before = new Map(agentPages.map(f => [f, fs.readFileSync(f, "utf8")]));
+  spawnSync(process.execPath, ["scripts/gen-agent-docs.mjs"], { stdio: "ignore" });
+  const stale = agentPages.filter(f => fs.readFileSync(f, "utf8") !== before.get(f));
+  for (const [f, text] of before) fs.writeFileSync(f, text);
+  return stale;
+})() : [];
+const gen = changed.filter(f => GENERATED.some(re => re.test(f)) && !(agentPages.includes(f) && !agentStale.includes(f)));
 if (gen.length) fail("G1", `generated files are in your commits; drop them (git checkout ${BASE} -- <file>) and let the queue regenerate:\n    ${gen.join("\n    ")}`);
 
 // ---- G2: no conflict markers
