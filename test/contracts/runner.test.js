@@ -31,9 +31,9 @@ test("runner v1: placement, move, why-not, settings, here and pause keep the sha
   assert.equal(typeof lentPlacements, "function");
 
   // ---- a session the server runs itself has no row: it is the server's
-  const chat = await call("work.chat.create", { people: [] });
-  const mine = chat.data && (chat.data.chat || chat.data.id);
-  assert.ok(mine, JSON.stringify(chat));
+  const person = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "dphonepaired00001", person: owner, path: "relay", session: "ps_1" });
+  const mine = (await d.kernel.gateway.grants.chats.create(person, {})).id;
+  assert.match(mine, /^chat_/);
   const plain = await call("runner.placement", { thread: mine });
   assert.equal(shapeDiff(plain.data, F.placements.theServersOwn), "", JSON.stringify(plain));
   assert.equal((await call("runner.placement", { thread: "chat_00000000-0000-4000-8000-000000000000" })).error.code, "not_found", "a chat that is not yours is not found");
