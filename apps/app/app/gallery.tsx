@@ -83,7 +83,7 @@ function Sample({ name }: { name: string }) {
         <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
         <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
         <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }]} />
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }, { at: 4, text: "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else." }]} />
       </View>
     );
   }
