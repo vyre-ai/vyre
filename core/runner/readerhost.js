@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { plan, launch } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin } from "./sandbox-win.js";
+import { signalTree } from "./proctree.js";
 
 const READER = path.join(path.dirname(fileURLToPath(import.meta.url)), "reader.js");
 
@@ -23,7 +24,10 @@ export function sandboxReader(o) {
     const p = plan({ platform: o.platform, space: o.space, launcher, workspace: o.work, command: node, args: [READER], readOnly: [path.dirname(node), path.dirname(READER)], proxy: { port: 1, socket: "" }, home: o.home, env: {} });
     const child = launch(p);
     let err = "", buf = Buffer.alloc(0), received = 0, truncated = false, done = false, chain = Promise.resolve();
-    const fail = e => { if (done) return; done = true; clearTimeout(timer); try { child.kill("SIGKILL"); } catch {} reject(e); };
+    // The sandbox starts the reader through a second process of its own (the namespace's init), which dies with the first only if the first lives long enough to arrange it. Ending just the one Vyre started, at the
+    // moment it was started (a reader killed on its deadline), left the second and everything under it running and holding the pipes. The whole tree under it is ended.
+    const kill = () => { try { signalTree(Number(child.pid), "SIGKILL"); } catch { /* gone */ } try { child.kill("SIGKILL"); } catch { /* gone */ } };
+    const fail = e => { if (done) return; done = true; clearTimeout(timer); kill(); reject(e); };
     // A reader that runs too long, or sends more than its caps allow, is killed: a hostile session cannot stall or exhaust the runner.
     const timer = setTimeout(() => fail(new Error("the workspace reader took too long")), lim.deadlineMs);
     child.stderr.on("data", d => { err += d; if (err.length > 4000) err = err.slice(-4000); });
@@ -46,7 +50,10 @@ export function sandboxReader(o) {
         chain.catch(fail);
       }
     };
-    const finish = () => { if (done) return; done = true; clearTimeout(timer); chain.then(() => resolve({ truncated }), reject); };
+    // A reader that has said it is finished is not waited on for ever: the sandbox's shim sometimes outlives the command it ran (a listener that keeps it open), and a child left running keeps its pipes, and so
+    // the process that started it, alive. Given a moment to leave on its own, then ended; the end marker is all that was wanted from it.
+    const reap = () => { const k = setTimeout(kill, 2000); k.unref?.(); child.once("close", () => clearTimeout(k)); };
+    const finish = () => { if (done) return; done = true; clearTimeout(timer); reap(); chain.then(() => resolve({ truncated }), reject); };
     child.stdout.on("data", d => {
       received += d.length;
       if (received > lim.maxTotal + lim.maxFiles * 512) return fail(new Error("the workspace reader sent more than its cap"));
