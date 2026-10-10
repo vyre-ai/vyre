@@ -307,7 +307,7 @@ export default {
     });
 
     ctx.tool("github.owners", {
-      description: "Who a new repo can belong to: the account itself and the organisations it is in. Answers { owners: [{ login, kind }] }, never a token.",
+      description: "Who a new repo can belong to: the account and its organisations. Answers { owners: [{ login, kind }] }, never a token.",
       input: obj({ account: str }),
       callers: PEOPLE,
       run: async ({ account: a }) => {
@@ -318,7 +318,7 @@ export default {
     });
 
     ctx.tool("github.repo.create", {
-      description: "Make a new GitHub repo for a folder, under the account or one of its organisations, private unless public is asked, and send the folder there as its first commit.",
+      description: "Make a GitHub repo for a folder (private unless public is asked), under the account or an organisation, and send the folder there.",
       input: obj({ account: str, owner: str, name: str, visibility: { type: "string", enum: ["private", "public"] }, dir: str, description: str }, ["name", "dir"]),
       callers: PEOPLE_AND_MODULES,
       presence: { summary: async (i) => `Make the ${i && i.visibility === "public" ? "public" : "private"} GitHub repo ${String((i && i.owner) ? i.owner + "/" : "")}${String((i && i.name) || "")} and send a folder there` },
