@@ -102,3 +102,14 @@ test("runner: while a chat's process starts on a computer the status line says s
   assert.equal(placingLine({ state: "starting", computer: "x" }), "");
   assert.equal(placingLine({ state: "fallback", computer: "  " }), "Your computer did not answer. Running on the server instead.");
 });
+
+test("runner: a lease is one quiet line in words: who borrowed which computer and what limit holds", async () => {
+  const { leaseLine } = await import("./runner-model.js");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "provider" }), "This chat borrowed Dana's MacBook. It can reach the AI provider and nothing else.");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "internet" }), "This chat borrowed Dana's MacBook. It can reach the internet.");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: null }), "This chat borrowed Dana's MacBook.");
+  assert.equal(leaseLine({ limit: "provider" }), "This chat borrowed one of your computers. It can reach the AI provider and nothing else.", "a computer with no name is never shown by its id");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "something new" }), "This chat borrowed Dana's MacBook.", "a limit this app does not know says nothing");
+  assert.equal(leaseLine({ computer: "Dana's MacBook", limit: "provider" }, "Kit"), "Kit borrowed Dana's MacBook. It can reach the AI provider and nothing else.");
+  assert.equal(leaseLine(null), "");
+});

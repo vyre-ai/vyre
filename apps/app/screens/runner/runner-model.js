@@ -61,6 +61,17 @@ export function placingLine(e) {
   return `${n || "Your computer"} did not answer. Running on the server instead.`;
 }
 
+/** The words for a network limit a lender set (`lease.borrowed`.limit); a limit this app does not know says nothing. */
+const LIMIT_WORDS = /** @type {Record<string, string>} */ ({ provider: "It can reach the AI provider and nothing else.", internet: "It can reach the internet." });
+
+/** The one line when a chat borrows a computer (`lease.borrowed`): who, which computer, what limit holds. `who` is the assistant's or chat's name when the screen knows it. @param {{ computer?: string | null, limit?: string | null } | null | undefined} e @param {string} [who] */
+export function leaseLine(e, who = "This chat") {
+  if (!e) return "";
+  const n = String(e.computer || "").trim();
+  const limit = e.limit ? LIMIT_WORDS[String(e.limit)] || "" : "";
+  return `${who} borrowed ${n || "one of your computers"}.${limit ? ` ${limit}` : ""}`;
+}
+
 /** The limits a person may set. Percent of one core's worth is how the box counts; memory is in megabytes. @typedef {{ enabled: boolean, pluggedInOnly: boolean, cpuPercent: number, memoryMb: number }} MacSettings */
 export const LIMIT_RANGE = { cpuPercent: [10, 100], memoryMb: [512, 65536] };
 export const DEFAULT_SETTINGS = /** @type {MacSettings} */ ({ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
