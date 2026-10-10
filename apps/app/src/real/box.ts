@@ -3,6 +3,7 @@
 // it is on only when EXPO_PUBLIC_VYRE_MOCK=1; otherwise a screen shows what the box answers, an empty
 // state when it has nothing, and an error line when it cannot be reached. Never sample people.
 
+import { REUSE_OPS } from "../../../../lib/one-yes-ops.js";
 import { call } from "../api/box";
 import { peerCall, peerWanted } from "./peer";
 import { claimBlocked } from "../../screens/shell/rc";
@@ -29,7 +30,7 @@ export class BoxError extends Error {
 
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
 /** A reveal, a copy or a code asks for the five-minute reuse (lib/one-yes.js REUSE_OPS). */
-const REUSE_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
+const REUSE_TOOLS = new Set<string>(REUSE_OPS);
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
 /**
