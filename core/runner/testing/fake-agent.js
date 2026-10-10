@@ -119,6 +119,11 @@ async function handle(line) {
     });
     out({ type: "hook", ...res, diag });
     out({ type: "result" });
+  } else if (cmd === "serve") {
+    // a dev server of the session: answers every request with what it was asked, so a preview can be told from a broken one
+    const port = Number(rest[0]);
+    const srv = http.createServer((req, res) => { let b = ""; req.on("data", d => { b += d; }); req.on("end", () => { res.writeHead(200, { "content-type": "text/plain", "x-dev": "yes" }); res.end(`dev:${req.method}:${req.url}:${req.headers.host}:${b}`); }); });
+    srv.listen(port, "127.0.0.1", () => { out({ type: "serving", port }); out({ type: "result" }); });
   } else if (cmd === "seedcheck") {
     // what the program finds where its resume looks: the agent home's transcript of session `rest[0]`, in the folder this program sees as its own
     const f = path.join(home, ".claude", "projects", process.cwd().replace(/[^A-Za-z0-9]/g, "-"), rest[0] + ".jsonl");

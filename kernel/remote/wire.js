@@ -26,7 +26,7 @@ export const CALLS = Object.freeze({
   // A member's computer running one of this Space's sessions (team/archive/work-journals/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
   // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
   leases: ["issue", "renew", "use", "reinstate"],
-  lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http"],
+  lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "preview", "wait", "http"],
   // The sidebar each member arranges (SPEC-0.3.0 part 9): a SERVICE the home registers (core/sidebar/service.js). A member reads the Space's default with their own list on top and changes their own list; only the Space's owner or admin role changes the default.
   sidebar: ["get", "edit", "team"],
 });

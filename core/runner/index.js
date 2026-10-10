@@ -9,6 +9,7 @@ import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
 import { createFolders } from "./folders.js";
 import { createResumeLent } from "./resume-lent.js";
+import { startPreviewPump } from "./preview-pump.js";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -181,7 +182,7 @@ export default {
         const folder = spec.folder ? folders.resolve(String(spec.folder)) : null;
         // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
         const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules(), ...(harnessThere() ? { plugin: path.join(VYRE_ROOT, "harness") } : {}) } : undefined;
-        h = await r.start({ session, resume: Boolean(resume), ...(folder ? { folder } : {}), ...(spec.seed ? { seed: spec.seed } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
+        h = await r.start({ session, resume: Boolean(resume), ...(folder ? { folder } : {}), ...(spec.preview === true && spec.pipe === true ? { preview: true } : {}), ...(spec.seed ? { seed: spec.seed } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
         // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
@@ -192,6 +193,11 @@ export default {
       }
       // A chat's process (lent spawn, contracts/lent-spawn.md): its bytes ride `lent.pipe` between the SDK on the home and this sandbox. The pump ends itself once the home has heard the process end.
       if (spec.pipe === true && typeof p.pipe === "function" && h.child) { const pump = startPump({ child: h.child, session, pipe: i => p.pipe(i), isFrozen: () => r.frozenNow, onFenced: () => { r.fence(session).catch(() => {}); }, onKill: () => { r.stop(session).catch(() => {}); } }); pumps.set(session, pump); pump.done.finally(() => { if (pumps.get(session) === pump) pumps.delete(session); }); }
+      // a dev server the chat starts may be previewed from the home (lent.preview): the pump runs while the program does
+      if (spec.pipe === true && spec.preview === true && typeof p.preview === "function" && h.child) {
+        const pv = startPreviewPump({ session, poll: i => p.preview(i), run: job => r.previewRequest(session, job), onFenced: () => { r.fence(session).catch(() => {}); } });
+        h.child.once("close", () => pv.stop());
+      }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
     };
     ctx.tool("runner.start", {

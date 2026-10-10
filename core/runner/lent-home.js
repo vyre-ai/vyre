@@ -24,6 +24,7 @@ import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
 import { createPipes } from "./pipe-home.js";
+import { createPreviews } from "./preview-home.js";
 import { within, withinOrThrow } from "../../lib/within.js";
 import { newPrefixedId } from "../../lib/id.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
@@ -77,6 +78,8 @@ export function createLentHome(o) {
   const pipes = o.pipes || createPipes({ now });
   /** The key each computer lent under, as it last said it (in `status`): the Offers are made for the computer and its key. @type {Map<string, string>} */ const keys = new Map();
   /** The thread each spawned session was opened under (`spawn({ thread })`): the key of the tool socket the daemon holds for it. A row older than the rule has a session id that is not its thread id, so Vyre's tools are routed by this, never by the session. @type {Map<string, string>} */ const threads = new Map();
+  /** Previews of dev servers on lenders' computers: one loopback bridge per session and port (preview-home.js). */
+  const previews = createPreviews();
   /** Tool calls that outlast one wire call (lent.http answers `{ pending }` after HTTP_FIRST_MS and the lender asks again with the ticket): ticket -> { session, p, at }. A call is kept at most CALL_MAX_MS. @type {Map<string, { session: string, p: Promise<any>, result: any, at: number }>} */ const calls = new Map();
   const HTTP_FIRST_MS = o.httpFirstMs ?? 20_000, CALL_MAX_MS = o.callMaxMs ?? 30 * 60_000, MAX_PENDING = 8;
   const dropCalls = (/** @type {string} */ session) => { for (const [k, c] of calls) if (c.session === session) calls.delete(k); };
@@ -140,6 +143,7 @@ export function createLentHome(o) {
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
     lent.delete(String(session)); dropCalls(String(session)); owed.add(String(session));   // the thread stays until the server has carried the chat on (resumeOwed): the loader needs it
+    previews.close(String(session));
     pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
     kickResume(String(session));
@@ -230,7 +234,7 @@ export function createLentHome(o) {
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       // A chat spawned on this computer (lent spawn): the SDK's flags replace the Space's bare program, and the runner pumps the process's bytes through `lent.pipe`.
       const asked = pipes.pending(String(i.session), w.device);
-      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", ...(asked.folder ? { folder: asked.folder } : {}) };
+      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true, vyre: typeof o.http === "function", preview: true, ...(asked.folder ? { folder: asked.folder } : {}) };
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
       // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
@@ -320,6 +324,25 @@ export function createLentHome(o) {
      * The lender's side of a lent spawn: bytes of the process it runs for a chat, up; bytes for its stdin, down. A long poll (contracts/lent-spawn.md). Fenced like every write: an old epoch is `conflict`.
      * @param {any} chain @param {{ session: string, epoch: number, up?: any[], exit?: any, ack?: number, wait_ms?: number }} i
      */
+    /**
+     * The lender's pull for a preview (lent.preview): the answers it has, and the requests waiting for it. Fenced like every write.
+     * @param {any} chain @param {{ session: string, epoch: number, replies?: any[], wait_ms?: number }} i
+     */
+    async preview(chain, i) {
+      writer(chain, i && i.session, i && i.epoch);
+      return previews.poll(String(i.session), i);
+    },
+    /**
+     * A loopback port of this box that leads to `port` on the computer running the chat's program, for the previews module to put behind the front. Only the chat's own person, and only while the chat runs on a computer.
+     * @param {{ session: string, port: number, person: string }} i
+     * @returns {Promise<{ port: number }>}
+     */
+    hasPreview(/** @type {string} */ session) { return previews.has(String(session)); },
+    async openPreview(i) {
+      const row = book.get(String(i.session));
+      if (!row || row.where !== "mac" || row.person !== String(i.person)) throw err("not_found", "that chat does not run on one of your computers");
+      return previews.open(String(i.session), Number(i.port));
+    },
     async pipe(chain, i) {
       const w = writer(chain, i && i.session, i && i.epoch);
       return pipes.poll(String(i.session), i.epoch, w.device, i);
@@ -340,6 +363,7 @@ export function createLentHome(o) {
       const proc = pipes.spawn({ session, chat: i.chat || null, title: i.title || null, computer: i.computer || null, person, device, ...(folder ? { folder } : {}), command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
       // a spawn that never started leaves no row saying the chat is on a computer it never reached
       proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && reserved.delete(session) && !lent.has(session)) book.forget(session); });
+      proc.on("close", () => previews.close(session));   // the program ended: its previews close with it
       if (device) nudge(device);
       return proc;
     },
@@ -427,7 +451,7 @@ export function createLentHome(o) {
       calls.set(ticket, c);
       return await settle(session, ticket, c);
     },
-    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    async stop(chain, i) { mine(chain, i && i.session); previews.close(String(i.session)); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },

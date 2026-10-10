@@ -95,6 +95,8 @@ export function createLentClient(o) {
         return r;
       } catch (e) { fence(session, e); throw e; }
     },
+    /** A preview of a dev server on this computer (lent.preview): the requests waiting at the home, and the answers to those it was told before. */
+    preview: async ({ session, replies, wait_ms }) => { try { return await o.invoke("lent.preview", [{ session, epoch: epochs.get(session), ...(replies && replies.length ? { replies } : {}), ...(Number.isInteger(wait_ms) ? { wait_ms } : {}) }]); } catch (e) { fence(session, e); throw e; } },
     /** The nudge: held at the home up to `wait_ms` until it has something for this computer to do (a chat to start), so a ready computer is told at once. The directives are the heartbeat's. */
     wait: ({ wait_ms }) => o.invoke("lent.wait", [{ wait_ms }]),
     /** Told when the home fences a session of this computer. */

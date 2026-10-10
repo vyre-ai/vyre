@@ -157,7 +157,7 @@ export function createRemoteServer(cfg) {
         const target = resolve(request.call);
         if (!target) return fail(id, "no_such_call", "no such call");
         const who = await chainFor(peer, request.call);
-        if (overRate(/^lent\.(beat|pipe|wait|http)$/.test(request.call) ? `${peer.device_key_id}#${request.call.slice(5)}` : peer.device_key_id, who.member, now)) return fail(id, "rate_limited", "too many calls; wait a moment");   // a lender's heartbeat has a window of its own: a burst of file writes must never make a live computer look dead
+        if (overRate(/^lent\.(beat|pipe|wait|http|preview)$/.test(request.call) ? `${peer.device_key_id}#${request.call.slice(5)}` : peer.device_key_id, who.member, now)) return fail(id, "rate_limited", "too many calls; wait a moment");   // a lender's heartbeat has a window of its own: a burst of file writes must never make a live computer look dead
         // A repeat of the same call from the same device, even one that arrives while the first is still running, shares the first one's answer and never runs twice;
         // another device's repeat is its own call.
         const dedupe = `${peer.device_key_id}:${id}`;

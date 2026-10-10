@@ -63,6 +63,12 @@
         "reach": "modules"
       },
       {
+        "name": "runner.preview",
+        "effect": "write",
+        "summary": "preview the dev server a chat started on its computer",
+        "reach": "person"
+      },
+      {
         "name": "runner.folders",
         "effect": "read",
         "summary": "the folders of this computer you have approved for chats",

@@ -7,6 +7,7 @@ import "./testing/require-sandbox.js";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import http from "node:http";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
@@ -282,4 +283,40 @@ test("a chat given a folder of the computer works IN it, is placed only on the c
   w.say("link.woke");
   await waitFor(() => out.some(l => l.includes("did later")), 30_000);
   proc.kill();
+});
+
+test("a dev server the chat starts on the computer can be previewed from the home: the box gets a loopback port, each request is run against the server inside the sandbox, nothing else is reachable", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const proc = w.r.home.spawn({ session: "s_dev", person: BOB, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("serve 4311\n");
+  await waitFor(() => out.some(l => l.includes("\"serving\"")), 20_000);
+  const ask = (/** @type {number} */ port, /** @type {string} */ method, /** @type {string} */ path0, /** @type {string} */ body = "") => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, method, path: path0, headers: { host: "pv-1.example.test", "content-length": String(Buffer.byteLength(body)) } }, res => { let b = ""; res.on("data", d => { b += d; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b })); });
+    req.on("error", reject); req.end(body);
+  });
+  // only the chat's own person, and only while it runs on a computer
+  await assert.rejects(() => w.r.home.openPreview({ session: "s_dev", port: 4311, person: "per_carol" }), (/** @type {any} */ e) => e.code === "not_found");
+  await assert.rejects(() => w.r.home.openPreview({ session: "s_dev", port: 80, person: BOB }), (/** @type {any} */ e) => e.code === "bad_input");
+  const bridge = await w.r.home.openPreview({ session: "s_dev", port: 4311, person: BOB });
+  assert.equal((await w.r.home.openPreview({ session: "s_dev", port: 4311, person: BOB })).port, bridge.port, "one bridge for one port");
+  const a = /** @type {any} */ (await ask(bridge.port, "GET", "/hello?x=1"));
+  assert.equal(a.status, 200);
+  assert.equal(a.body, "dev:GET:/hello?x=1:localhost:4311:", "the server in the sandbox answered, and heard its own host name");
+  assert.equal(a.headers["x-dev"], "yes");
+  const b = /** @type {any} */ (await ask(bridge.port, "POST", "/save", "name=kit"));
+  assert.equal(b.body, "dev:POST:/save:localhost:4311:name=kit");
+  // a port nothing listens on is a 502 in words, not a hang
+  const dead = await w.r.home.openPreview({ session: "s_dev", port: 4399, person: BOB });
+  const c = /** @type {any} */ (await ask(dead.port, "GET", "/"));
+  assert.equal(c.status, 502);
+  assert.match(c.body, /did not answer/);
+  // the program ending closes the previews
+  assert.equal(w.r.home.hasPreview("s_dev"), true);
+  proc.kill();
+  await waitFor(() => !w.r.home.hasPreview("s_dev"), 10_000);
 });

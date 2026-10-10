@@ -48,7 +48,7 @@ export function lentServiceFor(o) {
     const key = (o.keyOf || ((/** @type {any} */ kk, /** @type {string} */ sp) => derivedKey(kk, `lent-store/${sp}`)))(k, space);
     if (!key) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work: ask the owner of this home to set up storage for that space"), { code: "unavailable" }); };
-      return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http"].map(n => [n, refuse])));
+      return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http", "preview"].map(n => [n, refuse])));
     }
     const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
@@ -83,6 +83,12 @@ export function lentPlacements(registry, extra = {}) {
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
     /** A chat that began on this server goes to one of the person's computers: { thread, person } -> { where: "mac", device, epoch }. The daemon says how (it holds the server's own store). */
     ...(typeof extra.adopt === "function" ? { adopt: extra.adopt } : {}),
+    /** A loopback port of this box that leads to `port` on the computer running the chat's program (preview-home.js). */
+    openPreview: async (/** @type {string} */ space, /** @type {{ thread: string, port: number, person: string }} */ i) => {
+      const h = homeOf(space); const hit = h ? h.book.find(i.thread, i.person) : null;
+      if (!h || !hit || hit.where !== "mac") throw Object.assign(new Error("that chat does not run on one of your computers"), { code: "not_found" });
+      return h.openPreview({ session: hit.session, port: i.port, person: i.person });
+    },
     /** The folders the person's ready computers offer to chats. */
     foldersOf: (/** @type {string} */ space, /** @type {string} */ person) => { const h = homeOf(space); return h && typeof h.foldersOf === "function" ? h.foldersOf(person) : []; },
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },

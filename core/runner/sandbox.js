@@ -63,6 +63,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {Record<string, string|undefined>} [env]
  * @property {string[]} [readOnly]  extra folders the tools need to read (the node install, the agent's own folder)
  * @property {{ port?: number, socket?: string }} proxy  where the egress proxy is: a loopback port (macOS) or a unix socket (Linux)
+ * @property {{ dir?: string }} [preview]  a dev server the session starts may be previewed: Linux binds `dir` in as /run/preview (the in-sandbox shim listens there and forwards to the server's loopback port); macOS lets the session listen on loopback
  * @property {string} [folder]  a folder of this computer the person approved for chats (core/runner/folders.js): the session works IN it, writing to it directly, and the workspace is not its folder
  * @property {number} [innerPort]  Linux: the loopback port the in-sandbox shim listens on (default 18443)
  * @property {string} [space]  Windows: the space the container is named for
@@ -107,6 +108,8 @@ export function seatbeltProfile(o) {
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
   ];
   if (o.proxy.port) lines.push(`(allow network-outbound (remote ip "localhost:${o.proxy.port}"))`);
+  // a preview of a dev server the session starts: it may listen on loopback and be reached from loopback, and still reach nothing else (its outbound network is the proxy and the door only)
+  if (o.preview) lines.push('(allow network-bind (local ip "localhost:*"))', '(allow network-inbound (local ip "localhost:*"))');
   if (o.vyre) {
     // The session may open the door and see that it is there: a hook looks at VYRE_SOCKET before it trusts it (harness/lib/vyre.js socketThere), and without this the Harness hooks on a Mac thought Vyre was not set up
     // and did nothing, the security floor among them. Only the socket and the folders on its way: never a listing.
@@ -165,8 +168,9 @@ function planLinux(o) {
     "--bind", ws, "/work", ...(o.folder ? ["--bind", checkBind(o.folder, o.home), "/work/files"] : []), "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...(o.vyre ? ["--ro-bind", o.vyre.socket, "/run/vyre.sock"] : []),
+    ...(o.preview && o.preview.dir ? ["--bind", o.preview.dir, "/run/preview"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
-    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
+    node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", ...(o.preview && o.preview.dir ? ["--preview", "/run/preview/p.sock"] : []), "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
   ];
   // The deny-list filter goes in over fd 3 (see launch()).
   const sc = seccompFilter();

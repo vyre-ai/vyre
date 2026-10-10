@@ -101,6 +101,23 @@ export function registerPlaceTools(ctx, d) {
     },
   });
 
+  ctx.tool("runner.preview", {
+    description: "Preview the dev server a chat started on its computer: the chat's program runs on one of your computers, and this gives the server there a preview card here. Input: thread, port (1024 to 65535), title (optional), space (optional). Answers { preview } with the card's id.",
+    input: obj({ thread: str, port: { type: "integer" }, title: str, space: str }, ["thread", "port"]),
+    run: async (i, meta) => {
+      const thread = threadOf(i);
+      const { person } = await who(meta, i.space);
+      const p = placements();
+      if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server", "unavailable");
+      const space = i.space || (p.spaces().find((/** @type {string} */ sp) => p.find(sp, thread, person)) || p.spaces()[0]);
+      if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      let bridge; try { bridge = await p.openPreview(space, { thread, port: Number(i.port), person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot be previewed now"), /** @type {any} */ (e).code === "bad_input" ? "bad_input" : /** @type {any} */ (e).code === "quota" ? "quota" : "not_found"); }
+      const r = /** @type {any} */ (await ctx.call("previews.open", { title: String(i.title || "Preview").slice(0, 80), port: bridge.port, thread }));
+      if (r && r.error) throw refuse(String(r.error.message || "the preview could not be opened"), "unavailable");
+      return { preview: r && r.data && (r.data.id || r.data.preview || r.data) };
+    },
+  });
+
   ctx.tool("runner.why-not", {
     description: "Why a chat's session is not running on a computer: one reason code, or null when it runs where it was meant to. Input: thread.",
     input: obj({ thread: str, space: str }, ["thread"]),

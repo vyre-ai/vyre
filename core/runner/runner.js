@@ -17,6 +17,8 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import net from "node:net";
+import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
 import { driverFor, SLOWER_LINE, SWAP_LINE, SIZES_LINE, swapInfo } from "./workspace.js";
@@ -194,7 +196,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, chat?: string, folder?: string, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, folder?: string, preview?: boolean, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
@@ -237,6 +239,9 @@ export function createRunner(o) {
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;
+    // A preview of a dev server the session starts (preview-home.js): Linux binds a private folder in for the shim's socket; a Mac lets the session listen on loopback
+    const previewDir = s.preview && platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".pv") : undefined;
+    if (previewDir) fs.mkdirSync(previewDir, { recursive: true, mode: 0o700 });
     const where = await eg.listen(sock ? { socket: sock } : {});
     // A chat's session reaches Vyre's tools through the home (lent.http): its Vyre MCP server speaks to this door as VYRE_SOCKET
     const door = s.vyre && typeof s.vyre.call === "function" ? await openVyreDoor({ socket: path.join(os.tmpdir(), `vyre-door-${crypto.randomBytes(6).toString("hex")}.sock`), call: s.vyre.call }) : null;
@@ -261,7 +266,7 @@ export function createRunner(o) {
         if (s.vyre.plugin) { args = args.map(x => (x === HARNESS_MARK ? s.vyre.plugin : x)); penv = { ...env, VYRE_SOCKET: sock, VYRE_THREAD: s.session }; }
       }
       args = dropMark(args);
-      return plan({ platform, space: o.space, launcher, internet, workspace: work, ...(s.folder ? { folder: s.folder } : {}), command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
+      return plan({ platform, space: o.space, launcher, internet, workspace: work, ...(s.folder ? { folder: s.folder } : {}), ...(s.preview ? { preview: previewDir ? { dir: previewDir } : {} } : {}), command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
     };
     let p, doorUsed = door;
     try { p = planWith(door); }
@@ -276,7 +281,7 @@ export function createRunner(o) {
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
     try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: startedOf(Number(child.pid)) || undefined, session: s.session }), { mode: 0o600 }); } catch { /* the sweep at the next start has nothing to read */ }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, chat: s.chat || null, bound: Boolean(s.folder), child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
+    const h = { session: s.session, chat: s.chat || null, bound: Boolean(s.folder), preview: s.preview ? { dir: previewDir } : null, child, eg, door: doorUsed, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -324,6 +329,7 @@ export function createRunner(o) {
     try { await h.eg.close(); } catch {}
     if (h.door) { try { await h.door.close(); } catch {} }
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
+    if (h.preview && h.preview.dir) { try { fs.rmSync(h.preview.dir, { recursive: true, force: true }); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     // why it ended, for the Space's home: the person stopped it, the program finished by itself, the program died, or it was handed over / fenced (the home already knows)
     emit({ type: "stopped", session: h.session, why: h.released ? "released" : h.stopped ? h.why : h.exit && h.exit.code === 0 ? "finished" : "crashed" });
@@ -400,6 +406,32 @@ export function createRunner(o) {
     async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
     moveToServer,
     /** The sessions running here, with what each uses now. */
+    /**
+     * One request of a preview, run against the dev server in a session's sandbox (preview-home.js): the answer for the home, or an error line. A Mac reaches the server on its own loopback; Linux goes through the
+     * shim's socket, naming the port on the first line. At most one megabyte each way; the session's own server is the only thing reachable.
+     * @param {string} session @param {{ id: string, port: number, method: string, path: string, headers: Record<string, string>, body?: string }} job
+     */
+    previewRequest(session, job) {
+      const h = live.get(session);
+      if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here"), { code: "not_found" }));
+      const port = Number(job.port);
+      if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535"));
+      const body = job.body ? Buffer.from(String(job.body), "base64") : Buffer.alloc(0);
+      return new Promise((resolve, reject) => {
+        /** @type {any} */ const opts = { method: String(job.method || "GET"), path: String(job.path || "/"), headers: { ...job.headers, host: `localhost:${port}`, "content-length": String(body.length) }, timeout: 30_000 };
+        if (h.preview.dir) opts.createConnection = () => { const c = net.connect(path.join(h.preview.dir, "p.sock")); c.write(`PORT ${port}\n`); return c; };
+        else { opts.host = "127.0.0.1"; opts.port = port; }
+        const req = http.request(opts, res => {
+          /** @type {Buffer[]} */ const parts = []; let n = 0;
+          res.on("data", c => { n += c.length; if (n > 1024 * 1024) { res.destroy(); reject(new Error("the answer is too large for a preview")); } else parts.push(c); });
+          res.on("end", () => { /** @type {Record<string, string>} */ const hd = {}; for (const [k, v] of Object.entries(res.headers)) if (typeof v === "string") hd[k] = v; else if (Array.isArray(v)) hd[k] = v.join(", "); resolve({ status: res.statusCode || 502, headers: hd, body: Buffer.concat(parts).toString("base64") }); });
+          res.on("error", reject);
+        });
+        req.on("timeout", () => req.destroy(new Error("the dev server did not answer in time")));
+        req.on("error", e => reject(new Error(`the dev server on that port did not answer (${/** @type {any} */ (e).code || e.message})`)));
+        req.end(body);
+      });
+    },
     info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, ...(h.bound ? { bound: true } : {}), pid: h.child.pid, paused: frozen.has("pause"), ...usage.sample(Number(h.child.pid)) })); },
     /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
     pause() { freeze("pause"); },
