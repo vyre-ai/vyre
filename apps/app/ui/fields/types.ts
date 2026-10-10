@@ -5,6 +5,8 @@ export type FieldMode = "view" | "edit" | "compact";
 /** What the kernel's props leave out and a screen knows (deck/ui/fields.js Env): who the actors are, what a link points at, the clock, where a link goes, the stage menu a rule narrows. */
 export type FieldEnv = {
   actors?: Who[];
+  /** The signed-in person's actor id, so an actor cell can say "You". */
+  me?: string;
   links?: Record<string, { title: string; type?: string }>;
   now?: number;
   open?: (urn: string) => void;
