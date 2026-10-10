@@ -220,6 +220,8 @@ async function page(world) {
 }
 
 const settle = ms => new Promise(r => setTimeout(r, ms));
+/** Wait for what the test reads to be true (up to 10 s), instead of sleeping a fixed time and hoping a loaded machine has finished: a fixed 30 ms read inbox.at(-1) before the reply arrived. */
+const until = async (fn, ms = 10_000) => { const end = Date.now() + ms; for (;;) { const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("what the test waits for never happened"); await new Promise(r => setTimeout(r, 10)); } };
 
 test("setup: the page resolves the offer, sees the box's check words, and is admitted only with its own key", async t => {
   const w = await world(t);
@@ -348,7 +350,7 @@ test("setup: relay.setup.end drops the device, its presence key and its channel,
   assert.equal((await w.d.registry.call("relay.setup.end", {}, "cli")).error?.code, "no_such_tool");
   const r = await w.d.registry.call("relay.setup.end", { reason: "claimed" }, "module:onboard");
   assert.deepEqual(r.data, { ended: true });
-  await settle(100);
+  await until(() => a.channel.closed);
   assert.equal(a.channel.closed, true, "the channel is closed");
   assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null, "the device row is gone");
   assert.equal((await w.d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.id === enrolled).length, 0, "and its presence key with it");
@@ -367,7 +369,7 @@ test("setup: a new install code discards the device of an earlier unclaimed sess
   const two = await page(w);
   const status = await two.begin();
   assert.equal(status.state, "waiting");
-  await settle(100);
+  await until(() => a.channel.closed);
   assert.equal(a.channel.closed, true, "the earlier session's channel was closed");
   assert.equal((await w.d.registry.call("relay.device.presence", { id: a.reply.device }, "module:test")).data.key, null);
   await assert.rejects(one.connect({ keys: a.keys, pair: false }), /closed/, "the old page is out");
@@ -403,13 +405,13 @@ test("setup: a second server that used the same code first makes the offer conte
   const inbox = [];
   ws.onmessage = e => inbox.push(JSON.parse(String(e.data)));
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
-  await settle(30);
+  await until(() => inbox.length >= 1);   // the box's challenge
   ws.send(JSON.stringify({ t: "auth", pub: other.pub.toString("base64url"), sig: wire.signRoute(other.priv, wire.authMessage(route, Buffer.from(inbox[0].n, "base64url"))).toString("base64url") }));
-  await settle(30);
+  await until(() => inbox.length >= 2);   // the answer to the auth
   const loc = wire.setupDerive("loc", p.secret).toString("base64url");
   const theirRecord = wire.ticketSeal(p.secret, JSON.stringify({ v: 1, name: "impostor" }));
   ws.send(JSON.stringify({ t: "setup", loc, record: theirRecord, mac: wire.ticketMac(p.secret, theirRecord).toString("base64url"), exp: Date.now() + 3_600_000 }));
-  await settle(30);
+  await until(() => inbox.length >= 3);   // the answer to the setup record
   assert.equal(inbox.at(-1).status, 200, "they got there first");
   const status = await p.begin();
   assert.equal(status.state, "contested", "our box hears 409 and says so, for the install script to print");
@@ -425,8 +427,7 @@ test("setup: a hello for a box with no setup session is refused, and so is a pla
   const w = await world(t);
   const p = await page(w);
   await w.d.registry.call("relay.enable", {}, "cli", { proof: { method: "passkey", id: "x" } });
-  await settle(100);
-  const status = (await w.d.registry.call("relay.status", {}, "cli")).data;
+  const status = await until(async () => { const d = (await w.d.registry.call("relay.status", {}, "cli")).data; return d && d.route ? d : null; });
   assert.deepEqual(status.tunnel, { url: null, connected: false }, "no public door until an address is set");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "none");
   // The relay is up but no setup was begun; nothing is registered for this code, so the page finds no offer at all.
@@ -467,7 +468,9 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
     process.env.VYRE_SETUP_CODE = code;
     if (at !== undefined) process.env.VYRE_SETUP_CODE_AT = at; else delete process.env.VYRE_SETUP_CODE_AT;
     const w = await world(t);
-    await settle(150);
+    // the boot takes the code out of the environment whether it starts the setup or refuses the stamp: that is the signal it has decided
+    await until(() => process.env.VYRE_SETUP_CODE === undefined);
+    if (expect === "waiting") await until(async () => (await w.d.registry.call("relay.setup.status", {}, "cli")).data.state === "waiting");
     const st = (await w.d.registry.call("relay.setup.status", {}, "cli")).data;
     assert.equal(st.state, expect, `stamp ${at}`);
     assert.equal(process.env.VYRE_SETUP_CODE, undefined, "taken out of the environment either way");
