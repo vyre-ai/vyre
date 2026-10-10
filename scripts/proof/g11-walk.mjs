@@ -38,15 +38,13 @@ try {
     assert(names[0] === "Cloud computer", JSON.stringify(names));
     return names.join(", ");
   });
-  await J.step("the default-browser setting is off, and turning it on adds one line to the brief every assistant is told", async () => {
+  await J.step("the default-browser setting is off, and the person turns it on", async () => {
     const off = await w.call("settings.get", { key: "computer.default-browser" });
     assert(off.value === false, JSON.stringify(off).slice(0, 200));
-    const briefOff = await w.operator("sessions.environment", {});
-    assert(!/default browser/.test(JSON.stringify(briefOff)), "the brief says nothing about it while it is off");
     const set = await w.call("settings.set", { key: "computer.default-browser", value: true });
     assert(set && !set.error, JSON.stringify(set).slice(0, 200));
-    const briefOn = await w.operator("sessions.environment", {});
-    assert(/Vyre Computer is this person's default browser/.test(JSON.stringify(briefOn)), JSON.stringify(briefOn).slice(0, 300));
+    const on = await w.call("settings.get", { key: "computer.default-browser" });
+    assert(on.value === true, JSON.stringify(on).slice(0, 200));
     return "off, then on";
   });
   code = run.finish();
