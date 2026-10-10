@@ -11,6 +11,7 @@
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { helloOf } from "../remote/proof.js";
+import { credentialUrn } from "../contracts/index.js";
 import { leasedUse, credentialAction, safePath, canonicalPath, requestBind, normalizeRoute, routeAllows } from "../seal/uses.js";
 
 /**
@@ -117,7 +118,7 @@ export function createLeases(cfg) {
       // kernel's grants as before: a write method asks.
       if (!(hit.provider && INFERENCE.some(a => a.method === method && (a.path === path)))) {
         const action = credentialAction("api", method);
-        const d = await cfg.authorize({ chain, action, resource: `vyre://${cfg.space}/credential/${encodeURIComponent(hit.ref)}` });
+        const d = await cfg.authorize({ chain, action, resource: credentialUrn(cfg.space, hit.ref) });
         if (d.effect !== "allow") throw new KernelError(d.effect === "ask" ? d.reason : "not_found", "that credential is not open to this chain");
         if (cfg.enforce) cfg.enforce(chain, d);
       }
@@ -125,7 +126,7 @@ export function createLeases(cfg) {
         leaseOf: s => sessions.get(s) ?? null,
         check: ({ chain: c, id }) => sealer.lease.check({ chain: c, id }),
         resolve: cfg.resolve,
-        emit: e => { try { cfg.log.append(kernelChain(), { type: e.type, sv: 1, subject: `vyre://${cfg.space}/credential/${encodeURIComponent(e.ref)}`, data: { device: e.device, route: e.route, method, path, session: e.session }, vis: "owner", red: "internal" }); } catch { /* the use already happened; the log is best effort here */ } },
+        emit: e => { try { cfg.log.append(kernelChain(), { type: e.type, sv: 1, subject: credentialUrn(cfg.space, e.ref), data: { device: e.device, route: e.route, method, path, session: e.session }, vis: "owner", red: "internal" }); } catch { /* the use already happened; the log is best effort here */ } },
         chain,
       });
       return run(() => go({ ref: hit.ref, session: i.session, route, method, path }));

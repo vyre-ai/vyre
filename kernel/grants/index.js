@@ -863,7 +863,7 @@ export function createGrantsStore(cfg) {
      */
     async mint(module, i) {
       const acts = Array.isArray(i.actions) ? i.actions.map(String) : [], res = i.resource && i.resource.prefix, list = mints.get(module) || [];
-      if (!acts.length || typeof res !== "string" || !String(i.source).startsWith(`${module}:`) || !list.some(e => acts.every(a => e.actions.includes(a)) && containedPrefix(res, `vyre://${cfg.space}/${e.prefix}`))) throw new KernelError("not_allowed", `${module} may not make that grant`);
+      if (!acts.length || typeof res !== "string" || res.includes("*") || !String(i.source).startsWith(`${module}:`) || !list.some(e => acts.every(a => e.actions.includes(a)) && containedPrefix(res, `vyre://${cfg.space}/${e.prefix}`))) throw new KernelError("not_allowed", `${module} may not make that grant`);
       if (!i.subject || !["actor", "group"].includes(i.subject.kind)) throw new KernelError("bad_input", "a made grant has an actor or a group for its subject");
       const k = kernelChain(), actor = i.subject.actor;
       if (actor && !actors.has(actorKey(actor))) { actors.add(actorKey(actor)); await note(k, "actor.added", urn("member", actor.id), { actor }); }

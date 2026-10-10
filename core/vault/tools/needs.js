@@ -41,6 +41,9 @@ function itemOf(n, label) {
  * @param {{ ctx: any, vault: import("../vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
+/** The email address an account is known by, from its non-secret fields: the From address, else a username that is one. @param {Record<string, string>} f */
+const addressOf = f => [f && f.from, f && f.username].find(x => typeof x === "string" && /^[^\s@]{1,64}@[^\s@]{1,255}$/.test(x));
+
 export function register({ ctx, vault, tool }) {
   /** Every declared need, from the registry's view of the manifests. */
   const declared = () => {
@@ -142,7 +145,7 @@ export function register({ ctx, vault, tool }) {
       }
       await vault.put({ name: item, kind: n.kind, fields: clean,
         description: String(label || `${p.label} for ${module}: ${n.purpose}`).slice(0, 200),
-        details: { provider: p.name, ...(file && file.filename ? { filename: file.filename } : {}) } }, caller);
+        details: { provider: p.name, ...(file && file.filename ? { filename: file.filename } : {}), ...(addressOf(clean) ? { address: addressOf(clean) } : {}) } }, caller);
       clean = {};
       const { grant } = await vault.grant({ name: item, module }, caller);
       const granted = grant.status === "active";
