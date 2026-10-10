@@ -3977,6 +3977,34 @@
     }
    }
   },
+  "vault-real-sharing": {
+   "title": "Vault: Sharing (real box shapes)",
+   "screens": {
+    "full": {
+     "component": "vault-real-sharing"
+    },
+    "compact": {
+     "component": "vault-real-sharing"
+    },
+    "glance": {
+     "component": "vault-real-sharing"
+    }
+   }
+  },
+  "vault-real-health": {
+   "title": "Vault: Health (real box shapes)",
+   "screens": {
+    "full": {
+     "component": "vault-real-health"
+    },
+    "compact": {
+     "component": "vault-real-health"
+    },
+    "glance": {
+     "component": "vault-real-health"
+    }
+   }
+  },
   "design-changes": {
    "title": "Design changes",
    "screens": {

@@ -26,7 +26,8 @@ const SECTIONS: ["items" | "sharing" | "browsers" | "health", string][] = [["ite
 const nothingHere = (tab: Filter, any: boolean, blocked: boolean) =>
   any ? `No ${{ All: "items", Login: "logins", Key: "keys", Card: "cards" }[tab]} in the vault.` : blocked ? "Add items in Vyre on your phone." : "Add one with the Add button, or bring them in from another app.";
 
-export default function RealVault() {
+/** `start` opens another page first: the gallery draws the Sharing and Health pages from recorded answers. */
+export default function RealVault({ start }: { start?: "items" | "sharing" | "browsers" | "health" } = {}) {
   const phone = usePhone();
   const [tab, setTab] = useState<Filter | "Held">("All");
   const [sharing, setSharing] = useState<Share | null>(null);
@@ -51,7 +52,7 @@ export default function RealVault() {
   const [gen, setGen] = useState<{ length: string; symbols: boolean }>({ length: "20", symbols: true });
   const [problem, setProblem] = useState("");
   const [busy, setBusy] = useState(false);
-  const [section, setSection] = useState<"items" | "sharing" | "browsers" | "health" | "import">("items");
+  const [section, setSection] = useState<"items" | "sharing" | "browsers" | "health" | "import">(start ?? "items");
   const [editing, setEditing] = useState(false);
   const [ssh, setSsh] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});

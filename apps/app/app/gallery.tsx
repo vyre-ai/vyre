@@ -6,6 +6,7 @@ import { BlockScreen, ChatCard, ThemeProvider, Text, useAppearance, useUiTheme }
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
 import fx from "../screens/vault/real-box.fixture.json";
+import sharingFx from "../screens/vault/real-box-sharing.fixture.json";
 import { setBoxOverride } from "../src/real/box";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
@@ -44,11 +45,11 @@ function Sample({ name }: { name: string }) {
   }
   if (name.startsWith("vault-real")) {
     // The Vault as it reads a real box: answers recorded from a real vyred (scripts/capture-vault-fixtures.mjs). `vault-real-health` opens on the Health page.
-    const answers = fx as Record<string, { data?: unknown; error?: { code: string; message: string } }>;
+    const answers = { ...fx, ...(name === "vault-real-sharing" ? sharingFx : {}) } as Record<string, { data?: unknown; error?: { code: string; message: string } }>;
     // The app is a native window: stand in for the Mac shell so the screen is the one a person has (Add, Share and Reveal are there, not "on your phone").
     (window as unknown as { __vyreShell?: unknown }).__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} };
     setBoxOverride(async (tool) => { const a = answers[tool]; if (!a) return {}; if (a.error) throw Object.assign(new Error(a.error.message), { code: a.error.code }); return a.data; });
-    return <RealVault />;
+    return <RealVault start={name === "vault-real-sharing" ? "sharing" : name === "vault-real-health" ? "health" : undefined} />;
   }
   if (name === "vault-emergency") {
     const day = 86_400_000, t0 = Date.parse("2026-10-04T00:00:00Z");

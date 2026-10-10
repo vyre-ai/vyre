@@ -1,0 +1,7 @@
+{
+  "vault.pass.list": { "data": { "passes": [{ "id": "p1", "holder": "dana", "person": "Dana Smith", "items": ["Stripe-key"], "note": "Read reports", "mode": "relayed", "expires": "2026-10-31T00:00:00Z" }], "held": [{ "id": "h1", "owner": "kit", "items": ["Drive"], "mode": "relayed" }] } },
+  "vault.pending": { "data": { "grants": [{ "id": "g1", "name": "Gmail", "module": "watch", "watcher": "intake", "by": "agent:kit", "at": 1 }], "passes": [], "agentGrants": [], "mcpReveals": [{ "id": "r1", "item": "Stripe-key", "pass": "Dana's Claude", "why": "to check a refund" }], "people": [], "accepts": [] } },
+  "vault.vaults.list": { "data": { "vaults": [{ "id": "v1", "name": "Acme-client", "role": "owner", "members": [{ "name": "Dana Smith", "role": "owner", "fingerprint": "7PAZ HHH8 W8YG 7N79 H9B1" }, { "name": "Lee Park", "role": "member", "fingerprint": "2K4M Q8RT 91XZ 55AB C0DE" }], "items": [{ "name": "Acme-client/Stripe" }, { "name": "Acme-client/Gmail", "rotate": true }], "conflicts": 0 }] } },
+  "vault.people": { "data": { "people": [{ "name": "Lee Park", "fingerprint": "2K4M Q8RT 91XZ 55AB C0DE", "verified": true }, { "name": "Dana Smith", "fingerprint": "7PAZ HHH8 W8YG 7N79 H9B1", "verified": false }] } },
+  "vault.emergency.list": { "data": { "contacts": [{ "person": "Dana Smith", "wait_ms": 604800000, "state": "standby" }] } }
+}
