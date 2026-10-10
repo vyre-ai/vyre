@@ -95,7 +95,7 @@ test("a team chat's open turn is reopened after a restart, in the team Space's o
 });
 
 test("a model's tool with no `space` in a team turn lands in the chat's Space, never the home's; a tool that does not declare it may is refused in words", { timeout: 150_000 }, async t => {
-  const { w, as, lines } = await world(t);
+  const { w, as, lines, firm } = await world(t);
   const made = await as(ANA, "create", { title: "Team default space", people: [BEN], agents: ["assistant"] });
   await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
   /** The assistant's words in the chat so far. */
@@ -103,7 +103,7 @@ test("a model's tool with no `space` in a team turn lands in the chat's Space, n
   const waitFor = async (/** @type {RegExp} */ re, /** @type {string} */ what) => { let said = /** @type {string[]} */ ([]); await until(async () => { said = await assistantSaid(); return said.some(x => re.test(x)); }, what).catch(e => { throw new Error(`${e.message} :: ${said.join(" || ").slice(0, 900)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-5).join(" | ")}`); }); return said.find(x => re.test(x)) || ""; };
   await as(ANA, "send", { chat: made.chat, text: "vyre work.chat.list {}" });
   const listed = await waitFor(/chats|error/, "the model's work.chat.list answer");
-  assert.ok(listed.includes(String(made.chat)), `the team's chat is in what the model's work.chat.list returned (the team Space's list, not the home's): ${listed.slice(0, 500)}`);
+  assert.ok(listed.includes(`vyre://${firm.space}/chat-record/`), `the chat records the model's work.chat.list returned are the team Space's, not the home's: ${listed.slice(0, 300)}`);
   assert.ok(!JSON.stringify((await w.tool("work.chat.list", {})).data).includes(String(made.chat)), "and the home's own list does not have it");
   await as(ANA, "send", { chat: made.chat, text: "vyre threads.list {}" });
   await waitFor(/not_in_team_space/, "the refusal in words");
