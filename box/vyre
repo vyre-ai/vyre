@@ -1351,6 +1351,8 @@ sp_attach_net() {
   hdock network inspect "$net" >/dev/null 2>&1 || { MSG="the Space's network does not exist"; return 1; }
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
     hdock network connect --alias "$alias" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
+    # Docker turns forwarding on in the container's namespace at each join: off again right here, for every join path (pub-up checks it once more before a server starts)
+    _pj=$(sp_pid 2>/dev/null) && timeout 20 nsenter -t "$_pj" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
   fi
 }
 # sp_fw_del NAME: only while no container of the project runs; removes exactly the rules carrying vyre:<name>, found by listing the chain, in the namespace of the pid current now.
@@ -2333,6 +2335,8 @@ sp_pub_up_run() {
   sp_in_apply "$m" 0 || return 1
   # the vyre container sits on the networks of several servers at once: it must not route between them (a server could then reach another's address through it)
   _pidf=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  # Docker can turn forwarding on in the container's namespace when it joins another network (Docker 29 does); this helper turns it off again, then checks it.
+  timeout 20 nsenter -t "$_pidf" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
   [ "$(timeout 20 nsenter -t "$_pidf" -n cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || true)" = 0 ] || { MSG="the vyre container forwards packets between its networks, so no server was started"; return 1; }
   sp_app_dc "$m" up -d >/dev/null 2>&1 || { MSG="the server did not start"; return 1; }
   if ! sp_app_wait "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; MSG="the server did not become healthy"; return 1; fi
