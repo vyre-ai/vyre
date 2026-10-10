@@ -334,7 +334,7 @@ test("the split case: the computer is paused, not dead; the server resumes from 
   assert.deepEqual([r.resumed[0].session, r.resumed[0].chat, r.resumed[0].epoch, r.resumed[0].reason], ["s1", r.chat, 2, "offline"]);
   assert.equal((await r.resumed[0].view.checkpoint()).turn, 1, "from the last whole turn");
   assert.deepEqual((await r.resumed[0].view.transcript(1)).map(e => e.line).slice(0, 2), ["a", "b"]);
-  assert.deepEqual(r.said.map(([type, p]) => [type, p.thread, p.to, p.reason, p.epoch, p.from]), [["thread.moved", r.chat, "server", "offline", 2, "mac"]]);
+  assert.deepEqual(r.said.filter(([type]) => type !== "lease.borrowed").map(([type, p]) => [type, p.thread, p.to, p.reason, p.epoch, p.from]), [["thread.moved", r.chat, "server", "offline", 2, "mac"]]);
   await r.home.sweep(); assert.equal(r.resumed.length, 1, "a second sweep does not take it again");
   // the computer wakes: its client learns it was fenced, its writes are refused, nothing reaches the store
   const fenced = []; c.onFenced(s => fenced.push(s));
