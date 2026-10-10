@@ -935,6 +935,7 @@
  "test/site-learning-wire.test.js": 2,
  "test/site-v2.test.js": 11,
  "test/site-words.test.js": 1,
+ "test/stage-gate-model-paths.test.js": 1,
  "test/standin-directory.test.js": 1,
  "test/standin-state.test.js": 1,
  "test/stop-quiet.test.js": 5,
