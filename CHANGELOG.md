@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(appmods): `appmods.publish.install` refuses a name another Space published first (code `exists`), so a second Space on the same box cannot swap the first Space's running server and host for its own (trust row 60). Dormant while `publish.servers` is off.
 - fix(kernel): a restored Space's grants are adopted once: the boot read kernel/restore.json, adopted it, then removed it, so a crash or a failed removal in between made the next boot adopt again and put the bundle's grants back over everything given or revoked since. The log's space.restored (with the bundle hash) now says it is done, and the file is only removed. Test in kernel/home.test.js (review row 61)
 - chore(team): preflight rule R2 also covers core/spaces/index.js and core/spaces/kernel-members.js (who may see and act on a Space), so a change there needs a trust review like the other security paths.
 - fix(spaces): another person's assistant is that person, never the home's owner. spaces.devices.lend now takes the acting person from the first person on the call's chain, so a member's assistant could not switch the owner's computer lend off (it could before; red-first on a real daemon). A Space list is for that same person on every box, with or without an identity, and a caller with no chain gets nothing unless it is the box local terminal.
