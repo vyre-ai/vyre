@@ -85,7 +85,10 @@ export const MIGRATIONS = [`
   CREATE TABLE watchers_spend (watcher TEXT NOT NULL, day TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0, calls INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
 `, `
   CREATE TABLE watchers_wakes (watcher TEXT NOT NULL, day TEXT NOT NULL, posts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (watcher, day));
-`, `
+`];
+
+/** Steps added after v0.3.0 (test/migrations-append-only.test.js): the list the module runs is [...MIGRATIONS, ...DEF_MIGRATIONS, ...LATE_MIGRATIONS], so a released step never moves. */
+export const LATE_MIGRATIONS = [`
   CREATE TABLE watchers_state (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 `];
 

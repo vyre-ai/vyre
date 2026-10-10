@@ -13,7 +13,7 @@ import path from "node:path";
 import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
 testHooks.wall = OPEN_WALL;
 import { open, migrate } from "../store/index.js";
-import { Runtime, MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeGoogle, TOKEN } from "../../records/testing/fake-google.js";
 import { fakeStripe, KEY } from "../../records/testing/fake-stripe.js";
@@ -24,7 +24,7 @@ const T0 = Date.now(), at = (/** @type {number} */ min) => T0 + min * 60_000;
 function setup(/** @type {any} */ t, /** @type {{ google: any, stripe?: any }} */ { google, stripe }) {
   const root = tempHome(t), db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
-  migrate(db, "watchers", MIGRATIONS);
+  migrate(db, "watchers", [...MIGRATIONS, ...LATE_MIGRATIONS]);
   const dir = path.join(root, "watchers"); fs.mkdirSync(dir);
   // the child reads the real clock for its cursor, so the test's world is placed relative to it
   const clock = { now: Date.now() };
