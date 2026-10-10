@@ -907,7 +907,7 @@ export class Switchboard {
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
       // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
       if (!o.model && provider === "claude") {
-        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
+        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project, person: o.person }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
       // Which of the person's accounts on this provider (an explicit one, the teammate's, the
@@ -1334,7 +1334,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(o.person ? { person: String(o.person) } : {}) });   // the turn's person: their personal skills, not the owner's
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
