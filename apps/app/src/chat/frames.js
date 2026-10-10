@@ -269,6 +269,14 @@ export function createFolder() {
         out.touched.push("a:" + m, "u:" + m);
         break;
       }
+      case "reply-mode": {
+        const mode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
+        const key = "rm:" + f.cur;
+        put(key, "notice", { key, kind: "notice", text: `${f.author ? nameOf(String(f.author)) : "Someone"} set replies to: ${mode === "every" ? "the AI answers every message" : "the AI answers when mentioned"}` });
+        out.layout = true;
+        touch(key);
+        break;
+      }
       case "pin": {
         if (d.on) pins.add(String(d.message)); else pins.delete(String(d.message));
         bump("@pins");

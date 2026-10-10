@@ -190,3 +190,17 @@ test("names learned from elsewhere are shown, a frame that only has an id never 
   assert.equal(g.names()["model:claude/default#1"], "Claude");
   assert.equal(g.assistantName(), "Claude");
 });
+
+test("reply mode: the group knows the mode the log last set, and the folder shows each change as a line", async () => {
+  const { createFolder } = await import("./frames.js");
+  const g = createGroup(V);
+  assert.equal(g.replyMode(), null);
+  const f = createFolder();
+  const frame = (cur, mode, who) => ({ v: 1, id: `f${cur}`, cur, session: "s", turn: null, type: "session.reply-mode", time: cur, corr: null, author: who, data: { mode } });
+  for (const fr of [frame(1, "mention", "person:bob"), frame(2, "every", "person:carol")]) { g.apply(fr); f.apply(fr); }
+  assert.equal(g.replyMode(), "every");
+  const lines = f.rows.filter((r) => r.kind === "notice").map((r) => f.item(r.key).text);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /set replies to: the AI answers when mentioned/);
+  assert.match(lines[1], /set replies to: the AI answers every message/);
+});

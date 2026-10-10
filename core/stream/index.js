@@ -273,6 +273,7 @@ export default {
     tool("stream.typing", "Tell the chat you are typing (on: false: you stopped). Others see \"typing\" for a few seconds; nothing is kept.", obj({ chat: str, on: bool, as: str }, ["chat"]), "typing");
     tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ chat: str, message: str, emoji: str, on: bool, as: str }, ["chat", "message", "emoji"]), "react");
     tool("stream.pin", "Pin a message in a group chat (on: false unpins it).", obj({ chat: str, message: str, on: bool, as: str }, ["chat", "message"]), "pin");
+    tool("stream.reply-mode", "Say when the AI answers in a group chat: mode \"every\" (it answers every message, each on its sender's own AI) or \"mention\" (only on an @mention or a reply to an AI message). The chat shows the change as a line to everyone in it.", obj({ chat: str, mode: str, as: str }, ["chat", "mode"]), "replyMode");
     tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ chat: str, group: str, keep: str, as: str }, ["chat", "group", "keep"]), "keep");
     tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
 

@@ -383,6 +383,7 @@
  "core/stream/log.test.js": 12,
  "core/stream/perf.test.js": 2,
  "core/stream/protocol.test.js": 13,
+ "core/stream/reply-mode.test.js": 2,
  "core/stream/retention.test.js": 3,
  "core/stream/server.test.js": 12,
  "core/stream/stream.test.js": 4,

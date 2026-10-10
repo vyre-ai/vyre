@@ -86,7 +86,7 @@ const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.st
  * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, step?: { id: string, kinds: Map<string, number>, tools: number, failed: number } | null, stepNo?: number, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
  *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
- * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
+ * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, mode?: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
  */
 
 /** @typedef {{ forThread(thread: string): { appendOpen(m?: any): Promise<any>, append(m: any): Promise<any>, beginTurn?(): Promise<any> }, reopenPending(o: { timeoutMs?: number, onGiveUp?: (thread: string, why: string) => any }): Promise<{ resumed: string[], gaveUp: string[] }> }} KernelThreads */
@@ -268,6 +268,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if (d.role === "default") g.dflt = d.who;
         openSpan(g, d.who, f.cur);
       } else if (f.type === "chat.participant-left") { g.people.delete(d.who); g.bots.delete(d.who); closeSpan(g, d.who, f.cur); }
+      else if (f.type === "chat.reply-mode") g.mode = d.mode === "every" || d.mode === "mention" ? d.mode : null;
       if (f.author && (f.type === "chat.user-message" || f.type === "chat.text-delta")) g.previous = f.author;
     }
     return g;
@@ -887,7 +888,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
           if (!id || !botId(id)) throw fail("bad_input", `${t} is not an assistant in this group`);
           if (!to.includes(id)) to.push(id);
         }
-      } else to = whoAnswers({ participants: parts, defaultAssistant: g.dflt, text, mentions: i.mentions, author, previous: g.previous });
+      } else to = whoAnswers({ participants: parts, defaultAssistant: g.dflt, text, mentions: i.mentions, author, previous: g.previous, mode: g.mode ?? null, repliedTo: quote ? quote.author : null });
       if (to.length > 8) throw fail("bad_input", "at most 8 assistants answer one message");
       for (const id of to) {
         const m = g.bots.get(id);
@@ -1034,6 +1035,20 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       join(grp, author);
       const f = logs.get(grp).append("reaction", { message: i.message, emoji, on: i.on !== false }, { author, message: i.message });
       return { session: grp, cur: f.cur };
+    },
+
+    /** The chat's reply mode, changed by anyone in it; every participant sees it as a line (a logged reply-mode frame). @param {any} i { chat, mode } @param {any} meta */
+    replyMode(i, meta) {
+      const grp = sessionOf(i);
+      if (i.mode !== "every" && i.mode !== "mention") throw fail("bad_input", "mode is every or mention");
+      const author = personOf(meta, i);
+      mustBeIn(grp, author);
+      join(grp, author);
+      const g = group(grp);
+      if (g.mode === i.mode) return { session: grp, mode: i.mode, unchanged: true };
+      g.mode = i.mode;
+      const f = logs.get(grp).append("reply-mode", { mode: i.mode }, { author });
+      return { session: grp, mode: i.mode, cur: f.cur };
     },
 
     /** @param {any} i @param {any} meta */
