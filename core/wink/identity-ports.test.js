@@ -32,3 +32,10 @@ test("Wink's identity ports read the spaces module live and answer null when it 
   const refusing = identityPorts({ call: async () => ({ error: { code: "forbidden" } }), space: async () => "harlow" });
   assert.equal(await refusing.signIdentity(msg), null);
 });
+
+test("a directory address the guarded client refused is a refusal with its reason, not 'out of reach'; a real outage stays unreachable", async () => {
+  const ports = (message, code) => identityPorts({ call: async (tool) => (tool === "spaces.identity.state" ? { data: { entries: [] } } : { error: { code, message } }), space: () => "spc_aaaaaaaaaaaa" });
+  await assert.rejects(() => ports("The names directory could not be reached; wait a minute and try again. The directory address was refused: it is plain http.", "unreachable").identityEntry("per_x", "eid", "alex"), (e) => e.code === "refused" && /plain http/.test(e.message));
+  await assert.rejects(() => ports("The names directory could not be reached; wait a minute and try again.", "unreachable").identityEntry("per_x", "eid", "alex"), (e) => e.code === "unreachable");
+  await assert.rejects(() => ports("not allowed", "denied").identityEntry("per_x", "eid", "alex"), (e) => e.code === "failed");
+});
