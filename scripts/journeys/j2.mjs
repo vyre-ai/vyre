@@ -16,7 +16,8 @@ export default {
     const sp = () => team.space;
     await J.step("explore: a client and its contact", async () => {
       const c = await w.call("records.create", { type: "contact", space: sp(), data: { name: "Dana Harlow", email: "dana@harlow.test" } });
-      const cl = await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.urn } });
+      let cl;
+      try { cl = await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.urn } }); } catch (e) { throw new Error(`${e.message} | urn ${c.record.urn} | space ${sp()} | tries id: ${await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.id } }).then(() => "ok", x => x.message)}`); }
       const got = await w.call("records.get", { type: "client", space: sp(), id: cl.record.id });
       return JSON.stringify({ c: c.record, cl: cl.record, got });
     });
