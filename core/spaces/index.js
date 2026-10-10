@@ -64,7 +64,7 @@ import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
-import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson } from "./kernel-members.js";
+import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson, kernelTeamSpaces } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { softwareProof, softwareActProof, softwareKey, challengeProblem } from "./presence-signer.js";
@@ -2288,7 +2288,7 @@ export default {
       const p = String(i.person);
       const mineList = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === p || await membershipRow(r.id, p))) mineList.push({ space: r.id, name: r.name, color: null, link: `https://${r.name}` });
-      return { spaces: mineList };
+      return { spaces: [...mineList, ...(await kernelTeamSpaces(K, p)).filter(k => !mineList.some(x => x.space === k.space))] };   // the kernel's own team Spaces too (a server has no rows of its own)
     }, { internal: true });
 
     // 5a'. for the transport: which person a proven device is. `spaces.identity.state` is the live, verified list of a person's entries (read from the directory on every
