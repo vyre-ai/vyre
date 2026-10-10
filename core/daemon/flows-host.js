@@ -34,7 +34,7 @@ export function whenStoreReady(store, f) {
 }
 
 /**
- * @param {{ typesWaitMs?: number, log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
+ * @param {{ typesWaitMs?: number, setupTypes?: () => Promise<void>, log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void }, google?: { accounts: () => Promise<{ name: string }[]>, api: (account: string, req: any) => Promise<{ status: number, body: any }> },
  * }} o
  */
 export function createFlowsHost(o) {
@@ -185,10 +185,11 @@ export function createFlowsHost(o) {
     // A store still starting (a first start makes the Space's database) gets the types when it joins, so the server is never held for it (stores/twenty/deferred-store.js whenReady).
     // `waitTypes(ms)` is what every Flows tool waits on first: true once the types exist, false if they still do not after `ms` (the tool then says Flows is still starting instead of failing on a raw store error).
     let typesDone = false;
+    /** @type {Error | null} */ let typesError = null;
     /** @type {() => void} */ let typesMade = () => {};
     const typesReady = new Promise(res => { typesMade = () => res(true); });
     const waitTypes = (/** @type {number} */ ms = o.typesWaitMs ?? 30_000) => typesDone ? Promise.resolve(true) : Promise.race([typesReady.then(() => true), new Promise(res => { const t = setTimeout(() => res(false), ms); if (t.unref) t.unref(); })]);
-    await whenStoreReady(k.store, async () => { try { await setupTypes(); } finally { typesDone = true; typesMade(); } });
+    await whenStoreReady(k.store, async () => { try { await (o.setupTypes || setupTypes)(); } catch (e) { typesError = /** @type {Error} */ (e); log(`flows ${space}: record types were not made (${typesError.message})`); } finally { typesDone = true; typesMade(); } });
 
     // A run that stops, is stuck, is over or is answered tells the rest of the house (the approvals queue redraws its card), with ids and a state only: never a message or a step value.
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => {
@@ -333,7 +334,7 @@ export function createFlowsHost(o) {
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.
     await whenStoreReady(k.store, async () => { await recover(); void wake.arm(); });
 
-    const host = Object.freeze({ space, flows, stages, waitTypes, get owner() { return ownerOf(); },
+    const host = Object.freeze({ space, flows, stages, waitTypes, typesError: () => typesError, get owner() { return ownerOf(); },
       /** The chain of a session token this Space's door minted (an assistant's session, a person's), or null. */
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */

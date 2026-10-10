@@ -25,3 +25,12 @@ test("Flows tools on a Space whose store is still starting say so in words, afte
     assert.ok(Date.now() - t0 < 5_000, `${tool} waited only the short cap`);
   }
 });
+
+test("when the host cannot make its record types, the tools say so in words, not with a raw store error", { timeout: 120_000 }, async t => {
+  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true, flowsSetupTypes: async () => { throw new Error("the disk is full"); } });
+  t.after(() => d.stop());
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const r = await d.registry.call("flows.list", {}, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token });
+  assert.equal(r.error?.code, "unavailable");
+  assert.match(r.error?.message || "", /Flows could not set up its records: the disk is full\. vyre modules shows the state\./);
+});
