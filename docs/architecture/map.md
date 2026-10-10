@@ -274,12 +274,9 @@ Claude Code and other sessions, the agents you name, and how they run.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `agents` | `core/agents/` | box and local | The assistant and the agents a person makes. |
-| `ask` | `core/ask/` | box | One card of several questions an agent asks a person at once, answered in the chat. |
 | `assistant` | `core/assistant/` | box and local | The assistant's own tools: a daily digest and triage. |
-| `attachments` | `core/attachments/` | box | Files added to a chat message: stored once in the chat's folder, handed to the assistants as an image or a path. |
 | `harness` | `core/harness/` | box and local | What the Claude Code hooks ask vyred. |
 | `import` | `core/import/` | box and local | Find this device's Claude Code sessions and import the ones you choose. |
-| `models` | `core/models/` | box and local | The model registry: one list every picker reads from each provider, CLI and OpenRouter, and a pending eval card for a new model; it never holds a key. |
 | `pluginagent` | `core/pluginagent/` | box and local | Claude Code on a computer as a named agent the person grants once. |
 | `providers` | `core/providers/` | box and local | Every session provider on this machine, with its accounts and models. |
 | `runner` | `core/runner/` | local and box | Runs a Space's AI sessions on a computer: sandboxed, in an encrypted workspace. |
@@ -297,13 +294,11 @@ Projects, records, tasks, rules, Flows, files.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `artifacts` | `core/artifacts/` | box | Documents, pages, dashboards and small apps your agents make, kept on your server. |
-| `builder` | `core/builder/` | box | Builds a site for Publish: a folder of ready files, a React page, or a folder with a Dockerfile built into an image in a rootless BuildKit. |
 | `documents` | `core/documents/` | box | Word templates filled from records, PDFs, documents sent for signature and their signed copies filed on the client. |
 | `files` | `core/files/` | box and local | Find and bring over files on this machine and the server, inside folders the person chose. |
 | `flows` | `core/flows/` | box and local | Flows and Kits: write, approve and run a Flow with its triggers, waits and tasks. |
 | `goals` | `core/goals/` | box and local | A goal and its ordered milestones, attached to a session or a project. |
 | `planner` | `core/planner/` | box and local | Alarms, timers, reminders, todos, notes and a calendar kept on the server. |
-| `previews` | `core/previews/` | box | A page or app an agent starts, opened in a pane beside the chat on its own address, kept running and shared on purpose. |
 | `projects` | `core/projects/` | box and local | Projects: the folders, repositories and sessions that belong together. |
 | `records` | `core/records-tools/` | box and local | The app's way into a Space's records: one tool per store call, under the caller's chain. |
 | `rules` | `core/rules-tools/` | box and local | The app's way into a Space's standing rules. |
@@ -340,7 +335,6 @@ Mail, Google, GitHub, webhooks, apps, computers and screens.
 | `hooks` | `core/hooks/` | box | Inbound webhooks from the public internet, each checked by the sender's signature. |
 | `mail` | `core/mail/` | box and local | One capability over every mail account the person connected. |
 | `mcp` | `core/mcp/` | box and local | The hub for outside MCP servers; each is a sender at the Gate. |
-| `outside` | `core/outside/` | box | Outside agents (Dots, Muse, ChatGPT): one address and token each, reading only what a person gave them, asking before any change. |
 | `publish` | `core/publish/` | box | Put a site or app on the internet from your space: preview, approve, publish, go back. |
 | `sight` | `core/sight/` | box and local | One screen service for the Mac and every agent's computer: what is on it, what was just done. |
 | `chrome` | `modules/hands-chrome/` | box | Chrome control for an agent's computer, over one long-lived connection. |

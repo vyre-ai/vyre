@@ -52,7 +52,7 @@ async function containerBuild(ctx, d, dir, secretArgs) {
  * The host helper's build: the context and the settings go into the deployment's folder under the daemon's publish folder, the helper is asked `pub-build <deployment>` and answers `built <image id>`.
  * @param {any} ctx @param {{ ask: typeof askHelper }} helper @param {any} d @param {{ path: string, content: Buffer }[]} files @param {number} port @param {string[]} secretArgs
  */
-export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
+async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
   if (secretArgs && secretArgs.length) throw refuse("build secrets are not supported on a server that builds through its host helper yet; grant the secret for running, not building", "refused");
   const home = ctx.paths && ctx.paths.root;
   if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here", "not_available");

@@ -1208,10 +1208,7 @@ SPACES_PUBLISH_TIMEOUT=${VYRE_PUBLISH_TIMEOUT:-120}
 # sp_lend_base: where the runner keeps lent workspaces, as ROOT finds it: the host folder behind the vyre container's home mount, read from Docker, never from a file or
 # a request the daemon can write. A volume's folder or a bind: both are a Source path on the host. Printed only when it is an absolute path.
 sp_lend_base() {
-  m=$(hdock inspect -f '{{range .Mounts}}{{.Destination}}|{{.Source}}{{"\n"}}{{end}}' "$CTR_NAME" 2>/dev/null)
-  b=$(printf '%s\n' "$m" | sed -n 's#^/home/vyre/\.vyre|\(/.*\)$#\1#p' | head -n 1)
-  # The installer mounts the whole home (/home/vyre) and the daemon's folder is .vyre inside it; a mount of .vyre itself is the other shape.
-  [ -n "$b" ] || { b=$(printf '%s\n' "$m" | sed -n 's#^/home/vyre|\(/.*\)$#\1#p' | head -n 1); [ -n "$b" ] && b=$b/.vyre; }
+  b=$(hdock inspect -f '{{range .Mounts}}{{.Destination}}|{{.Source}}{{"\n"}}{{end}}' "$CTR_NAME" 2>/dev/null | sed -n 's#^/home/vyre/\.vyre|\(/.*\)$#\1#p' | head -n 1)
   case "$b" in /*) printf '%s\n' "$b" ;; *) return 1 ;; esac
 }
 # sp_dirs: the three folders, made before compose mounts them (a missing bind source becomes a root-owned folder vyred cannot write).

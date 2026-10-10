@@ -39,12 +39,11 @@ const read = f => fs.readFileSync(path.join(root, f), "utf8");
 
 const core = sources("core");
 const serverTools = names(core, /\btool\(\s*"([a-z]+\.[a-z.-]+)"/g);
-const serverEvents = names(core, /\b(?:emit|emitRaw|fire)\??\.?\(\s*"([a-z]+\.[a-z._-]+)"/g);
+const serverEvents = names(core, /\b(?:emit|emitRaw|fire)\(\s*"([a-z]+\.[a-z._-]+)"/g);
 
 const chat = [...sources("apps/app/src/chat"), ...sources("apps/app/src/session"), ...sources("apps/app/screens/chat-tools")];
 const chatTools = names(chat, /"((?:threads|sessions)\.[a-z_-]+(?:\.[a-z_-]+)*)(?::[a-z]+)?"/g);
-// A name the app passes to `tool(...)` (ask.answer) is a tool the server has, not an event it must emit.
-const chatEvents = new Set([...names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g)].filter(e => !serverTools.has(e)));
+const chatEvents = names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g);
 
 /** Events chat reduces ahead of the server (older names it still accepts; nothing sends them yet). */
 const FUTURE_EVENTS = new Set(["thread.model", "thread.mode", "thread.status"]);

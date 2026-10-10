@@ -111,10 +111,6 @@ let catalog = [];
 /** @type {ReturnType<typeof indexOf> | null} */
 let index = null;
 
-/** The listing being fetched, shared: a burst of calls before the first listing waits on one fetch, not one each (the daemon builds the whole catalogue for every fetch). @type {Promise<any[]> | null} */
-let loading = null;
-const loadTools = () => (loading ||= tools().finally(() => { loading = null; }));
-
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, ident());
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
@@ -244,9 +240,9 @@ async function handle(msg) {
           "When recall or memory finds nothing beyond this session's project and the user expected more, say so plainly: Claude Code can read only this session's project Tell them: Claude Code can read only this session's project until you allow it in Vyre. " +
           "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
-    case "tools/list": return { tools: await loadTools() };
+    case "tools/list": return { tools: await tools() };
     case "tools/call": {
-      if (!names.size) await loadTools();
+      if (!names.size) await tools();
       const asked = String(params?.name || "");
       if (asked === "tools_find") {
         const q = String(params?.arguments?.query || "").trim();

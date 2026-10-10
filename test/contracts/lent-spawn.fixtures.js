@@ -21,17 +21,6 @@ export const lentSpawnFixtures = {
   answerClosed: { down: [], acked: 1, closed: true },
   answerHold: { down: [], acked: 1, hold_ms: 1000 },
   answerIdle: { down: [], acked: 0, idle: true },
-  /** `placeNew` (a new chat is placed at creation), the process's `lent` while it starts and once it is up, and the nudge's answer. */
-  placeNew: { mac: { where: "mac", device: "dev_laptop", epoch: 1 }, box: { where: "box" } },
-  lentStarting: { session: SESSION, device: "dev_laptop", computer: "Office Mac", state: "starting", epoch: null },
-  lentUp: { session: SESSION, device: "dev_laptop", computer: "Office Mac", state: "up", epoch: 2 },
-  answerWait: { directives: [{ do: "start", session: SESSION, pipe: true }] },
-  /** `lent.http`: a tool call of the chat's session, and the list of tools it may use. */
-  httpCall: { session: SESSION, epoch: 2, method: "POST", path: "/v1/tools/records.list", body: "{\"type\":\"contact\"}", caller: "mcp" },
-  httpAnswer: { status: 200, body: "{\"data\":[]}" },
-  httpList: { session: SESSION, epoch: 2, method: "GET", path: "/v1/tools" },
-  /** The SDK's `--mcp-config` as given and what goes to the lender: only its in-process servers. */
-  mcpConfig: { given: { mcpServers: { vyre: { command: "node", args: ["/box/run.js"] }, canvas: { type: "sdk", name: "canvas" } } }, sent: { mcpServers: { canvas: { type: "sdk", name: "canvas" } } } },
   /** The exit the lender sends once every chunk before it is acked. */
   exit: { code: 0, signal: null },
   /** Numbers the contract promises. */

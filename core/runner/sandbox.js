@@ -69,7 +69,6 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {string} [home]  the person's home folder, for the bind check (default: this process's)
  * @property {{ token: string }} [internet]  the Space allows the internet for this session: git, npm and pip reach it through the runner's proxy (HTTPS_PROXY), public addresses only
  * @property {string} [node]  the node binary the Linux shim runs under (default process.execPath)
- * @property {{ socket: string }} [vyre]  the runner's door to Vyre for a chat's session (a unix socket the session's Vyre MCP server speaks to as VYRE_SOCKET); the only socket besides the proxy it may open
  */
 
 /**
@@ -104,7 +103,6 @@ export function seatbeltProfile(o) {
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
   ];
   if (o.proxy.port) lines.push(`(allow network-outbound (remote ip "localhost:${o.proxy.port}"))`);
-  if (o.vyre) lines.push(`(allow network-outbound (remote unix-socket (path-literal ${q(real(o.vyre.socket))})))`);
   return lines.join("\n") + "\n";
 }
 
@@ -125,7 +123,7 @@ function planDarwin(o) {
   const tmp = path.join(ws, "tmp");
   const base = proxyUrl(o.proxy.port);
   const dd = developerDir();
-  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet), ...(o.vyre ? { VYRE_SOCKET: real(o.vyre.socket) } : {}) };
+  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet) };
   return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
@@ -145,7 +143,7 @@ function planLinux(o) {
   needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet, "/opt/vyre-proxycmd.js"), ...(o.vyre ? { VYRE_SOCKET: "/run/vyre.sock" } : {}) };
+  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet, "/opt/vyre-proxycmd.js") };
   const argv = [
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -155,7 +153,6 @@ function planLinux(o) {
     "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js", "--ro-bind", fakePasswd(home), "/etc/passwd",
     "--bind", ws, "/work", "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
-    ...(o.vyre ? ["--ro-bind", o.vyre.socket, "/run/vyre.sock"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
     node, "/opt/vyre-shim.js", "--listen", String(inner), "--to", "/run/egress.sock", "--", "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || []),
   ];

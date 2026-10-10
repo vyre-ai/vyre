@@ -1,11 +1,9 @@
-// Vyre's preview runtime: the page global `claude` with `.use(name)`, shaped like Claude's artifact runtime (contract 0.2.75) so a page written for it runs here unchanged. This file is served by the preview's own origin at
+// Vyre's preview runtime: `window.claude.use(name)`, shaped like Claude's artifact runtime (contract 0.2.75) so a page written for it runs here unchanged. This file is served by the preview's own origin at
 // /__vyre/claude.js, only to a page that declared capabilities. Nothing here runs until the page asks: `use(name)` answers null for a capability the page did not declare or the viewer refused, and each declared
 // one asks the viewer at its first use. It adds nothing to the page's own code and takes nothing away. Plain browser JavaScript, no dependencies.
 (function () {
   "use strict";
-  // the global is named as a page written for the artifact runtime already expects
-  var NAME = "claude";
-  if (window[NAME] && typeof window[NAME].use === "function") return;
+  if (window.claude && typeof window.claude.use === "function") return;
   var API = "/__vyre/api";
   var meta = null, metaP = null;
   var WORDS = {
@@ -224,7 +222,7 @@
 
   var memo = {};
   var make = { db: dbNs, user: userNs, sample: sampleNs, downloads: downloadsNs, permissions: permissionsNs };
-  window[NAME] = Object.freeze({
+  window.claude = Object.freeze({
     use: function (name) {
       name = String(name);
       if (memo[name]) return memo[name];

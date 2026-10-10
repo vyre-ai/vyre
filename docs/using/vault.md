@@ -448,16 +448,6 @@ showing a secret) before it invites someone, changes a role, removes a member or
 vault's key. An assistant or an outside agent can read the list and pull changes, and can do
 nothing else here.
 
-## Used by
-
-Open any credential and it lists everything that uses it, in one place: the Vyre modules you gave it
-to, the Connections that hold it, the agents it was lent to and where, the sites that were granted it,
-the apps made with it, the Flows that name it, and the records it is linked to. Each line says what a
-new value does to it. A site's server and an installed app restart with the new value when you rotate
-the key (a burst of changes is one restart); a Connection, a module, a Flow and an agent read it the
-next time they use it; a site that only uses the key to build reads it at the next build. The list holds
-names and times, never a value. Ask for it from the terminal with `vyre call vault.used-by '{"item":"deepgram"}'`.
-
 ## A login linked to a client
 
 Link a login to the client, matter or project it belongs to (the portal login for this client) and

@@ -41,8 +41,8 @@ export default {
         const questions = cleanQuestions(i.questions);
         const id = crypto.randomBytes(6).toString("hex");
         // The card lives in the chat the call is from: a person or module may name one, a model's own thread is the one the daemon vouched for.
-        const human = isPerson(meta);
-        const thread = (human || String(meta && meta.caller || "").startsWith("module:")) && i.thread ? String(i.thread) : (meta && meta.thread) || null;
+        const person = isPerson(meta);
+        const thread = (person || String(meta && meta.caller || "").startsWith("module:")) && i.thread ? String(i.thread) : (meta && meta.thread) || null;
         const a = { id, title: String(i.title || "A few questions").replace(/\s+/g, " ").trim().slice(0, 120), thread, questions, state: /** @type {"waiting"} */ ("waiting"), answers: null, at: now(), waiters: new Set() };
         asks.set(id, a);
         card(a);

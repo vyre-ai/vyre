@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { createStoreFor, preflight, nameOf, REQUIRE, spacesThatFit, requireFor, SERVER_FULL, MEASURED, startingWords } from "./space-store.js";
+import { createStoreFor, preflight, nameOf, REQUIRE, spacesThatFit, requireFor, SERVER_FULL, MEASURED } from "./space-store.js";
 import { MEMORY_PROFILES } from "./provision.js";
 
 const dirs = [];
@@ -203,27 +203,4 @@ test("degrade: a store still starting past startWaitMs does not hold the server:
   assert.equal(f.waiting().length, 1);
   assert.match(f.waiting()[0].reason, /the helper did not answer/);
   assert.ok(lines.some((l) => /not available \(the helper did not answer\); the server keeps running/.test(l)));
-});
-
-test("degrade: a store still starting says where it is and how long it has been, in plain words, never a bare 'starting'", async () => {
-  const home = tmp();
-  /** @type {(v?: any) => void} */ let done = () => {};
-  /** @type {(name: string) => void} */ let say = () => {};
-  const f = createStoreFor({ home, mode: "twenty", degrade: true, startWaitMs: 30, retryBaseMs: 60_000, log: () => {}, helper: false,
-    preflight: async () => ({ ok: true, reasons: [] }),
-    provision: (o) => new Promise((res) => { say = o.onPhase; done = res; }) });
-  const st = await f(SP, { personal: true });
-  say("pull images");
-  await assert.rejects(() => st.types(), (e) => /still starting: downloading it \(the first time only\) \(\d+ seconds? so far\)/.test(e.message));
-  say("start Records (migrations, first healthy answer)");
-  assert.match(f.waiting()[0].reason, /still starting: starting Records \(the first start takes a few minutes\)/);
-  assert.match((await st.health()).detail, /starting Records/);
-  void done;
-});
-
-test("startingWords: seconds at first, minutes after a minute and a half, and a phase it does not know is said as it is", () => {
-  assert.equal(startingWords("pull images", 12_000), "the record store is still starting: downloading it (the first time only) (12 seconds so far)");
-  assert.equal(startingWords("start database and cache", 200_000), "the record store is still starting: starting its database (3 minutes so far)");
-  assert.equal(startingWords(undefined, 500), "the record store is still starting: getting ready (1 second so far)");
-  assert.match(startingWords("something new", 10_000), /: something new \(/);
 });

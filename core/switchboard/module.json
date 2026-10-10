@@ -348,7 +348,6 @@
       "thread.started",
       "thread.chat",
       "thread.sandbox",
-      "thread.placing",
       "thread.sent",
       "thread.text",
       "thread.tool",

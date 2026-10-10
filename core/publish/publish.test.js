@@ -44,9 +44,6 @@ const fakeSource = `export default { async start(ctx) {
   } else if (tools === "names") {
     t("names.owns", async i => ({ owns: pf().owns(i.host, i.space) }));
     t("names.status", async () => ({ listening: pf().door === true }));
-  } else if (tools === "appmods") {
-    t("appmods.publish.install", async i => { pf().installs.push(i.deployment); return { name: i.deployment.name, state: "running", url: "https://x" }; });
-    t("appmods.publish.remove", async () => ({ removed: true }));
   } else if (tools === "projects") {
     t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
@@ -56,7 +53,7 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
@@ -85,7 +82,6 @@ async function boxRegistry(t, o = {}) {
     },
     owns: (/** @type {string} */ host, /** @type {string} */ space) => host === "northwind.vyre.run" && space === SPACE.id,
     tasks: /** @type {any[]} */ ([]),
-    installs: /** @type {any[]} */ ([]),
   });
   /** @type {any} */ (globalThis).__publishFakes = pf;
   t.after(() => { delete /** @type {any} */ (globalThis).__publishFakes; });
@@ -103,7 +99,7 @@ async function boxRegistry(t, o = {}) {
   const call = async (tool, input = {}, caller = "cli") => { const r = await reg.call(tool, input, caller); log.push(r); return r; };
   /** @param {string} tool @param {any} input @param {string} [caller] */
   const ok = async (tool, input = {}, caller = "cli") => { const r = await call(tool, input, caller); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)}`); return r.data; };
-  return { reg, pf, call, ok, home, seen, log, events, publishRoot: path.join(p.root, "publish", SPACE.id) };
+  return { reg, pf, call, ok, home, seen, log, publishRoot: path.join(p.root, "publish", SPACE.id) };
 }
 
 /** Create and preview one draft, returning its id. */
@@ -606,34 +602,4 @@ test("publish: quick takes a folder of ready files to live on one decision, with
   assert.equal((await b.ok("publish.status", { deployment: q2.deployment.id })).stage, "Preview", "the other site is still only a preview");
   const refused = await b.call("publish.quick", { name: "ghost", folder: path.join(b.home, "nope") });
   assert.equal(refused.error?.code, "not_found");
-});
-
-test("publish: a key changed in the Vault restarts the live server that holds it for runtime, once, and no other site", async t => {
-  const { seams } = await import("./index.js");
-  seams.restartMs = 20;
-  t.after(() => { seams.restartMs = undefined; });
-  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "builder", "names", "projects", "appmods"] });
-  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [], logs: "ok", runtime: { kind: "image", image: "sha256:" + "f".repeat(64), port: 8080, health: { path: "/", ok: [200] } } });
-  const mk = async (/** @type {string} */ name, /** @type {string} */ use) => {
-    const id = (await b.ok("publish.create", { ...DRAFT, name, build: { image: "node-22", command: "npm run build" } })).deployment.id;
-    const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: [use] });
-    await b.ok("publish.decide", { task: g.task, approve: true });
-    await b.ok("publish.preview", { deployment: id });
-    await goLive(b, id);
-    return id;
-  };
-  const runtimeId = await mk("northwind-run", "runtime");
-  await mk("northwind-build", "build");
-  const installs = () => b.pf.installs.filter((/** @type {any} */ d) => d.id === runtimeId).length;
-  const before = installs();
-  assert.ok(before >= 1, "it was installed when it went live");
-  const until = async (/** @type {() => boolean} */ f) => { for (let i = 0; i < 100 && !f(); i++) await new Promise(r => setTimeout(r, 30)); return f(); };
-
-  b.events.emit("vault", "vault.item-changed", { name: "unrelated", kind: "secret" });
-  b.events.emit("vault", "vault.item-changed", { name: "harlow/stripe", kind: "secret" });
-  b.events.emit("vault", "vault.item-changed", { name: "harlow/stripe", kind: "secret" });
-  assert.ok(await until(() => installs() === before + 1), "the server holding the key was started again with the new value");
-  await new Promise(r => setTimeout(r, 200));
-  assert.equal(installs(), before + 1, "once for a burst of changes");
-  assert.equal(b.pf.installs.filter((/** @type {any} */ d) => d.name === "northwind-build").length, 1, "a site that only uses the key to build is not restarted");
 });

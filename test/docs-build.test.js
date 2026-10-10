@@ -434,10 +434,8 @@ test("build: a fixture tree produces the expected site", t => {
   // Never published: internal folders, stubs as pages.
   for (const f of ["work/docs.html", "work/docs.md", "work/old.md", "proposals/idea.html", "SPEC.html", "SPEC.md"]) assert.ok(!has(f), `published ${f}`);
 
-  const assets = fs.readdirSync(path.join(out, "assets")).filter(a => a !== "fonts").sort();
+  const assets = fs.readdirSync(path.join(out, "assets")).sort();
   assert.equal(assets.length, 4);
-  // The two fonts are the repo's own files, named by content, never a link to another company.
-  assert.deepEqual(fs.readdirSync(path.join(out, "assets", "fonts")).map(f => f.replace(/\.[0-9a-f]{10}\.woff2$/, "")).sort(), ["instrument-sans-latin", "jetbrains-mono-latin"]);
   for (const re of [/^docs\.[0-9a-f]{10}\.css$/, /^docs\.[0-9a-f]{10}\.js$/, /^demos\.[0-9a-f]{10}\.css$/, /^demos\.[0-9a-f]{10}\.js$/]) {
     assert.equal(assets.filter(a => re.test(a)).length, 1, assets.join(" "));
   }

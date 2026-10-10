@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { start } from "../core/daemon/index.js";
-import { openThreadSocket, belongs, lentRequest } from "../core/daemon/threadsock.js";
+import { openThreadSocket, belongs } from "../core/daemon/threadsock.js";
 import { tempHome } from "./helpers.js";
 const realManifest = JSON.parse(fs.readFileSync(new URL("../core/switchboard/module.json", import.meta.url), "utf8"));
 import { SCRATCH } from "./scratch.mjs";
@@ -448,28 +448,4 @@ test("the presence stand-in: a development daemon takes it only while the owner'
   for (const tool of ["spaces.identity.code.replace", "vault.backup", "vault.delete", "grants.create"]) assert.equal((await bare(d, tool)).ok, false, `${tool} stays real presence`);
   fs2.rmSync(path.join(root, "dev-presence-stand-in"));
   assert.equal((await bare(d, "vault.put")).ok, false, "no file: no stand-in");
-});
-
-test("threadsock: a session on a lent computer is the same session at the home: the same caller binding and no person's tool, with no process of it to find, and the session socket still refuses a stranger", async t => {
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {} });
-  t.after(() => d.stop());
-  d.registry.tools.set("probe.whoami", { module: "system", description: "", input: { type: "object" }, internal: false, callers: null, hook: false, presence: false,
-    run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "ts-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ctx = d.registry.context(realManifest);
-  const sock = await openThreadSocket({ handler: ctx.handler, thread: "tl1", agent: "kit", dir, pids: async () => ({ pids: [] }) });
-  // no process belongs to the session here (it runs on another computer), yet the lent door answers as the session
-  const ans = await lentRequest("tl1", "POST", "/v1/tools/probe.whoami", { "x-vyre-caller": "mcp" }, "{}");
-  assert.equal(ans && ans.status, 200);
-  assert.deepEqual(JSON.parse(/** @type {any} */ (ans).body).data, { caller: "mcp:agent:kit", thread: "tl1", agent: "kit" });
-  assert.equal(JSON.parse(/** @type {any} */ (await lentRequest("tl1", "POST", "/v1/tools/probe.whoami", { "x-vyre-caller": "cli" }, "{}")).body).data.caller, "mcp:agent:kit", "whatever it claims to be");
-  assert.equal((await lentRequest("tl1", "POST", "/v1/tools/vault.reveal", {}, "{}"))?.status, 403, "never a person's tool");
-  // the session's own socket is not opened to a stranger by this: a process that is not in the session is still refused
-  const stranger = client(sock.path, "probe.whoami", {});
-  assert.equal((await stranger.done).status, 403);
-  assert.equal(await lentRequest("nothread", "POST", "/v1/tools/probe.whoami", {}, "{}"), null, "a thread with no socket here");
-  await sock.close();
-  assert.equal(await lentRequest("tl1", "POST", "/v1/tools/probe.whoami", {}, "{}"), null, "closed with the session");
 });

@@ -116,17 +116,6 @@ export function paintRun(flow, run, cat) {
     if (run.error && run.error.step === n.id && run.error.code && run.error.code !== "note" && ["failed", "paused"].includes(run.state)) { state = run.state === "paused" ? "paused" : "failed"; note = run.error.message; }
     return { ...n, state, count: es.length > 1 ? es.length : undefined, note };
   });
-  // A lane (a branch step) leaves nothing on the ledger itself: it is as far along as the steps inside it.
-  /** @type {Map<string, string[]>} */ const laneSteps = new Map();
-  walkSteps(flow.steps || [], (/** @type {any} */ st) => { if (st.kind === "branch") { /** @type {string[]} */ const ids = []; walkSteps(st.steps || [], (/** @type {any} */ x) => { ids.push(x.id); }); laneSteps.set(st.id, ids); } });
-  const byId = new Map(nodes.map(n => [n.id, n]));
-  for (const n of nodes) {
-    if (n.kind !== "branch") continue;
-    const inner = (laneSteps.get(n.id) || []).map(id => byId.get(id)).filter(Boolean);
-    if (!inner.length) continue;
-    const some = (/** @type {string} */ st) => inner.some(x => x.state === st);
-    n.state = some("failed") ? "failed" : some("paused") ? "paused" : some("waiting") ? "waiting" : some("running") ? "running" : inner.every(x => x.state === "done" || x.state === "skipped") ? "done" : "pending";
-  }
   return { nodes, edges: g.edges, trigger: run.trigger || null, why: whyRan(run.trigger), state: run.state, error: run.error && run.error.code && run.error.code !== "note" ? run.error : null, tainted: run.tainted };
 }
 
