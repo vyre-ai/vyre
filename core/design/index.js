@@ -59,8 +59,8 @@ export default {
 
     ctx.tool("design.catalogue", {
       callers: ANYONE,
-      description: "The design language's blocks, small. level index (default): one line per block with its props, data and how it shrinks. level block + type: that block in full with a sample. level layouts: the layout words and limits.",
-      input: { type: "object", properties: { level: { type: "string", enum: ["index", "block", "layouts"] }, type: { type: "string", maxLength: 40 } } },
+      description: "The design language's blocks, small: an index, one block in full with a sample, or the layout words and limits. Pick with level.",
+      input: { type: "object", properties: { level: { type: "string", enum: ["index", "block", "layouts"], description: "index (default): one line per block; block: the block named by type, in full; layouts: layout words and limits" }, type: { type: "string", maxLength: 40, description: "the block type, for level block" } } },
       run: async (/** @type {any} */ i) => ({ text: catalogue(i.level || "index", i.type) }),
     });
     ctx.tool("design.validate", {
@@ -71,8 +71,8 @@ export default {
     });
     ctx.tool("design.propose", {
       callers: ANYONE,
-      description: "Propose a screen for the space: { id (a word like \"orders\"), title, screen, why }. It is checked and kept pending; the screen's owner sees it before and after and says yes or no, so nothing changes until then. Returns { proposal } or { problems }.",
-      input: { type: "object", required: ["id", "screen", "why"], properties: { id: { type: "string" }, title: { type: "string", maxLength: 60 }, screen: { type: "object" }, why: { type: "string", maxLength: 500 } } },
+      description: "Propose a screen. It is checked and kept pending until its owner says yes. Returns { proposal } or { problems }.",
+      input: { type: "object", required: ["id", "screen", "why"], properties: { id: { type: "string", description: "a word like \"orders\": lowercase letters, digits, dashes" }, title: { type: "string", maxLength: 60 }, screen: { type: "object" }, why: { type: "string", maxLength: 500 } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!ID.test(String(i.id))) throw Object.assign(new Error("id must be lowercase letters, digits and dashes, like \"orders\""), { code: "bad_input" });
         const problems = validateScreen(i.screen);

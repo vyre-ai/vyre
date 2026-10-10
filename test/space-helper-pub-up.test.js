@@ -105,3 +105,33 @@ test("reattach walls a running published server again in a new vyre container, w
   assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")), "an app that cannot be proved is stopped, never left running unwalled");
 });
 
+
+test("pub-up refuses a compose file that is not read-only or has lost its tmpfs, and starts nothing", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok");
+  for (const [flag, what] of [["pubcompose-no-readonly", "read_only"], ["pubcompose-no-tmpfs", "tmpfs"]]) {
+    r.flag(flag);
+    const st = await r.up(DEP, { request: REQUEST({ secrets: "-" }) });
+    assert.equal(st.state, "failed", `${what}: ${JSON.stringify(st)}`);
+    assert.match(st.message, /the compose file was refused: lint: a published server must keep its root read-only with the one tmpfs/);
+    assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")), "nothing started");
+    assert.ok(!fs.existsSync(path.join(r.priv, "apps", "northwind", "compose.yml")), "the refused file was not kept");
+    fs.rmSync(path.join(r.F, flag));
+  }
+  assert.equal((await r.up(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok", "the real generator passes");
+});
+
+test("pub-up takes away a hook door left from before: a tag that once had a hook port ends with only the answers and the drop", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok");
+  assert.equal((await r.up(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok");
+  const file = path.join(r.F, "appfw-4242");
+  const rules = JSON.parse(read(file));
+  rules.unshift({ ch: "INPUT", r: { i: "eth1", s: "172.31.9.0/24", p: "tcp", dp: "43001", c: "vyre-app:northwind", j: "ACCEPT" } });
+  fs.writeFileSync(file, JSON.stringify(rules));
+  assert.equal(r.appFw().filter((/** @type {any} */ x) => x.r.dp).length, 1, "the stale door is there");
+  assert.equal((await r.up(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok");
+  const inp = r.appFw().filter((/** @type {any} */ x) => x.ch === "INPUT").map((/** @type {any} */ x) => x.r);
+  assert.ok(!inp.some((/** @type {any} */ x) => x.dp), "no hook port");
+  assert.deepEqual(inp, [{ i: "eth1", ct: "ESTABLISHED,RELATED", c: "vyre-app:northwind", j: "ACCEPT" }, { i: "eth1", c: "vyre-app:northwind", j: "DROP" }]);
+});

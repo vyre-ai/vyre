@@ -153,7 +153,7 @@ export default {
 
     ctx.tool("update.status", {
       effect: "read",
-      description: "Whether a newer Vyre is out: the running version, the newest one on this channel (null when up to date), what changed, when it was last looked up, and how to update (the one command a box person runs, or 'app' when the Mac app updates itself). Read only: nothing is downloaded or changed. Every surface's Update card draws from this.",
+      description: "Whether a newer Vyre is out: running version, newest on this channel (null when current), what changed, last check, and how to update. Read only.",
       input: { type: "object", properties: {} },
       run: async () => status(),
     });

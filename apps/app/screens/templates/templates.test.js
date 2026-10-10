@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord, whoWords, startName, projectIdOf } from "./model.ts";
+import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord, whoWords, startName, projectIdOf, startWords } from "./model.ts";
 
 const body = () => ({ name: "Estate plan", roles: [{ role: "researcher", agent: "research", lead: true }, { role: "attorney" }], stages: [
   { name: "Intake", owner: "role:attorney", moves_on_when: 'status == "retained"', tasks: [{ title: "Gather documents", doer: "role:researcher", output: { kind: "note" } }, { title: "Conflict check", doer: "role:researcher", checker: "role:attorney", output: { kind: "decision" }, required: false }] },
@@ -48,4 +48,11 @@ test("a project is started under a name, and the page opens by the id the box an
   assert.equal(startName("   ").ok, false);
   assert.match(startName("x".repeat(121)).why, /at most 120/);
   assert.equal(projectIdOf("vyre://spc_aaaaaaaaaaaa/project/11111111-1111-4111-8111-111111111111"), "11111111-1111-4111-8111-111111111111");
+});
+
+test("starting a project says where the tasks are, or which could not be made and why", () => {
+  assert.equal(startWords("Rivera", { tasks_made: 2 }), "Rivera is started. Its first tasks are in Now.");
+  assert.equal(startWords("Rivera", { tasks_made: 0, tasks_skipped: [{ task: "Gather", why: "research is not in this space yet" }, { task: "Check", why: "research is not in this space yet" }] }),
+    "Rivera is started, but 2 of its first tasks could not be made: research is not in this space yet. Add the assistant in Settings, Assistants, and start again.");
+  assert.match(startWords("Rivera", { tasks_made: 1, tasks_skipped: [{ task: "Check", why: "drafting is not in this space yet" }] }), /1 of its first tasks could not be made: drafting is not in this space yet\. The others are in Now\./);
 });

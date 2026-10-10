@@ -399,7 +399,7 @@ export default {
 
     ctx.tool("settings.schema", {
       effect: "read",
-      description: "Every setting the running modules declare: key, owning module, group, label, type and choices (a module may name them at run time), the levels it may be set at (account, project, device, session), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm. hub says where the hub file is and its rev.",
+      description: "Every setting the running modules declare, with its key, group, type, choices, settable levels, when a change applies, and whether changing it loosens security.",
       input: { type: "object", properties: {} },
       run: async () => {
         await fresh();
@@ -412,9 +412,9 @@ export default {
       },
     });
 
-    const where = { project: str, device: str, session: str };
+    const where = { project: { type: "string", description: "scope to this project" }, device: { type: "string", description: "defaults to the caller's own" }, session: { type: "string", description: "scope to this session" } };
     ctx.tool("settings.get", {
-      description: "Settings with the value in effect and where it comes from (session, device, project, account, default). Give key for one, group for a group, nothing for all; project, device and session to see that view (device defaults to the caller's own). A secret setting's values are masked for anyone but the person.",
+      description: "Settings, each with the value in effect and its source. Give key for one, group for a group, nothing for all. Secrets are masked.",
       input: { type: "object", properties: { key: str, group: str, ...where } },
       run: async (i, meta) => {
         const at = await atOf(i, meta);
@@ -427,7 +427,7 @@ export default {
     });
 
     ctx.tool("settings.snapshot", {
-      description: "Every setting's value in effect for one surface, in one read: {rev, device, values: {key: value}, sources: {key: level}, levels: {key: {account?, project?, device?, session?}}}. device defaults to the caller's own and is echoed. Compare rev after a reconnect; follow settings.changed after that. A secret setting's values are masked for anyone but the person.",
+      description: "Every setting's value in effect for one surface: values, sources, levels and a rev. Compare rev after a reconnect, then follow settings.changed. Secrets masked.",
       input: { type: "object", properties: where },
       run: async (i, meta) => {
         const at = await atOf(i, meta);
@@ -532,8 +532,8 @@ export default {
     // turns (P17), never from the agent's say-so: vault.said.match answers for the calling thread.
     // No match, or no gate to ask: refused, and the agent tells the person to ask.
     ctx.tool("settings.request", {
-      description: "Change or reset a setting because the person asked you to in this conversation (for example \"use Sonnet by default in this project\"). It works only when the person's own words asked for this change; otherwise it is refused and you should tell them they can change it in Settings or ask you directly. Give value to set it, or reset: true to clear it. The person sees who changed it and can undo it.",
-      input: { type: "object", required: ["key"], properties: { key: str, value: {}, reset: { type: "boolean" }, level: LEVEL, ...where } },
+      description: "Change or reset a setting the person asked you to in this conversation. Refused unless their own words asked for it.",
+      input: { type: "object", required: ["key"], properties: { key: str, value: { description: "the new value; leave out with reset" }, reset: { type: "boolean", description: "true clears the setting instead of setting value" }, level: LEVEL, ...where } },
       callers: ["mcp"],
       run: async (i, meta) => {
         const refuse = (/** @type {string} */ m) => { throw Object.assign(new Error(m), { code: "denied" }); };

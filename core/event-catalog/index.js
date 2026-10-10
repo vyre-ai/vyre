@@ -52,7 +52,7 @@ export function catalog(status, aliases = ALIASES) {
 export default {
   async start(ctx) {
     ctx.tool("events.catalog", {
-      description: "Every event type the running modules may emit, sorted: { type, module }. An old name kept for one release after a rename also appears, as { type, module, deprecated: true, use }, where `use` is the name to follow instead.",
+      description: "Every event type the running modules may emit, as { type, module }. A renamed event's old name appears with deprecated: true and `use`.",
       input: { type: "object", properties: {} },
       run: async () => catalog(ctx.modules.status()),
     });

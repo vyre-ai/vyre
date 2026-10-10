@@ -509,8 +509,8 @@ export default {
 
     ctx.tool("learn.lessons", {
       effect: "read",
-      description: "The lessons Vyre learned from the user, with how often each applied, was caught and was broken. status: active (default with proposed), proposed, retired or all.",
-      input: { type: "object", properties: { status: { type: "string", enum: ["active", "proposed", "retired", "all"] } } },
+      description: "The lessons Vyre learned from the user, with how often each applied, was caught and was broken.",
+      input: { type: "object", properties: { status: { type: "string", enum: ["active", "proposed", "retired", "all"], description: "default: active and proposed" } } },
       run: async ({ status }) => {
         const where = !status ? "status IN ('active','proposed')" : status === "all" ? "1" : "status = ?";
         return db.prepare(`SELECT * FROM learn_lessons WHERE ${where} ORDER BY id`).all(...(status && status !== "all" ? [status] : [])).map(row);
@@ -519,9 +519,9 @@ export default {
 
     ctx.tool("learn.add", {
       effect: "write",
-      description: "Add a lesson the user wrote or asked for (/vyre remember). From text alone, a known shape (a banned character, a file to update with code, tests before commit) becomes a check; anything else is a reminder.",
+      description: "Add a lesson the user wrote or asked for (/vyre remember): text or rule. A known shape becomes a check; anything else is a reminder.",
       callers: ADDERS,
-      input: { type: "object", properties: { text: { type: "string" }, rule: { type: "string" }, when: { type: "string" }, level: { type: "string", enum: LEVELS }, scope: scopeSchema, check: checkSchema, session: { type: "string" } } },
+      input: { type: "object", properties: { text: { type: "string", description: "the lesson in plain words" }, rule: { type: "string" }, when: { type: "string" }, level: { type: "string", enum: LEVELS }, scope: scopeSchema, check: checkSchema, session: { type: "string" } } },
       run: async ({ text, rule, when, level, scope, check, session }, extra = {}) => {
         const d = text && !rule ? distill(text) : null;
         if (!rule && !d && !text) throw new Error("say the lesson: text, or rule");
@@ -610,7 +610,7 @@ export default {
 
     ctx.tool("learn.edit", {
       effect: "write",
-      description: "Tighten a lesson: raise its level, widen its scope or `when` to always, add a check where it had none, raise or lift its cap, unpin it. Anything that loosens a lesson is refused here; that is learn.relax, the user's alone.",
+      description: "Tighten a lesson: raise level, widen scope or `when`, add a check, change its cap, unpin. Loosening is refused; that is learn.relax.",
       callers: TIGHTENERS,
       input: { type: "object", required: ["id"], properties: { id: { type: "integer" }, ...changeSchema } },
       run: async ({ id, ...change }) => {
@@ -782,8 +782,8 @@ export default {
 
     ctx.tool("learn.stats", {
       effect: "read",
-      description: "Does a lesson work? before: the user's repeats per 100 turns before it was accepted; after: escapes (broken and repeats) per 100 turns since; verdict working, not working or measuring. With no id, every active lesson.",
-      input: { type: "object", properties: { id: { type: "integer" } } },
+      description: "Whether a lesson works: repeats per 100 turns before it was accepted, escapes since, and a verdict. No id gives every active lesson.",
+      input: { type: "object", properties: { id: { type: "integer", description: "omit for every active lesson" } } },
       run: async ({ id }) => {
         if (id != null) { const l = must(id); return { id: l.id, dormant: l.dormant, ...metrics.stats(l) }; }
         return active().map(l => ({ id: l.id, dormant: l.dormant, ...metrics.stats(l) }));
@@ -792,7 +792,7 @@ export default {
 
     ctx.tool("learn.skills", {
       effect: "read",
-      description: "Skills Vyre drafted from procedures the user repeats (proposed, installed, retired, dismissed), each with its whole SKILL.md, and installed ones whose file changed or is gone (drift).",
+      description: "Skills Vyre drafted from procedures the user repeats, each with its whole SKILL.md, plus installed ones whose file changed or is gone (drift).",
       input: { type: "object", properties: { status: { type: "string", enum: ["proposed", "installed", "retired", "dismissed"] } } },
       run: async ({ status }) => ({ skills: skills.list(status ? { status } : {}), drift: skills.drift() }),
     });

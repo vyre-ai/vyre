@@ -10,6 +10,7 @@
 //   - "locked" and "deleted" are only ever said once they are verified, a watchdog outside this process closes the workspace if
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
+import { HARNESS_MARK } from "./pipe-home.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -237,12 +238,17 @@ export function createRunner(o) {
     // and Claude is told about the Vyre MCP server that runs beside it, with the door as its socket (a server of its own folder, which is read-only in the sandbox)
     const env = { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) };
     const planWith = (/** @type {typeof door} */ dr) => {
-      let args = s.args, readOnly = s.readOnly;
+      let args = s.args, readOnly = s.readOnly, penv = env;
+      const sock = dr ? (platform === "linux" ? "/run/vyre.sock" : dr.socket) : "";
       if (dr && s.vyre && s.vyre.entry && s.vyre.root) {
-        args = [...(s.args || []), "--mcp-config", JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [s.vyre.entry], env: { VYRE_SOCKET: platform === "linux" ? "/run/vyre.sock" : dr.socket } } } })];
+        args = [...(s.args || []), "--mcp-config", JSON.stringify({ mcpServers: { vyre: { command: process.execPath, args: [s.vyre.entry], env: { VYRE_SOCKET: sock } } } })];
         readOnly = [...(s.readOnly || []), s.vyre.root, ...(s.vyre.also || [])];
+        // The box's own Harness is named in the arguments (HARNESS_MARK): with the door up, the lender's copy of it loads and its hooks reach the home through the same door (VYRE_SOCKET in the session's own
+        // environment; VYRE_THREAD says this is Vyre's own session, as on the box). Without the door the plugin is taken out and the session runs without hooks, as before.
+        if (s.vyre.plugin) { args = args.map(x => (x === HARNESS_MARK ? s.vyre.plugin : x)); penv = { ...env, VYRE_SOCKET: sock, VYRE_THREAD: s.session }; }
       }
-      return plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env });
+      args = dropMark(args);
+      return plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args, readOnly, ...(dr ? { vyre: { socket: dr.socket } } : {}), proxy: where, env: penv });
     };
     let p, doorUsed = door;
     try { p = planWith(door); }
@@ -399,4 +405,12 @@ export function createRunner(o) {
     get dir() { return dir; },
     get mnt() { return mnt; },
   };
+}
+
+/** A Harness placeholder nobody replaced (no door, or a Vyre folder with no plugin): the flag before it goes too, and the session runs without the box's hooks. @param {string[] | undefined} args */
+function dropMark(args) {
+  if (!Array.isArray(args)) return args;
+  const out = /** @type {string[]} */ ([]);
+  for (const x of args) { if (x === HARNESS_MARK) { out.pop(); continue; } out.push(x); }
+  return out;
 }

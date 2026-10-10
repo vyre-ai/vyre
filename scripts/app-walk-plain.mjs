@@ -193,7 +193,13 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
       if (await field.count()) { await field.fill(`Okafor Estate ${wide}`); await pg.getByText("Start project", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(5000); if (!pg.url().includes("/u/project/")) problems.push("starting a project did not open it"); }
       else problems.push("the template page has no Start project");
     }
-    if (name === "project") { await pg.getByText("Timeline", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500); }
+    if (name === "project") {
+      // the Overview, then the Team and the Timeline tabs: each a screen a person opens first thing
+      await pg.screenshot({ path: path.join(OUT, `project-overview-${wide}.png`), fullPage: false });
+      await pg.getByText("Team", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500);
+      await pg.screenshot({ path: path.join(OUT, `project-team-${wide}.png`), fullPage: false });
+      await pg.getByText("Timeline", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500);
+    }
     const text = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
     if (text.replace(/My Cloud|Now|Chat|Projects|Contacts|Drive|More|Search|Settings|You/g, "").trim().length < 12) problems.push("blank page");
     for (const [re, what] of BAD) { const m = re.exec(text); if (m) problems.push(`shows ${what}: "${text.slice(Math.max(0, m.index - 30), m.index + 40)}"`); }

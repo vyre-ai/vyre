@@ -32,7 +32,7 @@ export function register({ ctx, vault, fetch = httpFetch }) {
   const opts = () => (ctx.config && ctx.config.vault) || {};
 
   ctx.tool("vault.caps", {
-    description: "What this vyred lets a surface do with the Vault: reveal (on; every reveal needs a presence proof or a session a proof opened), the breach check mode. No value.",
+    description: "What this vyred lets a surface do with the Vault: reveal (needs a presence proof) and the breach check mode. No value.",
     input: obj({}),
     run: () => {
       const o = opts();

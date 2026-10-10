@@ -135,14 +135,14 @@ export default {
     };
 
     ctx.tool("assistant.glance", {
-      description: "The morning glance: {day, waiting, running, finished, next, lines}. Lines are three at most. Built from reads alone, no model call. next is null until a calendar read exists.",
+      description: "The morning glance: {day, waiting, running, finished, next, lines}, three lines at most. Reads only, no model call.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => { await gate(meta); return glance(asCall); },
     });
 
     ctx.tool("assistant.capabilities", {
-      description: "What the assistant can do on this install right now: tools, connectors, devices, agents and teammates, providers. Only working things; a missing one is listed under not_connected with what to say. area narrows it; compact: true returns the short text; prompt: true returns it as the quoted block the assistant's own prompt carries.",
-      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"] }, compact: { type: "boolean" }, prompt: { type: "boolean" } } },
+      description: "What the assistant can do on this install right now: tools, connectors, devices, agents, providers. Missing ones are listed under not_connected.",
+      input: { type: "object", properties: { area: { type: "string", enum: ["tools", "connectors", "devices", "agents", "providers"], description: "narrow to one area" }, compact: { type: "boolean", description: "return the short text" }, prompt: { type: "boolean", description: "return the quoted block the assistant's own prompt carries" } } },
       run: async (i = {}, meta = {}) => {
         // agents asks for the prompt block when it starts the assistant's thread; it may read this and nothing else here.
         if (!(meta.caller === "module:agents" && i.prompt === true)) await gate(meta);
@@ -153,7 +153,7 @@ export default {
     });
 
     ctx.tool("assistant.welcome", {
-      description: "The first message in the chat after setup: {text, cards:[{id, title, body, href?}]}; the id is the contract, a card never names a tool. Built from onboard.status with no model call; a card appears only when its step is still open.",
+      description: "The first chat message after setup: {text, cards:[{id, title, body, href?}]}. A card appears only while its step is open.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => {
         await gate(meta);
@@ -163,7 +163,7 @@ export default {
     });
 
     ctx.tool("assistant.log", {
-      description: "Everything the assistant did on the person's behalf, newest first: {id, at, tool, summary, why, state, can_undo}. The same rows as undo.list for the assistant. To undo one, call undo.run with its id: the assistant may undo its own, the person any.",
+      description: "Everything the assistant did for the person, newest first: {id, at, tool, summary, why, state, can_undo}. Undo one with undo.run and its id.",
       input: { type: "object", properties: { since: { type: "number" }, limit: { type: "integer" } } },
       run: async (i = {}, meta = {}) => {
         await gate(meta);
@@ -174,8 +174,8 @@ export default {
     });
 
     ctx.tool("assistant.prompt.diff", {
-      description: "What changed between two versions of the assistant's own prompt: line by line. from and to are version numbers; to defaults to the newest. Roll back with sessions.prompt.revert.",
-      input: { type: "object", required: ["from"], properties: { from: { type: "integer" }, to: { type: "integer" } } },
+      description: "Line diff between two versions of the assistant's prompt: { from, to? }. Roll back with sessions.prompt.revert.",
+      input: { type: "object", required: ["from"], properties: { from: { type: "integer", description: "version number" }, to: { type: "integer", description: "version number; default the newest" } } },
       run: async (i, meta = {}) => {
         await gate(meta);
         const r = await ctx.call("sessions.prompt.history", { scope: "assistant" });
@@ -219,7 +219,7 @@ export default {
     });
 
     ctx.tool("assistant.brief", {
-      description: "One paragraph: what's waiting on you, how many agents are working, and any pattern memory noticed (a fact still in conflict, or corrected in the last week). Never a dashboard. Works whether or not the daily digest setting is on; that setting only controls whether this also fires once a day on its own.",
+      description: "One paragraph: what waits on you, how many agents are working, and any pattern memory noticed. Works whether or not the daily digest is on.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => {
         if (!(await allowed(meta.caller, (tool, input) => ctx.call(tool, input), meta))) throw Object.assign(new Error("the brief is for the person and the assistant"), { code: "denied" });
@@ -228,7 +228,7 @@ export default {
     });
 
     ctx.tool("assistant.patterns", {
-      description: "Patterns memory already surfaces, read-only: facts still in conflict between two projects, and facts corrected in the last week. Never reads memory.corrections directly, which stays the person's own surfaces; this reads only what memory.facts already carries on every fact.",
+      description: "Patterns memory already surfaces, read-only: facts in conflict between two projects, and facts corrected in the last week.",
       input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 200 } } },
       run: async (input = {}, meta = {}) => {
         if (!(await allowed(meta.caller, (tool, i) => ctx.call(tool, i), meta))) throw Object.assign(new Error("patterns are for the person and the assistant"), { code: "denied" });

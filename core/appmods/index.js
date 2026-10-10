@@ -211,13 +211,13 @@ export default {
 
     // ---- reading
     ctx.tool("appmods.catalog", { description: "The apps this build can run as modules, each with its install card and whether it is installed here.", input: obj({}), run: async () => ({ apps: [...catalog.values()].filter(m => !m["x-publish"]).map(m => ({ ...cardOf(m), installed: Boolean(row(m.name)) })) }) });
-    ctx.tool("appmods.card", { description: "The install card for one app: what runs, what it uses, what it may reach, what it shows. Built from the manifest, never from the app.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => cardOf(known(i.name)) });
+    ctx.tool("appmods.card", { description: "The install card for one app: what runs, what it uses, what it may reach, what it shows. Built from the manifest, not the app.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => cardOf(known(i.name)) });
     ctx.tool("appmods.list", { description: "The app modules installed on this server and their state.", input: obj({}), run: async () => ({ apps: db.prepare("SELECT name, version, state, installed, note FROM appmods_apps ORDER BY name").all() }) });
     ctx.tool("appmods.status", { description: "One installed app: its state and what the runtime says.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       return { name: r.name, version: r.version, state: r.state, runtime: await driver.status({ space: r.space, manifest: known(r.name) }) };
     } });
-    ctx.tool("appmods.screens", { description: "The screens installed apps add: [{ module, id, label, path, icon? }], path on the app's own origin (appmods.open makes the address). A screen of an app that is not running is not listed.", input: obj({}), run: async () => ({
+    ctx.tool("appmods.screens", { description: "List screens of running installed apps as [{ module, id, label, path, icon? }]; appmods.open makes the address from path.", input: obj({}), run: async () => ({
       screens: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().flatMap((/** @type {any} */ r) => (known(r.name).screens || []).map((/** @type {any} */ s) => ({ module: r.name, ...s }))) }) });
     ctx.tool("appmods.logs", { description: "The last lines an app wrote. For the person who owns this server.", input: obj({ name: str, lines: { type: "integer" } }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
@@ -229,7 +229,7 @@ export default {
       const r = row(String(i.name)); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running (appmods.status shows its state, appmods.start starts it)", "not_found");
       return { origin: r.origin };
     } });
-    ctx.tool("appmods.connection", { description: "The Connection an installed app declares, in the Connection record's shape (label, auth, check, operations) with the Vault item that holds its key: { app, label, auth, credential: { item, field }, check, operations }.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
+    ctx.tool("appmods.connection", { description: "The Connection an installed app declares, as { app, label, auth, credential: { item, field }, check, operations }, with its Vault item.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       const c = known(r.name).connection; if (!c) throw refuse("that app declares no Connection (connectors.connection.propose proposes one by hand)", "not_found");
       return { app: r.name, label: c.label, auth: c.auth, credential: { item: item(r.name, c.credential.replace(/_/g, "-")), field: "value" }, check: c.check, operations: c.operations || [] };

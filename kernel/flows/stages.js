@@ -120,9 +120,10 @@ export function createStages(o) {
     const data = (await recordData(e.type, e.id)) || {};
     const owner = stage && stage.owner ? await actorFor(stage.owner, space, { record: e.urn, type: e.type, stage: e.stage }) : null;
     /** @type {Map<string, string>} */ const made = new Map();
+    /** @type {{ task: string, why: string }[]} */ const skipped = [];
     for (const t of templates) {
       const doer = await actorFor(t.doer, space, { record: e.urn, type: e.type, stage: e.stage, task: t });
-      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `nobody can do ${t.doer}` }); continue; }
+      if (!doer) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `nobody can do ${t.doer}` }); skipped.push({ task: t.title, why: `nobody can do ${t.doer}` }); continue; }
       const deps = [];
       for (const d of t.depends_on || []) { const id = made.get(d); if (id) deps.push(id); else emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `depends on ${d}, which was not made` }); }
       const spec = {
@@ -142,13 +143,18 @@ export function createStages(o) {
       /** @type {any} */ let task;
       // One task the kernel refuses (its doer is not a member of the Space yet) is said so and skipped; the stage's other tasks are still made.
       try { task = await o.kernel.ask.request(chain, spec, { idem: `stage:${key}:${t.title}` }); }
-      catch (err) { emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` }); continue; }
+      catch (err) {
+        emit("stage.error", { record: e.urn, stage: e.stage, task: t.title, why: `the task could not be made: ${err instanceof Error ? err.message : String(err)}` });
+        skipped.push({ task: t.title, why: err && /** @type {any} */ (err).code === "not_a_member" ? `${doer.id} is not in this space yet` : `it could not be made: ${err instanceof Error ? err.message : String(err)}` });
+        continue;
+      }
       made.set(t.title, task.id);
       ent.tasks.push({ title: t.title, id: task.id, required: t.required !== false, since: now(), ...(t.checklist && t.checklist.length ? { checklist: t.checklist } : {}) });
       taskEntry.set(task.id, key);
     }
     emit("stage.tasks-made", { record: e.urn, stage: e.stage, tasks: ent.tasks.map(t => t.id) });
     await openGate(ent, stage && stage.owner ? String(stage.owner) : null);
+    return { made: ent.tasks.length, skipped };
   }
 
   /** The gate for this entry on the runner. A gate is a record of what happened, so a fault in it never stops the stage. @param {any} ent @param {string | null} owner */

@@ -1187,6 +1187,24 @@ test("lending a computer to a space is a stored grant: Face ID only at the first
   w && void 0;
 });
 
+test("the Run on this computer switch reads the real list and lends with the real tool: the plan names the device and the spaces, lending shows in the list, and stopping asks nothing", async t => {
+  const { lendPlan } = await import("../../apps/app/screens/runner/runner-model.js");
+  world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  // the app asks for the device it is on (no device given) and plans from what the box says
+  const plan = lendPlan(await d.ok("spaces.devices.list", {}));
+  assert.equal(plan.device, me.eid, "the plan names this computer by the id the box knows it by");
+  assert.ok(plan.toLend.some(x => x.space === a.space), "the space it is in is to be lent to");
+  assert.deepEqual(plan.lent, []);
+  for (const sp of plan.toLend) await d.ok("spaces.devices.lend", { space: sp.space, device: plan.device, on: true }, "cli", { proof: "touch" });
+  const after = lendPlan(await d.ok("spaces.devices.list", {}));
+  assert.ok(after.lent.some(x => x.space === a.space) && !after.toLend.some(x => x.space === a.space), "lending shows in the list");
+  for (const sp of after.lent) await d.ok("spaces.devices.lend", { space: sp.space, device: after.device, on: false });
+  assert.deepEqual(lendPlan(await d.ok("spaces.devices.list", {})).lent, [], "stopping needs no yes and ends the lending");
+});
+
 test("lend attacks (LD-1 to LD-4): a removal ends the consent, an owner's off withdraws the space's, the status is not for any member, and concurrent changes end where the last event says", async t => {
   const w = world(t);
   const d = await device(t);

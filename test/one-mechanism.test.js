@@ -38,7 +38,7 @@ test("A. one role list: only the contracts, and four named special lists, spell 
 test("B. one secret detector: a token shape or a private key header is spelled only in lib/credential-shapes.js (the app's redactor, the Chrome extension copy and the Swift capsule are named below)", () => {
   const allowed = new Set([
     "lib/credential-shapes.js",
-    "apps/app/screens/connections/model.ts",   // the app cannot bundle lib/; pinned to the table by test/credential-pins.test.js
+    "apps/app/src/store-core/credential-shapes.js", // the app cannot bundle lib/: generated from the table by scripts/sync-copies.mjs
     "lib/siteops/redact.js",                   // generated into the Chrome extension by scripts/sync-copies.mjs; pinned by the same test
   ]);
   const shapes = /\bghp_|github_pat_|xox\[?[abprs]|\bsk_live|\bAKIA|\bsk-ant-|-----BEGIN [A-Z0-9 \[\]*]*PRIVATE KEY/;

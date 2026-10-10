@@ -353,7 +353,7 @@
  "core/spaces/identity-ops.test.js": 11,
  "core/spaces/kernel-members-compat.test.js": 2,
  "core/spaces/kernel-members.test.js": 3,
- "core/spaces/spaces.test.js": 60,
+ "core/spaces/spaces.test.js": 61,
  "core/spawner/isolation.test.js": 1,
  "core/spawner/spawner.test.js": 9,
  "core/spawner/wall.test.js": 11,
@@ -928,6 +928,7 @@
  "test/standin-directory.test.js": 1,
  "test/standin-state.test.js": 1,
  "test/stop-quiet.test.js": 5,
+ "test/surface-lists.test.js": 2,
  "test/temp-home-claude.test.js": 1,
  "test/test-counts.test.js": 4,
  "test/theme-defaults.test.js": 3,
@@ -1014,5 +1015,6 @@
  "apps/app/screens/runner/runner-contract.test.js": 5,
  "core/vault/links.test.js": 2,
  "core/github/scan.test.js": 3,
- "apps/app/screens/runner/run-switch.test.js": 7
+ "apps/app/screens/runner/run-switch.test.js": 7,
+ "test/a5-no-copies.test.js": 2
 }

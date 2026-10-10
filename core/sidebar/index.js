@@ -34,7 +34,7 @@ const NO_DEFAULT = "Only an owner or an admin of this Space sets the team's side
 /** The roles that set a Space's default. @param {string | null | undefined} role */
 export const roleSetsDefault = role => role === "owner" || role === "admin";
 
-const EDIT_PROPS = { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group", "set", "reset"] }, entries: { type: "array" }, what: str, key: str, entry: {}, space: str, group: { type: ["string", "null"] }, before: str, index: { type: "number" } };
+const EDIT_PROPS = { op: { type: "string", enum: ["add", "remove", "hide", "show", "move", "group", "set", "reset"], description: "set takes the whole list in entries; reset drops the caller's own list (sidebar.edit only)" }, entries: { type: "array", description: "the whole list, for op set" }, what: { type: "string", description: "a place's or screen's name, for op add" }, key: str, entry: {}, space: str, group: { type: ["string", "null"], description: "a group name, or null, for op group" }, before: { type: "string", description: "another entry's key, for op move (or give index)" }, index: { type: "number" } };
 
 export default {
   async start(ctx) {
@@ -170,14 +170,14 @@ export default {
 
     ctx.tool("sidebar.get", {
       effect: "read", callers: WHO,
-      description: "The sidebar for a Space: the Space's default (null when none is stored, then the built-in places stand), the caller's own list, the two merged, whether the caller may set the default, and the installed module screens that can be added.",
+      description: "The Space's default sidebar, the caller's own list, the merged result, whether the caller may set the default, and addable module screens.",
       input: { type: "object", properties: { space: str } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doGet(await ownerId(), isPerson(meta), i),
     });
 
     ctx.tool("sidebar.edit", {
       effect: "write", callers: WHO,
-      description: "Change the caller's OWN sidebar by one step. op is add (what: a place's or screen's name, or entry), remove, hide, show, move (before: another entry's key, or index), group (group: a name, or null), set (entries: the whole list, from the app's drag and drop) or reset (drop my own list; for sidebar.edit only). \"Put Documents in my sidebar\" is { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
+      description: "Change the caller's own sidebar by one step, for example { op: \"add\", what: \"Documents\" }. The Space's default is sidebar.team.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
       run: async (/** @type {any} */ i) => doEdit(await ownerId(), i),
     });
@@ -185,8 +185,8 @@ export default {
     // Pin anything (R031-48): a project, a Flow, a Connection's place, a records list or a saved view, by id, to the caller's OWN sidebar. An assistant may ("pin the Acme intake Flow").
     ctx.tool("sidebar.pin", {
       effect: "write", callers: WHO,
-      description: "Pin a project, a Flow, a Connection, a records list (its type) or a saved view to the caller's OWN sidebar: { what: project | flow | connection | records | view, id, label?, href? (a view's /u/ address), group? }. Pinning it twice pins it once. Take it off with sidebar.unpin.",
-      input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, label: str, href: str, group: str, space: str } },
+      description: "Pin a project, Flow, Connection, records list or saved view to the caller's own sidebar by id. Pinning twice pins once; unpin with sidebar.unpin.",
+      input: { type: "object", required: ["what", "id"], properties: { what: { type: "string", enum: PIN_KINDS }, id: str, label: str, href: { type: "string", description: "a view's address under /u/" }, group: str, space: str } },
       run: async (/** @type {any} */ i) => {
         const entry = pinEntry(String(i.what), String(i.id), i.label, i.href);
         if (!entry) throw refuse(`I cannot pin that: what is ${PIN_KINDS.join(", ")}, id is a short name, and a view needs an address under /u/.`, "bad_input");
@@ -206,7 +206,7 @@ export default {
 
     ctx.tool("sidebar.team", {
       effect: "write", callers: WHO,
-      description: "Change the Space's DEFAULT sidebar by one step (the same ops as sidebar.edit). Only the Space's owner or admin role may; an assistant's request is held for their yes first.",
+      description: "Change the Space's default sidebar by one step (same ops as sidebar.edit). Owner or admin only; an assistant's request is held for their yes.",
       input: { type: "object", required: ["op"], properties: EDIT_PROPS },
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => doTeam(await ownerId(), isPerson(meta), i),
     });

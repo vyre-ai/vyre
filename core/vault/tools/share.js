@@ -29,7 +29,7 @@ export function register({ ctx, vault, secretKey, ttlMs }) {
   });
 
   def("vault.person.add", {
-    description: "Pin a person's Vyre card (trust on first use). A card with a different key for someone you know blocks new passes to them until you verify it. From Claude it waits for a person.",
+    description: "Pin a person's Vyre card (trust on first use). A changed key blocks new passes until verified. From Claude it waits for a person.",
     input: obj({ card: str, name: str }, ["card"]),
     callers: ["cli", "local", "mcp"],
     // From Claude the card waits as pending for a person, so there is nothing to prove yet.

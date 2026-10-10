@@ -111,9 +111,9 @@ export function dirs(ctx, { g, target, forward }) {
   }
 
   ctx.tool("files.dirs", {
-    description: "The folders directly inside a folder (default: inside every root), or, with q, folders under it whose name matches (a bounded walk). Only the folders the user chose; never secret or dot folders. Each says whether it is a git repository and which project owns it.",
+    description: "List folders inside a folder (default: every root), or with q, folders under it matching the name, each marked git or not, with its project.",
     input: { type: "object", properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
-      q: { type: "string" }, limit: { type: "integer" } } },
+      q: { type: "string", description: "folder name to match; walks below path, bounded" }, limit: { type: "integer" } } },
     run: async ({ path: p, source, q, limit }) => {
       if (target(source) === "box") return forward("files.dirs", { ...(p ? { path: p } : {}), ...(q ? { q } : {}), ...(limit ? { limit } : {}) });
       const rs = g.roots();

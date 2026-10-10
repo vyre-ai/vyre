@@ -193,8 +193,8 @@ export default {
 
     ctx.tool("appearance.check", {
       effect: "read",
-      description: "Check a proposed appearance value without saving it. The hub calls it as the settings module with { key, value, level, device? } before it stores appearance.theme or appearance.tokens; a direct caller gives { override } (a partial tokens.json). Returns ok, each problem by name (a group or key that may not change, a text pair under AA, the focus ring under 3:1, the attention colour reused, text under 12, a target under 44, an empty font, a preset that isn't installed), and a message naming them when it fails.",
-      input: { type: "object", properties: { override: {}, value: {}, key: { type: "string" }, level: { type: "string" }, device: { type: "string" } } },
+      description: "Check a proposed appearance value without saving it: give key and value, or override. Returns ok, each problem by name, and a message.",
+      input: { type: "object", properties: { override: { description: "a partial tokens.json to check" }, value: { description: "the proposed value for key" }, key: { type: "string", description: "appearance.theme or appearance.tokens" }, level: { type: "string" }, device: { type: "string" } } },
       run: async i => {
         let problems;
         if ("override" in (i || {})) problems = checkOver(i.override).problems;
@@ -214,8 +214,8 @@ export default {
     });
 
     ctx.tool("appearance.resolve", {
-      description: "What a surface paints, for one device (and project): the preset (theme), the scheme (system, dark or paper), the whole merged tokens.json, its CSS custom properties, a version that changes when the tokens do, and the hub's rev when there is one. A stored value that breaks a rule paints the preset instead and is named under problems. format css returns only the CSS text. Surfaces read it again on settings.changed for appearance.* keys.",
-      input: { type: "object", properties: { device: { type: "string" }, project: { type: "string" }, format: { type: "string", enum: ["json", "css"] } } },
+      description: "What a surface paints for one device (and project): preset, scheme, merged tokens.json, CSS custom properties, version, and problems with any stored value.",
+      input: { type: "object", properties: { device: { type: "string" }, project: { type: "string" }, format: { type: "string", enum: ["json", "css"], description: "css returns only the CSS text" } } },
       run: async i => {
         const r = await resolve({ device: i.device, project: i.project });
         return i.format === "css" ? r.css : r;

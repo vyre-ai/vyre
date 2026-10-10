@@ -133,8 +133,8 @@ export default {
         return { apps: await (await clientFor(agent, i.thread)).apps() };
       });
 
-    tool("hands-desktop.screenshot", "The agent's whole display, base64-encoded: a PNG, or with format jpeg a JPEG scaled down to maxWidth (160-1920, default 640), the small still a phone shows.",
-      obj({ agent: str, thread: str, format: { type: "string", enum: ["png", "jpeg"] }, maxWidth: { type: "integer", minimum: 160, maximum: 1920 } }, ["agent"]),
+    tool("hands-desktop.screenshot", "The agent's whole display, base64-encoded: a PNG, or with format jpeg a small JPEG scaled to maxWidth.",
+      obj({ agent: str, thread: str, format: { type: "string", enum: ["png", "jpeg"], description: "png by default; jpeg gives a small still for a phone" }, maxWidth: { type: "integer", minimum: 160, maximum: 1920, description: "jpeg width, default 640" } }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
         await mayRead(agent, "hands-desktop.screenshot");
@@ -144,12 +144,11 @@ export default {
       });
 
     tool("hands-desktop.act",
-      "Find a named control by a fresh look, press/focus/type it, and verify the window changed. " +
-      "Consequential controls (send, pay, delete, submit, sign out, ...) are refused outright: take over in Glass to do those.",
+      "Find a named control, press, focus or type into it, and verify the window changed. Consequential controls (send, pay, delete) are refused: use Glass.",
       obj({
         agent: str, thread: str, app: str, name: str, role: str,
-        action: { type: "string", enum: ["press", "focus", "set-text"] },
-        value: str,
+        action: { type: "string", enum: ["press", "focus", "set-text"], description: "press by default; set-text types value" },
+        value: { ...str, description: "text to type with set-text" },
       }, ["agent", "name"]),
       async (i, meta) => {
         const { caller } = meta;

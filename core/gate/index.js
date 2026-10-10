@@ -134,8 +134,8 @@ export default {
     };
 
     ctx.tool("gate.request", {
-      description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here, unless the user's own words already asked for exactly this (same kind, same recipients), which goes out at once and is logged. See tools_call gate.senders for the `via` values and what each takes.",
-      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
+      description: "Ask to send something as the user (email, post, payment, deletion): { kind, via, to, content }. Held until the user approves the final content.",
+      input: obj({ kind: { type: "string", enum: KINDS }, via: { type: "string", description: "the way it goes out; tools_call gate.senders lists the values and what each takes" }, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
         asked: { type: "object", description: "A person's own confirmation of exactly this send, from their surface: { surface, hash, at }. hash is inputHash({kind, via, to[], content}); valid 60 s; a mismatch always holds." },
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),

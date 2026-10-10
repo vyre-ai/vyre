@@ -858,8 +858,8 @@ export function register({ vault, tool, internal, call, said, deps = {}, log }) 
   registerService({ api, vault, internal, forwardFile, forwardHeaders, obj, str });
 
   tool("vault.request", ["cli", "local", "deck", "capsule", "mcp", "module"],
-    "One HTTP call to a vendor API with an api-credential from the vault, which adds the key and never shows it. A read runs at once. A send, payment or deletion runs at once only if you asked for exactly it; otherwise it is held at the Gate with a card Vyre builds from the request's parsed fields. The response has every value the credential touched removed.",
-    obj({ credential: str, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
+    "HTTP call to a vendor API using a vault api-credential; Vyre adds the key. Reads run at once; sends, payments, deletes wait at the Gate.",
+    obj({ credential: { type: "string", description: "name of an api-credential in the vault" }, method: { type: "string", enum: METHODS }, url: str, headers: { type: "object" }, query: { type: "object" },
       body: { anyOf: [str, { type: "object" }, { type: "array" }] }, watcher: str, operation: str, input: { type: "object" } }, ["credential"]),
     (input, meta) => api.request(input, meta));
 

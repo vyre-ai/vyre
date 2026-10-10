@@ -12,6 +12,8 @@
 // The tag left behind says what kind of thing was removed and how long it was, so a model can
 // still reason ("the request carried a bearer token, 43 characters") without holding it.
 
+import { locateSecrets } from "../credential-shapes.js";
+
 export const MASK = "[redacted";
 
 /** Header names whose value is a credential or identifies a session. Lowercase. */
@@ -41,10 +43,12 @@ const tag = (kind, value) => `${MASK}:${kind}:${String(value).length}]`;
 /** True when a name is one that always holds a secret. @param {string} name */
 export const secretName = name => KEY.test(String(name)) || HEADER.test(String(name));
 
-/** One string with every credential-shaped run replaced. @param {string} s */
+/** One string with every credential-shaped run replaced: first every shape the table of vendor keys knows (lib/credential-shapes.js, copied beside this file in the extension), then the generic runs above. @param {string} s */
 export function text(s) {
   let out = String(s);
-  for (const [re, kind] of SHAPES) out = out.replace(re, m => tag(/** @type {string} */ (kind), m));
+  const spans = locateSecrets(out);
+  for (let i = spans.length - 1; i >= 0; i--) out = out.slice(0, spans[i].start) + tag("key", spans[i].value) + out.slice(spans[i].end);
+  for (const [re, kind] of SHAPES) out = out.replace(re, m => (m.startsWith(MASK) ? m : tag(/** @type {string} */ (kind), m)));
   return out;
 }
 

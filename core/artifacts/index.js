@@ -854,17 +854,21 @@ export default {
 
     ctx.tool("artifacts.create", {
       callers: WITH_AGENTS,
-      description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. An interactive page or app (HTML) runs your code in a locked frame, but it can still send the browser to another address and put anything it contains into that address, which no header stops: put nothing in one that the person has not chosen to send to the internet, and prefer a document, report, dashboard, diagram or deck, which run no code. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
+      description: "Make an artifact for the person to view or use: report, page or app, diagram, deck or dashboard. Use this, not your own artifact feature.",
       input: { type: "object", required: ["kind", "content"], properties: {
-        kind: { type: "string", enum: Object.keys(KINDS) }, format: { type: "string", enum: Object.keys(MAIN_FILE) },
-        title: str, content: str, data: {}, project: str, message: str } },
+        kind: { type: "string", enum: Object.keys(KINDS), description: "doc or report: Markdown. page or app: one HTML file. diagram: Mermaid or SVG. deck: Markdown slides. dashboard: a chart spec as JSON plus data." },
+        format: { type: "string", enum: Object.keys(MAIN_FILE), description: "Only when the kind allows more than one, such as Mermaid or SVG for a diagram." },
+        title: str,
+        content: { type: "string", description: "The source. Dashboard: chart spec {type: line or bar, x: the x-axis column, series: [columns]}, at most three series drawn. Deck: slides split by a line of ---, a Notes: line for speaker notes, a line of ... for two columns, images as data URIs only. Mermaid draws flowcharts and sequence diagrams, other types show as source. SVG scripts and links are removed. Styling: chart spec theme, color, dash, marker, height; @theme and @slide lines in a deck; @theme in Markdown; %%theme in Mermaid. Nothing loads from outside. An HTML page or app runs in a locked frame but can send the browser to another address carrying anything it contains: put in nothing the person has not chosen to send out, and prefer a document, dashboard, diagram or deck." },
+        data: { description: "Dashboard only: the rows, a list of objects keyed by the chart's columns. Every chart also gets a table." },
+        project: str, message: str } },
       examples: [{ kind: "report", title: "Intake report, October", content: "# Intake, October\n\nNew matters: 46, against 39 in September." }],
       run: create,
     });
 
     ctx.tool("artifacts.update", {
       callers: WITH_AGENTS,
-      description: "Save a new version of an artifact: new content (and data, for a dashboard), a new title, or both. Earlier versions stay, and artifacts.diff shows what changed.",
+      description: "Save a new version of an artifact by id: new content (and data, for a dashboard), a new title, or both. Earlier versions stay.",
       input: { type: "object", required: ["id"], properties: { id: str, content: str, data: {}, title: str, message: str } },
       examples: [{ id: "a_3fK2x9LqWm1p", content: "# Intake, October\n\nNew matters: 46, against 39 in September.\n\nReferrals are up.", message: "add referrals" }],
       run: update,
@@ -1067,8 +1071,8 @@ export default {
     });
 
     ctx.tool("artifacts.export", {
-      description: "An artifact as one file to download: `page` gives a self-contained HTML page, `source` gives its own file (Markdown, HTML, Mermaid, SVG or the chart spec).",
-      input: { type: "object", required: ["id"], properties: { id: str, version: { type: "integer", minimum: 1 }, as: { type: "string", enum: ["page", "source"] } } },
+      description: "Export an artifact as one downloadable file, either a self-contained HTML page or its source file. Takes id, optional version and as.",
+      input: { type: "object", required: ["id"], properties: { id: str, version: { type: "integer", minimum: 1 }, as: { type: "string", enum: ["page", "source"], description: "page (default): a self-contained HTML page. source: its own file (Markdown, HTML, Mermaid, SVG or the chart spec)." } } },
       examples: [{ id: "a_3fK2x9LqWm1p", as: "page" }],
       run: async (i, meta) => {
         const r = await reach(i.id, meta);
@@ -1227,8 +1231,8 @@ export default {
 
 
     ctx.tool("artifacts.media.gallery", {
-      description: "Generated images, video and audio as a gallery: newest first, compact rows (title, kind, type, size, width and height or length when the file says them, provider, the start of the prompt), within what the caller may reach. Page with `before` (the created_at of the last row seen).",
-      input: { type: "object", properties: { project: str, kind: { type: "string", enum: ["image", "video", "audio"] }, provider: str, before: { type: "integer" }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
+      description: "List generated images, video and audio, newest first, as compact rows within what the caller may reach. Page with `before`.",
+      input: { type: "object", properties: { project: str, kind: { type: "string", enum: ["image", "video", "audio"] }, provider: str, before: { type: "integer", description: "The created_at of the last row seen; returns older rows." }, limit: { type: "integer", minimum: 1, maximum: 100 } } },
       examples: [{ kind: "image", limit: 24 }],
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
@@ -1299,8 +1303,8 @@ export default {
 
     ctx.tool("artifacts.media.copy", {
       callers: WITH_AGENTS,
-      description: "Put an image, a video or a sound an earlier turn made (by any model) into your own artifacts folder, so you can open it as a file: \"use the image Grok made\". Returns the path. You reach what your project's artifacts reach, plus anything the person tagged into your thread with #.",
-      input: { type: "object", required: ["id"], properties: { id: str, thread: str } },
+      description: "Copy a generated image, video or sound into your artifacts folder so you can open it as a file. Returns the path.",
+      input: { type: "object", required: ["id"], properties: { id: { type: "string", description: "Reachable: your project's artifacts, plus anything the person tagged into your thread with #." }, thread: str } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
         const thread = trustedCaller(meta) ? String(i.thread || (meta && meta.thread) || "") : String((meta && meta.thread) || "");

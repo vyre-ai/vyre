@@ -108,7 +108,7 @@ export default {
     try { P.refresh(); } catch (e) { ctx.log("could not read the projects: " + /** @type {Error} */ (e).message); }
 
     ctx.tool("projects.list", {
-      description: "Every project: name, home, folders, people, avatar_seed (what its tile is drawn from), how many threads are in it (picked or by folder), the picked thread ids (picks), newest activity first.",
+      description: "Every project with name, home, folders, people, avatar_seed, thread count and picked thread ids (picks), newest activity first.",
       input: { type: "object", properties: { machines, archived: { type: "boolean" } } },
       run: async (input, meta = {}) => { const caller = meta.caller;
         if (!(await wantsMacs(ctx, input, caller, meta))) return P.list({ archived: Boolean(input.archived) });
@@ -154,8 +154,8 @@ export default {
       },
     });
     ctx.tool("projects.history", {
-      description: "Answer the one question about version history for a project's folder: keep: true makes the folder a local git repo (no GitHub, no remote) so each session gets its own copy, branch and Undo; keep: false says no and it is never asked again. A folder that already has a history is left as it is. The person, or their agent on their request.",
-      input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean" } } },
+      description: "Answer whether a project's folder keeps version history: true makes it a local git repo, with a copy, branch and Undo per session; false declines.",
+      input: { type: "object", required: ["project", "keep"], properties: { project: str, keep: { type: "boolean", description: "true makes the folder a local git repo (no remote); false is never asked again; a folder with history is left as it is" } } },
       callers: [...OWNER, "mcp"],
       run: async ({ project, keep }, meta = {}) => {
         const p = P.resolve(project);
@@ -261,8 +261,8 @@ export default {
       },
     });
     ctx.tool("projects.context", {
-      description: "The brief for a thread starting in a project, as plain text for Claude: what the project is, its people, its other threads and its memory. Give project, or cwd and session as a SessionStart hook sees them.",
-      input: { type: "object", properties: { project: str, cwd: str, session: str } },
+      description: "The plain-text brief for a thread starting in a project: its purpose, people, other threads and memory. Give project, or cwd and session.",
+      input: { type: "object", properties: { project: str, cwd: { type: "string", description: "as a SessionStart hook sees it" }, session: { type: "string", description: "as a SessionStart hook sees it" } } },
       run: async input => P.context(input),
     });
     // The work module tells this computer about a Project record it made (and about one made on another computer): a local row and a home folder, nothing else. Only the work module may.

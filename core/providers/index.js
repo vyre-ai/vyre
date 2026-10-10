@@ -6,7 +6,7 @@
 export default {
   async start(ctx) {
     ctx.tool("providers.list", {
-      description: "Every session provider on this machine, each with its own accounts (several per provider, ADR 0030 phase 2, 0.2 charter minimum 5) and the models it offers. A picker (Chat, the Capsule, the CLI) builds itself from this alone.",
+      description: "Every session provider on this machine with its accounts and the models it offers; pickers build themselves from it.",
       input: { type: "object", properties: {} },
       run: async () => {
         const r = await ctx.call("sessions.providers.snapshot", {});

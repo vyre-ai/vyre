@@ -38,10 +38,15 @@ on:
       - "apps/app/plugins/**"
       - ".github/workflows/android-app.yml"
   workflow_dispatch:
+    inputs:
+      mock:
+        description: "1 (default): the debug APK with the sample world; 0: a real build that talks to a box (the Glass relay proof pairs it with one)"
+        required: false
+        default: "1"
 permissions:
   contents: read
 concurrency:
-  group: android-app-${{ github.ref }}
+  group: android-app-${{ github.ref }}-${{ github.event.inputs.mock || '1' }}
   cancel-in-progress: ${{ startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2' }}
 env:
   EXPO_NO_TELEMETRY: "1"
@@ -81,7 +86,7 @@ jobs:
       - run: ./gradlew --no-daemon assembleDebug
         working-directory: apps/app/android
         env:
-          EXPO_PUBLIC_VYRE_MOCK: "1"
+          EXPO_PUBLIC_VYRE_MOCK: ${{ github.event.inputs.mock == '0' && '' || '1' }}
       - name: Name the APK, check its package and what it asks the phone for
         run: |
           set -o pipefail
@@ -97,6 +102,6 @@ jobs:
           sha256sum dist-android/vyre-debug.apk | tee dist-android/SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
-          name: android-app-debug-${{ github.sha }}
+          name: android-app${{ github.event.inputs.mock == '0' && '-real' || '' }}-debug-${{ github.sha }}
           path: apps/app/dist-android/
           retention-days: 14

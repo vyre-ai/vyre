@@ -323,8 +323,8 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
 
   ctx.tool("memory.writes", {
     callers: WHO,
-    description: "What agents, modules, watchers and the person wrote to memory, newest first, within the caller's reach: { writes: [{ id, kind, text, subject, source_ref, from: { kind, name, provider, thread, seq }, untrusted, state, at, projects: [{ project, state }], quoted }] }. project narrows to one project (or \"you\"); from to one writer (\"juno\", \"watcher:billing-inbox\"); state live (default), forgotten or all, for undo.",
-    input: { type: "object", properties: { project: { type: "string" }, from: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 200 }, state: { type: "string", enum: ["live", "forgotten", "all"] } } },
+    description: "What agents, modules, watchers and the person wrote to memory, newest first, within your reach. Filter by project, writer or state.",
+    input: { type: "object", properties: { project: { type: "string", description: "one project, or you" }, from: { type: "string", description: "one writer, such as juno or watcher:billing-inbox" }, limit: { type: "integer", minimum: 1, maximum: 200 }, state: { type: "string", enum: ["live", "forgotten", "all"], description: "live by default; forgotten or all to find a write to restore" } } },
     run: async (input, extra = {}) => {
       const s = await readScope(extra.caller, extra);
       const project = typeof input.project === "string" && input.project ? input.project : null;
@@ -373,8 +373,8 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
   };
   ctx.tool("memory.write.forget", {
     callers: WHO,
-    description: "Forget a memory write: with project, only its link there (the row goes with its last link); without, everywhere (the person's own surfaces only). Undo with memory.write.restore. Emits memory.forgot { id, from, project? }.",
-    input: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string" } } },
+    description: "Forget a memory write: with project, only its link there; without, everywhere (the person only). Undo with memory.write.restore.",
+    input: { type: "object", required: ["id"], properties: { id: { type: "string" }, project: { type: "string", description: "only unlink it from this project; the write goes with its last link" } } },
     run: change("forgotten"),
   });
   ctx.tool("memory.write.restore", {

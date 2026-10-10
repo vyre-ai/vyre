@@ -33,8 +33,8 @@ export function register({ ctx, vault, tool }) {
     kernel: ctx.kernel,
   });
 
-  tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "device", "space", "agent", "module"], "Connections the caller's surface may use: {surface, connections: [{id, source, ref, provider, account, auth, label, capabilities, state, needs?, uses, use?}], suggest_default?}. `uses` maps each capability to the {tool, input} that acts on it; with `capability`, `use` is that one and `suggest_default` is true the first time that capability has two or more ready connections and no default (asked once ever, not once per surface). A person sees every row with its surfaces and may pass `surface` to see one surface's view; a module must pass `surface` or `caller` (the caller it acts for). Never a value.",
-    obj({ capability: str, surface: str, caller: str }), async (input, meta) => c.list(input, meta.caller, await isSignedInPerson(meta)));
+  tool("vault.connections.list", [...PEOPLE, "mobile", "mcp", "tailnet", "device", "space", "agent", "module"], "Connections the caller's surface may use, each with the {tool, input} that acts on a capability. Never a value.",
+    obj({ capability: { type: "string", description: "narrow to one capability; use is then that one, and suggest_default is true the first time it has two or more ready connections and no default" }, surface: { type: "string", description: "a person may pass one to see that surface's view; a module must pass surface or caller" }, caller: { type: "string", description: "the caller a module acts for" } }), async (input, meta) => c.list(input, meta.caller, await isSignedInPerson(meta)));
 
   tool("vault.connections.get", ["module"], "One connection's metadata, for the module that acts on it: a row of its own source, or one whose uses name one of its tools. Anything else is not_found. Never a value.",
     obj({ id: str }, ["id"]), (input, { caller }) => c.get(input, caller));

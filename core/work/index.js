@@ -24,6 +24,7 @@ import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
+import { retryWhileAway, storeAway } from "./retry-away.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -130,11 +131,12 @@ export default {
             note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project${per ? `: ${per}` : ""}. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
           });
           dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
-        } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
+        } catch (e) { if (storeAway(e)) throw e; ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }
       };
-      const t = setTimeout(() => { void raiseRestore(); }, 1500); if (typeof t.unref === "function") t.unref();
+      const t = setTimeout(() => { void retryWhileAway(raiseRestore).catch(() => {}); }, 1500); if (typeof t.unref === "function") t.unref();
       // every person has a private Personal project, made on first need; the owner's now, and the old shared General is moved into its creators' once
-      void hubOf().personalProject().then(() => hubOf().migrateGeneral()).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
+      // (a team Space's own record store may still be starting: this is tried again until it is there, not given up on until the next restart)
+      void retryWhileAway(() => hubOf().personalProject().then(() => hubOf().migrateGeneral())).catch((/** @type {Error} */ e) => ctx.log(`work: Personal project / General migration did not finish: ${e.message}`));
     }
     // Project templates and "start a project" (core/work/templates.js): the stages a project runs are the Flows stage module's, reached through the Flows host.
     registerTemplateTools({ ctx, chainOf, templates: createTemplates({ kernel: kernelOf, hub: hubOf, log: ctx.log,
@@ -226,7 +228,7 @@ export default {
       return from;
     };
     ctx.tool("work.project.move-plan", {
-      description: "What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.",
+      description: "Preview moving a Project to another Space: counts of records, files and sealed fields, blockers, and the plan hash to approve. Reads only.",
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" } }, ["project", "to_space"]),
       run: async (input, extra) => {
         const k = kernelOf();
@@ -418,6 +420,19 @@ export default {
         return { id: rec.id, urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
       },
     });
+    ctx.tool("work.project.members", {
+      description: "Who is on a Project's team: each assistant or person with the role it fills, from the project's team records ({ members: [{ agent, role }] }). Read under the caller's own chain: a Project the caller may not read is not found.",
+      input: obj({ project: { type: "string", description: "The Project's record id, address or short name" } }, ["project"]),
+      callers: ["cli", "local", "deck", "capsule", "device"],
+      run: async (input, extra) => {
+        const k = kernelOf(), chain = await chainOf(extra);
+        const rec = await hubOf().projectOf(String(input.project || ""));
+        const mine = rec ? await k.records.get(chain, "project", rec.id).catch(() => null) : null;
+        if (!rec || !mine) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
+        const rows = (await k.records.query(chain, "team-member", { filter: { field: "project", op: "eq", value: { urn: rec.urn } }, page: { limit: 200 } }).catch(() => ({ rows: [] }))).rows || [];
+        return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || "") }; }).filter((/** @type {any} */ m) => m.agent) };
+      },
+    });
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
@@ -439,8 +454,8 @@ export default {
     };
     const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
     ctx.tool("work.chat.list", {
-      description: "The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
-      input: obj({ project: { type: "string" }, q: { type: "string" }, mine: { type: "boolean" }, limit: { type: "integer" } }),
+      description: "List chats you may see in this Space (title, project, who, when, status). Chats you are in also show run providers and the last line.",
+      input: obj({ project: { type: "string", description: "the project's short name" }, q: { type: "string", description: "a word in the title" }, mine: { type: "boolean", description: "true lists only your own chats" }, limit: { type: "integer" } }),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const k = kernelOf();
@@ -481,7 +496,7 @@ export default {
       },
     });
     ctx.tool("work.chat.get", {
-      description: "One chat you are in: its record plus its slots (the assistants and models running in it, with thread, provider, model, account and status) and its transcript address. A chat you are not in does not exist for you.",
+      description: "One chat you are in: its record, its slots (assistants and models running, with thread, provider, model, account, status) and transcript address.",
       input: obj({ chat: { type: "string" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
@@ -502,8 +517,8 @@ export default {
       return ((await from.records.query(from.chain, "chat-record", { page: { limit: 500 } })).rows || []).filter((/** @type {any} */ r) => mine.has(r.data.chat));
     };
     ctx.tool("work.chat.upgrade-plan", {
-      description: "What moving your chats from this Space to your other Space (Personal to My Cloud) would carry: how many chats, files and bytes, and anything that blocks it (a chat that is working). Reads only; the counts are what you approve.",
-      input: obj({ to: { type: "string" } }, ["to"]),
+      description: "Preview moving your chats to your other Space (Personal to My Cloud): chat, file and byte counts, and blockers. Reads only.",
+      input: obj({ to: { type: "string", description: "the other Space to move your chats to" } }, ["to"]),
       run: async (input, extra) => {
         const k = kernelOf();
         const here = await sideOf(k.space, extra);
@@ -574,8 +589,8 @@ export default {
     // it, or an assistant the chat lists), so a non-member is told "no such chat" exactly as for a chat that does not exist. The words come from the lines the Space's memory already keeps for each run
     // (core/work/memory/lines.js: scrubbed on the way in, so a sealed value is a placeholder), never a second store. Only the user's and the assistant's words come back; tool output stays out.
     ctx.tool("work.chat.span", {
-      description: "Read an exact span of a chat you are in, word for word: the lines from..to of each run (or one slot) as the Space's memory kept them, with the line address of each. Sealed values are placeholders. A chat you are not in does not exist for you.",
-      input: obj({ chat: { type: "string" }, slot: { type: "string", description: "one run of the chat, as work.chat.get names it (agent:<id> or model:<provider>/<model>#<n>), or terminal:<first 8 of a terminal session's id>; all runs and terminal sessions when absent" }, from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0, description: "the last line, inclusive; at most 199 lines after from are read in one call" } }, ["chat", "from"]),
+      description: "Read an exact span of a chat you are in, word for word: lines from..to of each run or one slot, with line addresses.",
+      input: obj({ chat: { type: "string" }, slot: { type: "string", description: "one run of the chat, as work.chat.get names it (agent:<id> or model:<provider>/<model>#<n>), or terminal:<first 8 of a terminal session's id>; all runs and terminal sessions when absent" }, from: { type: "integer", minimum: 0, description: "the first line, 0 or more" }, to: { type: "integer", minimum: 0, description: "the last line, inclusive; at most 199 lines after from are read in one call" } }, ["chat", "from"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const chat = String(input.chat);
@@ -695,8 +710,8 @@ export default {
       },
     });
     ctx.tool("work.tools", {
-      description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do: name, what it does and its risk. A tool the caller cannot use is not listed. Give `tool` for one tool with its input shape, or `schemas: true` for every shape.",
-      input: obj({ tool: { type: "string" }, schemas: { type: "boolean" } }),
+      description: "List the tools this caller may use in this Space: name, what it does and risk. Give tool or schemas for input shapes.",
+      input: obj({ tool: { type: "string", description: "one tool's name, to get its input shape" }, schemas: { type: "boolean", description: "true returns every tool's input shape" } }),
       run: async (input, extra) => {
         const all = await surfaceOf().list(await chainOf(extra));
         const one = input && input.tool ? all.filter(t => t.name === String(input.tool)) : null;
@@ -706,8 +721,8 @@ export default {
       },
     });
     ctx.tool("work.call", {
-      description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",
-      input: obj({ tool: { type: "string" }, input: { type: "object" } }, ["tool"]),
+      description: "Run one of the listed tools. Returns { result, component }. Outward acts (send, pay, publish, share) are held for a person's approval, never run.",
+      input: obj({ tool: { type: "string", description: "a tool name from work.tools" }, input: { type: "object", description: "that tool's input" } }, ["tool"]),
       callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
@@ -723,8 +738,8 @@ export default {
     // The Space's own context budget (a Space setting kept with its Flows; an owner or admin sets it through flows.budget { context_tokens }); 1,200 when there is no Flows assembly.
     const spaceContextTokens = async (/** @type {any} */ k, /** @type {any} */ chain) => { try { const h = ctx.flowsHost && ctx.flowsHost.get(k.space); const b = h && await h.flows.tools["flows.budget"](chain, {}); return b && b.context_tokens || 1200; } catch { return 1200; } };
     ctx.tool("work.situation", {
-      description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why. With `context: true`, or a `task`, also the record's world: the records it links to and that link to it, recent communications with the people on it, and what happened to it lately.",
-      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean" }, task: { type: "string" }, context_tokens: { type: "number" } }),
+      description: "Where the caller is, briefly: Space, role, project or record in scope, team, open tasks, what waits on them, and what is sealed and why.",
+      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean", description: "true adds the record's linked records, recent communications and recent history" }, task: { type: "string", description: "a task id; adds its record's world too" }, context_tokens: { type: "number" } }),
       run: async (input, extra) => {
         const k = kernelOf();
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
@@ -806,7 +821,7 @@ export default {
       run: async (input, extra) => { const hits = await engineOf().search(await chainOf(extra), String(input.query), Math.min(Number(input.k) || 6, 12), { room: await audienceOf(extra) }); return { hits, withheld: /** @type {any} */ (hits).withheld || 0 }; },
     });
     ctx.tool("work.know.answer", {
-      description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
+      description: "Answer a question from the Space's own records and history. Each claim cites a readable source; with none to cite, it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
       callers: WORK_CALLERS,
       run: async (input, extra) => {

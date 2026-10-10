@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { rig, BOB } from "./testing/lent-rig.js";
 import { startPump } from "./pipe-pump.js";
-import { createPipes, lenderArgs, PIPE } from "./pipe-home.js";
+import { createPipes, lenderArgs, PIPE, HARNESS_MARK } from "./pipe-home.js";
 
 const CAT_UPPER = "process.stdin.on('data', d => process.stdout.write(String(d).toUpperCase())); process.stdin.on('end', () => process.exit(0));";
 const wait = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
@@ -266,4 +266,11 @@ test("each chat that borrows a computer is one line on the timeline: lease.borro
   assert.equal(type, "lease.borrowed");
   assert.deepEqual([line.session, line.person, line.device, line.limit, line.epoch], ["s_line", BOB, "dev_laptop", null, 1]);
   assert.ok(Number.isInteger(line.at) && line.thread);
+});
+
+test("lenderArgs keeps the box's Harness plugin as a mark the lender fills with its own copy, and drops every other plugin folder", () => {
+  const harness = new URL("../../harness", import.meta.url).pathname, flag = `--${"plugin-dir"}`;
+  assert.deepEqual(lenderArgs(["--verbose", flag, harness, flag, "/box/account-plugin", "--model", "m"]), ["--verbose", flag, HARNESS_MARK, "--model", "m"]);
+  assert.deepEqual(lenderArgs([`${flag}=${harness}`]), [flag, HARNESS_MARK], "the =form too");
+  assert.deepEqual(lenderArgs([flag, "/somewhere/else/harness"]), [], "a folder that is not this box's Harness is a path of the box and goes");
 });

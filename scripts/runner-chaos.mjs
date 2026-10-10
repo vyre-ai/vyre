@@ -1,7 +1,7 @@
 // The chaos suite for a lent computer (R031-95, DESIGN-run-on-my-computer.md section 5): a real runner module with the real sandbox and encrypted workspace on a lender, a real home (kernel, sealing process, Offers,
 // the lent home with its placement book and heartbeat watch), the Wink peer wire between them over TCP, and a fake agent that takes a turn on its own. The orchestrator breaks things and asserts what the person
 // would care about: no turn lost, none repeated, the server resumes from the last whole turn, a computer that woke up writes nothing, a workspace is closed before "locked" is said.
-// Scenarios: kill -9, sleep (SIGSTOP), a short and a long network outage, lease expiry, clock skew both ways, the Mac's sleep notice. Runs only on a hosted runner or a test box, never on a person's Mac (hosted-guard).
+// Scenarios: kill -9, sleep (SIGSTOP), a short and a long network outage, lease expiry, clock skew both ways, the Mac's sleep notice, a chat's pipe and door, and the lid shutting in the middle of a chat's turn. Runs only on a hosted runner or a test box, never on a person's Mac (hosted-guard).
 //   node scripts/runner-chaos.mjs [scenario ...]        roles home and lender are this same file, started by the orchestrator
 import "../core/runner/testing/hosted-guard.js";
 import fs from "node:fs";
@@ -88,7 +88,7 @@ if (role === "home") {
             (globalThis.__procs ||= new Map()).set(c.session, rec); out = true;
           }
           else if (c.cmd === "write") { globalThis.__procs.get(c.session).proc.stdin.write(c.text); out = true; }
-          else if (c.cmd === "read") { const r = globalThis.__procs.get(c.session); out = { lines: r.lines, up: Boolean(r.proc.lent), closed: r.closed, error: r.error }; }
+          else if (c.cmd === "read") { const r = globalThis.__procs.get(c.session); out = { lines: r.lines, up: Boolean(r.proc.lent), closed: r.closed, error: r.error, moved: r.proc.moved || null }; }
           else if (c.cmd === "kill") { out = globalThis.__procs.get(c.session).proc.kill(); }
           else out = { error: "unknown" };
         } catch (e) { out = { error: String(e.message || e) }; }
@@ -335,6 +335,33 @@ else {
       const n1 = (await ctl({ cmd: "transcript", session: l.sess })).length; await sleep(1500);
       check((await ctl({ cmd: "transcript", session: l.sess })).length > n1, "turns carry on");
       await whole(l.sess, "clock back");
+      l.send({ cmd: "exit" });
+    },
+    // The lid shuts in the middle of a chat's turn: the computer hands the chat to the server, the SDK hears a move (not a crash), the server resumes from the last WHOLE turn once, and the cut turn is not in what it resumes from.
+    async lidMidTurn() {
+      const l = await lend("lidturn");
+      const sess = "chatlid1";
+      await ctl({ cmd: "spawn", session: sess });
+      await until("the chat's process to start on the lender", async () => (await ctl({ cmd: "read", session: sess })).up, 60_000);
+      const said = async text => (await ctl({ cmd: "read", session: sess })).lines.filter(x => x.includes(text)).length;
+      await ctl({ cmd: "write", session: sess, text: "turn alpha\n" });
+      await until("the first turn to be whole", async () => (await said("did alpha")) >= 1 && (await ctl({ cmd: "checkpoint", session: sess }))?.turn >= 1, 30_000);
+      await ctl({ cmd: "write", session: sess, text: "slowturn 60000 beta\n" });
+      await until("the second turn to be under way", async () => (await said("working beta")) >= 1, 30_000);
+      l.send({ cmd: "emit", type: "link.sleeping" }); log("the lid shuts in the middle of the second turn");
+      await until("the server to take it", async () => (await ctl({ cmd: "book", session: sess }))?.where === "server", 30_000);
+      const row = await ctl({ cmd: "book", session: sess });
+      check(row.reason === "asleep" || row.reason === "lid-closed", `handed over with its reason (${row.reason})`);
+      await until("the chat's process to end for the SDK", async () => (await ctl({ cmd: "read", session: sess })).closed, 30_000);
+      const end = await ctl({ cmd: "read", session: sess });
+      check(end.moved && end.moved.to === "server" && end.closed[0] === null, `the SDK heard a move to the server, not a crash (${JSON.stringify(end.closed)}, moved ${JSON.stringify(end.moved)})`);
+      await until("the server to resume it", async () => (await ctl({ cmd: "resumes" })).some(x => x.session === sess), 30_000);
+      const r = (await ctl({ cmd: "resumes" })).filter(x => x.session === sess);
+      check(r.length === 1 && r[0].turn === 1, `the server resumed it once, from the last whole turn (${JSON.stringify(r.map(x => x.turn))})`);
+      const held = await ctl({ cmd: "transcript", session: sess });
+      check(held.some(x => x.includes("did alpha")) && !held.some(x => x.includes("did beta")), "what it resumes from holds the whole turn and not the cut one");
+      await sleep(1500);
+      check((await ctl({ cmd: "transcript", session: sess })).length === held.length, "the lender wrote nothing after handing over");
       l.send({ cmd: "exit" });
     },
     async sleepNotice() {

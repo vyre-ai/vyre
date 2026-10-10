@@ -1,6 +1,8 @@
 // The pure half of Connections on a real vyred: what connectors.catalog, mcp.servers, google.accounts, github.accounts and vault.connections.list answer, as the lines the screen
 // shows. These pickers copy only the keys they name, so a stray field (a token) in an answer cannot reach the screen. Wording is the Deck's.
 
+import { locateSecrets } from "../../src/store-core/credential-shapes.js";
+
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const strs = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
@@ -10,13 +12,15 @@ export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n ==
 
 // ---- hiding what was typed ----
 
-const SHAPES = [/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{16,}\b/g, /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/g, /\bsk-[A-Za-z0-9_-]{16,}\b/g,
-  /\b(?:rq_live|pk_live|sk_live|rk_live)_[A-Za-z0-9]{10,}\b/g, /\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, /\b[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}\b/g, /\b[A-Fa-f0-9]{40,}\b/g];
+// What a known secret looks like is the table's (lib/credential-shapes.js, copied into src/store-core by scripts/sync-copies.mjs: the app's bundle cannot import from lib/); only the generic runs are written here.
+const GENERIC = [/\bBearer\s+[A-Za-z0-9._~+/=-]{16,}/gi, /\b[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{20,}\b/g, /\b[A-Fa-f0-9]{40,}\b/g];
 /** A message that may echo what the person typed (a pasted token) with known secret shapes masked, and the exact strings just typed. */
 export function redact(text: unknown, also: string[] = []): string {
   let s = String(text ?? "");
   for (const x of also) if (typeof x === "string" && x.length >= 6) s = s.split(x).join("[hidden]");
-  for (const re of SHAPES) s = s.replace(re, (m) => (/^Bearer/i.test(m) ? "Bearer [hidden]" : "[hidden]"));
+  const spans = locateSecrets(s);
+  for (let i = spans.length - 1; i >= 0; i--) s = s.slice(0, spans[i].start) + "[hidden]" + s.slice(spans[i].end);
+  for (const re of GENERIC) s = s.replace(re, (m) => (/^Bearer/i.test(m) ? "Bearer [hidden]" : "[hidden]"));
   return s;
 }
 

@@ -17,6 +17,7 @@ import { within, withinOrThrow } from "../../lib/within.js";
 /** The folder this Vyre is installed in: its MCP server (harness/mcp/run.js) is what a chat's session on this computer talks to. */
 const VYRE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 /** Where this install's node_modules really are, when they are a link to another folder (a checkout): the MCP server in the sandbox must read them too. */
+const harnessThere = () => { try { return fs.existsSync(path.join(VYRE_ROOT, "harness", "hooks", "run.js")); } catch { return false; } };
 const realModules = () => { try { const m = path.join(VYRE_ROOT, "node_modules"), r = fs.realpathSync(m); return r === m ? [] : [r]; } catch { return []; } };
 import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
@@ -173,7 +174,7 @@ export default {
       try {
         const run = resolveAgent(spec);
         // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
-        const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules() } : undefined;
+        const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules(), ...(harnessThere() ? { plugin: path.join(VYRE_ROOT, "harness") } : {}) } : undefined;
         h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer

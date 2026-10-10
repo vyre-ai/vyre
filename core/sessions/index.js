@@ -137,7 +137,7 @@ export default {
         binary: cfg.driver === "sdk" ? claudeBin(dir, cfg) || "bundled" : "claude" };
     };
 
-    tool("sessions.status", "How the sessions Vyre starts run on this machine: the driver (sdk or cli), the Claude credential they use (login, setup-token or api-key), which Claude Code, the idle close and the cap, and whether the Agent SDK is installed.",
+    tool("sessions.status", "How sessions run on this machine: driver (sdk or cli), Claude credential kind, Claude Code, idle close, cap, and whether the Agent SDK is installed.",
       { type: "object", properties: {} }, async () => status());
 
     tool("sessions.setup", "Install the Claude Agent SDK now (it installs itself on first use otherwise) and wait. Says how much it downloads. Sessions use it from the next one on.",
@@ -173,8 +173,8 @@ export default {
         return row;
       }, PEOPLE);
 
-    tool("sessions.prompt.preview", "The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds. purpose \"capsule\": the Capsule's quick answer (Vyre IQ) with no facts.",
-      { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"] } } },
+    tool("sessions.prompt.preview", "Preview the system prompt a session would start with for an agent and project, and how its levels combine. Excludes Vyre's own launch text.",
+      { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"], description: "capsule: the Capsule's quick answer prompt (Vyre IQ), with no facts." } } },
       async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
@@ -189,7 +189,7 @@ export default {
         return [...base, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
       });
 
-    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these. aliases is the list of model aliases to offer, with a label and a line each.",
+    tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from, plus the model aliases to offer. An agent's own model wins.",
       { type: "object", properties: {} },
       async () => ({ aliases: MODEL_ALIASES, purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
         projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
@@ -334,8 +334,8 @@ export default {
     const routes = new Routes(db, name => PROVIDERS.some(p => p.id === name));
     // Every provider but Claude needs a real, in-scope account: a fallback never runs on a login or key that nobody set up.
     const usable = e => { try { const a = accounts.resolve({ provider: e.provider, ...(e.account ? { account: e.account } : {}) }); return e.provider === "claude" || Boolean(a && !a.synthetic); } catch { return false; } };
-    tool("sessions.routes.get", "The fallback order for a scope (default, project:<slug> or agent:<name>): the ordered (provider, account) list a thread moves down when its turn hits a limit. Without a scope, every list.",
-      { type: "object", properties: { scope: str } },
+    tool("sessions.routes.get", "The fallback order of (provider, account) a thread moves down when its turn hits a limit, for one scope or all.",
+      { type: "object", properties: { scope: { type: "string", description: "default, project:<slug> or agent:<name>. Omit for every list." } } },
       async i => (i.scope ? routes.get(String(i.scope)) : routes.all()));
     tool("sessions.routes.set", `Set the fallback order for a scope: entries is an ordered list of { provider, account? }, e.g. Claude, then Codex, then Grok. An empty list clears it. Two entries on one provider (two accounts combining one vendor's quota) may break that vendor's terms: it saves only with acknowledge: true, after the person has seen the warning. An agent sets only its own list or a project it is granted.`,
       { type: "object", required: ["scope", "entries"], properties: { scope: str, acknowledge: { type: "boolean" },
@@ -384,7 +384,7 @@ export default {
       identityAt.set(key, Date.now());
       return out;
     };
-    tool("sessions.accounts.list", "Every account on a provider, or every account on every provider. Each names a vault item (never a value) and its scope: which projects and agents it is granted to.",
+    tool("sessions.accounts.list", "List accounts on one provider or every provider, each with its vault item name (never a value) and the projects and agents it may use.",
       { type: "object", properties: { provider: str } },
       async (i, meta) => {
         const listed = accounts.list(i.provider ? String(i.provider) : undefined);
@@ -411,9 +411,9 @@ export default {
       if (!row) return;
       try { ctx.events.emit("account.changed", { provider: String(row.provider), account: String(row.id), signed_in: signedIn, why }); } catch { /* an emit never fails the call */ }
     };
-    tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
-      { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
-        scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
+    tool("sessions.accounts.add", "Add a provider account: label, kind, and for an api-key or setup-token the vault item that holds its credential. Never touches the value.",
+      { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: { type: "string", description: "The vault item that already holds the credential (add it in the Vault first and grant it to threads). None for kind login: the provider's own sign-in fills the account." },
+        scope: { type: "object", description: "{ projects: \"*\"|[slugs], agents: \"*\"|[names] }. Default \"*\": every project and agent may use it until bound narrower.", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean", description: "Makes it the provider's pick when nothing else resolves." } } },
       async (i, meta) => {
         askedOnly(meta, "Adding an account", { assistant: true });
         // Not a person's surface: the account covers only the project the request came from, never every project, and is pending
@@ -484,8 +484,8 @@ export default {
         accountChanged(row, true, "key");
         return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
-    tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
-      { type: "object", properties: { provider: str, label: str, account: str, flow: str, code: str } },
+    tool("sessions.accounts.signin", "Sign an account in through its provider's own login, no token pasted. Start with provider and label (or account), then poll with flow.",
+      { type: "object", properties: { provider: str, label: str, account: str, flow: { type: "string", description: "From the start answer; alone it says waiting, done or failed." }, code: { type: "string", description: "With flow: the code a login asks back (step url, paste true)." } } },
       async (i, meta) => {
         askedOnly(meta, "Signing in an account", { assistant: true });
         const byPerson = isPerson(meta || {});

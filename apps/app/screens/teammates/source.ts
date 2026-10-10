@@ -1,7 +1,7 @@
 // A project's teammates over an injected `call`, keyed by the Project record id (cleanup's team.* change; the box refuses a short name): reads on open and after each action, writes all the person's own. The box has no tool that lists a
 // teammate's queued asks, so the pane shows how many are queued (team.list) and the one running (team.status).
 import type { Call } from "../settings/real-source";
-import { dutiesOf, teammatesOf, type Duty, type Pane, type Teammate } from "./model.ts";
+import { dutiesOf, membersOf, teammatesOf, type Duty, type Member, type Pane, type Teammate } from "./model.ts";
 
 export function teammatesSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
@@ -15,6 +15,8 @@ export function teammatesSource(call: Call) {
   };
   return {
     list: async (project: string): Promise<Teammate[]> => teammatesOf(await ask("team.list", { project })),
+    /** Who is on the project's team by its roles (a template's roster), or nothing when the box cannot say. */
+    members: async (project: string): Promise<Member[]> => { const r = await soft<unknown>("work.project.members", { project }); return r.failed ? [] : membersOf(r.data); },
     /** Every teammate the person can see, across projects. */
     all: async (): Promise<Teammate[]> => teammatesOf(await ask("team.list", { all: true })),
     /** Whether new work steers to teammates in this project; null when the box does not say. */

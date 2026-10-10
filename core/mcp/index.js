@@ -93,7 +93,7 @@ export default {
 
     ctx.tool("mcp.servers", {
       effect: "read",
-      description: "The MCP servers behind the hub that this caller may use: name, transport, state (stopped, starting, running, failed), how many tools, the last error, when last used, the auth type and vault item name, and the scope. Never a value.",
+      description: "List the MCP servers behind the hub this caller may use: name, transport, state, tool count, last error, auth type and scope. Never a value.",
       input: obj({}),
       run: (_, meta) => hub.servers(who(meta)),
     });
@@ -150,7 +150,7 @@ export default {
 
     ctx.tool("mcp.tools", {
       effect: "read",
-      description: "The tools of every MCP server this caller may use, from the cache (nothing is started): name \"<server>__<tool>\", server, tool, description, input schema, and outward (true means a call is held at the Gate until the user approves it).",
+      description: "List tools of every MCP server this caller may use: name \"<server>__<tool>\", input schema, outward (true: held at the Gate).",
       input: obj({}),
       run: (_, meta) => hub.tools(who(meta)),
     });
@@ -158,8 +158,8 @@ export default {
     ctx.tool("mcp.call", {
       effect: "write",
       callers: [...PEOPLE, "mcp", "harness"], // a model session may call; the hub scopes servers to the caller and holds anything outward at the Gate
-      description: "Call a tool on an MCP server: { server, tool, arguments } or { name: \"<server>__<tool>\", arguments }. A read runs and returns the server's result. Anything else is held at the Gate and returns { held, message }: nothing reaches the server until the user approves it, so do not try it another way.",
-      input: obj({ server: str, tool: str, name: str, arguments: { type: "object" },
+      description: "Call a tool on an MCP server. A read runs and returns the result; anything else is held at the Gate for approval.",
+      input: obj({ server: str, tool: str, name: { type: "string", description: "\"<server>__<tool>\", instead of server and tool." }, arguments: { type: "object" },
         hold: { type: "boolean", description: "modules only: hold this call at the Gate even if the tool reads" },
         on_behalf: obj({ thread: str, agent: str }) }),
       run: async (input, meta) => {

@@ -12,6 +12,8 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { ChatsList } from "../screens/chats/ChatsList";
+import { sampleChats } from "../screens/chats/chats-model.js";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -88,6 +90,15 @@ function Sample({ name }: { name: string }) {
       site("menu", [dep("e", 1, "Draft")], "plain", "Draft"),
     ];
     return <SitesList rows={rows} onOpen={() => {}} />;
+  }
+  if (name === "chats-list") {
+    const now = 1_700_000_000_000;
+    const rows = [
+      { id: "a", pinned: "assistant" as const, title: "Assistant", project: "", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 2 * 60_000, line: "", asks: 0, unread: 0, open: true },
+      ...sampleChats(now).map((c, i) => (i === 1 ? { ...c, asks: 1 } : i === 2 ? { ...c, status: "failed" } : c)),
+      { id: "x", pinned: "" as const, title: "Intake hand-off (not yours)", project: "General", people: ["sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "", asks: 0, unread: 0, open: false },
+    ];
+    return <ChatsList rows={rows} now={now} places={{ places: [{ chat: "demo", computer: "Dana's MacBook", online: true }] }} onOpen={() => {}} />;
   }
   if (name === "runner-chip") {
     return (

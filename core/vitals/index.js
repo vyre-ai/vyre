@@ -177,7 +177,7 @@ export default {
         return { device, latest, history, computers };
       });
 
-    tool("vitals.summary", "Aggregate numbers only (no process name or window title, ever): this device's latest sample, or one agent's own computer. Any caller, including an agent about its own computer.",
+    tool("vitals.summary", "Aggregate numbers only, never process names or window titles: this device's latest sample, or an agent's own computer. Any caller.",
       obj({ device: str }), async (i, { caller }) => {
         const claim = /^mcp:agent:(.+)$/.exec(String(caller || ""));
         const device = i.device || deviceName();

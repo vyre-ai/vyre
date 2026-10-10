@@ -9,6 +9,7 @@ import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
 import { ageOf } from "./chat-model.js";
 import { tool } from "../../src/real/box";
+import { ChatsList } from "./ChatsList";
 import { UNSUPPORTED, chatState, computerOf, chatSub, chatsOrdered, chatsShown, chatsView } from "./chats-model.js";
 import { ensurePersistent } from "../../src/state/persistent-chat";
 import { ProviderBadge } from "@vyre/ui";
@@ -51,16 +52,7 @@ export default function ChatsScreen() {
         : view.body === "offline" ? <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>
         : view.body === "empty" ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (
-          <Card flush>
-            {rows.map((t, i) => (
-              <View key={t.id} style={t.open ? undefined : { opacity: 0.5 }}>
-                {i ? <Divider /> : null}
-                <Row lead={<AvatarStack of={[...t.people.map((n) => markRef("person", n)), ...t.agents.map((n) => markRef("assistant", n))]} size={40} max={3} />} title={t.pinned === "assistant" ? "Your assistant" : t.title} sub={t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id))}
-                  end={<>{t.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{chatState(t) === "needs-you" ? <Chip tone="accent">Needs you</Chip> : chatState(t) === "failed" ? <Chip tone="warn">Failed</Chip> : null}{t.unread > 0 ? <Chip tone="accent">{t.unread > 99 ? "99+" : String(t.unread)}</Chip> : null}{t.last ? <Text size="caption" tone="label">{ageOf(t.last, now)}</Text> : null}</>}
-                  onPress={t.open ? () => router.push({ pathname: "/u/chats/[id]", params: { id: t.id } }) : undefined} />
-              </View>
-            ))}
-          </Card>
+          <ChatsList rows={rows} now={now} places={places} onOpen={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })} />
         )}
     </Page>
   );

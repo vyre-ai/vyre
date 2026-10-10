@@ -36,8 +36,8 @@ export default {
     const pkg = (seams.get(home) || { pkg: PKG_ROOT }).pkg;
     ctx.tool("vyre.core", {
       effect: "read",
-      description: "Vyre's modules, live: { modules: [{ name, group, folder, runs_on, does, state }], total }. state is running, stopped or failed on this machine now. `query` keeps the modules whose name or purpose has those words; `module` returns one. For a module's tools ask tools_find; for how they fit, read docs.read architecture/map.md.",
-      input: { type: "object", properties: { query: { type: "string", maxLength: 100 }, module: { type: "string", maxLength: 64 } } },
+      description: "Vyre's modules, live, each with name, group, folder, runs_on, does and state (running, stopped, failed). For a module's tools ask tools_find.",
+      input: { type: "object", properties: { query: { type: "string", maxLength: 100, description: "Keeps the modules whose name or purpose has these words." }, module: { type: "string", maxLength: 64, description: "Returns just this module." } } },
       run: async (/** @type {any} */ input) => {
         let mapped = [];
         try { mapped = parseMap(fs.readFileSync(path.join(pkg, "docs", "architecture", "map.md"), "utf8")); } catch { /* no map in this build: the live list alone */ }
