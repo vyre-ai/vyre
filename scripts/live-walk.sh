@@ -13,7 +13,7 @@ if [ -n "$RC_CLAUDE_TOKEN" ]; then export RC_CLAUDE_TOKEN; else unset RC_CLAUDE_
 mkdir -p "$out"
 head12=$(printf %s "${RC_CLAUDE_TOKEN:-}" | cut -c1-12)
 cd "$(dirname "$0")/.." || exit 1
-node scripts/proof-live-droplet.mjs --out "$out" "$@" > "$out/walk.log" 2>&1
+node "scripts/${WALK_SCRIPT:-proof-live-droplet.mjs}" --out "$out" "$@" > "$out/walk.log" 2>&1
 code=$?
 if [ -n "$head12" ]; then
   if grep -rqF -- "$head12" "$out" 2>/dev/null; then echo "token check: FOUND the Claude token's first 12 characters in $out"; code=97; else echo "token check: the Claude token's first 12 characters are absent from the walk log and output"; fi
