@@ -143,7 +143,7 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const carol = await b.watch("carol", chat.id);
   // codex is signed in on this box
-  const added = await b.reg.call("sessions.accounts.add", { provider: "codex", label: "Carol's Codex", kind: "login" }, "cli", { token: w.tokens.carol });
+  const added = await b.reg.call("sessions.accounts.add", { provider: "codex", label: "Carols Codex", kind: "login" }, "deck", { token: w.tokens.carol });
   assert.ok(!added.error, added.error && added.error.message);
   b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), added.data.id);
   // bob, on the thread's own provider (Claude), says a fact only his turn holds

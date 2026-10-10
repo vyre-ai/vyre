@@ -296,7 +296,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account", "zone"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account", "zone", "person"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -914,8 +914,8 @@ export class Switchboard {
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person });
-      o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person || (o.kernelTurn && o.kernelTurn.asker) });
+      o = { ...o, provider, purpose, account: acct ? acct.id : undefined, person: o.person || (o.kernelTurn && o.kernelTurn.asker) || undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
@@ -1696,13 +1696,13 @@ export class Switchboard {
     return p;
   }
 
-  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null }) {
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null, person = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(kernelTurn ? { person: kernelTurn.asker } : {}) });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(kernelTurn || person ? { person: kernelTurn ? kernelTurn.asker : person } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
     const { seed, had } = await this.transferSeed(id, rec, provider);
@@ -1716,7 +1716,7 @@ export class Switchboard {
     const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
     const kept = optsOf(row);
     kept.provider = provider;
-    if (acct) kept.account = acct.id; else delete kept.account;
+    if (acct) kept.account = acct.id; else delete kept.account; if (kernelTurn || person) kept.person = kernelTurn ? kernelTurn.asker : person;
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
@@ -2504,7 +2504,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) throw no(`${lease.holder} has the keyboard.`, "busy");
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
-    const back = { provider: cur, account: rec.account || null, model: rec.model || null };
+    const back = { provider: cur, account: rec.account || null, model: rec.model || null, person: optsOf(this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id)).person || null };
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
@@ -2534,7 +2534,7 @@ export class Switchboard {
     this.carry.set(id, note);
     // The one-turn switch that started this turn may still be finishing (a fast turn can end before its own switch has let go): wait for it, bounded, so the return is never taken for a second switch and dropped.
     for (let n = 0; n < 100 && this.switches.has(id); n++) await new Promise(r => setTimeout(r, 20));
-    await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, reason: "back" });
+    await this.switchProvider(id, { provider: once.back.provider, account: once.back.account, model: once.back.model, person: once.back.person, reason: "back" });
     const now = this.live.get(id);
     if (now) this.turnEnded(id, now, rec ? rec.project : null);
   }
