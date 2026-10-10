@@ -26,6 +26,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
@@ -158,6 +159,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Shows on: cli
 - Needs daemon: `flowsHost`
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
+- Needs tools: `documents.send`
 - Needs vault: `per-app`
 
 ## approvals
@@ -218,6 +220,17 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Tools: [8](tools.md#assistant)
 - Emits: [3 events](events.md#assistant)
 - Shows on: cli
+
+## attachments
+
+Files a person adds to a chat: each is kept once, sealed, in the chat's own folder, and a message carries only a reference to it.
+
+- Folder: `core/attachments`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [2](tools.md#attachments)
+- Emits: [1 events](events.md#attachments)
+- Shows on: no surface
 
 ## brand
 

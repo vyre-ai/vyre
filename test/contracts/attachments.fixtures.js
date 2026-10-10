@@ -23,10 +23,5 @@ export const fakeOpen = cwd => async (/** @type {string} */ id, /** @type {"base
   return as === "base64" ? { base64: f.base64 } : { path: `${cwd}/.vyre/attachments/${f.id}-${f.name}` };
 };
 
-/** The form each provider takes each fixture in (the table in the contract). */
-export const formsExpected = {
-  claude: { image: "image-block", pdf: "document-block", text: "path", sheet: "path" },
-  codex: { image: "image-path", pdf: "path", text: "path", sheet: "path" },
-  grok: { image: "image-url", pdf: "path", text: "inline-text", sheet: "path" },
-  other: { image: "path", pdf: "path", text: "path", sheet: "path" },
-};
+/** The form each fixture reaches the model in: an image inline, anything else as a file in the session's folder. */
+export const formsExpected = { image: "image", pdf: "path", text: "path", sheet: "path" };
