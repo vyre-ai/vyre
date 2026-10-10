@@ -13,6 +13,8 @@ export type Notice = {
   body?: string;
   /** Where a tap goes: an app route such as /u/now. */
   route?: string;
+  /** Buttons on the notice (a held call: Approve and Deny). Each opens the app at its own route, where the same path as the card answers. */
+  actions?: { id: "approve" | "deny"; label: string; route: string }[];
 };
 
 export const SAY: Record<NotifyState, string> = {
@@ -30,7 +32,8 @@ export function cleanNotice(n: Notice): Notice | null {
   if (!title || !n.id) return null;
   const body = n.body ? clip(String(n.body).replace(/\s+/g, " ").trim(), 180) : undefined;
   const route = n.route && n.route.startsWith("/") && !n.route.startsWith("//") ? n.route : undefined;
-  return { id: String(n.id), title: clip(title, 60), ...(body ? { body } : {}), ...(route ? { route } : {}) };
+  const actions = (n.actions ?? []).filter((a) => (a.id === "approve" || a.id === "deny") && a.label && a.route && a.route.startsWith("/") && !a.route.startsWith("//")).slice(0, 2).map((a) => ({ id: a.id, label: clip(String(a.label), 20), route: a.route }));
+  return { id: String(n.id), title: clip(title, 60), ...(body ? { body } : {}), ...(route ? { route } : {}), ...(actions.length ? { actions } : {}) };
 }
 
 /** What carries a notice to a closed app. Vyre's own: no vendor push service, no central server. */

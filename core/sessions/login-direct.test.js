@@ -95,3 +95,33 @@ test("an API-key driver still needs the door; a login CLI does not; with a door 
   await new Promise(r => setTimeout(r, 20));
   assert.deepEqual(doorCalls, ["a secret word"]);
 });
+
+test("an account that carries an API key is an API-key call: with no door it is refused and nothing starts, for Codex and for Grok; a login account runs", async () => {
+  const ran = [];
+  const provider = { id: "p", run() { ran.push("ran"); return { pid: 1, alive: true, write() {}, interrupt: async () => {}, stop: async () => {} }; } };
+  for (const names of [["OPENAI_API_KEY", "CODEX_API_KEY"], ["XAI_API_KEY"]]) {
+    ran.length = 0;
+    const got = [];
+    loginDirect(provider, {}, names).run({ id: "k", env: { [names[0]]: "sk-live-1234567890abcdef" }, onMessage: m => got.push(m), onExit() {} });
+    await new Promise(r => setImmediate(r));
+    assert.equal(ran.length, 0, `${names[0]}: nothing started`);
+    assert.match(String(got[0] && got[0].result), /inference door/);
+    loginDirect(provider, {}, names).run({ id: "l", env: { HOME: "/h" }, onMessage() {}, onExit() {} });
+    assert.equal(ran.length, 1, `${names[0]}: the login run started`);
+  }
+});
+
+for (const provider of ["claude", "grok", "codex"]) {
+  test(`${provider}: a key the agent prints (a tool call input, its words, the result) never reaches the transcript or the thread record`, async t => {
+    process.env.FAKE_LEAK = KEY;
+    t.after(() => { delete process.env.FAKE_LEAK; });
+    const w = await boot(t, { driver: "cli" });
+    noMemoryBlocks(w);
+    if (provider !== "claude") { withAcp(t, w); assert.equal((await w.tool("sessions.accounts.add", { provider, label: "Mine", kind: "login" })).error, undefined); }
+    const th = (await w.tool("threads.start", { cwd: w.work, ...(provider === "claude" ? {} : { provider }), prompt: "leak", surface: "deck" })).data;
+    await w.finished(th.id);
+    const events = JSON.stringify(await w.events(th.id));
+    assert.ok(events.includes("the key is"), "the agent did speak");
+    assert.ok(!events.includes(KEY), `${provider}: the key is in the thread record`);
+  });
+}

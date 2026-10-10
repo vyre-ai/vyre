@@ -64,7 +64,7 @@ import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
-import { kernelMembers, plainKernelError } from "./kernel-members.js";
+import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { softwareProof, softwareActProof, softwareKey, challengeProblem } from "./presence-signer.js";
@@ -1095,7 +1095,7 @@ export default {
       obj({ space: str, device: str, on: { type: "boolean" }, network_cap: { type: "string", enum: ["provider", "internet"], description: "Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen." }, loosen: { type: "boolean", description: "Lending only: you mean to allow more network than you did before on this computer." }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOrHome(i.space);
-        const caller = await callerPerson(meta);
+        const caller = await actingPerson(K, meta, /** @type {string} */ (s.id));
         if (caller !== s.id) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
         const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
         if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
@@ -1394,12 +1394,12 @@ export default {
     const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
     const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
-      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
-      if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
+      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
+      if ((!st0 || !st0.exists || who !== st0.id) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
         for (const id of K.spaces.list()) {
-          // the kernel's own answer for the home's person (no caller chain needed: a terminal on a server is not always recognised as the person, and this list is the owner's own)
-          let m = null; try { const r = await K.membership(K.owner, id); if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
+          // the kernel's own answer for the CALLER (the person on the call's chain; a terminal with no chain of its own is the home's owner): never the owner's list for someone else
+          let m = null; try { const r = who ? await K.membership(who, id) : null; if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
           if (!m) continue;
           const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
           mine.push({ tier: "cloud", id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : id === K.space ? homeNames().label : null, displayName: id === K.space ? homeNames().displayName : null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
@@ -1436,7 +1436,7 @@ export default {
       } catch { /* no joined spaces */ }
       return out;
     };
-
+    tool("spaces.records.status", "Whether the records of each space on this device are ready, and when not, in plain words how far the first start is.", obj(), async (i, meta) => recordsStatus(K, (await listSpacesRaw(i, meta)).map((/** @type {any} */ r) => r.id)));
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
 
     /**

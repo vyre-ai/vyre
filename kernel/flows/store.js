@@ -75,6 +75,8 @@ export class MemoryFlowStore {
   }
 
   /** @param {string} id @param {number} version @param {ActorRef} approver @param {string} hash @param {number} at */
+  /** Every stored version of every Flow, drafts too, as { id, version, flow } (for the Vault's scan and Used by). */
+  async allVersions() { return [...this.flows.values()].flatMap(r => r.versions.map(v => ({ id: r.id, version: v.version, flow: structuredClone(v.flow) }))); }
   async approve(id, version, approver, hash, at) {
     const row = this.flows.get(id);
     const v = row && row.versions.find(x => x.version === version);
@@ -201,6 +203,11 @@ export class RecordsFlowStore {
   }
 
   /** @param {string} id @param {number} version @param {ActorRef} approver @param {string} hash @param {number} at */
+  /** Every stored version of every Flow, drafts too, as { id, version, flow }. */
+  async allVersions() {
+    const r = await this.k.records.query(this.chain, "def-flow", { page: { limit: 5000 } });
+    return r.rows.map((/** @type {any} */ x) => ({ id: String(x.data.flow_id), version: Number(x.data.version), flow: JSON.parse(x.data.body) }));
+  }
   async approve(id, version, approver, hash, at) {
     const v = (await this.#find("def-flow", "flow_id", id)).find((/** @type {any} */ r) => Number(r.data.version) === version);
     if (!v) throw Object.assign(new Error("no such Flow version"), { code: "not_found" });

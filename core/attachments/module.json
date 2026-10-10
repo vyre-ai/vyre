@@ -8,7 +8,8 @@
   "does": {
     "tools": [
       { "name": "attachments.put", "effect": "write", "reach": "person" },
-      { "name": "attachments.list", "effect": "read", "reach": "person" }
+      { "name": "attachments.list", "effect": "read", "reach": "person" },
+      { "name": "attachments.get", "effect": "read", "reach": "person" }
     ]
   },
   "watches": { "emits": ["attachment.added"] },

@@ -1046,7 +1046,7 @@ export function createPairing(o) {
         if (["phone", "computer"].includes(String(input.deviceKind || "")) && confirmed && typeof confirmed.key === "string" && !presenceKeyFor(device, confirmed, input)) {
           ctx.log(`wink: ${device} offered a key but did not say how it keeps it (storage: ${String(confirmed.storage || input.keyStorage || "not stated")}, signer: ${String(confirmed.signer || "not stated")}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }
-          throw fail("unavailable", "This device did not say how it keeps its key, so it could not be made your approving device and nothing was paired. Update Vyre on it and pair again.");
+          throw fail("unavailable", "This device did not say how it keeps its key, so it could not be made your approving device and nothing was paired. Update the Vyre app on this device, then pair again.");
         }
         /** @type {any} */ let adopted;
         try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}), ...(presenceKeyFor(device, confirmed, input) ? { presence_key: presenceKeyFor(device, confirmed, input) } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }

@@ -10,6 +10,7 @@
 // marked cache of "the spaces I am in" for drawing the screen offline, and never reads it for a decision.
 
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 
 /** What a kernel refusal says to a person, by its code. */
 const WORDS = Object.freeze({
@@ -95,3 +96,53 @@ export function kernelMembers({ handle, now = Date.now }) {
 
 /** A membership as the tools show it. @param {any} m */
 const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null });
+
+/** The words a person may be shown about a starting store: the progress sentence the store gives, and for anything else (a failure's own text, which can hold paths or errors) one fixed sentence. */
+const PROGRESS = /^(starting Records|the record store is still starting)/;
+
+/**
+ * Whether the records of the spaces the caller is in are up (a team space's own store takes about a minute the first time): `{ spaces: [{ space, ready, words? }] }`. Only the spaces in `mine` (the
+ * caller's own list) are looked at, so nothing is said of another person's Space on the same server. The app's Now shows a calm "setting up" card from it instead of an error or an empty list.
+ * @param {any} K @param {string[]} mine
+ */
+export async function recordsStatus(K, mine) {
+  const out = [];
+  const known = new Set([...(K && typeof K.space === "string" ? [K.space] : []), ...(K && K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : [])]);
+  for (const id of mine) {
+    if (!known.has(id)) continue;
+    let h = null; try { h = K ? K.for(id) : null; } catch { h = null; }
+    const store = (h && h.store) || (id === (K && K.space) ? K.store : null);
+    if (!store || typeof store.attached !== "function" || store.attached()) { out.push({ space: id, ready: true }); continue; }
+    let detail = "";
+    try { detail = String((await store.health()).detail || ""); } catch { /* no words */ }
+    out.push({ space: id, ready: false, words: PROGRESS.test(detail) ? detail : "the records are not ready yet" });
+  }
+  return { spaces: out };
+}
+
+/** The first person on the call's chain, whatever hops follow (a person's assistant acts for that person); null when the call carries no chain or none of its hops is a person. @param {any} K @param {any} meta @returns {Promise<string | null>} */
+async function firstPerson(K, meta) {
+  if (!(K && typeof K.chain === "function" && meta && (meta.kernelFacts || meta.token))) return null;
+  try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; }
+}
+
+/**
+ * The person an ACT is by: the first person on the call's chain, so another person's assistant is that person and never the home's owner. A call that carries a chain but no person is nobody (null, which
+ * matches no one); a call with no chain at all is this box's own terminal, the home's person `home`.
+ * @param {any} K @param {any} meta @param {string} home @returns {Promise<string | null>}
+ */
+export async function actingPerson(K, meta, home) {
+  if (!(meta && (meta.kernelFacts || meta.token)) || !K || typeof K.chain !== "function") return home;
+  return firstPerson(K, meta);
+}
+
+/**
+ * The person a Space LIST is for: the first person on the call's chain, whatever hops follow (a person's assistant or an automation asks for that person). A call with no person on its chain is the
+ * owner's own only when it came over one of this box's own surfaces (the terminal, the deck, the capsule: lib/person-surfaces.js); any other caller without a chain gets nothing. Not `callerPerson`: the one-hop rule there is deliberate for acts.
+ * @param {any} K @param {any} meta @returns {Promise<string | null>}
+ */
+export async function listCaller(K, meta) {
+  const p = await firstPerson(K, meta);
+  if (p) return p;
+  return meta && PERSON_SURFACES.includes(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
+}

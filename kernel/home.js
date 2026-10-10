@@ -243,6 +243,11 @@ export async function bootHomeKernel(cfg) {
   { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
   // R031-83: a Space restored from a bundle (lib/space-bundle.js) leaves its grants in kernel/restore.json: they go onto this Space once, under this seal, and the log says so (the old log is not carried, only its head)
   { const rf = path.join(cfg.root, "kernel", "restore.json"); let r = null; try { r = JSON.parse(fs.readFileSync(rf, "utf8")); } catch { /* no restore waiting */ }
-    if (r && r.grants) { await k.grants.adopt(r.grants); k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "space.restored", sv: 1, subject: `vyre://${id.space}/space/${id.space}`, data: { head: r.head, bundle_hash: r.bundle_hash }, vis: "owner", red: "internal" }); fs.rmSync(rf, { force: true }); } }
+    if (r && r.grants) {
+      // Once: the log says this bundle was adopted here (a crash between that line and the removal below), so the file is only removed. Adopting again would clear what the Space has been given or has revoked since and put the bundle's back.
+      const done = Boolean(r.bundle_hash) && k.log.read({ type: "space.restored" }).some((/** @type {any} */ e) => e.data && e.data.bundle_hash === r.bundle_hash);
+      if (!done) { await k.grants.adopt(r.grants); k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "space.restored", sv: 1, subject: `vyre://${id.space}/space/${id.space}`, data: { head: r.head, bundle_hash: r.bundle_hash }, vis: "owner", red: "internal" }); }
+      fs.rmSync(rf, { force: true });
+    } }
   return Object.freeze({ ...k, spaces, sealer, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

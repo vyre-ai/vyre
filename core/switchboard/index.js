@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1024,7 +1024,7 @@ export class Switchboard {
       await slow();
       at("first prompt send");
       if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
-      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
+      else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(withoutVyre(String(o.prompt)), 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
   }
@@ -1425,7 +1425,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
@@ -2462,7 +2462,7 @@ export class Switchboard {
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
     const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images, note });
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
+    this.emit("thread.sent", { text: cut(withoutVyre(text), 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
 

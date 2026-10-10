@@ -93,6 +93,8 @@ export function createFlows(o) {
   const connectionsOf = async (id) => { try { const v = await view(id); return connectorsOf(v.flow).map((/** @type {string} */ c) => c.replace(/^conn-/, "")); } catch { return []; } };
   const latest = async (/** @type {string} */ id) => { const r = await store.flowRow?.(id); const last = r && r.versions[r.versions.length - 1]; return last ? store.getVersion(id, last.version) : null; };
 
+  /** Every stored version of every Flow as { id, name, version, json }. */
+  const allDefinitions = async () => (await store.allVersions()).map((/** @type {any} */ v) => ({ id: v.id, name: v.flow.label || v.flow.name || v.id, version: v.version, json: JSON.stringify(v.flow) }));
   /** @type {Record<string, (chain: any, input: any) => Promise<any>>} */
   const tools = {
     /** Compile and store a new version, from the stored form or from text. Nothing runs until `flows.approve`. */
@@ -131,6 +133,16 @@ export function createFlows(o) {
       return Promise.all(rows.map(async (/** @type {any} */ r) => { const h = hs.get(r.id); const cs = await connectionsOf(r.id); return { ...r, ...(h ? { label: h.label, level: h.level, line: h.line } : {}), ...(cs.length ? { connections: cs } : {}) }; }));
     },
     // Connections list their Flows (R031-43): per Connection, the Flows that use it with each one's health, so a red Connection shows which Flows it stops.
+    // The Vault's "Used by" (R031-70) and its scan for a secret value (R031-72): module-only reads of the stored definitions, every version of every Flow. The first answers names only; the second the
+    // definition text, for the Vault's own scan (a Flow cannot hold a key: kernel/flows/no-secrets.js refuses it at save).
+    "flows.credential-uses": async (chain, i) => {
+      const name = need(i, "name", "the credential's name");
+      const needle = `vault://${name}`;
+      const uses = [];
+      for (const d of await allDefinitions()) if (d.json.includes(needle) && !uses.some(u => u.id === d.id)) uses.push({ id: d.id, name: d.name });
+      return { uses };
+    },
+    "flows.definitions.scan": async () => ({ definitions: await allDefinitions() }),
     "flows.connections": async (chain, i) => {
       const hs = new Map((await runner.health()).map((/** @type {any} */ h) => [h.id, h]));
       /** @type {Map<string, any[]>} */ const by = new Map();

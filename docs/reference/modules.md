@@ -26,7 +26,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
-| [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
+| [`attachments`](#attachments) | `core/attachments` | `box` | 3 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`builder`](#builder) | `core/builder` | `box` | 1 | 0 | none |
@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 46 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -89,7 +89,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`skills`](#skills) | `core/skills` | `box`, `local` | 13 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 115 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 116 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 12 | 0 | none |
@@ -231,7 +231,7 @@ Files a person adds to a chat: each is kept once, sealed, in the chat's own fold
 - Folder: `core/attachments`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [2](tools.md#attachments)
+- Tools: [3](tools.md#attachments)
 - Emits: [1 events](events.md#attachments)
 - Shows on: no surface
 
@@ -436,11 +436,11 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [44](tools.md#flows)
+- Tools: [46](tools.md#flows)
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"flow-act","actions":["flows.act-standing"]}]}`
 
 ## gate
 
@@ -952,7 +952,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [115](tools.md#spaces), 34 of them only for other modules
+- Tools: [116](tools.md#spaces), 34 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true,"bundle":true}`
