@@ -47,7 +47,7 @@ To send signers to `sign.yourfirm.com` instead of the Space's address, ask for i
 
 ## Send an email or a text
 
-`comms.send` sends an email through your own mail account or a text through your own Twilio account. It is held at the Gate until you say yes to the final words; a text to several numbers is one yes. Texts need `comms.sms` in `config.json` (`{ "account": "AC…", "from": "+1…" }`) and your Twilio key in the Vault. Once sent, the message is logged on the client it went to.
+`comms.send` sends an email through your own mail account or a text through your own Twilio account. It is held at the Gate until you say yes to the final words; a text to several numbers is one yes. Texts need `comms.sms` in `config.json` (`{ "account": "AC…", "from": "+1…" }`) and your Twilio auth token in the Vault, as an API key named `twilio` that Comms is allowed to use (an API key's secret works too: put its id, `SK…`, in a field named `sid`). Once sent, the message is logged on the client it went to.
 
 ## Open source
 
