@@ -33,3 +33,14 @@ test("run words: Ran N steps when done, with what failed; what is running and th
   assert.deepEqual(runWords([s("completed", "Looking up invoices"), s("completed"), s("running", "Drafting three reminders")]), { title: "Drafting three reminders · 3 steps so far", running: true, failed: 0 });
   assert.equal(runWords([s("running")]).title, "Working · 1 step so far");
 });
+
+test("no internal words: a tool's own name never reaches a person's line", async () => {
+  const { plainToolWords, runWords } = await import("./tool-runs.js");
+  assert.equal(plainToolWords("mcp__vyre-chrome__chrome_screenshot", "mcp__vyre-chrome__chrome_screenshot"), "Screenshot");
+  assert.equal(plainToolWords("mcp__vyre-chrome__chrome_screenshot url: https://example.com/a?b=1", "x"), "Screenshot of example.com");
+  assert.equal(plainToolWords("", "work.chat.list"), "Chat list");
+  assert.equal(plainToolWords("Read package.json", "Read"), "Read package.json", "a summary already in words is left alone");
+  assert.equal(plainToolWords("npm test", "Bash"), "npm test");
+  const live = runWords([{ status: "running", summary: "mcp__vyre__records_query type: client", tool: "mcp__vyre__records_query" }]);
+  assert.doesNotMatch(live.title, /mcp__|_query/);
+});

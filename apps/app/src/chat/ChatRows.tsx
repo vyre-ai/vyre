@@ -6,7 +6,7 @@
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Caret, Turning } from "./Live";
-import { runWords } from "./tool-runs.js";
+import { plainToolWords, runWords } from "./tool-runs.js";
 import { showsCaret, thoughtWord } from "./feel.js";
 import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
@@ -314,7 +314,7 @@ function HandoffResult({ it }: { it: any }) {
 function ToolLine({ it, running }: { it: any; running: boolean }) {
   const [open, setOpen] = useState(false);
   // the plain words ("Looking up overdue invoices"); the tool's own name is the detail, one tap away
-  const words = String(it.summary || "").trim() || String(it.tool);
+  const words = plainToolWords(it.summary, it.tool);
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${words}. ${open ? "Hide" : "Show"} the details`} onPress={() => setOpen((v) => !v)}>
       <View style={S.s9}>
@@ -322,7 +322,7 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
         <Text size="caption" tone={running ? "default" : "muted"} numberOfLines={1} style={S.s10}>{words}</Text>
         {running ? <Text size="caption" tone="label">running</Text> : null}
       </View>
-      {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${it.tool}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
+      {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${words}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
     </Pressable>
   );
 }

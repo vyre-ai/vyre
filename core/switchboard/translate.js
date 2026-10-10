@@ -168,7 +168,7 @@ function vyreArgs(name, input) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
-   *   media?: { mime?: string, data_b64?: string, file?: string, source: string, prompt?: string }[],
+   *   media?: { mime?: string, data_b64?: string, file?: string, source: string, prompt?: string, title?: string }[],
    *   providerMeta?: { models?: { id: string, label?: string }[], plan?: string },
    *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[], reasoning?: string, task?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
@@ -210,7 +210,7 @@ export function translate(m) {
       // Thinking is its own event, so a surface that does not show it never takes it for the reply.
       if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.thinking", payload: { message: id, block, text: String(b.thinking).slice(0, 20000), done: true } });
       if (b.type === "tool_use") {
-        rememberTool(b.id, b.name);
+        rememberTool(b.id, b.name, b.input);
         out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input), ...toolFields(b.name, b.input, b.vyre_kind), ...vyreArgs(b.name, b.input) } });
         // Claude's todo list is the plan: one event carrying the whole list, so a card just replaces its state.
         if (b.name === "TodoWrite" && b.input && Array.isArray(b.input.todos)) out.events.push({ type: "thread.plan", payload: { items: planItems(b.input.todos), at: Date.now() } });

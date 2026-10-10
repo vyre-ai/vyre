@@ -14,7 +14,11 @@ const result = (/** @type {string} */ id) => ({ type: "user", message: { role: "
 test("translate: a screenshot tool's image block is media; another tool's image is not; a non-image type is not", () => {
   translate(use("s1", "mcp__vyre-chrome__chrome_screenshot"));
   translate(use("r1", "Read"));
-  assert.deepEqual(translate(result("s1")).media, [{ mime: "image/png", data_b64: PNG, source: "content-block" }]);
+  assert.deepEqual(translate(result("s1")).media, [{ mime: "image/png", data_b64: PNG, source: "content-block", title: "Screenshot" }]);
+  translate({ type: "assistant", message: { id: "m", role: "assistant", content: [{ type: "tool_use", id: "s3", name: "mcp__vyre-chrome__chrome_screenshot", input: { url: "https://example.com/pricing?x=1" } }] } });
+  const named = translate(result("s3")).media;
+  assert.equal(named && named[0].title, "Screenshot of example.com", "a picture is named for its page, never for the tool that took it");
+  assert.doesNotMatch(JSON.stringify(named), /mcp__|chrome_screenshot/, "no internal tool name in what a person can see");
   assert.equal(translate(result("r1")).media, undefined, "an image the agent merely read is not a screenshot");
   translate(use("s2", "mcp__vyre-chrome__chrome_screenshot"));
   const odd = { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "s2", content: [{ type: "image", source: { type: "base64", media_type: "image/svg+xml", data: PNG } }] }] } };
@@ -26,4 +30,9 @@ test("a real daemon: the screenshot the fake claude's browser tool returns becom
   const th = (await w.tool("threads.start", { cwd: w.work, prompt: "shot", surface: "deck" })).data;
   await w.finished(th.id);
   await until(async () => { const r = await w.tool("artifacts.list", {}); const rows = r.data && (r.data.artifacts || r.data); return Array.isArray(rows) && rows.some((/** @type {any} */ a) => a.format === "png" || (a.media && a.media.mime === "image/png")); }, "the screenshot to be kept as an artifact", 20_000);
+  const rows = (await w.tool("artifacts.list", {})).data;
+  const list = Array.isArray(rows) ? rows : rows.artifacts;
+  const titles = list.map((/** @type {any} */ a) => String(a.title));
+  assert.ok(titles.some((/** @type {string} */ t) => /^Screenshot/.test(t)), `the picture is named Screenshot..., got ${titles.join(" | ")}`);
+  assert.doesNotMatch(titles.join(" "), /mcp__|chrome_screenshot|^image$/, "no internal word in the artifact's name");
 });
