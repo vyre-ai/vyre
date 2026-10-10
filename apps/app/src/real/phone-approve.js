@@ -4,8 +4,8 @@
 
 import { hashMatches, payloadHash } from "./payload-hash.js";
 
-/** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, acted_via?: string, expires_in_s?: number }} Pending */
-/** @typedef {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }} SignRequest */
+/** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, acted_via?: string, expires_in_s?: number, home?: string, challenge?: string }} Pending */
+/** @typedef {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string, home?: string, challenge?: string }} SignRequest */
 /** @typedef {{ signPresence(req: SignRequest): Promise<any>, signMany?(reqs: SignRequest[]): Promise<any[] | null> }} Signer */
 
 /** The cards from approvals.pending, newest asks last as the box lists them. @param {any} answer @returns {Pending[]} */
@@ -57,7 +57,8 @@ export async function approveCard(card, signer, call, header, person = "") {
   if (!signer) throw Object.assign(new Error("no signer"), { code: "no_signer" });
   // Never sign a hash the box gave without recomputing it from the fields this card shows (AP-1): a mismatch is refused before Face ID is asked.
   if (!hashMatches(card)) throw Object.assign(new Error("the hash does not match what the card shows"), { code: "hash_mismatch" });
-  const proof = await signer.signPresence({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, prompt: card.title, person });
+  // A card for a Space on another computer (a lease request) names that home and its one-use challenge: the proof must carry both (the home refuses one that does not).
+  const proof = await signer.signPresence({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, prompt: card.title, person, ...(card.home && card.challenge ? { home: card.home, challenge: card.challenge } : {}) });
   if (!proof || proof.payload_hash !== card.payload_hash) throw Object.assign(new Error("the signed proof is not for this card"), { code: "needs_presence" });
   return call("approvals.answer", { id: card.id, approve: true }, { kernelProof: header(proof) });
 }

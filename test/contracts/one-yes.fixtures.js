@@ -8,7 +8,7 @@ export const reasons = ["no_proof", "expired", "replayed", "wrong_request", "sof
 
 /** What an agent, a model, the harness, a module acting for one, or a guest gets back from a tool marked `outward: true`: nothing ran, and the person has a card. */
 export const heldError = {
-  code: "held_for_approval", approval: "ap_01a12328-a4fa-4c50-9e95-13ea33242a1d", line: "An assistant (agent:kit) wants to run mail.send (to: a@example.com, subject: x, body: y)", group: "gp_01a12328-a4fa-4cd7-966f-1ebd816e60cd",
+  code: "held_for_approval", approval: "ap_01a12328-a4fa-4c50-9e95-13ea33242a1d", line: "An assistant (agent:kit) wants to send an email to \"a@example.com\" about \"x\"", group: "gp_01a12328-a4fa-4cd7-966f-1ebd816e60cd",
   message: "mail.send acts as you outside, so it waits for your yes on your phone (approval ap_01a12328-a4fa-4c50-9e95-13ea33242a1d). Nothing ran. After you approve, call it again with the same input and approval: ap_01a12328-a4fa-4c50-9e95-13ea33242a1d",
 };
 /** The retry with a card that was not approved, was spent, was for another call, or is not this asker's. */

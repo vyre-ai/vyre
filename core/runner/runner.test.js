@@ -613,6 +613,22 @@ test("runner: a server that never answers a hand-over leaves the session running
   await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
 });
 
+test("runner: a hand-over the home holds back, or that fails, does not wake a session the person paused", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  let answer = /** @type {() => any} */ (() => ({ moved: false, why: "cooldown" }));
+  const r = await rig(t, { requestServer: () => answer(), handoverMs: 400 });
+  const h = await r.launch(r.runner, "s1");
+  r.runner.pause(); await waitFor(() => procState(h.pid) === "T");
+  assert.deepEqual(await r.runner.moveToServer("s1", "lid-closed"), { moved: false, why: "cooldown" });
+  await sleep(300);
+  assert.equal(procState(h.pid), "T", "Pause all stands after a refused hand-over");
+  answer = () => new Promise(() => {});
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+  await sleep(300);
+  assert.equal(procState(h.pid), "T", "and after one that never answered");
+  r.runner.resume();
+  await waitFor(() => procState(h.pid) !== "T");
+});
+
 test("runner: thawing a reason nobody froze for sends no signal; a session stopped by the machine's teardown says so, not that the person stopped it", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
   /** @type {any[]} */ const ended = [];
   const r = await rig(t, { onEvent: e => { if (e.type === "stopped") ended.push(e.why); } });

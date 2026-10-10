@@ -632,20 +632,21 @@ export function createGrantsStore(cfg) {
       if (issuer.id !== o.member) throw new KernelError("not_allowed", "only the member lends their own computer");
       // The lender's network limit is part of what the member signs: stated as `provider` or `internet`, or NOT stated (null), and the proof binds exactly that (reviewer-2 CAP-1).
       if (o.network_cap !== undefined && o.network_cap !== null && !["provider", "internet"].includes(o.network_cap)) throw new KernelError("bad_input", "the lender's network limit is provider or internet");
-      const cap = o.network_cap ?? null;
+      const stated = o.network_cap ?? null;
       const both = isAdmin(issuer);
       // A computer already lent with another limit is not silently kept at the old one: the member stops lending it and lends it again with the new limit, under a new proof (CAP-3).
+      // A lend that states no limit inherits the floor this computer was ever lent with; only a limit stated looser than the floor is a loosening (ruled 10 Oct).
+      const floor = capFloor(o.member, o.device), cap = stated === null ? floor : stated, loosens = stated !== null && capRank(stated) < capRank(floor);
       { const had = [...offers.values()].find(x => x.status === "active" && x.side === "member_accepts" && x.member === o.member && x.device === o.device);
         if (had && (had.network_cap ?? null) !== cap) throw new KernelError("not_allowed", "this computer is already lent with a different network limit: stop lending it, then lend it again with the new limit"); }
       if (o.loosen !== undefined && o.loosen !== true) throw new KernelError("bad_input", "loosen is true or left out");
-      // The floor: a lend that states a looser limit than this computer was ever lent with is refused unless the member signs the loosening itself (the proof binds `loosen`).
-      const floor = capFloor(o.member, o.device), loosens = capRank(cap) < capRank(floor);
+      // The floor: a lend that states a looser limit than this computer was ever lent with says so (`loosen`), and the member's own act is the approval; an assistant's lend is a pair moment and takes the one yes.
       if (loosens && o.loosen !== true) throw new KernelError("not_allowed", `this computer was lent with a tighter network limit (${floor}) before: lend it again and confirm the looser one`);
       // The member's own earlier lend of this very computer that THEY ended is still their grant: turning it on again takes the live session, not a fresh proof. Anything else that ended it (an owner's off, a
       // removal, a role change) leaves no such record, so the next lend is a first grant and takes the proof again.
       const prior = [...offers.values()].filter(x => x.side === "member_accepts" && x.status === "revoked" && x.member === o.member && x.device === o.device && x.device_key === o.device_key).sort((a, b) => (b.revoked_at || 0) - (a.revoked_at || 0))[0];
-      const resume = Boolean(prior && prior.ended_by === issuer.id) && !loosens;   // allowing more than the lender ever allowed before always takes a fresh proof that binds it
-      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: cap, ...(o.loosen ? { loosen: true } : {}) } }, opt.presence);
+      const resume = Boolean(prior && prior.ended_by === issuer.id);   // the member's own earlier lend of this computer: their live session is enough, a loosening they state included
+      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: stated, ...(o.loosen ? { loosen: true } : {}) } }, opt.presence);
       if (!memberOk({ kind: "person", id: o.member, space: cfg.space })) throw new KernelError("not_found", "no such member");
       /** @type {any[]} */ const made = [];
       for (const side of both ? ["space_allows", "member_accepts"] : ["member_accepts"]) {

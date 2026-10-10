@@ -202,7 +202,7 @@ export default {
       },
     });
     /** What the place tools need from this module (place-tools.js); `moveThread` is added by them. @type {any} */
-    const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
+    const placeDeps = { person: (meta, what) => person(ctx, meta, what), hostOf, runners, platform: seam.platform || process.platform, readSettings: async () => { const v = await readSettings(); Object.assign(limits, v); return v; }, titles };
     registerPlaceTools(ctx, placeDeps);
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
