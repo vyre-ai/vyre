@@ -101,3 +101,16 @@ test("prune: the one line keeps what a list and a timeline read, and a replay le
   const sim = { runs: [{ event: "e", at: 5, ran: ["a"], outcome: "completed" }], matched: 1 };
   assert.equal(compareHistory(sim, [{ ...one, trigger: { event: { id: "e" } } }], { since: 0, until: 100 }).ran, 0, "a pruned run is not set beside the replay");
 });
+
+test("prune: a backlog bigger than one look still clears, a few runs a pass, and the shrunk ones are not looked at again", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([make]));
+  for (let i = 0; i < 5; i++) { w.kernel.inbound("payment.received", { n: i }); await settle(w); w.advance(1000); }
+  w.advance(100 * DAY);
+  const left = async () => (await roots(w, id)).filter(r => !r.pruned).length;
+  assert.equal(await left(), 5);
+  assert.equal(await w.runner.pruner.sweep(90 * DAY, 2, 2), 2);
+  assert.equal(await w.runner.pruner.sweep(90 * DAY, 2, 2), 2);
+  assert.equal(await w.runner.pruner.sweep(90 * DAY, 2, 2), 1, "the last one is reached though four had shrunk before it");
+  assert.equal(await left(), 0);
+});

@@ -138,12 +138,13 @@ export class MemoryFlowStore {
   async putRun(run) { this.runs.set(run.id, structuredClone(run)); }
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const r = this.runs.get(id); return r ? structuredClone(r) : null; }
-  /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} [f] @returns {Promise<Run[]>} */
+  /** @param {{ flow?: string, state?: string, before?: number, whole?: boolean, limit?: number }} [f] `whole`: leave out the runs that shrank to one line @returns {Promise<Run[]>} */
   async listRuns(f = {}) {
     let rows = [...this.runs.values()];
     if (f.flow) rows = rows.filter(r => r.flow === f.flow);
     if (f.state) rows = rows.filter(r => r.state === f.state);
     if (f.before !== undefined) rows = rows.filter(r => r.started_at < /** @type {number} */ (f.before));
+    if (f.whole) rows = rows.filter(r => !r.pruned);
     rows.sort((a, b) => b.started_at - a.started_at);
     return structuredClone(rows.slice(0, f.limit || 200));
   }
@@ -173,7 +174,7 @@ export const FLOW_TYPES = Object.freeze([
   { name: "flow-run", label: "Flow run", icon: "run", fields: [
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
     { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" },
-    { name: "title", kind: "text", label: "Flow" }, { name: "record", kind: "link", label: "About" } ] },
+    { name: "title", kind: "text", label: "Flow" }, { name: "record", kind: "link", label: "About" }, { name: "pruned", kind: "number", label: "Shrunk to one line" } ] },
 ]);
 
 export class RecordsFlowStore {
@@ -301,7 +302,7 @@ export class RecordsFlowStore {
   async putRun(run) {
     const body = JSON.stringify(run);
     const known = this.ids.get(run.id);
-    const data = { run_id: run.id, flow_id: run.flow, state: run.state, started_at: run.started_at, body, ...(run.label ? { title: run.label } : {}), ...(run.record ? { record: { urn: run.record } } : {}) };
+    const data = { run_id: run.id, flow_id: run.flow, state: run.state, started_at: run.started_at, pruned: run.pruned ? 1 : 0, body, ...(run.label ? { title: run.label } : {}), ...(run.record ? { record: { urn: run.record } } : {}) };
     // The link is a courtesy to the record's timeline: a record that is gone (or a home whose type has no `record` field yet) must not lose the run itself.
     const write = async (/** @type {any} */ d) => {
       if (known) {
@@ -322,12 +323,13 @@ export class RecordsFlowStore {
   }
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const f = (await this.#find("flow-run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }
-  /** @param {{ flow?: string, state?: string, before?: number, limit?: number }} [f] @returns {Promise<Run[]>} */
+  /** @param {{ flow?: string, state?: string, before?: number, whole?: boolean, limit?: number }} [f] `whole`: leave out the runs that shrank to one line @returns {Promise<Run[]>} */
   async listRuns(f = {}) {
     /** @type {any[]} */ const and = [];
     if (f.flow) and.push({ field: "flow_id", op: "eq", value: f.flow });
     if (f.state) and.push({ field: "state", op: "eq", value: f.state });
     if (f.before !== undefined) and.push({ field: "started_at", op: "lt", value: f.before });
+    if (f.whole) and.push({ field: "pruned", op: "ne", value: 1 });
     const r = await this.k.records.query(this.chain, "flow-run", { filter: and.length ? { and } : undefined, sort: [{ field: "started_at", dir: "desc" }], page: { limit: f.limit || 200 } });
     return r.rows.map((/** @type {any} */ x) => JSON.parse(x.data.body));
   }

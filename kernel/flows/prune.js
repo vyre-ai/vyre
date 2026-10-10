@@ -37,12 +37,12 @@ export function createPruner(h) {
   };
 
   /**
-   * Shrink the finished runs that started more than `keepMs` ago. At most `limit` a pass, oldest first, so a long backlog clears over a few passes.
-   * @param {number} keepMs @param {number} [limit] @returns {Promise<number>} how many runs shrank
+   * Shrink the finished runs that started more than `keepMs` ago. At most `limit` a pass, oldest first, so a long backlog clears over a few passes (runs that already shrank are left out of the look,
+   * so a backlog bigger than one look still clears). @param {number} keepMs @param {number} [limit] @param {number} [batch] how many old runs one look takes @returns {Promise<number>} how many runs shrank
    */
-  async function sweep(keepMs, limit = 200) {
+  async function sweep(keepMs, limit = 200, batch = 1000) {
     const cutoff = h.now() - keepMs;
-    const old = (await h.store.listRuns({ before: cutoff, limit: 1000 })).filter((/** @type {any} */ r) => !r.parent && prunable(r)).sort((/** @type {any} */ a, /** @type {any} */ b) => a.started_at - b.started_at).slice(0, limit);
+    const old = (await h.store.listRuns({ before: cutoff, whole: true, limit: batch })).filter((/** @type {any} */ r) => !r.parent && prunable(r)).sort((/** @type {any} */ a, /** @type {any} */ b) => a.started_at - b.started_at).slice(0, limit);
     let n = 0;
     for (const root of old) {
       const kids = (await Promise.all(kidsOf(root).map(id => h.store.getRun(id)))).filter(Boolean);
