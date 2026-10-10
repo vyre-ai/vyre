@@ -675,6 +675,8 @@ async function startLocked(opts, root, p, release) {
       const runnerHostOwn = () => (kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null);
       const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("threads.transcript-target") && process.env.VYRE_SUPERVISOR !== "docker" ? ownLoader : undefined);
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
+        titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },
         // a session moved to or from a lender's computer: the chat hears it as thread.moved (declared by the link module, which owns the thread.* events a computer's sessions raise)
         emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a chat is `opts.resumeLent` (or the registry's `resumeLent`, agent-core's). Until it exists the server
