@@ -187,3 +187,13 @@ test("memory and files of a project it was given are asked and read through the 
   assert.match((await use(reg.token, "memory_ask", { project: other.slug, question: "settles" })).text, /not a project you were given/);
   void call; void rpc;
 });
+
+test("an outside agent cannot flood the Gate: a few changes waiting at a time, each of a sane size", { timeout: 120_000 }, async t => {
+  const { ok, use, heldList } = await rig(t);
+  const reg = await ok("outside.register", { name: "Muse" });
+  await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
+  assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "x", notes: "y".repeat(25_000) } })).text, /too large/);
+  for (let i = 0; i < 20; i++) assert.ok((await use(reg.token, "records_create", { type: "contact", fields: { name: `Person ${i}` } })).json, `request ${i}`);
+  assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "one too many" } })).text, /20 of your requests are already waiting/);
+  assert.equal((await heldList()).filter(x => /Muse wants to add/.test(x.summary || "")).length, 20);
+});
