@@ -51,8 +51,8 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
 }
 // published servers (pub-build, pub-up): the rootless BuildKit run, docker load, the image id of root's tag
 if (a[0] === "run" && a.includes("--name") && a[a.indexOf("--name") + 1] === "vyre-pub-build") {
-  fs.appendFileSync(F + "/pub-builds", a.join(" ") + "\n");
-  if (has("build-fails")) { process.stderr.write("#7 ERROR: process \"npm ci\" did not complete successfully: exit code: 1\n"); process.exit(1); }
+  fs.appendFileSync(F + "/pub-builds", a.join(" ") + "\\n");
+  if (has("build-fails")) { process.stderr.write("#7 ERROR: process \"npm ci\" did not complete successfully: exit code: 1\\n"); process.exit(1); }
   const mnt = a.filter((x, i) => a[i - 1] === "-v" && x.endsWith(":/out"))[0];
   const o = (/--output type=docker,name=([^,]+),dest=\/out\/image.tar/.exec(a.join(" ")) || [])[1];
   fs.writeFileSync(F + "/pub-tag", o || "");
@@ -90,7 +90,7 @@ if (a[0] === "run" && a.includes("--entrypoint")) {
   if (ep === "node" && i > 0) {
     const script = a[i + 1], args = a.slice(i + 2);
     if (script.includes("host-pub.js")) {
-      fs.appendFileSync(F + "/pubplans", args.join(" ") + "\n");
+      fs.appendFileSync(F + "/pubplans", args.join(" ") + "\\n");
       if (has("hostpub-fails")) process.exit(1);
       const mnt = a.filter((x, k) => a[k - 1] === "-v" && x.endsWith(":/ctx:ro"))[0];
       const r = cp.spawnSync("node", ["-e", 'import(process.env.REPO + "/core/appmods/host-pub.js").then(m=>process.stdout.write(m.run(process.argv.slice(1))))', ...args], { encoding: "utf8", env: { ...process.env, REPO, ...(mnt ? { VYRE_PUB_CTX: mnt.split(":")[0] } : {}) } });
