@@ -432,6 +432,17 @@ async function turn(prompt, uuid = null) {
     await say(String(r));
     return result(true, String(r));
   }
+  // The limited `vyre` a sandboxed session has (bin/session/vyre): the line is run by a shell with that folder first on PATH, as the sandbox puts it, and the output is what the model reads.
+  const cli = /^vyre-cli (.+)$/s.exec(p);
+  if (cli) {
+    const { spawnSync } = await import("node:child_process");
+    const { fileURLToPath } = await import("node:url");
+    const root = fileURLToPath(new URL("../../..", import.meta.url));
+    const r = spawnSync("/bin/sh", ["-c", `vyre ${cli[1]}`], { encoding: "utf8", env: { PATH: `${root}/bin/session:${process.env.PATH}`, VYRE_SOCKET: process.env.VYRE_SOCKET || "", VYRE_NODE: process.execPath, VYRE_BIN: `${root}/bin/vyre`, VYRE_THREAD: process.env.VYRE_THREAD || "", ...(process.env.VYRE_AGENT ? { VYRE_AGENT: process.env.VYRE_AGENT } : {}) } });
+    const out = JSON.stringify({ status: r.status, out: r.stdout, err: r.stderr });
+    await say(out);
+    return result(true, out);
+  }
   // The plugin's own way in (the MCP server, the hooks): no root, so a session's VYRE_SOCKET is used.
   const own = /^vyre-sock (\S+)\s*(.*)$/s.exec(p);
   if (own) {
@@ -525,6 +536,15 @@ async function turn(prompt, uuid = null) {
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: ok ? "ok" : "Tool permission request failed: AbortError: Tool permission stream closed before response received", is_error: !ok }] } });
     if (!ok) return result(false, "the tool was not allowed");
     await say("done"); return result(true, "done");
+  }
+  // "bash-ask <command>": a Bash call asked of the host first. The result says what the host answered (allowed, or the reason it was refused), and nothing is run.
+  const bashAsk = /^bash-ask (.+)$/s.exec(p);
+  if (bashAsk) {
+    out({ type: "assistant", message: { id: "m-bash", role: "assistant", content: [{ type: "tool_use", id: "tu-b", name: "Bash", input: { command: bashAsk[1] } }] } });
+    const r = await Promise.race([permission("Bash", { command: bashAsk[1] }, "tu-b"), sleep(Number(process.env.FAKE_CLAUDE_ASK_WAIT_MS) || 20000).then(() => null)]);
+    const text = !r ? "no answer" : r.behavior === "allow" ? "allowed" : `refused: ${r.message || ""}`;
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-b", content: text, is_error: !r || r.behavior !== "allow" }] } });
+    await say(text); return result(true, text);
   }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {

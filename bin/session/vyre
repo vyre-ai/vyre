@@ -1,0 +1,5 @@
+#!/bin/sh
+# `vyre` inside a sandboxed session: it runs the regular CLI (bin/vyre), which in session mode (core/cli/session.js) offers tools find, tools describe and call against the session's own socket and
+# refuses everything local. The sandbox puts this folder first on the PATH of a session and sets VYRE_NODE and VYRE_BIN. Anything else (no socket, no node) says so in a line and stops.
+[ -n "$VYRE_SOCKET" ] && [ -n "$VYRE_NODE" ] && [ -n "$VYRE_BIN" ] || { echo "vyre: this is not a Vyre session." >&2; exit 1; }
+exec "$VYRE_NODE" --no-warnings "$VYRE_BIN" "$@"
