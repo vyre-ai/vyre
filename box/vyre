@@ -1766,7 +1766,7 @@ sp_app_lint() {
     bad("the volumes block"); next }
   { bad("a line outside every block") }
   END { for (v in used) if (!(v in decl)) bad("a volume that is not declared")
-    if (pub == 1 && (!("read_only" in seen) || !("tmpfs" in seen))) bad("a published server's file must keep its root read-only with the one tmpfs")
+    if (pub == 1 && (!("read_only" in seen) || !("tmpfs" in seen))) bad("a published server must keep its root read-only with the one tmpfs")
     exit ok ? 0 : 1 }' "$1"
 }
 # sp_app_public MODULE: the address outside people reach the app at, https://<module>.<name>.vyre.run:<port>, or nothing. The box's name and the public gate's port are read by the vyre container's own node from its config
