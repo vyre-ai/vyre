@@ -165,7 +165,7 @@ test("detect: values in text become numbered placeholders, the same value keeps 
   assert.ok(a.ledger.length > 20 && b.ledger.length === 0);
   assert.equal(diskHolds(dir, "123-45-6789"), null, "originals are held in memory, not on disk, until saved");
   const saved = await s.save({ chain: ch, session, class: "us-ssn", n: 2, record: REC, field: "ssn" });
-  assert.equal(saved.ref.sealed, "US SSN"); assert.ok(!JSON.stringify(saved).includes("321"));
+  assert.equal(saved.ref.sealed, "US SSN"); for (const v of ["321-54-9876", "321549876", "9876"]) assert.ok(!JSON.stringify(saved).includes(v), `the saved answer carries ${v}`);   // (not the bare "321": a random id holds those three digits now and then)
   await s.endSession(ch, session);
   assert.equal(await code(s.save({ chain: ch, session, class: "us-ssn", n: 1, record: REC, field: "ssn" })), "not_found");
 });
