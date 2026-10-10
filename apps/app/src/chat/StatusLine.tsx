@@ -11,9 +11,11 @@ const S = StyleSheet.create({
 });
 
 
-export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop, place }: {
+export function StatusLine({ presence, state, busy, canStop, stopping, offline, phone, onStop, place, starting }: {
   /** Where the session runs, with its chip (R031-95): drawn before Stop. */
   place?: React.ReactNode;
+  /** "Starting on <computer>..." while the session's process starts on one of the person's computers (thread.placing); it comes before every other word. */
+  starting?: string;
   presence: string;
   state: string;
   busy: boolean;
@@ -23,11 +25,11 @@ export function StatusLine({ presence, state, busy, canStop, stopping, offline, 
   phone: boolean;
   onStop: () => void;
 }) {
-  const words = presence || (offline ? "Offline, showing what was saved" : state === "asking" ? "Waiting for you" : busy ? "Working" : "");
+  const words = starting || presence || (offline ? "Offline, showing what was saved" : state === "asking" ? "Waiting for you" : busy ? "Working" : "");
   return (
     <View accessibilityRole="text" accessibilityLiveRegion="polite" style={{ width: "100%", maxWidth: 860, alignSelf: "center", minHeight: phone ? 44 : 32, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: phone ? 16 : 24 }}>
       <Text size="caption" tone="label" numberOfLines={1} style={S.s1}>{words}</Text>
-      {place}
+      {starting ? null : place}
       {canStop ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={{ minHeight: phone ? 44 : 32, justifyContent: "center" }}>
           <Chip icon="stop" tone="err">Stop</Chip>
