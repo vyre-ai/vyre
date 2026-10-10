@@ -20,6 +20,8 @@ const MAX_BODY = 64 * 1024 * 1024;
 const PUBLIC_BODY = 20 * 1024 * 1024;
 const TICKET_MS = 60_000;
 const SESSION_MS = 8 * 3_600_000;
+/** Vyre's own header family, in any spelling a client can send: X-Vyre-*, x_vyre_* (an underscore is a dash to many servers). */
+const vyreHeader = (/** @type {string} */ k) => /^x[-_]vyre[-_]/i.test(k);
 const HOP = new Set(["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "content-length", "cookie", "authorization"]);
 
 /** `documents.acme.vyre.run:8443` -> { name: "documents", base: "acme.vyre.run:8443" }, or null. @param {string} host */
@@ -119,7 +121,8 @@ const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => 
 /**
  * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
  *   alias?: (host: string) => string | null,   the app an own domain (sign.firm.com) is for, or null
- *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number }} o
+ *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number,
+ *   wsMax?: number, wsConnectMs?: number, wsHeadMs?: number, wsIdleMs?: number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
 export function createHostProxy(o) {
@@ -234,7 +237,7 @@ export function createHostProxy(o) {
       /** @param {boolean} retry */
       const once = async retry => {
         /** @type {Record<string, string>} */ const h = {};
-        for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !k.startsWith("x-vyre-") && typeof v === "string") h[k] = v;
+        for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !vyreHeader(k) && typeof v === "string") h[k] = v;
         const jar = jars.get(mh.name);
         // an open server's visitors send their own credentials to the site they are using; nothing of Vyre's is ever in the header (the owner's session is the cookie this front removes)
         if (wide && typeof req.headers.authorization === "string") h.authorization = req.headers.authorization;
@@ -302,6 +305,8 @@ export function createHostProxy(o) {
    * @param {http.IncomingMessage} req @param {import("node:net").Socket} socket @param {Buffer} head
    * @returns {Promise<boolean>} true when it was an app host (answered or tunnelled)
    */
+  /** @type {Map<string, number>} open tunnels per app */
+  const wsOpen = new Map();
   serve.upgrade = async (req, socket, head) => {
     const host = String(req.headers.host || "").toLowerCase();
     const mh = appHost(host);
@@ -313,11 +318,20 @@ export function createHostProxy(o) {
     // a server Publish made, once live, takes everyone's WebSocket as it takes everyone's request: with its own cookies and the visitor's own Authorization, never Vyre's session
     const wide = app.open === true;
     if (!wide && !o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return refuse();
+    // A tunnel is a file descriptor of the daemon's, which serves the owner's Vyre too: a cap per app, a limit on connecting, on the app's answer and on silence, and either end closing closes the other.
+    const L = { max: o.wsMax ?? 64, connectMs: o.wsConnectMs ?? 10_000, headMs: o.wsHeadMs ?? 10_000, idleMs: o.wsIdleMs ?? 600_000 };
+    const open = (wsOpen.get(mh.name) || 0);
+    if (open >= L.max) { socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nretry-after: 5\r\ncontent-length: 0\r\n\r\n"); return true; }
+    wsOpen.set(mh.name, open + 1);
     const u = new URL(app.origin);
     const up = net.connect({ host: u.hostname, port: Number(u.port) || 80 });
-    up.on("error", () => socket.destroy());
-    socket.on("error", () => up.destroy());
+    let done = false;
+    const end = () => { if (done) return; done = true; wsOpen.set(mh.name, Math.max(0, (wsOpen.get(mh.name) || 1) - 1)); try { up.destroy(); } catch { /* gone */ } try { socket.destroy(); } catch { /* gone */ } };
+    up.on("error", end); up.on("close", end); socket.on("error", end); socket.on("close", end);
+    socket.pause();
+    const connectT = setTimeout(end, L.connectMs); connectT.unref?.();
     up.on("connect", () => {
+      clearTimeout(connectT);
       /** @type {string[]} */ const lines = [`${req.method} ${req.url} HTTP/1.1`];
       for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) {
         const k = req.rawHeaders[i], v = req.rawHeaders[i + 1], low = k.toLowerCase();
@@ -325,14 +339,29 @@ export function createHostProxy(o) {
         if (low === "cookie") { if (!app.passCookies) continue; const mine = v.split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) lines.push(`Cookie: ${mine}`); continue; } // the person's Vyre session never travels to the app
         if (low === "host" && app.rewriteHost) { lines.push(`Host: ${u.host}`); lines.push(`X-Forwarded-Host: ${host}`); continue; }
         if ((low === "origin" || low === "referer") && app.rewriteHost) continue;
-        if (low.startsWith("x-vyre-")) continue; // only the proxy tells a page who is looking
+        if (vyreHeader(low)) continue; // only the proxy tells a page who is looking
         lines.push(`${k}: ${v}`);
       }
       const wsWho = app.viewerKey ? o.tickets.whoOf(sid ? sid[1] : undefined) : null;
       if (wsWho && app.viewerKey) lines.push(`X-Vyre-Viewer: ${viewerHeader(app.viewerKey, wsWho)}`);
       up.write(lines.join("\r\n") + "\r\n\r\n");
       if (head && head.length) up.write(head);
-      up.pipe(socket); socket.pipe(up);
+      // the app's answer is read here first: only a 101 turns the connection into a tunnel; anything else (a plain 200 that keeps the connection alive) would let the client send further requests with no header filtering
+      let buf = Buffer.alloc(0);
+      const headT = setTimeout(end, L.headMs); headT.unref?.();
+      const onData = (/** @type {Buffer} */ d) => {
+        buf = Buffer.concat([buf, d]);
+        const at = buf.indexOf("\r\n\r\n");
+        if (at < 0) { if (buf.length > 16 * 1024) { clearTimeout(headT); end(); } return; }
+        clearTimeout(headT);
+        up.off("data", onData);
+        if (!/^HTTP\/1\.1 101[ \r]/.test(buf.subarray(0, 16).toString("latin1"))) { socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\ncontent-length: 0\r\n\r\n"); end(); return; }
+        socket.write(buf);
+        up.setTimeout(L.idleMs, end); socket.setTimeout(L.idleMs, end);
+        up.pipe(socket); socket.pipe(up);
+        socket.resume();
+      };
+      up.on("data", onData);
     });
     return true;
   };

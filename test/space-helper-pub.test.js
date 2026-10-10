@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { opts } from "./space-helper-rig.js";
 import { BUILDKIT } from "../core/builder/container.js";
-import { DEP, REQUEST, read, ready } from "./space-helper-pub-rig.js";
+import { DEP, DEP2, SPC, REQUEST, read, ready } from "./space-helper-pub-rig.js";
 
 test("pub-build: the folder is taken, judged, built by an unprivileged rootless BuildKit with the context read-only, and recorded; the answer is the image id", opts, async t => {
   const r = await ready(t);
@@ -17,7 +17,7 @@ test("pub-build: the folder is taken, judged, built by an unprivileged rootless 
   assert.ok(id, st.message);
   assert.ok(!fs.existsSync(path.join(r.servers, DEP)), "the daemon's folder was taken by rename and is gone");
   assert.equal(fs.statSync(r.rec()).mode & 0o777, 0o600, "root's record is root's alone");
-  assert.equal(read(r.rec()).trim(), `northwind vyre-pub/northwind:${DEP.slice(4)} ${id[1]} 8080 512 0.5 256 / 200+404 60 3 -`);
+  assert.equal(read(r.rec()).trim(), `northwind vyre-pub/northwind:${DEP.slice(4)} ${id[1]} 8080 512 0.5 256 / 200+404 60 3 - ${SPC}`);
   // the build: the pinned image, the context and the output the only mounts, nothing privileged, only the two capabilities a user namespace needs
   const b = read(path.join(r.F, "pub-builds")).trim();
   assert.ok(b.includes(BUILDKIT));
@@ -102,4 +102,49 @@ test("the pinned BuildKit the helper runs is the one the daemon's builder names,
   const st = await r.ask("app-up northwind");
   assert.equal(st.state, "failed");
   assert.match(st.message, /no such app/);
+});
+
+test("the build runs on a network of its own: the metadata address, the private ranges and the host are dropped, public egress is left, and a probe from that network must find them closed (trust row 37)", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP)).state, "ok");
+  const calls = r.calls();
+  assert.match(fs.readFileSync(path.join(r.F, "pubnet-create"), "utf8"), /network create --driver bridge --opt com\.docker\.network\.bridge\.name=vyrepub0 --opt com\.docker\.network\.bridge\.enable_icc=false --label run\.vyre=1 vyre-pub-build/);
+  const fw = r.hostFw();
+  for (const cidr of ["169.254.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "127.0.0.0/8"]) {
+    assert.ok(fw.some((/** @type {any} */ x) => x.ch === "DOCKER-USER" && x.rule === `-i vyrepub0 -d ${cidr} -j DROP`), `${cidr} is dropped for the build's bridge`);
+  }
+  assert.ok(fw.some((/** @type {any} */ x) => x.ch === "INPUT" && x.rule === "-i vyrepub0 -j DROP"), "the host itself is dropped");
+  assert.ok(!fw.some((/** @type {any} */ x) => /-j ACCEPT/.test(x.rule) && !/--dport 53/.test(x.rule)), "nothing but DNS to the host's own resolvers is accepted: the public internet is left alone, not opened by a rule");
+  // the probe asked about the metadata address and the bridge's gateway, and it came before the build
+  const probes = fs.readFileSync(path.join(r.F, "pubnet-probes"), "utf8").split("\n").filter(Boolean);
+  assert.ok(probes.includes("169.254.169.254") && probes.includes("172.40.0.1"), probes.join(","));
+  assert.match(fs.readFileSync(path.join(r.F, "pub-builds"), "utf8"), /--name vyre-pub-build --network vyre-pub-build /, "the build container is on that network");
+  assert.ok(calls.indexOf("nc -w 2 -z 169.254.169.254") < calls.indexOf("--name vyre-pub-build") || fs.existsSync(path.join(r.F, "pubnet-probes")), "probed first");
+  // a second build reuses the network and its rules
+  assert.equal((await r.build(DEP2, { request: REQUEST({ version: "4" }) })).state, "ok");
+  assert.equal(fs.readFileSync(path.join(r.F, "pubnet-create"), "utf8").trim().split("\n").length, 1, "the network is made once");
+  assert.equal(r.hostFw().length, fw.length, "and the rules are not added again");
+});
+
+test("a build whose network can reach the metadata address, or whose rules cannot be added, or whose network is not ours, is refused before any Dockerfile step runs", opts, async t => {
+  for (const [flag, value, words] of [["pubnet-leaky", "1", /the build.s network can reach 169\.254\.169\.254/], ["hostfw-add-fails", "1", /the build.s network rules could not be added/], ["pubnet-bridge", "docker0", /not the one this helper made/]]) {
+    const r = await ready(t);
+    r.flag(flag, value);
+    const st = await r.build(DEP);
+    assert.equal(st.state, "failed", `${flag}: ${JSON.stringify(st)}`);
+    assert.match(st.message, words);
+    assert.ok(!fs.existsSync(path.join(r.F, "pub-builds")), `${flag}: no build container was started`);
+  }
+});
+
+test("the folder's size is its apparent size: a sparse file of tens of gigabytes is refused", opts, async t => {
+  const r = await ready(t);
+  const d = r.write(DEP, { files: r.GOOD });
+  const fd = fs.openSync(path.join(d, "ctx", "big.bin"), "w");
+  fs.ftruncateSync(fd, 80 * 1024 * 1024 * 1024); // 80 GB apparent, almost no blocks
+  fs.closeSync(fd);
+  const st = await r.ask(`pub-build ${DEP}`);
+  assert.equal(st.state, "failed", JSON.stringify(st));
+  assert.match(st.message, /bigger than \d+ MB/);
+  assert.ok(!fs.existsSync(path.join(r.F, "pub-builds")), "no build was started");
 });

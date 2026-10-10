@@ -49,6 +49,17 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
   if (sub === "down") { fs.rmSync(F + "/app-running-" + m, { force: true }); fs.rmSync(F + "/app-net-" + m, { force: true }); process.exit(0); }
   process.exit(0);
 }
+// the build's own network (trust row 37): made once, its bridge name checked, and a probe container on it that must find everything closed
+if (a[0] === "network" && a[1] === "create" && a.includes("vyre-pub-build")) { fs.appendFileSync(F + "/pubnet-create", a.join(" ") + "\\n"); fs.writeFileSync(F + "/pubnet", "1"); process.exit(0); }
+if (a[0] === "network" && a[1] === "inspect" && a[a.length - 1] === "vyre-pub-build") {
+  if (!has("pubnet")) process.exit(1);
+  if (a.includes("-f")) out(a[a.indexOf("-f") + 1].includes("bridge.name") ? rd("pubnet-bridge", "vyrepub0") : "172.40.0.1");
+  out("{}");
+}
+if (a[0] === "run" && a.includes("--network") && a[a.indexOf("--network") + 1] === "vyre-pub-build" && !a.includes("--name")) {
+  fs.appendFileSync(F + "/pubnet-probes", (/nc -w 2 -z ([0-9.]+)/.exec(a[a.length - 1]) || [])[1] + "\\n");
+  out(has("pubnet-leaky") ? "OPEN" : "CLOSED");
+}
 // published servers (pub-build, pub-up): the rootless BuildKit run, docker load, the image id of root's tag
 if (a[0] === "run" && a.includes("--name") && a[a.indexOf("--name") + 1] === "vyre-pub-build") {
   fs.appendFileSync(F + "/pub-builds", a.join(" ") + "\\n");
@@ -126,6 +137,7 @@ const pid = a[1];
 const cmd = a.slice(3);
 const base = () => { const r = cp.spawnSync("node", [F + "/nsenter-base.cjs", ...a], { stdio: "inherit" }); process.exit(r.status ?? 1); };
 if (cmd[0] === "ip") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("no-iface") ? "" : "7: eth1    inet " + (fs.existsSync(F + "/vip") ? fs.readFileSync(F + "/vip", "utf8").trim() : "172.31.7.2") + "/24 brd 172.31.7.255 scope global eth1\\n"); process.exit(0); }
+if (cmd[0] === "cat" && cmd[1] === "/proc/sys/net/ipv4/ip_forward") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("ip-forward-on") ? "1\\n" : "0\\n"); process.exit(0); }
 if (cmd[0] === "cat") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("listen") ? fs.readFileSync(F + "/listen", "utf8") : ""); process.exit(0); }
 const file = F + "/appfw-" + pid;
 const load = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
@@ -193,15 +205,27 @@ export function appRig(t) {
     fs.writeFileSync(path.join(F, name + ".cjs"), (name === "docker" ? DOCKER_APP : NSENTER_APP).replaceAll("__F__", F).replaceAll("__REPO__", REPO));
     fs.writeFileSync(path.join(BIN, name), `#!/bin/sh\nexec node "${F}/${name}.cjs" "$@"\n`, { mode: 0o755 });
   }
+  // the host's own iptables (the build network's rules in DOCKER-USER and INPUT): a list per chain, -C -I -D -S, logged with the other calls
+  fs.writeFileSync(path.join(F, "hostfw.cjs"), `const fs=require("fs"),F=${JSON.stringify(F)};let a=process.argv.slice(2);if(a[0]==="-w")a=a.slice(1);
+fs.appendFileSync(F+"/calls","iptables "+a.join(" ")+"\\n");const file=F+"/hostfw";let rules=[];try{rules=JSON.parse(fs.readFileSync(file,"utf8"))}catch{}
+const op=a[0],ch=a[1];const pos=op==="-I"&&/^[0-9]+$/.test(a[2]);const rule=a.slice(pos?3:2).join(" ");const i=rules.findIndex(r=>r.ch===ch&&r.rule===rule);
+if(op==="-C")process.exit(i>=0?0:1);
+if(op==="-I"){if(fs.existsSync(F+"/hostfw-add-fails"))process.exit(1);rules.unshift({ch,rule});fs.writeFileSync(file,JSON.stringify(rules));process.exit(0)}
+if(op==="-D"){if(i<0)process.exit(1);rules.splice(i,1);fs.writeFileSync(file,JSON.stringify(rules));process.exit(0)}
+if(op==="-S"){process.stdout.write(rules.filter(r=>r.ch===ch).map(r=>"-A "+ch+" "+r.rule).join("\\n")+"\\n");process.exit(0)}
+process.exit(0)`);
+  for (const name of ["iptables", "ip6tables"]) fs.writeFileSync(path.join(BIN, name), `#!/bin/sh\nexec node "${F}/hostfw.cjs" "$@"\n`, { mode: 0o755 });
   fs.writeFileSync(path.join(F, "daemon-uid"), String(process.getuid()));
   const priv = path.join(r.SP, "private");
+  /** The host's iptables rules the build network added, as [{ ch, rule }]. */
+  const hostFw = () => { try { return JSON.parse(fs.readFileSync(path.join(F, "hostfw"), "utf8")); } catch { return []; } };
   const appFw = (pid = "4242") => { try { return JSON.parse(fs.readFileSync(path.join(F, "appfw-" + pid), "utf8")); } catch { return []; } };
   /** An `app-up documents` request, run. */
   // the up-lane rate limit is the Space helper's own (six a minute, shared with Twenty's `up`); a test that asks for many ups lifts it
   const helper = () => r.run(["space-helper-run"], { VYRE_SPACES_UP_PER_MIN: "1000" });
   const appUp = async (m = "documents") => { const id = r.ask(`app-up ${m}\n`); const h = /** @type {any} */ (await helper()); return { id, h, st: r.status(id) }; };
   const catalogLine = () => fs.readFileSync(path.join(priv, "app-modules"), "utf8");
-  return { ...r, helper, priv, appFw, appUp, catalogLine, REPO };
+  return { ...r, helper, priv, appFw, hostFw, appUp, catalogLine, REPO };
 }
 
 /** A list line for the tests, with fields replaced by name. @param {Record<string, string>} [over] */
