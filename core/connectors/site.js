@@ -295,18 +295,28 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   /** The classes of a red light that only a person can clear: the login ran out, the site wants a person's check, or no browser holds the login. */
   const NEEDS_PERSON = new Set(["auth", "blocked", "no_browser"]);
+  /** Ordinary Connections (a key, not a website) whose key the service refused: they wait for the person like a website login that ran out. One row each, class auth, `key: true`. */
+  const keyRows = () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT * FROM connectors_made WHERE light = 'red' ORDER BY label").all()).flatMap(r => {
+    let d; try { d = JSON.parse(r.declaration); } catch { return []; }
+    if (d.transport === "site") return [];
+    /** @type {any} */ let form = {}; try { form = JSON.parse(r.form || "{}"); } catch { form = {}; }
+    if (!(form.last && form.last.class === "auth")) return [];
+    let host = ""; try { host = d.app ? String(d.app) : new URL(d.base_url).hostname; } catch { host = String(r.label || r.id); }
+    return [{ id: r.id, title: r.label, host, site: d.base_url || "", class: "auth", key: true, words: r.reason || "", at: r.checked_at || 0 }];
+  });
+
   ctx.tool("connectors.site.attention", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "Website Connections that wait for a person (login out, security check, no browser): { sites: [{ id, host, class, words, agent? }] }.",
+    description: "Connections that wait for a person (a website login out, a security check, no browser, or a key the service refused): { sites: [{ id, host, class, words, agent?, key? }] }.",
     input: obj({}, []),
-    run: async () => ({ sites: siteRows().filter(({ r }) => r.light === "red").map(({ r, d }) => {
+    run: async () => ({ sites: [...siteRows().filter(({ r }) => r.light === "red").map(({ r, d }) => {
       /** @type {any} */ const form = (() => { try { return JSON.parse(r.form || "{}"); } catch { return {}; } })();
       const cls = form.last && form.last.class ? String(form.last.class) : "";
       if (!NEEDS_PERSON.has(cls)) return null;
       const host = new URL(d.base_url).hostname;
       const stopped = cls === "blocked" && governor ? Boolean(governor.usage(r.id, settingsOf(host, form.governor)).stopped) : false;
       return { id: r.id, title: r.label, host, site: d.base_url, class: cls, words: r.reason || "", ...(typeof form.agent === "string" && form.agent ? { agent: form.agent } : {}), ...(stopped ? { stopped: true } : {}), at: r.checked_at || 0 };
-    }).filter(Boolean) }),
+    }).filter(Boolean), ...keyRows()] }),
   });
 
   ctx.tool("connectors.site.rows", {
