@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
 import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
+import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
