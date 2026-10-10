@@ -80,7 +80,7 @@ test("a matter entering the stage is sent for signature with one yes; the signed
 
 test("a record whose person is a linked Contact is sent by the link: no e-mail field and no field to remember the request in, the Contact read by Documents", async () => {
   assert.throws(() => signingFlow({ ...OPTS, email_field: "email", contact_field: "client" }), /not both/);
-  assert.throws(() => signingFlow({ ...OPTS, email_field: undefined, contact_field: "Client!" }), /contact_field must be/);
+  assert.throws(() => signingFlow({ ...OPTS, email_field: undefined, contact_field: "Client!" }), /contact must be/);
   const f = signingFlow({ type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, contact_field: "client" });
   const steps = f.steps[1].then;
   assert.deepEqual(steps.map((/** @type {any} */ x) => x.id), ["send", "signed", "move", "copy"], "no claim and no mark: the stage runs this once per entry");
