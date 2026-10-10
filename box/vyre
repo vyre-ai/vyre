@@ -1351,6 +1351,8 @@ sp_attach_net() {
   hdock network inspect "$net" >/dev/null 2>&1 || { MSG="the Space's network does not exist"; return 1; }
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
     hdock network connect --alias "$alias" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
+    # Docker turns forwarding on in the container's namespace at each join: off again right here, for every join path (pub-up checks it once more before a server starts)
+    _pj=$(sp_pid 2>/dev/null) && timeout 20 nsenter -t "$_pj" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
   fi
 }
 # sp_fw_del NAME: only while no container of the project runs; removes exactly the rules carrying vyre:<name>, found by listing the chain, in the namespace of the pid current now.
