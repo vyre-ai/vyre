@@ -55,7 +55,7 @@ test("a page that imports what Vyre does not provide is refused with the name, a
   await assert.rejects(() => siteOf([file("App.jsx", "export default () => null"), file("App.tsx", "export default () => null")]), { message: /App\.js is both a source file and its compiled name/ });
 });
 
-test("opened in a real browser, served as a static host serves it, the page draws", { skip: !findChrome() && "no Chrome on this machine" }, async t => {
+test("opened in a real browser, served as a static host serves it, the page draws", { skip: !/headless/.test(String(findChrome())) && "needs chrome-headless-shell on the path or VYRE_CHROME (a full Chrome keeps dump-dom open after the page loads)" }, async t => {
   const r = await siteOf(PAGE);
   const MIME = /** @type {Record<string, string>} */ ({ ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".svg": "image/svg+xml" });
   const srv = http.createServer((req, res) => {
@@ -72,12 +72,8 @@ test("opened in a real browser, served as a static host serves it, the page draw
   t.after(() => fs.rmSync(profile, { recursive: true, force: true }));
   // the server and the browser share this process, so the browser runs as a child we wait for, never a blocking call
   const run = (/** @type {string[]} */ args) => new Promise(ok => execFile(String(findChrome()), args, { encoding: "utf8", timeout: 40_000, maxBuffer: 8 << 20 }, (_e, out) => ok(String(out || ""))));
-  let dom = "";
-  for (const sandbox of [true, false]) {
-    dom = await run(["--headless", "--disable-gpu", "--no-first-run", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", ...(sandbox ? [] : ["--no-sandbox"]), `http://127.0.0.1:${port}/`]);
-    if (dom.includes("Northwind")) break;
-  }
+  const dom = await run(["--no-sandbox", "--disable-gpu", `--user-data-dir=${profile}`, "--virtual-time-budget=8000", "--dump-dom", `http://127.0.0.1:${port}/`]);
   assert.match(dom, /Northwind Bakery/);
   assert.match(dom, /3 loaves today/);
-  assert.ok(!/vyre-problem"[^>]*>\S/.test(dom), "no problem message on the page");
+  assert.match(dom, /id="vyre-problem"[^>]*><\/div>/, "no problem message on the page");
 });

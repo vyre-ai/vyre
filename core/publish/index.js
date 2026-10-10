@@ -61,6 +61,8 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+/** What publish.quick says while the box has no public door. */
+const PUBLIC_LATER = "Public once the public door is on. Until then the address works on your own devices only.";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
@@ -370,7 +372,10 @@ export default {
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
         const held = await b.pub.goLive(b.chain, made.id, {});
-        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+        // until the public door (names.status listening) is on, the address a yes makes live is reachable on the person's own devices only: say so, in the same answer as the yes
+        const door = await call("names.status", {}).catch(() => ({ data: null }));
+        const open = Boolean(door.data && door.data.listening === true);
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan, public: open, ...(open ? {} : { note: PUBLIC_LATER }) };
       },
     });
     ctx.tool("publish.rollback", {
