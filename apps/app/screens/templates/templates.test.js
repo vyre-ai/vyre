@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord, whoWords } from "./model.ts";
+import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord, whoWords, startName, projectIdOf } from "./model.ts";
 
 const body = () => ({ name: "Estate plan", roles: [{ role: "researcher", agent: "research", lead: true }, { role: "attorney" }], stages: [
   { name: "Intake", owner: "role:attorney", moves_on_when: 'status == "retained"', tasks: [{ title: "Gather documents", doer: "role:researcher", output: { kind: "note" } }, { title: "Conflict check", doer: "role:researcher", checker: "role:attorney", output: { kind: "decision" }, required: false }] },
@@ -41,4 +41,11 @@ test("who does a task is said as a person says it: the attorney, Research, a per
   assert.equal(whoWords("person:per_abc"), "a person");
   assert.equal(whoWords("pool:drafters"), "anyone in drafters");
   assert.equal(whoWords("something else"), "something else", "a form it does not know is shown as it came");
+});
+
+test("a project is started under a name, and the page opens by the id the box answers with", () => {
+  assert.deepEqual(startName("  Rivera   Family Trust "), { ok: true, name: "Rivera Family Trust" });
+  assert.equal(startName("   ").ok, false);
+  assert.match(startName("x".repeat(121)).why, /at most 120/);
+  assert.equal(projectIdOf("vyre://spc_aaaaaaaaaaaa/project/11111111-1111-4111-8111-111111111111"), "11111111-1111-4111-8111-111111111111");
 });

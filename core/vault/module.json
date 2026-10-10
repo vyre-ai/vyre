@@ -123,7 +123,7 @@
       { "name": "vault.link", "effect": "write", "reach": "anyone" },
       { "name": "vault.unlink", "effect": "write", "reach": "anyone" },
       { "name": "vault.links", "effect": "read", "reach": "anyone" },
-      { "name": "vault.uses.for", "effect": "read", "reach": "anyone" },
+      { "name": "vault.uses.for", "effect": "read", "reach": "modules" },
       { "name": "vault.agent.grant", "effect": "write", "reach": "anyone" },
       { "name": "vault.agent.grants", "effect": "read", "reach": "anyone" },
       { "name": "vault.agent.revoke", "effect": "write", "reach": "person" },

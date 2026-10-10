@@ -17,5 +17,7 @@ export function templatesSource(call: Call) {
     test: (template: string, version: number, sample?: Record<string, unknown>) => ask<{ ok: boolean; lines?: string[]; totals?: string; errors?: { path: string; message: string }[] }>("work.template.test", { template, version, ...(sample ? { sample } : {}) }),
     library: async (): Promise<{ id: string; kit: string; name: string; description: string; stages: number; tasks: number }[]> => (await ask<{ templates?: any[] }>("work.template.library")).templates ?? [],
     install: (id: string) => ask<Version>("work.template.install", { id }),
+    /** Start a project from the live version: its team, its pinned stages and the first stage's tasks. */
+    start: (template: string, name: string) => ask<{ project: string; slug?: string }>("work.start-project", { template, name }),
   };
 }
