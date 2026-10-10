@@ -95,9 +95,9 @@ export default {
     });
     ctx.tool("names.directory.publish", {
       description: "Point this box's name at the public IPv4 the directory sees it at (Wink module only). With apps: true, *.<name> points there too (the box has an app module installed).",
-      input: obj({ apps: { type: "boolean" } }),
+      input: obj({ apps: { type: "boolean" }, via: { type: "string" }, share: { type: "boolean" } }),
       internal: true,
-      run: async (i, meta) => { fromWink(meta); return dir.publish(myName(), { apps: Boolean(i && i.apps === true) }); },
+      run: async (i, meta) => { fromWink(meta); return dir.publish(myName(), { apps: Boolean(i && i.apps === true), ...(i && i.via === "tunnel" ? { via: "tunnel", share: i.share === true } : {}) }); },
     });
     // Ask the directory hourly how this box's name stands (a name support moved to another server is told to the person).
     const watching = () => svc.watch().catch(e => ctx.log("names: directory check failed: " + e.message));

@@ -12,6 +12,7 @@
       {
         "name": "comms.send",
         "outward": true,
+        "covers": ["mail.send"],
         "effect": "write",
         "reach": "anyone"
       },

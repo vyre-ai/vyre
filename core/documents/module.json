@@ -33,10 +33,36 @@
         "name": "documents.signing.flow",
         "effect": "read",
         "reach": "anyone"
+      },
+      {
+        "name": "documents.signed-link",
+        "outward": true,
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.send",
+        "outward": true,
+        "covers": ["comms.send", "mail.send"],
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.send-signed",
+        "outward": true,
+        "covers": ["comms.send", "mail.send"],
+        "effect": "write",
+        "reach": "anyone"
       }
     ]
   },
-  "watches": {},
+  "watches": {
+    "emits": [
+      "documents.generated",
+      "documents.sent",
+      "documents.copy-sent"
+    ]
+  },
   "shows": {},
   "needs": {},
   "teaches": {},
@@ -61,6 +87,50 @@
           "format": "string",
           "record": "string"
         }
+      },
+      {
+        "name": "documents.signed-link",
+        "label": "Make a 30-day link to the signed copy",
+        "outward": true,
+        "inputs": {
+          "slug": "string",
+          "days": "number"
+        },
+        "outputs": {
+          "url": "string",
+          "expires": "number"
+        }
+      },
+      {
+        "name": "documents.send",
+        "label": "Send a document for signature",
+        "outward": true,
+        "inputs": {
+          "template_id": "number",
+          "email": "string",
+          "signer": "string",
+          "subject": "string",
+          "note": "string"
+        },
+        "outputs": {
+          "submission": "number",
+          "slug": "string",
+          "url": "string"
+        }
+      },
+      {
+        "name": "documents.send-signed",
+        "label": "Email the signer their signed copy",
+        "outward": true,
+        "inputs": {
+          "slug": "string",
+          "email": "string",
+          "days": "number"
+        },
+        "outputs": {
+          "url": "string",
+          "expires": "number"
+        }
       }
     ]
   },
@@ -69,7 +139,7 @@
       "key": "documents.pdf",
       "group": "documents",
       "label": "Address of the PDF converter",
-      "help": "Documents turns a filled Word file into a PDF through Gotenberg, which runs beside Vyre. Give its address (such as http://127.0.0.1:3000). Left empty, a PDF is refused in plain words and the Word file is still made.",
+      "help": "On a server with Records the converter (Gotenberg) runs beside Vyre by default and nothing needs setting. Give another address here (such as http://127.0.0.1:3000) to use your own. With none, a PDF is refused in plain words and the Word file is still made.",
       "type": "string",
       "levels": [
         "account"

@@ -161,11 +161,11 @@ export default {
         const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
         const payload_hash = payloadHash(sg.op, space, sg.fields);
         const id = `ap_${newId()}`;
-        const line = lineOfOp(request.op, request.fields, `An assistant (${from.replace(/^[a-z]+:/, "").slice(0, 40) || "unknown"})`);
+        const line = lineOfOp(request.op, request.fields, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`);
         // The call's own input (the registry's, the asker's words never reach it any other way) lets the person read every word and change some of them. It is held only if it is what the card's digest covers.
         const held = input.input && typeof input.input === "object" && !Array.isArray(input.input) && holdFields(input.input).input_sha256 === request.fields.input_sha256 ? input.input : null;
         const group = groupFor(from);
-        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, group, ...(held ? { input: held } : {}) });
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, device: from, at: now(), state: "waiting", moment: "outward", request, line, short: lineOfOp(request.op, {}, `An assistant (${(from.split(":").pop() || "").slice(0, 40) || "unknown"})`), group, ...(held ? { input: held } : {}) });
         return { id, line, group };
       },
     });
@@ -366,7 +366,7 @@ export default {
 
     // ---- the other things that wait on the person: held drafts, session asks, the vault's pending requests (items.js) -------------------------------------
     /** A yes waiting on the phone, as a row of the waiting list. */
-    const cardRow = (/** @type {any} */ a) => ({ id: a.id, kind: "approval", title: clean(a.line || WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op), at: a.at, source: "approvals",
+    const cardRow = (/** @type {any} */ a) => ({ id: a.id, kind: "approval", title: clean(a.short || a.line || WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op), at: a.at, source: "approvals",
       answer: { tool: "approvals.answer", input: { id: a.id }, fill: ["yes"] } });
     items = createItems({ call: (tool, input) => ctx.call(tool, input), on: (pattern, fn) => (ctx.events && typeof ctx.events.on === "function" ? ctx.events.on(pattern, fn) : () => {}), now, log: ctx.log, emit: (type, payload) => { if (ctx.events && typeof ctx.events.emit === "function") ctx.events.emit(type, payload); },
       extra: () => { sweep(); return [...open.values()].filter(a => a.state === "waiting").map(cardRow); } });
