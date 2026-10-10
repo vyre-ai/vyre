@@ -82,3 +82,26 @@ test("domains and secrets are one call each; a refusal gets plain words and keep
   await assert.rejects(s.preview("dep_4"), (/** @type {any} */ e) => e.code === "sealed_in_build" && /sealed value appears/.test(m.publishRefusal(e.code, e.message)));
   assert.match(m.publishRefusal("presence_required", ""), /Approve on this device/);
 });
+
+test("sites list: the line under a site says what is live, where, and what waits in preview", async () => {
+  const m = await import("./real-model.ts");
+  const dep = (/** @type {any} */ o) => ({ id: "d", name: "client-intake", version: 1, stage: "Draft", url: null, domains: [], ...o });
+  const [live] = m.sites([dep({ version: 3, stage: "Production", domains: [{ host: "intake.example.com", status: "verified" }] })]);
+  assert.equal(m.siteLine(live), "live version 3 at intake.example.com");
+  const [both] = m.sites([dep({ version: 3, stage: "Production" }), dep({ id: "e", version: 4, stage: "Preview" })]);
+  assert.equal(m.siteLine(both), "live version 3, version 4 in preview");
+  const [draft] = m.sites([dep({ stage: "Draft" })]);
+  assert.equal(m.siteLine(draft), "not live");
+  const [wait] = m.sites([dep({ version: 2, stage: "Approved" })]);
+  assert.equal(m.siteLine(wait), "not live, version 2 in approved");
+});
+
+test("sites list: each site becomes one list row, its state a tone the list can draw", async () => {
+  const m = await import("./real-model.ts");
+  const dep = (/** @type {any} */ o) => ({ id: "d", name: "menu", version: 1, stage: "Draft", url: null, domains: [], ...o });
+  const rows = m.siteRows(m.sites([dep({ name: "b-site", version: 2, stage: "Approved" }), dep({ name: "a-site", version: 3, stage: "Production", domains: [{ host: "a.example.com", status: "verified" }] })]));
+  assert.deepEqual(rows, [
+    { id: "a-site", title: "a-site", subtitle: "live version 3 at a.example.com", icon: "sites", accessory: "Live", tone: "ok" },
+    { id: "b-site", title: "b-site", subtitle: "not live, version 2 in approved", icon: "sites", accessory: "Waiting on you", tone: "accent" },
+  ]);
+});
