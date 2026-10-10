@@ -4,7 +4,7 @@
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { initsOf, sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, endedRow, keyOf, attemptsMade, authProblems, authCheck, KEY } from "../scripts/lib/eval-honest.js";
+import { initsOf, sealOf, shuffle, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, report, worldData, lastClient, endedRow, keyOf, attemptsMade, KEY } from "../scripts/lib/eval-honest.js";
 import { loadSealed } from "../scripts/eval-honest/run.mjs";
 
 test("the pre-registration is sealed: prereg.json and heldout.json hash to PREREG.sha256, so a change after sealing is caught", () => {
@@ -131,13 +131,4 @@ test("a run that was ended (a stall or the time cap) is an invalid row in the re
   assert.equal(attemptsMade([a, { ...a, n: 9, retryOf: 5 }], keyOf(a)), 2, "ended and re-run ended: done, both reported");
   assert.equal(attemptsMade([ok], keyOf(a)), 2, "a valid row is done");
   assert.equal(attemptsMade([a], "A|other|vyre|1"), 0, "another run is untouched");
-});
-
-test("a paid run authenticates from the subscription token alone, and the stand-in's launches are checked for it", () => {
-  assert.deepEqual(authProblems({ CLAUDE_CODE_OAUTH_TOKEN: "t" }), []);
-  assert.match(authProblems({})[0], /CLAUDE_CODE_OAUTH_TOKEN is not set/);
-  assert.equal(authProblems({ CLAUDE_CODE_OAUTH_TOKEN: "t", ANTHROPIC_API_KEY: "k", ANTHROPIC_BASE_URL: "u" }).length, 2);
-  assert.deepEqual(authCheck([{ argv: ["-p"], oauth: true, rival: [] }, { argv: ["-p"], oauth: true }]), { launches: 2, problems: [] });
-  assert.equal(authCheck([{ argv: ["-p"], oauth: false, rival: ["ANTHROPIC_API_KEY"] }]).problems.length, 2);
-  assert.equal(authCheck([]).problems.length, 1, "no launch seen is not a pass");
 });

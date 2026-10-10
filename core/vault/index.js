@@ -88,7 +88,7 @@ export default {
     const vault = new Vault({ db: ctx.store.db, dir: ctx.paths.vault, config: ctx.config, emit: (t, p) => ctx.events.emit(t, p), log: ctx.log });
     // Who may use a login is a kernel grant (access.js); the vault keeps no table of it.
     vault.access = new Access(vault, ctx);
-    /** @type {any} */ (vault).usedBy = new UsedBy(vault, ctx);
+    vault.usedBy = new UsedBy(vault, ctx);
     // Every tool that returns or moves a value is held at the registry's floor, which asks the one yes (lib/one-yes.js) before the tool runs; nothing here asks twice.
 
     const opts = (ctx.config && ctx.config.vault) || {};

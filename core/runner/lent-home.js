@@ -47,7 +47,7 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean }, capOf?(q: { member: string, device: string }): "provider" | "internet" | undefined },
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
- *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void, borrowed?(i: { thread: string, session: string, member: string, device: string, limit: string | null, epoch: number | null }): void, helloOf?(id: string): { cap?: "provider" | "internet" | null } | null },
+ *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void, helloOf?(id: string): { cap?: "provider" | "internet" | null } | null },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
  *   lapseMs?: number,
@@ -249,7 +249,6 @@ export function createLentHome(o) {
       reserved.delete(String(i.session));
       // one line on the Space's timeline for each chat that borrows a computer: who, which computer, what limit holds
       if (o.emit) { try { o.emit("lease.borrowed", { thread: chat || (asked && asked.chat) || String(i.session), session: String(i.session), person: w.person, device: w.device, limit: cap || null, epoch: row.epoch, at: now() }); } catch { /* a notice, never a stop */ } }
-      if (o.leases && typeof o.leases.borrowed === "function") { try { o.leases.borrowed({ thread: chat || (asked && asked.chat) || String(i.session), session: String(i.session), member: w.person, device: w.device, limit: cap || null, epoch: row.epoch }); } catch { /* a record, never a gate */ } }
       const title = (asked && asked.title) || (chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null);
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1616,"event":533,"config":299,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1615,"event":533,"config":299,"env":282,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -3092,7 +3092,6 @@
     {"kind":"tool","name":"work.move.serve","definedIn":"core/work/index.js","page":"reference/tools.md#workmoveserve","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.create","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectcreate","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.ensure","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectensure","module":"work","mentions":[]},
-    {"kind":"tool","name":"work.project.members","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectmembers","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.move","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectmove","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.move-plan","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectmove-plan","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.ref","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectref","module":"work","mentions":[]},

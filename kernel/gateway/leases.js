@@ -69,10 +69,6 @@ export function createLeases(cfg) {
       if (r && r.id) info.set(r.id, { member: p.id, device: i.device, device_key: i.device_key, ...(hello ? { hello } : {}) });
       return r;
     },
-    /** A chat took the computer: one line on the Space's log (owner-visible), the same way lease.issued is, so the timeline reads it and not only a screen that was listening. */
-    borrowed(/** @type {{ thread: string, session: string, member: string, device: string, limit: string | null, epoch: number | null }} */ i) {
-      try { cfg.log.append(kernelChain(), { type: "lease.borrowed", sv: 1, subject: `vyre://${cfg.space}/lease/${i.device}`, data: { thread: i.thread, session: i.session, member: i.member, device: i.device, limit: i.limit ?? null, epoch: i.epoch ?? null }, vis: "owner", red: "internal" }); } catch { /* the log is a record, never a gate */ }
-    },
     /** What the computer said when it asked for this lease (its limit, runner and protocol), or null: the home reads the lender's claimed limit from here, and only ever tightens with it. */
     helloOf(/** @type {string} */ id) { const l = info.get(String(id)); return l && l.hello ? l.hello : null; },
     /** Renewal re-checks the Offers every time; a lease that is not this person's is unknown. */

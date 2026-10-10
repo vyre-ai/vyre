@@ -7,6 +7,7 @@ import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Segmented, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
+import { AssistantsList } from "./AssistantsList";
 import { TeammatesPage } from "../teammates/TeammatesPage";
 import { agentLine, budgetLine, isStopped, money, providerRows, roleOf, totalSpent, usedShare, type Agent, type Provider, type Usage } from "./agents-model";
 import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./real";
@@ -35,21 +36,7 @@ export function RealAssistants() {
       <View className="flex-row"><Button size="sm" label="New assistant" onPress={() => router.push("/u/settings/assistants/new" as never)} /></View>
       {list === null && !err ? <LoadingState rows={3} /> : null}
       {list && list.length ? (
-        <Card flush>
-          {list.map((a, i) => (
-            <View key={a.name}>{i ? <Divider /> : null}
-              <View className="flex-row items-center gap-s3 p-s3">
-                <Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} size={40} />
-                <View className="min-w-0 flex-1 gap-s1">
-                  <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{isStopped(a) ? <Chip tone="warn">Paused</Chip> : null}</View>
-                  <Text size="caption" tone="label">{`${roleOf(a)}. ${agentLine(a)}`}</Text>
-                </View>
-                {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} disabled={busy === a.name} onPress={() => flip(a)} /> : null}
-                <Button kind="secondary" size="sm" label="Open" onPress={() => router.push(`/u/settings/assistants/${encodeURIComponent(a.name)}` as never)} />
-              </View>
-            </View>
-          ))}
-        </Card>
+        <AssistantsList list={list} busy={busy} onFlip={flip} onOpen={(a) => router.push(`/u/settings/assistants/${encodeURIComponent(a.name)}` as never)} />
       ) : null}
       </>}
     </Page>

@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { OPEN, ASK_FIRST, PERSON_ONLY } from "../../core/modules/agent-reach.js";
-import { generate, render, flowsAnyone, memoryAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, MEMORY_NOTES, DECLARED, DECLARED_SINCE, DECLARED_NOTES } from "../../scripts/gen-allow.mjs";
+import { generate, render, flowsAnyone, memoryAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, MEMORY_NOTES, DECLARED, DECLARED_NOTES } from "../../scripts/gen-allow.mjs";
 
 const committed = () => JSON.parse(fs.readFileSync(ALLOW_FILE, "utf8"));
 
@@ -16,7 +16,7 @@ test("every allow entry is a tool in OPEN, ASK_FIRST or DECLARED, or a reach any
   const flows = new Set(flowsAnyone()), memory = new Set(memoryAnyone());
   for (const e of committed()) {
     assert.deepEqual(Object.keys(e).sort(), ["reason", "tool"], `${e.tool}: only tool and reason`);
-    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || memory.has(e.tool) || e.tool in DECLARED || e.tool in DECLARED_SINCE, `${e.tool} is in none of OPEN, ASK_FIRST, DECLARED, the flows or the memory lists`);
+    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || memory.has(e.tool) || e.tool in DECLARED, `${e.tool} is in none of OPEN, ASK_FIRST, DECLARED, the flows or the memory lists`);
     if (flows.has(e.tool)) assert.match(e.reason, /module authenticates the caller's chain/, `${e.tool}: a flows entry says the module authenticates the chain`);
   }
 });
@@ -52,13 +52,12 @@ test("the generator refuses a person-only tool and an open tool with no note", (
 
 test("every DECLARED tool has its own entry naming the commit, none is person only or ask first, and a note exists only for a declared tool", () => {
   const have = new Map(committed().map(e => [e.tool, e.reason]));
-  for (const [t, ref] of Object.entries({ ...DECLARED, ...DECLARED_SINCE })) {
-    const c = String(ref).split("@")[0];
+  for (const [t, c] of Object.entries(DECLARED)) {
     assert.ok(have.has(t), `${t} has no allow entry`);
     assert.ok(have.get(t).includes(c), `${t}: the reason names ${c}`);
     assert.equal(PERSON_ONLY.has(t) || ASK_FIRST.has(t), false, `${t} is person only or ask first, so it is not declared here`);
   }
-  for (const t of Object.keys(DECLARED_NOTES)) assert.ok(t in DECLARED || t in DECLARED_SINCE, `${t} has a note but is not declared`);
+  for (const t of Object.keys(DECLARED_NOTES)) assert.ok(t in DECLARED, `${t} has a note but is not declared`);
   for (const t of ["threads.delete", "threads.rewind"]) assert.ok(ASK_FIRST.has(t) && have.has(t), `${t} is ask first and has an entry`);
 });
 
@@ -70,8 +69,7 @@ test("the committed presence file is exactly the generator's output, and every e
   assert.equal(fs.readFileSync(PRESENCE_FILE, "utf8"), render(generatePresence()), "run: npm run golden:allow");
   for (const e of JSON.parse(fs.readFileSync(PRESENCE_FILE, "utf8"))) {
     assert.match(e.ruling, /(CHAT|ROADMAP)\.md/);
-    assert.ok(["denied", "presence_required", "person_session_required"].includes(e.was), `${e.tool}: ${e.was}`);
-    if (e.was === "denied") assert.ok(e.tool in SURFACE_RULINGS, `${e.tool}: a denied cell is excused only by a surface ruling`);
+    assert.equal(e.was, e.tool in SURFACE_RULINGS ? "denied" : "presence_required");
     assert.ok(e.callers.length > 0 && !e.callers.some(risky), `${e.tool}: no model, guest, MCP or harness caller`);
   }
 });
@@ -88,8 +86,7 @@ test("the gate lets a ruled presence removal through only for its tool, its pers
   assert.equal(weakened(agent.a, agent.b, allow).length, 1, "a model caller is not excused");
   const tool2 = mk("spaces.members.add", "deck", "presence_required");
   assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
-  // the ruled removals name person callers only (checked above for every entry), so a tool listed here is not thereby open to a model: that is OPEN, ASK_FIRST and DECLARED
-  assert.ok(Object.values(PRESENCE_RULINGS).every(r => r.callers.every(c => !risky(c))), "no ruled removal names a model, guest, MCP or harness caller");
+  assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
 });
 
 test("a surface ruling excuses its tool, its person callers and the one refusal (denied), and nothing else", () => {

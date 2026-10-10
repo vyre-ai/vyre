@@ -29,14 +29,6 @@ async function handle(line) {
     fs.appendFileSync(path.join(home, ".claude", "projects", "s.jsonl"), JSON.stringify({ said: arg }) + "\n");
     out({ type: "assistant", text: "did " + arg });
     out({ type: "result" });
-  } else if (cmd === "slowturn") {
-    // A turn that takes `ms`: it says it started, and writes its notes and its answer only at the end (a lid that shuts in between cuts it).
-    const [ms, ...words] = rest, text = words.join(" ");
-    out({ type: "assistant", text: "working " + text });
-    await new Promise(r => setTimeout(r, Number(ms) || 1000));
-    fs.appendFileSync(path.join(process.cwd(), "notes.txt"), text + "\n");
-    out({ type: "assistant", text: "did " + text });
-    out({ type: "result" });
   } else if (cmd === "half") {
     // Starts a turn, changes a file, and dies before the turn ends.
     fs.writeFileSync(path.join(process.cwd(), "half.txt"), "half-done " + arg);

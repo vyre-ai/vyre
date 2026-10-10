@@ -24,7 +24,7 @@ test("See as code: the version's text, Check against this Flow, Save as a new ve
   assert.equal((await s.code("welcome", 1)).text, "export default 1");
   const c = await s.check("t", "welcome");
   assert.equal(m.verdict(c).tone, "ok");
-  assert.deepEqual(m.effectLines(c.effects), ["Reads: matter.", "Writes: matter.", "Sends or publishes: email.send.", "Asks a person 2 times.", "Hands work to: intake."]);
+  assert.deepEqual(m.effectLines(c.effects), ["Reads: matter.", "Writes: matter.", "Sends or publishes: email.send.", "Asks a person 2 times.", "Hands work to: teammate:intake."]);
   await s.save("t", "welcome");
   assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["flows.code", { id: "welcome", version: 1 }], ["flows.compile-text", { text: "t", id: "welcome" }], ["flows.define", { text: "t", id: "welcome" }]]);
 });
@@ -74,24 +74,4 @@ test("a proposal task in Now is a card that opens its approve page (only form.ki
   const cards = m.proposals(await s.flows(), await s.kits(), await s.tasks());
   assert.deepEqual(cards.map((c) => [c.title, c.href]), [["Add a Retainer type", "/u/task/t1"], ["estate planning", null]]);
   assert.deepEqual(m.proposals([], [], []), []);
-});
-
-test("What it would do reads the kernel's real effects (objects, not names): no line says [object Object]", { skip: !strip }, async () => {
-  const m = await import("./engineer-model.ts");
-  const { compileFlow } = await import("../../../../kernel/flows/compile.js");
-  const { catalog, SPACE } = await import("../../../../kernel/flows/testing/fixtures.js");
-  const flow = { format: 1, name: "t", authorship: "human", trigger: { on: "manual" }, steps: [
-    { id: "m", kind: "create", type: "matter", set: { client: "A" } },
-    { id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com" } },
-    { id: "who", kind: "assign", to: "role:manager", title: "Look", output: { kind: "note" } },
-    { id: "sv", kind: "service", connector: "practice", method: "POST", path: "/matters", body: { client: "A" } },
-  ] };
-  const c = compileFlow(flow, catalog());
-  assert.equal(c.ok, true, JSON.stringify(c.errors));
-  const lines = m.effectLines(c.effects);
-  assert.ok(lines.length >= 3, JSON.stringify(lines));
-  assert.ok(lines.every((l) => !/\[object Object\]/.test(l)), JSON.stringify(lines));
-  assert.ok(lines.some((l) => /Sends or publishes: .*email\.send/.test(l)), JSON.stringify(lines));
-  assert.ok(lines.some((l) => /Hands work to: the manager role/.test(l)), JSON.stringify(lines));
-  assert.ok(lines.every((l) => !/\brole:/.test(l)), "no raw role:x");
 });

@@ -928,7 +928,6 @@
  "test/standin-directory.test.js": 1,
  "test/standin-state.test.js": 1,
  "test/stop-quiet.test.js": 5,
- "test/surface-lists.test.js": 2,
  "test/temp-home-claude.test.js": 1,
  "test/test-counts.test.js": 4,
  "test/theme-defaults.test.js": 3,

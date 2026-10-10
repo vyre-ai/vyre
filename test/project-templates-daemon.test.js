@@ -69,9 +69,6 @@ test("a template is a draft until its owner puts it live; test mode shows every 
 
   const started = await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera Family", repo: "git@example.com:rivera.git" });
   assert.deepEqual([started.stage, started.lead, started.teammates.map((/** @type {any} */ x) => x.agent)], ["Intake", "research", ["research"]]);
-  // the team the timeline names is the team a person can read: who is on it and the role each fills
-  assert.deepEqual((await call("work.project.members", { project: started.project.split("/").pop() })).members, [{ agent: "research", role: "researcher" }]);
-  await assert.rejects(() => call("work.project.members", { project: "no-such-project" }), /no such project/);
   const proj = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data;
   assert.deepEqual([proj.template, proj.template_version, proj.template_stage, proj.lead], ["tpl_estate-plan", "1", "Intake", "research"]);
   assert.deepEqual(JSON.parse(proj.template_snapshot).stages.map((/** @type {any} */ s) => s.name), ["Intake", "Drafting", "Signing"], "the stages are pinned on the project");

@@ -173,37 +173,6 @@ export function initsOf(stream) {
   return { inits: models.length, model: models[0] || "", models: [...new Set(models)] };
 }
 
-// ------------------------------------------------------------------ authentication
-/** The variables that would send a run somewhere other than the subscription. */
-export const RIVAL_AUTH = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"];
-
-/**
- * Why a paid run may not start: it authenticates from CLAUDE_CODE_OAUTH_TOKEN (the owner's subscription) alone.
- * @param {Record<string, string | undefined>} env @returns {string[]}
- */
-export function authProblems(env) {
-  /** @type {string[]} */ const bad = [];
-  if (!env.CLAUDE_CODE_OAUTH_TOKEN) bad.push("CLAUDE_CODE_OAUTH_TOKEN is not set");
-  for (const k of RIVAL_AUTH) if (env[k]) bad.push(`${k} is set (a run must authenticate from the subscription token alone)`);
-  return bad;
-}
-
-/**
- * What the launches the stand-in saw say about authentication: every child must have had the token and none a rival.
- * @param {{ oauth?: boolean, rival?: string[], argv?: string[], env_model?: string | null }[]} launches
- * @returns {{ launches: number, problems: string[] }}
- */
-export function authCheck(launches) {
-  const l = launches.filter((x) => x && Array.isArray(x.argv));
-  /** @type {string[]} */ const problems = [];
-  if (!l.length) problems.push("no launch was seen, so nothing was checked");
-  l.forEach((x, i) => {
-    if (!x.oauth) problems.push(`launch ${i + 1} had no CLAUDE_CODE_OAUTH_TOKEN`);
-    if (x.rival && x.rival.length) problems.push(`launch ${i + 1} had ${x.rival.join(", ")}`);
-  });
-  return { launches: l.length, problems };
-}
-
 // ------------------------------------------------------------------ ended runs and resuming
 /** The key a run is known by across a resume: the eval, the task, the cell and the rep. @param {{ eval: string, task: string, cell: string, rep: number }} r */
 export const keyOf = (r) => `${r.eval}|${r.task}|${r.cell}|${r.rep}`;
@@ -244,7 +213,6 @@ export function report(rows, o = {}) {
   const lines = [`# ${o.title || "Honest eval report"}`, ""];
   if (o.seal) lines.push(`Pre-registration seal: ${o.seal}`, "");
   for (const d of o.disclosures || []) lines.push(`Disclosure: ${d}`, "");
-  lines.push("Disclosure: every dollar figure is an estimate: Claude Code's own count of tokens at list price. The runs were paid from the owner's subscription, not per token.", "");
   lines.push("Disclosure: the process-count guard was corrected after probe 1, before any counted run. It first counted init events (Claude Code emits one per message, so a ten-message thread showed ten); it now counts claude processes (the tee files a run made) and also requires one model throughout. Guards are not part of the pre-registration.", "");
   const shas = [...new Set(rows.map((r) => r.sha))];
   lines.push(`Tree sha(s) the runs were made on: ${shas.join(", ") || "none"}${shas.length > 1 ? " (more than one: a fix was made between runs; the cells below are split by it in the run list)" : ""}.`, `Runs: ${rows.length} (${rows.filter((r) => r.valid).length} valid, ${rows.filter((r) => !r.valid).length} invalid, listed). Spend: ${f$(sum(rows.map((r) => r.usd)))}.`, "");

@@ -89,3 +89,15 @@ test("the library Kit falls back to records.kits.get on a box without the flows 
   const gone = box({ "flows.kit.library.get": { error: { code: "not_found", message: "no Kit a in the library" } } });
   await assert.rejects(kitsSource(gone.call).libraryKit("a"), (/** @type {any} */ e) => e.code === "not_found");
 });
+
+test("kits lists: an installed Kit offers Update (when newer) and a held Remove; one still pending shows its state; an available one offers Read the card", { skip: !strip }, async () => {
+  const { installedRows, availableRows } = await import("./kits-model.ts");
+  const rows = installedRows([{ id: "estate-planning", version: 3, status: "installed", by: "Chris" }, { id: "billing", version: 2, status: "pending" }, { id: "intake", version: 1, status: "installed" }], { "estate-planning": 4 });
+  assert.deepEqual(rows[0].actions, [{ id: "update", title: "Update to v4", kind: "primary" }, { id: "remove", title: "Remove", kind: "hold" }]);
+  assert.deepEqual(rows[2].actions, [{ id: "remove", title: "Remove", kind: "hold" }]);
+  assert.deepEqual([rows[1].actions, rows[1].accessories], [undefined, [{ label: "Waiting for a yes" }]]);
+  assert.equal(rows[0].title, "Estate planning");
+  const avail = availableRows([{ id: "probate", name: "Probate", description: "Estates." }], "");
+  assert.deepEqual(avail[0].actions, [{ id: "read", title: "Read the card", kind: "primary" }]);
+  assert.equal(availableRows([{ id: "probate", name: "Probate" }], "probate")[0].actions[0].title, "Reading");
+});

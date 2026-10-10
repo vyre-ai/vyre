@@ -2,9 +2,7 @@
 // Nothing runs until a person approves a version in Flows.
 
 export type Problem = { path?: string; message: string };
-/** One thing a Flow does, as the kernel gives it (a name, or an object naming the step, the action, the connector, the person or the field it is about). */
-type Item = string | { step?: string; action?: string; to?: string; connector?: string; method?: string; path?: string; field?: string; note?: string; with?: string };
-export type Effects = { reads?: string[]; writes?: string[]; outward?: Item[]; services?: Item[]; code?: Item[]; asks?: number; assigns?: Item[]; sealed_uses?: Item[]; destinations?: Item[]; model_steps?: string[]; needs_run_ask?: boolean };
+export type Effects = { reads?: string[]; writes?: string[]; outward?: string[]; services?: string[]; code?: string[]; asks?: number; assigns?: string[]; sealed_uses?: string[]; destinations?: string[]; model_steps?: string[]; needs_run_ask?: boolean };
 export type Checked = { ok: boolean; errors: Problem[]; warnings?: (string | Problem)[]; effects?: Effects; changes?: string[]; hash?: string };
 export type Defined = { ok: boolean; id?: string; version?: number; hash?: string; errors?: Problem[]; warnings?: (string | Problem)[]; changes?: string[] };
 
@@ -15,10 +13,7 @@ export const warnLine = (w: string | Problem): string => (typeof w === "string" 
 /** What the Flow would do, in words, from the kernel's own effects. Empty when it does nothing but wait. */
 export function effectLines(e: Effects | undefined): string[] {
   if (!e) return [];
-  // the kernel's effects are objects (the step, the action, who gets the task ...): each is said by the one word that names it, never as "[object Object]"
-  const who = (to: string): string => (/^role:/.test(to) ? `the ${to.slice(5)} role` : /^pool:/.test(to) ? `the ${to.slice(5)} pool` : /^teammate:/.test(to) ? to.slice(9) : /^person:/.test(to) ? "a person" : to);
-  const word = (x: Item): string => (typeof x === "string" ? (/^(role|pool|teammate|person):/.test(x) ? who(x) : x) : `${x.action || (x.to ? who(x.to) : "") || x.connector || x.field || x.note || x.step || ""}${x.with ? ` (with the yes for ${x.with})` : ""}`);
-  const list = (a?: Item[]) => (a && a.length ? [...new Set(a.map(word).filter(Boolean))].join(", ") : "");
+  const list = (a?: string[]) => (a && a.length ? a.join(", ") : "");
   return [
     list(e.reads) && `Reads: ${list(e.reads)}.`,
     list(e.writes) && `Writes: ${list(e.writes)}.`,

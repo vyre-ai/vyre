@@ -133,8 +133,6 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
-  // The stored decisions: a branch that moves a cell re-records them with its ruling (node kernel/golden/index.js --write), so drift never reaches the tip.
-  "kernel/golden/golden-box-plain.test.js", "kernel/golden/golden-local-plain.test.js",
   // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
   // The colour guard's own name is split so this list does not trip it (the guard splits its patterns the same way).
   "test/no-" + "li" + "me.test.js", "test/no-tailscale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",

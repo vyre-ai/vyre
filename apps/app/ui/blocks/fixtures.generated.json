@@ -3991,6 +3991,62 @@
     }
    }
   },
+  "assistants-list": {
+   "title": "Assistants",
+   "screens": {
+    "full": {
+     "component": "assistants-list"
+    },
+    "compact": {
+     "component": "assistants-list"
+    },
+    "glance": {
+     "component": "assistants-list"
+    }
+   }
+  },
+  "members-list": {
+   "title": "Members",
+   "screens": {
+    "full": {
+     "component": "members-list"
+    },
+    "compact": {
+     "component": "members-list"
+    },
+    "glance": {
+     "component": "members-list"
+    }
+   }
+  },
+  "kits-list": {
+   "title": "Kits",
+   "screens": {
+    "full": {
+     "component": "kits-list"
+    },
+    "compact": {
+     "component": "kits-list"
+    },
+    "glance": {
+     "component": "kits-list"
+    }
+   }
+  },
+  "access-list": {
+   "title": "Access",
+   "screens": {
+    "full": {
+     "component": "access-list"
+    },
+    "compact": {
+     "component": "access-list"
+    },
+    "glance": {
+     "component": "access-list"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

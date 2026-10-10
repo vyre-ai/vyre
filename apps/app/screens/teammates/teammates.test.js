@@ -113,18 +113,3 @@ test("teammates: a refusal throws with the box's words, and an unreadable pane p
   const p = await s.pane({ agent: "t", project: "d", role: "r", brief: "", filler: null, state: "idle", queued: 0, current: null, last: null });
   assert.equal(p.notes, null); assert.equal(p.errors, 1 + 0 + 0, "only the notes read failed");
 });
-
-test("the team's roster (a template's roles) is shown beside the teammates, and not twice", { skip: !strip }, async () => {
-  const m = await import("./model.ts");
-  const { teammatesSource } = await import("./source.ts");
-  assert.deepEqual(m.membersOf({ members: [{ agent: "research", role: "researcher" }, { agent: "", role: "x" }, { role: "y" }] }), [{ agent: "research", role: "researcher" }]);
-  assert.deepEqual(m.membersOf(undefined), []);
-  const team = m.teammatesOf(ROWS);
-  const members = [{ agent: "kit", role: "designer" }, { agent: "research", role: "researcher" }, { agent: "t1", role: "design" }];
-  assert.deepEqual(m.rosterOnly(team, members), [{ agent: "research", role: "researcher" }], "an agent that already fills a teammate, or is one, is not listed again");
-  const seen = [];
-  const call = async (tool, input) => { seen.push([tool, input]); return tool === "work.project.members" ? { data: { members: [{ agent: "research", role: "researcher" }] } } : { data: [] }; };
-  assert.deepEqual(await teammatesSource(call).members("p1"), [{ agent: "research", role: "researcher" }]);
-  assert.deepEqual(seen, [["work.project.members", { project: "p1" }]]);
-  assert.deepEqual(await teammatesSource(async () => ({ error: { code: "unknown_tool", message: "no such tool" } })).members("p1"), [], "a box that cannot say shows nothing extra");
-});

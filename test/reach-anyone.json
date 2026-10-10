@@ -2509,10 +2509,6 @@
    "module": "work",
    "reason": "read-only: tries a template version with nothing created, sent or changed, read under the caller's own kernel chain"
   },
-  "work.project.members": {
-   "module": "work",
-   "reason": "read-only: who is on a project's team and the role each fills, read under the caller's own kernel chain; callers list in code (capsule, cli, deck, device, local): no model caller"
-  },
   "work.timeline": {
    "module": "work",
    "reason": "read-only: tasks, files, messages, documents and chats that link to a record or project, each only if the caller may read it; a chat shows by title only to its people or when shared; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"

@@ -20,7 +20,6 @@
 import { follow } from "../../core/resilience/stream.js";
 import { open, cursorStore, cacheStore, lifecycle, idbStore } from "../../core/resilience/web.js";
 import { outbox } from "../../core/resilience/outbox.js";
-import { REUSE_OPS } from "./one-yes-ops.generated.js";
 import { backoff } from "../../core/resilience/backoff.js";
 import { callStart, lagMs } from "./trace.js";
 
@@ -150,7 +149,7 @@ async function once(name, input, opts) {
 }
 
 /** Tools whose yes may be reused for five minutes by this device (lib/one-yes.js REUSE_OPS). */
-const REUSE = new Set(REUSE_OPS);
+const REUSE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
 const YES_WAIT_MS = 5 * 60_000;
 
 /**

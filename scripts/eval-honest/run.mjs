@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { parseStream } from "../lib/token-proof.js";
-import { sealOf, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, compactedIn, initsOf, report, endedRow, keyOf, attemptsMade, authProblems, authCheck, KEY } from "../lib/eval-honest.js";
+import { sealOf, plan, lint, CHECKS, B_CHECKS, outcomeOf, guards, compactedIn, initsOf, report, endedRow, keyOf, attemptsMade, KEY } from "../lib/eval-honest.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..", "..");
@@ -42,8 +42,6 @@ export async function evalMain(ctx) {
   if (paid) {
     if (process.env.VYRE_PROOF_PAID !== "yes") return fail("refused: a paid run needs VYRE_PROOF_PAID=yes (the product owner's go)");
     if (!(Number(flag("max-usd")) > 0)) return fail("refused: --max-usd is required");
-    const noAuth = authProblems(process.env);
-    if (noAuth.length) return fail(`refused: ${noAuth.join("; ")}`);
     if (seal !== sealed) return fail(`refused: the pre-registration differs from PREREG.sha256 (now ${seal.slice(0, 16)}, sealed ${sealed.slice(0, 16) || "none"}); a changed prereg is a new experiment: seal it again and say why`);
     if (dirty) return fail(`refused: uncommitted changes under scripts/ core/ lib/ harness/ (the runs record the tree sha, so the tree must be a commit):\n${dirty.slice(0, 600)}`);
   }
@@ -338,13 +336,6 @@ export async function evalMain(ctx) {
   const md = report(rows, { title: `Honest eval, ${which}`, seal, disclosures: discl });
   fs.writeFileSync(path.join(out, "report.md"), md);
   console.log(`\nreport: ${path.join(out, "report.md")}\nrows: ${rowsFile}\nspent (as Claude Code reported): $${spent.toFixed(3)}${stopped ? " (stopped at the cap)" : ""}`);
-  // On the stand-in: every claude child the run started (plain arms, Vyre arm, helper sessions) must have had the subscription token and no rival, read from what each launch logged.
-  const launchLog = path.join(out, "launches.jsonl");
-  if (standIn && fs.existsSync(launchLog)) {
-    const a = authCheck(fs.readFileSync(launchLog, "utf8").split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return {}; } }));
-    console.log(a.problems.length ? `AUTH PROBLEMS:\n  ${a.problems.join("\n  ")}` : `auth: all ${a.launches} claude launches (plain and Vyre arms, helpers) had CLAUDE_CODE_OAUTH_TOKEN and no API key or base URL`);
-    if (a.problems.length) return 1;
-  }
   const c = ctx.counters(); console.log(`permission asks answered for the person: ${c.allowed} allowed, ${c.refused} refused`);
   return 0;
 }

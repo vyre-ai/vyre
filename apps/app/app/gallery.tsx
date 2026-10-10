@@ -12,6 +12,11 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { AssistantsList } from "../screens/settings/AssistantsList";
+import { MembersList } from "../screens/spaces/MembersList";
+import { InstalledKits, AvailableKits } from "../screens/flows/KitsLists";
+import { AccessList } from "../screens/devices/AccessList";
+import { loadAccess } from "../screens/devices/data";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { SitesList } from "../screens/sites/SitesList";
@@ -100,6 +105,24 @@ function Sample({ name }: { name: string }) {
     ];
     return <ChatsList rows={rows} now={now} places={{ places: [{ chat: "demo", computer: "Dana's MacBook", online: true }] }} onOpen={() => {}} />;
   }
+  if (name === "assistants-list") {
+    const a = (name: string, kind: string, extra: object = {}) => ({ name, kind, projects: [], model: "claude-sonnet", effort: null, status: "running", thread: `t_${name}`, ...extra }) as never;
+    return <AssistantsList list={[a("Vyre Assistant", "assistant"), a("Kit", "agent", { status: "stopped" }), a("Scout", "agent", { thread: null })]} busy={null} onFlip={() => {}} onOpen={() => {}} />;
+  }
+  if (name === "members-list") {
+    const m = (id: string, name: string, role: string, extra: object = {}) => ({ id, name, role, ...extra }) as never;
+    return <MembersList members={[m("p1", "Chris Park", "owner"), m("p2", "Dana Reyes", "temp", { scope: "Smith estate", end: "14 Oct" }), m("p3", "Sam Okafor", "member")]} can={() => true} onOpen={() => {}} onExtend={() => {}} />;
+  }
+  if (name === "kits-list") {
+    const k = (id: string, version: number, status: string, extra: object = {}) => ({ id, version, status, ...extra }) as never;
+    return (
+      <View style={{ gap: 16 }}>
+        <InstalledKits shown={[k("estate-planning", 3, "installed", { by: "Chris Park" }), k("intake-forms", 1, "installed"), k("billing", 2, "pending")]} newer={{ "estate-planning": 4 }} busy={false} onUpdate={() => {}} onRemove={() => {}} />
+        <AvailableKits offer={[{ id: "probate", name: "Probate", description: "Estates, heirs and filings." } as never, { id: "immigration", name: "Immigration", description: "Cases and deadlines." } as never]} loadingCard="" onRead={() => {}} />
+      </View>
+    );
+  }
+  if (name === "access-list") return <AccessList rows={loadAccess().filter((a, i) => i < 3 || a.kind === "Person" || a.kind === "Kit" || a.kind === "Flow").slice(0, 7)} empty="" onRemove={() => {}} />;
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
