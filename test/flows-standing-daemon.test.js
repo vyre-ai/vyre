@@ -4,6 +4,7 @@
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present, writeModule } from "./helpers.js";
@@ -34,8 +35,9 @@ const SRC = `export default { async start(ctx) {
   return {};
 } };`;
 
-async function boot(/** @type {import("node:test").TestContext} */ t) {
+async function boot(/** @type {import("node:test").TestContext} */ t, standIn = false) {
   const root = tempHome(t);
+  if (standIn) fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
   const mods = path.join(root, "modules");
   writeModule(mods, "zzflow", MANIFEST, SRC);
   globalThis.__zzflow = [];
@@ -167,4 +169,20 @@ test("a run on an older version gets no standing yes after a new version is appr
   assert.equal(notified(calls).length, 0);
   const live = (await d.kernel.gateway.grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active");
   assert.ok(live.every((/** @type {any} */ g) => g.resource.prefix.endsWith(`@${r2.data.hash}`)), "only the new version's grant stands");
+});
+
+test("when the person who approved is removed from the Space, the Flow's standing yes stops with them: nothing goes out", { timeout: 120_000 }, async t => {
+  const { d, host, admin, calls, space } = await boot(t, true);
+  const grants = d.kernel.gateway.grants, BOB = "per_" + "b".repeat(26);
+  await grants.setRole(admin, { person: BOB, role: "admin" }, { presence: { method: "stand-in" } });
+  const bob = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });
+  const def = await d.registry.call("flows.define", { flow: flowOf(space, { to: "sam@example.com", body: "hello" }) }, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token });
+  assert.ok(def.data && def.data.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](bob, { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  await run(host, def.data.id);
+  await until(async () => notified(calls).length === 1, "the first send, while the approver is a member");
+  await grants.removeMember(admin, { person: BOB }, { presence: { method: "stand-in" } });
+  await run(host, def.data.id).catch(() => null);
+  await new Promise(r => setTimeout(r, 2500));
+  assert.equal(notified(calls).length, 1, "no second send once the approver is gone");
 });
