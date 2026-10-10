@@ -1237,9 +1237,17 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
+  "publish.go": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and the one decision also approves the preview"
+  },
   "publish.publish": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.quick": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); a model may only start the draft and ask, the folder it names must be under Vyre's home, and going live is held for a person (publish.decide)"
   },
   "publish.rollback": {
    "module": "publish",

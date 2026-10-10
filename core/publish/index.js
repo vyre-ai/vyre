@@ -355,13 +355,13 @@ export default {
     });
     ctx.tool("publish.go", {
       callers: WITH_MODELS,
-      description: "Approve a previewed version and put it on the internet with one yes. The first call asks and holds; a person's decision (publish.decide) completes both steps.",
+      description: "Approve a previewed version and put it live with one yes. The first call holds; a person's decision (publish.decide) completes it.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("goLive"),
     });
     ctx.tool("publish.quick", {
       callers: WITH_MODELS,
-      description: "Publish a folder of ready files as a site in one go: it is built and previewed, then held for one yes, which puts it live. Answers the preview, the task and the plan.",
+      description: "Publish a folder of ready files as a site: build, preview, then hold for one yes that puts it live. Answers the task and plan.",
       input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);

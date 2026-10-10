@@ -590,7 +590,7 @@ test("publish: quick takes a folder of ready files to live on one decision, with
   assert.equal(wrong.error?.code, "approval_mismatch", "a hash for another plan is refused");
   const done = await b.ok("publish.decide", { task: q.task, approve: true, plan_hash: q.plan.hash });
   assert.equal(done.deployment.stage, "Production");
-  assert.equal((await b.ok("publish.status", { deployment: q2.deployment.id })).deployment.stage, "Preview", "the other site is still only a preview");
+  assert.equal((await b.ok("publish.status", { deployment: q2.deployment.id })).stage, "Preview", "the other site is still only a preview");
   const refused = await b.call("publish.quick", { name: "ghost", folder: path.join(b.home, "nope") });
   assert.equal(refused.error?.code, "not_found");
 });
