@@ -53,7 +53,7 @@ export function matcher(signing) {
 /** The credit every public page carries: legible, with a link to the source (the licence asks for it). */
 export const CREDIT_HTML = '<div id="vyre-credit">Signatures by <a href="https://github.com/docusealco/docuseal" rel="noopener noreferrer">DocuSeal</a>, open source (AGPL-3.0)</div>';
 /** The style of that credit, always sent, with or without a brand. */
-export const CREDIT_CSS = "#vyre-credit{box-sizing:border-box;width:100%;padding:10px 16px;text-align:center;font:12px/1.4 system-ui,sans-serif;color:#555;background:transparent}#vyre-credit a{color:inherit;text-decoration:underline}";
+export const CREDIT_CSS = "#vyre-credit{box-sizing:border-box;width:100%;padding:10px 16px;text-align:center;font:12px/1.4 system-ui,sans-serif;color:#555;background:transparent}#vyre-credit a{color:inherit;text-decoration:underline}download-button{display:none!important}";
 
 /**
  * Lay Vyre's look over an HTML page: one stylesheet link before the head ends, the credit before the body ends. No script. A page with no head or body gets them at the ends.
@@ -66,9 +66,9 @@ export function dress(html, href) {
   return out;
 }
 
-/** Headers every public page carries: the signing link is in the address, so it never travels as a referrer, the page is not indexed, and a page is never cached. @param {boolean} html */
+/** Headers every public page carries: the signing link is in the address, so it is never sent to another site as a referrer (same-origin, not no-referrer: with no-referrer a browser posts the app's own forms with `Origin: null` and the app refuses them), the page is not indexed, and a page is never cached. @param {boolean} html */
 export function publicHeaders(html) {
-  return { "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff", ...(html ? { "cache-control": "no-store" } : {}) };
+  return { "referrer-policy": "same-origin", "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff", ...(html ? { "cache-control": "no-store" } : {}) };
 }
 
 /** Cookies from the signer's own browser, with ours taken out: only the app's own (its CSRF and session for that signer) go to the app. @param {string | undefined} header */

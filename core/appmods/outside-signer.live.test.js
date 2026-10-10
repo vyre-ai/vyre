@@ -220,9 +220,25 @@ test("an outside signer signs in a real browser through the public door: relay, 
   await new Promise(r => setTimeout(r, 5000));
   await shot("done");
   assert.match(String(await ev("document.body.innerText")), /Document has been signed/);
+  assert.equal(await ev("[...document.querySelectorAll('download-button')].every(e => getComputedStyle(e).display === 'none')"), true, "no Download button for a file the signer's link does not open (the signed copy comes by its own expiring link)");
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "and nothing the browser sent was refused");
   assert.ok(sent.some(x => x.startsWith("POST ") && new URL(x.split(" ")[1]).pathname === new URL(asked.data.url).pathname.replace(/^\/sign\/\d+/, "/s")), `the browser's submit was posted: ${sent.join(" | ").slice(0, 300)}`);
   const subm = await api("GET", `/api/submissions/${asked.data.submission}`);
   assert.equal(subm.s, 200);
   assert.equal(subm.j.status, "completed", "the signing app recorded the signature: the browser's submit reached it");
+  // a second signer declines in the same browser: the app records it and Vyre hears of it (the timeline and Flows are not left waiting on a silence)
+  const second = await d.registry.call("appmods.signing.request", { name: "documents", template_id: Number(tpl.template_id), email: "decliner@example.com", signer: "Decliner" }, "module:documents");
+  assert.ok(!second.error, JSON.stringify(second.error));
+  const loaded2 = cdp.waitFor(m => m.sessionId === sessionId && m.method === "Page.loadEventFired", 30_000);
+  await cdp.send("Page.navigate", { url: second.data.url }, sessionId);
+  await loaded2; await new Promise(r => setTimeout(r, 3000));
+  assert.equal(await click("DECLINE"), true, "the Decline button is there");
+  await new Promise(r => setTimeout(r, 800));
+  assert.ok(await ev("(() => { const t = [...document.querySelectorAll('textarea')].find(x => x.offsetParent); if (!t) return false; t.focus(); return true; })()"), "the reason field");
+  await cdp.send("Input.insertText", { text: "Not the terms we agreed" }, sessionId);
+  await new Promise(r => setTimeout(r, 400));
+  assert.equal(await ev(`(() => { const bs = [...document.querySelectorAll('button')].filter(x => x.innerText.trim().toUpperCase() === 'DECLINE' && x.offsetParent); const b = bs[bs.length - 1]; if (!b) return false; b.click(); return true; })()`), true);
+  await until(async () => { const r2 = await api("GET", `/api/submissions/${second.data.submission}`); return r2.s === 200 && r2.j.submitters && r2.j.submitters[0] && r2.j.submitters[0].status === "declined"; }, "the app to record the decline");
+  const declined = await until(async () => { const e = d.registry.deps.events.since(0, { type: "documents.declined" }); return e.length ? e : null; }, "Vyre to hear that the signer declined");
+  assert.equal(declined[0].payload.email, "decliner@example.com");
 });
