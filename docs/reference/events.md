@@ -86,6 +86,12 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `assistant.rolled` | `day`, `seeded`, `thread` |
 | `push.proactive` | built in a variable before the emit; see the source |
 
+## attachments
+
+| Event | Fields |
+| --- | --- |
+| `attachment.added` | `bytes`, `id`, `mime`, `name`, `thread` |
+
 ## brand
 
 | Event | Fields |
@@ -727,6 +733,7 @@ Listens for: `link.unpaired`
 | `thread.contended` | `holder`, `session` |
 | `thread.continued` | `from_machine`, `from_thread`, `provider`, `source`, `thread`, `turns` |
 | `thread.deleted` | `agent`, `project`, `thread` |
+| `thread.edit-undone` | `path`, `restored` |
 | `thread.finished` | `ok`, `via` |
 | `thread.limit` | built in a variable before the emit; see the source |
 | `thread.mentioned` | `mentions`, `uuid` |
@@ -865,8 +872,6 @@ Listens for: `link.unpaired`
 
 | Event | Fields |
 | --- | --- |
-| `grant.created` | `grant` |
-| `grant.revoked` | `grant` |
 | `storage.paired` | built in a variable before the emit; see the source |
 | `storage.removed` | `drain`, `final` |
 | `storage.unreachable` | `reason` |

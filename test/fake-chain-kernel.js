@@ -14,15 +14,17 @@ export function fakeChain(meta) {
   return { hops: [{ actor: { kind: "service", id: "module" } }] };
 }
 
-/** The `kernelFor` dep for a Registry. */
-export const fakeKernelFor = () => {
-  // the kernel's `mint` handle for a first-party module with `needs.kernel.mints`: grants made, listed by source, ended by id
+/** The kernel's `mint` handle for a first-party module with `needs.kernel.mints`: grants made, listed by source, ended by id. */
+export function fakeMint() {
   /** @type {Map<string, any>} */ const made = new Map();
   let n = 0;
-  const mint = {
+  return {
+    made,
     make: async (/** @type {any} */ i) => { const id = `gr_fake${++n}`; made.set(id, { ...i, id, status: "active", created_at: Date.now() }); return id; },
     list: async (/** @type {{ source?: string }} */ q) => [...made.values()].filter(g => g.status === "active" && g.source.startsWith(String((q && q.source) || ""))),
     end: async (/** @type {{ id?: string }} */ q) => { const g = q.id ? made.get(q.id) : null; if (g) made.set(g.id, { ...g, status: "revoked" }); return g ? [g.id] : []; },
   };
-  return { owner: FAKE_OWNER, chain: async (/** @type {any} */ meta) => fakeChain(meta), mint };
-};
+}
+
+/** The `kernelFor` dep for a Registry. */
+export const fakeKernelFor = () => ({ owner: FAKE_OWNER, chain: async (/** @type {any} */ meta) => fakeChain(meta), mint: fakeMint() });

@@ -138,7 +138,7 @@ export function createStorageDevices({ ctx, grants, vault, scanners, s3 = create
     let grant;
     try {
       grant = await grants.create({
-        subject: { kind: "actor", actor: { kind: "device", id: devId, space: sp } }, actions: ["storage.hold"], resource: { prefix: `vyre://${sp}/storage/${id}/` },
+        subject: { kind: "actor", actor: { kind: "device", id: devId, space: sp } }, actions: ["storage.hold"], resource: { prefix: `vyre://${sp}/storage/${id}` },
         conditions: d.expires ? { when: { expires: d.expires } } : {}, source: "wink:W3", reason: `${String(d.name).slice(0, 48)}, storage`,
       }, { ...self, space: sp });
       db.prepare(`INSERT INTO wink_storage_devices (id, owner_kind, owner_id, kind, name, loc, vault_ref, capacity, used, classes, schedule, expires, residency, state, last_probe, last_ok, grant_id, seen_from, created)

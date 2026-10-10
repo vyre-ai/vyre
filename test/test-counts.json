@@ -1002,5 +1002,6 @@
  "apps/app/screens/settings/backups.test.js": 2,
  "core/vault/health-summary.test.js": 2,
  "apps/app/screens/now/vault-health.test.js": 1,
- "lib/publish/grants-kernel.test.js": 4
+ "lib/publish/grants-kernel.test.js": 4,
+ "core/wink/grants.test.js": 4
 }

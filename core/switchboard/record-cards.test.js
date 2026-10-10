@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { namesIn, cardText, createCards, LIMITS } from "./record-cards.js";
+import { namesIn, cardText, createCards, LIMITS } from "../../lib/record-cards.js";
 import { boot, until } from "../sessions/testing/boot.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 

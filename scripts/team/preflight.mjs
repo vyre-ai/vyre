@@ -51,6 +51,15 @@ for (const f of existing) {
 const bodies = git(["log", `${mergeBase}..HEAD`, "--format=%H %B%x00"]);
 if (/Co-Authored-By:\s*Claude|Generated with \[Claude|Claude-Session:/i.test(bodies)) fail("G3", "a commit message carries Claude attribution; Vyre credits the repository owner only. Reword the commit (git commit --amend, or a new commit for older ones before queueing).");
 
+// ---- K1: kernel lines need a ruling. Net lines added under kernel/ (outside tests) must be named in a commit message as [kernel +N: <reason>]; the lead rules on them first (FOUNDATION A8).
+{
+  const stat = git(["diff", "--numstat", `${mergeBase}...HEAD`, "--", "kernel/"]).split("\n").filter(Boolean)
+    .map(l => l.split("\t")).filter(([, , f]) => f && /\.m?js$/.test(f) && !/\.test\.|\/testing\//.test(f));
+  const net = stat.reduce((n, [a, d]) => n + (Number(a) || 0) - (Number(d) || 0), 0);
+  if (net > 0 && !/\[kernel \+\d+:/i.test(bodies)) fail("K1", `this branch adds about ${net} net kernel lines with no ruling: ask the lead first, then name it in a commit message as [kernel +${net}: why]. Report the kernel/size.test.js number in your landing.`);
+  else if (net > 0) warns.push(`kernel: about +${net} net lines (ruled in a commit message); report the size number in your landing`);
+}
+
 // ---- added lines, per file, for the code rules
 const diff = git(["diff", "-U0", `${mergeBase}...HEAD`, "--", ...existing.filter(f => /\.(m?js|ts|tsx|json|html|css|sh)$/.test(f))]).split("\n");
 let file = "";

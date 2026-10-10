@@ -42,7 +42,8 @@ test("every setting a module declares has a reader in the code, or is on the shr
   }
   assert.ok(keys.length > 40, "the modules declare their settings");
   const code = [];
-  for (const top of ["core", "lib", "modules", "local", "harness"]) {
+  // (the Flows runner reads its settings from kernel/flows: the host hands it the Space's settings, so that folder is a reader too)
+  for (const top of ["core", "lib", "modules", "local", "harness", "kernel/flows"]) {
     const dir = path.join(ROOT, top);
     if (fs.existsSync(dir)) for (const f of walk(dir, n => n.endsWith(".js") && !n.endsWith(".test.js"))) code.push(fs.readFileSync(f, "utf8"));
   }
