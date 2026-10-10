@@ -107,3 +107,14 @@ test("the store's actors are the readable ones, with the signed-in person as You
   const s = createGatewayStore({ rpc: f.rpc });
   assert.deepEqual((await s.actors()).map((a) => a.name), ["You"]);
 });
+
+test("handing in a task that is still ready starts it first, so Mark done works on a card the person has not opened", async () => {
+  const f = fake({ [TOOLS.task]: { task: { id: "t1", state: "ready" } }, [TOOLS.move]: { task: { id: "t1", state: "working" } }, [TOOLS.submit]: { task: { id: "t1", state: "done" } } });
+  const s = createGatewayStore({ rpc: f.rpc });
+  const done = await s.submit("t1", { note: { text: "done" } });
+  assert.equal(done.state, "done");
+  assert.deepEqual(f.calls.filter((c) => c.kind === "write").map((c) => [c.tool, c.input.to ?? null]), [[TOOLS.move, "working"], [TOOLS.submit, null]]);
+  const g = fake({ [TOOLS.task]: { task: { id: "t2", state: "working" } }, [TOOLS.submit]: { task: { id: "t2", state: "done" } } });
+  await createGatewayStore({ rpc: g.rpc }).submit("t2", {});
+  assert.deepEqual(g.calls.filter((c) => c.kind === "write").map((c) => c.tool), [TOOLS.submit], "a task already started is not started again");
+});
