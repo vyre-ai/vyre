@@ -9,9 +9,15 @@ import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createLenderHost } from "./lender-host.js";
 import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
 import { startPump } from "./pipe-pump.js";
+import { within, withinOrThrow } from "../../lib/within.js";
+/** The folder this Vyre is installed in: its MCP server (harness/mcp/run.js) is what a chat's session on this computer talks to. */
+const VYRE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+/** Where this install's node_modules really are, when they are a link to another folder (a checkout): the MCP server in the sandbox must read them too. */
+const realModules = () => { try { const m = path.join(VYRE_ROOT, "node_modules"), r = fs.realpathSync(m); return r === m ? [] : [r]; } catch { return []; } };
 import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
 import { BEAT_MAX } from "./lent-home.js";
@@ -90,7 +96,7 @@ export default {
         const me = await k.call("lent.whoami", []);
         if (!me || typeof me.device !== "string" || !me.device) throw Object.assign(new Error("the Space's home did not say which computer this is"), { code: "unavailable" });
         l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(mine && typeof mine.deviceId === "string" && mine.deviceId ? { eid: mine.deviceId } : {}), ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
-        await l.ready; lenders.set(space, l);
+        await l.ready; lenders.set(space, l); nudgeLoop(space);
         l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} runners.delete(space); } });
         // the home took a session of this computer (it moved, or this computer went quiet): stop it here, writing nothing more
         l.ports.onFenced(session => { const r = runners.get(space); if (r) r.fence(session).catch(() => {}); });
@@ -112,7 +118,7 @@ export default {
     const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
       const p = lenders.get(space)?.ports; if (!p) return;
       // a chat's process (lent spawn) says how it ended through its pump first, so the SDK hears the exit it really had; the home forgetting the session comes after
-      if (why === "stopped" || why === "finished") { const pump = pumps.get(session); Promise.race([pump ? pump.done : null, new Promise(res => { const t = setTimeout(res, 10_000); t.unref?.(); })]).then(() => p.stop?.(session)).catch(() => {}); }
+      if (why === "stopped" || why === "finished") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session)).catch(() => {}); }
       else if (why === "crashed") Promise.resolve(p.requestServer?.(space, session, "crash")).catch(() => {});
     };
     const forSpace = async space => {
@@ -166,7 +172,9 @@ export default {
       let h;
       try {
         const run = resolveAgent(spec);
-        h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
+        // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
+        const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules() } : undefined;
+        h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
         // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
@@ -290,8 +298,10 @@ export default {
       sweepTimer = null;
       if (stoppedSweep || (ctx.config && ctx.config.role === "box")) return;
       const root = path.join(ctx.paths.root, "runner", "spaces");
-      let dirs = []; try { dirs = fs.readdirSync(root); } catch { return; }
       let unsure = 0;
+      // An enrolled lender beats, and waits to be told what to start, for EVERY Space this computer is set to lend to, whether or not it has ever run a session for it: the first chat on a Mac runs there.
+      try { const hh = hostOf(); const ids = hh && typeof hh.lentTo === "function" ? await hh.lentTo() : []; for (const id of ids) { if (!lenders.has(id)) { try { await portsFor(id); } catch { unsure++; } } } } catch { unsure++; }
+      let dirs = []; try { dirs = fs.readdirSync(root); } catch { dirs = []; }
       for (const d of dirs) {
         let id = ""; try { id = fs.readFileSync(path.join(root, d, "space.id"), "utf8").trim(); } catch { continue; }
         if (!/^spc_[a-z0-9]{1,40}$/.test(id) || runners.has(id)) continue;
@@ -312,6 +322,26 @@ export default {
       if (unsure && !stoppedSweep) { sweepTimer = setTimeout(() => { sweepSpaces().catch(() => {}); }, 60_000); sweepTimer.unref?.(); }
     };
     void sweepSpaces().catch(() => {});
+    // the person turned a lend on or off for a computer: this one finds out at once
+    const offLent = ctx.events.on("space.device-lent", () => { if (!sweepTimer) sweepSpaces().catch(() => {}); });
+    /** The standing long call to each Space's home: it comes back the moment the home has a chat for this computer to start. @type {Map<string, boolean>} */ const nudges = new Map();
+    const nudgeLoop = (/** @type {string} */ space) => {
+      if (nudges.has(space)) return;
+      nudges.set(space, true);
+      void (async () => {
+        const nap = (/** @type {number} */ ms) => new Promise(res => { const t = setTimeout(res, ms); t.unref?.(); });
+        while (!stoppedSweep && nudges.get(space)) {
+          const p = lenders.get(space)?.ports;
+          if (!p || typeof p.wait !== "function") break;
+          if (!enabledNow() || sleeping) { await nap(2000); continue; }
+          try {
+            const ans = await p.wait({ wait_ms: 20_000 });
+            if (ans && Array.isArray(ans.directives) && ans.directives.length) settle(space, runners.get(space), { fenced: [], directives: ans.directives });
+          } catch { await nap(2000); }
+        }
+        nudges.delete(space);
+      })();
+    };
 
     // The heartbeat: every few seconds this computer tells each Space's home which sessions it runs, at which epoch and with what use, and whether nothing holds them back now. The answer says which of them the home
     // no longer has (stopped here), and what it wants done: hand a session over (the person's move), or start one the person brought back. A home that cannot be reached changes nothing here: after a lapse it
@@ -408,7 +438,7 @@ export default {
           // An answer is acted on whenever it arrives, even after the beat gave up waiting for it: a home that answers in seven seconds is a home that answers.
           const answered = call.then(ans => { settle(space, r, ans); return ans; });
           answered.catch(() => {}).finally(() => { if (inflight.get(space)?.call === call) inflight.delete(space); });
-          try { await Promise.race([answered, new Promise((_, no) => { const t = setTimeout(() => no(new Error("the home did not answer")), BEAT_TIMEOUT_MS); t.unref?.(); })]); }
+          try { await withinOrThrow(answered, BEAT_TIMEOUT_MS, () => new Error("the home did not answer")); }
           catch { missOne(); }
         }));
       } finally {
@@ -418,6 +448,6 @@ export default {
       }
     };
     if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, seam.heartbeatMs || HEARTBEAT_MS); beatTimer.unref?.(); }
-    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    return { async stop() { stoppedSweep = true; for (const k of nudges.keys()) nudges.set(k, false); try { offLent?.(); } catch { /* gone */ } if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };
