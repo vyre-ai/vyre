@@ -7,12 +7,13 @@ import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import http from "node:http";
+import https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import { until, pair } from "./link-harness.js";
 import { learnOperation } from "../lib/siteops/learn.js";
 import * as F from "../lib/siteops/fixtures.js";
+import { selfSigned } from "../core/wink/control/testing/selfsigned.js";
 import { HOST_NAME, hostManifest, launchChrome, prepareExtension, registerHost, resolveChrome, stopProcess, wrapperScript } from "../local/hands-chrome-mac/spike/harness/lib.mjs";
 
 const LIVE = process.env.VYRE_CHROME_LIVE === "1";
@@ -23,7 +24,8 @@ const HOST_JS = path.join(HERE, "..", "local", "hands-chrome-mac", "native-host"
 /** The site: a feed page that keeps the CSRF value in the page's storage and sets the login cookie, a search that wants both, and a messages endpoint that wants both. @param {import("node:test").TestContext} t */
 async function site(t) {
   /** @type {{ method: string, url: string, cookie: string, csrf: string, body: string }[]} */ const seen = [];
-  const server = http.createServer((req, res) => {
+  const { cert, key } = selfSigned({ ips: ["127.0.0.1"], names: ["app.example.com"] });
+  const server = https.createServer({ cert, key }, (req, res) => {
     const chunks = /** @type {Buffer[]} */ ([]);
     req.on("data", c => chunks.push(c));
     req.on("end", () => {
@@ -52,13 +54,14 @@ async function site(t) {
   });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => { server.closeAllConnections(); server.close(); });
-  return { origin: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`, seen };
+  // the site answers as https://app.example.com (the product takes an https origin); the browser is told where that name is
+  return { origin: "https://app.example.com", port: /** @type {any} */ (server.address()).port, seen };
 }
 
 test("chrome.op.call and chrome.op.send drive a page in a real Chrome through a paired Mac: a read at once, a submit refused by .call, a send only with the box's signed yes, revoke stops it", { skip: !LIVE && "set VYRE_CHROME_LIVE=1 (a hosted runner or a test box)", timeout: 300_000 }, async t => {
   const web = await site(t);
   const ORIGIN = web.origin;
-  const re = (/** @type {any} */ x) => JSON.parse(JSON.stringify(x).replaceAll("https://app.example.com", ORIGIN));
+  const re = (/** @type {any} */ x) => x;
   const cookies = [{ name: "sid", value: F.SECRET_COOKIE }];
   const read = learnOperation({ name: "searchPeople", exchanges: re(F.pageRest("alpha corp")), exchanges2: re(F.pageRest("beta works")), examples: [{ query: "alpha corp" }, { query: "beta works" }], cookies, storage: F.restStorage, trigger: { url: `${ORIGIN}/search?q={query}` } }).operation;
   const send = learnOperation({ name: "sendMessage", kind: "send", exchanges: re(F.pageSend("ada-lovelace", "hello there friend")), exchanges2: re(F.pageSend("grace-hopper", "second text here")), examples: [{ recipient: "ada-lovelace", text: "hello there friend" }, { recipient: "grace-hopper", text: "second text here" }], cookies, storage: F.restStorage, trigger: { url: `${ORIGIN}/inbox` } }).operation;
@@ -83,7 +86,7 @@ test("chrome.op.call and chrome.op.send drive a page in a real Chrome through a 
   registerHost({ manifestObj: hostManifest({ wrapper, id: ext.id }), dir: tmp, userDataDir: udd });
   void HOST_NAME;
   const chrome = resolveChrome({});
-  const launched = launchChrome({ chrome: chrome.path, userDataDir: udd, url: `${ORIGIN}/feed`, extraArgs: [`--load-extension=${ext.dir}`, `--disable-extensions-except=${ext.dir}`], headless: process.env.VYRE_CHROME_HEADED === "1" ? false : "new", logFile: path.join(tmp, "chrome.log") });
+  const launched = launchChrome({ chrome: chrome.path, userDataDir: udd, url: `${ORIGIN}/feed`, extraArgs: [`--load-extension=${ext.dir}`, `--disable-extensions-except=${ext.dir}`, `--host-resolver-rules=MAP app.example.com 127.0.0.1:${web.port}`, "--ignore-certificate-errors"], headless: process.env.VYRE_CHROME_HEADED === "1" ? false : "new", logFile: path.join(tmp, "chrome.log") });
   t.after(() => stopProcess(launched.child));
   await until(async () => (await s.macCall("chrome.status")).data.connected, 60_000);
 
