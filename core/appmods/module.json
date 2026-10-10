@@ -4,7 +4,7 @@
   "description": "Apps from the open-source world as modules: a catalog of pinned apps (Documents first) that run on this server, with their screens, their API as a Connection and their events.",
   "roles": ["box"],
   "requires": ["vault"],
-  "needs": { "daemon": ["flowsHost"], "vault": ["per-app"], "kernel": { "actions": ["drive.write", "drive.read"], "prefixes": ["file/Signed"] } },
+  "needs": { "daemon": ["flowsHost"], "tools": ["documents.send"], "vault": ["per-app"], "kernel": { "actions": ["drive.write", "drive.read"], "prefixes": ["file/Signed"] } },
   "does": {
     "tools": [
       { "name": "appmods.catalog", "effect": "read", "reach": "anyone" },
@@ -55,7 +55,7 @@
         "send": {
           "title": "Send {title} for signature",
           "fields": [{ "name": "email", "label": "Signer's e-mail", "type": "text", "required": true, "default": "{q}" }, { "name": "name", "label": "Signer's name", "type": "text" }],
-          "submit": { "title": "Send", "connection": "documents", "operation": "submissions.create", "input": { "body": { "template_id": "{id}", "send_email": false, "submitters": [{ "email": "{email}", "name": "{name}" }] } }, "outward": true }
+          "submit": { "title": "Send", "tool": "documents.send", "input": { "template_id": "{id}", "email": "{email}", "signer": "{name}" }, "outward": true }
         }
       }
     }

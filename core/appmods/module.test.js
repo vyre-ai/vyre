@@ -332,15 +332,15 @@ test("DocuSeal's two Vyre views are valid in the view language, name only operat
   const declared = new Set(app.connection.operations.map(o => o.name));
   assert.deepEqual(Object.keys(mod.views), ["documents-waiting", "documents-send"]);
   for (const [id, v] of Object.entries(mod.views)) {
-    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(), firstParty: true }), [], id);
+    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(["documents.send"]), firstParty: true }), [], id);
     const ops = [];
     (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === "object") { if (typeof x.operation === "string") ops.push([x.connection, x.operation]); Object.values(x).forEach(walk); } })(v);
     assert.ok(ops.length, id);
     for (const [c, o] of ops) { assert.equal(c, "documents"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
   }
   assert.equal(app.connection.operations.find(o => o.name === "submissions.create").kind, "send", "a send is held for the person's yes by the Connection itself");
-  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
-  assert.equal(mod.views["documents-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
+  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "the view shows the exact words first");
+  assert.equal(mod.views["documents-send"].forms.send.submit.tool, "documents.send", "and sends through Documents: the signing request and the email with its link, one act, because DocuSeal itself has no way out to e-mail anyone");
   assert.equal(mod.views["documents-waiting"].list.input.query.status, "pending");
 });
 
