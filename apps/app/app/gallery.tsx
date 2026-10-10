@@ -15,6 +15,7 @@ import { StatusLine } from "../src/chat/StatusLine";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
+import { PublishView } from "../src/chat/PreviewPublish";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -103,6 +104,11 @@ function Sample({ name }: { name: string }) {
   }
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
+  }
+  if (name === "publish-sheet") {
+    const held = { held: true, task: "t", plan: { action: "publish", goes_public: true, deployment: { id: "d", name: "intake-form", version: 1 }, urls: ["https://intake-form.juniper.example"], replaces: null, secrets: [], ungranted_env: [], hash: "h" } } as never;
+    const noop = () => {};
+    return <View style={{ gap: 24 }}><PublishView step={{ kind: "asking", held, later: "Public once the public door is on. Until then the address works on your own devices only." }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /><PublishView step={{ kind: "done", address: "intake-form.juniper.example", later: "" }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /></View>;
   }
   if (name === "runner-chip") {
     return (

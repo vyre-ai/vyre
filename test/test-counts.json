@@ -858,6 +858,7 @@
  "test/install-mac-server.test.js": 40,
  "test/install-windows-served.test.js": 2,
  "test/installer-copy.test.js": 3,
+ "test/journey-publish-card.test.js": 1,
  "test/journey.test.js": 1,
  "test/link-cli.test.js": 2,
  "test/link-federation.test.js": 10,

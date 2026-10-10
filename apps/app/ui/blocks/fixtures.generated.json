@@ -4005,6 +4005,20 @@
     }
    }
   },
+  "publish-sheet": {
+   "title": "Publish from a card",
+   "screens": {
+    "full": {
+     "component": "publish-sheet"
+    },
+    "compact": {
+     "component": "publish-sheet"
+    },
+    "glance": {
+     "component": "publish-sheet"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
