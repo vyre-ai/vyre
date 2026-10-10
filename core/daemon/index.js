@@ -350,7 +350,22 @@ async function startLocked(opts, root, p, release) {
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
       lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
-      get placements() { return lentPlacements(registry); },
+      get placements() {
+        return lentPlacements(registry, {
+          // a chat that began on this server moves to a computer of the person's: its whole sealed turns (the server's own checkpoint store) become the session's transcript at the home, and the computer seeds its agent home from it
+          adopt: async (/** @type {string} */ space, /** @type {{ thread: string, person: string, chat?: string | null }} */ i) => {
+            const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
+            if (!h || typeof h.adopt !== "function") throw Object.assign(new Error("no such Space here"), { code: "not_found" });
+            const t = /** @type {any} */ ((await registry.call("threads.transcript-target", { thread: i.thread }, "module:vyred", { door: true })).data);
+            if (!t) throw Object.assign(new Error("this chat's history is not kept on this server in a form that can move"), { code: "unavailable" });
+            const port = runnerHostOwn()?.port(space);
+            const cp = port ? await port.getCheckpoint(t.native).catch(() => null) : null;
+            if (!cp || !(cp.seq >= 1)) throw Object.assign(new Error("this chat has no whole turn yet: send it a message first"), { code: "unavailable" });
+            const lines = (await port.getTranscript(t.native, 1, cp.seq)).filter((/** @type {any} */ e) => e.seq <= cp.seq).map((/** @type {any} */ e) => e.line);
+            return h.adopt({ session: i.thread, thread: i.thread, chat: i.chat || null, person: i.person, native: t.native, lines });
+          },
+        });
+      },
       // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
       lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache();
         return proc; },

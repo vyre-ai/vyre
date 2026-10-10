@@ -330,6 +330,31 @@ export function createLentHome(o) {
       return { where: "mac", device, epoch: row.epoch };
     },
     /**
+     * A chat that began on the server moves to one of the person's computers (runner.move to a computer): its whole turns so far are put in the store as the session's transcript, the book lends the session
+     * to a ready computer, and the computer writes that transcript into its own Claude home before it starts the program (the spec's `seed`). Nothing is moved from the server's own disk: the server's copy stays.
+     * @param {{ session: string, thread: string, chat?: string | null, person: string, native: string, lines: string[] }} i
+     * @returns {{ where: "mac", device: string, epoch: number }}
+     */
+    async adopt(i) {
+      const session = String(i && i.session), person = String(i && i.person);
+      if (!SESSION.test(session)) throw err("bad_input", "a session is named by its id");
+      if (book.get(session)) throw err("conflict", "that chat already has a place");
+      const device = pickLender(person, session);
+      if (!device) throw err("unavailable", "none of your computers is ready to take this chat now");
+      const lines = Array.isArray(i.lines) ? i.lines : [];
+      if (!lines.length) throw err("unavailable", "this chat has no whole turn to move yet");
+      return Promise.resolve(store.appendTranscript(HOME, session, lines.map((line, k) => ({ seq: k + 1, line: String(line) })))).then(() => {
+        const row = book.lend({ session, chat: i.chat || null, person, device, key: keys.get(device) || null });
+        seeds.set(session, { native: String(i.native), count: lines.length });
+        threads.set(session, String(i.thread));
+        reserved.add(session);
+        // the chat's next turn starts the program there (the Switchboard finds this row); until then the place is kept for hours, not seconds
+        const t = setTimeout(() => { if (reserved.delete(session) && !lent.has(session)) { book.forget(session); seeds.delete(session); } }, ADOPT_MS); t.unref?.();
+        nudge(device);
+        return { where: "mac", device, epoch: row.epoch };
+      });
+    },
+    /**
      * The nudge: held up to `wait_ms` until the home has something for this computer to do (a chat to start), so a ready computer is told at once and not at its next heartbeat. The same directives the heartbeat carries.
      * @param {any} chain @param {{ wait_ms?: number }} [i]
      */

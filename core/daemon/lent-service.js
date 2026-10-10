@@ -72,7 +72,7 @@ export function lentServiceFor(o) {
  * of a Space is made when its server is.
  * @param {any} registry
  */
-export function lentPlacements(registry) {
+export function lentPlacements(registry, extra = {}) {
   const homeOf = (/** @type {string} */ space) => { const f = registry.deps.lentHome; return typeof f === "function" ? f(space) : null; };
   const book = (/** @type {string} */ space) => { const h = homeOf(space); if (!h) throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" }); return h.book; };
   return Object.freeze({
@@ -81,6 +81,8 @@ export function lentPlacements(registry) {
     askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason, /** @type {string} */ person) => book(space).askRelease(session, reason, person),
     bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).bringBack(session, person),
     /** Can the server carry a session on from a computer now? A home that does not say, can. */
+    /** A chat that began on this server goes to one of the person's computers: { thread, person } -> { where: "mac", device, epoch }. The daemon says how (it holds the server's own store). */
+    ...(typeof extra.adopt === "function" ? { adopt: extra.adopt } : {}),
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }

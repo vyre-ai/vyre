@@ -17,3 +17,6 @@ export function claudeTranscriptPlace(folders, cwd, session) {
   if (!folders[0] || !cwd) return null;
   return { file: claudeTranscriptFile(folders[0], cwd, session), root: folders[0] };
 }
+
+/** Where the provider keeps a session's transcript INSIDE a runner's workspace (the agent's home is `<work>/home`), for the folder `cwd` the session sees. @param {string} work @param {string} cwd @param {string} session @returns {string} */
+export const claudeWorkTranscript = (work, cwd, session) => claudeTranscriptFile(path.join(work, "home", ".claude", "projects"), cwd, session);

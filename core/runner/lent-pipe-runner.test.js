@@ -176,3 +176,26 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   assert.equal(reveal.error && reveal.error.code, "denied");
   proc.kill();
 });
+
+test("a chat that began on the server moves to the Mac: its whole turns are written into the computer's own agent home before the program starts, where its resume looks", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const turns = [JSON.stringify({ type: "user", n: 1 }), JSON.stringify({ type: "assistant", n: 2 })];
+  // no computer ready, or nothing whole to move: refused in words, nothing written
+  await assert.rejects(() => Promise.resolve(w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: [] })), (/** @type {any} */ e) => e.code === "unavailable");
+  const placed = await w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: turns });
+  assert.equal(placed.where, "mac");
+  assert.equal(w.book.get("s_moved").where, "mac", "the chat has a place on the computer, kept until its next turn");
+  await assert.rejects(() => Promise.resolve(w.r.home.adopt({ session: "s_moved", thread: "s_moved", person: BOB, native: "s_moved", lines: turns })), (/** @type {any} */ e) => e.code === "conflict");
+  // the chat's next turn starts the program there
+  const proc = w.r.home.spawn({ session: "s_moved", person: BOB, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 20_000);
+  proc.stdin.write("seedcheck s_moved\n");
+  const got = JSON.parse(await waitFor(() => out.find(l => l.includes("\"seedcheck\"")), 20_000));
+  assert.equal(got.found, true, "the program finds its history where its resume looks");
+  assert.equal(got.text, turns.join("\n") + "\n");
+  proc.kill();
+});

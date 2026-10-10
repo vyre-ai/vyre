@@ -11,6 +11,8 @@
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
 import { HARNESS_MARK } from "./pipe-home.js";
+import { claudeWorkTranscript } from "../sessions/drivers/claude-transcript.js";
+import { writeInside } from "./safefs.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -191,7 +193,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, seed?: { native: string, count: number }, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
@@ -207,6 +209,16 @@ export function createRunner(o) {
     const ws = await open();
     const work = workOf(ws), state = stateOf(ws);
     let resumed = null, routes = s.routes, labels = s.labels || { trust: "external" };
+    // A chat that began on the server and moves here: the Space's store holds its whole turns as the session's transcript, and this computer writes them into its own agent home before the program starts, in the
+    // folder the program will see as its own, so the program's resume finds them. The first checkpoint after the next turn then covers them like any other line.
+    if (!s.resume && s.seed && o.sync && typeof o.sync.getTranscript === "function") {
+      const lines = await o.sync.getTranscript(s.session, 1);
+      if (lines.length) {
+        const seen = platform === "linux" ? "/work/files" : path.join(fs.realpathSync(work), "files");
+        const file = claudeWorkTranscript(work, seen, String(s.seed.native));
+        writeInside(work, path.relative(work, file), Buffer.from(lines.map((/** @type {any} */ e) => e.line).join("\n") + "\n"));
+      }
+    }
     if (s.resume) {
       resumed = await restore({ space: o.sync, session: s.session, work, state, verify: o.verifyState });   // required: no verifier, no resume
       if (resumed) {

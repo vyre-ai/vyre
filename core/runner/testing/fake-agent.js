@@ -105,6 +105,12 @@ async function handle(line) {
     });
     out({ type: "hook", ...res });
     out({ type: "result" });
+  } else if (cmd === "seedcheck") {
+    // what the program finds where its resume looks: the agent home's transcript of session `rest[0]`, in the folder this program sees as its own
+    const f = path.join(home, ".claude", "projects", process.cwd().replace(/[^A-Za-z0-9]/g, "-"), rest[0] + ".jsonl");
+    let text = null; try { text = fs.readFileSync(f, "utf8"); } catch { /* not there */ }
+    out({ type: "seedcheck", found: text !== null, text });
+    out({ type: "result" });
   } else if (cmd === "env") {
     out({ type: "env", name: rest[0], value: process.env[rest[0]] ?? null });
   } else if (cmd === "exit") process.exit(0);

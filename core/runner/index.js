@@ -175,7 +175,7 @@ export default {
         const run = resolveAgent(spec);
         // a chat's session (lent spawn) gets Vyre's tools through the home: the runner's door in the sandbox, and Vyre's own MCP server beside Claude
         const vyre = spec.vyre === true && typeof p.http === "function" ? { call: (/** @type {any} */ q) => p.http({ session, ...q }), entry: path.join(VYRE_ROOT, "harness", "mcp", "run.js"), root: VYRE_ROOT, also: realModules(), ...(harnessThere() ? { plugin: path.join(VYRE_ROOT, "harness") } : {}) } : undefined;
-        h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
+        h = await r.start({ session, resume: Boolean(resume), ...(spec.seed ? { seed: spec.seed } : {}), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network, ...(vyre && fs.existsSync(vyre.entry) ? { vyre } : {}) });
       } catch (e) {
         // A start refused because the session is already running or being started here is that other start's business: nothing is told. Any other failure leaves the home believing the session runs on this computer
         // (it would be taken, as "offline", twenty seconds later), so it is told: a session that was resuming goes back to the server to carry on from its checkpoint, a new one is forgotten.
