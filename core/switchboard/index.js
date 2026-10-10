@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, runQueuedOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver, busyTurn, runQueuedOver, servesChip } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -2470,7 +2470,7 @@ export class Switchboard {
     if (!this.record(id)) await this.adopt(id);
     const rec = this.must(id);
     const provider = String(over.provider || ""), account = over.account ? String(over.account) : null;
-    const cur = rec.provider || "claude";
+    const cur = rec.provider || "claude"; await servesChip(this, over);
     if (provider === cur && (!account || account === rec.account)) return null;
     const name = providerName(provider);
     const no = (msg, code = "account_unavailable") => Object.assign(new Error(`${msg} Nothing was sent, and the turn did not move to another provider.`), { code });

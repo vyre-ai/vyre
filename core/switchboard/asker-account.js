@@ -42,3 +42,9 @@ export function runQueuedOver(sb, id, rows, kt, mark, now) {
   void sb.sendOnce(id, r.text, r.surface, kt.over, { queue: false, uuid: r.uuid || undefined, kernelTurn: { chat: kt.chat, asker: kt.asker } }).catch((/** @type {Error} */ e) => sb.emit("thread.text", { message: "vyre", text: `Your message could not run on your own account: ${e.message}`, done: true, notice: true }, id, rec ? rec.project : null));
   return true;
 }
+
+/** A chip names an account only the sender may use: a turn on the thread's own account is no exception (it may be another member's). Refused in words, nothing sent. @param {any} sb @param {{ provider: string, account?: string | null, person?: string | null }} over */
+export async function servesChip(sb, over) {
+  if (!over.person || !over.account) return;
+  await sb.accountFor({ provider: over.provider, account: over.account, person: over.person }).catch(() => { throw Object.assign(new Error("That account is not yours to use here. Nothing was sent, and the turn did not move to another provider."), { code: "account_unavailable" }); });
+}
