@@ -44,7 +44,7 @@ export function GlassFrame({ src, onMessage, frameRef, label, relay }: GlassFram
   return (
     <WebView
       ref={web}
-      {...(relay ? { source: { html: page, baseUrl: "about:blank" }, originWhitelist: ["about:*"], injectedJavaScriptBeforeContentLoaded: webviewShim(), onShouldStartLoadWithRequest: (r: { url: string }) => r.url === "about:blank" }
+      {...(relay ? { source: { html: page ?? "", baseUrl: "about:blank" }, originWhitelist: ["about:*"], injectedJavaScriptBeforeContentLoaded: webviewShim(), onShouldStartLoadWithRequest: (r: { url: string }) => r.url === "about:blank" }
         : { source: { uri: src }, originWhitelist: origin ? [origin] : [], onShouldStartLoadWithRequest: (r: { url: string }) => Boolean(origin) && r.url.startsWith(origin) })}
       onMessage={(e) => hear(e.nativeEvent.data)}
       javaScriptEnabled
