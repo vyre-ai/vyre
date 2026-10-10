@@ -5,18 +5,29 @@ import { View } from "react-native";
 import { Chip, Menu, Text, showToast } from "@vyre/ui";
 import { listen } from "../api/box";
 import { runner } from "../../screens/runner/runner";
-import { chipOf, fresher, movedLine, type Placement } from "../../screens/runner/runner-model.js";
+import { chipOf, fresher, movedLine, placingLine, placingWords, type Placement } from "../../screens/runner/runner-model.js";
 
 /** The session's placement, kept current by the box's own move events. */
 export function usePlacement(thread: string, real: boolean) {
   const [p, setP] = useState<Placement | null>(null);
   const [lines, setLines] = useState<{ at: number; text: string }[]>([]);
+  // While the process starts on a computer the status line says so (thread.placing); it is gone once it is up or has fallen back to the server.
+  const [starting, setStarting] = useState("");
   useEffect(() => {
     if (!real) return;
     let live = true;
     runner.placement(thread).then((x) => { if (live) setP(x); }).catch(() => {});
     const off = listen((e: any) => {
+      if (e?.type === "thread.placing" && String(e?.payload?.thread ?? "") === thread) {
+        setStarting(placingWords(e.payload));
+        const line = placingLine(e.payload);
+        if (line) setLines((l) => [...l.slice(-4), { at: Date.now(), text: line }]);
+        // Where it runs may have changed under it (the row is taken back on a fallback): ask again, the box is the one fact.
+        if (e.payload.state !== "starting") runner.placement(thread).then((x) => { if (live) setP((cur) => (x && fresher(cur?.epoch, x.epoch) ? x : cur)); }).catch(() => {});
+        return;
+      }
       if (e?.type !== "thread.moved" || String(e?.payload?.thread ?? "") !== thread) return;
+      setStarting("");
       const to = e.payload.to === "mac" ? "mac" : e.payload.to === "paused" ? "paused" : "server";
       const epoch = Number.isInteger(e.payload.epoch) ? e.payload.epoch : undefined;
       // A higher epoch wins: an update that arrives late never moves the chip back.
@@ -28,7 +39,7 @@ export function usePlacement(thread: string, real: boolean) {
   const move = useCallback(async (to: "mac" | "server") => {
     try { const x = await runner.move(thread, to); if (x) setP(x); } catch (e) { showToast(e instanceof Error ? e.message : "That did not go through."); }
   }, [thread]);
-  return { placement: p, lines, move };
+  return { placement: p, lines, move, starting };
 }
 
 /** The chip: where it runs; tap to see why, or move it to the other place. */

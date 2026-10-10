@@ -374,6 +374,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       <StatusLine
         place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
+        starting={placed.starting}
         presence={group.presenceLine()}
         state={meta.state}
         busy={meta.busy}

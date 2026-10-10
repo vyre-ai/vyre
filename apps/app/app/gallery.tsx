@@ -11,6 +11,7 @@ import { setBoxOverride } from "../src/real/box";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
+import { StatusLine } from "../src/chat/StatusLine";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
@@ -81,7 +82,8 @@ function Sample({ name }: { name: string }) {
       <View style={{ gap: 12, alignItems: "flex-start" }}>
         <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
         <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }]} />
+        <View style={{ alignSelf: "stretch" }}><StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={false} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} /></View>
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }]} />
       </View>
     );
   }
