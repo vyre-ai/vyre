@@ -59,6 +59,17 @@ test("the morning world: a stuck card says why and offers Fix and Reassign; a ta
   assert.match(now.meta, /7 things need you/);
 });
 
+test("a to-do with no stage and no record says it is waiting for you, never \"Due with .\"", async () => {
+  const s = createMockStore({ now: () => NOW });
+  const w = await loadWorld(s, () => NOW);
+  const now = nowModel(w);
+  const todo = now.needs.find((t) => t.title === "Review the draft with Jane Doe");
+  const bare = { ...todo, stage: undefined, record: undefined };
+  const m = cardFor(w, bare);
+  assert.ok(!/Due with \./.test(m.why), m.why);
+  assert.ok(/waiting for you/.test(m.why) || /Due with \w/.test(m.why), m.why);
+});
+
 test("one field to fill is an inline input with the field's own label", async () => {
   const w = await loadWorld(createMockStore({ now: () => NOW }), () => NOW);
   const t = nowModel(w).needs.find((x) => x.title === "Signing date");

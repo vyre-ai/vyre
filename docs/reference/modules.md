@@ -26,6 +26,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 3 | cli |
+| [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
@@ -97,11 +98,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 69 | 40 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 70 | 41 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 53 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 56 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -158,6 +159,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Shows on: cli
 - Needs daemon: `flowsHost`
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
+- Needs tools: `documents.send`
 - Needs vault: `per-app`
 
 ## approvals
@@ -218,6 +220,17 @@ The one assistant's own tools: a daily digest and triage from waiting.list and a
 - Tools: [8](tools.md#assistant)
 - Emits: [3 events](events.md#assistant)
 - Shows on: cli
+
+## attachments
+
+Files a person adds to a chat: each is kept once, sealed, in the chat's own folder, and a message carries only a reference to it.
+
+- Folder: `core/attachments`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [2](tools.md#attachments)
+- Emits: [1 events](events.md#attachments)
+- Shows on: no surface
 
 ## brand
 
@@ -1035,8 +1048,8 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [69](tools.md#threads), 24 of them only for other modules
-- Emits: [40 events](events.md#threads)
+- Tools: [70](tools.md#threads), 24 of them only for other modules
+- Emits: [41 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
@@ -1082,7 +1095,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [150](tools.md#vault), 21 of them only for other modules
-- Emits: [53 events](events.md#vault)
+- Emits: [56 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

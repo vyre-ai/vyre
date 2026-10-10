@@ -23,6 +23,7 @@ import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { holdersOf, createRing } from "../../lib/chat-keys.js";
 import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createPersistent } from "./persistent.js";
+import { parseStored } from "../../lib/attachments.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -167,8 +168,8 @@ export default {
         const files = [];
         for (const kind of ["chat", "made"]) {
           for (const e of (await k.drive.list(chain, `${root}/${kind}/${chat}`).catch(() => [])) || []) {
-            const path = String(e.path || ""), name = path.slice(`${root}/${kind}/${chat}/`.length);
-            if (name && !name.endsWith("/")) files.push({ path, name, kind: kind === "made" ? "made" : "received", size: Number(e.size || 0), at: Number(e.at || e.mtime || 0), shared: shares.has(path) });
+            const path = String(e.path || ""), stored = path.slice(`${root}/${kind}/${chat}/`.length), name = (kind === "chat" && parseStored(stored)) ? /** @type {any} */ (parseStored(stored)).name : stored; // an attached file is stored as <id>-<name>; the panel shows the name
+            if (stored && !stored.endsWith("/")) files.push({ path, name, kind: kind === "made" ? "made" : "received", size: Number(e.size || 0), at: Number(e.at || e.mtime || 0), shared: shares.has(path) });
           }
         }
         return { root, files };

@@ -44,6 +44,7 @@ export function openStore(db, now) {
     },
     setToken: (/** @type {string} */ id, /** @type {string} */ token) => { db.prepare("UPDATE outside_agents SET token_hash = ? WHERE id = ?").run(hashOf(token), id); },
     setExpiry: (/** @type {string} */ id, /** @type {number} */ expires, /** @type {number} */ rate) => { db.prepare("UPDATE outside_agents SET expires = MAX(expires, ?), rate = ? WHERE id = ?").run(expires, rate, id); },
+    setExpires: (/** @type {string} */ id, /** @type {number} */ expires) => { db.prepare("UPDATE outside_agents SET expires = ? WHERE id = ?").run(expires, id); },
     used: (/** @type {string} */ id) => { db.prepare("UPDATE outside_agents SET uses = uses + 1, last_used = ? WHERE id = ?").run(now(), id); },
     revoke: (/** @type {string} */ id) => { db.prepare("UPDATE outside_agents SET revoked = ? WHERE id = ? AND revoked IS NULL").run(now(), id); },
     status: (/** @type {any} */ a) => (a.revoked ? "revoked" : a.expires <= now() ? "expired" : "active"),

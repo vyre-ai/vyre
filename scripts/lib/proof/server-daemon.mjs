@@ -52,6 +52,14 @@ export async function startDaemonServer(o) {
     /** A tool call as the server's own operator (not as a paired device). @param {string} tool @param {any} [input] */
     async operator(tool, input = {}) { const r = await d.registry.call(tool, input, "cli", { proof: { method: "passkey", id: "x" } }); if (r && r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r && r.data; },
     registry: d.registry,
+    /** The owner's yes for a call the server answered presence_required to (lib/one-yes.js): a development key signs the exact act, as the phone's key does, and the header is the base64url of the proof (x-vyre-yes). @param {string} personId */
+    yesFor(personId) {
+      return async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
+        if (!ownerSigner) throw new Error("this server was started with no owner key to give a yes with");
+        const proof = ownerSigner.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: personId, space: sign.space } }] }, sign.op, sign.fields);
+        return Buffer.from(JSON.stringify(proof)).toString("base64url");
+      };
+    },
     /** The team rig: the owner's signer, a signer for another person, and the chains the hosted space's kernel uses for them. */
     team: {
       ownerSigner, signerFor: (/** @type {string} */ id) => seal.signer(id),
