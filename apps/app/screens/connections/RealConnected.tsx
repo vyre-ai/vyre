@@ -2,10 +2,11 @@
 // person does not have to know which tab holds what to see that it works.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Divider, EmptyState, ErrorState, LoadingState, Row, Text } from "@vyre/ui";
+import { Button, Card, EmptyState, ErrorState, LoadingState } from "@vyre/ui";
 import { connections } from "./source-real";
 import { words } from "./model";
 import { unifyConnected, type Connected } from "./any-app";
+import { ConnectedList } from "./ConnectedList";
 
 export default function RealConnected({ open }: { open: (tab: "any" | "mcp" | "add") => void }) {
   const [list, setList] = useState<Connected[] | null>(null);
@@ -20,16 +21,7 @@ export default function RealConnected({ open }: { open: (tab: "any" | "mcp" | "a
   return (
     <View className="gap-s3 pt-s2">
       {list.length ? (
-        <Card flush>
-          {list.map((c, i) => (
-            <View key={c.key}>{i ? <Divider /> : null}
-              <Row title={<View className="flex-row items-center gap-s2"><Text strong>{c.label}</Text><Text tone="muted" size="caption">{c.kind === "mcp" ? "MCP server" : "App"}</Text></View>}
-                sub={<View className="gap-s1 pt-s1"><Text size="secondary" tone={c.status === "ok" ? undefined : "muted"}>{`${c.status === "ok" ? "Working" : c.status === "bad" ? "Needs attention" : "Idle"}: ${c.words}`}</Text>
-                  {c.where ? <Text size="caption" tone="muted" mono>{c.where}</Text> : null}
-                  <View className="self-start"><Button size="sm" kind="ghost" label="Open" onPress={() => open(c.kind === "mcp" ? "mcp" : "any")} /></View></View>} />
-            </View>
-          ))}
-        </Card>
+        <ConnectedList list={list} onOpen={(c) => open(c.kind === "mcp" ? "mcp" : "any")} />
       ) : <Card><EmptyState title="Nothing connected yet" body="Add a service, an app with an API, or an MCP server." /></Card>}
       <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Add a connection" onPress={() => open("add")} /></View>
     </View>

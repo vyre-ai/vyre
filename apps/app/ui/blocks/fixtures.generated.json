@@ -3963,6 +3963,20 @@
     }
    }
   },
+  "connected-list": {
+   "title": "Connected",
+   "screens": {
+    "full": {
+     "component": "connected-list"
+    },
+    "compact": {
+     "component": "connected-list"
+    },
+    "glance": {
+     "component": "connected-list"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
