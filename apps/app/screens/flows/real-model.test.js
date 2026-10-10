@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { APPROVE_LABEL, listWaits, shownWarnings, titleOf, versionWaits } from "./real-model.js";
+import { APPROVE_LABEL, listWaits, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 test("a Flow is called by its words, never its id", () => {
   assert.equal(titleOf({ label: "Welcome the client", name: "welcome" }, "fl_01a123ae-79f0"), "Welcome the client");
@@ -27,4 +27,11 @@ test("a Flow's page shows the warnings a person can act on, not the note about t
 test("the approval button names no biometric: approving a Flow asks the device for no proof", () => {
   assert.equal(APPROVE_LABEL, "Approve");
   assert.doesNotMatch(APPROVE_LABEL, /Face ID|Touch ID|fingerprint|passkey/i);
+});
+
+test("a run that shrank to one line says so in its own words; a run with its details says nothing", () => {
+  assert.equal(shrunkNote({ pruned: true, summary: "Welcome the client: done" }), "Welcome the client: done");
+  assert.equal(shrunkNote({ pruned: true }), "This run kept only its outcome.");
+  assert.equal(shrunkNote({ state: "done", steps: { a: {} } }), null);
+  assert.equal(shrunkNote(undefined), null);
 });
