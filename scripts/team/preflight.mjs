@@ -56,6 +56,7 @@ const KBASE = (() => { try { const t = fs.readFileSync("kernel/size.test.js", "u
 /** @param {string} f */
 const inBase = f => { if (!f.startsWith("kernel/")) return false; const r = f.slice(7); return KBASE.dirs.length ? (KBASE.dirs.some(d => r.startsWith(d + "/")) || KBASE.files.includes(r)) : true; };
 
+/** @type {string[]} */ const warns = [];
 // ---- K1: kernel lines need a ruling. Net lines added under kernel/ (outside tests) must be named in a commit message as [kernel +N: <reason>]; the lead rules on them first (FOUNDATION A8).
 {
   const stat = git(["diff", "--numstat", `${mergeBase}...HEAD`, "--", "kernel/"]).split("\n").filter(Boolean)
@@ -89,7 +90,6 @@ for (const { file: f, line } of added) {
 }
 
 // ---- W1: edits in another team's paths (a warning, not a failure): the two ends of a seam talk first
-/** @type {string[]} */ const warns = [];
 try {
   const own = JSON.parse(fs.readFileSync("scripts/team/owners.json", "utf8"));
   const me = process.env.VYRE_TEAM || "";
