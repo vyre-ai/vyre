@@ -95,7 +95,7 @@ export function kernelMembers({ handle, now = Date.now }) {
 }
 
 /** A membership as the tools show it. @param {any} m */
-const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null });
+const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null, ...(m.partial ? { partial: true } : {}) });
 
 /** The words a person may be shown about a starting store: the progress sentence the store gives, and for anything else (a failure's own text, which can hold paths or errors) one fixed sentence. */
 const PROGRESS = /^(starting Records|the record store is still starting)/;

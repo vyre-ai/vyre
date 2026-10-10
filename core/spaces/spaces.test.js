@@ -824,6 +824,30 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
 });
 
 
+test("on a box with no identity of its own, every member sees who is in a Space and in what role; the owner is not told to choose a name; a stranger sees nothing (J9)", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const w = world(t);
+  const KSPACE = "spc_aaaaaaaaaaaa", OWNER = "per_" + "o".repeat(26), KIT = "per_" + "k".repeat(26), BOB = "per_" + "b".repeat(26), EVE = "per_" + "e".repeat(26);
+  /** @type {any} */ let K = null, handle = null;
+  const real = m => (handle ||= K.kernelFor(m));
+  const kernelFor = m => ({ for: () => real(m).for(KSPACE), chain: meta => real(m).chain(meta), proofFrom: meta => real(m).proofFrom(meta), serviceChain: () => real(m).serviceChain(), acceptProofRequest: (c, p) => real(m).acceptProofRequest(c, p), membership: p => real(m).membership(p, KSPACE) });
+  const d = await device(t, { kernelFor });
+  K = await createKernel({ space: KSPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), clock: () => w.clock.t, presence: { check: async () => null }, hasPresenceSession: () => true });
+  const chainOf = person => K.chains.fromFacts({ kind: "device", device_key_id: "d-" + person.slice(4, 8), person, path: "direct", session: "s" });
+  for (const person of [KIT, BOB]) await K.gateway.grants.setRole(chainOf(OWNER), { person, role: "member" }, { presence: { method: "stand-in" } });
+  const as = async (person, input) => d.call("spaces.members.list", input, "cli", { token: (await K.surfaces.open(chainOf(person))).token });
+  for (const person of [OWNER, KIT, BOB]) {
+    const r = await as(person, { space: KSPACE });
+    assert.ok(!r.error, `${person.slice(4, 8)}: ${JSON.stringify(r.error)}`);
+    assert.deepEqual(r.data.members.map(m => [m.person, m.role]).sort(), [[BOB, "member"], [KIT, "member"], [OWNER, "owner"]].sort(), "everyone sees who is in, and the role");
+  }
+  const kit = (await as(KIT, { space: KSPACE })).data.members;
+  assert.ok(kit.find(m => m.person === OWNER).scope == null, "another person's scope and end date stay with managers");
+  assert.equal((await as(EVE, { space: KSPACE })).error?.code, "not_a_member", "a person who is not in the Space sees nothing");
+});
+
+
+
 test("kernel mode: the Space's allow for its members' own computers: an owner reads and sets it (spaces.members.computers), a member cannot, and taking it back ends it", async t => {
   const { createKernel } = await import("../../kernel/index.js");
   const { payloadHash } = await import("../../kernel/seal/wire.js");
