@@ -1189,7 +1189,8 @@ export default {
     const spaceMemory = async (/** @type {any} */ extra) => {
       const k = rawCtx.kernel;
       if (!k || !k.memory || typeof k.chain !== "function") throw Object.assign(new Error("this install has no Space memory; run this on the server that hosts the Space"), { code: "unavailable" });
-      return { api: k.memory, chain: await k.chain(extra || {}) };
+      // a team chat's turn reaches this through the daemon's edge (callInSpace): the member's own chain in that Space, which the registry alone sets
+      return { api: k.memory, chain: extra && extra.in_space_chain ? extra.in_space_chain : await k.chain(extra || {}) };
     };
     const factOut = (/** @type {any} */ f) => ({ id: f.id, urn: f.urn, text: f.text, source: f.source, kind: f.kind, topics: f.topics, by: f.by, filed_at: f.filed_at, state: f.state, labels: f.labels, ...(f.scope ? { scope: f.scope } : {}), ...(f.existing !== undefined ? { existing: f.existing } : {}) });
     const spaceCallers = [...PEOPLE_MOD, "mcp", "harness"];
