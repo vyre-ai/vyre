@@ -6,12 +6,12 @@ import assert from "node:assert/strict";
 import { registerComms, numbers, SENDER } from "./index.js";
 
 const AC = "AC" + "a".repeat(32);
-function rig({ config = { comms: { sms: { account: AC, from: "+15555550000" } } }, held = { id: "gi_1" }, twilio = /** @type {(body: string) => any} */ (() => ({ ok: true, status: 201, body: { sid: "SM1" } })) } = {}) {
+function rig({ config = { comms: { sms: { account: AC, from: "+15555550000" } } }, held = { id: "gi_1" }, twilio = /** @type {(body: string) => any} */ (() => ({ ok: true, status: 201, body: { sid: "SM1" } })), vault = /** @type {Record<string, string> | null} */ ({ value: "tok_secret" }) } = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
   /** @type {any[]} */ const calls = [], posted = [], events = [];
   const ctx = { config, log: () => {}, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
     events: { emit: (/** @type {string} */ t, /** @type {any} */ p) => events.push([t, p]) },
-    vault: { request: async (/** @type {string} */ id, /** @type {any} */ req) => { posted.push([id, req]); return twilio(req.body); } },
+    vault: { fetch: async (/** @type {string} */ id, /** @type {any} */ o) => { if (id !== "twilio" || !vault || !(o.field in vault)) throw new Error("no item named twilio"); return vault[o.field]; } },
     call: async (/** @type {string} */ tool, /** @type {any} */ input) => {
       calls.push([tool, input]);
       if (tool === "gate.offer") return { data: { ok: true } };
@@ -20,7 +20,8 @@ function rig({ config = { comms: { sms: { account: AC, from: "+15555550000" } } 
       if (tool === "mail.send") return { data: { held: "gi_mail", account: "a1", via: "mail:a1", message: "held" } };
       return { error: { code: "no_such_tool", message: tool } };
     } };
-  registerComms(ctx);
+  const http = async (/** @type {string} */ url, /** @type {any} */ init) => { posted.push([url, init]); const a = twilio(init.body); return new Response(JSON.stringify(a.body), { status: a.status }); };
+  registerComms(ctx, { http });
   return { run: (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta), calls, posted, events, tools };
 }
 const code = (/** @type {Promise<any>} */ p) => p.then(() => null, e => e.code);
@@ -55,11 +56,21 @@ test("when the Gate releases it, one Twilio message goes to each number with the
   const out = await r.run("comms.release", input, { caller: "module:gate" });
   assert.deepEqual(out.sent.map((/** @type {any} */ s) => [s.to, s.sid]), [["+15555550123", "SM1"], ["+15555550124", "SM1"]]);
   assert.equal(r.posted.length, 2);
-  const [id, req] = r.posted[0];
-  assert.equal(id, "twilio");
+  const [url, req] = r.posted[0];
   assert.equal(req.method, "POST");
-  assert.equal(req.url, `https://api.twilio.com/2010-04-01/Accounts/${AC}/Messages.json`);
+  assert.equal(url, `https://api.twilio.com/2010-04-01/Accounts/${AC}/Messages.json`);
+  assert.equal(req.headers.authorization, `Basic ${Buffer.from(`${AC}:tok_secret`).toString("base64")}`, "the account and the auth token from the person's own Vault item");
   assert.deepEqual(Object.fromEntries(new URLSearchParams(req.body)), { To: "+15555550123", Body: "Your hearing moved to Tuesday.", From: "+15555550000" });
+  // an API key (its id in the item's sid) signs in as the key, with the account still in the address
+  const key = rig({ vault: { value: "key_secret", sid: "SK" + "b".repeat(32) } });
+  await key.run("comms.release", input, { caller: "module:gate" });
+  assert.equal(key.posted[0][1].headers.authorization, `Basic ${Buffer.from(`SK${"b".repeat(32)}:key_secret`).toString("base64")}`);
+  assert.equal(key.posted[0][0], `https://api.twilio.com/2010-04-01/Accounts/${AC}/Messages.json`);
+  // no Twilio item in the Vault: nothing is sent, and the message says what to do
+  const bare = rig({ vault: null });
+  const e = await bare.run("comms.release", input, { caller: "module:gate" }).then(() => null, (/** @type {any} */ x) => x);
+  assert.equal(e.code, "needs_setup"); assert.match(e.message, /add an API key named twilio/);
+  assert.equal(bare.posted.length, 0);
   assert.deepEqual(r.events.at(-1), ["comms.sent", { id: "gi_1", via: "sms", sent: 2, failed: 0 }]);
 });
 
