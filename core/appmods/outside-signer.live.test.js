@@ -220,6 +220,7 @@ test("an outside signer signs in a real browser through the public door: relay, 
   await new Promise(r => setTimeout(r, 5000));
   await shot("done");
   assert.match(String(await ev("document.body.innerText")), /Document has been signed/);
+  assert.equal(await ev("[...document.querySelectorAll('download-button')].every(e => getComputedStyle(e).display === 'none')"), true, "no Download button for a file the signer's link does not open (the signed copy comes by its own expiring link)");
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "and nothing the browser sent was refused");
   assert.ok(sent.some(x => x.startsWith("POST ") && new URL(x.split(" ")[1]).pathname === new URL(asked.data.url).pathname.replace(/^\/sign\/\d+/, "/s")), `the browser's submit was posted: ${sent.join(" | ").slice(0, 300)}`);
   const subm = await api("GET", `/api/submissions/${asked.data.submission}`);
