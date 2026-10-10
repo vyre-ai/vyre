@@ -489,6 +489,14 @@ test("install-box.sh v2: VYRE_DEV_SIGN=unsigned packs the checkout as a developm
   }
 });
 
+test("install-box.sh v2: VYRE_DEV_SIGN=unsigned is refused on a released install (no --from), before anything is downloaded or installed", t => {
+  const b = box(t, {});
+  const r = run({ ...b.env, VYRE_DEV_SIGN: "unsigned", VYRE_NO_UP: "1" }, ["--yes"]);
+  assert.notEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /VYRE_DEV_SIGN=unsigned is only for an install from a checkout/);
+  assert.doesNotMatch(b.calls(), /compose .* up|docker run/, "nothing was started");
+});
+
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
 
 test("install-box.sh v2: IR-2 with a setup code the terminal shows the check words only, no pairing QR, long code or typed code", t => {

@@ -439,6 +439,8 @@ write_stack() {
     # VYRE_DEV_SIGN=0 skips it (the tests' stub docker makes no files); the box then needs VYRE_KERNEL_PATH_RULE=1 to run its modules.
     { [ "$DRY" = 1 ] || [ "${VYRE_DEV_SIGN:-1}" = 0 ]; } || dev_sign
   else
+    # An unsigned development build is for a checkout on a throwaway test box only: the released install line (fetching from the release site) always verifies the release signature.
+    [ "${VYRE_DEV_SIGN:-1}" != unsigned ] || die "VYRE_DEV_SIGN=unsigned is only for an install from a checkout (--from); a released install is always checked against the release signature. Nothing was installed."
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
     if [ "$DRY" = 1 ]; then
