@@ -30,6 +30,7 @@
 // production defaults are the strict ones, and no seam turns a check off.
 
 import crypto from "node:crypto";
+import { agentClaim } from "../modules/index.js";
 import https from "node:https";
 import http from "node:http";
 import { forwardFile, sendFile } from "./forward-file.js";
@@ -650,8 +651,8 @@ export class ApiRequests {
     // A model reads through a credential only inside its scope: a named agent, or a session bound to a project, must be named by the
     // credential's { projects, agents } (or the person tagged the credential to its thread). The person's own session, the assistant and
     // a module with a grant keep their reach. A read inside scope still runs with no prompt.
-    const agentName = meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1];
-    const isModel = caller === "mcp" || caller.startsWith("mcp:");
+    const agentName = meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1];
+    const isModel = caller === "mcp" || caller.startsWith("mcp:") || agentClaim(caller) !== null; // an agent inside the person's CLI (cli:agent:kit) is still the agent
     if (isModel && plan.kind === "read" && (agentName || meta.project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged
         && !scopeAllows(plan.config, { agent: agentName, project: /** @type {any} */ (meta).project })) {
       audit(false, `${plan.method} ${plan.url.hostname} refused: outside the credential's scope`);
