@@ -354,19 +354,7 @@ export class Sealer {
       // The accept that carried a join's key did not finish: take the key back (all or nothing).
       case "presence.unjoin": { const r = this.presence.unjoin({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { undone: true, event: { type: "presence.revoked", key_id: req.key_id, why: "join_undone" } }; }
       case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, strength: markOf(r.attested, req.signer), event: { type: "presence.recovered", strength: markOf(r.attested, req.signer), person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
-      case "lease.issue": {
-        const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(c.person, "bad_input");
-        if (req.signed === true) {
-          // R031-95 2.2: the computer's own request, signed by one of the person's presence keys listed for that computer, over exact fields, single use; the same verifier as every yes.
-          // A "no" (no Offer, or revoked) needs no proof and hands out nothing.
-          if (!req.allowed || this.leases.st.revoked[this.leases.slot(c.space, c.person, req.device)]) return { revoked: true };
-          const h = req.hello; if (!h) throw err("needs_presence");
-          need(typeof h === "object" && h.device === req.device && typeof h.eid === "string", "bad_input");
-          const why = this.presence.refuse(req.proof, { op: "lease.issue", space: c.space, fields: h, ctx: c });
-          if (why) throw err(why === "no_proof" ? "needs_presence" : why);
-          const key = this.presence.keys.get(req.proof.key_id); need(key && key.device && key.device === h.eid, "wrong_device");
-        }
-        return this.leases.issue({ space: c.space, member: c.person, device: req.device, allowed: req.allowed }); }
+      case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(c.person, "bad_input"); return this.leases.issue({ space: c.space, member: c.person, device: req.device, allowed: req.allowed }); }
       case "lease.renew": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.renew({ id: req.lease, member: c.person, allowed: req.allowed }); }
       case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke({ space: c.space, member: req.member, device: req.device }); }
       case "lease.reinstate": { const c = this.ctxOf(req.ctx); const why = this.presence.refuse(req.proof, { op: "lease.reinstate", space: c.space, fields: { member: req.member, device: req.device }, ctx: c }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return this.leases.reinstate({ space: c.space, member: req.member, device: req.device }); }
