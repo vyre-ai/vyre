@@ -36,10 +36,12 @@ test("a secret committed once and deleted later is still found, because the push
   assert.equal(hit.file, "old.env.js");
 });
 
-test("when git cannot answer in time the folder is not called clean", async t => {
+test("when git cannot answer (a missing branch, a broken object) the folder is not called clean", async t => {
   const d = tmp(t);
   fs.writeFileSync(path.join(d, "index.html"), "<p>hi</p>\n");
   const i = await localInit(d);
-  assert.deepEqual(await scanWholeBranch({ repoDir: d, branch: i.branch, timeout: 1 }), { unreadable: true });
   assert.deepEqual(await scanWholeBranch({ repoDir: d, branch: "no-such-branch" }), { unreadable: true });
+  const blob = git(d, ["rev-parse", `${i.branch}:index.html`]).trim();
+  fs.rmSync(path.join(d, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+  assert.deepEqual(await scanWholeBranch({ repoDir: d, branch: i.branch }), { unreadable: true }, "the file git cannot read is not called clean");
 });
