@@ -111,9 +111,12 @@ export function registerPlaceTools(ctx, d) {
       if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server", "unavailable");
       const space = i.space || (p.spaces().find((/** @type {string} */ sp) => p.find(sp, thread, person)) || p.spaces()[0]);
       if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
-      let bridge; try { bridge = await p.openPreview(space, { thread, port: Number(i.port), person, viewer: async (/** @type {string} */ header) => { const r = /** @type {any} */ (await ctx.call("previews.viewer-ok", { header })); return Boolean(r && r.data && r.data.ok === true); } }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot be previewed now"), /** @type {any} */ (e).code === "bad_input" ? "bad_input" : /** @type {any} */ (e).code === "quota" ? "quota" : "not_found"); }
+      /** the preview this bridge is for, known once previews.open answers: a header the front made for another preview is not this one's (trust row 44) */
+      /** @type {{ id: string | null }} */ const mine = { id: null };
+      let bridge; try { bridge = await p.openPreview(space, { thread, port: Number(i.port), person, viewer: async (/** @type {string} */ header) => { if (!mine.id) return false; const r = /** @type {any} */ (await ctx.call("previews.viewer-ok", { header, preview: mine.id })); return Boolean(r && r.data && r.data.ok === true); } }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot be previewed now"), /** @type {any} */ (e).code === "bad_input" ? "bad_input" : /** @type {any} */ (e).code === "quota" ? "quota" : "not_found"); }
       const r = /** @type {any} */ (await ctx.call("previews.open", { title: String(i.title || "Preview").slice(0, 80), port: bridge.port, thread }));
       if (r && r.error) throw refuse(String(r.error.message || "the preview could not be opened"), "unavailable");
+      mine.id = r && r.data && typeof r.data.id === "string" ? r.data.id : null;
       return { preview: r && r.data && (r.data.id || r.data.preview || r.data) };
     },
   });

@@ -402,10 +402,10 @@ export default {
 
     ctx.tool("previews.viewer-ok", {
       description: "Is this the front's signed viewer header for a preview: { ok }. Internal: the runner module only, for the preview of a chat on a person's computer (a process on this box that finds that port cannot forge one).", internal: true,
-      input: obj({ header: str }, ["header"]), callers: ["module"],
+      input: obj({ header: str, preview: str }, ["header", "preview"]), callers: ["module"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!meta || meta.caller !== "module:runner") throw refuse("only the runner module asks this", "denied");
-        return { ok: readViewer(viewerKey, String(i.header || "")) !== null };
+        return { ok: /^[0-9a-f]{8}$/.test(String(i.preview)) && readViewer(viewerKey, String(i.header || ""), 3_600_000, `pv-${String(i.preview)}`) !== null };
       },
     });
 

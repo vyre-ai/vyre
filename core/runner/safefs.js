@@ -100,6 +100,10 @@ export function plantable(rel) {
   const p = String(rel).split(/[\\/]+/).filter(Boolean).map(x => x.toLowerCase());
   if (p.some(x => x === ".claude" || x === ".codex" || x === ".cursor" || x === ".vyre" || x === ".gemini")) return true;
   const last = p[p.length - 1] || "";
+  if (/^(\.cursorrules|\.windsurfrules|grok\.md|\.npmrc|\.yarnrc(\.yml)?|\.pnpmrc|\.bashrc|\.zshrc|\.profile)$/.test(last)) return true;
+  if (p.includes(".husky") || p.includes(".devcontainer")) return true;
+  const gi = p.indexOf(".github"); if (gi >= 0 && (p[gi + 1] === "copilot-instructions.md" || p[gi + 1] === "workflows")) return true;
+  const vi = p.indexOf(".vscode"); if (vi >= 0 && (p[vi + 1] === "tasks.json" || p[vi + 1] === "settings.json" || p[vi + 1] === "launch.json")) return true;
   if (last === ".mcp.json" || last === "claude.md" || last === "claude.local.md" || last === "agents.md" || last === "gemini.md" || last === ".envrc") return true;
   const g = p.indexOf(".git");
   return g >= 0 && (p[g + 1] === "hooks" || p[g + 1] === "config" || p[g + 1] === "info");

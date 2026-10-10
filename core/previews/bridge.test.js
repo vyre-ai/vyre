@@ -16,6 +16,10 @@ test("a viewer is who the front signed; a forged, altered or stale header is nob
   assert.equal(readViewer(key, Buffer.from(JSON.stringify({ w: "per_owner", r: "owner", t: Date.now() })).toString("base64url") + "." + mac), null, "an altered body");
   assert.equal(readViewer(key, viewerHeader(key, { w: "per_a", r: "" }, Date.now() - 10 * 3_600_000)), null, "a stale one");
   assert.equal(readViewer(key, ""), null);
+  const scoped = viewerHeader(key, { w: "per_a", r: "member" }, Date.now(), "pv-aaaaaaaa");
+  assert.equal(readViewer(key, scoped, undefined, "pv-aaaaaaaa")?.w, "per_a");
+  assert.equal(readViewer(key, scoped, undefined, "pv-bbbbbbbb"), null, "made for another preview");
+  assert.equal(readViewer(key, h, undefined, "pv-aaaaaaaa"), null, "made for none, asked for one");
   void body;
 });
 

@@ -118,14 +118,15 @@ test("a link planted in the chat's folder sends no file anywhere (trust row 28),
   assert.equal(fs.readFileSync(target, "utf8"), "mine");
   // packaged box: the account's folder gets nothing from vyred
   const w3 = await world(t, { whole: 3, extra: 0, files: { "a.txt": "x" } });
-  const resume = createResumeLent({ target: async () => ({ file: w3.file, root: path.dirname(path.dirname(w3.file)), native: NATIVE, cwd: w3.cwd, account: 2007 }), port: () => w3.own, place: async (tg, bytes) => { fs.mkdirSync(path.dirname(tg.file), { recursive: true }); fs.writeFileSync(tg.file, bytes); } });
+  const resume = createResumeLent({ target: async () => ({ file: w3.file, root: path.dirname(path.dirname(w3.file)), native: NATIVE, cwd: w3.cwd, account: 2007 }), port: () => w3.own, say: (type, p) => w3.said.push([type, p]), place: async (tg, bytes) => { fs.mkdirSync(path.dirname(tg.file), { recursive: true }); fs.writeFileSync(tg.file, bytes); } });
   const r3 = await resume({ space: SPACE, session: LENT, thread: "thread_a", view: w3.lentView });
   assert.deepEqual([r3.files, r3.held], [0, 1]);
+  assert.match(String(/** @type {any} */ (w3.said.find(x => x[0] === "runner.resumed"))?.[1]?.line), /1 file from your computer did not come over.*a\.txt/, "the person is told in words which file stayed");
   assert.ok(!fs.existsSync(path.join(w3.cwd, "a.txt")));
 });
 
 test("settings, hooks, MCP lists and instructions in the work folder are never carried on (trust row 29), by resume-lent or by restore", async t => {
-  const names = [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/x.sh", ".mcp.json", "CLAUDE.md", "sub/CLAUDE.md", ".git/hooks/pre-commit", ".codex/config.toml"];
+  const names = [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/x.sh", ".mcp.json", "CLAUDE.md", "sub/CLAUDE.md", ".git/hooks/pre-commit", ".codex/config.toml", ".cursorrules", ".github/copilot-instructions.md", ".npmrc", ".husky/pre-commit", ".vscode/tasks.json"];
   const w = await world(t, { files: Object.fromEntries([...names, "src/app.js"].map(n => [n, "x"])) });
   await w.go();
   for (const n of names) assert.ok(!fs.existsSync(path.join(w.cwd, n)), `${n} is not carried`);

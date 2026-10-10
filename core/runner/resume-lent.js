@@ -79,7 +79,7 @@ export function createResumeLent(o) {
     const manifest = (cp.manifest && typeof cp.manifest === "object") ? cp.manifest : {};
     // The chat's folder is the account's on the packaged box, and this server (vyred) outranks the account there: it writes nothing into it (a file it wrote would be owned by vyred, unreadable to the account, and a
     // link planted in the folder would send the write anywhere vyred can reach). Those files are named, not copied, until the spawner places them. Elsewhere every path is checked link by link (safefs), never followed.
-    let held = 0;
+    let held = 0; const heldNames = /** @type {string[]} */ ([]);
     if (tg.cwd && typeof i.view.file === "function") {
       for (const [remote, ent] of Object.entries(manifest)) {
         // the manifest names a file by its place in the Space: `files/<path>` is the chat's folder (`home/` is the agent's own state on that computer and stays there)
@@ -89,7 +89,7 @@ export function createResumeLent(o) {
         if (plantable(rel)) { conflicts.push(rel); continue; }   // a settings file, hook, MCP list or instructions file is never carried (row 29)
         const e = /** @type {any} */ (ent || {});
         if (e.hash === "deleted" || e.version === undefined || e.version === null) continue;
-        if (tg.account !== undefined) { held++; continue; }
+        if (tg.account !== undefined) { held++; if (heldNames.length < 20) heldNames.push(rel); continue; }
         let bytes; try { bytes = await i.view.file(remote, e.version); } catch { continue; }
         if (!bytes) continue;
         let have = null; try { have = readInside(tg.cwd, rel, 256 * 1024 * 1024); } catch { /* not there */ }
@@ -99,7 +99,7 @@ export function createResumeLent(o) {
         try { writeInside(tg.cwd, rel, Buffer.from(bytes)); files++; } catch { conflicts.push(rel); }
       }
     }
-    try { o.say?.("runner.resumed", { thread, session: i.session, turn, lines: lines.length, files, conflicts, ...(held ? { held } : {}) }); } catch { /* a notice, never a stop */ }
+    try { o.say?.("runner.resumed", { thread, session: i.session, turn, lines: lines.length, files, conflicts, ...(held ? { held, heldNames, line: `${held} ${held === 1 ? "file" : "files"} from your computer did not come over to this server yet (${heldNames.slice(0, 5).join(", ")}${held > 5 ? ", and more" : ""}): they are still on your computer.` } : {}) }); } catch { /* a notice, never a stop */ }
     return { resumed: true, turn, lines: lines.length, files, conflicts, ...(held ? { held } : {}) };
   };
 }

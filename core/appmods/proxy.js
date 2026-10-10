@@ -56,10 +56,10 @@ export const cookieHeader = (/** @type {Map<string, string>} */ jar) => [...jar]
 
 /**
  * What a preview's page is told about who is looking: `<base64url json {w, r, t}>.<hmac>`, made here with a key the previews module gave for that preview and checked there with the same key. A local process that
- * reaches the preview's loopback address cannot forge it. @param {string} key @param {{ w: string, r: string }} who @param {number} [at]
+ * reaches the preview's loopback address cannot forge it. @param {string} key @param {{ w: string, r: string }} who @param {number} [at] @param {string} [scope] the preview it was made for (its host name): another preview that sees the header cannot use it (trust row 44)
  */
-export function viewerHeader(key, who, at = Date.now()) {
-  const body = Buffer.from(JSON.stringify({ w: who.w, r: who.r, t: at })).toString("base64url");
+export function viewerHeader(key, who, at = Date.now(), scope = undefined) {
+  const body = Buffer.from(JSON.stringify({ w: who.w, r: who.r, t: at, ...(scope ? { p: String(scope) } : {}) })).toString("base64url");
   return `${body}.${crypto.createHmac("sha256", key).update(body).digest("base64url")}`;
 }
 
@@ -117,7 +117,7 @@ function upstream(origin, method, path, headers, o = {}) {
 const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => new Promise((resolve, reject) => { const c = /** @type {Buffer[]} */ ([]); let n = 0; res.on("data", d => { n += d.length; if (n > cap) { res.destroy(new Error("too big")); reject(new Error("too big")); } else c.push(d); }); res.on("end", () => resolve(Buffer.concat(c))); res.on("error", reject); });
 
 /**
- * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
+ * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, viewerScope?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
  *   alias?: (host: string) => string | null,   the app an own domain (sign.firm.com) is for, or null
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
@@ -249,7 +249,7 @@ export function createHostProxy(o) {
         if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > (stranger || (wide && !ticketed) ? PUBLIC_BODY : MAX_BODY)) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
         if (req.headers["transfer-encoding"]) h["transfer-encoding"] = String(req.headers["transfer-encoding"]);
         // A preview's own dev server answers only to its own address (Vite's allowed hosts, a framework's host check): it is sent that, and told the host the person is on.
-        if (app.viewerKey) { const w = o.tickets.whoOf(sid ? sid[1] : undefined); if (w) h["x-vyre-viewer"] = viewerHeader(app.viewerKey, w); else delete h["x-vyre-viewer"]; }
+        if (app.viewerKey) { const w = o.tickets.whoOf(sid ? sid[1] : undefined); if (w) h["x-vyre-viewer"] = viewerHeader(app.viewerKey, w, Date.now(), app.viewerScope); else delete h["x-vyre-viewer"]; }
         if (app.rewriteHost) { const u = new URL(app.origin); h["x-forwarded-host"] = host; h["x-forwarded-proto"] = secure ? "https" : "http"; h.host = u.host; delete h.origin; delete h.referer; }
         const r = await upstream(app.origin, String(req.method), url.pathname + url.search, h, { body: ["GET", "HEAD"].includes(String(req.method)) ? null : req });
         // The app lost our session (it restarted, it expired): sign in again, once, and repeat a request that has no body to repeat.
@@ -329,7 +329,7 @@ export function createHostProxy(o) {
         lines.push(`${k}: ${v}`);
       }
       const wsWho = app.viewerKey ? o.tickets.whoOf(sid ? sid[1] : undefined) : null;
-      if (wsWho && app.viewerKey) lines.push(`X-Vyre-Viewer: ${viewerHeader(app.viewerKey, wsWho)}`);
+      if (wsWho && app.viewerKey) lines.push(`X-Vyre-Viewer: ${viewerHeader(app.viewerKey, wsWho, Date.now(), app.viewerScope)}`);
       up.write(lines.join("\r\n") + "\r\n\r\n");
       if (head && head.length) up.write(head);
       up.pipe(socket); socket.pipe(up);
