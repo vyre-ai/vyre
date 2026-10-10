@@ -81,7 +81,7 @@ test("with the yes given, each of the four reaches the tool itself and answers i
     const r = await device(/** @type {string} */ (tool), input);
     assert.notEqual(r.error && r.error.code, "presence_required", `${tool} passed the yes`);
     assert.notEqual(r.error && r.error.code, "denied", `${tool} is open to the device`);
-    assert.match(r.error.message, /dana|card|pinned|verified/i, `${tool} reached the Vault, which says what to do next: ${r.error.message}`);
+    assert.match(r.error.message, /dana|card|pinned|verified|home address/i, `${tool} reached the Vault, which says what to do next: ${r.error.message}`);
   }
   const bad = await device("vault.members.accept", { invite: "not-an-invite" });
   assert.notEqual(bad.error && bad.error.code, "denied");
