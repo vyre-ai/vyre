@@ -40,9 +40,16 @@ export function createDomains(db, now = Date.now) {
     },
     /** @param {string} host */
     remove(host) { return db.prepare("DELETE FROM appmods_domains WHERE host = ?").run(host).changes > 0; },
-    /** The domains of one app that the public gate holds a certificate for. @param {string} app @param {string[]} live */
-    liveFor(app, live) { return this.list().filter(d => d.app === app && live.includes(d.host)).map(d => d.host); },
   };
+}
+
+/**
+ * The https origin of the person's own domain for an app, when the public gate serves it now (a certificate held); the oldest such domain, or null.
+ * @param {{ host: string, app: string }[]} list @param {string} app @param {string[]} live
+ */
+export function ownOrigin(list, app, live) {
+  const d = list.find(x => x.app === app && live.includes(x.host));
+  return d ? `https://${d.host}` : null;
 }
 
 /**

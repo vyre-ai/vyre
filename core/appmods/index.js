@@ -13,7 +13,7 @@ import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
-import { DOMAIN_MIGRATIONS, createDomains } from "./domains.js";
+import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
 import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
@@ -480,8 +480,8 @@ export default {
       if (ctx.config && ctx.config.relay && ctx.config.relay.tunnel_url && domains.list().some(d => d.app === name)) {
         const r = /** @type {any} */ (await ctx.call("wink.public.hosts", {}).catch(() => null));
         const live = ((r && r.data && r.data.hosts) || []).filter((/** @type {any} */ h) => h.state === "live").map((/** @type {any} */ h) => String(h.host));
-        const own = domains.liveFor(name, live)[0];
-        if (own) return `https://${own}`;
+        const own = ownOrigin(domains.list(), name, live);
+        if (own) return own;
       }
       return originFor(name, baseHost());
     };
