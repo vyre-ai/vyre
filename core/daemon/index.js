@@ -344,7 +344,9 @@ async function startLocked(opts, root, p, release) {
       try { const r = /** @type {any} */ (await registry.call("relay.devices.all", {}, "module:vyred")); const list = r && r.data && (Array.isArray(r.data) ? r.data : r.data.devices); if (Array.isArray(list)) nameMap = new Map(list.filter((/** @type {any} */ x) => x && x.id && x.name).map((/** @type {any} */ x) => [String(x.id), String(x.name)])); } catch { /* the names are a nicety */ }
       return nameMap;
     };
-    const runnerHost = () => ({
+    // `space` is the Space the asking module's kernel serves: the switchboard places a new chat of that Space (contracts/lent-spawn.md placeNew)
+    const runnerHost = (/** @type {any} */ a) => ({
+      space: a && a.space,
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
@@ -413,7 +415,12 @@ async function startLocked(opts, root, p, release) {
     };
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
-    const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
+    const { modelListDrivers } = await import("./model-lists.js");
+    const { httpFetch } = await import("../../lib/http.js");
+    const { hostSafe } = await import("../../lib/api-endpoint.js");
+    // the providers whose own model list the door can ask for (door.listModels): each driver holds its endpoint, and the key comes from the switchboard (`registry.deps.accountKey`, set by it) for one request
+    const lists = modelListDrivers({ keyOf: async (/** @type {any} */ a) => { const f = /** @type {any} */ (registry.deps).accountKey; return typeof f === "function" ? f(a) : null; }, fetch: httpFetch, hostSafe });
+    const modelDrivers = { ...lists, openrouter: openrouterDoorDriver(), "openai-compatible": { ...openrouterDoorDriver(), models: lists["openai-compatible"].models } };
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
@@ -576,6 +583,9 @@ async function startLocked(opts, root, p, release) {
         return String((await make()).id);
       }
     };
+    // A built-in agent (the Engineer) is listed in a chat before any run of it has made it an actor of the Space: the work module asks the daemon to register it, through the kernel's own registration
+    // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
+    registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.

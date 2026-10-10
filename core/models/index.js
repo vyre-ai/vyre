@@ -97,8 +97,8 @@ export default {
       if (orRows && orRows.length) entries = joinOpenRouter(entries, orRows, at);
       // fallback: only when nothing else knows a model
       if (!entries.size) {
-        const aliases = await quiet(() => ctx.call("sessions.models", {}));
-        const rows = (Array.isArray(aliases) ? aliases : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id), context: null, price: null, capabilities: null }));
+        const got = await quiet(() => ctx.call("sessions.models.get", {}));
+        const rows = (got && Array.isArray(got.aliases) ? got.aliases : []).filter((/** @type {any} */ m) => m && typeof m.id === "string").map((/** @type {any} */ m) => ({ id: String(m.id), label: String(m.label || m.id), context: null, price: null, capabilities: null }));
         if (rows.length) { const r = mergeSource(entries, "claude", "fallback", rows, at); entries = r.entries; added = []; noteSource("fallback", true, null, rows.length, undefined); }
       }
       // a model no source listed this time has missed one more refresh (only for providers that have a live source)

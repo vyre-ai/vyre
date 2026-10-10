@@ -61,7 +61,14 @@ test("the briefs in code (the session environment, the assistant's prompt, the G
   // Lines of prose only: not comments, not SQL (where an underscored word is a table or a column) and not calls in code.
   const prose = (/** @type {string} */ f, /** @type {string} */ from = "", /** @type {string} */ to = "") => {
     let text = fs.readFileSync(path.join(ROOT, f), "utf8");
-    if (from) text = text.slice(text.indexOf(from), text.indexOf(to, text.indexOf(from)));
+    if (from) {
+      // A marker that was reworded must fail here, not leave an empty text that passes: the slice has to exist and be a real stretch of the brief.
+      const at = text.indexOf(from), end = at < 0 ? -1 : text.indexOf(to, at);
+      assert.ok(at >= 0 && end > at, `${f}: the marker ${JSON.stringify(from.slice(0, 40))} is gone: update this test with the brief`);
+      text = text.slice(at, end);
+      assert.ok(text.length > 200, `${f}: only ${text.length} characters are left to check: the marker moved`);
+    }
+    assert.ok(text.length > 200, `${f}: nothing to check`);
     return text.split("\n").filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l) && !/\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|FROM)\b|new Set\(|ctx\.call|ctx\.tool|\buse\(|\bcall\(|\.has\(|import /.test(l)).join("\n");
   };
   const bad = [

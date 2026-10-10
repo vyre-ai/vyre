@@ -178,15 +178,19 @@ export default {
       async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
         : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
-    // The models a person can pick for a thread (chat's model picker): the aliases Claude Code
-    // takes, and any others listed in config (sessions.models_offered: [{id, label}]).
-    tool("sessions.models", "The models a thread can switch to (threads.model): id and label, the aliases Claude Code takes first.",
-      { type: "object", properties: {} },
-      async () => {
+    // The models a person can pick for a thread (chat's model picker), from the one list: core/models (what each provider and login reported, joined with price and context). Claude Code's own aliases come first
+    // for Claude; when the registry has nothing yet they are the list. Any others a person configured (sessions.models_offered: [{id, label}]) follow.
+    tool("sessions.models", "The models a thread can switch to (threads.model): id and label, from the registry of every model Vyre knows; the aliases Claude Code takes first.",
+      { type: "object", properties: { provider: { type: "string", description: "Whose models: claude (default), codex, grok ..." } } },
+      async i => {
+        const provider = i && typeof i.provider === "string" && i.provider ? i.provider : "claude";
         const extra = ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [];
-        const base = MODEL_ALIASES.map(({ id, label }) => ({ id, label }));
+        const base = provider === "claude" ? MODEL_ALIASES.map(({ id, label }) => ({ id, label })) : [];
+        const reg = await ctx.call("models.list", { provider, available: true }).then(r => (r && r.data && Array.isArray(r.data.models) ? r.data.models : [])).catch(() => []);
         const seen = new Set(base.map(m => m.id));
-        return [...base, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
+        const fromRegistry = reg.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }));
+        for (const m of fromRegistry) seen.add(m.id);
+        return [...base, ...fromRegistry, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
       });
 
     tool("sessions.models.get", "Which model each session purpose and project runs on, and where it comes from, plus the model aliases to offer. An agent's own model wins.",

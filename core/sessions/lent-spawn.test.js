@@ -7,9 +7,9 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor } from "../../lib/lent-placement.js";
-import { spawnSession } from "./spawn.js";
+import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
+import { spawnSession } from "./spawn.js";
 import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
 
@@ -139,14 +139,14 @@ test("the switchboard says thread.placing while a chat's process starts on the c
   const said = /** @type {any[]} */ ([]);
   const proc = fake(); proc.lent = { computer: "Office Mac", state: "starting" };
   const self = { deps: { lentFor: async () => () => proc }, chatOf: () => "chat_1", nativeOf: () => "ses_1", turnAsker: new Map(), emit: (/** @type {string} */ type, /** @type {any} */ payload, /** @type {string} */ thread) => said.push({ type, payload, thread }) };
-  const spawn = await /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", { provider: "claude", project: null });
+  const spawn = await /** @type {any} */ lentOf(self, "thr_1", { provider: "claude", project: null });
   const p = spawn("claude", [], {}, "/x", {});
   assert.equal(p, proc);
   proc.emit("spawn");
   assert.deepEqual(said.map(x => [x.type, x.payload.state, x.payload.computer]), [["thread.placing", "starting", "Office Mac"], ["thread.placing", "up", "Office Mac"]]);
   const gone = fake(); gone.lent = { computer: "Office Mac" };
   self.deps.lentFor = async () => () => gone;
-  const again = await /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", {});
+  const again = await lentOf(self, "thr_1", {});
   again("claude", [], {}, "/x", {});
   gone.emit("error", Object.assign(new Error("none"), { code: "lent_unavailable" }));
   assert.deepEqual(said.at(-1).payload, { thread: "thr_1", state: "fallback", computer: "Office Mac", reason: "unavailable" });
@@ -155,7 +155,7 @@ test("the switchboard says thread.placing while a chat's process starts on the c
 test("the switchboard asks for a lent spawn for a claude session only, and a failing lookup is the box's", async () => {
   const fn = () => ({});
   const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native", turnAsker: new Map() });
-  const ask = (/** @type {any} */ self, /** @type {any} */ rec) => /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", rec);
+  const ask = (/** @type {any} */ self, /** @type {any} */ rec) => lentOf(self, "thr_1", rec);
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, { provider: "claude" })), "function");
   assert.equal(typeof (await ask({ ...sb(async () => fn), emit() {} }, {})), "function", "claude is the default");
   assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
@@ -214,4 +214,39 @@ test("on the real home: a new chat of the owner is placed at creation on the own
   const proc = spawn("claude", ["--output-format", "stream-json"], {}, "/box/work", {});
   assert.equal(typeof proc.kill, "function");
   proc.kill();
+});
+
+test("a chat that moved to the server under a running turn starts again here with resume and sends the cut turn again; a finished turn is not repeated; a failure ends the thread in words", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const sb = () => ({ live: new Map(), record: () => ({ project: "p" }), libraryPlugin: async () => "plug", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "n", turnAsker: new Map(),
+    spawn: (/** @type {string} */ id, /** @type {any} */ o) => calls.push(["spawn", id, o.resume, o.lastPrompt]), write: (/** @type {string} */ id, /** @type {string} */ text) => calls.push(["write", id, text]),
+    emit: (/** @type {string} */ type, /** @type {any} */ payload) => calls.push([type, payload.text || payload.reason || null]), set: (/** @type {string} */ id, /** @type {any} */ patch) => calls.push(["set", id, patch.status]) });
+  const cutTurn = { turn: "t:2", lastPrompt: "and again", launch: { cwd: "/x" }, switching: false };
+  await carryOn(sb(), "t", cutTurn);
+  assert.deepEqual(calls.filter(c => c[0] !== "thread.text"), [["spawn", "t", true, "and again"], ["write", "t", "and again"]], "resumed here and the cut turn sent again");
+  assert.equal(cutTurn.switching, true);
+  calls.length = 0;
+  await carryOn(sb(), "t", { turn: null, lastPrompt: "and again", launch: {}, switching: false });
+  assert.deepEqual(calls.filter(c => c[0] !== "thread.text"), [["spawn", "t", true, null]], "a finished turn is not sent again");
+  calls.length = 0;
+  const broken = sb(); broken.spawn = () => { throw new Error("no folder"); };
+  const st = { turn: "t:3", lastPrompt: "x", launch: {}, switching: false };
+  await carryOn(broken, "t", st);
+  assert.equal(st.switching, false);
+  assert.deepEqual(calls.map(c => c[0]), ["set", "thread.stopped"], "the thread ends, saying why");
+});
+
+test("the switchboard's onExit sends a chat whose process ended because it moved to the server through carryOn, and any other exit stays an exit", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const st = { turn: "t:2", lastPrompt: "again", launch: {}, switching: false, stopping: false };
+  const sb = /** @type {any} */ ({ live: new Map([["t", st]]), flush() {}, cancelTools() {}, releaseSlots() {}, record: () => ({ project: null }), libraryPlugin: async () => "p", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "t", turnAsker: new Map(),
+    spawn: (/** @type {string} */ id, /** @type {any} */ o) => calls.push(["spawn", id, o.resume]), write: (/** @type {string} */ id, /** @type {string} */ text) => calls.push(["write", id, text]), emit: () => {}, set: () => {}, closeSocket() {}, asks: { open: () => [] } });
+  Switchboard.prototype.onExit.call(sb, "t", st, null, "SIGHUP", "", { to: "server", reason: "lid-closed", epoch: 2 });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(calls, [["spawn", "t", true], ["write", "t", "again"]], "carried on, the cut turn sent again");
+  calls.length = 0;
+  const st2 = { turn: "t:3", lastPrompt: "x", launch: {}, switching: false, stopping: false };
+  sb.live.set("t", st2);
+  Switchboard.prototype.onExit.call(sb, "t", st2, 0, null, "");
+  assert.deepEqual(calls, [], "an ordinary exit starts nothing");
 });

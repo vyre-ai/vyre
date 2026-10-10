@@ -3991,6 +3991,20 @@
     }
    }
   },
+  "preview-card": {
+   "title": "Preview card",
+   "screens": {
+    "full": {
+     "component": "preview-card"
+    },
+    "compact": {
+     "component": "preview-card"
+    },
+    "glance": {
+     "component": "preview-card"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

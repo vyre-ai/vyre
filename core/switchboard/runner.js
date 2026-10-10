@@ -97,7 +97,7 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
  */
 export function run(o) {
   // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
-  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn });
+  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn, lentSpawn: /** @type {any} */ (o).lentSpawn });
   let buf = "", err = "", exited = false, n = 0;
   /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
   const asked = new Map();
@@ -124,7 +124,7 @@ export function run(o) {
   child.stderr.on("data", c => { err = (err + c).slice(-2000); });
   // A write after the child died raises EPIPE on stdin; it is reported through onExit instead.
   child.stdin.on("error", () => {});
-  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err); };
+  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err, /** @type {any} */ (child).moved); };
   child.on("exit", done);
   child.on("error", e => { err = e.message; done(null, null); });
 
