@@ -123,7 +123,8 @@ jobs:
           sh /tmp/install-box.sh --yes </dev/null
           unset VYRE_BOX_URL
           echo "installed: $(vyre version)"
-          vyre update </dev/null
+          # The way a person is told to update from 0.3.0 (its updater runs as the person and fails on a root-owned file without sudo, and waits only 30 s for the Records store to come back, which takes minutes):
+          sudo env MODULES_WAIT=1200 vyre update </dev/null
           i=0; until vyre status 2>/dev/null | grep -q 'vyred running'; do i=$((i+1)); [ $i -ge 120 ] && { echo "vyred did not come back"; exit 1; }; sleep 1; done
           got=$(tr -d ' \r\n' </srv/vyre/VERSION)
           echo "after update: $got"
