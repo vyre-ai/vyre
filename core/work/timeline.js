@@ -37,9 +37,9 @@ export function lineOf(type, d, title) {
 }
 
 /**
- * @param {{ kernelOf: () => any, hub: () => any, inChat: (chain: any, chat: string) => boolean, me: (chain: any) => string }} o
+ * @param {{ kernelOf: () => any, hub: () => any, inChat: (chain: any, chat: string) => boolean, me: (chain: any) => string, vaultUses?: (urn: string, limit: number) => Promise<{ item: string, at: number, line: string }[]> }} o
  */
-export function createTimeline({ kernelOf, hub, inChat, me }) {
+export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
   /** Everything that links to a record as one story, newest first: the rows that link to it, the stages it moved through and, for a project, the files shared from its chats. A chat the caller is not in shows only when it is shared, by its title. @param {any} chain @param {string} urn @param {number} limit */
   async function entries(chain, urn, limit) {
     const k = kernelOf();
@@ -76,6 +76,13 @@ export function createTimeline({ kernelOf, hub, inChat, me }) {
         }
       }
     } catch { /* no shares to show */ }
+    // the uses of credentials linked to this record (R031-71): a line and a time, never the credential; shown only to someone who can read the record
+    if (vaultUses) {
+      try {
+        const [, , , type, id] = urn.split("/");
+        if (await k.records.get(chain, type, id)) for (const u of await vaultUses(urn, 20)) out.push({ type: "vault-use", kind: "vault", id: `vault:${u.item}:${u.at}`, urn, title: u.item, line: u.line, at: Number(u.at) || 0 });
+      } catch { /* the vault is not here, or the record is not readable: no credential lines */ }
+    }
     out.sort((a, b) => b.at - a.at);
     return { entries: out.slice(0, limit), truncated: Boolean(truncated) };
   }
