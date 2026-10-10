@@ -233,29 +233,31 @@ export function registerTemplateTools({ ctx, templates: t, chainOf: chainOfHome 
    * Space (the registry's cross-Space door: the caller's own chain there, and that Space's authorize says whether they may), and everything it makes is that Space's. Without one, the home's own, as before.
    */
   const OWN_SPACE = /** @type {const} */ ({ type: "string", description: "the Space it is for (a hosted Space's id from spaces.list); omit for this home's own Space" });
-  const inSpace = (/** @type {string} */ name, /** @type {any} */ spec) => ctx.tool(name, { ...spec, callers: [...(spec.callers || CALLERS), "module"], input: { ...spec.input, properties: { ...(spec.input && spec.input.properties), space: OWN_SPACE } }, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-    // "module" is a caller only so the tool can run inside another Space (the registry's door, from this module with the caller's chain there): no other module reaches these tools
-    if (extra && typeof extra.caller === "string" && extra.caller.startsWith("module:") && !(extra.caller === "module:work" && extra.in_space_chain)) throw fail("denied", `${name} is not available to module callers`);
-    const K = ctx.kernel, space = i && typeof i.space === "string" ? i.space : "";
-    if (!space || !K || space === K.space) return spec.run(i, extra);
-    let base = null; try { base = typeof K.for === "function" ? K.for(space) : null; } catch { base = null; }
-    if (typeof K.chainIn !== "function" || !base || base.hosted !== true) throw fail("not_found", "this home does not host that Space (spaces.list shows yours)");
-    let chain; try { chain = await K.chainIn(space, extra); } catch { throw fail("forbidden", "you are not a member of that Space"); }
-    const { space: _s, ...rest } = i;
-    const r = await K.for(space).call(spec.twin || name, rest, chain);
-    if (r && r.error) throw fail(r.error.code || "failed", r.error.message || "that did not work");
-    return r ? r.data : null;
-  } });
+  // The public tool keeps the callers it always had. It reaches another Space through a modules-only twin (`<name>-in-space`) that runs the same act under the chain the registry carried: a person-reach tool is closed to
+  // module hops, and giving the public tools a `module` caller would widen who may call them.
+  const inSpace = (/** @type {string} */ name, /** @type {any} */ spec) => {
+    const twin = `${name}-in-space`;
+    ctx.tool(twin, { description: `${name}, run inside another Space by this module for the person (the registry's cross-Space door).`, internal: true, callers: ["module"], input: spec.input, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      if (!(extra && extra.caller === "module:work" && extra.in_space_chain)) throw fail("denied", `${twin} is for the cross-Space door only`);
+      return spec.run(i, extra);
+    } });
+    ctx.tool(name, { ...spec, input: { ...spec.input, properties: { ...(spec.input && spec.input.properties), space: OWN_SPACE } }, run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
+      const K = ctx.kernel, space = i && typeof i.space === "string" ? i.space : "";
+      if (!space || !K || space === K.space) return spec.run(i, extra);
+      let base = null; try { base = typeof K.for === "function" ? K.for(space) : null; } catch { base = null; }
+      if (typeof K.chainIn !== "function" || !base || base.hosted !== true) throw fail("not_found", "this home does not host that Space (spaces.list shows yours)");
+      let chain; try { chain = await K.chainIn(space, extra); } catch { throw fail("forbidden", "you are not a member of that Space"); }
+      const { space: _s, ...rest } = i;
+      const r = await K.for(space).call(twin, rest, chain);
+      if (r && r.error) throw fail(r.error.code || "failed", r.error.message || "that did not work");
+      return r ? r.data : null;
+    } });
+  };
   const body = { type: ["object", "string"], description: "the template: { name, description?, tags?, roles?: [{ role, agent?, lead? }], stages: [{ name, owner?, moves_on_when?, tasks?: [{ title, doer, output: { kind }, checker?, brief?, checklist?, credentials?, context?, needs_yes?, ask?, depends_on?, due_offset_ms?, required? }] }] }" };
   inSpace("work.template.define", { description: "Write a project template as a new draft version: stages, tasks, doers, checklists, needed yeses and agent roles. Test it with work.template.test, then work.template.golive.", input: obj({ template: { type: "string", description: "template id; omit for a new template" }, body, note: { type: "string" } }, ["body"]), callers: CALLERS, run: run((c, i) => t.define(c, i)) });
   inSpace("work.template.list", { description: "The project templates of this Space (id, name, which version is live, owner), or the versions of one (template).", input: obj({ template: { type: "string" } }), callers: CALLERS, run: run((c, i) => t.list(c, i)) });
   inSpace("work.template.get", { description: "One version of a project template with its whole body (the live one by default).", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.get(c, i)) });
-  // a `person` tool is open to the person's own surfaces only, never to a module hop, so golive crosses into another Space through a modules-only twin that runs the same act under the chain the registry carried
-  ctx.tool("work.template.golive-in-space", { description: "work.template.golive, run inside another Space by this module for the person (the registry's cross-Space door).", internal: true, callers: ["module"], input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template"]), run: async (/** @type {any} */ i, /** @type {any} */ extra) => {
-    if (!(extra && extra.caller === "module:work" && extra.in_space_chain)) throw fail("denied", "work.template.golive-in-space is for the cross-Space door only");
-    return run((c, x) => t.goLive(c, x))(i, extra);
-  } });
-  inSpace("work.template.golive", { twin: "work.template.golive-in-space", description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });
+  inSpace("work.template.golive", { description: "Put a draft version of a template live: the template's owner or an admin, in their own name. The version that was live is retired; projects already running keep the version they started with.", input: obj({ template: { type: "string" }, version: { type: "integer" } }, ["template", "version"]), run: run((c, i) => t.goLive(c, i)) });
   inSpace("work.template.test", { description: "Dry-run a template version, changing nothing: shows each stage, task, doer, brief, checklist and who may move a stage early.", input: obj({ template: { type: "string" }, version: { type: "integer" }, sample: { type: "object", description: "sample project fields that fill the briefs, such as { name }" } }, ["template"]), callers: CALLERS, run: run((c, i) => t.test(c, i)) });
   inSpace("work.template.from-project", { description: "Make a draft template from a project that ran one, keeping its pinned stages, briefs and filled roles.", input: obj({ project: { type: "string", description: "the project's short name" }, name: { type: "string", description: "name for the new template" } }, ["project"]), callers: CALLERS, run: run((c, i) => t.fromProject(c, i)) });
   inSpace("work.template.library", { description: "The project templates the Kits ship (id, name, stages, tasks). work.template.install makes one a draft in this Space.", input: obj({}), callers: CALLERS, run: async (_i, extra) => { await chainOf(extra); return { templates: t.library().map(({ body: _b, ...rest }) => rest) }; } });
