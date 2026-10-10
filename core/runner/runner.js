@@ -30,7 +30,7 @@ import { createSessionSync, restore, ROOTS } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
-import { signalTree, pidsUnder } from "./proctree.js";
+import { signalTree, pidsUnder, portIsSessions } from "./proctree.js";
 import { endOrphans, startedOf } from "./orphans.js";
 export { endOrphans };
 
@@ -81,7 +81,7 @@ export async function reconcile(o) {
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
  *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, handoverMs?: number, requestServer?: (session: string, reason?: string) => Promise<{ moved?: boolean } | void> | { moved?: boolean } | void, usage?: ReturnType<typeof createUsage>,
  *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
- *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
+ *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number, portOwner?: (pid: number, port: number) => boolean,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
  */
 export function createRunner(o) {
@@ -93,6 +93,8 @@ export function createRunner(o) {
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
   const usage = o.usage || createUsage({ platform });
+  /** Is this loopback port served only by the session's own processes? (A Mac preview connects from outside the sandbox, so it asks first.) */
+  const ownsPort = (/** @type {any} */ h, /** @type {number} */ port) => (o.portOwner || ((pid, n) => portIsSessions(pid, n)))(Number(h.child.pid), port);
   /** Sessions being started now: a second start of the same session while the first is under way is refused, so no child is ever left untracked. @type {Set<string>} */ const starting = new Set();
   /** Why every session here is frozen right now ("pause": the person's Pause all; "offline": this computer cannot reach the Space's server and must not run ahead of it). Empty: they run. @type {Set<string>} */
   const frozen = new Set();
@@ -416,6 +418,7 @@ export function createRunner(o) {
       if (!h || !h.preview) return Promise.reject(Object.assign(new Error("that chat has no preview here"), { code: "not_found" }));
       const port = Number(job.port);
       if (!Number.isInteger(port) || port < 1024 || port > 65535) return Promise.reject(new Error("a preview is of a port from 1024 to 65535"));
+      if (!h.preview.dir && !ownsPort(h, port)) return Promise.reject(new Error("the dev server on that port did not answer (not_this_chat's)"));
       const body = job.body ? Buffer.from(String(job.body), "base64") : Buffer.alloc(0);
       return new Promise((resolve, reject) => {
         /** @type {any} */ const opts = { method: String(job.method || "GET"), path: String(job.path || "/"), headers: { ...job.headers, host: `localhost:${port}`, "content-length": String(body.length) }, timeout: 30_000 };
@@ -441,6 +444,7 @@ export function createRunner(o) {
       const h = live.get(session);
       const port = Number(job.port);
       if (!h || !h.preview || !Number.isInteger(port) || port < 1024 || port > 65535) return null;
+      if (!h.preview.dir && !ownsPort(h, port)) return null;   // a Mac has no shim: only a port this chat's own processes listen on, never the person's other loopback services
       const c = h.preview.dir ? net.connect(path.join(h.preview.dir, "p.sock")) : net.connect(port, "127.0.0.1");
       if (h.preview.dir) c.write(`PORT ${port}\n`);
       let over = false;

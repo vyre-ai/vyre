@@ -325,6 +325,15 @@ test("a dev server the chat starts on the computer can be previewed from the hom
   const c = /** @type {any} */ (await ask(dead.port, "GET", "/"));
   assert.equal(c.status, 502);
   assert.match(c.body, /did not answer/);
+  // a server on the person's own loopback that is NOT the chat's (a dev database, the daemon, Docker) is not reachable through a preview, request or tunnel, on a Mac as much as on Linux (rows 27)
+  const outside = http.createServer((q, r) => r.end("secret-of-the-person")); await new Promise(r => outside.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => outside.close());
+  const outPort = /** @type {any} */ (outside.address()).port;
+  const stray = await w.r.home.openPreview({ session: "s_dev", port: outPort, person: BOB });
+  const d = /** @type {any} */ (await ask(stray.port, "GET", "/"));
+  assert.equal(d.status, 502, "a request naming a port the chat does not serve is refused");
+  assert.ok(!String(d.body).includes("secret-of-the-person"));
+  const leak = await new Promise(resolve => { const k = net.connect(stray.port, "127.0.0.1"); let got = ""; k.on("data", x => { got += x; }); k.on("close", () => resolve(got)); k.on("error", () => resolve(got)); k.on("connect", () => k.write("GET / HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")); setTimeout(() => { k.destroy(); resolve(got); }, 4000); });
+  assert.ok(!String(leak).includes("secret-of-the-person"), "a tunnel naming such a port carries nothing from it");
   // hot reload: a WebSocket through the bridge reaches the dev server's socket in the sandbox and talks both ways, in order
   const ws = await new Promise((resolve, reject) => {
     const c = net.connect(bridge.port, "127.0.0.1");

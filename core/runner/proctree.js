@@ -51,3 +51,25 @@ export function signalTree(root, sig, o = {}) {
 
 /** The pids of everything under a process now (not the process itself), for a caller that wants to see them gone after it ended the first. @param {number} root @param {Proc[]} [procs] */
 export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs).map(p => p.pid).filter(p => p !== root); }
+
+/**
+ * The pids listening on a loopback TCP port now (macOS: lsof). Empty when nothing listens or lsof cannot be run, so a caller that needs "the session's own" never says yes on a failure.
+ * @param {number} port @param {{ lsof?: (port: number) => string }} [o] @returns {number[]}
+ */
+export function listenersOf(port, o = {}) {
+  const lsof = o.lsof || ((/** @type {number} */ p) => { try { return execFileSync("/usr/sbin/lsof", ["-nP", `-iTCP:${p}`, "-sTCP:LISTEN", "-Fp"], { encoding: "utf8", timeout: 3000 }); } catch { return ""; } });
+  let out = ""; try { out = lsof(port); } catch { return []; }
+  return out.split("\n").map(l => /^p(\d+)$/.exec(l)).filter(Boolean).map(m => Number(m?.[1]));
+}
+
+/**
+ * Is a loopback port served by the session's own processes (the process Vyre started and everything under it)? A Mac lender has no shim to name the port to, so the preview asks this first: a port a dev
+ * database, Vyre's own daemon or Docker listens on is not the chat's, and is refused. Every listener on the port must be the session's.
+ * @param {number} root @param {number} port @param {{ lsof?: (port: number) => string, procs?: () => Proc[] }} [o]
+ */
+export function portIsSessions(root, port, o = {}) {
+  const pids = listenersOf(port, o);
+  if (!pids.length) return false;
+  const mine = new Set(treeOf(root, (o.procs || (() => allProcs()))()).map(p => p.pid));
+  return pids.every(p => mine.has(p));
+}

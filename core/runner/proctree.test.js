@@ -38,3 +38,16 @@ test("a signal reaches the whole tree, a child forked while the first pass ran i
   assert.deepEqual(sent, [[10, "SIGSTOP"], [12, "SIGSTOP"]]);
   assert.equal(n, 3);
 });
+
+test("a Mac preview reaches a loopback port only when every listener on it is the session's own process (row 27)", async () => {
+  const { portIsSessions, listenersOf } = await import("./proctree.js");
+  const P = (/** @type {number} */ pid, /** @type {number} */ ppid) => ({ pid, ppid, pgid: pid, ticks: 0, pages: 0, pcpu: 0, kb: 0 });
+  const procs = () => [P(10, 1), P(11, 10), P(12, 11), P(50, 1)];
+  const lsof = (/** @type {number} */ port) => port === 3000 ? "p12\n" : port === 5432 ? "p50\n" : port === 4000 ? "p12\np50\n" : "";
+  assert.deepEqual(listenersOf(3000, { lsof }), [12]);
+  assert.equal(portIsSessions(10, 3000, { lsof, procs }), true, "the chat's own dev server");
+  assert.equal(portIsSessions(10, 5432, { lsof, procs }), false, "a database outside the session");
+  assert.equal(portIsSessions(10, 4000, { lsof, procs }), false, "one foreign listener is enough to refuse");
+  assert.equal(portIsSessions(10, 9999, { lsof, procs }), false, "nothing listening");
+  assert.equal(portIsSessions(10, 3000, { lsof: () => { throw new Error("lsof gone"); }, procs }), false, "no answer from lsof is no");
+});
