@@ -95,3 +95,26 @@ export function kernelMembers({ handle, now = Date.now }) {
 
 /** A membership as the tools show it. @param {any} m */
 const shape = m => ({ space: m.space, person: m.person, role: m.role, scope: m.scope ?? null, expires: m.expires ?? null, added_by: m.added_by ?? null, added_at: m.added_at ?? null });
+
+/** The words a person may be shown about a starting store: the progress sentence the store gives, and for anything else (a failure's own text, which can hold paths or errors) one fixed sentence. */
+const PROGRESS = /^(starting Records|the record store is still starting)/;
+
+/**
+ * Whether the records of the spaces the caller is in are up (a team space's own store takes about a minute the first time): `{ spaces: [{ space, ready, words? }] }`. Only the spaces in `mine` (the
+ * caller's own list) are looked at, so nothing is said of another person's Space on the same server. The app's Now shows a calm "setting up" card from it instead of an error or an empty list.
+ * @param {any} K @param {string[]} mine
+ */
+export async function recordsStatus(K, mine) {
+  const out = [];
+  const known = new Set([...(K && typeof K.space === "string" ? [K.space] : []), ...(K && K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : [])]);
+  for (const id of mine) {
+    if (!known.has(id)) continue;
+    let h = null; try { h = K ? K.for(id) : null; } catch { h = null; }
+    const store = (h && h.store) || (id === (K && K.space) ? K.store : null);
+    if (!store || typeof store.attached !== "function" || store.attached()) { out.push({ space: id, ready: true }); continue; }
+    let detail = "";
+    try { detail = String((await store.health()).detail || ""); } catch { /* no words */ }
+    out.push({ space: id, ready: false, words: PROGRESS.test(detail) ? detail : "the records are not ready yet" });
+  }
+  return { spaces: out };
+}

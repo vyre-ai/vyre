@@ -22,11 +22,14 @@ const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_conta
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
 /** Actions only a Flow run may ask (see `byRunner`). */
 const RUNNER_ONLY = new Set(["fn.run", "model.call"]);
+/** Actions only a grant that names them covers, whatever their risk: no wildcard (an owner's `*`) reaches them, so the limits on the grant that does is the only way in. */
+const NAMED_ONLY = new Set(["flows.act-standing"]);
 export function patternCovers(pattern, action, since = 0, version = undefined, risk = undefined) {
   const a = action.split("."), p = pattern.split(".");
   const ok = pattern === "*" || (p.length === 2 && a.length === 2 && p.every((s, i) => s === "*" || s === a[i]));
   if (!ok) return null;
   if (pattern === action) return "covered";
+  if (NAMED_ONLY.has(action)) return null;
   // A wildcard covers only read and write actions, and only those that existed when the grant was made (6.1). Admin,
   // grant and outward actions must be named; a grant with no action-set version covers no wildcard action at all.
   if (risk !== "read" && risk !== "write") return "pattern_not_covered";
@@ -237,6 +240,7 @@ export function createAuthorizer(cfg) {
       // approver is the right to run Flows (so a member cannot run arbitrary code or spend AI by calling these themselves).
       const byRunner = typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "automation");
       if (RUNNER_ONLY.has(action) && !byRunner) return deny("runner_only");
+      if (action === "flows.act-standing" && !byRunner) return deny("runner_only");
       const grantAction = RUNNER_ONLY.has(action) ? "flows.run" : action;
       // 1. Space check.
       if (chain.space !== cfg.space || spaceOf(resource) !== cfg.space || !segments(resource)) return deny("wrong_space");

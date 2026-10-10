@@ -1154,7 +1154,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
@@ -1419,6 +1419,10 @@ shardTest("the camera reader: wink.phone.open and an invitation's code carry the
   await until(() => ack);
   await until(() => w.events.find(e => e[0] === "wink.found"));
   assert.equal((await w.call("wink.code.ack", { offer: phone.code_offer, typed: ack })).data.ok, true);
+  // This box holds no name, so it cannot put the phone's key on a name's list; the owner's app does that and reports it. The report here is "could not", so the waiting phone is told at once: without it the phone waited
+  // out the box's whole enrolment timeout (three minutes), which is what made this file run past its 300 s limit on a loaded runner.
+  const asked = await until(() => w.events.find(e => e[0] === "wink.enrol-asked"), 4000).catch(() => null);
+  if (asked) assert.equal((await w.call("wink.phone.enrolled", { device: asked[1].device, ok: false, reason: "this test box holds no name" })).data.ok, true);
   assert.equal((await joining).paired, true);
   // an invitation's code has its avatar too (a newer code replaces the one showing, so this comes after the pairing)
   const carry = (await w.call("wink.code.carry", { link: "https://northwind.vyre.run/join/inv_abc.x" }, "module:spaces")).data;

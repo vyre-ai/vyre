@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { tool } from "../real/box";
-import { failed, ready, toSend, uploading, whyNot, without, type Attachment, type Chip } from "./attach-model.js";
+import { failed, ready, rememberThumb, thumbOf, toSend, uploading, whyNot, without, type Attachment, type Chip } from "./attach-model.js";
 import { pickFiles, type Picked } from "./attach-pick";
 
 /**
@@ -24,6 +24,7 @@ export function useAttachments(chat: string | undefined) {
       set([...live.current, uploading(key, f)]);
       try {
         const a = await tool<Attachment>("attachments.put", { thread: chat, name: f.name, mime: f.mime, data: f.base64 });
+        rememberThumb(a.id, thumbOf(f));
         set(ready(live.current, key, a));
       } catch (e) {
         const why2 = e instanceof Error && e.message ? e.message : "That file could not be added.";

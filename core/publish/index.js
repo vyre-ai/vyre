@@ -135,10 +135,18 @@ export default {
       try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { chain = null; }
       const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
       if (!first || !first.actor || first.actor.kind !== "person" || chain.viewer === true) throw refuse("only a person, or their own assistant, can do that", "forbidden");
-      const r = await call("spaces.self", { person: String(first.actor.id), ...(input && input.space ? { space: input.space } : {}) });
-      if (r.missing || !r.data || !r.data.space || !r.data.person) throw refuse("no space is set up on this machine yet: create one first with spaces.create", "no_space");
+      // The spaces this person is in, from the spaces module's own member lists (spaces.merge-list), not from "who is this device": a server that hosts a team's space holds no identity of its own (the owner's
+      // key lives in their app), and the person who is calling is the chain's person all the same.
+      const person = String(first.actor.id);
+      const r = await call("spaces.merge-list", { person });
+      if (r.missing) throw refuse("no space is set up on this machine yet: create one first with spaces.create", "no_space");
+      const list = /** @type {{ space: string, name: string }[]} */ ((r.data && Array.isArray(r.data.spaces)) ? r.data.spaces : []);
+      if (!list.length) throw refuse("you are not a member of a space on this server", "forbidden");
+      const want = input && input.space ? String(input.space) : null;
+      const row = want ? list.find(s => s.space === want || s.name === want) : list.length === 1 ? list[0] : null;
+      if (!row) throw refuse(want ? "you are not a member of that space" : "you are in more than one space here: say which with `space`", want ? "forbidden" : "no_space");
       if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
-      return { space: /** @type {{ id: string, name: string }} */ (r.data.space), person: String(r.data.person) };
+      return { space: { id: row.space, name: row.name }, person };
     }
 
     /** The chain for a call: the person, then the hops the call's own chain carries after them (an assistant, an automation). @param {string} spaceId @param {string} person @param {any} meta */

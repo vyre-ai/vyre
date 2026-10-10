@@ -214,6 +214,37 @@ export async function walkLive(w) {
       assert.equal(row && row.pinned, "assistant", "the Chats list marks it pinned");
       return chat;
     }, { needs: [called] });
+    // The real model answers (only when the run was given a Claude subscription token: RC_CLAUDE_TOKEN, read from the environment once and removed at once). The token is put on the server's disk for one command
+    // at mode 0600 over ssh stdin (never in a command line of the runner, never in a log), the server's own onboarding stores it in the Vault (onboard.claude) and its assistant greets (onboard.finish), and the
+    // file is overwritten and removed whether the call worked or not. A release server takes this from its own terminal (root's cli); the app's call would want the owner's hardware key.
+    if (process.env.RC_CLAUDE_TOKEN) {
+      const token = String(process.env.RC_CLAUDE_TOKEN); delete process.env.RC_CLAUDE_TOKEN;
+      const scrub = (/** @type {string} */ t) => String(t).split(token).join("<token>");
+      await run.step(R("first chat with the real model: the server signs in to Claude with the subscription token and its assistant greets"), async () => {
+        const file = "/root/.vyre-walk-claude.json";
+        try {
+          const put = await asWalker(host, `sudo sh -c 'umask 077; cat > ${file}'`, { pty: false, input: JSON.stringify({ kind: "subscription", token }) });
+          assert.equal(put.code, 0, scrub(put.out.slice(-200)));
+          const sign = await asWalker(host, `sudo sh -c 'vyre call onboard.claude "$(cat ${file})"'`, { pty: false, timeoutMs: 120_000 });
+          assert.equal(sign.code, 0, `the sign-in was refused: ${scrub(sign.out.slice(-300))}`);
+        } finally {
+          await asWalker(host, `sudo sh -c 'shred -u ${file} 2>/dev/null || rm -f ${file}'`, { pty: false }).catch(() => {});
+        }
+        const fin = await asWalker(host, "sudo vyre call onboard.finish '{}'", { pty: false, timeoutMs: 120_000 });
+        assert.equal(fin.code, 0, `onboarding did not finish: ${scrub(fin.out.slice(-300))}`);
+        const thread = (fin.out.match(/"thread"\s*:\s*"([^"]+)"/) || [])[1];
+        assert.ok(thread, `the assistant made no first thread: ${scrub(fin.out.slice(-300))}`);
+        let said = "";
+        for (const end = Date.now() + 4 * 60_000; Date.now() < end && !said;) {
+          await new Promise(r => setTimeout(r, 8000));
+          const got = await asWalker(host, `sudo vyre call threads.get '{"thread":"${thread}"}'`, { pty: false, timeoutMs: 60_000 });
+          const m = scrub(got.out).match(/"role"\s*:\s*"assistant"[^}]*?"text"\s*:\s*"((?:[^"\\]|\\.){3,})"/);
+          if (m) said = m[1];
+        }
+        assert.ok(said, "the assistant did not answer in 4 minutes");
+        return `the assistant answered (${said.length} characters)`;
+      }, { needs: [called] });
+    }
     await run.step(R("create a team space on the server (named in the app, signed with the identity)"), async () => {
       const label = `team${person.slice(-6)}`;
       names.push(label); keep();

@@ -131,6 +131,7 @@ export const OPEN_NOTES = Object.freeze({
   "spaces.invites.list": "reads the invites the person made or may manage, never the link",
   "spaces.invites.preview": "shows what a join link offers before joining, a check of the link",
   "spaces.list": "reads the Spaces on this device and the person's role in each",
+  "spaces.records.status": "reads whether each Space's records are ready and, while they start, how far the first start is in words",
   "spaces.members.list": "reads everyone in a Space with role, scope, end date and warnings",
   "spaces.move.plan": "plans moving a Space to another home, ordered steps and checks, nothing moves",
   "spaces.roles.names": "reads the display names of the five roles, or renames one; the ids never change",

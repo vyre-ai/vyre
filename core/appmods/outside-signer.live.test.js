@@ -210,7 +210,11 @@ test("an outside signer signs in a real browser through the public door: relay, 
   assert.deepEqual(resp.filter(r => r.status >= 400), [], "every request the page made was answered");
   // the signer types a signature and completes, as a person does
   const click = (/** @type {string} */ label) => ev(`(() => { const b = [...document.querySelectorAll('button')].find(x => x.innerText.trim().toUpperCase() === ${JSON.stringify(label)} && x.offsetParent); if (!b) return false; b.click(); return true; })()`);
-  assert.equal(await click("TYPE"), true, "the Type tab is there");
+  // the app's one button toggles between typing and drawing: it reads TYPE while the field draws and DRAW once it already types (a "Sign now" prompt may come first)
+  const has = (/** @type {string} */ label) => ev(`[...document.querySelectorAll('button')].some(x => x.offsetParent && x.innerText.trim().toUpperCase() === ${JSON.stringify(label)})`);
+  for (let i = 0; i < 40 && !(await has("TYPE")) && !(await has("DRAW")); i++) { await click("SIGN NOW"); await new Promise(r => setTimeout(r, 500)); }
+  if (await has("TYPE")) await click("TYPE");
+  assert.equal(await has("DRAW"), true, "the signature field takes typed text: " + String(await ev("document.body.innerText")).slice(0, 400));
   await new Promise(r => setTimeout(r, 800));
   const focused = await ev("(() => { const i = [...document.querySelectorAll('input')].find(x => x.offsetParent && (x.type === 'text' || !x.type) && !x.readOnly); if (!i) return null; i.focus(); return i.placeholder || i.name || i.id || 'input'; })()");
   assert.ok(focused, "a text field for the typed signature");

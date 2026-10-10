@@ -36,8 +36,8 @@ const FAKES = {
     const w = () => globalThis.__bw;
     ctx.tool("spaces.membership", { run: async ({ space, person }) => (w().members[space] || {})[person] || null });
     ctx.tool("spaces.merge-list", { run: async ({ person }) => w().spaces[person] ?? null });
-    // The real spaces.self (core/spaces): the kernel's person is this device's own only when it is the home's own person (test/fake-chain-kernel.js). Everything else is nobody.
-    ctx.tool("spaces.self", { run: async ({ person }) => ({ person: person === "per_kernelowner" ? (w().self ?? null) : null, space: null }) });
+    // A box-shaped home holds no identity of its own: "who is this device" is not answerable (the person comes from the call's chain).
+    ctx.tool("spaces.self", { run: async () => { throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" }); } });
     ctx.tool("spaces.policy", { run: async ({ space }) => w().policy[space] || {} });
     return {};
   } };`,
@@ -68,7 +68,7 @@ async function boxRegistry(t, { w = world(), fakes = ["spaces", "records", "task
   for (const f of fakes) writeModule(mods, f, { does: { tools: MANIFEST[f].map(name => ({ name, reach: "modules" })) } }, FAKES[f]);
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: fakeKernelFor });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: spec => { const k = fakeKernelFor(spec); return { ...k, chain: async meta => { const c = await k.chain(meta); if (!(c.hops[0] && c.hops[0].actor.kind === "person")) return c; return w.self ? { ...c, hops: [{ actor: { kind: "person", id: w.self } }, ...c.hops.slice(1)] } : { hops: [{ actor: { kind: "service", id: "module" } }] }; } }; } });
   const core = discover([CORE]).filter(f => f.manifest && f.manifest.name === "bridges");
   await reg.start([...core, ...discover([mods])], { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });

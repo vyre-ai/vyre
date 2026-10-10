@@ -29,6 +29,7 @@ import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
 import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
+import { standingFor } from "./standing-run.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
 import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
@@ -1361,8 +1362,12 @@ export class FlowRunner {
     const obl = Array.isArray(d.obligations) ? d.obligations : [];
     const draftOnly = obl.find((/** @type {any} */ o) => o && o.type === "draft_only");
     const alwaysAsk = obl.find((/** @type {any} */ o) => o && o.type === "ask" && o.waivable === false);
-    const forced = !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
+    // The person's one yes at turn-on covers a send of a turned-on Flow (kernel/flows/standing.js): the kernel grant behind it gives the receipt, and nobody is asked per run.
+    const wouldAsk = effect === "ask" || (effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
+    const standingReceipt = !approvedTask && !alwaysAsk && wouldAsk && !ctx.dry ? await standingFor({ ports: this.ports, chain, ctx, s, need, info, risk, cat: ctx.cat }) : null;
+    const forced = !standingReceipt && !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
     if (forced) effect = "ask";
+    if (standingReceipt) effect = "allow";
     if (effect === "deny") {
       this.#note(ctx, s, `denied: ${d.rule && d.rule.label ? d.rule.label : d.reason}`);
       if (d.rule && d.reason === "rule_never") throw new StepFail("rule_never", `a rule of this space does not allow this: ${d.rule.label || "never"}`);
@@ -1401,7 +1406,7 @@ export class FlowRunner {
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
     ctx.actAs = doerChain;
-    try { return await act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined); } finally { ctx.actAs = null; }
+    try { return await act(`${run.id}:${key}`, approvedTask || standingReceipt || undefined, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined); } finally { ctx.actAs = null; }
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */

@@ -6,6 +6,7 @@ import { PhoneApprovals } from "../shell/PhoneApprovals";
 import { ModuleNowCards } from "../modules/ModuleNowCards";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
 import { UpdateNotice } from "./UpdateNotice";
+import { AwayCard } from "./AwayCard";
 import { VaultHealthCard } from "./VaultHealthCard";
 import { useSpaces } from "../shell/state";
 import { PairingCards } from "../pairing/PairingCards";
@@ -15,6 +16,7 @@ import { CREATE_ASSISTANT, shouldShow, type AgentRow } from "../assistants/creat
 import { callT } from "../../src/real/call-tool";
 import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 import { GetStarted } from "./GetStarted";
+import { RecordsSetup } from "./RecordsSetup";
 import { getStarted } from "./get-started.js";
 import { SETUP_BANNER } from "../install/first-run.js";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
@@ -46,12 +48,14 @@ export default function NowScreen() {
   const { run, sheets } = useTaskActions(world, go);
   return (
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
+      {real ? <RecordsSetup /> : null}
       {started ? <GetStarted title={started.title} steps={started.steps} /> : null}
       {real && !started ? <GapNotice gap={gap} /> : null}
       {real ? <UpdateNotice /> : null}
       {real ? <VaultHealthCard /> : null}
       {real ? <PairingCards /> : null}
       {real && !started && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
+      {real ? <AwayCard /> : null}
       {real ? <WaitingOnYou /> : null}
       {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
