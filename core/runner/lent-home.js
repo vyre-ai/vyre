@@ -26,6 +26,8 @@ import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_M
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
+/** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
+const RESUME_MS = 30_000;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -88,8 +90,11 @@ export function createLentHome(o) {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
     if (!o.resume) { owed.delete(session); return; }
-    try { await o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) }); owed.delete(session); }
-    catch { /* told again at the next sweep */ }
+    // a continuation that hangs must not stall the sweep for every other lender: it is given half a minute and told again at the next sweep
+    try {
+      await Promise.race([Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), new Promise((_, no) => { const t = setTimeout(() => no(new Error("the continuation did not answer")), RESUME_MS); t.unref?.(); })]);
+      owed.delete(session);
+    } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
   let timer = null;
@@ -99,7 +104,13 @@ export function createLentHome(o) {
     timer.unref?.();
     return () => { if (timer) clearInterval(timer); timer = null; };
   };
+  let sweeping = false;
   const sweepOnce = async () => {
+    if (sweeping) return;
+    sweeping = true;
+    try { await sweepAll(); } finally { sweeping = false; }
+  };
+  const sweepAll = async () => {
     for (const r of book.lapsed()) await takeOver(r.session, "offline");
     for (const r of book.overdue()) await takeOver(r.session, r.ask && r.ask.reason ? r.ask.reason : "you");
     for (const s of [...owed]) await resumeOwed(s);
