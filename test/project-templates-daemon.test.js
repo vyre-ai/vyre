@@ -184,7 +184,6 @@ test("a team project lives in the team Space: the template tools take a `space` 
   const home = (await d.kernel.gateway.records.query(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), "project", { page: { limit: 50 } })).rows;
   assert.ok(!home.some((/** @type {any} */ r) => r.data.name === "Team day"), `and not in the home's (${home.map((/** @type {any} */ r) => r.data.name)})`);
   await assert.rejects(() => call("work.template.list", { space: "spc_nowhere000000" }), /does not host that Space/);
-=======
 test("a Flow attached to a template runs for each project it starts, as its own approver (G21 Automations)", { timeout: 180_000 }, async t => {
   const { d, call, ownerChain, host } = await boot(t);
   const flow = { format: 1, name: "welcome_contact", label: "Welcome the client", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "c", kind: "create", type: "contact", set: { name: { expr: "\"Welcome \" + trigger.stage" } } }] };
@@ -201,5 +200,4 @@ test("a Flow attached to a template runs for each project it starts, as its own 
   await call("work.start-project", { template: "tpl_with-automation", name: "Rivera" });
   await until(async () => (await names()).filter((/** @type {string} */ n) => n === "Welcome Intake").length === 2, "and once for each project");
   await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad auto", automations: [{ when: "Nowhere", flow: def.id }] } }), /when is "start" or the name/);
->>>>>>> origin/work/lead-031-w
 });
