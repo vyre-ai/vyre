@@ -5,17 +5,22 @@
 /** A session is working when its status says so. @param {any} s */
 export const isWorking = (s) => /^(run|work|busy|start|think|stream)/i.test(String(s || ""));
 
+import { actRoute } from "../real/notice-act.js";
+
+/** Approve and Deny, each opening Now at its own answer. @param {string} id @param {"card" | "group"} of @returns {{ id: "approve" | "deny", label: string, route: string }[]} */
+const buttons = (id, of) => [{ id: "approve", label: "Approve", route: actRoute(id, "approve", of) }, { id: "deny", label: "Deny", route: actRoute(id, "deny", of) }];
+
 /** @param {string} s @param {number} n */
 const clip = (s, n) => (s.length <= n ? s : s.slice(0, n - 1).trimEnd() + "…");
 
 /**
  * Notices for what waits for the person's yes, once each. `seen` is the set of ids already told; it is returned grown.
  * @param {Set<string>} seen @param {any} pending approvals.pending's answer
- * @returns {{ notices: { id: string, title: string, body?: string, route: string }[], seen: Set<string> }}
+ * @returns {{ notices: { id: string, title: string, body?: string, route: string, actions?: { id: "approve" | "deny", label: string, route: string }[] }[], seen: Set<string> }}
  */
 export function approvalNotices(seen, pending) {
   const next = new Set(seen);
-  /** @type {{ id: string, title: string, body?: string, route: string }[]} */ const notices = [];
+  /** @type {{ id: string, title: string, body?: string, route: string, actions?: { id: "approve" | "deny", label: string, route: string }[] }[]} */ const notices = [];
   const cards = Array.isArray(pending && pending.approvals) ? pending.approvals : [];
   const grouped = new Set();
   for (const g of Array.isArray(pending && pending.groups) ? pending.groups : []) {
@@ -23,14 +28,15 @@ export function approvalNotices(seen, pending) {
     grouped.add(String(g.id));
     if (next.has(id)) continue;
     next.add(id);
-    notices.push({ id, title: `${g.size} ${g.size === 1 ? "call waits" : "calls wait"} for your yes`, body: clip(String(g.line || ""), 180), route: "/u/now" });
+    // a held call is a group even alone: its notice has Approve and Deny. Two or more are read on Now, one by one.
+    notices.push({ id, title: `${g.size} ${g.size === 1 ? "call waits" : "calls wait"} for your yes`, body: clip(String(g.line || ""), 180), route: "/u/now", ...(g.size === 1 ? { actions: buttons(String(g.id), "group") } : {}) });
   }
   for (const c of cards) {
     if (!c || !c.id || (c.group && grouped.has(String(c.group)))) continue;
     const id = `approval:${c.id}`;
     if (next.has(id)) continue;
     next.add(id);
-    notices.push({ id, title: "Waiting for your approval", body: clip(String(c.line || c.title || ""), 180), route: "/u/now" });
+    notices.push({ id, title: "Waiting for your approval", body: clip(String(c.line || c.title || ""), 180), route: "/u/now", actions: buttons(String(c.id), "card") });
   }
   return { notices, seen: next };
 }

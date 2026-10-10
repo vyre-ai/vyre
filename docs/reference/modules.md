@@ -440,7 +440,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"],"mints":[{"prefix":"flow-act","actions":["flows.act-standing"]}]}`
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","tasks.request","tasks.read","tasks.work"],"prefixes":["*"]}`
 
 ## gate
 

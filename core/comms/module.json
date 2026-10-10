@@ -61,7 +61,6 @@
         "name": "comms.send",
         "label": "Send an email or a text",
         "outward": true,
-        "recipients": ["to"],
         "inputs": {
           "via": "string",
           "to": "string",

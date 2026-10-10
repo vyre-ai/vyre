@@ -16,9 +16,15 @@ final class VyreNoticeDelegate: NSObject, UNUserNotificationCenterDelegate {
 
   func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                               withCompletionHandler done: @escaping () -> Void) {
-    if let route = response.notification.request.content.userInfo["route"] as? String,
-       let url = URL(string: "vyre://" + route.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "?notice=1") {
-      DispatchQueue.main.async { UIApplication.shared.open(url) }
+    // a button (Approve, Deny) names its own route in userInfo["actions"]; a plain tap uses the notice's route. Either opens the app, where the card's own path answers.
+    let info = response.notification.request.content.userInfo
+    let routes = info["actions"] as? [String: String] ?? [:]
+    let chosen = routes[response.actionIdentifier] ?? info["route"] as? String
+    if let route = chosen {
+      let path = route.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+      if let url = URL(string: "vyre://" + path + (path.contains("?") ? "&" : "?") + "notice=1") {
+        DispatchQueue.main.async { UIApplication.shared.open(url) }
+      }
     }
     done()
   }
@@ -50,7 +56,7 @@ public class VyreNotifyModule: Module {
     }
 
     /// Show a notice now. `route` is an app path such as /u/now. False when permission is not given.
-    AsyncFunction("show") { (id: String, title: String, body: String?, route: String?, promise: Promise) in
+    AsyncFunction("show") { (id: String, title: String, body: String?, route: String?, actions: [[String: String]]?, promise: Promise) in
       let center = UNUserNotificationCenter.current()
       center.getNotificationSettings { settings in
         let s = self.state(settings)
@@ -59,10 +65,31 @@ public class VyreNotifyModule: Module {
         content.title = title
         if let body = body { content.body = body }
         content.sound = .default
-        if let route = route { content.userInfo = ["route": route] }
+        var info: [String: Any] = [:]
+        if let route = route { info["route"] = route }
         // A one second trigger: a notice with no trigger is not delivered by every iOS version.
-        let req = UNNotificationRequest(identifier: id, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false))
-        center.add(req) { err in promise.resolve(err == nil) }
+        let send = {
+          content.userInfo = info
+          let req = UNNotificationRequest(identifier: id, content: content, trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false))
+          center.add(req) { err in promise.resolve(err == nil) }
+        }
+        // Approve and Deny as buttons: foreground actions, so the app opens and the card's own path (Face ID for a yes) answers. The category is registered before the notice is added.
+        var routes: [String: String] = [:]
+        let buttons = (actions ?? []).prefix(2).compactMap { a -> UNNotificationAction? in
+          guard let aid = a["id"], let label = a["label"], let to = a["route"] else { return nil }
+          routes[aid] = to
+          return UNNotificationAction(identifier: aid, title: label, options: [.foreground])
+        }
+        if buttons.isEmpty { send(); return }
+        let cat = "needs-you-" + buttons.map { $0.identifier }.joined(separator: "-")
+        info["actions"] = routes
+        content.categoryIdentifier = cat
+        center.getNotificationCategories { have in
+          if !have.contains(where: { $0.identifier == cat }) {
+            center.setNotificationCategories(have.union([UNNotificationCategory(identifier: cat, actions: buttons, intentIdentifiers: [], options: [])]))
+          }
+          send()
+        }
       }
     }
   }

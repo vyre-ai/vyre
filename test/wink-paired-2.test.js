@@ -1246,7 +1246,7 @@ shardTest("the daemon wires yes() to the kernel's own verifier: a real-key yes s
   const sealDir = tmp("yes-wired-seal");
   const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
   t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
-  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, presenceStorage: "software" });
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
   const owner = sealSigner(ident.id);
   await enrolDevice(sealer, owner);
   const chain = f.w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-yes", person: ident.id, path: "direct" });
