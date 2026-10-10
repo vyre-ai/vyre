@@ -139,14 +139,12 @@ try {
     assert(/vyre-app:northwind/.test(rules) && !/--dport 4300/.test(rules.split("vyre-app:northwind").join("")), "walled in the vyre container's namespace");
     return "ok";
   });
-  await J.step("rotate the secret: revoke and grant the new one (a card, the yes); the server restarts with it", async () => {
-    await call("publish.secret.revoke", { deployment: dep.id, name: "GREETING_PHRASE" });
-    await pw.call("vault.put", { name: "greeting-key-2", kind: "secret", description: "walk", value: "second-secret" });
-    const g = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key-2", name: "GREETING_PHRASE", use: ["runtime"] });
-    if (g.held) await decide(g);
-    const j = await keyWithin(90_000, "second-secret");
+  await J.step("rotate the secret: the owner changes the vault item the server was granted; the server restarts with the new value", async () => {
+    const put = await pw.call("vault.put", { name: "greeting-key", kind: "secret", description: "walk", value: "second-secret" });
+    if (put && put.held) throw new Error(`changing the vault item is held for a card: ${JSON.stringify(put).slice(0, 200)}`);
+    const j = await keyWithin(120_000, "second-secret");
     assert(j.key === hexSha("second-secret"), `the new secret is in the process: ${j.key}`);
-    return "restarted with the new secret";
+    return "restarted with the new value";
   });
   await J.step("a WebSocket opens for a stranger through the front", async () => {
     const port = frontPort(), host = siteHost();
