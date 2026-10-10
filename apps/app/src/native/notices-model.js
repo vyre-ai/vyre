@@ -5,7 +5,7 @@
 /** A session is working when its status says so. @param {any} s */
 export const isWorking = (s) => /^(run|work|busy|start|think|stream)/i.test(String(s || ""));
 
-import { actRoute } from "../real/notice-act.js";
+import { actRoute } from "../real/notice-route.js";
 
 /** Approve and Deny, each opening Now at its own answer. @param {string} id @param {"card" | "group"} of @returns {{ id: "approve" | "deny", label: string, route: string }[]} */
 const buttons = (id, of) => [{ id: "approve", label: "Approve", route: actRoute(id, "approve", of) }, { id: "deny", label: "Deny", route: actRoute(id, "deny", of) }];
