@@ -31,6 +31,8 @@ cannot touch a file or run a command; it is there so a conversation can carry on
 else is out of usage. Codex and Grok cannot be steered mid-turn or rewound, and the effort
 levels are Claude's only.
 
+The AI vendor you sign in to sees what you send it. A Codex or Grok session on your own sign-in talks to OpenAI or xAI itself, so a sealed customer value you type into the chat reaches them as it would in their own app, and Vyre removes anything shaped like a key from what you send and from what comes back. Claude works the same way. Vyre's Gate still holds every send, post and payment for your yes, whichever provider asked.
+
 You connect Claude when you set up Vyre, or later in Settings, with the
 provider's own sign-in: you open its page, enter the code it shows, and the token goes into
 that account's own private folder, which Vyre never reads. An account can also hold an API key

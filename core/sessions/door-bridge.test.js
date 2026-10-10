@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openrouterProvider, openrouterDoorDriver } from "./drivers/openrouter.js";
-import { throughDoor, route, doorMessage, _resetWarned } from "../../lib/door-bridge.js";
+import { throughDoor, loginDirect, route, doorMessage, _resetWarned } from "../../lib/door-bridge.js";
 
 const CHAIN = { space: "spc_aaaaaaaaaaaa", hops: [{ actor: { kind: "person", id: "per_a", space: "spc_aaaaaaaaaaaa" } }] };
 const SECRET = "123-45-6789";
@@ -110,6 +110,29 @@ test("process driver: with no door it reports a refusal and starts nothing; a do
   h.write({ type: "user", message: { role: "user", content: "hi" } });
   await new Promise(r => setTimeout(r, 20));
   assert.match(got2.at(-1).result, /limit/); assert.equal(inner.written.length, 0, "a prompt the door could not check is not sent");
+});
+
+test("login direct: decided per run. A subscription login runs with no door; a run that carries a provider key or an endpoint of its own is refused and starts nothing", async () => {
+  for (const [name, env] of [["codex api key", { OPENAI_API_KEY: "sk-test-aaaaaaaaaaaaaaaaaaaaaaaa" }], ["codex key (second name)", { CODEX_API_KEY: "sk-test-bbbbbbbbbbbbbbbbbbbbbbbb" }], ["grok api key", { XAI_API_KEY: "xai-test-cccccccccccccccccccccc" }], ["custom endpoint", { VYRE_API_BASE_URL: "https://llm.example.test/v1" }]]) {
+    const inner = procProvider();
+    const got = [];
+    loginDirect(inner, {}).run({ id: "k", env, onMessage: m => got.push(m), onExit() {} });
+    await new Promise(r => setTimeout(r, 5));
+    assert.match(got[0] && got[0].result, /inference door/, `${name}: refused with the door's words`);
+    assert.equal(inner.written.length, 0, `${name}: nothing was started or sent`);
+  }
+  const inner = procProvider();
+  const got = [];
+  const h = loginDirect(inner, {}).run({ id: "l", env: {}, onMessage: m => got.push(m), onExit() {} });
+  h.write({ type: "user", message: { role: "user", content: "hello" } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(inner.written.length, 1, "a subscription login runs direct");
+  // and with a door connected a keyed run goes through it
+  const doored = procProvider();
+  const h2 = loginDirect(doored, { door: fakeDoor() }).run({ id: "m", chain: CHAIN, env: { OPENAI_API_KEY: "sk-test-aaaaaaaaaaaaaaaaaaaaaaaa" }, onMessage: () => {}, onExit() {} });
+  h2.write({ type: "user", message: { role: "user", content: `use ${SECRET}` } });
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(doored.written[0].message.content, "use [ssn]", "with a door a keyed run is sanitised by it");
 });
 
 test("doorMessage: each refusal has plain words and none echoes a class's content", () => {

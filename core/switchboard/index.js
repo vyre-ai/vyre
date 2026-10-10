@@ -16,6 +16,7 @@ import { capsFromInit } from "../../lib/harness-caps.js";
 import { newId } from "../../lib/id.js";
 import { refuseKey, planSecure } from "../../lib/secure-paste.js";
 import { locateSecrets } from "../../lib/credential-shapes.js";
+import { scrubOut } from "./scrub.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -1446,6 +1447,7 @@ export class Switchboard {
   }
 
   onMessage(id, st, m) {
+    m = scrubOut(m); // the one outgoing scrub, every provider (core/switchboard/scrub.js)
     const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
