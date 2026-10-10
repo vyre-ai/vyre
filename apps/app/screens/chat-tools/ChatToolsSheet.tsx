@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Divider, EmptyState, Field, LoadingState, Row, SectionLabel, Segmented, Sheet, Switch, Text, showToast } from "@vyre/ui";
 import { chatTools } from "./instance";
+import { forkMoveOffer } from "./fork-move.js";
 import { ChatFiles } from "./ChatFiles";
 import { EFFORTS, contextLines, effortLabel, mentionText, modeLabel, modesOf, takesOff, taskLive, type Commit, type Line, type Mention, type Task } from "./model.ts";
 
@@ -17,6 +18,8 @@ export type ChatToolsProps = {
   queued?: { queued: number; text: string }[];
   /** Set when this chat is on another device that is away: the sheet offers to carry on here. */
   away?: { machine?: string; name?: string } | null;
+  /** The other place this chat could run (its placement chip: moveTo): the sheet offers a copy that starts there. */
+  otherPlace?: "mac" | "server" | null;
   onForked?: (thread: string) => void;
   /** A person picked someone or something: the text to put in the draft. */
   onMention?: (text: string) => void;
@@ -24,6 +27,17 @@ export type ChatToolsProps = {
 type Page = "main" | "files" | "effort" | "mode" | "tasks" | "context" | "transcript" | "back" | "mention";
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 const TITLES: Record<Page, string> = { main: "In this chat", files: "Files", effort: "Effort", mode: "Mode", tasks: "Running here", context: "Context used", transcript: "Transcript", back: "Go back", mention: "Mention someone" };
+
+/** The two ways to fork: a copy from here, and a copy that starts in the other place (the gallery draws these rows as they are). */
+export function ForkRows({ otherPlace, onFork, onForkTo }: { otherPlace?: "mac" | "server" | null; onFork: () => void; onForkTo: (to: "mac" | "server") => void }) {
+  const o = forkMoveOffer(otherPlace);
+  return (
+    <View>
+      <Row dense title="Fork this chat" sub="A copy to take somewhere else; this one stays" chevron onPress={onFork} />
+      {o ? <><Divider /><Row dense title={o.title} sub={o.sub} chevron onPress={() => onForkTo(o.to)} /></> : null}
+    </View>
+  );
+}
 
 export function ChatToolsSheet(p: ChatToolsProps) {
   const [page, setPage] = useState<Page>("main");
@@ -51,8 +65,8 @@ export function ChatToolsSheet(p: ChatToolsProps) {
         {page === "main" ? (
           <View>
             <SectionLabel first>This chat</SectionLabel>
-            <Row dense title="Fork this chat" sub="A copy to take somewhere else; this one stays" chevron
-              onPress={() => run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />
+            <ForkRows otherPlace={p.otherPlace} onFork={() => run(async () => { const r = await chatTools.fork(p.thread); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })}
+              onForkTo={(to) => run(async () => { const r = await chatTools.forkTo(p.thread, to); if (r.ok) { p.onForked?.(r.thread); p.onClose(); } return r; })} />
             <Divider />
             <Row dense title="Effort" state={effortLabel(effort)} chevron onPress={() => go("effort")} />
             <Divider />
