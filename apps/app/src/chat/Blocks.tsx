@@ -8,7 +8,7 @@ import { RC } from "../../screens/shell/rc";
 import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
-import { Button, Chip, Icon, IconButton, Text, haptic, useUiTheme } from "@vyre/ui";
+import { Button, Chip, Icon, IconButton, Markdown, Text, haptic, useUiTheme } from "@vyre/ui";
 import { tokens } from "../theme/tokens";
 import { ANSI_BLOCK as ANSI } from "../terminal/palettes";
 import { parseAnsi, stripAnsi } from "./ansi.js";
@@ -27,7 +27,7 @@ const S = StyleSheet.create({
   s4: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: TERM_RULE },
   s5: { flex: 1, minWidth: 0, minHeight: 40, justifyContent: "center" },
   s6: { minHeight: 28, justifyContent: "center" },
-  s7: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: TERM_RULE },
+  s7: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: TERM_RULE },
   s8: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 },
   s9: { flex: 1 },
   s10: { minHeight: 40, justifyContent: "center", paddingHorizontal: 8 },
@@ -161,22 +161,22 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
         {live ? <View style={{ width: 8, height: 15, backgroundColor: TERM_INK, marginTop: 2, opacity: 0.8 }} /> : null}
       </ScrollView>
       <View style={S.s7}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Copy output" onPress={() => copy(stripAnsi(text), ctx)} style={S.s8}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Copy output" onPress={() => copy(stripAnsi(text), ctx)} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
           <Icon name="copy" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Copy</Text>
         </Pressable>
         {ctx.onHighlight ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={S.s8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Highlight to assistant" onPressIn={() => { picked.current = readSelection(); }} onPress={() => ctx.onHighlight?.({ from: "terminal", text: `${block.command ? `$ ${block.command}\n` : ""}${stripAnsi(text).replace(/\n$/, "")}`, selected: picked.current, kind: "terminal" })} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
             <Icon name="chat" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Highlight to assistant</Text>
           </Pressable>
         ) : null}
         {ctx.onOpenTerminal ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Open full terminal" onPress={() => ctx.onOpenTerminal?.(block.command)} style={S.s8}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Open full terminal" onPress={() => ctx.onOpenTerminal?.(block.command)} style={[S.s8, ctx.wide ? null : { minHeight: 44 }]}>
             <Icon name="terminal" tone="label" /><Text size="caption" style={{ color: ANSI.white }}>Open full terminal</Text>
           </Pressable>
         ) : null}
         <View style={S.s9} />
         {lines.length > 5 ? (
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={S.s10}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={[S.s10, ctx.wide ? null : { minHeight: 44, justifyContent: "center" }]}>
             <Text size="caption" style={{ color: ANSI.white }}>{open ? "Collapse" : "Expand"}</Text>
           </Pressable>
         ) : null}
@@ -420,7 +420,7 @@ export function FlowChange({ block, ctx }: { block: Extract<Block, { block: "flo
 export function CitedAnswer({ block, ctx }: { block: Extract<Block, { block: "answer" }>; ctx: BlockCtx }) {
   return (
     <Shell icon="link" title="From memory" sub={`${block.sources.length} source${block.sources.length === 1 ? "" : "s"}`}>
-      <Text selectable>{block.text}</Text>
+      <Markdown text={block.text} onCopy={(code) => void copy(code, ctx)} />
       <View style={S.s23}>
         {block.sources.map((s, i) => (
           <Pressable key={i} accessibilityRole="button" accessibilityLabel={`Source ${i + 1}: ${s.title}`} onPress={() => s.url && ctx.onOpenSource?.(s.url)} style={S.s6}>

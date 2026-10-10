@@ -63,6 +63,8 @@
  "apps/app/ui/canvas/layout.test.js": 4,
  "apps/app/ui/canvas/real-graph.test.js": 1,
  "apps/app/ui/fields/logic.test.js": 11,
+ "apps/app/ui/markdown/highlight.test.js": 3,
+ "apps/app/ui/markdown/parse.test.js": 6,
  "apps/app/ui/marks/source.test.js": 7,
  "apps/app/ui/motion/motion.test.js": 9,
  "apps/app/ui/shell/nav.test.js": 6,
