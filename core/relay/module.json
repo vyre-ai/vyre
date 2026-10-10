@@ -22,6 +22,6 @@
   },
   "settings": [
     {"key": "relay.web_expiry_days", "group": "devices", "label": "Web links through the relay last (days)", "type": "int", "min": 1, "max": 365, "default": 30, "levels": ["account"], "apply": "live", "store": {"config": "relay.web_expiry_days"}},
-    {"key": "relay.tunnel_url", "group": "devices", "label": "Public address for signing pages and shared links", "help": "The address of a public edge (such as wss://edge.vyre.run:8443). With one set, people outside your network can open a signing page or a shared link on your server, while the edge sees only encrypted traffic. Empty means only your own devices reach it.", "type": "string", "default": "", "levels": ["account"], "apply": "restart", "store": {"config": "relay.tunnel_url"}}
+    {"key": "relay.tunnel_url", "group": "devices", "label": "Public address for signing pages and shared links", "help": "The address of a public edge (such as wss://edge.vyre.run:8443). With one set, people outside your network can open a signing page or a shared link on your server, while the edge sees only encrypted traffic. Empty means only your own devices reach it.", "type": "string", "default": "", "levels": ["account"], "apply": "live", "store": {"config": "relay.tunnel_url"}}
   ]
 }
