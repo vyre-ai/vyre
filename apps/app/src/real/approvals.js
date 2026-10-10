@@ -3,6 +3,7 @@
 // (approvals.request, so nothing here hashes anything), opens an ask (approvals.ask), waits for the paired phone to sign it (approvals.status), then sends the act again with the proof.
 
 import { hashMatches } from "./payload-hash.js";
+import { MOMENT_OPS, REUSE_OPS } from "../../../../lib/one-yes-ops.js";
 
 /** How each tool the app calls maps to the act the kernel verifies: the call's name and its arguments after the space. Only acts the kernel's proof table covers. @type {Record<string, (i: any) => { call: string, args: any[] } | null>} */
 export const ACTS = {
@@ -94,9 +95,8 @@ export const momentOf = (tool) => {
 };
 // Each moment covers an explicit tool list (wink-2, f0409aa1b); anything else is bad_input at ask, so a floor refusal on another tool is never turned into an ask.
 /** A reveal, a copy or a code asks for the five-minute reuse (lib/one-yes.js REUSE_OPS). */
-const REUSE_OPS = ["vault.reveal", "vault.copy", "vault.totp"];
-const VAULT_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.inject", "vault.resolve", "vault.render"]);
-const PAIR_TOOLS = new Set(["presence.enroll", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
+const VAULT_TOOLS = new Set(MOMENT_OPS.vault);
+const PAIR_TOOLS = new Set(MOMENT_OPS.pair);
 
 /**
  * An act that needs the owner's yes and carries no approval answers the ordinary floor error `presence_required` on a moment tool (wink-2, f0409aa1b; the earlier `held` answer was withdrawn, and is still

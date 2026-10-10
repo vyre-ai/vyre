@@ -1,5 +1,6 @@
 // @ts-check
 import { ageOf } from "./chat-model.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 // The Chats list as one row type (CONTRACT-one-chat.md section 1): a chat is a record with a title, who is in it (people and assistants), the models on its slots, a project, a status and a last
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
@@ -11,7 +12,7 @@ const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 const strs = (/** @type {unknown} */ v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : typeof v === "string" ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
 /** The project's name: a name the row carries, else nothing (a project's urn is not for a person to read). @param {any} p */
 const projectName = (p) => (typeof p === "string" ? p : p && typeof p === "object" && typeof p.name === "string" ? p.name : "");
-const PROVIDERS = ["claude", "codex", "grok"];
+const PROVIDERS = AIS;
 
 /** The chat id out of a record address (vyre://<space>/chat/<id>) or the id itself. @param {string} urn */
 export const chatIdOf = (urn) => { const m = /\/chat\/([^/?#]+)$/.exec(urn); return m ? m[1] : urn; };
@@ -78,7 +79,7 @@ export function chatsOrdered(list) {
 export function sampleChats(now) {
   return [
     { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, unread: 0, open: true },
-    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: ["claude", "codex", "grok"], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
+    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: [...AIS], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
     { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, unread: 0, open: true },
     { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, unread: 0, open: true },
   ];

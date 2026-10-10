@@ -1,24 +1,3 @@
 {
- "copies": {
-  "apps/app/screens/chats/chats-model.js providers": {
-   "count": 2,
-   "why": "the Chats list keeps the three provider ids it draws a badge for (and its demo rows); moves to the providers owner's list when the box answers it"
-  },
-  "apps/app/src/real/approvals.js tools": {
-   "count": 3,
-   "why": "which tools are the person's own moments (vault, pairing, outward) is a policy list the owners should declare on each tool; today the app holds it"
-  },
-  "apps/app/src/real/box.ts tools": {
-   "count": 1,
-   "why": "the Vault tools that ask for the person's own yes before a call; same policy list as approvals.js"
-  },
-  "apps/app/src/real/with-space.js tools": {
-   "count": 1,
-   "why": "which tools take the showing space: the tool's own input schema says it; the app keeps a list"
-  },
-  "web/js/api.js tools": {
-   "count": 1,
-   "why": "the Deck's list of tools that need the person's yes; same policy list"
-  }
- }
+ "copies": {}
 }
