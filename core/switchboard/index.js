@@ -1174,7 +1174,21 @@ export class Switchboard {
    */
   async lentFor(id, rec) {
     if (!this.deps.lentFor || (rec && rec.provider && rec.provider !== "claude")) return undefined;
-    try { return (await this.deps.lentFor({ thread: id, chat: this.chatOf(id), native: this.nativeOf(id), title: rec && rec.name ? String(rec.name) : null, fresh: !(Number(rec && rec.turns) > 0), asker: this.turnAsker.get(id) || null })) || undefined; } catch { return undefined; }
+    let spawn;
+    try { spawn = await this.deps.lentFor({ thread: id, chat: this.chatOf(id), native: this.nativeOf(id), title: rec && rec.name ? String(rec.name) : null, fresh: !(Number(rec && rec.turns) > 0), asker: this.turnAsker.get(id) || null }); } catch { return undefined; }
+    if (!spawn) return undefined;
+    // What the chat says while its process starts on the computer: `thread.placing { state: "starting" | "up" | "fallback", computer?, reason? }`. The words are the app's (design); a fallback means nothing ran there and the box runs it.
+    return (/** @type {string} */ command, /** @type {string[]} */ args, /** @type {any} */ env, /** @type {any} */ cwd, /** @type {any} */ o) => {
+      const proc = spawn(command, args, env, cwd, o);
+      const say = (/** @type {string} */ state, /** @type {any} */ extra = {}) => { try { this.emit("thread.placing", { thread: id, state, ...extra }, id, rec && rec.project); } catch { /* a notice, never a stop */ } };
+      const computer = () => (proc && proc.lent && proc.lent.computer ? { computer: String(proc.lent.computer) } : {});
+      if (proc && typeof proc.on === "function") {
+        say("starting", computer());
+        proc.on("spawn", () => say("up", computer()));
+        proc.on("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable") say("fallback", { ...computer(), reason: "unavailable" }); });
+      }
+      return proc;
+    };
   }
 
   /** The confined spawner for this session (deps.sandbox: { sandbox, platform, home, vyreHome, probes, temp, binFor }), or null when sandboxing is not on. Throws one plain reason when the check fails. */
