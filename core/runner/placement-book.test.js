@@ -111,3 +111,16 @@ test("a session not in the book is on the server, and the answer says so without
   const b = createPlacementBook(); const r = b.lend({ session: "s1", ...who });
   assert.deepEqual([placementOf(r, { computer: "Office Mac" }).where, placementOf(r, { computer: "Office Mac" }).computer], ["mac", "Office Mac"]);
 });
+
+test("pause all on the computer reads as paused in the chat, and resuming puts it back; a session being handed over stays moving", () => {
+  const b = createPlacementBook();
+  const r = b.lend({ session: "s1", ...who });
+  b.beat({ session: "s1", epoch: r.epoch, device: "dev_mac", paused: true });
+  assert.equal(b.get("s1")?.state, "paused");
+  b.beat({ session: "s1", epoch: r.epoch, device: "dev_mac", paused: false });
+  assert.equal(b.get("s1")?.state, "here");
+  b.askRelease("s1", "you");
+  b.beat({ session: "s1", epoch: r.epoch, device: "dev_mac", paused: true });
+  assert.equal(b.get("s1")?.state, "moving");
+  assert.deepEqual(b.directives("dev_mac").map(d => [d.do, d.session, d.reason]), [["release", "s1", "you"]]);
+});
