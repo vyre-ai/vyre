@@ -465,14 +465,24 @@ function scanDiffText(text) {
 }
 
 /**
- * Scan everything a branch holds (a first push has no default branch to subtract) for a known secret shape. Same patterns and same answer as scanOutgoing. Local only.
- * @param {{ repoDir: string, branch: string }} p
+ * Scan everything a branch will send for a known secret shape: the tree it holds and, when it already has commits, every line any of them ever added (a secret committed once and deleted later is
+ * still in what a push sends). Same patterns and the same answer as scanOutgoing. If git cannot answer (the output is too large, or it takes too long) the answer is `{ unreadable: true }`, never "clean".
+ * Local only. @param {{ repoDir: string, branch: string, timeout?: number }} p
+ * @returns {Promise<null | { pattern: string, file: string, line: number } | { unreadable: true }>}
  */
-export async function scanWholeBranch({ repoDir, branch }) {
+export async function scanWholeBranch({ repoDir, branch, timeout = 60_000 }) {
+  const unreadable = /** @type {const} */ ({ unreadable: true });
   const empty = await gitAsync(repoDir, ["hash-object", "-t", "tree", "/dev/null"]);
-  if (!empty.ok) return null;
-  const diff = await gitAsync(repoDir, ["diff", "--unified=0", empty.stdout.trim(), `refs/heads/${branch}`]);
-  return diff.ok ? scanDiffText(diff.stdout) : null;
+  if (!empty.ok) return unreadable;
+  const tip = await gitAsync(repoDir, ["diff", "--unified=0", empty.stdout.trim(), `refs/heads/${branch}`], { timeout });
+  if (!tip.ok) return unreadable;
+  const hit = scanDiffText(tip.stdout);
+  if (hit) return hit;
+  const count = await gitAsync(repoDir, ["rev-list", "--count", `refs/heads/${branch}`]);
+  if (!count.ok) return unreadable;
+  if (Number(count.stdout.trim()) <= 1) return null;
+  const history = await gitAsync(repoDir, ["log", "-p", "--unified=0", "--format=%H", `refs/heads/${branch}`], { timeout: timeout * 2 });
+  return history.ok ? scanDiffText(history.stdout) : unreadable;
 }
 
 /**
@@ -547,7 +557,7 @@ async function pushLocalBranch({ repoDir, branch, token, fullName, base = "https
 /**
  * Get a folder ready to be the first push of a new repo, before anything is made on GitHub: the folder becomes a repo with a starting commit (or keeps its own history), nothing secret-looking is
  * swept in (`left_out` names what was kept out), and what would go is scanned for secrets (`hit`). Local only.
- * @param {{ dir: string }} p @returns {Promise<{ branch: string, left_out: string[], hit: null | { pattern: string, file: string, line: number } }>}
+ * @param {{ dir: string }} p @returns {Promise<{ branch: string, left_out: string[], hit: null | { pattern: string, file: string, line: number } | { unreadable: true } }>}
  */
 export async function prepareFirstPush({ dir }) {
   const init = await localInit(dir);

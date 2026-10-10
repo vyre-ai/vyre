@@ -178,6 +178,6 @@ test("assert: an operation call is accepted once, for this Mac, this site, this 
 
 test("assert: an answer's assertion is not an operation call's, and the other way round", () => {
   const k = pair();
-  assert.match(String(checkC(k, sign(k)).reason), /not for an operation call/);
+  assert.match(String(checkC(k, sign(k)).reason), /not for an operation send/);
   assert.match(String(check(k, signC(k)).reason), /threads\.answer/);
 });

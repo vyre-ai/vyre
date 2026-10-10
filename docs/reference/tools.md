@@ -13546,7 +13546,7 @@ The records a vault item is linked to, or the items linked to a record: names an
 - Input:
   - `item` string
   - `to` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `vault.list`
 
@@ -14324,7 +14324,7 @@ The recent uses of the items linked to one record, newest first, in plain words:
 - Input:
   - `urn` string, required
   - `limit` integer
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`
+- Callers: `module`
 
 ### `vault.vaults.create`
 

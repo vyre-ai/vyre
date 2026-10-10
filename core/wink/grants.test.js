@@ -75,3 +75,14 @@ test("a server with no kernel keeps the old rows where they are", async () => {
   await assert.rejects(() => moveLocalGrants({ ctx: { store: { db } }, adoptDevice: () => {} }), { code: "unavailable" });
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM wink_grants").get().n, 1);
 });
+
+test("a stop between making a grant and deleting its row does not make the grant twice at the next try", async () => {
+  const { ctx, mint, db } = world();
+  put(db, "wink_grants", { id: "gr_old_member", subject: person("per_dana"), actions: ["member.act"], resource: { prefix: `vyre://${HOME}/` }, conditions: {}, source: "wink:W5", reason: "Dana, A1 B2, member" });
+  await moveLocalGrants({ ctx, adoptDevice: () => {} });
+  assert.equal(mint.made.size, 1);
+  put(db, "wink_grants", { id: "gr_old_member", subject: person("per_dana"), actions: ["member.act"], resource: { prefix: `vyre://${HOME}/` }, conditions: {}, source: "wink:W5", reason: "Dana, A1 B2, member" }); // the row that was not deleted
+  assert.equal(await moveLocalGrants({ ctx, adoptDevice: () => {} }), 1, "the row goes");
+  assert.equal(mint.made.size, 1, "and no second grant is made");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM wink_grants").get().n, 0);
+});
