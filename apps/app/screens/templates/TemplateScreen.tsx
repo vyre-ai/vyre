@@ -3,7 +3,7 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
-import { bodyText, errWords, parseBody, projectIdOf, roleLines, startName, stateWord, treeOf, type Version } from "./model";
+import { bodyText, errWords, parseBody, projectIdOf, roleLines, startName, startWords, stateWord, treeOf, type Version } from "./model";
 import { templates } from "./templates";
 
 /**
@@ -41,7 +41,7 @@ export default function TemplateScreen() {
     const n = startName(projectName);
     if (!n.ok) { showToast(n.why); return; }
     const r = await templates.start(template, n.name);
-    showToast(`${n.name} is started. Its first tasks are in Now.`);
+    showToast(startWords(n.name, r));
     router.push(`/u/project/${projectIdOf(r.project)}` as never);
   });
   const tree = cur?.body ? treeOf(cur.body) : [];

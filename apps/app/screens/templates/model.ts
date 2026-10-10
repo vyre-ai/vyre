@@ -60,3 +60,15 @@ export function startName(text: string): { ok: true; name: string } | { ok: fals
 
 /** The id a project page opens by, from the address the box answers with. */
 export const projectIdOf = (urn: string): string => String(urn).split("/").pop() || "";
+
+/**
+ * What the toast says after Start project: where the first tasks are, or which could not be made and why (an assistant that is not in this space yet), so "its first tasks are in Now" is never said of tasks
+ * that do not exist.
+ */
+export function startWords(name: string, r: { tasks_made?: number; tasks_skipped?: { task: string; why: string }[] }): string {
+  const skipped = Array.isArray(r.tasks_skipped) ? r.tasks_skipped : [];
+  if (!skipped.length) return `${name} is started. Its first tasks are in Now.`;
+  const made = Number(r.tasks_made) || 0;
+  const why = [...new Set(skipped.map((x) => x.why))].slice(0, 2).join("; ");
+  return `${name} is started, but ${skipped.length} of its first ${made + skipped.length === 1 ? "task" : "tasks"} could not be made: ${why}. ${made ? "The others are in Now." : "Add the assistant in Settings, Assistants, and start again."}`;
+}

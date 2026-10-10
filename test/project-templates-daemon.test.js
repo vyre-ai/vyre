@@ -25,7 +25,7 @@ const TEMPLATE = {
   ],
 };
 
-async function boot(/** @type {any} */ t) {
+async function boot(/** @type {any} */ t, member = true) {
   const root = tempHome(t);
   const logs = /** @type {string[]} */ ([]);
   const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: presence });
@@ -38,6 +38,7 @@ async function boot(/** @type {any} */ t) {
   // the roster agent the template's role is filled by is a member of the Space
   await call("agents.create", { name: "research", kind: "agent", projects: [] });
   const actor = { kind: "agent", id: "research", space };
+  if (!member) return { d, space, owner, ownerChain, call, meta, host: d.registry.deps.flowsHost.get(space) };
   await d.kernel.gateway.grants.addActor(ownerChain, actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
   // and may do the tasks it is given
   const gi = { subject: { kind: "actor", actor }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
@@ -97,3 +98,22 @@ test("a template is a draft until its owner puts it live; test mode shows every 
 });
 
 function parseTags(/** @type {string} */ s) { try { return JSON.parse(s || "[]"); } catch { return []; } }
+
+test("a project started when its assistant is not in the space yet says which first tasks could not be made and why, instead of claiming its tasks exist", { timeout: 180_000 }, async t => {
+  const { call } = await boot(t, false);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const r = await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera" });
+  assert.equal(r.tasks_made, 0);
+  assert.deepEqual(r.tasks_skipped, [{ task: "Gather documents", why: "research is not in this space yet" }]);
+  assert.equal(r.slug, "rivera", "the project itself is made");
+});
+
+test("with its assistant in the space, the same start reports its first task as made", { timeout: 180_000 }, async t => {
+  const { call } = await boot(t, true);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const r = await call("work.start-project", { template: "tpl_estate-plan", name: "Okafor" });
+  assert.equal(r.tasks_made, 1);
+  assert.equal(r.tasks_skipped, undefined);
+});
