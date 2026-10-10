@@ -10,7 +10,7 @@ const idLike = (/** @type {unknown} */ v) => typeof v === "string" && /^spc_/i.t
 const nameable = (/** @type {unknown} */ v) => (typeof v === "string" && v.trim() && !idLike(v) ? v.trim().replace(/\.vyre\.run$/i, "") : "");
 
 /** @param {SpaceNameRow} s */
-export const isPersonal = (s) => s.who === "personal" || s.setup?.who === "personal" || s.setup?.picks?.who === "personal";
+export const isPersonal = (s) => s.label === "personal" || s.who === "personal" || s.setup?.who === "personal" || s.setup?.picks?.who === "personal";
 
 /** @param {SpaceNameRow} s @returns {string} */
 export function spaceName(s) {
