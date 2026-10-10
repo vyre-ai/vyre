@@ -10,9 +10,9 @@ const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = [
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
 export function register({ vault, tool }) {
-  tool("vault.link", [...PEOPLE, "mcp"], "Link a vault item to a client, matter or project by its address, so its uses show on that record. Grants nothing; no value moves.",
+  tool("vault.link", PEOPLE, "Link a vault item to a client, matter or project by its address, so its uses show on that record. Grants nothing; no value moves.",
     obj({ item: str, to: str }, ["item", "to"]), (input, { caller }) => vault.links.link(input, caller));
-  tool("vault.unlink", [...PEOPLE, "mcp"], "Take a vault item's link to a record away. The item and the record stay.",
+  tool("vault.unlink", PEOPLE, "Take a vault item's link to a record away. The item and the record stay.",
     obj({ item: str, to: str }, ["item", "to"]), (input, { caller }) => vault.links.unlink(input, caller));
   tool("vault.links", [...PEOPLE, "module", "mcp"], "The records a vault item is linked to, or the items linked to a record: names and addresses, never a value.",
     obj({ item: str, to: str }), input => vault.links.list(input));
