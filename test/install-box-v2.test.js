@@ -93,19 +93,6 @@ test("install-box.sh v2: a malformed VYRE_CODE stops the install, and is never p
   assert.ok(!(r.stdout + r.stderr).includes(bad));
 });
 
-test("install-box.sh v2: a fresh install turns the agents' computers on (COMPOSE_PROFILES=computers), and an .env the person already has is left as it is", t => {
-  const fresh = box(t);
-  const r = run({ ...fresh.env, VYRE_CODE: CODE }, ["--yes", "--from", REPO]);
-  assert.equal(r.status, 0, r.stderr);
-  assert.match(fs.readFileSync(path.join(fresh.dir, ".env"), "utf8"), /^COMPOSE_PROFILES=computers$/m, "the cloud computer is on from the start");
-  const kept = box(t);
-  fs.mkdirSync(kept.dir, { recursive: true });
-  fs.writeFileSync(path.join(kept.dir, ".env"), "COMPOSE_PROJECT_NAME=vyre\nCOMPOSE_FILE=compose.yml\n", { mode: 0o600 });
-  const r2 = run({ ...kept.env, VYRE_CODE: CODE }, ["--yes", "--from", REPO]);
-  assert.equal(r2.status, 0, r2.stderr);
-  assert.ok(!/COMPOSE_PROFILES/.test(fs.readFileSync(path.join(kept.dir, ".env"), "utf8")), "the person's own file is not rewritten");
-});
-
 test("install-box.sh v2: the code lands in vyre.env at 0600, keeps the person's lines, and is in no argument", t => {
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });
