@@ -27,6 +27,7 @@ import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
+import { createPruner, KEEP_DAYS } from "./prune.js";
 import { ridesOf, cardTitle } from "./rides.js";
 import { redact as redactText } from "../../lib/credential-shapes.js";
 import { healthOf, connectorsOf } from "./health.js";
@@ -151,6 +152,8 @@ export class FlowRunner {
     /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
     /** @type {Map<string, { key: string, at: number, bad?: string }>} the last replay of a Flow's saved test cases, for the health line */ this.testMemo = new Map();
     /** The Space's holidays (setting flows.holidays), for schedules that keep business hours. @type {string[]} */ this.holidays = [];
+    /** Old finished runs shrink to one line (setting flows.runs_keep_days; kernel/flows/prune.js). */
+    this.keepMs = KEEP_DAYS * 86_400_000; this.pruneAt = -Infinity; this.pruner = createPruner({ store: this.store, now: () => this.now(), locked: (id, fn) => this.#locked(id, fn) });
     /** Parallel lanes and sub-flows: runs that start runs and wait for them (kernel/flows/joins.js). */
     this.joins = createJoins({
       store: this.store, now: () => this.now(), locked: (id, fn) => this.#locked(id, fn), detach: id => this.#detach(id), resumeLocked: (id, r) => this.#resumeLocked(id, r), retry: id => this.retry(id),
@@ -389,6 +392,7 @@ export class FlowRunner {
     set("stuck_ms", await pick("flows.stuck_minutes", 60_000, 1, 1440));
     set("stale_ms", await pick("flows.stale_days", 86_400_000, 1, 365));
     set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
+    { const keep = await pick("flows.runs_keep_days", 86_400_000, 1, 3650); if (keep !== undefined) this.keepMs = keep; }
     const cap = await pick("flows.retry_attempts", 1, 1, 8);
     if (cap !== undefined) this.retryCap = cap;
     try { this.holidays = holidaysFrom(await /** @type {any} */ (this.settingsFn)("flows.holidays")); } catch { /* keep the list it had */ }
@@ -624,6 +628,7 @@ export class FlowRunner {
    */
   async tick() {
     await this.#refreshSettings();
+    if (this.now() - this.pruneAt >= 3_600_000) { this.pruneAt = this.now(); await this.prune().catch(() => 0); }
     const now = this.now();
     const cat = await this.catalogFn();
     const work = [];
@@ -1316,7 +1321,11 @@ export class FlowRunner {
   // ------------------------------------------------------------------ authority
 
   /** The approved task of the earlier send a step rides (`with`), or nothing when that step asked nobody: then this step asks for itself. @param {any} ctx @param {any} s @returns {string | undefined} */
-  #rideOf(ctx, s) { const e = ctx.run.steps[`${s.with}?ask`]; return e && e.status === "done" && typeof e.task === "string" ? e.task : undefined; }
+  #rideOf(ctx, s) {
+    // A run that has read content from outside, or a Flow a model drafted, is asked about every send: what the later send says or goes to may come from that content, which the earlier yes never saw.
+    if (ctx.run.tainted || ctx.flow.authorship === "model") return undefined;
+    const e = ctx.run.steps[`${s.with}?ask`]; return e && e.status === "done" && typeof e.task === "string" ? e.task : undefined;
+  }
 
   /**
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
@@ -1908,6 +1917,8 @@ export class FlowRunner {
   async getRun(id) { return this.store.getRun(id); }
   /** @param {{ flow?: string, state?: string, limit?: number }} [f] */
   async listRuns(f) { return this.store.listRuns(f); }
+  /** Shrink the finished runs older than the Space's keep days to one line each; how many shrank. @returns {Promise<number>} */
+  async prune() { return this.pruner.sweep(this.keepMs); }
 }
 
 // ---------------------------------------------------------------------- helpers

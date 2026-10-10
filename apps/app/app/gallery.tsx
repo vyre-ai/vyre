@@ -54,9 +54,9 @@ function Sample({ name }: { name: string }) {
   if (name === "flow-parallel") {
     // A flow with a parallel (two lanes) and the step that follows it, in the shape kernel/flows/canvas.js graph() hands over.
     const n = (id: string, kind: string, label: string, lane: number, y: number, state?: NodeState) => ({ id, kind, label, lane, y, ...(state ? { state } : {}) });
-    const nodes = [n("t", "trigger", "When a client form arrives", 0, 0, "done"), n("p", "parallel", "Do these at the same time", 0, 1, "done"), n("a1", "branch", "Set the client up", 1, 2, "done"), n("a2", "create", "Create the matter", 1, 3, "running"),
-      n("b1", "subflow", "Send the welcome pack", 2, 4, "done"), n("j", "stage", "Move the matter to Intake", 0, 5), n("e", "call", "Tell the team", 0, 6)];
-    const edges: CanvasEdge[] = [{ from: "t", to: "p", kind: "next" }, { from: "p", to: "a1", kind: "lane" }, { from: "a1", to: "a2", kind: "next" }, { from: "p", to: "b1", kind: "lane" }, { from: "p", to: "j", kind: "next" }, { from: "j", to: "e", kind: "next" }];
+    const nodes = [n("t", "trigger", "When someone runs it", 0, 0, "done"), n("p", "parallel", "Do 2 things at the same time, then carry on", 0, 1, "done"), n("a1", "branch", "review", 1, 2, "done"), n("a2", "assign", "Give a task to a person", 1, 3, "waiting"),
+      n("b1", "branch", "draft", 2, 4, "done"), n("b2", "subflow", "Run the Flow inner_note", 2, 5, "running"), n("j", "create", "Create a filing note", 0, 6)];
+    const edges: CanvasEdge[] = [{ from: "t", to: "p", kind: "next" }, { from: "p", to: "a1", kind: "lane" }, { from: "a1", to: "a2", kind: "next" }, { from: "p", to: "b1", kind: "lane" }, { from: "b1", to: "b2", kind: "next" }, { from: "p", to: "j", kind: "next" }];
     return <Card flush><FlowCanvas nodes={nodes} edges={edges} /></Card>;
   }
   if (name === "vault-emergency") {

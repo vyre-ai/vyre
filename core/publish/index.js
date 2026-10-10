@@ -107,7 +107,7 @@ export default {
       return { list: async (/** @type {string} */ source) => (ctx.kernel && ctx.kernel.mint ? ctx.kernel.mint.list({ source }) : []), make: (/** @type {any} */ i) => mint().make(i), end: (/** @type {any} */ q) => mint().end(q) };
     };
     /** @param {string} space */
-    const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space);
+    const storeFor = space => withSecretGrants(rawStoreFor(space), grantsFor(), space, () => (ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : undefined));
 
     // Records from before secrets were grants move now, once. If a move fails the record stays readable as it is (reads add the old list) and the next start tries again; Publish still starts.
     for (const { space } of /** @type {{ space: string }[]} */ (db.prepare("SELECT DISTINCT space FROM publish_deployments").all())) {

@@ -28,6 +28,12 @@ export function goodEngineer(task, ms) {
       { tool_calls: [call("flows.test.save", { flow: "flow_1", name: "new contact makes a call task" })] },
       { tool_calls: [call("flows.propose", { what: "flow", flow: "flow_1" })] }],
       `The Flow makes a call task for the paralegal when a contact is added; I simulated it and saved a test. ${WAIT}`);
+    case "lanes": return step(ms, [
+      { tool_calls: [call("flows.cheatsheet", {})] },
+      { tool_calls: [call("flows.define", { text: "when time cron '0 9 * * 1-5' hours=true holidays=space catch_up=skip\nparallel: branch fees: find matter where stage != 'closed' verify len(output.records) >= 0; branch call: assign paralegal 'Call the client' verify task exists\nsubflow follow_up_email input={client: trigger.client}" })] },
+      { tool_calls: [call("flows.simulate", { flow: "flow_1" })] },
+      { tool_calls: [call("flows.propose", { what: "flow", flow: "flow_1" })] }],
+      `The Flow runs the fee lookup and the call task at the same time on weekdays at 9, skips our holidays, and runs the follow-up email Flow after them; I simulated it first. ${WAIT}`);
     case "skill": return step(ms, [
       { tool_calls: [call("skills.find", { q: "engagement letter" })] },
       { tool_calls: [call("skills.draft", { name: "engagement-letter", level: "agent", agent: "drafting", body: FM })] }],
@@ -61,4 +67,10 @@ export const blindAgentChange = scripted("blind-agent", (task, ms) => {
 export const fakesScreen = scripted("fakes-screen", (task, ms) => {
   if (task !== "screen") return goodEngineer(task, ms);
   return step(ms, [{ tool_calls: [call("views.define", { type: "matter", columns: ["stage", "fee"] })] }], "The Matters list is fixed: it now shows stage and fee.");
+});
+
+/** Writes one plain list of steps (no lanes, no sub-flow, no schedule words) and asks without simulating. */
+export const flatNoSimulation = scripted("flat-no-simulation", (task, ms) => {
+  if (task !== "lanes") return goodEngineer(task, ms);
+  return step(ms, [{ tool_calls: [call("flows.define", { text: "when contact.created: find matter; task paralegal 'Call the client'; email follow up" })] }, { tool_calls: [call("flows.propose", { what: "flow", flow: "flow_1" })] }], `Proposed. ${WAIT}`);
 });

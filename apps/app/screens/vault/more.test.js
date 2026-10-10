@@ -149,7 +149,7 @@ test("history: versions with who and when, earlier passwords counted, never show
   const h = /** @type {any} */ (await s.history("Gmail"));
   assert.deepEqual(b.seen[0], { tool: "vault.history", input: { name: "Gmail" } });
   assert.equal(h.versions.length, 2);
-  assert.equal(versionLine(h.versions[0], NOW), "v2, Changed password, You, in a terminal, 4 Oct");
+  assert.equal(versionLine(h.versions[0], NOW), "v2, Changed password, You, on your computer, 4 Oct");
   assert.equal(versionLine(h.versions[1], NOW), "v1, Added, You, 26 Sep");
   assert.deepEqual({ count: h.earlier.count, last: h.earlier.last }, { count: 2, last: NOW - 5 * 86400_000 });
   assert.equal(await vaultMoreSource(box({ error: { "vault.history": { code: "no_such_tool", message: "x" } } }).call).history("Gmail"), null);

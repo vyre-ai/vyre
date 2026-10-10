@@ -128,7 +128,7 @@ the deprecation rules (section 8). `x-` keys are free.
 |---|---|---|---|
 | `anyone` (default for built in string entries) | yes | yes | a built in module: yes. An added module: only when the tool declared `anyone` or `asked` explicitly and it's listed in its `needs.tools`. |
 | `asked` | yes | only when the person's own turn asked for it (P17 provenance), never on its own initiative | no |
-| `person` | yes | no, and the agent is told to ask the person | no |
+| `person` | yes | the person's own assistant, per the 4 Oct 2026 ruling (an assistant can do what its person can): open for the tools on OPEN, after a yes for ASK_FIRST, and no for the tools on PERSON_ONLY (core/modules/agent-reach.js, one written reason each); never a named agent, a guest or another module. The golden allow file lists what runs; test/reach-person-split.test.js keeps the manifests and the lists in step | no |
 | `modules` | no (hidden) | no (hidden) | built in modules only |
 | `hook` | webhook route only | no | no |
 

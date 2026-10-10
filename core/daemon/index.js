@@ -1695,7 +1695,7 @@ function relaySources(cfg) {
 /** What every Deck file goes out with. @param {any} cfg */
 function deckHeaders(cfg) {
   return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
-    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
+    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
 }
 
 /** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */

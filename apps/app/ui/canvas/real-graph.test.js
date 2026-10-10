@@ -22,7 +22,7 @@ test("the kernel's parallel Flow lays out with its lanes level and the step afte
   const at = Object.fromEntries(r.nodes.map((n) => [n.id, [n.lane, n.y]]));
   assert.equal(at.left[1], at.right[1], "the two lanes start on the same row");
   assert.notEqual(at.left[0], at.right[0], "in different columns");
-  assert.ok(at.after[1] > Math.max(at.a2[1], at.m[1]), "the join is below the longest lane");
-  assert.deepEqual(r.joins, ["after"]);
+    assert.deepEqual(r.joins, ["p:join"]);
   assert.deepEqual(r.edges.filter((e) => e.kind === "join").map((e) => e.from).sort(), ["a2", "m"]);
+  assert.ok(at["p:join"][1] > Math.max(at.a2[1], at.m[1]) && at.after[1] > at["p:join"][1], "the join sits under the lanes and the step after under the join");
 });
