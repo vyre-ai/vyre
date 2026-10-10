@@ -6,6 +6,7 @@ import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, show
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { useRouter } from "expo-router";
+import { InstalledKits, AvailableKits } from "./KitsLists";
 import { addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
 import { kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
 
@@ -42,26 +43,12 @@ export function RealKits() {
         {rows === null && !err ? <LoadingState rows={3} /> : null}
         {rows && !shown.length ? <Card><EmptyState title="No Kits installed" body={offer.length ? "Pick one below to read what it adds. Removing one later takes its definitions away and never your records." : "A Kit proposed to this space waits for your yes in Now. Removing one later takes its definitions away and never your records."} /></Card> : null}
         {shown.length ? (
-          <Card flush>
-            {shown.map((k, i) => (
-              <View key={k.id}>{i ? <Divider /> : null}
-                <Row lead={<IconTile icon="box" />} title={kitName(k.id)} sub={kitLine(k)}
-                  end={k.status === "installed" ? <View className="flex-row items-center gap-s2">{newer[k.id] ? <Button kind="primary" size="sm" label={`Update to v${newer[k.id]}`} onPress={() => router.push(`/u/kits/${k.id}` as never)} /> : null}<Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => remove(k)} /></View> : <Chip>{statusWord(k.status)}</Chip>} />
-              </View>
-            ))}
-          </Card>
+          <InstalledKits shown={shown} newer={newer} busy={busy} onUpdate={(k) => router.push(`/u/kits/${k.id}` as never)} onRemove={remove} />
         ) : null}
       </Sec>
       {offer.length ? (
         <Sec title="Available">
-          <Card flush>
-            {offer.map((k, i) => (
-              <View key={k.id}>{i ? <Divider /> : null}
-                <Row lead={<IconTile icon="box" />} title={k.name ?? kitName(k.id)} sub={[k.description, addsLine(k)].filter(Boolean).join(" · ")}
-                  end={<Button size="sm" kind="primary" label={loadingCard === k.id ? "Reading" : "Read the card"} onPress={loadingCard ? () => {} : () => read(k)} />} />
-              </View>
-            ))}
-          </Card>
+          <AvailableKits offer={offer} loadingCard={loadingCard} onRead={read} />
         </Sec>
       ) : null}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open ? `Install ${open.name}` : ""}>
