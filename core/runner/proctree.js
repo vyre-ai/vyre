@@ -71,7 +71,9 @@ export function killTree(root, o = {}) {
   }
   for (const pid of seen) { try { kill(pid, "SIGKILL"); } catch { /* gone */ } }
   return seen.size;
+}
 
+/**
  * The pids listening on a loopback TCP port now (macOS: lsof). Empty when nothing listens or lsof cannot be run, so a caller that needs "the session's own" never says yes on a failure.
  * @param {number} port @param {{ lsof?: (port: number) => string }} [o] @returns {number[]}
  */

@@ -10,7 +10,7 @@ import { lentOrBox } from "./lent-spawn.js";
 import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
-import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
+import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
 
 /** A ChildProcess-shaped stand-in that records what it was written. */
@@ -91,7 +91,7 @@ test("only a chat the home's book places on a computer gets a lent spawn; a new 
   const calls = /** @type {any[]} */ ([]);
   const row = { where: "mac", session: "ses_native", chat: "chat_1", person: "per_bob" };
   const kernel = (/** @type {any} */ rows) => ({ runnerHost: () => ({ lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { calls.push({ space, ...i }); return {}; }, placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null } }) });
-  const q = { thread: "thr_1", chat: "chat_1", native: "ses_native" };
+  const q = { thread: "thr_1", chat: "chat_1", native: "ses_native", asker: "per_bob" };
   assert.equal(await lentSpawnFor(kernel({}), q), null, "no row: the server's");
   assert.equal(await lentSpawnFor(kernel({ chat_1: { ...row, where: "server" } }), q), null, "a row that says server");
   assert.equal(await lentSpawnFor(null, q), null, "no kernel");
@@ -178,12 +178,27 @@ test("a new chat of the home's owner is placed once at creation: a ready compute
   const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true };
   assert.equal(await lentSpawnFor(make({ where: "box" }), q), null, "none ready: the box");
   assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "thr_9", "chat_9", "per_owner"]]);
-  assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, asker: "per_member" }), null, "another person's chat is not placed on the owner's computer");
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, fresh: false }), null, "a chat that already ran is not placed now");
   assert.equal(placed.length, 1);
   const fn = await lentSpawnFor(make({ where: "mac" }), q);
   assert.ok(fn, "a ready computer: the row is written and the process is lent");
   assert.equal(placed.length, 2);
+  // a member starts a chat of their own: it is placed for THEM (their own computer), never on the owner's
+  const mfn = await lentSpawnFor(make({ where: "mac" }), { ...q, thread: "thr_m", chat: "chat_m", native: "ses_m", asker: "per_member" });
+  assert.ok(mfn, "a member's new chat is placed on the member's own computer");
+  assert.deepEqual([placed[2].person, placed[2].chat], ["per_member", "chat_m"]);
+});
+
+test("a turn runs on its own person's computer only: another member's turn in a chat placed on someone's computer runs on the box, and a turn with no person is the owner's", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const rows = /** @type {Record<string, any>} */ ({ chat_a: { where: "mac", session: "ses_a", chat: "chat_a", person: "per_alice" } });
+  const kernel = { owner: "per_alice", id: { space: "spc_a", owner: "per_alice" }, runnerHost: () => ({ lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { calls.push({ space, ...i }); return {}; }, placements: { spaces: () => ["spc_a"], find: (/** @type {string} */ _s, /** @type {string} */ id) => rows[id] || null } }) };
+  const q = { thread: "thr_a", chat: "chat_a", native: "ses_a" };
+  assert.equal(await lentSpawnFor(kernel, { ...q, asker: "per_bob" }), null, "Bob's turn in Alice's chat never runs on Alice's computer");
+  assert.equal(calls.length, 0);
+  assert.ok(await lentSpawnFor(kernel, { ...q, asker: "per_alice" }), "Alice's own turn does");
+  assert.ok(await lentSpawnFor(kernel, q), "a turn with no person on its chain is the home's terminal, the owner's");
+  assert.equal(await lentSpawnFor({ ...kernel, owner: "per_bob", id: { space: "spc_a", owner: "per_bob" } }, q), null, "and on a home whose owner is someone else it is not Alice's");
 });
 
 test("the lent process says it is starting on its computer from the first moment, and the SDK's object passes it on", async () => {
@@ -249,4 +264,28 @@ test("the switchboard's onExit sends a chat whose process ended because it moved
   sb.live.set("t", st2);
   Switchboard.prototype.onExit.call(sb, "t", st2, 0, null, "");
   assert.deepEqual(calls, [], "an ordinary exit starts nothing");
+});
+
+test("on the real home: a member's computer runs only that member's own turns: Carol's turn in Bob's chat runs on the box, Bob's own turn runs on Bob's computer, and a chat Carol starts is never placed on Bob's computer (the product ruling of 10 Oct)", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const calls = /** @type {any[]} */ ([]);
+  const kernel = { owner: OWNER, id: { space: SPACE, owner: OWNER }, runnerHost: () => ({ space: SPACE,
+    lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => { calls.push(i.person); return r.home.spawn(i); },
+    placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => r.home.placeNew(i),
+    placements: { spaces: () => [SPACE], find: (/** @type {string} */ _s, /** @type {string} */ id) => r.home.book.get(id) || null } }) };
+  // Bob starts a chat: it is placed on Bob's ready computer, and the book says it is Bob's
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION, fresh: true };
+  const mine = await lentSpawnFor(kernel, { ...q, asker: BOB });
+  assert.ok(mine, "Bob's new chat is lent to Bob's computer");
+  assert.equal(r.home.book.get(SESSION)?.person, BOB);
+  // Carol's turn in Bob's chat never runs on Bob's computer, whatever the row says
+  assert.equal(await lentSpawnFor(kernel, { ...q, fresh: false, asker: CAROL }), null, "Carol's turn in Bob's chat runs on the box");
+  assert.equal(await lentSpawnFor(kernel, { ...q, fresh: false, asker: BOB }) !== null, true, "Bob's own turn still runs on his computer");
+  // a chat Carol starts is hers: she has no computer ready, so it is the box's; it is never put on Bob's
+  const carol = await lentSpawnFor(kernel, { thread: "ses_00000000000000000000000000000002", chat: "chat_carol", native: "ses_00000000000000000000000000000002", fresh: true, asker: CAROL });
+  assert.equal(carol, null, "Carol's new chat is not placed on Bob's computer");
+  assert.equal(r.home.book.get("ses_00000000000000000000000000000002"), null, "no row for it anywhere");
 });

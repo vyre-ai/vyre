@@ -69,6 +69,7 @@ test("killTree never signals pid 1 or this process: a wrong root ends nothing, a
   assert.equal(n, 2);
   assert.ok(sent.every(x => x[0] !== process.pid && x[0] !== 1), "neither was signalled");
   assert.deepEqual([...new Set(sent.map(x => x[0]))].sort(), [30, 31]);
+});
 
 test("a Mac preview reaches a loopback port only when every listener on it is the session's own process (row 27)", async () => {
   const { portIsSessions, listenersOf } = await import("./proctree.js");
