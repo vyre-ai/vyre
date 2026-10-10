@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { createCheckpointStore } from "./checkpoint-store.js";
 import { createResumeLent } from "./resume-lent.js";
+import { coverOf } from "./sync.js";
 
 const SPACE = "spc_harlow000001", LENT = "ses_lent0000001", NATIVE = "7c1f0a52-0000-4000-8000-000000000001";
 const chain = { space: SPACE, hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }], labels: { trust: "member", red: "internal", source_spaces: [SPACE] } };
@@ -72,4 +73,14 @@ test("the files the session changed are put in the chat's folder when absent or 
   assert.equal(fs.readFileSync(path.join(w.cwd, "clash.txt"), "utf8"), "the server's own", "never overwritten");
   assert.deepEqual([r.files, r.conflicts], [1, ["clash.txt"]]);
   assert.ok(!fs.existsSync(path.join(path.dirname(w.cwd), "escape.txt")), "a path that climbs out of the folder is ignored");
+});
+
+test("a checkpoint whose cover does not match the transcript the home holds is not carried on (trust row 21); one that matches is", async t => {
+  const w = await world(t, { whole: 3, extra: 0 });
+  const view = (/** @type {any} */ cover) => ({ checkpoint: async () => ({ turn: 1, seq: 3, manifest: {}, state: { cover } }), transcript: async (/** @type {number} */ f, /** @type {number} */ l) => [1, 2, 3].slice(f - 1, f - 1 + l).map(n => ({ seq: n, line: line(n) })), file: async () => null });
+  const entries = [1, 2, 3].map(n => ({ seq: n, line: line(n) }));
+  const good = coverOf({}, entries, 3, 1);
+  await assert.rejects(() => w.go({ view: view({ ...good, transcript: "0".repeat(64) }) }), (/** @type {any} */ e) => e.code === "unavailable" && /does not match/.test(e.message));
+  assert.ok(!fs.existsSync(w.file), "nothing was written");
+  assert.equal((await w.go({ view: view(good) })).resumed, true);
 });

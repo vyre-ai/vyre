@@ -128,6 +128,32 @@ test("lent-spawn v1.3: a tool call that outlasts one wire call is kept at the ho
   assert.deepEqual([a.status, a.body], [F.httpAnswer.status, F.httpAnswer.body]);
 });
 
+test("trust rows 18 and 19: one session's unfinished uploads never push out another's, and a body limit counts bytes", { timeout: 60_000 }, async t => {
+  keepAlive(t);
+  const r = await rig(t, { http: async () => F.httpAnswer });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: "s_up_a" }); await c.spec({ session: "s_up_b" });
+  const first = (/** @type {string} */ session, /** @type {string} */ up, /** @type {number} */ epoch) => r.home.putFile(r.bob, session, `f-${up}.txt`, { upload: up, index: 0, total: 2, b64: Buffer.from("x").toString("base64"), epoch });
+  const ea = r.home.book.get("s_up_a").epoch, eb = r.home.book.get("s_up_b").epoch;
+  await first("s_up_b", "uploadbbb1", eb);
+  for (let k = 1; k <= 8; k++) await first("s_up_a", `uploadaaa${k}`, ea);
+  await assert.rejects(first("s_up_a", "uploadaaa9", ea), (/** @type {any} */ e) => e.code === "quota", "A's ninth unfinished upload is refused");
+  const done = await r.home.putFile(r.bob, "s_up_b", "f-uploadbbb1.txt", { upload: "uploadbbb1", index: 1, total: 2, b64: Buffer.from("y").toString("base64"), epoch: eb });
+  assert.ok(done && !done.pending, "B's upload survived A's eight and finishes");
+  // a body is measured in bytes: 100,000 three-byte characters are 300 KB
+  await assert.rejects(c.http({ session: "s_up_a", method: "POST", path: "/v1/tools/x", body: JSON.stringify({ t: "€".repeat(100_000) }) }), (/** @type {any} */ e) => e.code === "bad_input" || e.code === "too_large");
+});
+
+test("trust row 20: a lent call is the session's own whichever caller label the lender picks, so a person's act is refused or only filed, never run", { timeout: 60_000 }, async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const seen = [];
+  const r = await rig(t, { http: async (/** @type {string} */ _t, /** @type {string} */ _m, /** @type {string} */ p, /** @type {any} */ headers) => { seen.push([p, headers["x-vyre-caller"]]); return F.httpAnswer; } });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: SESSION });
+  for (const caller of ["mcp", "harness", "person", "cli", "deck", "module:x", "mcp:agent:kit"]) await c.http({ session: SESSION, method: "POST", path: "/v1/tools/vault.grant", body: "{}", caller });
+  assert.deepEqual([...new Set(seen.map(x => x[1]))].sort(), ["harness", "mcp"], "whatever the lender says, the home hears a model's label: one of the two the session socket knows");
+});
+
 test("lent-spawn v1: a session lent with no pipe open answers idle; a limit broken is bad_input; an old epoch is conflict", { timeout: 60_000 }, async t => {
   keepAlive(t);
   const r = await rig(t);

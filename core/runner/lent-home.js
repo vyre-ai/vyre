@@ -37,7 +37,8 @@ export const BEAT_MAX = 100;
 /** A file is at most 100 MB (the checkpoint's own cap) in chunks of CHUNK_BYTES: an upload that says it has more chunks than that is refused before anything is written. */
 const MAX_CHUNKS = Math.ceil(100 * 1024 * 1024 / CHUNK_BYTES) + 2;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
-const MAX_UPLOADS = 8;
+/** Unfinished uploads one session of one computer may hold; and the most the home keeps across everyone. */
+const MAX_UPLOADS = 8, MAX_UPLOADS_ALL = 256;
 /** A computer that beat this lately, and said it was well, is one a chat may be started on (three heartbeats). */
 const LENDER_FRESH_MS = 15_000;
 /** A place kept for a chat moved from the server waits for its next turn this long. */
@@ -202,7 +203,7 @@ export function createLentHome(o) {
     transcript: (/** @type {number} */ from, /** @type {number} */ limit) => store.getTranscript(HOME, session, from, limit),
     file: (/** @type {string} */ rel, /** @type {number} */ version) => store.getFile(HOME, session, rel, version),
   });
-  const sweep = () => { while (uploads.size > MAX_UPLOADS) { const k = uploads.keys().next().value; const u = uploads.get(k); uploads.delete(k); try { fs.rmSync(u.dir, { recursive: true, force: true }); } catch {} } };
+  const sweep = () => { while (uploads.size > MAX_UPLOADS_ALL) { const k = uploads.keys().next().value; const u = uploads.get(k); uploads.delete(k); try { fs.rmSync(u.dir, { recursive: true, force: true }); } catch {} } };
 
   return {
     store,
@@ -444,7 +445,7 @@ export function createLentHome(o) {
       // a tool call (POST /v1/tools/<name>) or the list of tools the session may use (GET /v1/tools): nothing else of vyred is reachable from a lent computer
       if (method === "GET" ? p !== "/v1/tools" : !/^\/v1\/tools\/[A-Za-z0-9._%-]{1,140}$/.test(p)) throw err("bad_input", "a lent computer asks for a tool: POST /v1/tools/<name>, or GET /v1/tools");
       const body = method === "GET" ? "" : typeof i.body === "string" ? i.body : "{}";
-      if (body.length > 128 * 1024) throw err("bad_input", "that request is too large");
+      if (Buffer.byteLength(body) > 128 * 1024) throw err("bad_input", "that request is too large");   // bytes, not characters (a multibyte body reaches four times the length)
       if ([...calls.values()].filter(c => c.session === session).length >= MAX_PENDING) throw err("unavailable", "this chat already has several tool calls running; wait for one to finish");
       const run = Promise.resolve(o.http(threads.get(session) || lent.get(session)?.chat || session, method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body)).then(r => ({ r }), e => ({ e }));
       const ticket = newPrefixedId("call"), c = { session, p: run, at: now0 };
@@ -469,6 +470,7 @@ export function createLentHome(o) {
       if (bytes.length > CHUNK_BYTES) throw err("too_large", "that chunk is too large");
       const key = `${w2(chain)}|${s}|${c.upload}`;
       let u = uploads.get(key);
+      if (!u && [...uploads.keys()].filter(k => k.startsWith(`${w2(chain)}|${s}|`)).length >= MAX_UPLOADS) throw err("quota", "this session already has the most unfinished uploads it may have: finish one first");   // a session's own cap, so one computer's uploads never push out another's
       if (!u) { const dir = path.join(o.root, ".uploads", crypto.randomBytes(8).toString("hex")); fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); u = { dir, total: c.total, next: 0 }; uploads.set(key, u); sweep(); }
       if (c.index !== u.next || c.total !== u.total) throw err("gap", "a chunk is missing or repeated");
       fs.appendFileSync(path.join(u.dir, "data"), bytes, { mode: 0o600 }); u.next++;

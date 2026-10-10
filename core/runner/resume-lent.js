@@ -15,6 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { createTurnSeal } from "./ownserver.js";
+import { coverOf } from "./sync.js";
 
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const PAGE = 2000;
@@ -41,6 +42,13 @@ export function createResumeLent(o) {
       from += page.length;
     }
     if (lines.length !== cp.seq) throw err("unavailable", `the lender's transcript holds ${lines.length} lines and its checkpoint says ${cp.seq}`);
+    // the checkpoint covers THIS transcript and THIS manifest (the hashes the runner sealed into it): a history that was changed after the checkpoint, or a manifest swapped, is not carried on (trust row 21; the seal itself
+    // is the lender's, which the home cannot verify: the person's own computer is trusted with their chat by the lend, and what comes back is untrusted history either way, row 22)
+    const want = cp.state && cp.state.cover;
+    if (want) {
+      const got = coverOf(cp.manifest || {}, lines.map((line, k) => ({ seq: k + 1, line })), cp.seq, cp.turn);
+      if (want.transcript !== got.transcript || want.manifest !== got.manifest || want.seq !== cp.seq || want.turn !== cp.turn) throw err("unavailable", "the lender's checkpoint does not match its transcript: it is not carried on");
+    }
     // the provider's own file, whole: a temp file in the same folder, fsynced, renamed in
     fsx.mkdirSync(path.dirname(tg.file), { recursive: true, mode: 0o700 });
     // the real paths (a temp folder on a Mac is behind a link): the seal pins the file to its folder by them

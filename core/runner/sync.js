@@ -231,6 +231,9 @@ export async function restore(o) {
     const root = roots.find(r => remote.startsWith(r.remote + "/"));
     if (!root || m.hash === "deleted") continue;
     let rel; try { rel = parts(remote.slice(root.remote.length + 1)).join("/"); } catch { continue; }
+    // What comes back from another computer is an ALLOWLIST: the work files, and the provider's transcripts (projects/<folder>/<session>.jsonl). Nothing else of that computer's agent home: a settings file, a hook, an MCP
+    // server list or an instructions file written there would run on the next computer, or the box, with this session's authority (trust row 17).
+    if (root.dir !== "files" && !(root.dir === "home/.claude" && /^projects\/[^/]+\/[A-Za-z0-9_-]{1,100}\.jsonl$/.test(rel))) { refused++; continue; }
     // A link planted in the workspace refuses that one file (and is counted), it never redirects the write.
     try { writeInside(o.work, `${root.dir}/${rel}`, Buffer.from(await o.space.getFile(o.session, remote, m.version))); } catch (e) { if (!/unsafe_path|EEXIST|ENOTDIR|ELOOP/.test(String(e.code))) throw refusal(e); refused++; }
   }

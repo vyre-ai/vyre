@@ -178,6 +178,13 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   // and what the session may not do on the box, it may not do from the Mac
   const reveal = await viaLender("vault.reveal", { name: "x" });
   assert.equal(reveal.error && reveal.error.code, "denied");
+  // trust row 20: the lender picks the caller label at its door; either label a model session can carry is a model at the home, so a person's act is refused or only filed, never run
+  for (const label of ["mcp", "harness"]) {
+    for (const [tool, input] of [["vault.grant", { name: "x", module: "y" }], ["vault.pass.accept", { pass: "x" }], ["comms.send", { via: "email", to: "a@example.com", subject: "s", body: "b" }]]) {
+      const r = JSON.parse(/** @type {any} */ (await lentRequest("s_real", "POST", `/v1/tools/${tool}`, { "x-vyre-caller": label }, JSON.stringify(input))).body);
+      assert.ok(r.error || (r.data && (r.data.pending || r.data.filed)), `${tool} as ${label}: refused or only filed, not run: ${JSON.stringify(r).slice(0, 200)}`);
+    }
+  }
   // a send is held for the person exactly as it is on the box: nothing is sent from the Mac either, and what the model is told is the same
   const sendArgs = { via: "email", to: "a@example.com", subject: "hi", body: "hello" };
   const sentFromMac = await viaLender("comms.send", sendArgs), sentOnBox = await onBox("comms.send", sendArgs);
