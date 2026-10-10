@@ -70,5 +70,7 @@ test("the Vault can ask which Flows name a credential and read every stored defi
   const scan = await call("flows.definitions.scan", {}, "module:vault");
   assert.equal(scan.data.definitions.length, 1);
   assert.match(scan.data.definitions[0].json, /vault:\/\/deepgram/);
-  assert.ok((await call("flows.credential-uses", { name: "deepgram" }, "cli")).error, "a person's surface is not a module: refused");
+  for (const caller of ["cli", "mcp", "deck", "module:work", "module:flows"]) {
+    for (const tool of ["flows.credential-uses", "flows.definitions.scan"]) assert.ok((await call(tool, { name: "deepgram" }, caller)).error, `${tool} for ${caller}: only the vault asks`);
+  }
 });
