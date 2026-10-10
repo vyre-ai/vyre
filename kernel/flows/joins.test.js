@@ -3,6 +3,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX, BOB } from "./testing/world.js";
+import { SPACE } from "./testing/fixtures.js";
 import { checkFlow } from "./schema.js";
 import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
@@ -181,6 +182,38 @@ test("parallel: a run may start only so many lanes in all, so a loop of parallel
   assert.equal(run.state, "failed");
   assert.equal(run.error.code, "too_many_runs");
   assert.equal((await kids(w, id)).length, 4, "two turns of two lanes started before the third was refused");
+});
+
+test("parallel: what a lane read from outside taints the run, so the step after the join asks before it sends", async () => {
+  const one = async (readsOutside) => {
+    const sends = [];
+    const service = async () => ({ status: 200, ok: true, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ name: "Rivera" })).toString("base64") });
+    const w = await world({ ports: { service, call: async (_c, _a, _r, input) => { sends.push(input); return { sent: true }; } } });
+    w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
+    w.kernel.rules.push({ match: i => i.action === "email.send" && !i.approval, effect: "allow", reason: "a standing yes" });
+    const { id } = await install(w, flowOf([
+      { id: "p", kind: "parallel", steps: [
+        lane("read", readsOutside ? [{ id: "g", kind: "service", connector: "practice", method: "GET", path: "/matters/42" }] : [{ id: "q", kind: "create", type: "matter", set: { client: "Quiet" } }]),
+        lane("other", [{ id: "m", kind: "create", type: "matter", set: { client: "Other" } }]),
+      ] },
+      { id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com", body: "hi" } },
+    ]));
+    w.kernel.inbound("payment.received", {});
+    await settle(w);
+    const [run] = await roots(w, id);
+    return { w, run, sends };
+  };
+  const quiet = await one(false);
+  assert.equal(quiet.run.state, "done", JSON.stringify(quiet.run.error));
+  assert.equal(quiet.sends.length, 1, "lanes that read nothing from outside leave the send alone");
+  const outside = await one(true);
+  assert.equal(outside.run.tainted, true, "the run took the lane's taint at the join");
+  assert.equal(outside.sends.length, 0, "the send is held");
+  const card = outside.w.kernel.tasks.find(t => t.form && t.form.kind === "held_act");
+  assert.match(card.form.why, /outside this Space/);
+  outside.w.kernel.completeTask(card.id, { outcome: "approved" });
+  await settle(outside.w);
+  assert.equal(outside.sends.length, 1, "and goes once a person says yes");
 });
 
 test("parallel: a practice run counts what every lane would do", async () => {
