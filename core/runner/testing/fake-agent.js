@@ -12,6 +12,8 @@ if (process.env.VYRE_RESUME_TURN) {
   let notes = ""; try { notes = fs.readFileSync(path.join(process.cwd(), "notes.txt"), "utf8"); } catch {}
   out({ type: "resumed", turn: Number(process.env.VYRE_RESUME_TURN), files, notes });
 }
+// VYRE_AUTO_TURN_MS: a turn on its own every so many milliseconds, for tests that run a session without anyone typing to it (the chaos suite, scripts/runner-chaos.mjs)
+if (process.env.VYRE_AUTO_TURN_MS) { let n = 0; const every = Number(process.env.VYRE_AUTO_TURN_MS); setInterval(() => { handle("turn auto" + (++n)).catch(() => {}); }, every); }
 let buf = "";
 process.stdin.on("data", d => {
   buf += d; let i;

@@ -8,7 +8,7 @@ import path from "node:path";
 import { start } from "../../core/daemon/index.js";
 import { fromAsks, fromHeld, fromVault, fromAttention, fromStuckTasks, fromHealth, fromEvals, ITEM_KINDS } from "../../core/approvals/items.js";
 import { tempHome, present, asOwner } from "../helpers.js";
-import { owners as O, cards as C, pendingCard, itemsAnswer, kinds, shapeDiff } from "./approvals.fixtures.js";
+import { owners as O, cards as C, pendingCard, itemsAnswer, itemPresence, kinds, shapeDiff } from "./approvals.fixtures.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -48,9 +48,11 @@ test("approvals v1: the queue on a real daemon lists a yes waiting on the phone 
   const asked = await call("approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: { name: "stripe" } } });
   assert.match(asked.data.id, /^ap_/);
   const items = await call("approvals.items", {});
-  assert.equal(shapeDiff(items.data, { items: [C.approval], recent: [] }), "", JSON.stringify(items));
+  assert.equal(shapeDiff(items.data, { items: [{ ...C.approval, presence: itemPresence }], recent: [] }), "", JSON.stringify(items));
   assert.equal(items.data.items[0].id, asked.data.id);
   assert.deepEqual(items.data.items[0].answer, { tool: "approvals.answer", input: { id: asked.data.id }, fill: ["yes"] });
+  // what answering takes from this caller's device: a yes needs a proof, and this terminal has no live presence session
+  assert.deepEqual(items.data.items[0].presence, { required: true, covered: false, since: null });
   assert.ok(items.data.items.every((/** @type {any} */ c) => kinds.includes(c.kind)));
   assert.deepEqual(Object.keys(itemsAnswer).sort(), ["items", "recent"]);
 
@@ -66,6 +68,7 @@ test("approvals v1: the queue on a real daemon lists a yes waiting on the phone 
   const hold = again.data.items.find((/** @type {any} */ c) => c.id === held.error.approval);
   assert.equal(hold.title, "An assistant (kit) wants to run mail.send");
   assert.ok(!JSON.stringify(hold).includes("the words of the message"));
+  assert.deepEqual(hold.presence, { required: true, covered: false, since: null }, "an outward call from an assistant is answered with a yes");
   assert.ok((await call("approvals.items", {}, "mcp")).error, "a model does not list a person's waiting cards");
 
   await new Promise(r => setTimeout(r, 400));

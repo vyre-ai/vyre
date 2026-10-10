@@ -4,6 +4,7 @@ import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
@@ -317,7 +318,13 @@ test("R-14: too many files or bytes refuses the checkpoint, and a slow reader is
   const small = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { maxTotal: 5000 } });
   assert.deepEqual(await small({ roots, have: {} }, async () => {}), { truncated: true });
   const slow = sandboxReader({ platform: process.platform, space: "harlow", work, base: a, limits: { deadlineMs: 1 } });
-  await assert.rejects(() => slow({ roots, have: {} }, async () => {}), /too long/);
+  for (let i = 0; i < 12; i++) await assert.rejects(() => slow({ roots, have: {} }, async () => {}), /too long/);   // the leak was a race: kill it at its first instant, many times
+  // a reader killed the instant it started leaves nothing behind: the sandbox's second process used to outlive the first and hold the test (and a runner) open
+  if (process.platform === "linux") {
+    const left = () => execFileSync("ps", ["-axo", "pid=,args="], { encoding: "utf8" }).split("\n").filter(l => l.includes(a));
+    for (let i = 0; i < 60 && left().length; i++) await new Promise(r => setTimeout(r, 50));
+    assert.deepEqual(left(), [], "no process of the killed reader is left running");
+  }
   const ok = sandboxReader({ platform: process.platform, space: "harlow", work, base: a });
   let n = 0; assert.deepEqual(await ok({ roots, have: {} }, async () => { n++; }), { truncated: false }); assert.equal(n, 30);
   // a checkpoint over the limits is refused, not recorded with files missing

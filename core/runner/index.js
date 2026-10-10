@@ -108,7 +108,7 @@ export default {
       let r = runners.get(space);
       if (!r) {
         r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
-          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), onEvent: e => emit(space, e) });
+          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), ...(seam.now ? { now: seam.now } : {}), ...(seam.state ? { state: seam.state } : {}), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
       return r;
@@ -297,7 +297,7 @@ export default {
     const moveTick = () => {
       /** @type {any[]} */ const rows = [];
       for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x });
-      for (const d of mover.tick({ settings: limits, sleeping, onPower: deviceState().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
+      for (const d of mover.tick({ settings: limits, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
     };
     // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts; when it wakes, check in at once.
     const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); moveTick(); });
@@ -310,7 +310,7 @@ export default {
       try {
         await refreshSettings().catch(() => {});
         moveTick();
-        const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: deviceState(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
+        const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: (seam.state || deviceState)(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
         for (const [space, l] of lenders) {
           const p = l.ports; if (typeof p.beat !== "function") continue;
           const r = runners.get(space);
@@ -340,7 +340,7 @@ export default {
         }
       } finally { beating = false; }
     };
-    if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, HEARTBEAT_MS); beatTimer.unref?.(); }
+    if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, seam.heartbeatMs || HEARTBEAT_MS); beatTimer.unref?.(); }
     return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

@@ -12,7 +12,9 @@
 // It exits once the workspace is no longer mounted. It never reports locked: the runner verifies with isMounted.
 
 import fs from "node:fs";
+import path from "node:path";
 import { driverFor } from "./workspace.js";
+import { endOrphans } from "./orphans.js";
 
 const POLL_MS = 3000;
 
@@ -20,7 +22,7 @@ const POLL_MS = 3000;
 const alive = pid => { try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; } };
 
 /**
- * @param {{ driver: any, dir: string, pid: number, deadlineFile: string, gen?: string, now?: () => number, pollMs?: number, isAlive?: (pid: number) => boolean }} o
+ * @param {{ driver: any, dir: string, pid: number, deadlineFile: string, gen?: string, now?: () => number, pollMs?: number, isAlive?: (pid: number) => boolean, endOrphans?: (base: string, only: string) => number }} o
  * @returns {Promise<"unmounted"|"gone"|"superseded">}
  */
 export async function watch(o) {
@@ -31,6 +33,8 @@ export async function watch(o) {
     try { const j = JSON.parse(fs.readFileSync(o.deadlineFile, "utf8")); deadline = Number(j.at); gen = String(j.gen ?? ""); } catch { deadline = 0; }
     if (o.gen !== undefined && gen && gen !== o.gen) return "superseded";
     if (!up(o.pid) || now() >= deadline) {
+      // A runner that is gone leaves its sessions running where the sandbox does not die with it (macOS): end this Space's before closing what they work in. A deadline passed with the runner alive is the runner's to handle.
+      if (!up(o.pid)) { try { (o.endOrphans || endOrphans)(path.resolve(o.dir, "..", ".."), path.basename(o.dir)); } catch { /* the workspace is closed all the same */ } }
       for (let i = 0; i < 20 && o.driver.isMounted(o.dir); i++) {
         try { await o.driver.unmount(o.dir); } catch {}
         if (o.driver.isMounted(o.dir)) await new Promise(r => setTimeout(r, Math.min(5000, 250 * (i + 1))));
