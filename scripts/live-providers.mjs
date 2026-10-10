@@ -23,7 +23,7 @@ const { present, asOwner } = await import("../test/helpers.js");
 fs.mkdirSync(home, { recursive: true });
 const work = fs.realpathSync(fs.mkdtempSync(`${home}-work-`));
 fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "live-providers", role: "box", sessions: { max_live: 0 }, vault: { keystore: "file", mcp: { port: 0 } }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects") }));
-const d = await start({ root: home, presence: present, log: process.env.LP_LOG ? (/** @type {any} */ m) => console.error("DLOG", String(m).slice(0, 300)) : () => {}, kernel: true });
+const d = await start({ root: home, presence: present, log: process.env.LP_LOG ? (/** @type {any} */ m) => console.error("DLOG", Date.now(), String(m).slice(0, 300)) : () => {}, kernel: true });
 asOwner(d, home);
 const call = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ caller = "cli") => d.registry.call(tool, input, caller);
 const must = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await call(tool, input); if (r.error) throw new Error(`${tool}: ${r.error.code} ${r.error.message}`); return r.data; };
@@ -277,6 +277,23 @@ const checks = {
     }
     say("vendor-native-instructions", p, ok === n, `${ok} of ${n} fresh sessions read the vendor's own instruction file; others ${JSON.stringify(bad).slice(0, 300)}`);
   },
+  /** Several sessions at once on one daemon: each is asked to call the Vyre finder; counts the ones that had it. */
+  async concurrent(/** @type {string} */ p, /** @type {any} */ acct) {
+    const n = Number(flag("n", "3"));
+    if (!projectSlug) { fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
+    const t0 = Date.now();
+    let last = Date.now(), maxGap = 0; const lag = setInterval(() => { const now = Date.now(); maxGap = Math.max(maxGap, now - last - 100); last = now; }, 100);
+    const results = await Promise.all(Array.from({ length: n }, async (_, i) => {
+      const t = await must("threads.start", { project: projectSlug, provider: p, ...(acct ? { account: acct.id } : {}), purpose: "chat" });
+      const thread = String(t.id || t.thread);
+      let reply = "";
+      try { reply = said(await turn(thread, "Call the Vyre tool tools_find with the query \"what is waiting on me\", then reply with only the exact name of the first tool it returned. If you have no such tool, reply NOTOOL.")); } catch (e) { reply = "ERROR " + /** @type {Error} */ (e).message; }
+      await call("threads.stop", { thread }).catch(() => {});
+      return { i, reply: reply.slice(0, 120), ok: /[a-z]+_[a-z_]+/i.test(reply) && !/notool|reachable|unavailable/i.test(reply) };
+    }));
+    clearInterval(lag); console.log(`LAG ${p} max event-loop gap ${maxGap} ms`);
+    say("concurrent-sessions", p, results.every((r) => r.ok), `${results.filter((r) => r.ok).length} of ${n} sessions started together had the finder (${Math.round((Date.now() - t0) / 1000)} s); ${JSON.stringify(results.filter((r) => !r.ok).map((r) => r.reply.slice(0, 70)))}`);
+  },
   /** 3: paste an image (inline) and drop an image and a file (attachments). */
   async attach(/** @type {string} */ p, /** @type {{id:string}} */ acct) {
     const { thread } = await start1(p, acct && acct.id, "Reply with the single word: ready");
@@ -305,6 +322,11 @@ const checks = {
 if (cmd.split(",").includes("switch")) for (const p of ["codex", "grok"]) if (!providers.includes(p)) providers.push(p);
 try {
   for (const p of providers) if (p !== "claude") accts[p] = await account(p);
+  if (cmd === "concurrent") {
+    fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); { const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
+    await Promise.all(providers.map(async (p) => { try { await /** @type {any} */ (checks).concurrent(p, accts[p]); } catch (e) { say("concurrent-sessions", p, false, "threw: " + /** @type {Error} */ (e).message); } }));
+    providers.length = 0;
+  }
   if (cmd === "find") {
     fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); { const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
     await Promise.all(providers.map(async (p) => { try { await /** @type {any} */ (checks).find(p, accts[p]); } catch (e) { say("find-live", p, false, "threw: " + /** @type {Error} */ (e).message); } }));
