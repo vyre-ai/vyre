@@ -1,6 +1,6 @@
 // Vault's other calls on a real vyred, over an injected `call` (the app's box connection, or a fake box in a test): vault.caps, vault.pending and vault.approve (what waits for
 // the person), vault.pass.list / create / revoke and vault.offboard, vault.devices and vault.device.revoke, vault.health and vault.breach.check (Watchtower), vault.history,
-// vault.audit for an item, vault.update (replace a value, or make a new one on the box) and vault.ssh.generate. Acts that need the person are answered by the app's call
+// vault.audit for an item, vault.update (replace a value, or make a new one on the box), vault.ssh.generate, and the shared-vault writes of contracts/vault.md (vaults.create and rotate, members.invite, role, remove and accept) with vault.pass.accept. Acts that need the person are answered by the app's call
 // with the device's own proof, so a refusal that reaches here is a real one. A value never comes back from any of these.
 import { pickPeople, pickVaults, pickCodes, pickEmergency, pickReveals, pickMcpMade, pickBreach, pickCaps, pickDevices, pickHealth, pickHistory, pickPasses, pickPending } from "./more-model.ts";
 
@@ -28,6 +28,18 @@ export function vaultMoreSource(call: Call) {
     /** Shared vaults (members, roles, item names) and the people Vyre shares with. Reads only: changing a vault is done at the command line until the device may ask for it. */
     async sharedVaults() { return pickVaults(await maybe("vault.vaults.list")); },
     async people() { return pickPeople(await maybe("vault.people")); },
+    /** Changing a shared vault (contracts/vault.md v1): each is the person's own call and takes their one yes, which the app's call asks for. `members.remove` says which items to replace. */
+    createVault: (name: string) => ask("vault.vaults.create", { name }),
+    rotateVault: (vault: string) => ask("vault.vaults.rotate", { vault }),
+    async invite(vault: string, person: string, role: string): Promise<{ invite: string; member: string; role: string }> {
+      const r = await ask<{ invite?: unknown; member?: unknown; role?: unknown }>("vault.members.invite", { vault, person, role });
+      return { invite: typeof r?.invite === "string" ? r.invite : "", member: typeof r?.member === "string" ? r.member : person, role: typeof r?.role === "string" ? r.role : role };
+    },
+    memberRole: (vault: string, person: string, role: string) => ask("vault.members.role", { vault, person, role }),
+    async memberRemove(vault: string, person: string): Promise<string[]> { return list((await ask<{ rotate?: unknown }>("vault.members.remove", { vault, person }))?.rotate); },
+    /** What someone sent: a vault invite joins the vault, a pass ticket adds what they shared. */
+    acceptInvite: (invite: string) => ask("vault.members.accept", { invite }),
+    acceptTicket: (ticket: string) => ask("vault.pass.accept", { ticket }),
     async caps() { return pickCaps(await maybe("vault.caps")); },
     /** The passes, and what waits for the person (a box without vault.pending has none). */
     async passes() {
