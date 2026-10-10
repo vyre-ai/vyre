@@ -2,7 +2,7 @@
 // app-walk-plain: opens most screens of the app on a seeded box and says which show a blank page, a page error, or words a person should never read (ids like fl_ or per_, role:x, vyre://, undefined, [object Object], NaN). TEST BOX ONLY.
 // It starts a vyred of its own in a temp home (kernel on), seeds a project from a template, a Flow with lanes, agents, a contact and a to-do, serves a web export of the app in front of it and drives a browser.
 //   node scripts/app-walk-plain.mjs --dist apps/app/dist [--out dir] [--only word,word]
-// It prints one line per screen (OK or what is wrong) and keeps a picture of each in --out. Exit code 1 when any screen is wrong.
+// It prints one line per screen and width (OK or what is wrong) and keeps a picture of each in --out. Exit code 1 when any screen is wrong.
 import "./mac-test-guard.mjs";
 import fs from "node:fs";
 import http from "node:http";
@@ -59,12 +59,13 @@ await new Promise((r) => setTimeout(r, 4000));
 const ROUTES = [
   ["now", "/u/now"], ["now-needs", "/u/now/needs"], ["flows", "/u/flows"], ["flow", `/u/flows/${outer.id}`], ["kits", "/u/kits"], ["engineer", "/u/engineer"],
   ["projects", "/u/projects"], ["project", `/u/project/${PROJECT}`], ["project-free", `/u/project/${PLAIN}`], ["templates", "/u/templates"], ["template", `/u/templates/${lib.template}`],
-  ["assistants", "/u/assistants"], ["settings-assistants", "/u/settings/assistants"], ["memory", "/u/memory"], ["planner", "/u/planner"], ["calendar", "/u/calendar"], ["drive", "/u/drive"],
+  ["assistants", "/u/assistants"], ["settings-assistants", "/u/settings/assistants"], ["planner", "/u/planner"], ["calendar", "/u/calendar"], ["drive", "/u/drive"],
   ["chats", "/u/chats"], ["connections", "/u/connections"], ["spaces", "/u/spaces"], ["search", "/u/search"], ["records-contact", "/u/records/contact"],
   ["settings", "/u/settings"], ["settings-ai", "/u/settings/ai"], ["settings-backups", "/u/settings/backups"], ["settings-rules", "/u/settings/rules"], ["settings-updates", "/u/settings/updates"], ["settings-outside", "/u/settings/outside"],
   ["vault", "/u/vault"], ["sites", "/u/sites"], ["sidebar", "/u/sidebar"], ["about", "/u/about"], ["access", "/u/access"], ["appearance", "/u/appearance"],
   ...(contact ? [["record", `/u/record/${contact.id}`]] : []), ...(task ? [["task", `/u/task/${task.id}`]] : []), ...(chat ? [["chat", `/u/chats/${chat.id}`]] : []),
 ];
+// not walked: /u/memory (the main memory graph is drawn only for the real Deck surface; a walk answers as one caller and gets "denied"), /u/install/* and pairing (they need a fresh phone)
 const ONLY = flag("--only", "").split(",").filter(Boolean);
 // ---- the app in front of it
 const SOCKET = paths(root).socket;
@@ -79,7 +80,7 @@ const server = http.createServer((req, res) => {
       req.on("end", async () => {
         let input = {}; try { input = raw ? JSON.parse(raw) : {}; } catch { /* empty */ }
         const tool = decodeURIComponent(u.pathname.slice("/v1/tools/".length));
-        const r = await d.registry.call(tool, input, "cli", { token: TOKEN });
+        const r = await d.registry.call(tool, input, "deck", { token: TOKEN });          // the app calls as the Deck, like a person at the screen
         if (r.error) console.log("tool error:", tool, r.error.code, String(r.error.message).slice(0, 160));
         send(200, r.error ? { error: r.error } : { data: r.data });
       });
@@ -99,23 +100,30 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}/app`;
 const BAD = [[/\bfl_[0-9a-f]{8}/, "a Flow id"], [/\bper_[a-z0-9]{12,}/, "a person id"], [/\bspc_[a-z2-7]{8,}/, "a space id"], [/\brun_[a-z0-9]{6,}/, "a run id"], [/vyre:\/\//, "a vyre:// address"],
-  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"]];
+  [/\b(role|teammate|person|pool):[a-z]/, "a role or person reference"], [/\bundefined\b/, "undefined"], [/\[object Object\]/, "[object Object]"], [/\bNaN\b/, "NaN"], [/\bnull\b/, "null"], [/did not load\b/, "an error state"], [/That did not (go through|work)/, "an error toast"]];
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
-const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: "block" });
 let wrong = 0;
-for (const [name, route] of ROUTES) {
-  if (ONLY.length && !ONLY.some((w) => name.includes(w))) continue;
-  const pg = await ctx.newPage();
-  const problems = [];
-  pg.on("pageerror", (e) => problems.push(`page error: ${String(e).slice(0, 120)}`));
-  await pg.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" }).catch((e) => problems.push(`did not open: ${String(e).slice(0, 80)}`));
-  await pg.waitForTimeout(3500);
-  const text = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
-  if (text.replace(/My Cloud|Now|Chat|Projects|Contacts|Drive|More|Search|Settings|You/g, "").trim().length < 12) problems.push("blank page");
-  for (const [re, what] of BAD) { const m = re.exec(text); if (m) problems.push(`shows ${what}: "${text.slice(Math.max(0, m.index - 30), m.index + 40)}"`); }
-  await pg.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: false });
-  console.log(problems.length ? `WRONG ${name} (${route}): ${problems.join(" | ")}` : `OK    ${name}`);
-  if (problems.length) wrong++;
-  await pg.close();
+// each screen on a wide screen in light and on a phone in dark, so a layout that hides words shows up too
+for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "light"], ["phone", { width: 390, height: 844 }, "dark"]]) {
+  const ctx = await browser.newContext({ viewport, colorScheme: scheme, serviceWorkers: "block" });
+  for (const [name, route] of ROUTES) {
+    if (ONLY.length && !ONLY.some((w) => name.includes(w))) continue;
+    const pg = await ctx.newPage();
+    const problems = [];
+    pg.on("pageerror", (e) => problems.push(`page error: ${String(e).slice(0, 120)}`));
+    await pg.goto(`${BASE}${route}`, { waitUntil: "domcontentloaded" }).catch((e) => problems.push(`did not open: ${String(e).slice(0, 80)}`));
+    await pg.waitForTimeout(3500);
+    // one real action where a screen has its main one: run a Flow, open a project's timeline
+    if (name === "flow") { await pg.getByText("Run now", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500); }
+    if (name === "project") { await pg.getByText("Timeline", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500); }
+    const text = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (text.replace(/My Cloud|Now|Chat|Projects|Contacts|Drive|More|Search|Settings|You/g, "").trim().length < 12) problems.push("blank page");
+    for (const [re, what] of BAD) { const m = re.exec(text); if (m) problems.push(`shows ${what}: "${text.slice(Math.max(0, m.index - 30), m.index + 40)}"`); }
+    await pg.screenshot({ path: path.join(OUT, `${name}-${wide}.png`), fullPage: false });
+    console.log(problems.length ? `WRONG ${name} ${wide} (${route}): ${problems.join(" | ")}` : `OK    ${name} ${wide}`);
+    if (problems.length) wrong++;
+    await pg.close();
+  }
+  await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(wrong ? 1 : 0);
