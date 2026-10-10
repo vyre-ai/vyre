@@ -5,8 +5,7 @@ import { answerRefusal, approveCard, refuseCard } from "./phone-approve.js";
 
 import { approveGroup, groupsFrom, singlesFrom } from "./group-approve.js";
 
-/** The app route a button opens: a device's card by `card`, a held call's group by `group`. @param {string} id @param {"approve" | "deny"} act @param {"card" | "group"} [of] */
-export const actRoute = (id, act, of = "card") => `/u/now?act=${act}&${of}=${encodeURIComponent(id)}`;
+export { actRoute } from "./notice-route.js";
 
 const one = (/** @type {unknown} */ v) => (Array.isArray(v) ? v[0] : v);
 const safe = (/** @type {unknown} */ v) => (typeof v === "string" && /^[\w.:-]{1,80}$/.test(v) ? v : "");
