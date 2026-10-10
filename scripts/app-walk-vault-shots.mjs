@@ -66,6 +66,7 @@ await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}/app`;
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const errors = [];
+let failed = 0;
 for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "light"]) {
   if (ONLY && ONLY !== `${w}:${theme}`) continue;
   await signIn();
@@ -74,9 +75,11 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
   await ctx.addInitScript(() => { window.__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} }; });
   const pg = await ctx.newPage();
   pg.on("pageerror", (e) => errors.push(`${w}:${theme} ${String(e.message).slice(0, 160)}`));
-  const shot = async (n) => { await pg.waitForTimeout(700); await pg.screenshot({ path: path.join(OUT, `${n}-${w}-${theme}.png`), fullPage: w < 600 }); };
+  // A picture of a signed-out page is not a picture of the Vault: refuse to save one and say so (the walk exits 1).
+  const signedOut = async () => /Sign in to Vyre|Nobody is signed in/.test(await pg.locator("body").innerText());
+  const shot = async (n) => { await pg.waitForTimeout(700); if (await signedOut()) throw new Error("the page is signed out, not the Vault (run the walk in an ssh login shell, in the foreground)"); await pg.screenshot({ path: path.join(OUT, `${n}-${w}-${theme}.png`), fullPage: w < 600 }); };
   const click = async (name, o = {}) => { const l = pg.getByRole(o.role ?? "button", { name, exact: o.exact ?? true }).first(); await l.click({ timeout: 8000 }); await pg.waitForTimeout(o.wait ?? 600); };
-  const step = async (n, fn) => { if (STEPS.length && !STEPS.includes(n.split("-")[0])) return; try { await fn(); } catch (e) { console.log(`${w}:${theme} STEP ${n} FAILED: ${String(e.message).split("\n")[0]}`); await pg.screenshot({ path: path.join(OUT, `${n}-FAIL-${w}-${theme}.png`) }).catch(() => {}); } };
+  const step = async (n, fn) => { if (STEPS.length && !STEPS.includes(n.split("-")[0])) return; try { await fn(); } catch (e) { failed++; console.log(`${w}:${theme} STEP ${n} FAILED: ${String(e.message).split("\n")[0]}`); await pg.screenshot({ path: path.join(OUT, `${n}-FAIL-${w}-${theme}.png`) }).catch(() => {}); } };
   const home = async () => { await pg.goto(`${BASE}/u/vault`, { waitUntil: "domcontentloaded" }); await pg.waitForTimeout(3500); };
 
   const menu = async (item) => { await click("Add"); await pg.getByRole("menuitem", { name: item, exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(700); };
@@ -103,4 +106,6 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
   await ctx.close();
 }
 console.log("page errors:", errors.slice(0, 5).join(" | ") || "none");
-await browser.close(); server.close(); process.exit(0);
+await browser.close(); server.close();
+if (failed) { console.error(`${failed} step(s) FAILED: those pictures were not saved as pictures of the Vault`); process.exit(1); }
+process.exit(0);

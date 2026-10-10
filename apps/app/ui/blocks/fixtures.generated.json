@@ -3964,7 +3964,7 @@
    }
   },
   "vault-real": {
-   "title": "Vault (real box shapes)",
+   "title": "Vault (answers recorded from a real vyred)",
    "screens": {
     "full": {
      "component": "vault-real"
@@ -3978,7 +3978,7 @@
    }
   },
   "vault-real-sharing": {
-   "title": "Vault: Sharing (real box shapes)",
+   "title": "Vault: Sharing (sample answers in a real box's shapes)",
    "screens": {
     "full": {
      "component": "vault-real-sharing"
@@ -3992,7 +3992,7 @@
    }
   },
   "vault-real-health": {
-   "title": "Vault: Health (real box shapes)",
+   "title": "Vault: Health (answers recorded from a real vyred)",
    "screens": {
     "full": {
      "component": "vault-real-health"
