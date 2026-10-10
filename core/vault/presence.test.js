@@ -63,7 +63,9 @@ test("presence: every value-out or access-giving tool declares it, with a summar
     // A person's import of an API description by its address: internal, only module:connectors, and only for the person's own act. A plain GET with no credential to a public https address (private ranges refused at every hop, size capped); it gives a public document and no value of the vault.
     "vault.fetch.public",
     // An agent signs in on its own computer with a login a person lent it (the grant is the person's yes, R031-93): the login is typed into the page and never returned; `vault.tagged` and `vault.untag` show and end what a # tag lent.
-    "vault.agent.fill", "vault.tagged", "vault.untag"]);
+    "vault.agent.fill", "vault.tagged", "vault.untag",
+    // Vault health on Now: a count from the last Watchtower run (no name, no value) and hiding the row for a while; nothing to approve.
+    "vault.health.summary", "vault.health.dismiss"]);
   for (const n of tools.keys()) assert.ok(known.has(n) || tools.get(n).presence, `${n} is new: decide whether it needs presence`);
 });
 
