@@ -25,7 +25,18 @@ export default function GlassRelayProof() {
             relay
             label="Proof screen"
             frameRef={frame}
-            openSocket={(path: string) => { const w = new WebSocket(HOST + path); w.onerror = (e: any) => console.log("glass-proof socket error", String(e && e.message)); return w; }}
+            openSocket={(path: string) => {
+              // diagnostics for the emulator proof: say what the socket and a plain request do, so a failure names its cause
+              void fetch(`http://${q.h || "10.0.2.2:5999"}/probe`).then((r) => console.log("glass-proof http probe", r.status), (e) => console.log("glass-proof http probe failed", String(e && e.message)));
+              try {
+                const w = new WebSocket(HOST + path);
+                console.log("glass-proof socket made", HOST + path, w.readyState);
+                w.addEventListener("open", () => console.log("glass-proof socket open"));
+                w.addEventListener("error", (e: any) => console.log("glass-proof socket error", String(e && e.message)));
+                w.addEventListener("close", (e: any) => console.log("glass-proof socket close", e && e.code, e && e.reason));
+                return w;
+              } catch (e) { console.log("glass-proof socket threw", String(e)); throw e; }
+            }}
             onMessage={(m: { t: string; code?: number; reason?: string }) => {
               setSaid(m.t === "down" ? `down ${m.code} ${m.reason || ""}` : m.t);
               console.log("glass-proof", m.t, m.code, m.reason);

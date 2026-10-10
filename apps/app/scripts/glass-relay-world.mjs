@@ -6,7 +6,7 @@ import { fakeXvnc } from "../../../test/fixtures/fake-xvnc.js";
 import { upgradeHead, encodeFrame, FrameParser } from "../../../lib/ws.js";
 
 const xvnc = await fakeXvnc({ width: 320, height: 240, name: "proof screen" });
-const server = http.createServer((_q, r) => { r.writeHead(404); r.end(); });
+const server = http.createServer((q, r) => { console.log("http probe", q.url); r.writeHead(404); r.end(); });
 server.on("upgrade", (req, socket) => {
   const key = String(req.headers["sec-websocket-key"] || "");
   socket.write(upgradeHead(key, req.headers["sec-websocket-protocol"] ? "Sec-WebSocket-Protocol: binary\r\n" : ""));
