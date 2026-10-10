@@ -8,7 +8,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-process.env.VYRE_LEGACY_DIRECT_MODEL ??= "1"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1"; process.env.VYRE_SESSION_SANDBOX_OFF = "1";
+if (!process.env.LP_NO_LEGACY) process.env.VYRE_LEGACY_DIRECT_MODEL ??= "1"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1"; process.env.VYRE_SESSION_SANDBOX_OFF = "1";
 const args = process.argv.slice(2);
 const cmd = args[0] && !args[0].startsWith("--") ? args[0] : "smoke";
 const flag = (/** @type {string} */ n, /** @type {string} */ d = "") => { const i = args.indexOf(`--${n}`); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -195,6 +195,7 @@ const checks = {
     const norm = (/** @type {string} */ x) => String(x).toLowerCase().replace(/[.\-]/g, "_");
     let picked = 0, inTop5 = 0, ran = 0;
     /** @type {string[]} */ const misses = [];
+    /** @type {any[]} */ const all = [];
     if (!projectSlug) { fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
     for (const x of asksSet) {
       const exp = x.expect.filter((/** @type {string} */ e) => have.has(e)).map(norm);
@@ -203,12 +204,15 @@ const checks = {
       const thread = String(t.id || t.thread);
       let reply = "";
       try { reply = said(await turn(thread, `Task for you: "${x.intent}". Use your Vyre tool finder (tools_find) once to find the right tool for it, then reply with ONLY the exact name of the tool you would call. Do not call it.`)); } catch (e) { reply = "ERROR " + /** @type {Error} */ (e).message; }
-      await call("threads.stop", { thread }).catch(() => {});
       ran++;
       const ok = exp.some((/** @type {string} */ e) => norm(reply).includes(e));
+      const tail = ok ? [] : (((await call("threads.get", { thread, limit: 400 })).data || {}).events || []).slice(-8).map((/** @type {any} */ e) => e.type + ":" + JSON.stringify(e.payload).replace(/"thread":"[^"]+",?/, "").slice(0, 140));
+      all.push({ id: x.id, intent: x.intent, expect: exp, top5, reply: reply.slice(0, 400), ok, ...(ok ? {} : { tail }) });
       if (ok) picked++; else misses.push(`${x.id} ${x.intent.slice(0, 50)} => ${reply.slice(0, 60).replace(/\n/g, " ")} (wanted ${exp.slice(0, 2).join("|")})`);
       if (exp.some((/** @type {string} */ e) => top5.includes(e))) inTop5++;
+      await call("threads.stop", { thread }).catch(() => {});
     }
+    fs.writeFileSync(`/tmp/lp-find-${p}-${process.pid}.json`, JSON.stringify(all, null, 1));
     say("find-live", p, picked / Math.max(1, ran) >= 0.8, `${picked} of ${ran} picked an accepted tool (${Math.round((100 * picked) / Math.max(1, ran))}%); the finder's own top 5 held one for ${inTop5} of ${ran}; misses ${JSON.stringify(misses.slice(0, 6)).slice(0, 700)}`);
   },
   /** First-turn MCP readiness: a fresh session is asked at once whether it has the Vyre finder; repeated, per provider. */
@@ -302,6 +306,7 @@ if (cmd.split(",").includes("switch")) for (const p of ["codex", "grok"]) if (!p
 try {
   for (const p of providers) if (p !== "claude") accts[p] = await account(p);
   if (cmd === "find") {
+    fs.mkdirSync(path.join(work, "okafor"), { recursive: true }); { const pr = await must("projects.create", { name: "okafor", home: path.join(work, "okafor") }); projectSlug = String(pr.slug || "okafor"); }
     await Promise.all(providers.map(async (p) => { try { await /** @type {any} */ (checks).find(p, accts[p]); } catch (e) { say("find-live", p, false, "threw: " + /** @type {Error} */ (e).message); } }));
     providers.length = 0;
   }
