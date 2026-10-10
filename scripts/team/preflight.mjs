@@ -151,6 +151,7 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
+  "test/errors-teach.test.js", "test/tools-find-quality.test.js",
   // The stored decisions: a branch that moves a cell re-records them with its ruling (node kernel/golden/index.js --write), so drift never reaches the tip.
   "kernel/golden/golden-box-plain.test.js", "kernel/golden/golden-local-plain.test.js",
   // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
@@ -270,8 +271,14 @@ if (!STATIC) {
 }
 
 console.log("");
-for (const w of warns) console.log(`warn ${w}`);
-if (!fails.length) { console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`); process.exit(0); }
+if (!fails.length) {
+  for (const w of warns) console.log(`warn ${w}`);
+  console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`);
+  process.exit(0);
+}
+// The cause first: what is red because of this branch, then the notes (base reds are listed under their own heading so they never read as the reason).
 for (const f of fails) console.log(`FAIL ${f.rule}: ${f.msg}\n`);
 console.log(`preflight: ${fails.length} problem(s). Rules: team/FOUNDATION.md.`);
+if (warns.length) console.log("\nNotes (not blocking you):");
+for (const w of warns) console.log(`warn ${w.replace(/^base red \(already red on ([^ ]+) without your change; owned by release's red list, not blocking you\)/, "already red on the base, not blocking you ($1)")}`);
 process.exit(1);
