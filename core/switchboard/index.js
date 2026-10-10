@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { checkResidency } from "./residency.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { askerOver } from "./asker-account.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1702,7 +1702,7 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (st && st.turn && reason === "asked") throw Object.assign(new Error("a turn is running: interrupt it or wait for it to end, then switch"), { code: "busy" });
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent });
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(kernelTurn ? { person: kernelTurn.asker } : {}) });
     if (!acct && provider !== "claude") throw Object.assign(new Error(`${provider} needs an account: add one (sessions.accounts.add or signin) and name it`), { code: "account_required" });
     const from = rec.provider || "claude";
     const { seed, had } = await this.transferSeed(id, rec, provider);
@@ -2479,7 +2479,7 @@ export class Switchboard {
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw no(`There is no ${name} here.`);
     const st = this.live.get(id);
     if (this.once.has(id) || (st && st.turn && ["working", "waiting"].includes(String(rec.status)))) throw no("A turn is running here: wait for it to end, then ask again.", "busy");
-    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent }).catch(e => {
+    const acct = await this.accountFor({ provider, account, project: rec.project, agent: rec.agent, ...(over.person ? { person: over.person } : {}) }).catch(e => {
       throw no(e.code === "not_found" ? `${name}${account ? ` (${account})` : ""} is not set up here.` : `${name} cannot be used here: ${e.message}.`);
     });
     if (!acct && provider !== "claude") throw no(`${name} is signed out here. Sign in under AI accounts, then ask again.`);
@@ -4245,7 +4245,7 @@ export default {
         const chip = Array.isArray(i.mentions) ? i.mentions.filter(m => m && m.kind === "account") : [];
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
-        const over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null } : null;
+        const kt = kernelTurnOf(i, caller, firstParty); let over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null, ...(kt ? { person: kt.asker } : {}) } : null; if (!over && kt && !(i.images && i.images.length)) over = await askerOver(sb, i.thread, kt);
         if (over && !personTurn(caller) && !kernelTurnOf(i, caller, firstParty)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);

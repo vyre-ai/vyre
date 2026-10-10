@@ -163,3 +163,33 @@ test("G04: bob on Claude says a code word; carol asks on her own AI (Codex) and 
   assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "back" && e.payload.to === "claude"), "and the thread went back to its own");
   await b.stop();
 });
+
+test("G04: two people each with their own Codex sign-in: the thread starts on bob's, and carol's message runs on carol's own account with bob's turn in what it is handed", async t => {
+  const w = await world(t);
+  withCodex(t, w.work);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
+  const carol = await b.watch("carol", chat.id);
+  const own = async (/** @type {string} */ who, /** @type {string} */ label) => {
+    const r = await b.reg.call("sessions.accounts.add", { provider: "codex", label, kind: "login" }, "deck", { token: w.tokens[who] });
+    assert.ok(!r.error, r.error && r.error.message);
+    b.reg.deps.db.prepare("UPDATE sessions_accounts SET signed_in_at = ? WHERE id = ?").run(Date.now(), r.data.id);
+    return r.data.id;
+  };
+  const bobsAcct = await own("bob", "Bob's Codex"), carolsAcct = await own("carol", "Carol's Codex");
+  assert.notEqual(bobsAcct, carolsAcct);
+  // bob speaks first, on Codex (his chip): the thread starts on his account
+  const first = await b.as("bob")("stream.send", { chat: chat.id, text: "the code word is AMBER-92", to: ["assistant:assistant"], account: `codex:${bobsAcct}`, cwd: w.work });
+  assert.ok(!first.error, first.error && `${first.error.code} ${first.error.message}`);
+  await until(() => /AMBER-92/.test(textOf(carol.frames)), "bob's turn", 30_000);
+  const thread = kitThread(b, chat.id);
+  assert.equal((await b.reg.call("threads.get", { thread }, "cli")).data.thread.account, bobsAcct, "the thread is on bob's account");
+  // carol sends with no chip: her own Codex sign-in is hers to use
+  const second = await b.as("carol")("stream.send", { chat: chat.id, text: "what was the code word?", to: ["assistant:assistant"], cwd: w.work });
+  assert.ok(!second.error, second.error && `${second.error.code} ${second.error.message}`);
+  await until(() => /what was the code word\?/.test(textOf(carol.frames).split("echo:").pop() || ""), "carol's answer", 30_000);
+  const ev = (await b.reg.call("threads.get", { thread, limit: 300 }, "cli")).data.events;
+  assert.ok(ev.some((/** @type {any} */ e) => e.type === "thread.provider" && e.payload.reason === "once" && e.payload.account === carolsAcct), "carol's turn ran on carol's own account");
+  assert.match(textOf(carol.frames), /AMBER-92[\s\S]*what was the code word/, "and her AI was handed bob's turn");
+  await b.stop();
+});
