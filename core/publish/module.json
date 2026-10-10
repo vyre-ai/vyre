@@ -56,6 +56,20 @@
         "effect": "write"
       },
       {
+        "name": "publish.go",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "publish.quick",
+        "asks": true,
+        "outward": true,
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "publish.rollback",
         "asks": true,
         "outward": true,

@@ -353,6 +353,26 @@ export default {
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("publish"),
     });
+    ctx.tool("publish.go", {
+      callers: WITH_MODELS,
+      description: "Approve a previewed version and put it on the internet with one yes. The first call asks and holds; a person's decision (publish.decide) completes both steps.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("goLive"),
+    });
+    ctx.tool("publish.quick", {
+      callers: WITH_MODELS,
+      description: "Publish a folder of ready files as a site in one go: it is built and previewed, then held for one yes, which puts it live. Answers the preview, the task and the plan.",
+      input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta), home: ctx.paths.root });
+        if (no) throw refuse(no.message, no.code);
+        const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
+        const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
+        const held = await b.pub.goLive(b.chain, made.id, {});
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+      },
+    });
     ctx.tool("publish.rollback", {
       callers: WITH_MODELS,
       description: "Put the previous version back. Give the live deployment. Held for a person every time.",
