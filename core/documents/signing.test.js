@@ -128,7 +128,7 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   const kit = JSON.parse(fs.readFileSync(new URL("../../records/kits/estate-planning/kit.json", import.meta.url), "utf8"));
   const matter = kit.types.find((/** @type {any} */ t) => t.name === "matter"), contact = kit.types.find((/** @type {any} */ t) => t.name === "contact");
   const c = catalogWithActions();
-  const f = signingFlow({ type: "matter", out_stage: "Engagement", signed_stage: "Drafting", template_id: 12, contact_field: "client" });
+  const f = signingFlow({ type: "matter", out_stage: "Engagement", signed_stage: "Drafting", template_id: 12, contact_field: "client", signed_field: "engagement_signed" });
   /** @type {any[]} */ const calls = [];
   const w = await world({ cat: { ...c, types: { ...c.types, matter, contact } }, ports: {
     call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ _resource, /** @type {any} */ input) => {
@@ -160,7 +160,8 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   w.kernel.inbound("documents.signed", ev({ submission: 8101, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   await answer();
-  assert.equal(mine(w, "matter")[0].data.stage, "Drafting", "the Estate matter moved on to its Drafting stage");
+  assert.equal(mine(w, "matter")[0].data.stage, "Drafting", "the Estate matter moved on to its Drafting stage, its own rule (signed before Drafting) satisfied");
+  assert.equal(mine(w, "matter")[0].data.engagement_signed, true);
   assert.deepEqual(calls.map(x => x.action), ["documents.send", "documents.send-signed"]);
   assert.equal(asks, 1, "one yes for both emails");
 });

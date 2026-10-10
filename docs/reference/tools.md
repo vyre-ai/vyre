@@ -2927,6 +2927,7 @@ The Flow that signs a document from a stage: { type, out_stage, signed_stage, te
   - `email_field` string
   - `name_field` string
   - `subject` string
+  - `signed_field` string
   - `submission_field` string
   - `wait_days` integer
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
