@@ -154,7 +154,7 @@ export const MIGRATIONS = [
    ALTER TABLE threads_turns ADD COLUMN model TEXT;`,
   // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
   `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
-  `ALTER TABLE threads_runs ADD COLUMN space TEXT;`, // the TEAM Space a chat's run belongs to (0.3.3 J9): its transcript is that Space's, never filed into the home's recall or memory
+  `CREATE TABLE threads_team (thread TEXT PRIMARY KEY, space TEXT NOT NULL);`, // the TEAM Space a chat's run belongs to (0.3.3 J9), kept past the run: its transcript is that Space's, never filed into the home's recall or memory
   // A rollover (Vyre's own, when a session's window fills; ./rollover.js): the thread keeps its id and its event log, and its agent starts a fresh native session
   // (for Claude a new session id, native_to, because a session id names one transcript). One row per rollover, so a seed can point into every earlier window
   // (native_from, oldest first) and a transcript under a native id still says which thread it belongs to.
@@ -599,7 +599,7 @@ export class Switchboard {
       if (!have) return null;
       const chat = turn && turn.chat ? turn.chat : have.chat || (this.deps.chatFor ? await this.deps.chatFor({ thread: id, agent: have.agent || null, agent_kind: have.agent_kind || null, name: have.name || null, project: have.project || null }) : null);
       if (chat && chat !== have.chat) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ?").run(chat, id);
-      if (turn && turn.space) this.db.prepare("UPDATE threads_runs SET space = ? WHERE id = ?").run(turn.space, id);
+      if (turn && turn.space) this.db.prepare("INSERT OR REPLACE INTO threads_team (thread, space) VALUES (?, ?)").run(id, turn.space);
       return chat || null;
     } catch (e) { this.deps.log(`threads: no chat for ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
   }
@@ -1154,7 +1154,7 @@ export class Switchboard {
   async renewKernelSession(id, rec, turn) {
     if (!this.deps.kernelSession) return;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch(() => null);
-    if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) { this.turnSpace.set(id, turn.space); this.db.prepare("UPDATE threads_runs SET space = ? WHERE id = ?").run(turn.space, id); } else this.turnSpace.delete(id);
+    if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id); if (turn && turn.space) this.turnSpace.set(id, turn.space); else this.turnSpace.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     // the turn before may still be streaming its reply under its session: the session itself is released, not cut (lib/kernel-session ends it when that reply closes)
@@ -4824,7 +4824,7 @@ export default {
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
         // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
         const bound = Boolean(sb.sessions.boundPid(String(i.session)));
-        const team = /** @type {any} */ (sb.db.prepare("SELECT space FROM threads_runs WHERE id = ?").get(owner || String(i.session)));
+        const team = /** @type {any} */ (sb.db.prepare("SELECT space FROM threads_team WHERE thread = ?").get(owner || String(i.session)));
         return { session: String(i.session), known: Boolean(rec), bound, human, team: (team && team.space) || null, provider: rec ? rec.provider : null, account: rec ? rec.account : null };
       },
     });
