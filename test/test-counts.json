@@ -1039,5 +1039,7 @@
  "test/journey-fork-continue.test.js": 3,
  "apps/app/screens/chat-tools/fork-move.test.js": 2,
  "test/journey-space-names.test.js": 3,
- "test/journey-signin-again.test.js": 2
+ "test/journey-signin-again.test.js": 2,
+ "core/previews/previews-project.test.js": 3,
+ "lib/types-extend.test.js": 3
 }

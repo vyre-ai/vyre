@@ -436,6 +436,15 @@ export default {
         return { members: rows.map((/** @type {any} */ r) => { const d = r.data || {}; return { agent: String((d.actor && d.actor.actor && d.actor.actor.id) || d.name || ""), role: String(d.role || "") }; }).filter((/** @type {any} */ m) => m.agent) };
       },
     });
+    ctx.tool("work.project.people", {
+      description: "The people a project shares with 'the project' (its owner, its team's people, the people of its chats; a Personal project is its person's alone). For the previews module's own use.",
+      input: obj({ project: { type: "string", description: "The Project's short name, record id or address" } }, ["project"]), callers: ["module"], internal: true,
+      run: async (input, extra) => {
+        kernelOf();
+        if (String((extra && extra.caller) || "") !== "module:previews") throw Object.assign(new Error("only the previews module asks who a project's people are"), { code: "denied" });
+        return (await hubOf().peopleOf(String(input.project || ""))) || { people: [], personal_of: null, missing: true };
+      },
+    });
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
