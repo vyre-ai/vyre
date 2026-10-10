@@ -24,7 +24,12 @@ function fits(got, want, at, optional) {
   if (Array.isArray(want)) { assert.ok(Array.isArray(got), `${at} is a list`); if (want.length && got.length) fits(got[0], want[0], `${at}[0]`, optional); return; }
   if (want && typeof want === "object") {
     assert.ok(got && typeof got === "object", `${at} is an object`);
-    for (const k of Object.keys(want)) { if (!(k in got)) { assert.ok(optional.has(k), `${at}.${k} is missing`); continue; } fits(got[k], want[k], `${at}.${k}`, optional); }
+    for (const k of Object.keys(want)) {
+      if (!(k in got)) { assert.ok(optional.has(k), `${at}.${k} is missing`); continue; }
+      // `counts` is a map from a reason code to a number: which codes appear depends on what was found
+      if (k === "counts") { assert.ok(got[k] && typeof got[k] === "object", `${at}.counts is a map`); for (const n of Object.values(got[k])) assert.equal(typeof n, "number"); continue; }
+      fits(got[k], want[k], `${at}.${k}`, optional);
+    }
     return;
   }
   if (want === "null" || got === null) return;
