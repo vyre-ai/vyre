@@ -51,3 +51,12 @@ test("a software signer (no attestation) is taken only in a development build as
   assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, signed), false, "a carried release signature too");
   assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, make(null)), false, "no stamp means packaged");
 });
+
+test("the sealer's dev switch is read through devSwitch at boot, so a packaged build ignores VYRE_SEAL_DEV whatever the environment says", () => {
+  const home = fs.readFileSync(new URL("./home.js", import.meta.url), "utf8");
+  assert.ok(!/dev: process\.env\.VYRE_SEAL_DEV === "1"/.test(home), "a raw environment comparison hands the sealer the switch in a packaged build too");
+  assert.match(home, /dev: devSwitch\(process\.env\.VYRE_SEAL_DEV\)/);
+  assert.equal(devSwitch("1", make("release")), false, "packaged: ignored");
+  assert.equal(devSwitch("1", make("development")), true, "a development build honours it");
+  assert.equal(devSwitch(undefined, make("development")), false, "a development build without the switch stays refused");
+});
