@@ -336,6 +336,21 @@ export default {
         return { ok };
       },
     });
+    ctx.tool("approvals.receipt", {
+      internal: true,
+      description: "The registry's own: a Flow's approved act, just spent by the Flows host, is kept like a redeemed card so the Gate can use it once for the send the act files. { card, tool, input_sha256, asker }.",
+      input: obj({ card: { type: "string" }, tool: { type: "string" }, input_sha256: { type: "string" }, asker: { type: "string" } }, ["card", "tool", "input_sha256", "asker"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry records a Flow's approved act", "denied");
+        const id = String(input.card);
+        if (!/^flowtask:[A-Za-z0-9_-]{6,80}$/.test(id)) throw refuse("that is not a Flow task's receipt", "bad_input");
+        sweep();
+        if (open.has(id)) throw refuse("that approval was already recorded", "replayed");
+        open.set(id, { id, op: String(input.tool), space: "", fields: {}, payload_hash: "", from: String(input.asker), at: now(), state: "approved", moment: "outward", request: { op: String(input.tool), fields: { input_sha256: String(input.input_sha256) } }, verified: true, used: true, redeemedAt: now() });
+        return { ok: true };
+      },
+    });
     ctx.tool("approvals.card-input", {
       internal: true,
       description: "The registry's own: the call an approved card now covers, when the person edited it. Answers { input } for an edited card the asker holds, else nothing.",
