@@ -3,8 +3,9 @@ import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
-import { bodyText, errWords, parseBody, projectIdOf, roleLines, startName, startWords, stateWord, treeOf, type Version } from "./model";
+import { errWords, projectIdOf, type Body, roleLines, startName, startWords, stateWord, treeOf, type Version } from "./model";
 import { templates } from "./templates";
+import { TemplateEditor } from "./TemplateEditor";
 
 /**
  * /u/templates/:id, the template studio: the tree of stages and tasks, Test mode (every brief and doer on a sample, nothing created or sent), Go live (the owner or an admin), the versions, and the
@@ -19,7 +20,7 @@ export default function TemplateScreen() {
   const [cur, setCur] = useState<Version | null>(null);
   const [err, setErr] = useState("");
   const [test, setTest] = useState<string[] | null>(null);
-  const [edit, setEdit] = useState<string | null>(null);
+  const [edit, setEdit] = useState<Body | null>(null);
   const [projectName, setProjectName] = useState("");
   const [busy, setBusy] = useState("");
   const load = useCallback(() => {
@@ -32,9 +33,7 @@ export default function TemplateScreen() {
   const doTest = () => run("test", async () => { const r = await templates.test(template, cur!.version); setTest(r.ok ? r.lines || [] : (r.errors || []).map((x) => `${x.path}: ${x.message}`)); });
   const goLive = () => run("live", async () => { await templates.goLive(template, cur!.version); showToast(`Version ${cur!.version} is live. Projects already running keep their own version.`); load(); templates.get(template, cur!.version).then(setCur).catch(() => {}); });
   const save = () => run("save", async () => {
-    const p = parseBody(edit || "");
-    if (!p.ok) { showToast(p.why); return; }
-    const v = await templates.define(p.body, template, "edited in the studio");
+    const v = await templates.define(edit!, template, "edited in the studio");
     showToast(`Saved as draft version ${v.version}.`); setEdit(null); setPick(v.version); load();
   });
   const start = () => run("start", async () => {
@@ -47,7 +46,7 @@ export default function TemplateScreen() {
   const tree = cur?.body ? treeOf(cur.body) : [];
   return (
     <Frame back="/u/templates" title={cur?.name || "Template"} sub={cur ? `Version ${cur.version}, ${stateWord(cur.state).toLowerCase()}` : undefined}
-      actions={cur ? <><Button kind="ghost" size="sm" label="Test mode" loading={busy === "test"} onPress={() => void doTest()} />{cur.state === "draft" ? <Button kind="primary" size="sm" label="Go live" loading={busy === "live"} onPress={() => void goLive()} /> : null}<Button kind="ghost" size="sm" label={edit == null ? "Edit" : "Close editor"} onPress={() => setEdit(edit == null ? bodyText(cur.body!) : null)} /></> : undefined}>
+      actions={cur ? <><Button kind="ghost" size="sm" label="Test mode" loading={busy === "test"} onPress={() => void doTest()} />{cur.state === "draft" ? <Button kind="primary" size="sm" label="Go live" loading={busy === "live"} onPress={() => void goLive()} /> : null}<Button kind="ghost" size="sm" label={edit == null ? "Edit" : "Close editor"} onPress={() => setEdit(edit == null ? structuredClone(cur.body!) : null)} /></> : undefined}>
       {err ? <Card flush><ErrorState title="That template did not load" reason={err} retry={load} /></Card> : null}
       {!cur && !err ? <LoadingState rows={4} /> : null}
       {versions && versions.length > 1 ? (
@@ -55,8 +54,7 @@ export default function TemplateScreen() {
       ) : null}
       {cur && edit != null ? (
         <Sec title="Edit as a new draft">
-          <Field name="Template body (JSON)" value={edit} onChangeText={setEdit} multiline lines={18} />
-          <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save as a draft version" loading={busy === "save"} onPress={() => void save()} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setEdit(null)} /></View>
+          <TemplateEditor body={edit} onChange={setEdit} onSave={() => void save()} onCancel={() => setEdit(null)} saving={busy === "save"} />
         </Sec>
       ) : null}
       {cur && cur.state === "live" ? (

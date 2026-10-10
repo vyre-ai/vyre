@@ -8,6 +8,7 @@ import { ModuleNowCards } from "../modules/ModuleNowCards";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
 import { UpdateNotice } from "./UpdateNotice";
 import { AwayCard } from "./AwayCard";
+import { SignInAgain } from "./SignInAgain";
 import { VaultHealthCard } from "./VaultHealthCard";
 import { useSpaces } from "../shell/state";
 import { PairingCards } from "../pairing/PairingCards";
@@ -58,6 +59,7 @@ export default function NowScreen() {
       {real ? <PairingCards /> : null}
       {real && !started && !(gap && gap.route === SETUP_BANNER.route) ? <CreateAssistantCard role={mine} agents={agents} /> : null}
       {real ? <AwayCard /> : null}
+      {real ? <SignInAgain /> : null}
       {real ? <WaitingOnYou /> : null}
       {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />

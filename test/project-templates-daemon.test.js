@@ -135,3 +135,15 @@ test("with its assistant in the space, the same start reports its first task as 
   assert.equal(r.tasks_made, 1);
   assert.equal(r.tasks_skipped, undefined);
 });
+
+test("a template's chosen opening page is pinned in the project it starts (G21)", { timeout: 180_000 }, async t => {
+  const { d, call, ownerChain } = await boot(t);
+  await call("work.template.define", { body: { ...TEMPLATE, name: "Files first", opens_on: "files" } });
+  await call("work.template.golive", { template: "tpl_files-first", version: 1 });
+  const started = await call("work.start-project", { template: "tpl_files-first", name: "Okafor" });
+  const id = String(started.project).split("/").pop();
+  const rec = await d.kernel.gateway.records.get(ownerChain, "project", /** @type {string} */ (id));
+  assert.ok(rec && rec.data.template_snapshot, `the project carries its snapshot: ${JSON.stringify(started)}`);
+  assert.equal(JSON.parse(rec.data.template_snapshot).opens_on, "files");
+  await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad open", opens_on: "dashboard" } }), /opens_on is the page/);
+});
