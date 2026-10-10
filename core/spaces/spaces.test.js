@@ -1626,7 +1626,7 @@ test("a fresh home: the person's own space is listed with a label, a display nam
   const HOME = "spc_hhhhhhhhhhhh";
   /** @type {any} */ let ownerId = null;
   const kernelFor = () => ({ space: HOME, get owner() { return ownerId; }, membership: async () => ({ member: true, role: "owner" }), for: () => { throw new Error("not here"); } });
-  for (const [machine, tier, display, host] of [[undefined, "basic", "Personal", null], ["server", "cloud", "My Cloud", HOME]]) {
+  for (const [machine, tier, display, host] of [[undefined, "basic", "My Home", null], ["server", "cloud", "My Cloud", HOME]]) {
     const d = await device(t, { kernelFor, ...(machine ? { machine } : {}) });
     ownerId = (await d.ok("spaces.identity.create", { name: machine ? "sam" : "alex" })).id;
     const row = (await d.ok("spaces.list")).find(x => x.id === HOME);
