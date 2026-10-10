@@ -89,7 +89,7 @@ async function localWorld(o) {
   const personId = String((made && (made.id || made.identity || d.kernel.id.owner)) || d.kernel.id.owner);
   const ownerSigner = seal.signer(d.kernel.id.owner);
   await seal.enrolDevice(sealer, ownerSigner);
-  await call("spaces.create", { name: "home", home: { kind: "this-computer", confirmed: true } }).catch(() => null);
+  await call("spaces.create", { name: "home", home: { kind: "this-computer", confirmed: true } });
   return {
     world: null, run: null, out, kind: "local", person: name, personId, server: d, daemon: d, ownerSigner,
     call,
