@@ -196,6 +196,10 @@ export const DECLARED = Object.freeze({
   "recall.links": "e8a4645fd",
   "recall.pointers": "e8a4645fd",
   "recall.turn": "e8a4645fd",
+  // the 0.3.0 tools a model may read or propose through (app catalog and Connections), opened 4 Oct 2026; the guard of each is its test/reach-anyone.json reason
+  "appmods.card": "428bfeb0b", "appmods.catalog": "428bfeb0b", "appmods.list": "428bfeb0b", "appmods.screens": "428bfeb0b", "appmods.status": "428bfeb0b", "appmods.connection": "ce0e2bacf", "appmods.hosts": "aaf71dbd9",
+  "connectors.connection.check": "3e523101d", "connectors.connection.get": "3e523101d", "connectors.connection.list": "3e523101d", "connectors.connection.export": "498b073eb", "connectors.connection.import": "43f3ae8e1",
+  "connectors.connection.propose": "565e81d11", "connectors.operation.run": "1d1318369",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
