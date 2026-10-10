@@ -108,7 +108,7 @@ export function registerPlaceTools(ctx, d) {
       const thread = threadOf(i);
       const { person } = await who(meta, i.space);
       const p = placements();
-      if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server", "unavailable");
+      if (typeof p.openPreview !== "function") throw refuse("previews of a chat on a computer are not available on this server: ask the owner of this server to update it", "unavailable");
       const space = i.space || (p.spaces().find((/** @type {string} */ sp) => p.find(sp, thread, person)) || p.spaces()[0]);
       if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       /** the preview this bridge is for, known once previews.open answers: a header the front made for another preview is not this one's (trust row 44) */
