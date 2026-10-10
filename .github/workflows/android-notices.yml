@@ -1,0 +1,75 @@
+# Notices with the app closed, on a real Android runtime, on a hosted emulator (never on a person's computer): installs the debug APK that android-app.yml built, opens the app's proof route (vyre://notices-proof)
+# which turns the kept connection on, arms a scripted server answer and closes its screen, and fails unless the foreground service's headless task still makes the notice. Keeps the screenshot and the logs as an artifact.
+#
+#   workflow_dispatch   any time; `run` is an android-app run id, or empty for the latest green run on the same ref
+#   workflow_run        after android-app succeeds (GitHub reads a workflow_run trigger from the default branch only, so
+#                       it starts once this file is on main; on a team branch use workflow_dispatch)
+name: android-notices
+on:
+  push:
+    # GitHub lists a manual workflow only once it is on the default branch; on a team branch a push that touches
+    # this file or its script is how it runs.
+    paths:
+      - ".github/workflows/android-notices.yml"
+      - "apps/app/scripts/notices-android.sh"
+  workflow_dispatch:
+    inputs:
+      run:
+        description: "android-app run id to take the APK from (empty: the latest green run on this ref)"
+        required: false
+  workflow_run:
+    workflows: [android-app]
+    types: [completed]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: android-notices-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  capture:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the debug APK
+        id: apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.inputs.run || github.event.workflow_run.id }}
+          REF: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+        run: |
+          if [ -z "$RUN" ]; then
+            RUN=$(gh run list --workflow android-app.yml --branch "$REF" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN" ]; then
+            # a push starts this beside the android-app build it would capture; that build's own workflow_run brings it back once it is green
+            if [ "$GITHUB_EVENT_NAME" = push ]; then echo "::notice::no green android-app run on $REF yet; the capture runs after android-app finishes"; echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+            echo "no green android-app run on $REF"; exit 1
+          fi
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          gh run download "$RUN" --pattern 'android-app-debug-*' --dir apk
+          ls -R apk
+          echo "the APK of android-app run $RUN" >> "$GITHUB_STEP_SUMMARY"
+      - name: KVM for the emulator
+        if: steps.apk.outputs.skip != '1'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        if: steps.apk.outputs.skip != '1'
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_6
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -memory 4096 -cores 3 -noaudio -no-boot-anim -camera-back none
+          script: bash apps/app/scripts/notices-android.sh apk/android-app-debug-*/vyre-debug.apk notices-android
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.apk.outputs.skip != '1'
+        with:
+          name: android-notices-${{ github.sha }}
+          path: notices-android/
+          retention-days: 14

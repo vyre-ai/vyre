@@ -3,6 +3,7 @@
 import { AppState } from "react-native";
 import { call } from "../api/box";
 import { showLocal } from "./notify";
+import { scriptedCall } from "./notices-proof";
 import { approvalNotices, doneNotices, sharedLoop } from "./notices-model.js";
 
 /** How often the server is asked while the app is alive in the background. */
@@ -22,7 +23,8 @@ function runNotices(open: () => string | null): () => void {
     if (!live) return;
     const looking = AppState.currentState === "active";
     try {
-      const [p, t] = await Promise.all([call<any>("approvals.pending", {}), call<any>("threads.list", {})]);
+      const ask = scriptedCall() || call;
+      const [p, t] = await Promise.all([ask<any>("approvals.pending", {}), ask<any>("threads.list", {})]);
       const a = approvalNotices(seen, p.error ? null : p.data);
       const d = doneNotices(was, Array.isArray(t.data) ? t.data : t.data && Array.isArray(t.data.threads) ? t.data.threads : [], { openId: open() });
       seen = a.seen;

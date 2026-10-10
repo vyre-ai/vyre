@@ -24,5 +24,6 @@ test("after Not now an unpaired phone keeps only the /u landing, and setup stays
 
 test("the Glass relay proof page is reachable with no server (the emulator job opens it on a phone that is not paired)", () => {
   assert.equal(gateTarget({ path: "/glass-relay-proof", paired: false, direct: false }), null);
+  assert.equal(gateTarget({ path: "/notices-proof", paired: false, direct: false }), null);
   assert.equal(gateTarget({ path: "/u/now", paired: false, direct: false }), "/u/install", "any other route still goes to setup");
 });
