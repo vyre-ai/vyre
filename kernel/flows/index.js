@@ -79,7 +79,11 @@ export function createFlows(o) {
   const stages = o.stages && o.chains.forModule ? createStages({ kernel: o.kernel, catalog: o.catalog, chain: () => o.chains.forModule({ module: "stages", approver: o.stages.approver }), ports: o.ports, clock: o.clock, emit: o.emit, gates: runner.gatePort(), isAdmin: o.proposals && o.proposals.isAdmin }) : null;
   const proposals = o.proposals ? new Proposals({ kernel: o.kernel, runner, store, chain: o.proposals.chain, chains: o.chains, catalog: o.catalog, applyTypes: o.proposals.applyTypes, kinds: o.proposals.kinds, isAdmin: o.proposals.isAdmin, clock: o.clock, log: m => (o.emit ? o.emit("proposal.log", { m }) : undefined) }) : null;
   /** The stages module this Space runs: made here, or attached by the host that makes it. @type {any} */ let stagesRef = stages;
-  const cat = async () => o.catalog();
+  /** The catalog, with the words of the Flows a sub-flow step can name (name -> label), so a step reads "Run Write the inner note", never an id. */
+  const cat = async () => {
+    const c = await o.catalog();
+    try { return { ...c, flows: Object.fromEntries((await store.activeFlows()).map((/** @type {any} */ v) => [v.flow.name, v.flow.label || v.flow.name])) }; } catch { return c; }
+  };
   const view = async (/** @type {string} */ id, /** @type {number} */ [version] = [/** @type {any} */ (undefined)]) => {
     const v = version !== undefined ? await store.getVersion(id, version) : (await store.active(id)) || (await latest(id));
     if (!v) throw Object.assign(new Error("no such Flow"), { code: "not_found" });

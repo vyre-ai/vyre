@@ -119,3 +119,20 @@ test("with: the lines form and back keeps it", () => {
   assert.equal(back.steps[1].with, "request");
   assert.equal(sameFlow(f, back), true);
 });
+
+test("with: a run that read content from outside, or a Flow a model drafted, asks about the rider too", async () => {
+  for (const [label, flow, source] of [["outside content", flowOf([request, { id: "w", kind: "wait", for_ms: 2 * DAY }, copy()]), "external"], ["a model's Flow", { ...flowOf([request, { id: "w", kind: "wait", for_ms: 2 * DAY }, copy()]), authorship: "model" }, undefined]]) {
+    const calls = [];
+    const w = await world({ cat: cat(), ports: { call: async (c, action, res, input, opts) => { calls.push(action); return {}; } } });
+    w.kernel.rules.push({ match: i => i.action === "esign.request" || i.action === "esign.copy", effect: "allow", reason: "x" });
+    await install(w, flow);
+    w.kernel.inbound("payment.received", {}, source);
+    await settle(w);
+    w.kernel.completeTask(held(w)[0].id, { outcome: "approved" });
+    await settle(w);
+    w.advance(2 * DAY + 60_000);
+    await w.runner.tick(); await settle(w);
+    assert.equal(held(w).length, 2, `${label}: the copy asked its own question`);
+    assert.deepEqual(calls, ["esign.request"], `${label}: and did not go without it`);
+  }
+});

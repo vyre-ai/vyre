@@ -438,7 +438,9 @@ test("the canvas draws lanes side by side under the parallel step, each named, a
   const byId = Object.fromEntries(g.nodes.map(n => [n.id, n]));
   assert.deepEqual([byId.review.label, byId.draft.label], ["review", "draft"], "a lane is named by the author's word for it");
   assert.equal(byId.look.label, "Give a task to a person");
-  assert.equal(byId.s.label, "Run the Flow inner_note");
+  assert.equal(byId.s.label, 'Run the Flow "inner note"', "with no label to hand, the name reads as words");
+  const labelled = graph(flow, { ...w.cat, flows: { inner_note: "Write the inner note" } });
+  assert.equal(labelled.nodes.find(n => n.id === "s").label, 'Run the Flow "Write the inner note"', "and the Flow's own label when the Space has it");
   assert.deepEqual(g.edges.filter(e => e.from === "p").map(e => [e.to, e.kind]), [["review", "lane"], ["draft", "lane"]]);
   assert.ok(byId.review.lane !== byId.draft.lane && byId.review.lane > byId.p.lane, "the lanes sit side by side to the right of the parallel step");
   const named = graph(flow, { ...w.cat, people: { ["per_" + "a".repeat(26)]: "Alex Rivera" } });

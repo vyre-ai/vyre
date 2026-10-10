@@ -38,6 +38,9 @@ test("lanes and a sub-flow in a real daemon: a restart while a lane waits for a 
     { id: "after", kind: "create", type: "filing-note", set: { body: { expr: "\"after: \" + steps.s.result.body" } } },
   ] });
 
+  const graph = (await d.registry.call("flows.graph", { id: outer.id }, "cli", await meta())).data;
+  assert.equal(graph.nodes.find((/** @type {any} */ n) => n.id === "s").label, 'Run the Flow "Write the inner note"', "the sub-flow step reads with the other Flow's label, never its id");
+
   const started = await host().flows.tools["flows.start"](host().personChain(), { id: outer.id, input: { client: "Rivera" } });
   const runId = started.run || started.id;
   const state = async () => (await d.registry.call("flows.run", { run: runId }, "cli", await meta())).data;

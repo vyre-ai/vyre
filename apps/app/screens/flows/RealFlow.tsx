@@ -10,7 +10,7 @@ import { FlowCode } from "./FlowCode";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
-import { APPROVE_LABEL, shownWarnings, titleOf, versionWaits } from "./real-model.js";
+import { APPROVE_LABEL, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -25,6 +25,7 @@ export function RealFlow({ id }: { id: string }) {
   const [runs, setRuns] = useState<RunRow[]>([]);
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
+  const [shrunk, setShrunk] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,8 +45,8 @@ export function RealFlow({ id }: { id: string }) {
   }, [id, n]);
 
   useEffect(() => {
-    if (!runId) { setPainted(null); return; }
-    runReal(runId).then((r) => setPainted(r.painted?.nodes ?? null)).catch(() => setPainted(null));
+    if (!runId) { setPainted(null); setShrunk(null); return; }
+    runReal(runId).then((r) => { setPainted(r.painted?.nodes ?? null); setShrunk(shrunkNote(r.run)); }).catch(() => { setPainted(null); setShrunk(null); });
   }, [runId]);
 
   if (err) return <Frame title="Flows" back="/u/flows"><ErrorState title="Flows did not load" reason={err} retry={() => { setErr(""); setN((x) => x + 1); }} /></Frame>;
@@ -91,7 +92,7 @@ export function RealFlow({ id }: { id: string }) {
       {painted && picked_run ? (
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
           <Card flush>
-            {recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
+            {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
           </Card>
           {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
         </Sec>

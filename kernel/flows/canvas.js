@@ -46,7 +46,7 @@ export function describeStep(s, cat) {
     case "repeat": return `Do this for each ${s.as}`;
     case "parallel": return `Do ${(s.steps || []).length} things at the same time, then carry on`;
     case "branch": return s.label || s.id;
-    case "subflow": return `Run the Flow ${s.flow}`;
+    case "subflow": return `Run the Flow "${(cat.flows && cat.flows[s.flow]) || String(s.flow).replace(/[_-]+/g, " ")}"`;
     case "wait": return s.for_ms !== undefined ? `Wait ${span(s.for_ms)}` : s.event ? `Wait for ${s.event}` : "Wait until a time";
     case "ask": return `Ask ${whoLabel(s.to, cat)}`;
     case "assign": return `Give a task to ${whoLabel(s.to, cat)}`;
