@@ -41,4 +41,9 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   assert.match(got, /hello team/);
   const home = JSON.stringify((await w.tool("work.chat.list", {})).data);
   assert.ok(!home.includes(String(made.chat)), `the home's own chats never list the team's chat ${made.chat}: ${home.slice(0, 500)}`);
+  // memory: what a team chat's turn said is not filed into the home's own memory (the home's recall is the owner's personal one)
+  await w.tool("recall.index", {}).catch(() => null);
+  const db = w.d.registry.deps.db;
+  const lines = (() => { try { return db.prepare("SELECT COUNT(*) n FROM memory_engine_lines WHERE text LIKE ?").get("%hello team, please answer%"); } catch { return { n: 0 }; } })();
+  assert.equal(Number(lines.n), 0, "nothing the team said is in the home's personal memory");
 });
