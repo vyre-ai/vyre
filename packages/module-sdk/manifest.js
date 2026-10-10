@@ -307,6 +307,9 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   }
   // crossSpace names the one kernel action another Space's authorize must allow before this tool runs there for a module (ctx.kernel.for(space).call); a tool without it is never run that way.
   for (const e of toolEntries(m)) if (e.crossSpace != null && (typeof e.crossSpace !== "string" || !/^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace))) out.push(`tool "${e.name}": crossSpace must be a kernel action name`);
+  // covers names the outward tools this tool files as part of the same act, so the person's one yes covers them (Vyre's own modules only; the registry ignores it anywhere else).
+  for (const e of toolEntries(m)) if (e.covers !== undefined && (!Array.isArray(e.covers) || e.covers.length > 4 || e.covers.some((/** @type {any} */ c) => typeof c !== "string" || !/^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/.test(c)) || !e.outward)) out.push(`tool "${e.name}": covers is a short list of tool names, and only an outward tool has one`);
+  if (!firstParty) for (const e of toolEntries(m)) if (e.covers !== undefined) out.push(`tool "${e.name}": covers is for Vyre's own modules`);
   // An asked tool's `target` names one internal tool of this module (built in only, see addedCheck).
   for (const e of toolEntries(m)) {
     if (!e.target) continue;
@@ -373,6 +376,7 @@ export function toolEntries(m) {
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
     if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;
+    if (Array.isArray(t.covers)) extra.covers = t.covers;
     // A tool a Flow's call step may run is one the module lists in flow.steps (an outward one is also `outward: true`, so it is held for a yes before it runs).
     const step = flowSteps(m).find(x => x.name === t.name);
     if (step) extra.flowStep = step;

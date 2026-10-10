@@ -32,7 +32,7 @@ const DAY = 86_400_000;
  *   name: () => string | null,                  the box's claimed name ("alex"), or null
  *   domain?: string,                            default vyre.run
  *   dir: string,                                where certificates live
- *   directory: { acme(name: string, token: string): Promise<any>, acmeClear(name: string): Promise<any>, publish(name: string): Promise<any> },
+ *   directory: { acme(name: string, token: string): Promise<any>, acmeClear(name: string): Promise<any>, publish(name: string, o?: { apps?: boolean, via?: string, share?: boolean }): Promise<any> },
  *   upstream: { port: number },                 the Headscale the loopback gate already fronts
  *   listen?: { host?: string, port?: number },  default 0.0.0.0 and config port
  *   acme?: "production" | "staging" | string,   a name from acme.DIRECTORIES or a directory URL (a test CA)
@@ -40,6 +40,7 @@ const DAY = 86_400_000;
  *   apps?: () => boolean | Promise<boolean>,    has this box an app module installed: the certificate then covers *.<name> too and the directory points *.<name> here (and stops when the last app is removed)
  *   onIngress?: (base: string | null) => void,   told the https origin links and webhooks use when it appears (the gate is up and the name points here) and null when it goes
  *   reachable?: () => boolean,                  has the outside check proved the port answers
+ *   tunnel?: () => boolean,                     the box reaches the public through the Publish tunnel (no inbound port): publish the name via the tunnel, declaring its apps and share hosts
  *   publish?: boolean,                          publish the address without waiting for the outside check (the person's word: this box is directly on the internet)
  *   log?: (m: string) => void,
  *   now?: () => number,
@@ -92,10 +93,11 @@ export function createPublicGate(o) {
   async function publishIfReady() {
     const name = o.name();
     if (!name || !gate || (published === name && publishedApps === wantApps)) return;
-    if (!(o.publish === true || (o.reachable && o.reachable()))) return;
+    const viaTunnel = Boolean(o.tunnel && o.tunnel());
+    if (!(viaTunnel || o.publish === true || (o.reachable && o.reachable()))) return;
     // The wildcard goes into DNS only once the certificate that covers it is in hand: a name that resolves before it can be served would show a certificate error.
     const withApps = wantApps && certApps;
-    try { await (withApps ? o.directory.publish(name, { apps: true }) : o.directory.publish(name)); published = name; publishedApps = withApps; log(`wink net: ${name}.${domain} points at this box${withApps ? ", and so do its apps" : ""}`); told(); }
+    try { await (viaTunnel ? o.directory.publish(name, { ...(withApps ? { apps: true } : {}), via: "tunnel", share: true }) : withApps ? o.directory.publish(name, { apps: true }) : o.directory.publish(name)); published = name; publishedApps = withApps; log(`wink net: ${name}.${domain} points at this box${withApps ? ", and so do its apps" : ""}`); told(); }
     catch (e) { log(`wink net: could not publish the address: ${/** @type {Error} */ (e).message}`); }
   }
 

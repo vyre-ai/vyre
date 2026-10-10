@@ -36,7 +36,7 @@ export function inspect(buf) {
 export { isSealed, isStream };
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
-export const INCLUDE = ["config.json", "hub.json", "vyre.db", "space-bundles", "vault", "watchers", "modules", "certs", "names", "data"];
+export const INCLUDE = ["config.json", "hub.json", "vyre.db", "space-bundles", "space-drives", "vault", "watchers", "modules", "certs", "names", "data"];
 
 /**
  * Files under `data` that mean something only to a running process and so stay out: the artifacts
@@ -105,6 +105,23 @@ export function walkWork(root) {
 }
 
 /** Bytes under a path, links not followed. */
+/**
+ * The Drive of every Space this home holds (R031-83): the home Space's under kernel/drive, each hosted Space's under kernel/spaces/<id>/drive. A firm's documents ARE the Drive, so a backup carries it, as `space-drives/<space id>`; the
+ * chunks are sealed under the Space's pool key (which its Space bundle carries), so the copy is as unreadable as the original without the owner's recovery code.
+ * @param {string} root @returns {{ id: string, dir: string }[]}
+ */
+export function driveFolders(root) {
+  /** @type {{ id: string, dir: string }[]} */ const out = [];
+  const home = path.join(root, "kernel");
+  let id = ""; try { id = String(JSON.parse(fs.readFileSync(path.join(home, "space.json"), "utf8")).space || ""); } catch { /* no kernel yet */ }
+  if (/^spc_[a-z2-7]{12}$/.test(id) && fs.existsSync(path.join(home, "drive"))) out.push({ id, dir: path.join(home, "drive") });
+  let hosted = []; try { hosted = fs.readdirSync(path.join(home, "spaces")); } catch { /* none */ }
+  for (const n of hosted) if (/^spc_[a-z2-7]{12}$/.test(n) && fs.existsSync(path.join(home, "spaces", n, "drive"))) out.push({ id: n, dir: path.join(home, "spaces", n, "drive") });
+  return out;
+}
+/** Is this backup entry there on this home? `space-drives` is made from the Spaces' Drives, not a folder of its own. @param {string} root @param {string} name */
+const present = (root, name) => (name === "space-drives" ? driveFolders(root).length > 0 : fs.existsSync(path.join(root, name)));
+
 function sizeOf(p) {
   let st;
   try { st = fs.lstatSync(p); } catch { return 0; }
@@ -121,7 +138,7 @@ function sizeOf(p) {
  */
 export function estimate({ root = config.home(), workRoots = [] } = {}) {
   let state = 0;
-  for (const name of INCLUDE) state += sizeOf(path.join(root, name));
+  for (const name of INCLUDE) state += name === "space-drives" ? driveFolders(root).reduce((n, f) => n + sizeOf(f.dir), 0) : sizeOf(path.join(root, name));
   const work = workRoots.map(r => { const w = walkWork(r); return { path: r, files: w.files, bytes: w.bytes, links: w.links }; });
   return { state, work, total: state + work.reduce((n, w) => n + w.bytes, 0) };
 }
@@ -281,6 +298,13 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
           included.push(name);
           continue;
         }
+        if (name === "space-drives") {
+          const folders = driveFolders(root);
+          if (!folders.length) continue;
+          for (const f of folders) copyTree(f.dir, path.join(staging, "space-drives", f.id));
+          included.push(name);
+          continue;
+        }
         let st;
         try { st = fs.lstatSync(src); } catch { continue; }
         if (name === "vault" && st.isDirectory() && excludedIds.length) {
@@ -298,7 +322,7 @@ export async function backup({ root = config.home(), file, db, passphrase, inclu
       tick("data");
       await w.segment(1, tarGz(["-cf", "-", "-C", staging, "."], warnings));
     } else {
-      for (const name of INCLUDE) if (fs.existsSync(path.join(root, name))) included.push(name);
+      for (const name of INCLUDE) if (present(root, name)) included.push(name);
     }
 
     for (let i = 0; i < walks.length; i++) {

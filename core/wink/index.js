@@ -772,6 +772,8 @@ export function createWink(inject = {}) {
         hooks: async () => { try { const r = /** @type {any} */ (await ctx.call("hooks.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the Vault MCP's own loopback listener (core/vault/passmcp-listener.js): exactly POST /vault-mcp, the Authorization header kept
         vaultmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("vault.mcp.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
+        // the outside agents' MCP (core/outside, team/contracts/ext-agents.md): exactly POST /agents-mcp; null while that module is not there, so the gate answers its plain 404
+        agentsmcp: async () => { try { const r = /** @type {any} */ (await ctx.call("outside.mcp.status", {})); const d = r && r.data; return d && d.listening && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         share: async () => { try { const r = /** @type {any} */ (await ctx.call("artifacts.public.status", {})); const d = r && r.data; return d && d.on && d.available && Number.isInteger(d.port) ? d.port : null; } catch { return null; } },
         // the app modules' own hosts: the apps' front (a loopback listener the appmods module owns) and the hosts of the apps that are installed and running; null without either
         apps: async () => {
@@ -787,6 +789,7 @@ export function createWink(inject = {}) {
       onIngress: (/** @type {string | null} */ base) => { Promise.resolve(ctx.call("artifacts.public.base", { base })).catch(() => {}); Promise.resolve(ctx.call("vault.mcp.base", { base })).catch(() => {}); },
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
       ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      tunnel: () => Boolean(ctx.config && ctx.config.relay && typeof ctx.config.relay.tunnel_url === "string" && ctx.config.relay.tunnel_url),
       ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
       ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.gatePort) ? { gatePort: ctx.config.wink.gatePort } : {}),
@@ -795,6 +798,16 @@ export function createWink(inject = {}) {
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
       ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged()),
       ctx.events.on("appmods.installed", () => netd.appsChanged()), ctx.events.on("appmods.removed", () => netd.appsChanged())] : [];
+    // The port of this box's public gate on loopback, for the relay module's tunnel (a visitor's TLS stream is handed to the gate there, which holds the certificate). Modules only, and only the relay's.
+    ctx.tool("wink.gate.port", {
+      internal: true, description: "The loopback port of this box's public gate: { port } or { port: null } while there is none. Internal: the relay module's tunnel end connects each public stream to it.",
+      input: { type: "object", properties: {} },
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("the relay module alone asks for the gate's port"), { code: "denied" });
+        const p = netd && netd.status().publicGate && netd.status().publicGate.port;
+        return { port: Number.isInteger(p) ? p : null };
+      },
+    });
     registerNetwork(ctx, { identity: ports.network, ...(netd ? { ingress: () => netd.ingress() } : {}), ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();
@@ -979,7 +992,7 @@ export function nameDirectory(dirCall) {
   return {
     acme: async (/** @type {string} */ _name, /** @type {string} */ token) => dirCall("names.directory.acme", { token }),
     acmeClear: async () => dirCall("names.directory.acme-clear", {}),
-    publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean }} [o] */ o) => dirCall("names.directory.publish", o && o.apps === true ? { apps: true } : {}),
+    publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean, via?: string, share?: boolean }} [o] */ o) => dirCall("names.directory.publish", { ...(o && o.apps === true ? { apps: true } : {}), ...(o && o.via === "tunnel" ? { via: "tunnel", share: o.share === true } : {}) }),
   };
 }
 

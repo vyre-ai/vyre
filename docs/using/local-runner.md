@@ -20,8 +20,19 @@ ceiling. Either side can take theirs back in one tap. Without both, nothing star
 ## What runs where
 
 A session picks its place on its own: this computer when it is allowed, awake and has room, else the space's
-server, else it waits and says why. A line on the session says "Running on this Mac", with "Move to server".
-Pin a session to the server to keep it running when you close the laptop.
+server, else it waits and says why. The chat shows where it runs ("On Office Mac" or "On the server") and, when it
+moved, one line with the reason: "Moved to the server: lid closed."
+
+Your computer tells the space's server it is there every few seconds. If it goes quiet for twenty seconds (the lid
+closed, the network dropped, the computer slept), the server takes the session and carries on from the last whole
+turn. A computer that was only asleep and wakes later finds it no longer has the session: it stops it and writes
+nothing, so no turn is ever run twice. When the lid opens or the computer is plugged in again, the chat offers
+"Bring back to this Mac?"; nothing moves back unless you say so.
+
+"Move to the server" in the chat hands a session over after its current turn. Pin a session to the server to keep it
+running when you close the laptop. Settings, This computer, holds one switch for letting sessions run here, "only
+while plugged in", a processor limit and a memory limit; past a limit a session moves to the server. "Pause all"
+freezes everything running on this computer without losing anything.
 
 ## What protects the space
 

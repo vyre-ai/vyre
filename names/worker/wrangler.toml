@@ -5,6 +5,9 @@
 #
 #   npx wrangler secret put CF_API_TOKEN     (Zone.DNS edit, scoped to vyre.run)
 #   npx wrangler secret put CF_ZONE_ID
+#
+# The public door (relay/deploy/README.md) adds three more secrets: RELAY_SECRET (the edge relay's shared secret, 32+ characters, asked on GET /v1/tunnel/resolve),
+# TUNNEL_IPV4 (the edge's reserved address that a tunnel box's name points at) and ADMIN_SECRET (32+ characters; suspend and drop).
 name = "vyre-names"
 main = "index.js"
 compatibility_date = "2026-09-01"

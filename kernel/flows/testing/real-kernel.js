@@ -60,7 +60,6 @@ export class RealKernel {
     const pr = new Presence(this.clock, { allowUnattested: true });
     this.presenceKeys = pr;
     this.presence = { check: async (/** @type {any} */ { chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space: this.space, fields, ctx: chainCtx(chain) }) : "no_proof") };
-    this.#stageTypes = new Map();
     /** @type {any} */ this.hooks = null;
 
     // SHIM(corr): events written under an automation chain carry corr = the chain's job. Wrapping the log is the only way in without editing core.
@@ -120,16 +119,15 @@ export class RealKernel {
         this.defines.push(diff);
         // Defining types is an admin act: the kernel now wants exactly one person (the owner here), never a flow or module chain.
         const r = await rec.define(this.as(this.ownerActor()), diff);
-        for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if ((t.fields || []).some((/** @type {any} */ f) => f.kind === "stage")) this.#stageTypes.set(t.name, true);
         return r;
       },
       get: (c, t, id) => rec.get(c, t, id),
       query: (c, t, spec) => { this.calls.push(["query", t, spec.filter || null]); return rec.query(c, t, spec); },
       aggregate: (c, t, s) => rec.aggregate(c, t, s),
       search: (c, s) => rec.search(c, s),
-      // SHIM(idem): the gateway has no idempotency key on records yet; dedupe here. SHIM(stage-entered): the gateway emits no record.stage-entered.
-      create: idemWrap(async (c, t, d) => { const r = await rec.create(c, t, d); this.#stageEvent(c, r, undefined); return r; }),
-      update: idemWrap(async (c, t, id, p, base) => { const before = await rec.get(c, t, id); const r = await rec.update(c, t, id, p, base); this.#stageEvent(c, r, before); return r; }),
+      // SHIM(idem): the gateway has no idempotency key on records yet; dedupe here.
+      create: idemWrap((c, t, d) => rec.create(c, t, d)),
+      update: idemWrap((c, t, id, p, base) => rec.update(c, t, id, p, base)),
       remove: idemWrap((c, t, id, base) => rec.remove(c, t, id, base)),
       restore: (c, t, id) => rec.restore(c, t, id),
     };
@@ -160,8 +158,6 @@ export class RealKernel {
     };
     this.sysChain = sysChain;
   }
-
-  /** @type {Map<string, boolean>} */ #stageTypes;
 
   ownerActor() { return { kind: "person", id: this.owner, space: this.space }; }
 
@@ -225,14 +221,6 @@ export class RealKernel {
 
   /** Subscribe a consumer to every event, in order. */
   onEvent(/** @type {(e: any) => any} */ cb, name = "test") { return this.rawLog.subscribe(name, {}, cb); }
-
-  /** SHIM(stage-entered): after a create or an update, write record.stage-entered when the stage field is set or changed. */
-  #stageEvent(/** @type {any} */ chain, /** @type {any} */ r, /** @type {any} */ before) {
-    if (!this.#stageTypes.has(r.type)) return;
-    const now = r.data && r.data.stage;
-    if (!now || (before && before.data && before.data.stage === now)) return;
-    this.logw.append(chain, { type: "record.stage-entered", sv: 1, subject: r.urn, data: { type: r.type, id: r.id, stage: now } });
-  }
 
   async #recordByUrn(/** @type {string} */ urn) {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(urn || "");

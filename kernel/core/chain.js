@@ -140,6 +140,11 @@ export function createChainBuilder(cfg) {
         if (f.person !== cfg.owner && !isMember(f.person)) return refuse("the viewer is not a member");
         return make([hop("person", f.person, "surface", { surface: "viewer" })], base(), { viewer: true });
       }
+      case "outside": {
+        // An outside agent (core/outside): the agent alone, no person behind it, so it holds only the grants made to it; external, so no grant or admin act goes through it.
+        if (!f.vouched || typeof f.agent !== "string" || !/^ext_[a-z0-9][a-z0-9-]{9,39}$/.test(f.agent)) return refuse("outside agent not vouched by the kernel's own registration");
+        return make([hop("agent", f.agent, "surface", { surface: "outside" })], { ...base(), trust: "external" });
+      }
       case "module": return appendService(f.inbound, f.module, f.first_party);
       case "job": return restore(f.stored);
       default: return refuse("unknown facts");
