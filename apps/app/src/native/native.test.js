@@ -112,6 +112,8 @@ test("the service that runs the notice loop asks for the wake lock React Native 
   const service = fs.readFileSync(new URL("java/sh/vyre/notify/KeepAliveService.kt", dir), "utf8");
   assert.match(service, /HeadlessJsTaskService/);
   assert.match(manifest, /android\.permission\.WAKE_LOCK/);
+  const app = JSON.parse(fs.readFileSync(new URL("../../app.json", import.meta.url), "utf8"));
+  assert.ok(!(app.expo.android.blockedPermissions || []).includes("android.permission.WAKE_LOCK"), "app.json does not strip the wake lock back out of the merged manifest");
   const perms = JSON.parse(fs.readFileSync(new URL("../../android-permissions.json", import.meta.url), "utf8"));
   assert.ok(perms.allowed.includes("android.permission.WAKE_LOCK") && perms.reasons["android.permission.WAKE_LOCK"], "allowed, with its reason in words");
 });
