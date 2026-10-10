@@ -10,11 +10,11 @@
 //
 // What it relies on: the kernel treats a Flow run's automation hop as a job label under its approving person (kernel/core/authorize.js), so a run can do exactly what its approver can
 // and no more, and the runner's declared caps narrow it further.
+import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 
-const MIN_TICK_MS = 60_000;
 
 /**
  * Run `f` now when the Space's store is attached, or when it joins. A Space on its own records store (Twenty) attaches a moment after the server is up (stores/twenty/deferred-store.js): whatever reads the Flow
@@ -179,23 +179,13 @@ export function createFlowsHost(o) {
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 
+    // The timer sleeps until the next wake and is woken by events (core/daemon/wake-timer.js): an idle box makes no records query between them.
+    const wake = createWakeTimer({ nextWake: () => flows.nextWake(), tick: () => flows.tick(), now: clock, log: (/** @type {string} */ msg) => log(`flows ${space}: ${msg}`) });
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
-
-    // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
-    /** @type {NodeJS.Timeout | null} */ let timer = null;
-    let stopped = false;
-    const arm = async () => {
-      if (stopped) return;
-      let wait = MIN_TICK_MS;
-      try { const next = await flows.nextWake(); if (typeof next === "number") wait = Math.max(1000, Math.min(MIN_TICK_MS, next - clock())); } catch (err) { log(`flows ${space}: no next wake (${/** @type {Error} */ (err).message})`); }
-      if (stopped) return;
-      timer = setTimeout(async () => { try { await flows.tick(); } catch (err) { log(`flows ${space}: tick failed (${/** @type {Error} */ (err).message})`); } void arm(); }, wait);
-      timer.unref();
-    };
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); void wake.poke(); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.
-    await whenStoreReady(k.store, async () => { await recover(); void arm(); });
+    await whenStoreReady(k.store, async () => { await recover(); void wake.arm(); });
 
     const host = Object.freeze({ space, flows, stages, get owner() { return ownerOf(); },
       /** The chain of a session token this Space's door minted (an assistant's session, a person's), or null. */
@@ -204,7 +194,7 @@ export function createFlowsHost(o) {
       personChain: () => personChain(ownerOf()),
       /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
       get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
-      stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
+      stop: () => { wake.stop(); } });
     spaces.set(space, host);
     // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
     if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb), ...(o.google ? { google: o.google } : {}) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
