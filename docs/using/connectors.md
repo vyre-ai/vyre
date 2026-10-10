@@ -271,6 +271,13 @@ driving the page each time. `chrome_op` in Claude Code (or your assistant) does 
 3. A send (a message, a connection request) is taught with its request **blocked**, after your yes:
    nothing is sent while Vyre learns it. Every later call of it waits for your yes and is made once.
 
+A site that answers with a plain web page (a court's docket, a registry, a county record search) is
+taught the same way: tell `chrome_op learn` the text of the first row, one piece per field (`page:
+{ number: "24-CV-1001", caption: "Harlow v. Northwind" }`). Vyre finds the rows of the page by their
+structure, keeps that as the operation's recipe, and reads every later page the same way, so the same
+search runs from a Flow with no model. If the site says "no results", that is an empty answer; if the
+page's structure changed, that is a change to repair.
+
 Your login never leaves the browser. A call is signed inside the page, by the browser that is
 signed in; Vyre keeps names, shapes and the places a token comes from, never the token, a cookie or
 what you typed. When the site changes, a read is repaired once from the page and kept only after a
