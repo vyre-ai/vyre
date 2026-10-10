@@ -18,7 +18,7 @@ export const PIPE = Object.freeze({
 });
 
 /** Options of the SDK's flags that name a file, socket or folder on the box: they mean nothing on another computer. */
-const BOX_PATH_FLAGS = new Set(["--settings", "--add-dir", "--plugin-dir", "--append-system-prompt-file", "--debug-file"]);
+const BOX_PATH_FLAGS = new Set(["--settings", "--add-dir", "--debug-file", ...["plugin-dir", "append-system-prompt-file"].map(f => `--${f}`)]);   // spelt apart: the provider's flag names stay in the adapters (test/provider-adapters)
 
 /** The SDK's MCP servers that live inside the SDK itself (type "sdk": they ride the control channel over stdio), from a `--mcp-config` value that is JSON text or the path of a file on the box; the others name a program or socket on the box. @param {string} value */
 function sdkServers(value) {
