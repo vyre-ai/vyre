@@ -9440,9 +9440,10 @@ The permission mode new sessions in a project start in: default (ask), acceptEdi
 
 ### `sessions.models`
 
-The models a thread can switch to (threads.model): id and label, the aliases Claude Code takes first.
+The models a thread can switch to (threads.model): id and label, from the registry of every model Vyre knows; the aliases Claude Code takes first.
 
-- Input: none
+- Input:
+  - `provider` string: Whose models: claude (default), codex, grok ...
 - Callers: any caller
 
 ### `sessions.models.get`
