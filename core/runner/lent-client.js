@@ -83,6 +83,10 @@ export function createLentClient(o) {
     release: async ({ session, reason }) => { let r; try { r = await o.invoke("lent.release", [{ session, epoch: epochs.get(session), reason }]); } catch (e) { fence(session, e); throw e; } if (r && r.moved) epochs.delete(session); return r; },
     /** The bytes of a chat's process on this computer, up and down, in one long call (contracts/lent-spawn.md). A fenced session is stopped here like any other write. */
     pipe: async ({ session, up, exit, ack, wait_ms }) => { try { return await o.invoke("lent.pipe", [{ session, epoch: epochs.get(session), ...(up && up.length ? { up } : {}), ...(exit ? { exit } : {}), ack, ...(Number.isInteger(wait_ms) ? { wait_ms } : {}) }]); } catch (e) { fence(session, e); throw e; } },
+    /** A tool call of the chat's session, brought to the home as that session's own (lent.http). */
+    http: async ({ session, method, path, body, caller }) => { try { return await o.invoke("lent.http", [{ session, epoch: epochs.get(session), method: method === "GET" ? "GET" : "POST", path, body, caller }]); } catch (e) { fence(session, e); throw e; } },
+    /** The nudge: held at the home up to `wait_ms` until it has something for this computer to do (a chat to start), so a ready computer is told at once. The directives are the heartbeat's. */
+    wait: ({ wait_ms }) => o.invoke("lent.wait", [{ wait_ms }]),
     /** Told when the home fences a session of this computer. */
     onFenced: fn => { fencedFns.add(fn); return () => { fencedFns.delete(fn); }; },
   };
