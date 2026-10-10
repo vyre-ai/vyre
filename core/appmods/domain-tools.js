@@ -59,7 +59,7 @@ export function registerDomainTools({ ctx, domains, running, signingApp, ownerOr
   });
 
   ctx.tool("appmods.domain.list", {
-    description: "Your own domains for apps and where each stands: waiting for its DNS records, getting a certificate, or live. check: true adds the records still to add.",
+    description: "Your own domains for apps and where each stands: waiting, getting a certificate, or live. check: true adds the DNS records to add.",
     input: obj({ check: { type: "boolean" } }),
     run: async (/** @type {any} */ i) => {
       const st = await states();
