@@ -33,9 +33,17 @@ export default [
     },
   },
   {
-    name: "status", order: 12, usage: "vyre status [--json]", summary: "is it running, and what is it running",
-    async run() {
+    name: "status", order: 12, usage: "vyre status [--json] [--ready]", summary: "is it running, and what is it running",
+    async run(/** @type {string[]} */ args = []) {
       const h = await request("GET", "/v1/health");
+      // --ready is what the installer and the updater wait on: vyred itself answering, nothing else. The full status also asks search and memory, which can take minutes to answer on a first start
+      // while the index and the Records store come up; that is not "Vyre did not start".
+      if (Array.isArray(args) && args.includes("--ready")) {
+        if (h.error) { out(`  vyred ${beacon("not answering yet")}`); return EXIT.UNREACHABLE; }
+        const m = h.data.modules || {};
+        out(`  vyred ${signal("answering")} ${dim(`· ${label(h.data)} · ${m.running || 0} modules running${m.failed ? `, ${m.failed} failed` : ""}${h.data.finishing ? ` · ${h.data.finishing}` : ""}`)}`);
+        return 0;
+      }
       if (h.error) {
         if (json()) return failTool(h.error);
         out(`  vyred ${beacon("not running")} ${dim("· vyre up to start it")}`);

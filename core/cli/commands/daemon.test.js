@@ -67,3 +67,18 @@ test("vyre space: a remembered space is read back, shown by bare `vyre space`, a
   assert.equal(readSpace(root), null);
   assert.equal(JSON.parse((await run(root, ["space", "--json"])).stdout).space, null);
 });
+
+test("vyre status --ready answers when vyred does, and says it is not answering when it is not", async t => {
+  const root = tempHome(t);
+  const none = await run(root, ["status", "--ready"]);
+  assert.notEqual(none.code, 0, "no vyred: not ready");
+  assert.match(none.stdout, /not answering yet/);
+  const { start } = await import("../../daemon/index.js");
+  const { present } = await import("../../../test/helpers.js");
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const up = await run(root, ["status", "--ready"]);
+  assert.equal(up.code, 0, up.stdout);
+  assert.match(up.stdout, /vyred answering/);
+  assert.doesNotMatch(up.stdout, /Search|memory\s/i, "it asks vyred and nothing else (not search, not memory)");
+});
