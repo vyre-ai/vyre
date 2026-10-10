@@ -4,9 +4,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, EmptyState, ErrorState, LoadingState, Row, showToast } from "@vyre/ui";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
-import { errWords, rowLine, type Body, type Row as TemplateRow } from "./model";
-import { blank } from "./edit";
-import { TemplateEditor } from "./TemplateEditor";
+import { errWords, rowLine, type Row as TemplateRow } from "./model";
 import { templates } from "./templates";
 
 type Lib = Awaited<ReturnType<typeof templates.library>>;
@@ -24,17 +22,9 @@ export default function TemplatesScreen() {
     setBusy(id);
     try { const v = await templates.install(id); showToast(`${v.name} is a draft. Try it, then put it live.`); router.push(`/u/templates/${v.template}` as never); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); }
   };
-  const [draft, setDraft] = useState<Body | null>(null);
-  const create = async () => {
-    setBusy("new");
-    try { const v = await templates.define(draft!, undefined, "made in the studio"); showToast(`${v.name} is a draft. Try it, then put it live.`); router.push(`/u/templates/${v.template}` as never); } catch (e) { showToast(errWords(e)); } finally { setBusy(""); }
-  };
   const have = new Set((rows || []).map((r) => r.name));
   return (
     <Frame back="/u/projects" title="Templates" sub="A template is stages and tasks a project follows: who does each task, the checklist that proves it done, what needs a yes. Ask @Engineer to build or change one.">
-      {draft ? (
-        <Sec title="A new template"><TemplateEditor body={draft} onChange={setDraft} onSave={() => void create()} onCancel={() => setDraft(null)} saving={busy === "new"} /></Sec>
-      ) : <View className="self-start"><Button kind="primary" size="sm" label="New template" onPress={() => setDraft(blank())} /></View>}
       <Sec title="In this Space">
         {err ? <Card flush><ErrorState title="Templates did not load" reason={err} retry={load} /></Card> : null}
         {rows === null && !err ? <LoadingState rows={3} /> : null}
