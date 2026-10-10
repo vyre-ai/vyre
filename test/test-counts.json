@@ -7,7 +7,6 @@
  "apps/app/screens/install/real.test.js": 13,
  "apps/app/screens/memory/logic.test.js": 5,
  "apps/app/screens/onboarding/onboarding.test.js": 9,
- "apps/app/screens/runner/runner-contract.test.js": 5,
  "apps/app/screens/settings/logic.test.js": 7,
  "apps/app/screens/settings/my-cloud.test.js": 8,
  "apps/app/screens/shell/spaces.test.js": 5,
@@ -62,6 +61,7 @@
  "apps/app/src/ui/swipe.test.js": 4,
  "apps/app/src/vault/clip-model.test.js": 8,
  "apps/app/ui/canvas/layout.test.js": 4,
+ "apps/app/ui/canvas/real-graph.test.js": 1,
  "apps/app/ui/fields/logic.test.js": 11,
  "apps/app/ui/marks/source.test.js": 7,
  "apps/app/ui/motion/motion.test.js": 9,
@@ -452,7 +452,7 @@
  "core/vault/module-put-own.test.js": 1,
  "core/vault/native.test.js": 4,
  "core/vault/needs.test.js": 3,
- "core/vault/passmcp.test.js": 8,
+ "core/vault/passmcp.test.js": 9,
  "core/vault/presence.test.js": 8,
  "core/vault/prompt.test.js": 3,
  "core/vault/provider-token.test.js": 8,
@@ -533,7 +533,6 @@
  "core/wink/storage/index.test.js": 10,
  "core/wink/storage/pool.test.js": 5,
  "core/wink/grants.test.js": 5,
- "core/github/scan.test.js": 3,
  "core/wink/storage/s3.test.js": 4,
  "core/work/capture.test.js": 2,
  "core/work/e2e-estate.test.js": 5,
@@ -1010,6 +1009,7 @@
  "test/design-rules.test.js": 2,
  "apps/app/ui/blocks/symbols.test.js": 2,
  "test/agent-reach-classes.test.js": 3,
+ "apps/app/screens/runner/runner-contract.test.js": 5,
  "core/vault/links.test.js": 4,
- "apps/app/ui/canvas/real-graph.test.js": 1
+ "core/github/scan.test.js": 3
 }
