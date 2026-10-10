@@ -46,12 +46,12 @@ test("runner contract: every reason code and state the contract lists has words,
   assert.equal(whyNotLine(fx.calls.whyNot.output.reason), "It did not run on this Mac because lid closed.");
 });
 
-test("runner contract: settings and the list read as the contract's answers; the surface writes its own line", () => {
+test("runner contract: settings and the list read as the contract's answers; the list reads the producer's own line", () => {
   assert.deepEqual(pickSettings(fx.calls.settings.output), fx.defaults);
   const [row] = pickHere(fx.calls.here.output);
   assert.deepEqual([row.thread, row.title, row.computer, row.state, row.cpuPercent, row.memoryMb], [CHAT, "A session", "Office Mac", "running", 12, 340]);
   assert.equal(hereLine(row).sub, "Running, 12% processor, 340 MB");
-  assert.deepEqual(Object.keys(row).sort(), ["computer", "cpuPercent", "memoryMb", "state", "thread", "title"], "the surface keeps what it draws, not the producer's wording");
+  assert.deepEqual(Object.keys(row).sort(), ["computer", "cpu", "cpuPercent", "line", "memoryMb", "state", "thread", "title"], "the list keeps the producer's own line and accessory, so Settings and the Lumen list read the same");
 });
 
 test("runner contract: a box without the runner reads as nothing, never an error", async () => {
