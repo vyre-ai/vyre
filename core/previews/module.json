@@ -84,6 +84,11 @@
         "reach": "person"
       },
       {
+        "name": "previews.folder",
+        "effect": "read",
+        "reach": "modules"
+      },
+      {
         "name": "previews.resolve",
         "effect": "read",
         "reach": "modules"

@@ -88,3 +88,41 @@ test("a React page in a folder goes live on one yes, as the pane showed it, with
   assert.match(String(dom), /Northwind Bakery/);
   assert.match(String(dom), /3 loaves today/);
 });
+
+test("a files preview's card publishes its own folder: publish.quick { name, preview } holds for one yes, and a path never crosses the surface", { timeout: 240_000 }, async t => {
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "bakery-box", vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const as = async (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "cli") => {
+    const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+    return d.registry.call(tool, input, caller, { token: (await d.kernel.surfaces.open(owner, {})).token });
+  };
+  assert.ok(!(await as("spaces.identity.create", { name: "alex" })).error);
+  assert.ok(!(await as("spaces.create", { name: "bakery", home: { kind: "this-computer", confirmed: true } })).error);
+  const site = fs.mkdtempSync(path.join(root, "pv-site-"));
+  fs.writeFileSync(path.join(site, "index.html"), "<h1>Northwind</h1>");
+  const opened = await as("previews.open", { title: "Northwind", path: site });
+  assert.ok(!opened.error, JSON.stringify(opened.error));
+  const id = opened.data.id;
+  const q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" });
+  assert.ok(!q.error, JSON.stringify(q.error));
+  assert.equal(q.data.held, true);
+  assert.deepEqual(q.data.plan.files.paths, ["index.html"]);
+  assert.ok(!JSON.stringify(q).includes(site), "the answer does not carry the folder's path");
+  const done = await as("publish.decide", { task: q.data.task, approve: true, plan_hash: q.data.plan.hash });
+  assert.equal(done.data.deployment.stage, "Production");
+  assert.match(done.data.deployment.url, /^https:\/\//);
+  // both or neither is refused, a model cannot publish a preview, and a preview that is not a folder of files is refused in words
+  assert.equal((await as("publish.quick", { name: "x", folder: site, preview: id, space: "bakery.vyre.run" })).error.code, "bad_input");
+  assert.equal((await as("publish.quick", { name: "x", space: "bakery.vyre.run" })).error.code, "bad_input");
+  assert.equal((await d.registry.call("publish.quick", { name: "x", preview: id }, "mcp", {})).error.code !== undefined, true);
+  const server = await as("previews.open", { title: "A server", port: 5999 });
+  const notFiles = server.error ? null : await as("publish.quick", { name: "y", preview: server.data.id, space: "bakery.vyre.run" });
+  if (notFiles) assert.match(notFiles.error.message, /not a folder of files|running server/);
+});
+
