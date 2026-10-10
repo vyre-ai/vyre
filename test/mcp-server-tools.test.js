@@ -53,6 +53,33 @@ test("mcp server: no person-only or human-only tool is listed; ordinary ones are
   }
 });
 
+test("mcp server: a failed call that names a tool comes back with a ready call for it", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const env = { ...process.env, VYRE_HOME: root };
+  delete env.VYRE_SOCKET; delete env.VYRE_AGENT; delete env.VYRE_HUB_CHILD;
+  const child = spawn(process.execPath, [SERVER], { env, stdio: ["pipe", "pipe", "inherit"] });
+  t.after(() => child.kill());
+  const lines = readline.createInterface({ input: /** @type {any} */ (child.stdout) });
+  const got = new Map();
+  lines.on("line", l => { try { const m = JSON.parse(l); got.set(m.id, m); } catch {} });
+  const ask = async (id, method, params = {}) => {
+    child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n");
+    for (let i = 0; i < 200 && !got.has(id); i++) await new Promise(r => setTimeout(r, 50));
+    return got.get(id);
+  };
+  await ask(1, "initialize", { protocolVersion: "2025-06-18" });
+  await ask(2, "tools/list");
+  const r = (await ask(3, "tools/call", { name: "tools_call", arguments: { tool: "artifacts.get", arguments: { id: "art_nothere" } } })).result;
+  assert.ok(r.isError);
+  const text = r.content[0].text;
+  assert.match(text, /^not_found: no artifact art_nothere \(artifacts\.list shows the ones you may see\)/);
+  assert.match(text, /\nNext: tools_call \{ tool: "artifacts_list", arguments: \{\} \}$/);
+  const plain = (await ask(4, "tools/call", { name: "tools_call", arguments: { tool: "nope.nothing" } })).result;
+  assert.ok(!/Next:/.test(plain.content[0].text), "a message that names no tool of the caller's gets no ready call");
+});
+
 test("mcp server: a tool call carries Claude Code's tool_use id as X-Vyre-Call-Id", async t => {
   const fs = await import("node:fs");
   const http = await import("node:http");

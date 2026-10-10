@@ -117,15 +117,15 @@ export default {
     const remember = (meta, card) => { const thread = meta && /** @type {any} */ (meta).thread; if (thread && card && card.hash) shown.record(thread, { name: card.name, hash: card.hash, title: card.lines && card.lines.do || null, state: card.state, project: card.project }); };
 
     tool("watchers.list", {
-      description: "Every watcher: drafts Claude wrote, and those turned on, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed. dir is the folder watchers are written in.",
-      input: { type: "object", properties: { project: str } },
+      description: "List watchers, drafts and turned-on ones, with state (draft, on, paused, changed, invalid), schedule, next and last run, and items filed.",
+      input: { type: "object", properties: { project: { ...str, description: "only this project's watchers" } } },
       run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
     });
     tool("watchers.test", {
       // A dry run executes the watcher's code in the sandbox (network, a granted credential, a model call) and records the run; a model dry-runs its own project's watchers before it asks to turn one on (the event input is the person's, checked below).
       callers: [...PEOPLE, "module", ...MODEL],
-      description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create. For a watcher that runs on an event, event is a real event's payload to run it on (for hook.received, { route, id } from hooks.list); it must match the watcher's where.",
-      input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
+      description: "Dry-run a watcher folder once, filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create.",
+      input: { type: "object", required: ["name"], properties: { name: str, since: { description: "where to start reading; default null" }, event: { type: "object", description: "a real event's payload to run an event watcher on; must match its where (hook.received: { route, id } from hooks.list)" } } },
       run: async ({ name, since = null, event = null }, meta = {}) => {
         const { caller } = meta;
         // A dry run on a hook.received hands the watcher a webhook's body, which a model may not read
@@ -138,8 +138,8 @@ export default {
       },
     });
     tool("watchers.create", {
-      description: "Turn on a watcher exactly as it was last dry-run (pass the card's hash). Runs once now, then on its schedule. For a model it runs only when the person's own words asked for it, after they have seen the card.",
-      input: { type: "object", required: ["name"], properties: { name: str, hash: str } },
+      description: "Turn on a watcher as last dry-run, with the card's hash. Runs once now, then on schedule. A model needs the person's say-so.",
+      input: { type: "object", required: ["name"], properties: { name: str, hash: { ...str, description: "the card's hash, from watchers.card" } } },
       run: async (i) => rt.create(i.name, { hash: i.hash || null }),
     });
 
@@ -183,13 +183,13 @@ export default {
         return { project: watchers.length ? watchers[watchers.length - 1].project : null, kinds: PRESET_KINDS, watchers };
       } });
     tool("watchers.card", {
-      description: "What to show before a watcher is turned on: its three lines (when, check, do), what it reads, whether it can act and what it costs, worked out from the folder itself, plus the hash to pass back to watchers.create so the tap turns on exactly this code. No network, no model.",
+      description: "What to show before a watcher is turned on: when, check and do lines, what it reads, whether it acts, its cost, and the hash.",
       input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const c = rt.card(name); remember(meta, c); return c; },
     });
     tool("watchers.preset", {
-      description: "Write a watcher for a common source from a few fields, left off with its card. kind \"mail\": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind \"calendar\": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind \"repo\": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind \"slack\": project, credential, channel (the channel id), match, when (default every 15 minutes). kind \"feed\": project, url, match, when (default hourly). kind \"connector\": project, connector (a declared connector: gmail, google-calendar, stripe), poll (one of its polls), credential (the vault credential for it; for gmail and google-calendar not a credential but google: the name of a connected Google account), vars (what the poll needs: mailbox or calendar), when, lookback_days (optional); polls any declared connector with no code of its own, files each new item once, read only. kind \"pr\": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.",
-      input: { type: "object", required: ["kind", "project"], properties: { kind: str, connection: str, project: str, credential: str, google: str, connection: str, instruction: str, dailyUsd: { type: "number" }, calendar: str, match: { type: "array", items: str }, days: { type: "integer" }, when: str, label: str, repo: str, only: str, channel: str, url: str, session: str, maxPerDay: { type: "integer" }, connector: str, poll: str, vars: { type: "object" }, lookback_days: { type: "integer" } } },
+      description: "Write a watcher for a common source (kind: mail, calendar, repo, slack, feed, connector, pr) from a few fields, left off with its card.",
+      input: { type: "object", required: ["kind", "project"], properties: { kind: { ...str, description: "mail, calendar, repo, slack, feed, connector or pr. mail files short quoted notes for important mail a Gmail push announces; calendar files a note per new or changed matching event; repo, slack and feed watch new matches; connector polls a declared connector, read only; pr posts others' new comments on a session's pull requests into it as quoted data" }, connection: str, project: { ...str, description: "project slug the watcher belongs to" }, credential: { ...str, description: "vault credential: Google api-credential (mail, calendar), GitHub (repo, optional if public), Slack, or the connector's" }, google: { ...str, description: "connector gmail or google-calendar: name of a connected Google account, instead of credential" }, connection: { ...str, description: "mail: connection to use, default gmail; connector: id of a Connection made by the person" }, instruction: { ...str, description: "mail: what counts as important; optional" }, dailyUsd: { type: "number" }, calendar: { ...str, description: "calendar: calendar id, default primary" }, match: { type: "array", items: str, description: "words to look for; optional for calendar" }, days: { type: "integer", description: "calendar: days ahead to look, default 14" }, when: { ...str, description: "schedule; defaults: hourly (calendar, feed), every 30 minutes (repo), every 15 minutes (slack), every 10 minutes (pr)" }, label: str, repo: { ...str, description: "repo: owner/name" }, only: { ...str, description: "repo: issues, pulls or both" }, channel: { ...str, description: "slack: channel id" }, url: { ...str, description: "feed: feed URL" }, session: { ...str, description: "pr: session id" }, maxPerDay: { type: "integer", description: "pr: comments posted per day, default 5" }, connector: { ...str, description: "connector: declared connector id (gmail, google-calendar, stripe)" }, poll: { ...str, description: "connector: one of its polls" }, vars: { type: "object", description: "connector: what the poll needs, such as mailbox or calendar" }, lookback_days: { type: "integer", description: "connector: days back to read; optional" } } },
       // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
       run: async (i, meta = {}) => {
         // kind "connector" with `connection`: a poll of a Connection the person made. Its declaration comes from the connectors module, and its credential is the Connection's own (conn-<id>) unless named.

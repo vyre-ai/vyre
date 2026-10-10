@@ -2,5 +2,5 @@
 import type { ReactNode, Ref } from "react";
 
 export type GlassFrameHandle = { post: (m: Record<string, unknown>) => void };
-export type GlassFrameProps = { src: string; onMessage: (m: any) => void; frameRef?: Ref<GlassFrameHandle>; label: string };
+export type GlassFrameProps = { src: string; onMessage: (m: any) => void; frameRef?: Ref<GlassFrameHandle>; label: string; relay?: boolean; openSocket?: (path: string) => any };
 export function GlassFrame(p: GlassFrameProps): ReactNode;

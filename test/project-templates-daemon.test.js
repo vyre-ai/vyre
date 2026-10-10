@@ -25,7 +25,7 @@ const TEMPLATE = {
   ],
 };
 
-async function boot(/** @type {any} */ t) {
+async function boot(/** @type {any} */ t, member = true) {
   const root = tempHome(t);
   const logs = /** @type {string[]} */ ([]);
   const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(String(m)); }, kernel: true, kernelPresence: presence });
@@ -38,6 +38,7 @@ async function boot(/** @type {any} */ t) {
   // the roster agent the template's role is filled by is a member of the Space
   await call("agents.create", { name: "research", kind: "agent", projects: [] });
   const actor = { kind: "agent", id: "research", space };
+  if (!member) return { d, space, owner, ownerChain, call, meta, host: d.registry.deps.flowsHost.get(space) };
   await d.kernel.gateway.grants.addActor(ownerChain, actor, { presence: proof("grants.role", { actor }, `vyre://${space}/member/research`) });
   // and may do the tasks it is given
   const gi = { subject: { kind: "actor", actor }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${space}/task/*` }, conditions: {}, source: "test" };
@@ -68,6 +69,9 @@ test("a template is a draft until its owner puts it live; test mode shows every 
 
   const started = await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera Family", repo: "git@example.com:rivera.git" });
   assert.deepEqual([started.stage, started.lead, started.teammates.map((/** @type {any} */ x) => x.agent)], ["Intake", "research", ["research"]]);
+  // the team the timeline names is the team a person can read: who is on it and the role each fills
+  assert.deepEqual((await call("work.project.members", { project: started.project.split("/").pop() })).members, [{ agent: "research", role: "researcher" }]);
+  await assert.rejects(() => call("work.project.members", { project: "no-such-project" }), /no such project/);
   const proj = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data;
   assert.deepEqual([proj.template, proj.template_version, proj.template_stage, proj.lead], ["tpl_estate-plan", "1", "Intake", "research"]);
   assert.deepEqual(JSON.parse(proj.template_snapshot).stages.map((/** @type {any} */ s) => s.name), ["Intake", "Drafting", "Signing"], "the stages are pinned on the project");
@@ -93,7 +97,36 @@ test("a template is a draft until its owner puts it live; test mode shows every 
   const moved = await until(async () => { const r = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data; return r.template_stage === "Drafting" ? r : null; }, "the project to move to Drafting");
   assert.equal(moved.template_stage, "Drafting");
   await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).some((/** @type {any} */ x) => x.title === "Draft the trust" && x.stage === "Drafting"), `the next stage's task to be made (${JSON.stringify((await d.kernel.gateway.ask.list(ownerChain, {})).map((/** @type {any} */ x) => [x.title, x.stage, x.state]))} ${/** @type {any} */ (d).testLogs.filter((/** @type {string} */ l) => /stage\./.test(l)).join(' | ')} ${JSON.stringify(host.stages.entries().map((/** @type {any} */ e) => [e.stage, e.advanced, e.tasks.length]))})`);
+  // J2, the timeline steps: the project's story says each move in plain lines, newest first, and none of them is an id or an event name
+  const story = (await call("work.timeline", { record: started.project })).entries;
+  const lines = story.map((/** @type {any} */ e) => e.line);
+  assert.equal(lines[lines.length - 1], "Started from the Estate plan template", `the story begins with the template: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("Entered the Intake stage"), `the Intake stage is on the timeline: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("Entered the Drafting stage"), "and so is Drafting");
+  assert.ok(lines.some((/** @type {string} */ l) => /Gather documents/.test(l)), `the finished task is on it: ${JSON.stringify(lines)}`);
+  assert.ok(lines.every((/** @type {string} */ l) => !/\b(task|flow-run|stage)_[0-9a-f]{6}|vyre:\/\/|\w+-\w+\.\w+$/.test(l)), `no line shows an id or an event name: ${JSON.stringify(lines)}`);
+  const at = (/** @type {string} */ l) => story.find((/** @type {any} */ e) => e.line === l).at;
+  assert.ok(at("Entered the Drafting stage") >= at("Entered the Intake stage"), "in order");
   void space;
 });
 
 function parseTags(/** @type {string} */ s) { try { return JSON.parse(s || "[]"); } catch { return []; } }
+
+test("a project started when its assistant is not in the space yet says which first tasks could not be made and why, instead of claiming its tasks exist", { timeout: 180_000 }, async t => {
+  const { call } = await boot(t, false);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const r = await call("work.start-project", { template: "tpl_estate-plan", name: "Rivera" });
+  assert.equal(r.tasks_made, 0);
+  assert.deepEqual(r.tasks_skipped, [{ task: "Gather documents", why: "research is not in this space yet" }]);
+  assert.equal(r.slug, "rivera", "the project itself is made");
+});
+
+test("with its assistant in the space, the same start reports its first task as made", { timeout: 180_000 }, async t => {
+  const { call } = await boot(t, true);
+  await call("work.template.define", { body: TEMPLATE });
+  await call("work.template.golive", { template: "tpl_estate-plan", version: 1 });
+  const r = await call("work.start-project", { template: "tpl_estate-plan", name: "Okafor" });
+  assert.equal(r.tasks_made, 1);
+  assert.equal(r.tasks_skipped, undefined);
+});

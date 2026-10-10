@@ -259,8 +259,8 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   ctx.tool("link.health", {
     effect: "read",
-    description: "How this box reaches the device that asks, in one shape: reach (direct over the tailnet, or relay), why, fix, since and the tailnet path and latency; the older path, latencyMs and lastHandshake stay. A device over the relay is \"relay\"; only the browser knows \"none\". By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
-    input: { type: "object", properties: { node: { type: "string" } } },
+    description: "How this box reaches the device that asks: reach (direct or relay), why, fix, since, and the tailnet path and latency.",
+    input: { type: "object", properties: { node: { type: "string", description: "a paired Mac's node id; the calling device by default" } } },
     run: async ({ node }, meta) => {
       // Modules and the owner only (lead's decision, 27 Sep 2026). A guest from another tailnet
       // or an agent's own node learns nothing about how this box's links run, and neither does a

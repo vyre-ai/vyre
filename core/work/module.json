@@ -85,6 +85,12 @@
         "effect": "write"
       },
       {
+        "name": "work.project.members",
+        "summary": "who is on a project's team: each assistant or person and the role it fills",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.project.ref",
         "summary": "the Project a record id, address or short name names: its id, address, short name and name",
         "reach": "anyone",

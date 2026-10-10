@@ -34,7 +34,7 @@ async function rig() {
   const drive = fakeDrive();
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, drive, resolveCredential: async i => { released.push(i); return { secret: "v" }; }, forwardCredential: async q => { forwarded.push(q); return { status: 200, ok: true, headers: {}, body: "e30=" }; } });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
-  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });   // the lent computer itself: a computer asks for its own lease
   const g = k.gateway.grants;
   const role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
@@ -133,7 +133,8 @@ test("L-5: another member naming the same device id cannot revoke, refuse-and-re
   const g = r.g, role = { person: "per_carol", role: "member" };
   await g.setRole(r.owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/per_carol`) });
   // carol, who holds no offers, asks for a lease on bob's device id: refused, and bob's lease is untouched
-  assert.deepEqual(await r.k.gateway.leases.issue(carol, { device: "dev_laptop" }), { revoked: true });
+  await assert.rejects(r.k.gateway.leases.issue(carol, { device: "dev_laptop" }), { code: "not_allowed" }, "another member's computer naming this one gets nothing");
+  assert.deepEqual(await r.k.gateway.leases.issue(r.k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: "per_carol", path: "direct" }), { device: "dev_laptop" }), { revoked: true }, "and a member with no lend of it is told no");
   assert.ok(r.sealer.st.live.has(lease.id), "a refused issue revoked nothing");
   await assert.rejects(() => r.k.gateway.leases.revoke(carol, { member: BOB, device: "dev_laptop" }), { code: "not_allowed" });
   assert.ok(r.sealer.st.live.has(lease.id));

@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { report, plan, lint, endedRow } from "./lib/eval-honest.js";
+import { report, plan, lint, endedRow, RIVAL_AUTH } from "./lib/eval-honest.js";
 import { whereIsIt, inspectorUrl } from "./eval-honest/stall.mjs";
 import { loadSealed } from "./eval-honest/run.mjs";
 
@@ -42,7 +42,10 @@ if (cmd === "seal") {
   if (!flag("out")) rest.push("--out", out);
   fs.mkdirSync(out, { recursive: true });
   // The harness runs with its inspector open on loopback, so a stalled one can be paused, from here, and asked where its main thread is (a busy loop cannot refuse a pause).
-  const child = spawn(process.execPath, ["--inspect=127.0.0.1:0", path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: ["inherit", "inherit", "pipe"], env: process.env });
+  // On the stand-in the harness gets a token-shaped placeholder, no rival variable, and a launch log: the fake claude records, for every child it is, whether it had the token and any rival.
+  const env = { ...process.env };
+  if (cmd === "check") { for (const k of RIVAL_AUTH) delete env[k]; env.CLAUDE_CODE_OAUTH_TOKEN = "stand-in-not-a-credential"; env.FAKE_CLAUDE_LOG = path.join(out, "launches.jsonl"); }
+  const child = spawn(process.execPath, ["--inspect=127.0.0.1:0", path.join(HERE, "token-proof-world.mjs"), "eval", ...rest, ...extra], { stdio: ["inherit", "inherit", "pipe"], env });
   let inspector = "";
   child.stderr.on("data", (/** @type {Buffer} */ b) => { process.stderr.write(b); inspector = inspector || inspectorUrl(String(b)); });
   const STALL_MS = Number(flag("stall-min", "3")) * 60_000;

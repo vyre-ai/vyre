@@ -21,7 +21,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`appmods`](#appmods) | `core/appmods` | `box` | 28 | 9 | cli |
-| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 16 | 1 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
 | [`ask`](#ask) | `core/ask` | `box` | 4 | 2 | cli |
@@ -111,7 +111,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 60 | 0 | cli |
 
 ## about
 
@@ -172,7 +172,7 @@ Approve on your phone: a session that cannot give a presence proof (the web app'
 - Folder: `core/approvals`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#approvals), 6 of them only for other modules
+- Tools: [14](tools.md#approvals), 4 of them only for other modules
 - Emits: [1 events](events.md#approvals)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
@@ -1211,7 +1211,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [59](tools.md#work), 4 of them only for other modules
+- Tools: [60](tools.md#work), 4 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`

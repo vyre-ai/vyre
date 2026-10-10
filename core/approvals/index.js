@@ -5,7 +5,7 @@
 // This module decides nothing and checks no signature: a wrong or replayed proof is refused by the act itself. The same shape as the rollback route (core/modulelist), for any op.
 import { newId } from "../../lib/id.js";
 import { payloadHash } from "../../kernel/seal/wire.js";
-import { proofRequest, PROOF_CALLS, leaseIssueCover } from "../../kernel/remote/proof.js";
+import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
 import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp, REUSE_OPS } from "../../lib/one-yes.js";
 import { yesDeviceOf } from "../../lib/caller.js";
 import { holdFields, viewOf, pageOf, editedInput } from "../../lib/hold-fields.js";
@@ -15,14 +15,12 @@ import { clean } from "../../lib/waiting-text.js";
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
 const ASK_MS = 5 * 60_000, MAX_OPEN = 5, MAX_PROOF = 4096;
-/** A lease request card lives as long as the home keeps its challenge (kernel/remote/wire.js CHALLENGE_TTL_MS is 2 minutes). */
-const LEASE_CARD_MS = 110_000;
 /** Cards the same asker holds within this long of each other are one group (one list, one yes); a group has at most MAX_GROUP cards. */
 const GROUP_MS = 90_000, MAX_GROUP = 20;
 /** How long after the registry redeemed a card the Gate may still use it for the send it covers. */
 const CARD_LIFE_MS = 2 * 60_000;
 /** Plain words for what each op does; an op not here is shown by its name. */
-const WORDS = { "grant.invite": "Invite someone to this space", "grant.role": "Change who is in this space and what they may do", "grant.create": "Give access", "grant.revoke": "Take access away", "grant.narrow": "Narrow an access", "grant.offer": "Offer something to the space", "lease.issue": "Lend this computer to a Space", "task.decide": "Approve or reject a task" };
+const WORDS = { "grant.invite": "Invite someone to this space", "grant.role": "Change who is in this space and what they may do", "grant.create": "Give access", "grant.revoke": "Take access away", "grant.narrow": "Narrow an access", "grant.offer": "Offer something to the space", "task.decide": "Approve or reject a task" };
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -35,8 +33,8 @@ export default {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
     /** @type {Map<string, { id: string, op: string, space: string, fields: any, payload_hash: string, from: string, at: number, state: "waiting" | "approved" | "refused", proof?: any, reuse?: boolean, moment?: string, request?: any, line?: string, verified?: boolean, used?: boolean, redeemedAt?: number, covered?: boolean, group?: string, input?: any, edited?: boolean, seenAll?: boolean }>} */
     const open = new Map();
-    const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > (a.ttl || ASK_MS)) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
-    const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: a.op === "lease.issue" ? "Approving signs exactly this with the key on this computer, or say no and nothing changes." : "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, ...(a.home ? { home: a.home, challenge: a.challenge } : {}), expires_in_s: Math.max(0, Math.round(((a.ttl || ASK_MS) - (now() - a.at)) / 1000)) });
+    const sweep = () => { for (const [id, a] of open) if ((a.state === "waiting" && now() - a.at > ASK_MS) || (a.moment && a.state !== "waiting" && now() - a.at > ASK_MS * 2)) open.delete(id); };
+    const card = (/** @type {any} */ a) => ({ id: a.id, title: WORDS[/** @type {keyof typeof WORDS} */ (a.op)] || a.op, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: a.op, space: a.space, fields: a.fields, payload_hash: a.payload_hash, asked_from: a.from, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) });
     const mine = (/** @type {any} */ meta, /** @type {any} */ a) => a && meta && a.from === String(meta.caller || "");
 
     // ---- a yes for one of the three moments (DESIGN-one-yes: one card queue for every yes) ---------------------------------------------------------------
@@ -147,45 +145,6 @@ export default {
     });
     // The registry holds an outward tool's call from an agent, a model, a module or a guest here (core/modules, one yes): the same card as a device's, bound to the asker the registry names (never anything the
     // asker said) and to the call's input by digest. The registry alone calls this; the asker later retries its call with the card's id and the registry spends it (yes, `{ card }`).
-    // This computer lent to a Space (R031-95 2.2): the Space's home asked the runner for a hello signed by the key listed for this computer, and that key lives in the app. The card is for exactly the hello the home
-    // named, answers on the phone's path (approvals.answer with the proof beside it) and is read back ONCE by the runner. Only the runner asks; nothing here checks a signature, the home's sealing process does.
-    ctx.tool("approvals.lease-ask", {
-      internal: true,
-      description: "The runner's own: put a lease request on this computer's approvals queue for the key listed for it to sign. { space, fields, home, challenge } -> { id, expires_in_s }.",
-      input: obj({ space: { type: "string" }, fields: { type: "object" }, home: { type: "string" }, challenge: { type: "string" } }, ["space", "fields", "home", "challenge"]),
-      callers: ["module"],
-      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        if (String((meta && meta.caller) || "") !== "module:runner") throw refuse("only this computer's runner asks to lend it", "denied");
-        sweep();
-        const space = String(input.space);
-        if (!/^spc_[a-z2-7]{12}$/.test(space)) throw refuse("name the space the lease is for", "bad_input");
-        const cover = leaseIssueCover(space, { hello: input.fields });
-        if (!cover) throw refuse("that is not a lease request", "bad_input");
-        const ok = (/** @type {any} */ v) => typeof v === "string" && /^[A-Za-z0-9_.:-]{1,200}$/.test(v);
-        if (!ok(input.home) || !ok(input.challenge)) throw refuse("name the home and the challenge it gave", "bad_input");
-        const same = [...open.values()].find(x => x.op === "lease.issue" && x.state === "waiting" && x.challenge === input.challenge && x.payload_hash === cover.payload_hash);
-        if (same) return { id: same.id, expires_in_s: Math.max(1, Math.round((same.ttl - (now() - same.at)) / 1000)) };
-        if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
-        const id = `ap_${newId()}`;
-        open.set(id, { id, op: "lease.issue", space, fields: cover.fields, payload_hash: cover.payload_hash, from: "module:runner", at: now(), state: /** @type {"waiting"} */ ("waiting"), home: String(input.home), challenge: String(input.challenge), ttl: LEASE_CARD_MS });
-        return { id, expires_in_s: LEASE_CARD_MS / 1000 };
-      },
-    });
-    ctx.tool("approvals.lease-status", {
-      internal: true,
-      description: "The runner's own: where its lease request card stands. { state: waiting | approved | refused | none }, and when approved the proof, once.",
-      input: obj({ id: { type: "string" } }, ["id"]),
-      callers: ["module"],
-      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        if (String((meta && meta.caller) || "") !== "module:runner") throw refuse("only this computer's runner reads this", "denied");
-        sweep();
-        const a = open.get(String(input.id));
-        if (!a || a.op !== "lease.issue") return { state: "none" };
-        if (a.state === "waiting") return { state: "waiting" };
-        open.delete(a.id);
-        return a.state === "approved" ? { state: "approved", proof: a.proof } : { state: "refused" };
-      },
-    });
     ctx.tool("approvals.hold", {
       internal: true,
       description: "The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.",
