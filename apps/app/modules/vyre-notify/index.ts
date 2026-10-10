@@ -6,7 +6,7 @@ export type PermissionState = { granted: boolean; canAskAgain: boolean; status: 
 type Native = {
   getPermission(): Promise<PermissionState>;
   requestPermission(): Promise<PermissionState>;
-  show(id: string, title: string, body: string | null, route: string | null): Promise<boolean>;
+  show(id: string, title: string, body: string | null, route: string | null, actions: { id: string; label: string; route: string }[] | null): Promise<boolean>;
 };
 
 /** Null where there is no native side (the web). */
