@@ -1,5 +1,6 @@
 // The chat tools over an injected `call` (the Deck's chat/composer.js and session.js calls, ported). Every tool name and input here is the one the Deck sent.
 import type { Call } from "../settings/real-source";
+import { forkAndMove } from "./fork-move.js";
 import { appliedOr, failure, historyOf, linkOf, mentionsOf, prCall, redoneLine, sharedRows, tasksOf, transcriptLines, undoneLine, versionsOf, type PrAct, type Result } from "./model.ts";
 
 export function chatToolsSource(call: Call) {
@@ -9,15 +10,18 @@ export function chatToolsSource(call: Call) {
     return r.data as T;
   }
   const guard = async (fn: () => Promise<Result>, fallback?: string): Promise<Result> => { try { return await fn(); } catch (e) { return failure(e, fallback); } };
+  const chatToolsFork = async (thread: string, at?: string): Promise<{ ok: true; thread: string } | { ok: false; reason: string }> => {
+    try { const d = await ask<any>("threads.fork", { thread, ...(at ? { at } : {}) }); const t = String(d?.thread ?? d?.id ?? ""); return t ? { ok: true, thread: t } : { ok: false, reason: "The copy did not start." }; } catch (e) { const f = failure(e); return { ok: false, reason: (f as any).reason }; }
+  };
   return {
     /** From the next turn. A null effort is the model's own default. */
     effort: (thread: string, effort: string | null) => guard(async () => { await ask("threads.effort", { thread, ...(effort ? { effort } : {}) }); return { ok: true }; }),
     thinking: (thread: string, on: boolean) => guard(async () => appliedOr(await ask("threads.thinking", { thread, on }), "thinking", "Thinking switches on a running session.")),
     mode: (thread: string, mode: string) => guard(async () => appliedOr(await ask("threads.mode", { thread, mode }), "mode", "The mode applies to a running session.")),
     /** "Fork this chat": a copy from here, or from one message when `at` names it. Answers the new thread. */
-    fork: async (thread: string, at?: string): Promise<{ ok: true; thread: string } | { ok: false; reason: string }> => {
-      try { const d = await ask<any>("threads.fork", { thread, ...(at ? { at } : {}) }); const t = String(d?.thread ?? d?.id ?? ""); return t ? { ok: true, thread: t } : { ok: false, reason: "The copy did not start." }; } catch (e) { const f = failure(e); return { ok: false, reason: (f as any).reason }; }
-    },
+    fork: chatToolsFork,
+    /** "Fork and continue on the server / this Mac": the copy, then the copy moved (runner.move). Answers the new thread and what happened to it, in words. */
+    forkTo: (thread: string, to: "mac" | "server") => forkAndMove({ fork: (t) => chatToolsFork(t), move: async (t, where) => ask<any>("runner.move", { thread: t, to: where }) }, thread, to),
     /** A queued message goes now, steering the turn that is running (`queued` is the row's id). */
     sendNow: (thread: string, queued: number) => guard(async () => { const d = await ask<any>("threads.send-now", { thread, queued }); return d?.sent === false ? { ok: false, reason: String(d.note || "It was already sent.") } : { ok: true }; }),
     takeBack: (thread: string, queued: number) => guard(async () => { await ask("threads.unqueue", { thread, queued }); return { ok: true }; }),

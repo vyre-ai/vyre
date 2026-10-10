@@ -42,6 +42,7 @@ import { ChatExtras } from "./ChatExtras";
 import { PreviewPane } from "./PreviewPane";
 import { usePreviewPane } from "./previewPane";
 import { MovedLines, PlacementChip, usePlacement } from "./placement";
+import { chipOf } from "../../screens/runner/runner-model.js";
 import { useChatMembers } from "./useChatMembers";
 import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
@@ -297,7 +298,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const body = (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched} otherPlace={chipOf(placed.placement)?.moveTo ?? null}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       <AboutSheet
