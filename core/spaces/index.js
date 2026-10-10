@@ -1394,9 +1394,9 @@ export default {
     const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
     const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
-      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
-      if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
-        const mine = [], who = await listCaller(K, meta);
+      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; } const who = K ? await listCaller(K, meta) : null; // the one rule: the list is for the person on the call, on every box
+      if ((!st0 || !st0.exists || (who && who !== st0.id)) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
+        const mine = [];
         for (const id of K.spaces.list()) {
           // the kernel's own answer for the CALLER (the person on the call's chain; a terminal with no chain of its own is the home's owner): never the owner's list for someone else
           let m = null; try { const r = who ? await K.membership(who, id) : null; if (r && r.member === true) m = { role: r.role }; } catch { m = null; }
