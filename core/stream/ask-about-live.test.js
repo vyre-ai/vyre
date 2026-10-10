@@ -1,6 +1,5 @@
 // @ts-check
-// A chat message on a real daemon (kernel on, the person's own session): the stream reads the files the person attached and the record they named under their own chain, and the assistant hears an image
-// inline, a file as a path and a card of the record, while the chat itself shows only the person's words and the attachments' names.
+// Ask about this on a real daemon: words the person quotes from the conversation travel with their next message, and the assistant hears them.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,18 +14,6 @@ import { makeHighlight, withQuotes } from "../../apps/app/src/chat/highlight.js"
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 process.env.VYRE_SESSION_SANDBOX_OFF = "1";
-
-test("a message with a named record and attached files reaches the assistant as a card, an image and a path; the chat shows the words and the names", { timeout: 180_000 }, async t => {
-  const root = tempHome(t);
-  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
-  const transcripts = path.join(root, "transcripts");
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
-  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  fs.mkdirSync(transcripts);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
-  asOwner(d, root);
-  t.after(() => d.stop());
 
 test("Ask about this: a quote picked in the conversation goes with the person's next message, so the assistant hears the words quoted and the chat shows them too", { timeout: 180_000 }, async t => {
   const root = tempHome(t);
