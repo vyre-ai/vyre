@@ -1,0 +1,40 @@
+# The golden journeys (team/0.3.1/JOURNEYS.md, scripts/journeys/run.mjs): the product walked end to end on a real server the way a firm uses it. Once per integration tip; the newest
+# tip cancels an older run. The result is one of the two checks the release PR to main needs (T8: node.yml and journeys, zero failures).
+name: journeys
+on:
+  push:
+    branches: ["work/lead-031-w"]
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "One journey (J1, J2, J3, J8) or all"
+        required: false
+        default: "all"
+permissions:
+  contents: read
+concurrency:
+  group: journeys-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  journeys:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, fetch-tags: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: (cd apps/app && npm ci --ignore-scripts --no-audit --no-fund)
+      - name: The journeys
+        run: node scripts/journeys/run.mjs "${{ inputs.only || 'all' }}" --out journeys-out
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker ps -a || true
+          docker logs --tail 80 vyre-vyre-1 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: journeys, path: journeys-out, retention-days: 14 }

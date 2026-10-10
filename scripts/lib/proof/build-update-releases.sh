@@ -3,7 +3,7 @@
 # throwaway Ed25519 key that replaces the pinned release key in the COPIES (the real key never appears and a build that is not Vyre's cannot be signed with it). The same recipe as scripts/rc-update-proof.sh. Both builds keep the development kind (VYRE_TEST_DEV_KIND=1): a release-kind box refuses the stand-in relay's plain ws:// address (lib/relay-url.js).
 #   sh build-update-releases.sh WORKDIR [OLD_TAG]   ->  WORKDIR/{old,new}/site/box, WORKDIR/proof.pub, WORKDIR/{old,new}.version
 set -eu
-[ -n "${CI:-}" ] || { echo "build-update-releases: runs on a CI runner only (CI is unset)" >&2; exit 2; }
+[ -n "${CI:-}" ] || [ "${VYRE_JOURNEY_BOX:-}" = 1 ] || { echo "build-update-releases: runs on a CI runner only (CI is unset), or on a test box that holds nothing of its own, which says so with VYRE_JOURNEY_BOX=1" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/../../.." && pwd)
 WORK=$1
 OLD_TAG=${2:-v0.2.12}
