@@ -55,6 +55,8 @@ export function secretsOf(args) {
  */
 function docker(argv, o = {}) {
   const child = spawn("docker", argv, { stdio: ["pipe", "pipe", "pipe"] });
+  // a child that exits before it reads its input (docker gone, a refused build) breaks the pipe: the exit code says what happened, the write error must not escape
+  child.stdin?.on("error", () => {});
   if (o.timeoutMs) { const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, o.timeoutMs); t.unref?.(); child.on("close", () => clearTimeout(t)); }
   return child;
 }
