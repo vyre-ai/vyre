@@ -4,9 +4,11 @@
 
 import { readSite, digestOf } from "../../lib/publish/folder-build.js";
 import { checkDockerfile, buildImage } from "./container.js";
+import { askHelper, helperPresent } from "../../stores/twenty/helper.js";
+import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
 
 /** Test seam: a stand-in for the image build (the real one needs Docker). */
-export const seam = /** @type {{ buildImage: null | typeof buildImage }} */ ({ buildImage: null });
+export const seam = /** @type {{ buildImage: null | typeof buildImage, helper: null | { present: () => boolean, ask: typeof askHelper } }} */ ({ buildImage: null, helper: null });
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const NEEDS_CONTAINER = "this server builds a folder of ready files; a repo, a Drive folder or a build command needs the container builder, which is not installed here yet";
@@ -38,9 +40,33 @@ async function containerBuild(ctx, d, dir, secretArgs) {
   const port = d.build && Number.isInteger(d.build.port) ? d.build.port : checked.port;
   if (!port) throw refuse("name the port the app listens on: set the build's port, or put an EXPOSE line in the Dockerfile", "refused");
   const tag = `vyre-pub-${String(d.name || "app").replace(/[^a-z0-9-]/g, "")}:${site.digest.replace(/^sha256:/, "").slice(0, 16)}`;
-  const built = await (seam.buildImage || buildImage)({ files: site.files, tag, secretArgs });
+  // a server that runs its apps through the host helper cannot run Docker here: the helper builds, from a folder this module writes and takes by rename (team/contracts/builder.md)
+  const helper = seam.helper || { present: helperPresent, ask: askHelper };
+  const built = seam.buildImage ? await seam.buildImage({ files: site.files, tag, secretArgs })
+    : helper.present() ? await buildByHelper(ctx, helper, d, site.files, port, secretArgs) : await buildImage({ files: site.files, tag, secretArgs });
   const left = site.skipped.length ? `; left out: ${site.skipped.slice(0, 5).join(", ")}${site.skipped.length > 5 ? ` and ${site.skipped.length - 5} more` : ""}` : "";
   return { digest: site.digest, files: [], logs: `Built an image from ${site.files.length} file${site.files.length === 1 ? "" : "s"} of ${site.name}${left}.\n${built.logs}`, runtime: { kind: "image", image: built.image, port, health: { path: HEALTH.path, ok: [...HEALTH.ok] } } };
+}
+
+/**
+ * The host helper's build: the context and the settings go into the deployment's folder under the daemon's publish folder, the helper is asked `pub-build <deployment>` and answers `built <image id>`.
+ * @param {any} ctx @param {{ ask: typeof askHelper }} helper @param {any} d @param {{ path: string, content: Buffer }[]} files @param {number} port @param {string[]} secretArgs
+ */
+export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
+  if (secretArgs && secretArgs.length) throw refuse("build secrets are not supported on a server that builds through its host helper yet; grant the secret for running, not building", "refused");
+  const home = ctx.paths && ctx.paths.root;
+  if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here", "not_available");
+  const where = { home, space: String(d.space || ""), deployment: String(d.id || "") };
+  try {
+    writeServerFolder({ ...where, files, request: requestText({ name: String(d.name), version: Number(d.version) || 1, port, memoryMb: 512, cpus: 0.5, pids: 256, health: { path: HEALTH.path, ok: [...HEALTH.ok], startS: 60 }, secrets: [] }) });
+    const r = await helper.ask("pub-build", where.deployment, { what: "this site's image", timeoutMs: 20 * 60_000 });
+    const id = /^built (sha256:[0-9a-f]{64})$/.exec(String(r.message || "").trim());
+    if (!id) throw refuse("the server's host helper built the image but did not say which", "build_failed");
+    return { image: id[1], logs: "Built by this server's host helper." };
+  } catch (/** @type {any} */ e) {
+    if (e && e.code && e.code !== "refused" && e.code !== "not_available") throw refuse(String(e.message || e), e.code === "busy" ? "busy" : "build_failed");
+    throw e;
+  } finally { removeServerFolder(where); }
 }
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

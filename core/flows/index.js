@@ -5,6 +5,7 @@
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
+import { secretsIn } from "../../kernel/flows/no-secrets.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 import { kernelKit, moduleKitProblems } from "../../records/kit-adapter.js";
 
@@ -116,6 +117,11 @@ export default {
           // A Kit may be given in the language's stored form as well as the kernel's. One that ships with an added module (`module` names it) is held to what a module may add.
           if (rest.kit && typeof rest.kit === "object" && /^flows\.kit\.(propose|card|diff)$/.test(name)) {
             rest.kit = kernelKit(rest.kit);
+            // A Kit holds references, never values (R031-72): a proposal is stored whole, so a key anywhere in it would sit in the record, its change log and the approval card. Refused where it is, without repeating it.
+            if (name === "flows.kit.propose") {
+              const found = secretsIn(rest.kit);
+              if (found.length) return { ok: false, errors: found.map(x => ({ path: `kit.${x.path}`, message: `this looks like ${x.kind}: a Kit never holds a key, a password or a token. Put it in the Vault and name the Connection instead (the Vault uses it; the Kit only names it)` })) };
+            }
             if (typeof fromModule === "string" && fromModule) {
               const problems = moduleKitProblems(fromModule, rest.kit);
               if (problems.length) return { ok: false, errors: problems.map(message => ({ path: "kit", message })) };

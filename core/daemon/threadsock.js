@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { peerPid, processTable, ancestry } from "./peer.js";
@@ -57,7 +58,8 @@ export async function openThreadSocket(o) {
   const file = path.join(dir, `${crypto.randomBytes(16).toString("base64url")}.sock`);
   const who = o.agent ? `agent:${o.agent}` : `thread:${o.thread}`;
   const route = o.handler({ thread: o.thread, ...(o.agent ? { agent: o.agent } : {}) });
-  const server = http.createServer(async (req, res) => {
+  /** @param {boolean} lent a request that came through a lent computer's wire call (vyred's own private socket): the lender was checked there (its epoch, its Offers), so there is no process of this session to look for */
+  const serve = (lent) => async (/** @type {any} */ req, /** @type {any} */ res) => {
     try {
       const url = new URL(req.url || "/", "http://vyred");
       const tool = url.pathname.startsWith("/v1/tools/") ? decodeURIComponent(url.pathname.slice("/v1/tools/".length)) : null;
@@ -65,8 +67,10 @@ export async function openThreadSocket(o) {
       if (tool && (PERSON_ONLY.has(tool) || HUMAN_ONLY.has(tool))) return send(res, 403, { error: { code: "denied", message: `${tool} is the person's own; a session never runs it` } });
       if (url.pathname.startsWith("/v1/presence") || url.pathname.startsWith("/v1/person")) return send(res, 403, { error: { code: "denied", message: "presence is the person's" } });
       // Only the session's own processes: the kernel says which process connected.
-      const pid = await peerPid(req.socket);
-      if (!pid || !belongs(pid, await o.pids(), o.look)) return send(res, 403, { error: { code: "denied", message: "this socket is one session's, and the caller is not in it" } });
+      if (!lent) {
+        const pid = await peerPid(req.socket);
+        if (!pid || !belongs(pid, await o.pids(), o.look)) return send(res, 403, { error: { code: "denied", message: "this socket is one session's, and the caller is not in it" } });
+      }
       // The kind of client (its MCP server or its hooks) is the one thing the call may say.
       const kind = String(req.headers["x-vyre-caller"] || "").startsWith("harness") ? "harness" : "mcp";
       // The session's kernel credential (lib/kernel-session.js): set here from what vyred holds for this session, never from the client. Whatever the client sent is dropped.
@@ -77,11 +81,60 @@ export async function openThreadSocket(o) {
       if (kernelToken) req.headers["x-vyre-kernel-session"] = kernelToken;
       await route(req, res, `${kind}:${who}`);
     } catch (e) { if (!res.headersSent) send(res, 500, { error: { code: "internal", message: /** @type {Error} */ (e).message } }); }
-  });
+  };
+  const server = http.createServer(serve(false));
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(file, () => resolve(undefined)); });
   fs.chmodSync(file, o.mode ?? (shared ? 0o660 : 0o600));
+  // A session that runs on a lent computer reaches Vyre through the home (contracts/lent-spawn.md, lent.http): the same route, the same caller binding and kernel credential, on a private socket of vyred's own that no session
+  // process can reach; made the first time a lender asks.
+  /** @type {null | { dir: string, file: string, server: http.Server }} */ let lentSide = null;
+  const lentFile = async () => {
+    if (lentSide) return lentSide.file;
+    const ldir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-lent-"));
+    fs.chmodSync(ldir, 0o700);
+    const lfile = path.join(ldir, "t.sock");
+    const lserver = http.createServer(serve(true));
+    await new Promise((resolve, reject) => { lserver.once("error", reject); lserver.listen(lfile, () => resolve(undefined)); });
+    fs.chmodSync(lfile, 0o600);
+    lentSide = { dir: ldir, file: lfile, server: lserver };
+    return lfile;
+  };
+  /** @type {LentDoor} */ const door = {
+    request: async (method, urlPath, headers, body) => {
+      const sock = await lentFile();
+      return await new Promise((resolve, reject) => {
+        const req = http.request({ socketPath: sock, method, path: urlPath, headers: { ...headers, "content-type": "application/json", ...(method === "GET" ? {} : { "content-length": Buffer.byteLength(body) }) }, agent: false, timeout: 25_000 }, res => {
+          const parts = /** @type {Buffer[]} */ ([]); let n = 0;
+          res.on("data", c => { n += c.length; if (n <= LENT_MAX_REPLY) parts.push(c); });
+          res.on("end", () => resolve({ status: res.statusCode || 502, body: n > LENT_MAX_REPLY ? JSON.stringify({ error: { code: "too_large", message: "that answer is too large to bring to a lent computer; ask for less" } }) : Buffer.concat(parts).toString("utf8") }));
+        });
+        req.on("timeout", () => { req.destroy(new Error("vyred did not answer in time")); });
+        req.on("error", reject);
+        req.end(body);
+      });
+    },
+  };
+  DOORS.set(String(o.thread), door);
   return {
     path: file,
-    close: () => new Promise(r => { server.closeAllConnections(); server.close(() => { try { fs.rmSync(file, { force: true }); } catch {} r(undefined); }); }),
+    close: () => new Promise(r => {
+      if (DOORS.get(String(o.thread)) === door) DOORS.delete(String(o.thread));
+      const done = () => { server.closeAllConnections(); server.close(() => { try { fs.rmSync(file, { force: true }); } catch {} r(undefined); }); };
+      if (lentSide) { const l = lentSide; lentSide = null; l.server.closeAllConnections(); l.server.close(() => { try { fs.rmSync(l.dir, { recursive: true, force: true }); } catch {} done(); }); } else done();
+    }),
   };
+}
+
+/** The largest answer a lent computer is sent over the wire (the wire's own cap is 2 MiB). */
+const LENT_MAX_REPLY = 1_500_000;
+/** @typedef {{ request: (method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> }} LentDoor */
+/** The door each open session socket has for a lent computer, by thread. @type {Map<string, LentDoor>} */
+const DOORS = new Map();
+/**
+ * One request of a session that runs on a lent computer, as that session's own (the session socket's route, caller binding and kernel credential). Null when this thread has no socket open here.
+ * @param {string} thread @param {string} method @param {string} urlPath @param {Record<string, string>} headers @param {string} body
+ */
+export function lentRequest(thread, method, urlPath, headers, body) {
+  const d = DOORS.get(String(thread));
+  return d ? d.request(method, urlPath, headers, body) : null;
 }

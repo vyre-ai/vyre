@@ -41,6 +41,7 @@ import { within } from "../../lib/within.js";
 import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor, lentPlacements } from "./lent-service.js";
+import { lentRequest } from "./threadsock.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 import { askLeaseProof } from "../../lib/lease-card.js";
@@ -336,6 +337,14 @@ async function startLocked(opts, root, p, release) {
     // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
     const { createOwnServerHost } = await import("./ownserver-host.js");
     /** @type {any} */ let ownServerHost = null;
+    /** Computers by device id for the name a chat's status line shows ("Starting on Office Mac..."), read from the relay's list and kept a minute. */
+    let nameAt = 0; /** @type {Map<string, string>} */ let nameMap = new Map();
+    const nameCache = async () => {
+      if (Date.now() - nameAt < 60_000) return nameMap;
+      nameAt = Date.now();
+      try { const r = /** @type {any} */ (await registry.call("relay.devices.all", {}, "module:vyred")); const list = r && r.data && (Array.isArray(r.data) ? r.data : r.data.devices); if (Array.isArray(list)) nameMap = new Map(list.filter((/** @type {any} */ x) => x && x.id && x.name).map((/** @type {any} */ x) => [String(x.id), String(x.name)])); } catch { /* the names are a nicety */ }
+      return nameMap;
+    };
     const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
@@ -344,7 +353,31 @@ async function startLocked(opts, root, p, release) {
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
       get placements() { return lentPlacements(registry); },
       // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
-      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; return h ? h.spawn(i) : null; },
+      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache(); return proc; },
+      // A new chat's place (contracts/lent-spawn.md): a ready computer of the person's with the row written, or the box.
+      placeNew: async (/** @type {string} */ space, /** @type {any} */ i) => {
+        const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null;
+        if (!h) return { where: "box" };
+        const r = h.placeNew(i);
+        if (r.where !== "mac") return r;
+        const names = await nameCache();
+        return { ...r, computer: names.get(r.device) || null };
+      },
+      // The remote Spaces this computer is set to lend itself to (the person's "Run on this computer" for a Space): an enrolled lender beats for each, whether or not it has run a session there.
+      lentTo: async () => {
+        const id = opts.deviceIdentity ? await opts.deviceIdentity().catch(() => null) : null;
+        if (!id) return [];
+        /** @type {string[]} */ const out = [];
+        try {
+          for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'lend/%'").all())) {
+            const [, space, device] = String(r.key).split("/");
+            let v = null; try { v = JSON.parse(r.value); } catch { /* not a record */ }
+            if (!space || device !== id.deviceId || !v || v.lent !== true) continue;
+            try { const h = kernel.spaces.for(space); if (h && h.hosted === false) out.push(space); } catch { /* not a Space reached over a wire */ }
+          }
+        } catch { /* no spaces table yet */ }
+        return out;
+      },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet: pair it first, then call again"), { code: "unavailable" });
@@ -623,6 +656,7 @@ async function startLocked(opts, root, p, release) {
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a chat is `opts.resumeLent` (or the registry's `resumeLent`, agent-core's). Until it exists the server
         // takes no session from a computer (`canResume`): a move answers "coming in this release" and the computer keeps running the session, because a session taken with nothing to continue it is a session lost.
         resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet: start a new session on that computer instead"), { code: "unavailable" }); return f(i); },
+        http: (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers, /** @type {string} */ body) => lentRequest(thread, method, p, headers, body),
         canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
@@ -1695,7 +1729,7 @@ function relaySources(cfg) {
 /** What every Deck file goes out with. @param {any} cfg */
 function deckHeaders(cfg) {
   return { "cache-control": "no-cache", "x-content-type-options": "nosniff",
-    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
+    "content-security-policy": `default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' ${relaySources(cfg)}; frame-ancestors 'none'` };
 }
 
 /** One module from outside deck/ that the Deck imports (core/resilience, relay/client), with the Deck's headers. @param {any} cfg */

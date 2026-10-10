@@ -126,7 +126,7 @@ export default {
     const db = ctx.store.db;
     const catalog = loadCatalog(m => ctx.log.warn(m));
     // A server whose vyred has no Docker (the box) has its host helper start the app; anywhere else vyred reaches Docker itself.
-    const driver = seam.driver || (hostHelperHere() ? createHelperDriver({ log: m => ctx.log.warn(m) }) : createDockerDirect({ home: ctx.paths.root, log: m => ctx.log.warn(m) }));
+    const driver = seam.driver || (hostHelperHere() ? createHelperDriver({ home: ctx.paths.root, log: m => ctx.log.warn(m) }) : createDockerDirect({ home: ctx.paths.root, log: m => ctx.log.warn(m) }));
     const byHelper = driver.kind === "helper";
     const space = () => String((ctx.kernel && ctx.kernel.space) || "home");
     /** @type {Map<string, http.Server>} */ const listeners = new Map();
@@ -153,6 +153,8 @@ export default {
     for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_published").all())) {
       try { if (catalog.has(r.name)) { ctx.log.warn(`appmods: the published server ${r.name} has the name of an app that ships with Vyre and is not loaded`); continue; } catalog.set(r.name, JSON.parse(r.manifest)); } catch { /* an unreadable row is left out */ }
     }
+    /** The Space a published server's files and secrets are kept under (for the helper driver). @param {any} m */
+    const pubSpaceOf = m => { if (!m || !m["x-publish"]) return {}; const p = /** @type {any} */ (db.prepare("SELECT space FROM appmods_published WHERE name = ?").get(m.name)); return p ? { publishSpace: String(p.space) } : {}; };
     const known = (/** @type {string} */ name) => { const m = catalog.get(String(name)); if (!m) throw refuse(`no app module called ${name} (appmods.catalog lists the apps this build can run)`, "not_found"); return m; };
 
     /** Webhooks from a docker-direct app arrive at a small listener on the app network's gateway (the daemon's own door is for apps that share the daemon's network). @param {any} m @param {string} host @param {number} port */
@@ -312,9 +314,9 @@ export default {
     ctx.tool("appmods.start", { description: "Start an installed app again.", input: obj({ name: str }, ["name"]), run: async (/** @type {any} */ i) => {
       const r = row(String(i.name)); if (!r) throw refuse("that app is not installed (appmods.list shows the installed ones, appmods.install adds one)", "not_found");
       const m = known(r.name);
-      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: byHelper ? {} : await secretsOf(m), hookPort: r.hook_port });
+      const up = await driver.up({ space: r.space, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: byHelper && !m["x-publish"] ? {} : await secretsOf(m), hookPort: r.hook_port, ...pubSpaceOf(m) });
       db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
-      listen(m, up.hookHost, r.hook_port);
+      if (!m["x-publish"]) listen(m, up.hookHost, r.hook_port);
       ctx.events.emit("appmods.started", { name: m.name });
       return { name: m.name, state: "running" };
     } });
@@ -521,7 +523,6 @@ export default {
       input: obj({ deployment: { type: "object" } }, ["deployment"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         publishOnly(meta);
-        if (byHelper) throw refuse("this server runs apps through its host helper, which cannot run your own image yet: install an app from the catalog instead (appmods.catalog lists them)", "unsupported");
         const d = i.deployment || {};
         const sp = String(d.space || "");
         if (!/^spc_[a-z2-7]{12}$/.test(sp)) throw refuse("the deployment names no Space", "bad_input");
@@ -540,7 +541,7 @@ export default {
         if (have) db.prepare("UPDATE appmods_apps SET version = ?, state = 'installing', origin = NULL, note = NULL WHERE name = ?").run(m.version, m.name);
         else db.prepare("INSERT INTO appmods_apps (name, space, version, state, origin, hook_port, login_email, installed, note) VALUES (?,?,?,?,?,?,?,?,?)").run(m.name, at, m.version, "installing", null, 0, "", Date.now(), null);
         try {
-          const up = await driver.up({ space: at, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets });
+          const up = await driver.up({ space: at, manifest: m, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets, publishSpace: sp });
           db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, m.name);
           await healthy(m, up.origin);
           db.prepare("UPDATE appmods_apps SET state = 'running' WHERE name = ?").run(m.name);
@@ -629,8 +630,8 @@ export default {
 
     // Apps that were running when this daemon stopped come back with it.
     for (const r of db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all()) {
-      (byHelper ? Promise.resolve({}) : secretsOf(known(r.name))).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: originFor(r.name, baseHost()) }, secrets, hookPort: r.hook_port }))
-        .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
+      (byHelper && !known(r.name)["x-publish"] ? Promise.resolve({}) : secretsOf(known(r.name))).then((/** @type {any} */ secrets) => driver.up({ space: r.space, manifest: known(r.name), vars: { name: r.name, origin: originFor(r.name, baseHost()) }, secrets, hookPort: r.hook_port, ...pubSpaceOf(known(r.name)) }))
+        .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); if (!known(r.name)["x-publish"]) listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
     return { async stop() { offRotate(); for (const t of rotating.values()) clearTimeout(t); rotating.clear(); for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };

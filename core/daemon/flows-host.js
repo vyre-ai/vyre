@@ -94,7 +94,8 @@ export function createFlowsHost(o) {
         if (tool.risk === "outward") {
           // A step that rides an earlier step's yes (`with`) is covered when the person's approved question for that earlier step, in this run, listed it (action and resource) among the steps it asks for
           // (kernel/flows/rides.js): the question was frozen with the task and read in full by the person. The yes is not spent here again; each rider has a receipt of its own below.
-          const ride = opts.ride, form = ride && k.tasks && typeof k.tasks.kitApproval === "function" ? (k.tasks.kitApproval(String(opts.approval)) || {}).form : null;
+          // (read from the task itself, which a restart keeps: the person's yes was proven when they answered it, and the rider may come days later)
+          const ride = opts.ride, row = ride ? await gw.ask.get(flowsChain(), String(opts.approval)).catch(() => null) : null, form = row && row.state === "done" && row.outcome === "approved" ? row.form : null;
           const rides = ride && form && form.kind === "held_act" && form.run === ride.run && form.step === ride.with && Array.isArray(form.rides) && form.rides.some((/** @type {any} */ r) => r.step === ride.step && r.action === action && r.resource === resource);
           if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
             throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
@@ -249,20 +250,31 @@ export function createFlowsHost(o) {
     flows.attachStages(stages);
     // A Mac coming back online wakes the runs that wait for a Chrome (kernel/flows/runner.js #awaitDevice): the module event becomes a kernel-shaped event for the runner.
     const offDevice = o.onDevice ? o.onDevice(() => { void flows.onEvent({ id: `device:${clock()}`, type: "link.mac-online", data: {} }).catch((/** @type {any} */ err) => log(`flows ${space}: device wake failed (${err && err.message})`)); }) : null;
+    // A wait or a schedule that comes due sooner than the timer's sleep wakes it early (set below).
+    /** @type {() => Promise<void>} */ let nudge = async () => {};
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); void nudge(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
       if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;
-    let stopped = false;
+    let stopped = false, plannedAt = Infinity, nudging = false, lastNudge = 0;
     const arm = async () => {
       if (stopped) return;
       let wait = MIN_TICK_MS;
       try { const next = await flows.nextWake(); if (typeof next === "number") wait = Math.max(1000, Math.min(MIN_TICK_MS, next - clock())); } catch (err) { log(`flows ${space}: no next wake (${/** @type {Error} */ (err).message})`); }
       if (stopped) return;
+      plannedAt = clock() + wait;
       timer = setTimeout(async () => { try { await flows.tick(); } catch (err) { log(`flows ${space}: tick failed (${/** @type {Error} */ (err).message})`); } void arm(); }, wait);
       timer.unref();
+    };
+    // A run that started a short wait, or a Flow with a schedule that is due sooner, must not sit out the timer's last sleep (a minute at most): look again at most once a second, and sleep less if the next wake moved up.
+    let nudgeLater = false;
+    nudge = async () => {
+      if (stopped || nudging || timer === null) return;
+      if (clock() - lastNudge < 1000) { if (!nudgeLater) { nudgeLater = true; setTimeout(() => { nudgeLater = false; void nudge(); }, 1000).unref(); } return; }
+      nudging = true; lastNudge = clock();
+      try { const next = await flows.nextWake(); if (typeof next === "number" && next < plannedAt - 500) { clearTimeout(timer); await arm(); } } catch { /* the next tick looks again */ } finally { nudging = false; }
     };
     const recover = async () => { try { await flows.recover(); } catch (err) { log(`flows ${space}: recover failed (${/** @type {Error} */ (err).message})`); } };
     // The timer starts after the types are there and the runs are recovered: a tick on a store still starting found no flow-state, and recover no flow-run, every minute of the first quarter hour.

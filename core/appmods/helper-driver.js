@@ -7,6 +7,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { askHelper, helperPresent, STATE_DIR } from "../../stores/twenty/helper.js";
+import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
 
 /** The subnets the helper walled for an app (status/subnets, `app:<module> <subnet>`). @param {string} state @param {string} module */
 export function subnetsOf(state, module) {
@@ -37,7 +38,7 @@ export function readHandoff(state, module) {
 export const hostHelperHere = helperPresent;
 
 /**
- * @param {{ spool?: string, state?: string, log?: (m: string) => void, interfaces?: () => NodeJS.Dict<os.NetworkInterfaceInfo[]>, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>, pollMs?: number, timeoutMs?: number }} [o]
+ * @param {{ spool?: string, state?: string, home?: string, log?: (m: string) => void, interfaces?: () => NodeJS.Dict<os.NetworkInterfaceInfo[]>, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>, pollMs?: number, timeoutMs?: number }} [o]
  */
 export function createHelperDriver(o = {}) {
   const state = o.state ?? STATE_DIR;
@@ -45,6 +46,9 @@ export function createHelperDriver(o = {}) {
   const ask = (/** @type {"app-up" | "app-stop" | "app-down"} */ verb, /** @type {string} */ name) =>
     askHelper(verb, name, { spool: o.spool, state, log, what: "this app", sleep: o.sleep, pollMs: o.pollMs, timeoutMs: o.timeoutMs ?? 30 * 60_000 });
   const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+  /** A site's server (team/contracts/builder.md): asked for by its deployment's id; the helper takes the folder written for it. @param {"pub-up" | "pub-stop" | "pub-down"} verb @param {string} dep */
+  const askPub = (verb, dep) => askHelper(verb, dep, { spool: o.spool, state, log, what: "this site's server", sleep: o.sleep, pollMs: o.pollMs, timeoutMs: o.timeoutMs ?? 30 * 60_000 });
+  const pubOf = (/** @type {any} */ m) => (m && m["x-publish"] ? m : null);
   return {
     kind: "helper",
 
@@ -62,13 +66,20 @@ export function createHelperDriver(o = {}) {
      */
     async up(p) {
       const name = p.manifest.name;
-      await ask("app-up", name);
+      const pub = pubOf(p.manifest);
+      if (pub) {
+        if (!o.home) throw refuse("this driver was not given the daemon's home folder", "runtime");
+        const a = pub.app, x = pub["x-publish"], sp = String(/** @type {any} */ (p).publishSpace || "");
+        const request = requestText({ name, version: Number(String(pub.version).split(".").pop()) || 1, port: a.port, memoryMb: a.limits.memoryMb, cpus: a.limits.cpus, pids: a.limits.pids, health: a.health, secrets: x.secrets });
+        writeServerFolder({ home: o.home, space: sp, deployment: x.deployment, request, secrets: p.secrets });
+        try { await askPub("pub-up", x.deployment); } finally { removeServerFolder({ home: o.home, space: sp, deployment: x.deployment }); }
+      } else await ask("app-up", name);
       const subs = subnetsOf(state, name);
       const nets = (o.interfaces ?? os.networkInterfaces)();
       let hookHost = "";
       for (const list of Object.values(nets)) for (const a of list || []) if (a.family === "IPv4" && subs.some(s => inSubnet(a.address, s))) hookHost = a.address;
       if (!hookHost) throw refuse(`this server's vyre container has no address on ${name}'s network`, "runtime");
-      return { origin: `http://vyre-app-${name}:${p.manifest.app.port}`, hookHost, outputs: readHandoff(state, name) };
+      return { origin: `http://vyre-app-${name}:${p.manifest.app.port}`, hookHost, outputs: pub ? null : readHandoff(state, name) };
     },
 
     /** The setup runs on the host, inside the first `up`. */
@@ -85,12 +96,13 @@ export function createHelperDriver(o = {}) {
     },
 
     /** @param {{ manifest: any }} p */
-    async stop(p) { await ask("app-stop", p.manifest.name); },
+    async stop(p) { if (pubOf(p.manifest)) await askPub("pub-stop", p.manifest["x-publish"].deployment); else await ask("app-stop", p.manifest.name); },
 
     /** The data stays: deleting it is done on the server, not asked for. @param {{ manifest: any }} p @param {{ data?: boolean }} [opt] */
     async down(p, opt = {}) {
       if (opt.data) throw refuse("on this server the app's data is deleted from the server itself, not from here; remove the app without data, or ask the server's owner", "unsupported");
-      await ask("app-down", p.manifest.name);
+      if (pubOf(p.manifest)) await askPub("pub-down", p.manifest["x-publish"].deployment);
+      else await ask("app-down", p.manifest.name);
     },
 
     /** @param {{ manifest: any }} p */

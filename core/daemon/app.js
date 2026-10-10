@@ -27,7 +27,7 @@ export const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascr
   ".map": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".ttf": "font/ttf", ".woff2": "font/woff2",
   ".webmanifest": "application/manifest+json" };
 // The same policy as web/'s files (core/daemon/index.js serveWeb).
-export const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
+export const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
 /**
  * The app's policy for a request to this host: the same, plus the right to frame this box's own preview addresses (pv-<id>.<this host>), and nothing else. A host that is not a plain name changes nothing.
  * @param {string | undefined} host the request's Host @param {string} [base] where Vyre's front is served (config appmods.base), when it is not this host

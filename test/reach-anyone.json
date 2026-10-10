@@ -2517,6 +2517,10 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; a link is a pair of names that grants nothing"
   },
+  "vault.used-by": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; read-only: the names and kinds of what uses a credential, never a value"
+  },
   "vault.links": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; read-only: item names and record addresses, never a value"

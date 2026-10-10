@@ -237,7 +237,6 @@ export default {
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const person = await whoIs(meta);
-        const byModel = !person && !String((meta && meta.caller) || "").startsWith("module:");
         const title = String(i.title || "").trim().slice(0, 80) || "Preview";
         const wantsFiles = typeof i.path === "string" && i.path.trim() !== "";
         if (wantsFiles) return openFiles(i, meta, person);
@@ -260,7 +259,6 @@ export default {
         card(row(id));
         if (wantsCommandRun) await runSupervised(row(id));
         else setState(id, (await answers(i.port)) ? "live" : "starting");
-        void byModel;
         return { id, state: row(id).state, preview: view(row(id)), message: `${title} is a preview now: a card is in the chat, and the person opens it from there. ${Number.isInteger(i.port) ? "It ends with this chat; the person can tap Keep it running on the card to have Vyre look after it." : ""}`.trim() };
       },
     });

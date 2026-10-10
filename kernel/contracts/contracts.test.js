@@ -5,8 +5,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as c from "./index.js";
 
-test("every export is frozen data, never a function", () => {
+/** The one function the studs carry: the single address of a Vault credential, so leases, Publish and the Vault agree on it (a pure string builder, no state). */
+const PURE_HELPERS = new Set(["credentialUrn"]);
+
+test("every export is frozen data, never a function (but the named pure address helper)", () => {
   for (const [name, v] of Object.entries(c)) {
+    if (PURE_HELPERS.has(name)) { assert.equal(typeof v, "function", name); assert.equal(v("spc_a", "vault://x/y"), "vyre://spc_a/credential/x/y"); continue; }
     assert.notEqual(typeof v, "function", `${name} must not be a function`);
     if (Array.isArray(v)) assert.ok(Object.isFrozen(v), `${name} must be frozen`);
   }

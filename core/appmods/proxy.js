@@ -310,7 +310,9 @@ export function createHostProxy(o) {
     if (!app) return false;
     const refuse = () => { socket.end("HTTP/1.1 404 Not Found\r\nConnection: close\r\ncontent-length: 0\r\n\r\n"); return true; };
     const sid = /(?:^|;\s*)vyre_app=([A-Za-z0-9_-]+)/.exec(String(req.headers.cookie || ""));
-    if (!o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return refuse();
+    // a server Publish made, once live, takes everyone's WebSocket as it takes everyone's request: with its own cookies and the visitor's own Authorization, never Vyre's session
+    const wide = app.open === true;
+    if (!wide && !o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return refuse();
     const u = new URL(app.origin);
     const up = net.connect({ host: u.hostname, port: Number(u.port) || 80 });
     up.on("error", () => socket.destroy());
@@ -319,7 +321,7 @@ export function createHostProxy(o) {
       /** @type {string[]} */ const lines = [`${req.method} ${req.url} HTTP/1.1`];
       for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) {
         const k = req.rawHeaders[i], v = req.rawHeaders[i + 1], low = k.toLowerCase();
-        if (low === "authorization") continue;
+        if (low === "authorization" && !wide) continue;
         if (low === "cookie") { if (!app.passCookies) continue; const mine = v.split(/;\s*/).filter(c => c && !c.startsWith(COOKIE + "=")).join("; "); if (mine) lines.push(`Cookie: ${mine}`); continue; } // the person's Vyre session never travels to the app
         if (low === "host" && app.rewriteHost) { lines.push(`Host: ${u.host}`); lines.push(`X-Forwarded-Host: ${host}`); continue; }
         if ((low === "origin" || low === "referer") && app.rewriteHost) continue;
