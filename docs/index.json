@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1618,"event":533,"config":299,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1618,"event":533,"config":300,"env":282,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1441,6 +1441,7 @@
     {"kind":"tool","name":"relay.setup.begin","definedIn":"core/relay/index.js","page":"reference/tools.md#relaysetupbegin","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.setup.end","definedIn":"core/relay/index.js","page":"reference/tools.md#relaysetupend","module":"relay","mentions":[]},
     {"kind":"tool","name":"relay.setup.status","definedIn":"core/relay/index.js","page":"reference/tools.md#relaysetupstatus","module":"relay","mentions":[]},
+    {"kind":"config","name":"relay.setupRetryMs","definedIn":"core/relay/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"relay.status","definedIn":"core/relay/index.js","page":"reference/tools.md#relaystatus","module":"relay","mentions":[{"page":"adr/0026-relay.md","line":271,"anchor":"7-the-box-side"},{"page":"adr/0046-relay-introduces-tailscale-carries.md","line":272,"anchor":"as-built-28-sep-2026-for-011"}]},
     {"kind":"tool","name":"relay.ticket.mint","definedIn":"core/relay/index.js","page":"reference/tools.md#relayticketmint","module":"relay","mentions":[]},
     {"kind":"event","name":"relay.tunnel-connected","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
