@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(guards): the outward-flags guard can fail (#115). Besides the source scan it now reads the registry: every tool that sends, posts, pays or deletes must carry the outward mark, and a tool flipped to unmarked is caught (mutation-checked). No product code changed.
 - feat(runner): a screen hears a chat's process start on a computer and fall back: `thread.starting { thread, session, computer, state: starting | up | fallback, reason? }`, and each chat that borrows a computer is one line for the Space's timeline: `lease.borrowed { thread, session, person, device, limit, epoch, at }` (link module events; contract lent-spawn v1.3).
 - fix(relay): onboarding can pair the first device on a Mac that keeps its keys in vyre-core. `relay.pair.first` asked for a yes, and before the first device exists no yes can: it asks none now (it is no longer one of the pairing moments). What guards it: only the onboarding listener's own caller (never a label a socket client can name), never once any person or owner exists, and a person's surface or an agent is refused. test/relay-d.test.js was red on this; core/relay/pair-first.test.js pins the guards.
 - fix(app): in the Flows list the health line comes before the trigger, so on a phone, where the line is cut, what is cut is the trigger and not "Red: google is down" (apps/app/screens/flows/real-model.js).
