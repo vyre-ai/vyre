@@ -526,11 +526,11 @@ async function startLocked(opts, root, p, release) {
     let reopenCalled = false;
     const reopenOpts = (/** @type {any} */ o) => ({ personChainFor, ...o });
     registry.deps.kernelThreads = Object.freeze({
-      forThread: (/** @type {string} */ thread) => kernelSessions.forThread(thread),
+      forThread: (/** @type {string} */ thread) => { const sp = spaceOfThread.get(thread); return sp && teamSessions.get(sp) ? teamSessions.get(sp).sessions.forThread(thread) : kernelSessions.forThread(thread); },
       reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return kernelSessions.reopenPending(reopenOpts(o)); },
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
-    closeKernelSessions = () => kernelSessions.closeAll();
+    closeKernelSessions = async () => { for (const e of teamSessions.values()) await e.sessions.closeAll(); await kernelSessions.closeAll(); };
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
     // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
@@ -568,7 +568,32 @@ async function startLocked(opts, root, p, release) {
     // A built-in agent (the Engineer) is listed in a chat before any run of it has made it an actor of the Space: the work module asks the daemon to register it, through the kernel's own registration
     // under the home owner's chain (grants.addActor, which asks whatever the gate asks), so a person's first Engineer chat starts instead of refusing "an assistant in a chat belongs to the Space".
     registry.deps.agentActor = async (/** @type {string} */ agent) => { await kernel.gateway.grants.addActor(await personChainFor(kernel.id.owner), { kind: "agent", id: String(agent), space: kernel.id.space }, {}); };
-    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
+    // A TEAM Space's chat turn (0.3.3 J9): the chat's record and people are that Space's own kernel's, so its session is opened by THAT kernel, for the asker as a member of that Space (a chain the home builds from vyred's
+    // own key, never from the asker's say-so), and its replies are written there. One session engine per team Space, made on first use over the same durable turn store; `spaceOfThread` says which engine holds a thread.
+    /** @type {Map<string, { kernel: any, sessions: any }>} */ const teamSessions = new Map();
+    /** @type {Map<string, string>} */ const spaceOfThread = new Map();
+    const teamEngine = (/** @type {string} */ space) => {
+      let e = teamSessions.get(space);
+      if (e) return e;
+      const h = /** @type {any} */ (kernel.spaces && kernel.spaces.for(space));
+      if (!h || h.hosted !== true || !h.kernel) throw Object.assign(new Error("no such team Space here"), { code: "not_found" });
+      const tk = h.kernel;
+      e = { kernel: tk, sessions: createKernelSessions({ kernel: tk, turns, chats: tk.kernelFor({ name: "kernel-sessions" }).chats, pinned: async () => false }) };
+      teamSessions.set(space, e);
+      return e;
+    };
+    const teamChain = (/** @type {any} */ tk, /** @type {string} */ person) => tk.chains.fromFacts({ kind: "device", device_key_id: "vyred", person, path: "direct" });
+    registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, space?: string, probe?: boolean }} */ q) => {
+      if (q.space && q.asker) {
+        const e = teamEngine(q.space), chain = teamChain(e.kernel, q.asker), chat = q.chat;
+        if (q.probe) { e.kernel.gateway.grants.chats.read(chain, chat); return null; }
+        let agent = await kernelAgentOf(q);
+        let project;
+        if (!agent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) { agent = q.rec.slot; if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project; }
+        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
+        spaceOfThread.set(q.thread, q.space);
+        return { token: e.sessions.tokenFor(s.id), end: () => e.sessions.end(s.id) };
+      }
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
       const person = await personChainFor(q.asker || kernel.id.owner);

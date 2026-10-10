@@ -1139,7 +1139,7 @@ export class Switchboard {
    */
   async assertAsker(id, rec, turn) {
     if (!this.deps.kernelSession) return;
-    try { await this.deps.kernelSession({ thread: id, agent: (rec && rec.agent) || null, rec, chat: turn.chat, asker: turn.asker, probe: true }); }
+    try { await this.deps.kernelSession({ thread: id, agent: (rec && rec.agent) || null, rec, chat: turn.chat, asker: turn.asker, ...(turn.space ? { space: turn.space } : {}), probe: true }); }
     catch { throw Object.assign(new Error("that person is not in this chat, so their message was not sent"), { code: "not_found" }); }
   }
 
@@ -1150,7 +1150,7 @@ export class Switchboard {
    */
   async renewKernelSession(id, rec, turn) {
     if (!this.deps.kernelSession) return;
-    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}) }).catch(() => null);
+    const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}), ...(turn && turn.space ? { space: turn.space } : {}) }).catch(() => null);
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
@@ -2717,7 +2717,7 @@ export class Switchboard {
   /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
   canonTurn(k) {
     if (!k) return k || null;
-    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker), ...(o.over ? { over: o.over } : {}) }) : k; } catch { return k; }
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker), ...(o.space ? { space: o.space } : {}), ...(o.over ? { over: o.over } : {}) }) : k; } catch { return k; }
   }
 
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
@@ -4007,7 +4007,7 @@ export default {
         zone: { type: "string", description: "The person's own IANA time zone, from the device in use (\"Asia/Karachi\"): the brief tells the model what time it is for them. Taken from the calling device when left out." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         slot: { type: "string", description: "First-party stream only: the slot id (model:<provider>/<model>#<n>) of the chat member that starts this run. Anyone else's is ignored." },
-        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the session is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
@@ -4058,7 +4058,8 @@ export default {
       // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
       // and the Switchboard must show, because this id decides whose authority a turn runs under.
       if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
-      return { chat: i.chat, asker: sb.canon(i.asker) };
+      if (i.space !== undefined && i.space !== null && !(typeof i.space === "string" && /^spc_[a-z2-7]{12,26}$/.test(i.space))) throw Object.assign(new Error("space must be a Space id (spc_...)"), { code: "bad_input" });
+      return { chat: i.chat, asker: sb.canon(i.asker), ...(i.space ? { space: i.space } : {}) };
     };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
@@ -4212,7 +4213,7 @@ export default {
 
     tool("threads.send", "Type into a thread, resuming it if stopped. Only the surface holding its lease may type; a free thread is taken on the first keystroke.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: { type: "string", description: "On a box, the name of the paired Mac to send to, to pick one; otherwise a paired Mac that has the thread gets the words." },
-        chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, space: { type: "string", description: "First-party stream only: the TEAM Space this chat belongs to; the session is opened against that Space's kernel. None is the home's own Space. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
         tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
