@@ -2333,6 +2333,8 @@ sp_pub_up_run() {
   sp_in_apply "$m" 0 || return 1
   # the vyre container sits on the networks of several servers at once: it must not route between them (a server could then reach another's address through it)
   _pidf=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  # Docker can turn forwarding on in the container's namespace when it joins another network (Docker 29 does); this helper turns it off again, then checks it.
+  timeout 20 nsenter -t "$_pidf" -n sh -c 'echo 0 > /proc/sys/net/ipv4/ip_forward' >/dev/null 2>&1 || true
   [ "$(timeout 20 nsenter -t "$_pidf" -n cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || true)" = 0 ] || { MSG="the vyre container forwards packets between its networks, so no server was started"; return 1; }
   sp_app_dc "$m" up -d >/dev/null 2>&1 || { MSG="the server did not start"; return 1; }
   if ! sp_app_wait "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; MSG="the server did not become healthy"; return 1; fi
