@@ -400,8 +400,8 @@ export default {
       run: async (i, meta) => {
         const b = await begin(i, meta);
         // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path. The share sheet's "anyone with the link" is the same press:
-        // the previews module carries the person's own call (relay), which previews.share takes only from a person.
-        const byPerson = isPerson(meta) || Boolean(meta && meta.relayedBy === "module:previews" && i.preview);
+        // the previews module carries the person's own call (relay, only for this tool; previews.share takes it only from a person, and previews.folder below checks that person may open the preview).
+        const byPerson = isPerson(meta) || Boolean(meta && meta.caller === "module:previews" && i.preview);
         if (!!i.folder === !!i.preview) throw refuse("name the folder to publish, or the preview to publish, not both and not neither", "bad_input");
         if (i.preview) {
           if (!byPerson) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
