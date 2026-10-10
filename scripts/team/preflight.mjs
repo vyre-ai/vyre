@@ -81,7 +81,7 @@ const inBase = f => { if (!f.startsWith("kernel/")) return false; const r = f.sl
 // ---- R2: security paths land only after trust has read them. A branch that changes one names the review in a commit message as
 // [reviewed: trust] (trust adds it, or the author after trust's yes). Trust's own branches carry it too. The lead may rule an exception in writing.
 {
-  const SEC = /^(kernel\/(?!golden\/)|core\/vault\/|core\/gate\/|core\/spawner\/|lib\/door-bridge\.js$|lib\/http\.js$|core\/runner\/(sandbox|safefs|resume-lent|vyre-door)\.js$|core\/appmods\/(proxy|host-pub)\.js$|core\/wink\/pairing\.js$|box\/vyre$)/;
+  const SEC = /^(kernel\/(?!golden\/)|core\/vault\/|core\/gate\/|core\/spawner\/|core\/appmods\/|core\/previews\/|lib\/door-bridge\.js$|lib\/http\.js$|lib\/one-yes(-ops)?\.js$|lib\/secret-shapes\.js$|lib\/publish\/dockerfile\.js$|core\/transcripts\/sanitize\.js$|core\/modules\/index\.js$|core\/daemon\/flows-host\.js$|core\/runner\/(sandbox|safefs|resume-lent|vyre-door|preview-home|proctree)\.js$|core\/wink\/pairing\.js$|scripts\/gen-allow\.mjs$|scripts\/release\/|\.github\/workflows\/release[^/]*\.yml$|box\/vyre$)/;
   const sec = changed.filter(f => SEC.test(f) && !/\.test\.m?js$/.test(f));
   if (sec.length && !/\[reviewed: trust\]/i.test(bodies)) fail("R2", `this branch changes security code (${sec.join(", ")}): send it to trust first, and land it with [reviewed: trust] in a commit message once they say yes.`);
 }
