@@ -13,7 +13,22 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const RECORD = path.join(REPO, "test", "test-counts.json");
-export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/*/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js"];
+export const MUST_RUN = path.join(REPO, "test", "must-run.json");
+
+/**
+ * Tests that must not skip where the job has what they need (VYRE_MUST_RUN=1, which the hosted node job sets after installing it): a skip there is a green that never ran the test. `mustRun` maps a file
+ * to the name prefixes that may not skip ("*" is every test of the file). @param {Record<string, string[]>} skipped by file @param {Record<string, string[]>} mustRun @returns {string[]}
+ */
+export function mustRunProblems(skipped, mustRun) {
+  /** @type {string[]} */ const out = [];
+  for (const [file, names] of Object.entries(skipped)) {
+    const want = mustRun[file];
+    if (!want) continue;
+    for (const n of names) if (want.some(w => w === "*" || n.startsWith(w))) out.push(`${file}: skipped "${n}" where it must run`);
+  }
+  return out;
+}
+export const GLOBS = ["core/**/*.test.js", "kernel/**/*.test.js", "records/**/*.test.js", "stores/**/*.test.js", "test/**/*.test.js", "web/**/*.test.js", "modules/**/*.test.js", "local/**/*.test.js", "relay/**/*.test.js", "names/**/*.test.js", "apps/test/*.test.js", "apps/app/**/*.test.js", "lib/**/*.test.js", "scripts/**/*.test.js", "site/**/*.test.js", "harness/**/*.test.js", "examples/**/*.test.js"];
 
 /** Literal test( and it( registrations at the start of a line in a test file: the least a run must execute. @param {string} file */
 export function declared(file) {
@@ -91,6 +106,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-counts-"));
     /** @type {Record<string, number>} */ const ran = {};
     /** @type {string[]} */ const failed = [], hung = [];
+    /** @type {Record<string, string[]>} */ const skippedAll = {};
     let next = 0;
     // One process per file with a time limit: a file that keeps the process open after its tests (what --test-force-exit used to hide) is named and killed, not left to run the job out.
     const worker = async () => {
@@ -102,7 +118,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           fs.mkdirSync(rep, { recursive: true });
           // (flags, not NODE_OPTIONS: the test runner hands execArgv to the file's process and nothing to the node processes the file starts, some of which run under the permission model)
           const child = spawn(process.execPath, ["--import", path.join(REPO, "scripts", "lib", "trace-timers.mjs"), "--report-on-signal", "--report-signal=SIGUSR2", `--report-directory=${rep}`, "--import", "./test/cleanup-scratch.mjs", "--test", "--test-reporter=spec", "--test-reporter-destination=stdout", "--test-reporter=./scripts/test-count-reporter.mjs", "--test-reporter-destination=stdout", f],
-            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f } });
+            { cwd: REPO, detached: process.platform !== "win32", env: { ...process.env, VYRE_TEST_COUNTS_OUT: out, VYRE_TEST_COUNTS_FILE: f, VYRE_TEST_SKIPS_OUT: `${out}.skips` } });
           let buf = ""; child.stdout.on("data", d => buf += d); child.stderr.on("data", d => buf += d);
           const signalGroup = (/** @type {NodeJS.Signals} */ sig) => { try { if (process.platform !== "win32" && child.pid) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* gone */ } };
           let timedOut = false;
@@ -113,6 +129,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
           child.on("close", code => {
             clearTimeout(timer);
             if (fs.existsSync(out)) Object.assign(ran, readJson(out)); else ran[f] ??= 0;
+            if (fs.existsSync(`${out}.skips`)) Object.assign(skippedAll, readJson(`${out}.skips`));
             if (timedOut) hung.push(f); else if (code) failed.push(f);
             if (timedOut || code) process.stdout.write(`\n===== ${timedOut ? "HUNG (killed after " + limit / 1000 + " s)" : "FAILED"}: ${f}\n${buf}\n`);
             else process.stdout.write(`ok   ${f}\n`);
@@ -126,10 +143,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     // No file is allowed to be red: there is no list of known failures. A file that fails or does not finish fails the run.
     if (hung.length) console.error("test-counts: files that did not finish (an open handle or a test that never settles):\n  " + hung.join("\n  "));
     if (failed.length) console.error("test-counts: files that failed:\n  " + failed.join("\n  "));
+    const skipBad = process.env.VYRE_MUST_RUN === "1" && fs.existsSync(MUST_RUN) ? mustRunProblems(skippedAll, readJson(MUST_RUN).tests || {}) : [];
+    if (skipBad.length) console.error("test-counts: tests that must run here were skipped (test/must-run.json):\n  " + skipBad.join("\n  "));
     const countsFile = process.env.VYRE_TEST_COUNTS_KEEP || path.join(os.tmpdir(), `vyre-test-counts-${process.pid}.json`);
     fs.writeFileSync(countsFile, JSON.stringify(ran, null, 1) + "\n");
     const g = check(countsFile, full); if (!process.env.VYRE_TEST_COUNTS_KEEP) fs.rmSync(countsFile, { force: true });
-    process.exit(hung.length || failed.length || g ? 1 : 0);
+    process.exit(hung.length || failed.length || skipBad.length || g ? 1 : 0);
   } else if (cmd === "check") process.exit(check(rest[0], rest[1] === "--full"));
   else if (cmd === "update") { fs.writeFileSync(RECORD, JSON.stringify(Object.fromEntries(Object.entries(readJson(rest[0])).sort()), null, 1) + "\n"); console.log("recorded " + RECORD); }
   else if (cmd === "diff") process.exit(diff(rest[0] || "origin/work/kernel"));

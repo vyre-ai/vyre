@@ -39,7 +39,15 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
-      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      # (gocryptfs and fuse3 as runner-linux.yml has them: the lent-computer tests mount the encrypted workspace for real, and are counted)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq bubblewrap gocryptfs fuse3 && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      # The fscrypt workspace test needs a directory on a filesystem with encryption: a loop-mounted ext4. With VYRE_MUST_RUN=1 the tests listed in test/must-run.json fail the run when they skip.
+      - name: A loop-mounted ext4 with fscrypt, and the must-run switch
+        run: |
+          sudo fallocate -l 256M "$RUNNER_TEMP/fsc.img" && sudo mkfs.ext4 -q -O encrypt "$RUNNER_TEMP/fsc.img"
+          sudo mkdir -p /mnt/fsc && sudo mount -o loop "$RUNNER_TEMP/fsc.img" /mnt/fsc && sudo chown "$(id -u):$(id -g)" /mnt/fsc
+          echo "VYRE_FSCRYPT_DIR=/mnt/fsc" >> "$GITHUB_ENV"
+          echo "VYRE_MUST_RUN=1" >> "$GITHUB_ENV"
       - run: npm ci --no-audit --no-fund
       # The real-browser tests (a published React page drawn in headless Chrome) run everywhere they are counted: the one pinned chrome-headless-shell, hash-checked, cached by its pin (scripts/install-test-chrome.mjs).
       - uses: actions/cache@v4

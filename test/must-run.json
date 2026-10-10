@@ -1,0 +1,10 @@
+{
+  "_comment": "Tests that may not skip in the hosted Linux node job (VYRE_MUST_RUN=1, set after the job installs what they need: bubblewrap, gocryptfs, fuse3 and a loop-mounted ext4 with fscrypt for VYRE_FSCRYPT_DIR). A name prefix per file, or \"*\" for every test of the file. scripts/test-counts.mjs fails the run when one of them reports skip. Needs a prepared box and is not here yet: core/computers/image/isolation.test.js (a running computer container, VYRE_COMPUTER_CONTAINER).",
+  "tests": {
+    "core/runner/hardening.test.js": ["*"],
+    "core/runner/lent-wire.test.js": ["*"],
+    "core/runner/lent-pipe-runner.test.js": ["*"],
+    "core/runner/runner.test.js": ["*"],
+    "core/runner/beat-loop.test.js": ["*"]
+  }
+}
