@@ -60,7 +60,7 @@ if (a[0] === "run" && a.includes("--name") && a[a.indexOf("--name") + 1] === "vy
   process.exit(0);
 }
 if (a[0] === "load") { if (has("load-fails")) process.exit(1); fs.writeFileSync(F + "/pub-loaded", "1"); out("Loaded image: " + rd("pub-tag")); }
-if (a[0] === "image" && a[1] === "inspect" && /^vyre-pub\//.test(a[2])) {
+if (a[0] === "image" && a[1] === "inspect" && a[2].startsWith("vyre-pub/")) {
   if (has("pub-image-gone") || !has("pub-loaded")) process.exit(1);
   out("sha256:" + require("crypto").createHash("sha256").update(a[2]).digest("hex"));
 }
