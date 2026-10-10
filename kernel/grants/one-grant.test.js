@@ -264,3 +264,14 @@ test("a Connection is open to a surface by a grant to the group surface:<name>: 
   await g.revoke(owner(), grant.id, "closed", { presence: proof("grants.revoke", { id: grant.id, reason: "closed" }, `vyre://${SPACE}/grant/${grant.id}`) });
   assert.equal((await ask(gw, via("capsule"), "vault.read", conn)).effect, "deny", "taken back");
 });
+
+test("a grant to a surface is use of a credential and nothing more, on every surface, the model's included", async () => {
+  const { g } = await rig();
+  const conn = `vyre://${SPACE}/connection/cn_mail`;
+  for (const name of Object.keys(SURFACE_GROUPS)) {
+    for (const actions of [["vault.reveal"], ["vault.edit"], ["vault.delete"], ["vault.share"], ["vault.rotate"], ["vault.run"], ["grants.create"], [...levelActions("use"), "vault.reveal"], [...levelActions("manage")]]) {
+      await assert.rejects(() => g.create(owner(), { subject: { kind: "group", id: `surface:${name}` }, actions, resource: { prefix: conn }, conditions: {}, source: "vault:connection" }), { code: "bad_input" }, `${name} ${actions.join(",")}`);
+    }
+    assert.equal((await g.create(owner(), { subject: { kind: "group", id: `surface:${name}` }, actions: [...levelActions("use")], resource: { prefix: conn }, conditions: {}, source: "vault:connection" })).status, "active", `${name} use`);
+  }
+});
