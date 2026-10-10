@@ -55,7 +55,7 @@ async function world(t, opt = {}) {
   let boot = null;
   const driver = {
     kind: "fake",
-    up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, gateway: "127.0.0.1", subnet: "127.0.0.0/8", hookHost: "127.0.0.1", _secrets: p.secrets }; },
+    up: async p => { if (opt.upFailsAfter !== undefined && log.filter(l => l[0] === "up").length >= opt.upFailsAfter) throw new Error("the runtime would not start it"); log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, gateway: "127.0.0.1", subnet: "127.0.0.0/8", hookHost: "127.0.0.1", _secrets: p.secrets }; },
     exec: async (p, argv, o) => { boot = { argv, env: o.env, files: o.files.map(f => f.name) }; log.push(["exec", argv]); return { code: 0, stdout: "api_token=tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ\nlogin_password=pw_1234567890abcdef\n", stderr: "" }; },
     status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
   };
@@ -443,4 +443,16 @@ test("a key rotated in the Vault reaches the running app: its container is made 
   await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-third-key-0123456789abcdef" }, "cli");
   await new Promise(r => setTimeout(r, 150));
   assert.equal(ups(), before + 1);
+});
+
+test("a key rotated in the Vault whose app will not start again leaves the app stopped, not listed as running", async t => {
+  seam.rotateMs = 20;
+  t.after(() => { seam.rotateMs = undefined; });
+  const w = await world(t, { upFailsAfter: 1 });
+  await w.cli("appmods.install", { name: "documents" });
+  const names = w.log.find(l => l[0] === "up")[4];
+  await w.d.registry.call("vault.put", { name: `app-documents-${names[0].toLowerCase()}`, kind: "secret", value: "a-new-key-0123456789abcdef" }, "cli");
+  const t0 = Date.now();
+  while (!w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'stopped'").get()) { if (Date.now() - t0 > 5000) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); }
+  assert.ok(w.lines.some(l => /documents did not restart with its new key/.test(l)), "the reason is in the log");
 });
