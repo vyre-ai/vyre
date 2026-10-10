@@ -45,5 +45,7 @@ done
 done
 # Anything still waiting (pushed during the last pass, or a lost race) gets a fresh run.
 if [ -n "$(waiting)" ] && [ -n "${GH_TOKEN:-}" ]; then gh workflow run merge-queue.yml --ref "$TARGET" >/dev/null 2>&1 && echo "More waiting: started another run." | tee -a "$SUM"; fi
+# Pushes made with the workflow token start no workflows, so the full suite on the new tip is started here.
+if [ "$landed" -gt 0 ] && [ -n "${GH_TOKEN:-}" ]; then gh workflow run node.yml --ref "$TARGET" >/dev/null 2>&1 && echo "Started the full suite on $TARGET." | tee -a "$SUM"; fi
 echo "Landed $landed, refused $refused." | tee -a "$SUM"
 [ "$refused" -eq 0 ]
