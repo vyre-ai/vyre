@@ -2126,8 +2126,7 @@ export class Switchboard {
     if (st.lastPrompt) this.write(id, st.lastPrompt);
   }
 
-  onExit(id, st, code, signal, stderr, moved) {
-    this.flush(id, st);
+  onExit(id, st, code, signal, stderr, moved) { this.flush(id, st);
     if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
     if (moved && moved.to === "server" && this.live.get(id) === st && !st.stopping && !this.closing) { void carryOn(this, id, st); return; } // the chat moved to the server under a running turn (lib/lent-placement.js)
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
