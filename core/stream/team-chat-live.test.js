@@ -70,3 +70,26 @@ test("the model's own tools in a team turn act in the team Space, as the member 
     .catch(e => { throw new Error(`${e.message} :: ${seen.slice(0, 700)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-6).join(" | ")}`); });
   assert.match(seen, /per_bcdefghijklmnopqrstuvwxyza/, "as Ana, the member who spoke");
 });
+
+test("a team chat's open turn is reopened after a restart, in the team Space's own engine, for the member who asked", { timeout: 200_000 }, async t => {
+  process.env.FAKE_CLAUDE_DELTA_MS = "400";
+  t.after(() => { delete process.env.FAKE_CLAUDE_DELTA_MS; });
+  const { w, firm, as, lines } = await world(t);
+  const made = await as(ANA, "create", { title: "Long turn", people: [BEN], agents: ["assistant"] });
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
+  await as(ANA, "send", { chat: made.chat, text: `go ${"slowly ".repeat(60)}` });
+  await until(() => w.d.registry.deps.kernelSessionCount() > 0, "the team turn's session to open");
+  const open = JSON.stringify(w.d.registry.deps.db.prepare("SELECT body FROM kernel_turns").all());
+  assert.match(open, new RegExp(firm.space), "the stored turn says which Space it belongs to");
+  await w.d.stop();
+  /** @type {string[]} */ const after = [];
+  const { start } = await import("../daemon/index.js");
+  const { present } = await import("../../test/helpers.js");
+  const path = await import("node:path");
+  const d2 = await start({ root: w.root, presence: present, log: (/** @type {any} */ m) => { after.push(String(m)); }, firstPartyRoots: [path.join(w.root, "modules")], kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d2.stop());
+  await until(() => d2.registry.deps.kernelSessionCount() > 0 || after.some(l => /could not resume/.test(l)), "the restart to reopen or give up the turn", 30_000);
+  assert.deepEqual(after.filter(l => /could not resume/.test(l)), [], "the turn was reopened, not given up");
+  assert.ok(d2.registry.deps.kernelSessionCount() > 0, "the team turn's session is open again");
+  void lines;
+});
