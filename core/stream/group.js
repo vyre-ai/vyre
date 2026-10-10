@@ -61,7 +61,7 @@ const MIGRATIONS = [`
 `ALTER TABLE stream_groups_outbox ADD COLUMN account TEXT;`,
 // The Space a chat belongs to when it is a TEAM Space's (0.3.3 J9): the chat's record and people are that Space's kernel's, so every kernel question about it (who is in it, may this viewer receive a reply, which
 // session answers) is asked there. A chat of the home's own Space has no row.
-`CREATE TABLE stream_chat_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
+`CREATE TABLE stream_groups_space (grp TEXT PRIMARY KEY, space TEXT NOT NULL);`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -112,13 +112,13 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   for (const r of db.prepare("SELECT person, session, upto FROM stream_groups_marks").all()) markers.set(String(r.person), String(r.session), Number(r.upto));
   /** @type {Map<string, Group>} */ const groups = new Map();
   /** The team Space a chat belongs to (none for the home's own). @type {Map<string, string>} */ const spaceOfChat = new Map();
-  for (const r of db.prepare("SELECT grp, space FROM stream_chat_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
+  for (const r of db.prepare("SELECT grp, space FROM stream_groups_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
   /** Say which Space a chat belongs to, once: the first call that carries the Space (the member door's, through callInSpace) records it; a chat never changes Space. @param {string} grp @param {string} space */
   const setSpace = (grp, space) => {
     if (!/^spc_[a-z2-7]{12,26}$/.test(String(space)) || (ctx.kernel && space === ctx.kernel.space)) return;
     const had = spaceOfChat.get(grp);
     if (had) { if (had !== space) throw fail("denied", "this chat belongs to another Space"); return; }
-    db.prepare("INSERT OR IGNORE INTO stream_chat_space (grp, space) VALUES (?, ?)").run(grp, space);
+    db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)").run(grp, space);
     spaceOfChat.set(grp, space);
   };
   /** The kernel's chat calls for the Space a chat belongs to: the team's own kernel for a team chat, else the home's. @param {string} grp */
