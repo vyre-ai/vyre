@@ -1,0 +1,83 @@
+{
+ "app/_layout.tsx": {
+  "style-sheet": 1
+ },
+ "app/devices.tsx": {
+  "second-primitive": 2,
+  "style-sheet": 1
+ },
+ "app/need/[id].tsx": {
+  "second-primitive": 1,
+  "style-sheet": 1
+ },
+ "app/pair.tsx": {
+  "second-primitive": 1,
+  "style-sheet": 1
+ },
+ "app/session/[id].tsx": {
+  "second-primitive": 1,
+  "style-sheet": 1
+ },
+ "app/settings.tsx": {
+  "second-primitive": 2,
+  "style-sheet": 1
+ },
+ "app/settings/autofill.tsx": {
+  "second-primitive": 1,
+  "style-sheet": 1,
+  "type-literal": 1
+ },
+ "screens/chat-tools/FilesPane.tsx": {
+  "raw-colour": 1
+ },
+ "screens/shell/GroupApprovals.tsx": {
+  "type-literal": 1
+ },
+ "src/chat/Blocks.tsx": {
+  "style-sheet": 1,
+  "type-literal": 4
+ },
+ "src/chat/ChatComposer.tsx": {
+  "type-literal": 1
+ },
+ "src/chat/ChatHeader.tsx": {
+  "style-sheet": 1
+ },
+ "src/chat/ChatRows.tsx": {
+  "style-sheet": 1
+ },
+ "src/chat/ChatScreen.tsx": {
+  "type-literal": 1
+ },
+ "src/chat/FanoutSet.tsx": {
+  "style-sheet": 1
+ },
+ "src/chat/GroupParts.tsx": {
+  "style-sheet": 1
+ },
+ "src/chat/OperatorCard.tsx": {
+  "type-literal": 1,
+  "raw-colour": 1
+ },
+ "src/chat/PreviewFrame.tsx": {
+  "raw-colour": 1
+ },
+ "src/chat/PreviewFrame.web.tsx": {
+  "raw-colour": 1
+ },
+ "src/chat/QuestionsCard.tsx": {
+  "type-literal": 1
+ },
+ "src/chat/StatusLine.tsx": {
+  "style-sheet": 1
+ },
+ "src/chat/usePreviewThumb.ts": {
+  "raw-colour": 1
+ },
+ "src/session/Frame.native.tsx": {
+  "style-sheet": 1
+ },
+ "src/terminal/Terminal.tsx": {
+  "type-literal": 1
+ }
+}

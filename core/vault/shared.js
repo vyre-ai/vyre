@@ -512,6 +512,7 @@ export class Shared {
     });
     this.keys.set(`${id}:1`, vk);
     this.vault.audit("vault-create", null, caller, true, name);
+    this.vault.emit("vault.shared-created", { vault: name });
     return { vault: this.out(this.row(id)) };
   }
 
@@ -575,6 +576,7 @@ export class Shared {
     const v = this.row(inv.vault);
     if (v.role === "removed" || !v.role) { this.db.prepare("DELETE FROM vault_shared WHERE id = ?").run(inv.vault); throw new Error("the vault's home does not list you as a member"); }
     this.vault.audit("vault-join", null, caller, true, v.name);
+    this.vault.emit("vault.shared-joined", { vault: v.name, role: v.role });
     return { vault: this.out(v) };
   }
 
@@ -589,6 +591,7 @@ export class Shared {
     if (who.role === "owner") throw new Error("the owner's role does not change");
     await this.submitAdmin(v, { manifest: this.next(m, me, { members: m.members.map(x => x.sign === who.sign ? { ...x, role } : x) }) }, me);
     this.vault.audit("member-role", null, caller, true, `${v.name}: ${who.name} is ${role}`);
+    this.vault.emit("vault.member-role", { vault: v.name, member: who.name, role });
     return { vault: v.name, member: who.name, role };
   }
 

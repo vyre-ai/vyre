@@ -60,7 +60,7 @@ test("the waiting line names who asked and what", { skip: !strip }, async () => 
   const { pickPending, waitingLine, whoAsked } = await import("./more-model.ts");
   const w = pickPending({ grants: [{ id: "g", name: "Gmail", module: "watch", watcher: "intake", by: "agent:kit" }], passes: [{ id: "p", holder: "theo", items: ["Gmail", "Drive"], mode: "sealed", by: "mcp:claude" }] });
   assert.equal(waitingLine(w[0]), "kit asked to let watch/intake use Gmail");
-  assert.equal(waitingLine(w[1]), "Claude asked to share Gmail, Drive with theo, sealed");
+  assert.equal(waitingLine(w[1]), "Claude asked to share Gmail, Drive with theo, as a copy");
   assert.equal(whoAsked(""), "An agent");
 });
 
@@ -96,14 +96,14 @@ test("create, revoke, offboard: tool names, the ticket, and what to rotate", { s
   assert.deepEqual(await s.revokePass("p1"), ["Stripe"]);
   assert.deepEqual(await s.offboard("dana"), { ended: 2, rotate: ["Stripe"] });
   assert.deepEqual(b.seen.map((x) => x.tool), ["vault.pass.create", "vault.pass.revoke", "vault.offboard"]);
-  assert.equal(revokedLine("dana", ["Stripe"]), "Ended. Replace Stripe: they kept a sealed copy.");
+  assert.equal(revokedLine("dana", ["Stripe"]), "Ended. Replace Stripe: they kept a copy.");
   assert.equal(revokedLine("dana", []), "Ended. dana cannot use it any more.");
 });
 
 test("lines for a pass and a device", { skip: !strip }, async () => {
   const { pickPasses, passLine, expiryWord, pickDevices, deviceLines } = await import("./more-model.ts");
   const [p1, p2, h1] = pickPasses({ passes: [{ id: "p1", holder: "dana", person: "Dana", items: ["Stripe", "Gmail"], note: "Read reports", expires: "2026-10-31T00:00:00Z" }, { id: "p2", holder: "theo", status: "pending", mode: "sealed" }], held: [{ id: "h1", owner: "kit" }] });
-  assert.deepEqual(passLine(p1), { title: "To dana, Dana", sub: "Stripe, Gmail, Read reports", state: "Relayed, until 31 oct" });
+  assert.deepEqual(passLine(p1), { title: "To dana, Dana", sub: "Stripe, Gmail, Read reports", state: "Stays on your server, until 31 Oct" });
   assert.equal(passLine(p2).state, "Waiting, no end date");
   assert.equal(passLine(h1).title, "From kit");
   assert.equal(expiryWord(null), "No end date");
@@ -243,8 +243,8 @@ test("health on the home: a count and the biggest reasons in one line, nothing w
   const { healthSummary } = await import("./more-model.ts");
   const h = { checked: 5, counts: { weak: 1, reused: 2, "2fa-available": 3 }, items: [
     { name: "A", kind: "login", reasons: ["weak", "reused"], group: "g" }, { name: "B", kind: "login", reasons: ["reused"], group: "g" }, { name: "C", kind: "login", reasons: ["2fa-available"], group: "" }] };
-  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused." });
-  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "" });
+  assert.deepEqual(healthSummary(h), { total: 2, line: "2 items need attention: 1 weak, 2 reused.", title: "2 items need a look", detail: "1 weak, 2 reused" });
+  assert.deepEqual(healthSummary({ checked: 3, counts: {}, items: [] }), { total: 0, line: "", title: "", detail: "" });
   assert.equal(healthSummary({ checked: 1, counts: { old: 1 }, items: [{ name: "Z", kind: "login", reasons: ["old"], group: "" }] }).line, "1 item needs attention: 1 old.");
 });
 
@@ -275,4 +275,49 @@ test("shared vaults and people: names, roles and fingerprints only, one plain li
   assert.deepEqual(vaults[0].members.map((m) => [m.name, roleWord(m.role)]), [["Dana", "Owner"], ["Lee", "Read only"]]);
   const people = await src.people();
   assert.deepEqual(people.map(personLine), ["Card checked.", "Card pinned but not checked. Compare fingerprints with them before sharing.", "Their key changed. Check it with them before sharing anything new."]);
+});
+
+// contracts/vault.md v1: the writes of a shared vault. The screen sends exactly these inputs, a model never does (the tools' callers lists refuse it), and a name is made into one the box accepts.
+test("shared vault writes: create, invite, role, remove, rotate and accept send the contract's inputs and read only names and codes back", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { newVaultInput, inviteInput, acceptKind, removedLine, INVITE_ROLES } = await import("./more-model.ts");
+  /** @type {{ tool: string, input: any }[]} */
+  const seen = [];
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+    seen.push({ tool, input });
+    if (tool === "vault.members.invite") return { data: { invite: "vyre-invite:v1:abc", vault: input.vault, member: input.person, role: input.role } };
+    if (tool === "vault.members.remove") return { data: { vault: input.vault, removed: input.person, kv: 3, rotate: ["acme/stripe", "acme/gmail"] } };
+    return { data: {} };
+  };
+  const src = vaultMoreSource(/** @type {any} */ (call));
+  await src.createVault("Acme-client");
+  const inv = await src.invite("Acme-client", "Dana", "read-only");
+  assert.deepEqual(inv, { invite: "vyre-invite:v1:abc", member: "Dana", role: "read-only" });
+  await src.memberRole("Acme-client", "Dana", "admin");
+  assert.deepEqual(await src.memberRemove("Acme-client", "Dana"), ["acme/stripe", "acme/gmail"]);
+  await src.rotateVault("Acme-client");
+  await src.acceptInvite("vyre-invite:v1:abc");
+  await src.acceptTicket("vyre-pass:v2:abc");
+  assert.deepEqual(seen.map((x) => [x.tool, x.input]), [
+    ["vault.vaults.create", { name: "Acme-client" }],
+    ["vault.members.invite", { vault: "Acme-client", person: "Dana", role: "read-only" }],
+    ["vault.members.role", { vault: "Acme-client", person: "Dana", role: "admin" }],
+    ["vault.members.remove", { vault: "Acme-client", person: "Dana" }],
+    ["vault.vaults.rotate", { vault: "Acme-client" }],
+    ["vault.members.accept", { invite: "vyre-invite:v1:abc" }],
+    ["vault.pass.accept", { ticket: "vyre-pass:v2:abc" }],
+  ]);
+  assert.deepEqual(newVaultInput("  Acme client (2026) "), { input: { name: "Acme-client-2026" } });
+  assert.deepEqual(newVaultInput(" "), { error: "Give the vault a name." });
+  assert.deepEqual(newVaultInput("!!"), { error: "Start the name with a letter or a number." });
+  assert.deepEqual(inviteInput("Acme", " Dana ", "member"), { input: { vault: "Acme", person: "Dana", role: "member" } });
+  assert.deepEqual(inviteInput("Acme", " ", "member"), { error: "Say who to invite." });
+  assert.deepEqual(INVITE_ROLES.map(([r]) => r), ["member", "admin", "read-only"]);
+  assert.deepEqual(acceptKind("  vyre-invite:v1:xyz "), { kind: "invite", value: "vyre-invite:v1:xyz" });
+  assert.deepEqual(acceptKind("vyre-pass:v2:xyz"), { kind: "ticket", value: "vyre-pass:v2:xyz" });
+  assert.deepEqual(acceptKind("hello"), { error: "That is not something Vyre made. Paste the whole thing they sent you." });
+  assert.deepEqual(acceptKind(""), { error: "Paste what they sent you." });
+  assert.equal(removedLine("Dana", "Acme", ["acme/stripe"]), "Dana is out of Acme. Replace acme/stripe: they could read it.");
+  assert.equal(removedLine("Dana", "Acme", ["a", "b"]), "Dana is out of Acme. Replace 2 items: they could read them.");
+  assert.equal(removedLine("Dana", "Acme", []), "Dana is out of Acme.");
 });

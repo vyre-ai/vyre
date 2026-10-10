@@ -7,6 +7,7 @@
  "apps/app/screens/install/real.test.js": 13,
  "apps/app/screens/memory/logic.test.js": 5,
  "apps/app/screens/onboarding/onboarding.test.js": 9,
+ "apps/app/screens/runner/runner-contract.test.js": 5,
  "apps/app/screens/settings/logic.test.js": 7,
  "apps/app/screens/settings/my-cloud.test.js": 8,
  "apps/app/screens/shell/spaces.test.js": 5,
@@ -1001,5 +1002,11 @@
  "apps/app/screens/settings/backups.test.js": 2,
  "core/vault/health-summary.test.js": 2,
  "apps/app/screens/now/vault-health.test.js": 1,
- "lib/publish/grants-kernel.test.js": 4
+ "lib/publish/grants-kernel.test.js": 4,
+ "apps/app/ui/tasks/one-vault.test.js": 1,
+ "apps/app/screens/spaces/add-space.test.js": 1,
+ "apps/app/scripts/check-design-rules.test.js": 2,
+ "test/design-rules.test.js": 2,
+ "apps/app/ui/blocks/symbols.test.js": 2,
+ "test/agent-reach-classes.test.js": 3
 }

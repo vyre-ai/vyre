@@ -34,30 +34,30 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 - web: keys on, path; reads trigger; e.g. `{on:web,path:intake}`
 - manual: keys on, input; reads trigger; e.g. `{on:manual}`
 
-## Steps (id kind key=value)
-- find: type, where, limit, sort; also timeout_ms, retry, on_fail, verify
+## Steps (id kind key=value; each also takes timeout_ms, retry, on_fail, verify unless it says otherwise)
+- find: type, where, limit, sort
     who find type=client where="record.email == trigger.email" limit=5
-- pick: type, where; also timeout_ms, retry, on_fail, verify
+- pick: type, where
     one pick type=client where="record.email == trigger.email"
-- filter: from, where; also timeout_ms, retry, on_fail, verify
+- filter: from, where
     open filter from=steps.who.rows where="record.status == \"Open\""
-- create: type, set; also timeout_ms, retry, on_fail, verify
+- create: type, set
     make create type=matter set={client: `trigger.client`, stage: Intake}
-- update: type, record, set; also timeout_ms, retry, on_fail, verify
+- update: type, record, set
     mark update type=matter record=`steps.make.record.id` set={stage: Active}
-- upsert: type, match, set; also timeout_ms, retry, on_fail, verify
+- upsert: type, match, set
     save upsert type=client match={email: `trigger.email`} set={name: `trigger.name`}
-- remove: type, record; also timeout_ms, retry, on_fail, verify
+- remove: type, record
     drop remove type=matter record=`steps.make.record.id`
-- decide: if, then, else; also on_fail, verify
+- decide: if, then, else; only on_fail, verify
     big decide if="trigger.amount > 1000" else=[]
       then:
         alert assign to=role:partner title="Large payment" output={kind: note}
-- repeat: over, as, steps, max; also on_fail, verify
+- repeat: over, as, steps, max; only on_fail, verify
     each repeat over=steps.who.rows as=row max=50
       steps:
         tag update type=client record=`row.id` set={tagged: true}
-- parallel: steps; also on_fail, verify
+- parallel: steps; only on_fail, verify
     both parallel
       steps:
         left branch
@@ -66,34 +66,39 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
         right branch
           steps:
             note create type=matter set={client: B}
-- branch: steps; also nothing (its steps have their own)
+- branch: steps; no policy keys (its steps have their own)
     left branch
       steps:
         mail create type=matter set={client: A}
-- subflow: flow, input; also on_fail, verify
+- subflow: flow, input; only on_fail, verify
     welcome subflow flow=send_welcome input={client: `trigger.client`}
-- wait: for_ms, until, event, where, timeout_ms, on_timeout; also retry, on_fail, verify
+- wait: for_ms, until, event, where, timeout_ms, on_timeout; no timeout_ms
     pause wait for_ms=3600000
-- ask: to, title, form, record; also timeout_ms, retry, on_fail, verify
+- ask: to, title, form, record
     yes ask to=role:partner title="Send the welcome email?"
-- assign: to, title, record, output, how, template, checker, await, skills; also timeout_ms, retry, on_fail, verify
+- assign: to, title, record, output, how, template, checker, await, skills
     task assign to=teammate:paralegal title="Draft the engagement letter" output={kind: draft}
-- call: action, resource, input; also timeout_ms, retry, on_fail, verify
+- call: action, resource, input
     mail call action=email.send resource=vyre://space/email/outbox input={to: `trigger.email`, subject: Welcome}
-- stage: type, record, to; also timeout_ms, retry, on_fail, verify
+- stage: type, record, to
     move stage type=matter record=`steps.make.record.id` to=Active
-- agent: assistant, title, instructions, record, output, await, skills; also timeout_ms, retry, on_fail, verify
+- agent: assistant, title, instructions, record, output, await, skills
     draft agent assistant=teammate:paralegal title="Summarise the file" instructions="Read the file and write a short summary." output={kind: note}
-- classify: input, labels; also timeout_ms, retry, on_fail, verify
+- classify: input, labels
     kind classify input=`trigger.message` labels=["new client", "existing client", spam]
-- extract: input, fields; also timeout_ms, retry, on_fail, verify
+- extract: input, fields
     facts extract input=`trigger.message` fields=[{name: phone, kind: text}]
-- service: connector, method, path, query, headers, body, drive, connection, operation, input; also timeout_ms, retry, on_fail, verify
+- service: connector, method, path, query, headers, body, drive, connection, operation, input
     crm service connection=orbit-crm operation=customers.list input={limit: 1}
-- fn: language, source, hash, inputs, outputs, needs; also timeout_ms, retry, on_fail, verify
+- fn: language, source, hash, inputs, outputs, needs
     calc fn language=js inputs={a: 1, b: `trigger.amount`} outputs=[total] source=<<<
       return { total: inputs.a + inputs.b };
     >>>
+
+## Lanes, other Flows, schedules
+- `parallel`: lanes (2 to 8 `branch` steps) run together; the next step waits for all and reads any lane's step as `steps.<id>` (lanes cannot read each other). A failed lane fails the step; a retry reruns only it.
+- `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.
+- A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
 ## If it can fail
 - timeout_ms 1-3600000; retry false | {attempts 1-8, backoff_ms n | [n...], on [timeout, unavailable, rate_limited, upstream_5xx, connection_reset, busy]}. Defaults: find 30 s x3, pick 30 s x3, filter 30 s x1, create 1 min x3, update 1 min x3, upsert 1 min x3, remove 1 min x3, stage 1 min x3, call 1 min x1, service 30 s x1, classify 1 min x2, extract 1 min x2, fn 10 s x1; other kinds do not retry. A refusal is never retried.

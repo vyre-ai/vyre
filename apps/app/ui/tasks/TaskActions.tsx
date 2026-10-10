@@ -112,7 +112,7 @@ function Sheets({ world, open, close, confirmProof, run, go }: { world: World; o
             <Banner tone="warn"><Text><Text strong>{nameOf(world, aid(task.doer))} stopped on {task.title}.</Text> {task.stuck?.reason}</Text></Banner>
             <Text>{task.stuck?.suggested_fix?.text || "Fix it, then tell Vyre."}</Text>
             <View className="flex-row flex-wrap justify-end gap-s2 pt-s2">
-              {/vault/i.test(task.stuck?.suggested_fix?.text || "") ? <Button label="Open the Vault" onPress={() => { close(); go("/vault"); }} /> : null}
+              {/vault/i.test(task.stuck?.suggested_fix?.text || "") ? <Button label="Open the Vault" onPress={() => { close(); go("/u/vault"); }} /> : null}
               <Button kind="primary" label="I fixed it" onPress={async () => {
                 try { await store.reassign(task.id, aid(task.doer), world.me); showToast(`${nameOf(world, aid(task.doer))} is on it again.`); close(); } catch (e) { say(e); }
               }} />

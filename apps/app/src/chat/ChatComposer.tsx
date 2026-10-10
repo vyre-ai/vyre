@@ -39,6 +39,11 @@ export type ComposerProps = {
   onCancelEdit?: () => void;
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
+  /** The files added to the next message, as chips (name, a line under it, and where it is), and how to take one off. Sending with files and no words is allowed. */
+  attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed" }[];
+  onRemoveAttachment?: (key: string) => void;
+  /** Why the last file was not added, in words. */
+  attachProblem?: string | null;
   phone: boolean;
   autoFocus?: boolean;
   /** Called on every keystroke with performance.now(); the perf script reads it. */
@@ -84,7 +89,8 @@ export function ChatComposer(p: ComposerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);
   useEffect(() => { if (p.draftKey) writeDraft(p.draftKey, text); }, [p.draftKey, text]);
-  const intent = sendIntent({ text, state: p.state });
+  const files = p.attachments?.filter((a) => a.state === "ready").length ?? 0;
+  const intent = sendIntent({ text, attachments: files, state: p.state });
   const expanded = !p.phone || focused || text.length > 0 || !!trig || models;
   const big = p.phone;
 
@@ -105,7 +111,7 @@ export function ChatComposer(p: ComposerProps) {
   };
   const send = useCallback((over?: "steer" | "queue") => {
     const t = text.trim();
-    if (!t) return;
+    if (!t && !files) return;
     const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
     const working = busyState(p.state);
@@ -114,7 +120,7 @@ export function ChatComposer(p: ComposerProps) {
     setText("");
     setCaret(0);
     setAskAll(false);
-  }, [text, p, askAll, mode]);
+  }, [text, p, askAll, mode, files]);
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const current = (p.models ?? []).find((m) => m.id === p.model);
@@ -200,6 +206,16 @@ export function ChatComposer(p: ComposerProps) {
         </View>
       ) : null}
       <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: 10, gap: 6 }}>
+        {p.attachments?.length ? (
+          <View accessibilityLabel="Files for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {p.attachments.map((a) => (
+              <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+                <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : "file"}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}
         {!expanded ? (
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 6 }}>
             <Tool big={big} icon="plus" label="Attach" onPress={p.onAttachFile} />

@@ -26,7 +26,7 @@ const ALLOWED = new Map([
   ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
   ["local/voice/ws.js", "the voice provider's WebSocket handshake needs the raw upgraded socket, which the client cannot give; it checks the address through lib/http.js pin() and dials the checked address"],
   ["core/cli/commands/phone.js", PARAM + " (userHostFetch: the person's own server)"],
-  ["relay/node/main.js", "the relay container's one call to the operator's own names directory (VYRE_TUNNEL_DIRECTORY, set by whoever runs the edge, never by a request), 3 s deadline, a shared secret in a header; the container has no user-supplied address to guard"],
+  ["relay/node/resolve.js", "the relay container's one call to the operator's own names directory (VYRE_TUNNEL_DIRECTORY, set by whoever runs the edge, never by a request), 3 s deadline, a shared secret in a header; the container has no user-supplied address to guard"],
   ["lib/siteops/page.js", "the TEXT of a function that runs inside the signed-in page (a browser), which signs the call with the page's own cookies"],
   // inside a sandboxed child: the host side is the vault request engine
   ["core/watchers/presets.js", "runs inside the sandboxed watcher child, which has no network (its uid is refused by the host firewall): `fetch` there is a message to the parent, and the parent's answer is lib/sandbox/fetch.js on the shared lib/http.js transport"],

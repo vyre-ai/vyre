@@ -155,7 +155,7 @@ test("add server: the first test result comes back when the box ran one", { skip
 
 test("Google: accounts, a scope check that keeps only Google scope URLs, sign-in start and finish", { skip: !strip }, async () => {
   const { connectionsSource } = await import("./source.ts");
-  const { accountAuthLine, scopeLines, accountInput, CLIENT_PUT } = await import("./model.ts");
+  const { accountAuthLine, scopeLines, accountInput } = await import("./model.ts");
   const b = box();
   const s = connectionsSource(b.call);
   const [w, h] = await s.accounts();
@@ -174,7 +174,6 @@ test("Google: accounts, a scope check that keeps only Google scope URLs, sign-in
   assert.deepEqual(accountInput({ name: " work ", email: " a@x.com ", type: "service-account", item: "sa", subject: " b@x.com " }), { input: { name: "work", email: "a@x.com", auth: { type: "service-account", item: "sa", subject: "b@x.com" } } });
   assert.deepEqual(accountInput({ name: "w", email: "", type: "oauth", item: "i", subject: "" }), { error: "Give the account a name and its address." });
   assert.deepEqual(accountInput({ name: "w", email: "a@x.com", type: "oauth", item: "", subject: "" }), { error: "Choose the vault item this account uses." });
-  assert.match(CLIENT_PUT, /google-oauth-client/);
 });
 
 test("GitHub: accounts without a token, the device code with GitHub's own link only, a token connect, repos", { skip: !strip }, async () => {
@@ -208,14 +207,13 @@ test("a typed token is never echoed: masked in an error, and by exact match", { 
 
 test("vault items, grants and connections by surface", { skip: !strip }, async () => {
   const { connectionsSource } = await import("./source.ts");
-  const { itemsFor, grantCommand, since } = await import("./model.ts");
+  const { itemsFor, since } = await import("./model.ts");
   const b = box();
   const s = connectionsSource(b.call);
   const items = await s.vaultItems();
   assert.deepEqual(items.map((i) => i.name), ["client", "key"]);
   assert.deepEqual(itemsFor(items, "signin").map((i) => i.name), ["client"]);
   assert.deepEqual(itemsFor(items, "bearer").map((i) => i.name), ["key"]);
-  assert.equal(grantCommand("client", "google"), "vyre vault grant client google");
   await s.grantItem("client", "google");
   const c = await s.connections();
   assert.deepEqual(c.map((x) => [x.id, x.word, x.label, x.ready, x.surfaces]), [["c1", "Google", "Work", true, ["chat", "agents"]]]);

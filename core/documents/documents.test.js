@@ -196,9 +196,25 @@ test("one yes: the card for documents.send rides down to the mail module's own s
   assert.ok(toComms && toComms.via.includes("comms"), "documents.send names comms.send, so the email rides the card");
   const toMail = coveredRide(tools, meta(toComms), "mail.send", "module:comms");
   assert.ok(toMail && toMail.via.includes("mail"), "and comms.send's own mail.send rides it too");
+  // a Gmail account is one hop further (mail.send files google.mail.send, which files the send at the Gate) and an MCP account goes through mcp.call: the card names them, so the Gate sees a mark its caller may present
+  const toGoogle = coveredRide(tools, meta(toMail), "google.mail.send", "module:mail");
+  assert.ok(toGoogle && toGoogle.via.includes("google"), "a Gmail account's send rides the same card");
+  const toMcp = coveredRide(tools, meta(toMail), "mcp.call", "module:mail");
+  assert.ok(toMcp && toMcp.via.includes("mcp"), "and so does a mail account reached through MCP");
+  const direct = { ...card, tool: "mail.send" };
+  assert.ok(coveredRide(tools, meta(direct), "google.mail.send", "module:mail"), "a card for mail.send itself carries its Gmail hop");
   assert.equal(coveredRide(tools, meta(card), "mail.send", "module:billing"), null, "another module's send is not the same act");
   assert.equal(coveredRide(tools, meta(card), "documents.signed-link", "module:documents"), null, "a tool the card does not name is held as its own card");
   const signed = { ...card, tool: "documents.send-signed" };
   assert.ok(coveredRide(tools, meta(signed), "comms.send", "module:documents"));
   assert.equal(coveredRide(tools, meta(signed), "appmods.signing.request", "module:documents"), null);
+});
+
+test("an agent sees lean tool descriptions, and documents.generate is held to the projects the agent is granted", async () => {
+  const { readFileSync } = await import("node:fs");
+  const r = rig();
+  for (const [name, def] of r.tools) assert.ok(String(def.description).trim().split(/\s+/).length <= 25, `${name} is over the 25-word cap`);
+  const manifest = JSON.parse(readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const entry = manifest.does.tools.find((/** @type {any} */ t) => t && t.name === "documents.generate");
+  assert.equal(entry.projectArg, "project");
 });

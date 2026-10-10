@@ -13,7 +13,7 @@ const str = { type: "string" };
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
  */
 export function register({ ctx, vault, said, tool }) {
-  tool("vault.agent.fill", ["mcp", "harness", "module"], "Sign in on your own computer with a login lent to you (a # tag the person typed in this conversation, or vault.agent.grant). You never see the login: it is typed into the page for you. Returns which fields were filled, the origin and whether the page moved on.",
+  tool("vault.agent.fill", ["mcp", "harness", "module"], "Sign in on your own computer with a login lent to you; you never see it. Answers which fields were filled and the origin.",
     obj({ item: str, origin: str, agent: str, thread: str, lineage: { type: "array", items: str } }, ["item"]), async (input, meta = {}) => {
       const kind = callerKind(meta.caller);
       let agent, thread, lineage;

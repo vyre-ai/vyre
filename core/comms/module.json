@@ -12,7 +12,7 @@
       {
         "name": "comms.send",
         "outward": true,
-        "covers": ["mail.send"],
+        "covers": ["mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       },
@@ -42,7 +42,19 @@
       }
     ]
   },
-  "teaches": {},
+  "teaches": {
+    "tips": [
+      {
+        "id": "text-a-client",
+        "text": "Ask your assistant to text a client. It sends from your own Twilio number, and you say yes to the exact words first.",
+        "surfaces": ["cli", "deck"],
+        "level": "discovery",
+        "trigger": "on-use",
+        "since": "0.3.3",
+        "docs": "using/documents.md#send-an-email-or-a-text"
+      }
+    ]
+  },
   "flow": {
     "steps": [
       {

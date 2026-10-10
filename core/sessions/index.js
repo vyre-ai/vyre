@@ -279,8 +279,8 @@ export default {
       },
     });
     ctx.tool("sessions.harness.get", {
-      description: "What each harness can do, detected when a session of it last started: { provider, version, caps (true, false, or null for not shown), counts, auth, at }. A harness no session has started has no row, and nothing is hidden for it. provider narrows it.",
-      input: { type: "object", properties: { provider: str } },
+      description: "What each harness can do: { provider, version, caps, counts, auth, at }. Narrow with `provider`. A harness never started has no row.",
+      input: { type: "object", properties: { provider: { ...str, description: "Narrow to one harness. caps are true, false or null (not shown), detected when a session of it last started" } } },
       run: async i => {
         const rows = /** @type {any[]} */ (i && i.provider ? db.prepare("SELECT * FROM sessions_harness_caps WHERE provider = ?").all(String(i.provider)) : db.prepare("SELECT * FROM sessions_harness_caps ORDER BY provider").all());
         return { harnesses: rows.map(r => ({ provider: r.provider, version: r.version, caps: JSON.parse(String(r.caps)), counts: JSON.parse(String(r.counts || "{}")), auth: JSON.parse(String(r.auth || "[]")), at: r.at })) };

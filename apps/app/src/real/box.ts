@@ -32,7 +32,15 @@ export class BoxError extends Error {
 const REUSE_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
+/**
+ * A stand-in for the box, for the gallery's pictures of screens that read the real box (the Vault): it answers each tool from recorded answers (scripts/capture-vault-fixtures.mjs) so a screen is
+ * shot with real shapes and no box behind it. Never set in the app itself; only the /gallery route sets it.
+ */
+let override: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null = null;
+export function setBoxOverride(f: ((name: string, input: Record<string, unknown>) => Promise<unknown>) | null) { override = f; }
+
 export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+  if (override) return (await override(name, given)) as T;
   // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
   const input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.

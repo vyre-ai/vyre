@@ -72,6 +72,20 @@ export function sampleChats(now) {
 }
 
 /** What the Chats screen says on a box that has no work.chat.list: the app and the box ship together, so there is one path. */
+/**
+ * What the Chat page shows: its body and, beside the list, the one thing that is missing on this device (a Mac with no phone to approve, a phone with no Vyre). A person who already has chats sees them
+ * with the gap above; the gap fills the page only when there is nothing else to show.
+ * @param {{ from: string, gap: unknown, rows: unknown[], live: boolean }} i
+ * @returns {{ body: "unsupported" | "list" | "gap" | "loading" | "offline" | "empty", banner: boolean }}
+ */
+export function chatsView(i) {
+  if (i.from === "unsupported") return { body: "unsupported", banner: false };
+  if (i.rows.length) return { body: "list", banner: !!i.gap };
+  if (i.gap) return { body: "gap", banner: false };
+  if (i.from === "none") return { body: i.live ? "loading" : "offline", banner: false };
+  return { body: "empty", banner: false };
+}
+
 export const UNSUPPORTED = "Update your server to use Chats";
 
 /** Is this the refusal of a tool the box does not have? @param {{ code?: string } | null | undefined} e */

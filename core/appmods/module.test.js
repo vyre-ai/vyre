@@ -332,15 +332,15 @@ test("DocuSeal's two Vyre views are valid in the view language, name only operat
   const declared = new Set(app.connection.operations.map(o => o.name));
   assert.deepEqual(Object.keys(mod.views), ["documents-waiting", "documents-send"]);
   for (const [id, v] of Object.entries(mod.views)) {
-    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(), firstParty: true }), [], id);
+    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(["documents.send"]), firstParty: true }), [], id);
     const ops = [];
     (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === "object") { if (typeof x.operation === "string") ops.push([x.connection, x.operation]); Object.values(x).forEach(walk); } })(v);
     assert.ok(ops.length, id);
     for (const [c, o] of ops) { assert.equal(c, "documents"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
   }
   assert.equal(app.connection.operations.find(o => o.name === "submissions.create").kind, "send", "a send is held for the person's yes by the Connection itself");
-  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
-  assert.equal(mod.views["documents-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
+  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "the view shows the exact words first");
+  assert.equal(mod.views["documents-send"].forms.send.submit.tool, "documents.send", "and sends through Documents: the signing request and the email with its link, one act, because DocuSeal itself has no way out to e-mail anyone");
   assert.equal(mod.views["documents-waiting"].list.input.query.status, "pending");
 });
 
@@ -377,4 +377,30 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal((await ask({ email: "not an address" })).error.code, "bad_input");
   assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
+});
+
+test("a key rotated in the Vault reaches the running app: its container is made again with the new value, its data stays, once for a burst", async t => {
+  seam.rotateMs = 20;
+  t.after(() => { seam.rotateMs = undefined; });
+  const w = await world(t);
+  await w.cli("appmods.install", { name: "documents" });
+  const ups = () => w.log.filter(l => l[0] === "up").length, downs = () => w.log.filter(l => l[0] === "down");
+  const before = ups();
+  const names = w.log.find(l => l[0] === "up")[4];
+  const until = async (f, ms = 5000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); } };
+  assert.ok(names.length > 0, "the app has keys of its own");
+  const item = `app-documents-${names[0].toLowerCase()}`;
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-new-key-0123456789abcdef" }, "cli");
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-newer-key-0123456789abcdef" }, "cli");
+  await until(() => ups() === before + 1);
+  assert.deepEqual(downs().at(-1), ["down", { data: false }], "the container goes, its data stays");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1, "two changes in a burst are one restart");
+  assert.ok(w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'running'").get());
+  // a key that is not one of the app's, or an app that is stopped, is left alone
+  await w.d.registry.call("vault.put", { name: "app-documents-hook", kind: "secret", value: "x".repeat(40) }, "cli");
+  await w.cli("appmods.stop", { name: "documents" });
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-third-key-0123456789abcdef" }, "cli");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1);
 });

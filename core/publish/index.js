@@ -59,7 +59,7 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
@@ -171,8 +171,8 @@ export default {
       return {
         dir,
         classOf: (/** @type {string} */ ref) => (ref.startsWith("vault://config/") ? "config" : "secret"),
-        async read(/** @type {string} */ ref) {
-          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, "")); }
+        async read(/** @type {string} */ ref, /** @type {{ deployment?: string }} */ o = {}) {
+          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, ""), { deployment: o.deployment }); }
           catch (/** @type {any} */ e) {
             if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available", "no_vault");
             throw e;

@@ -55,6 +55,10 @@
         "reach": "modules"
       },
       {
+        "name": "approvals.receipt", "effect": "write",
+        "reach": "modules"
+      },
+      {
         "name": "approvals.card-input", "effect": "read",
         "reach": "modules"
       },

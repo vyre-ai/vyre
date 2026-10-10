@@ -146,6 +146,18 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   const sub = await api("POST", "/api/submissions", { template_id: Number(tpl.template_id), send_email: false, submitters: [{ role: "First Party", email: "signer@example.com" }] });
   assert.equal(sub.s, 200, JSON.stringify(sub.j));
   const submitter = sub.j[0].id;
+  // Documents' own way to ask for a signature (documents.send's first half): the app's key stays in the Vault, the engine is told to send nothing, the answer is the signer's page
+  {
+    const asked = await d.registry.call("appmods.signing.request", { name: "documents", template_id: Number(tpl.template_id), email: "second@example.com", signer: "Second Signer" }, "module:documents");
+    assert.ok(!asked.error, JSON.stringify(asked.error));
+    assert.ok(Number.isInteger(asked.data.submission) && /^[A-Za-z0-9_-]+$/.test(asked.data.slug), JSON.stringify(asked.data));
+    assert.match(asked.data.url, new RegExp(`/sign/${asked.data.submission}/${asked.data.slug}$`));
+    const got = await api("GET", `/api/submissions/${asked.data.submission}`);
+    assert.equal(got.s, 200, JSON.stringify(got.j).slice(0, 200));
+    assert.equal(got.j.submitters[0].email, "second@example.com");
+    assert.equal(got.j.send_email === false || got.j.send_email === undefined, true);
+    assert.equal((await web(`/sign/${asked.data.submission}/${asked.data.slug}`)).status, 302, "the signer's page opens by the link the tool returned");
+  }
   // The signing page for the signer, who has no ticket: the pretty link goes to the page, the page is dressed with Vyre's look and carries the app's credit, every asset it names loads from the same
   // origin, and the owner's pages and the API stay closed to them (R032-02).
   {

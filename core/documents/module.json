@@ -27,7 +27,8 @@
       {
         "name": "documents.generate",
         "effect": "write",
-        "reach": "anyone"
+        "reach": "anyone",
+        "projectArg": "project"
       },
       {
         "name": "documents.signing.flow",
@@ -43,14 +44,14 @@
       {
         "name": "documents.send",
         "outward": true,
-        "covers": ["comms.send", "mail.send"],
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       },
       {
         "name": "documents.send-signed",
         "outward": true,
-        "covers": ["comms.send", "mail.send"],
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       }
@@ -65,7 +66,28 @@
   },
   "shows": {},
   "needs": {},
-  "teaches": {},
+  "teaches": {
+    "tips": [
+      {
+        "id": "send-for-signature",
+        "text": "Ask your assistant to send a template for signature. It makes the request and e-mails the signer their link, and you say yes once.",
+        "surfaces": ["cli", "deck"],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.3.3",
+        "docs": "using/documents.md#send-for-signature"
+      },
+      {
+        "id": "sign-from-a-stage",
+        "text": "Make a matter sign itself: ask for the signing Flow. The letter goes out at the stage you name and the matter moves on when it is signed.",
+        "surfaces": ["cli", "deck"],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.3.3",
+        "docs": "using/documents.md#sign-from-a-stage"
+      }
+    ]
+  },
   "flow": {
     "steps": [
       {

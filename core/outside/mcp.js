@@ -84,7 +84,8 @@ export function createMcp(d) {
       const q = String(a.question || "").trim();
       if (!q) throw bad("ask a question");
       let facts;
-      try { facts = await K.memory.recall(chain, { q, project: p.id, limit: 10 }); } catch (e) { throw unreadable(e, "that memory"); }
+      // The grant is memory.read on the Space's memory, so the kernel also offers the Space-wide facts: an agent given one project's memory gets that project's facts and nothing wider.
+      try { facts = (await K.memory.recall(chain, { q, project: p.id, limit: 50 })).filter((/** @type {any} */ f) => f.scope === `project:${p.id}`).slice(0, 10); } catch (e) { throw unreadable(e, "that memory"); }
       return { project: p.name, facts: facts.map((/** @type {any} */ f) => ({ text: f.text, source: f.source, kind: f.kind })) };
     }
     if (tool === "files_read") {
@@ -92,8 +93,10 @@ export function createMcp(d) {
       const rel = String(a.path || "").replace(/^\/+|\/+$/g, "");
       if (rel.split("/").some((/** @type {string} */ s) => s === ".." || s === ".")) throw bad("give a path inside the project's folder");
       const full = rel ? `${p.drive_path}/${rel}` : p.drive_path;
+      // A project's folder also holds Vyre's own marker and the chats' private folders (chat/, made/): an outside agent is given the project's files, never those.
+      if (/^(chat|made)(\/|$)/.test(rel) || rel.split("/").some((/** @type {string} */ seg) => seg.startsWith("."))) throw bad("that was not found for you", "not_found");
       let entries = [];
-      try { entries = await K.drive.list(chain, full); } catch (e) { throw unreadable(e, "that folder"); }
+      try { entries = (await K.drive.list(chain, full)).filter((/** @type {any} */ e) => { const name = String(e.path ?? e.name ?? e).slice(p.drive_path.length).replace(/^\/+/, ""); return !/^(chat|made)\//.test(name) && !name.split("/").some((/** @type {string} */ seg) => seg.startsWith(".")); }); } catch (e) { throw unreadable(e, "that folder"); }
       if (entries.length && !(entries.length === 1 && String(entries[0].path ?? entries[0].name ?? entries[0]) === full)) {
         return { project: p.name, folder: rel || "/", files: entries.slice(0, 200).map((/** @type {any} */ e) => ({ name: String(e.path ?? e.name ?? e).slice(p.drive_path.length).replace(/^\/+/, ""), ...(e.size !== undefined ? { bytes: e.size } : {}) })) };
       }
@@ -109,7 +112,7 @@ export function createMcp(d) {
       const type = tool === "records_create" ? String(a.type || "") : parseRecord(a.urn).type;
       if (!writableTypes(reach).includes(type)) throw bad(`${tool} needs the person to give you write access to ${type.slice(0, 60)} first`, "denied");
       if (!a.fields || typeof a.fields !== "object" || Array.isArray(a.fields) || !Object.keys(a.fields).length) throw bad("give the fields to set: { field: value }");
-      const r = await d.hold(agent, tool, tool === "records_create" ? { type, fields: a.fields } : { type, urn: a.urn, fields: a.fields });
+      const r = await d.hold(agent, tool, tool === "records_create" ? { type, fields: a.fields } : { type, urn: a.urn, fields: a.fields, ...(Number.isInteger(a.version) ? { version: a.version } : {}) });
       return { held: r.held, message: `Waiting for the person to approve: ${r.summary}. Call held_get to see their answer.` };
     }
     if (tool === "held_get") {
