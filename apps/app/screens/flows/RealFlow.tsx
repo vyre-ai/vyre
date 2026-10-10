@@ -7,6 +7,7 @@ import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, R
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
+import { effectLines } from "./engineer-model";
 import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
@@ -89,6 +90,7 @@ export function RealFlow({ id }: { id: string }) {
         <Sec title="Waiting for your approval">
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
             actions={[{ label: busy ? "Approving" : APPROVE_LABEL, kind: "primary", icon: "check", onPress: busy ? () => {} : approve }]} />
+          {effectLines(card.effects).length ? <Block label="What it does">{effectLines(card.effects).join("\n")}</Block> : null}
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}
