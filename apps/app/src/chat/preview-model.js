@@ -43,3 +43,19 @@ export const addressOf = (d) => (d ? (d.domains && d.domains[0] ? d.domains[0].h
 
 /** What publish.quick tells the person beyond the plan: until the public door is on, the address works on their own devices only (the box says the same words). @param {{ public?: boolean }} r */
 export const publishWords = (r) => ({ later: r && r.public === false ? "Public once the public door is on. Until then the address works on your own devices only." : "" });
+
+/**
+ * Run a call that needs the person's Space while a Space made a moment ago is still being set up: the box answers no_space until it is ready, so the call is tried again (the tap waits, the sheet keeps saying it is building),
+ * and any other answer, or the end of the tries, goes to the person as it came.
+ * @template T @param {() => Promise<T>} fn @param {{ tries?: number, waitMs?: number, wait?: (ms: number) => Promise<void> }} [o]
+ * @returns {Promise<T>}
+ */
+export async function whileSettingUp(fn, o = {}) {
+  const tries = o.tries ?? 20, waitMs = o.waitMs ?? 1500, wait = o.wait ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)));
+  for (let n = 1; ; n++) {
+    try { return await fn(); } catch (e) {
+      if (n >= tries || /** @type {{ code?: string }} */ (e)?.code !== "no_space") throw e;
+      await wait(waitMs);
+    }
+  }
+}

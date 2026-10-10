@@ -45,3 +45,15 @@ test("publish from the card: only a preview of files can be published; the site'
   assert.equal(publishWords({ public: false }).later, "Public once the public door is on. Until then the address works on your own devices only.");
   assert.equal(publishWords({ public: true }).later, "");
 });
+
+test("a Space still being set up is waited for, and any other answer is not", async () => {
+  const { whileSettingUp } = await import("./preview-model.js");
+  let n = 0; const waits = [];
+  const ready = await whileSettingUp(async () => { if (++n < 3) throw Object.assign(new Error("not yet"), { code: "no_space" }); return "held"; }, { wait: async (ms) => { waits.push(ms); } });
+  assert.equal(ready, "held");
+  assert.deepEqual(waits, [1500, 1500]);
+  await assert.rejects(whileSettingUp(async () => { throw Object.assign(new Error("no"), { code: "forbidden" }); }, { wait: async () => { throw new Error("must not wait"); } }), (e) => e.code === "forbidden");
+  let m = 0;
+  await assert.rejects(whileSettingUp(async () => { m++; throw Object.assign(new Error("still"), { code: "no_space" }); }, { tries: 3, wait: async () => {} }), (e) => e.code === "no_space");
+  assert.equal(m, 3, "it gives up after its tries and says what the box said");
+});
