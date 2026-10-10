@@ -119,14 +119,29 @@ export async function recordsStatus(K, mine) {
   return { spaces: out };
 }
 
+/** The first person on the call's chain, whatever hops follow (a person's assistant acts for that person); null when the call carries no chain or none of its hops is a person. @param {any} K @param {any} meta @returns {Promise<string | null>} */
+async function firstPerson(K, meta) {
+  if (!(K && typeof K.chain === "function" && meta && (meta.kernelFacts || meta.token))) return null;
+  try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; return h ? String(h.actor.id) : null; } catch { return null; }
+}
+
+/**
+ * The person an ACT is by: the first person on the call's chain, so another person's assistant is that person and never the home's owner. A call that carries a chain but no person is nobody (null, which
+ * matches no one); a call with no chain at all is this box's own terminal, the home's person `home`.
+ * @param {any} K @param {any} meta @param {string} home @returns {Promise<string | null>}
+ */
+export async function actingPerson(K, meta, home) {
+  if (!(meta && (meta.kernelFacts || meta.token)) || !K || typeof K.chain !== "function") return home;
+  return firstPerson(K, meta);
+}
+
 /**
  * The person a Space LIST is for: the first person on the call's chain, whatever hops follow (a person's assistant or an automation asks for that person). A call with no person on its chain is the
  * owner's own only when it came over this box's local terminal (`cli` or `local`); any other caller without a chain gets nothing. Not `callerPerson`: the one-hop rule there is deliberate for acts.
  * @param {any} K @param {any} meta @returns {Promise<string | null>}
  */
 export async function listCaller(K, meta) {
-  if (K && typeof K.chain === "function" && meta && (meta.kernelFacts || meta.token)) {
-    try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; if (h) return String(h.actor.id); } catch { /* no chain */ }
-  }
+  const p = await firstPerson(K, meta);
+  if (p) return p;
   return meta && /^(cli|local)$/.test(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
 }

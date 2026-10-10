@@ -64,7 +64,7 @@ import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
-import { kernelMembers, plainKernelError, recordsStatus, listCaller } from "./kernel-members.js";
+import { kernelMembers, plainKernelError, recordsStatus, listCaller, actingPerson } from "./kernel-members.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { softwareProof, softwareActProof, softwareKey, challengeProblem } from "./presence-signer.js";
@@ -1095,7 +1095,7 @@ export default {
       obj({ space: str, device: str, on: { type: "boolean" }, network_cap: { type: "string", enum: ["provider", "internet"], description: "Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen." }, loosen: { type: "boolean", description: "Lending only: you mean to allow more network than you did before on this computer." }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOrHome(i.space);
-        const caller = await callerPerson(meta);
+        const caller = await actingPerson(K, meta, /** @type {string} */ (s.id));
         if (caller !== s.id) throw refuse("That is not yours to do; only that person can do it, on their own device.", "forbidden");
         const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
         if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
