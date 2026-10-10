@@ -1606,6 +1606,7 @@ Learned operations on a website, called by name: ghl.listContacts(tag) instead o
   - `limit` integer
   - `match` object
   - `name` string: camelCase, e.g. listContacts.
+  - `page` object: For learn, when the answer is a web page: each field name with the text (or link) exactly as the first row shows it; Vyre finds the rows.
   - `site` string: The site's origin, e.g. https://app.example.com (or pass a tab on it).
   - `tab` integer: Tab id from chrome.tabs. Default: the tab Vyre is working in.
   - `trigger` object: For learn: { url (with {input} slots), steps?: [{action: click|fill|press|wait|goto, selector, value}] } that makes the page send the request.
