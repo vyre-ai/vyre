@@ -19,8 +19,10 @@ Register the agent with a name, and Vyre shows its token once, with the line to 
 You give an agent reach in three kinds:
 
 - **Records**: chosen record types, such as Clients and Matters. It reads them like you do, with every sealed field shown as "[sealed]". It never sees a sealed value or the reference to one.
-- **Memory**: what Vyre has filed about one project.
+- **Memory**: what Vyre has filed about one project, and nothing filed for the whole Space.
 - **Files**: one project's folder.
+
+In Settings, type the project's name under "Or one project's memory or files" and choose Give its memory or Give its files.
 
 You can only give what you hold yourself. Taking one thing back leaves the rest. Giving or changing reach asks for your approval on your device.
 

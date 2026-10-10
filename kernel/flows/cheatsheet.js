@@ -69,6 +69,7 @@ export function cheatsheet() {
   out.push("- on_fail={then: continue|stop, steps}: steps run if this one fails for good (they read `error.code`, `error.message`, `error.step`); `continue` carries on, `stop` (default) fails the run after them. No on_fail inside an on_fail.");
   out.push("- verify={check: `output.record`, essential: true|false, say: \"what was checked\"} or {readback: true} on create, update, upsert, stage. Put an essential verify on every step that changes something.", "");
   out.push("## Expressions", `- Read: trigger, steps.<id>, run, now, the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].`);
+  out.push("- An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.");
   out.push(`- Functions: ${Object.keys(FUNCTIONS).join(", ")}. Nothing else is callable.`, "");
   out.push("## Limits", `- ${LIMITS.steps} steps a Flow, ${LIMITS.depth} levels of nesting, repeat at most ${LIMITS.repeatMax}, a Code step's source at most ${LIMITS.codeSource / 1024} KB. Step ids: lowercase letters, digits, underscores, starting with a letter.`);
   out.push("- A resource is a written-out vyre:// address. A sealed field cannot be written by a Flow. Nothing runs until a person approves the version; flows.propose checks it and runs its test cases first.");

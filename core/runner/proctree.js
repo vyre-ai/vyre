@@ -48,3 +48,6 @@ export function signalTree(root, sig, o = {}) {
   for (let pass = 0; pass < 2; pass++) for (const p of treeOf(root, procs())) { if (seen.has(p.pid)) continue; seen.add(p.pid); try { kill(p.pid, sig); } catch { /* gone */ } }
   return seen.size;
 }
+
+/** The pids of everything under a process now (not the process itself), for a caller that wants to see them gone after it ended the first. @param {number} root @param {Proc[]} [procs] */
+export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs).map(p => p.pid).filter(p => p !== root); }
