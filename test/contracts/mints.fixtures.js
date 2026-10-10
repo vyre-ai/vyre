@@ -16,7 +16,7 @@ export const made = {
   },
   sharedComputer: {
     subject: { kind: "actor", actor: { kind: "person", id: "per_owner", space: SPACE } },
-    actions: ["node.host"], resource: { prefix: `vyre://${SPACE}/node/dev_a/` }, conditions: { budget: { meter: "node.cpu-hours-day", limit: 4 } },
+    actions: ["node.host"], resource: { prefix: `vyre://${SPACE}/node/dev_a` }, conditions: { budget: { meter: "node.cpu-hours-day", limit: 4 } },
     source: "wink:W4", reason: "shared with limits",
   },
 };

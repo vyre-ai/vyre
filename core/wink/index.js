@@ -548,7 +548,7 @@ export function createWink(inject = {}) {
       const person = `per_${base32(sha(`person\n${who.key}`), 26)}`;
       const grant = await g.create({
         subject: { kind: "actor", actor: { kind: "person", id: person, space } },
-        actions: ["member.act"], resource: { prefix: `vyre://${space}/member/${person}/` }, conditions: {},
+        actions: ["member.act"], resource: { prefix: `vyre://${space}/member/${person}` }, conditions: {},
         source: "wink:W5", reason: `${String(who.name || "someone")}, ${String(who.fingerprint || "")}, ${o.role}${(o.projects || []).length ? `, ${(o.projects || []).join(" ")}` : ""}`.trim(),
       }, await owner0());
       writeOffer(offerId, "done", { grant: grant.id, receiver: { name: who.name, fingerprint: who.fingerprint } });
@@ -604,7 +604,7 @@ export function createWink(inject = {}) {
         const hours = Math.min(Math.max(Number(input.hours_day) || 8, 0.25), 24);
         const grant = await g.create({
           subject: { kind: "actor", actor: { kind: "person", id: (await owner0()).id, space } }, actions: ["node.host"],
-          resource: { prefix: `vyre://${space}/node/${String(input.device)}/` },
+          resource: { prefix: `vyre://${space}/node/${String(input.device)}` },
           conditions: { budget: { meter: "node.cpu-hours-day", limit: hours * cpu }, where: { nodes: [String(input.device)] } },
           source: "wink:W4", reason: `shared with limits: cpu ${cpu}, ${hours} hours a day, awake ${input.awake !== false}, on power ${input.on_power === true}`,
         }, await owner0());

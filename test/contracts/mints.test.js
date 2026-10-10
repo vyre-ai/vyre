@@ -38,7 +38,7 @@ test("make, list and end: inside the manifest, from the module's own source, the
   assert.deepEqual([g.id, g.actions, g.source, g.status, g.issuer], [id, ["vault.run"], made.deploymentSecret.source, "active", { kind: "service", id: "publish", space: SPACE }]);
   assert.equal((await publish.mint.list({ source: "publish:secret:other:" })).length, 0, "list narrows by source prefix");
   assert.equal((await live(k, owner, "publish:secret:")).length, 1, "the Space's own grant list shows it");
-  assert.deepEqual(await publish.mint.end({ id, reason: "taken away" }), [id]);
+  assert.deepEqual((await publish.mint.end({ id, reason: "taken away" })).map((/** @type {any} */ x) => x.id), [id], "end answers the grants it ended");
   assert.equal((await publish.mint.list({ source: "publish:" })).length, 0);
   assert.equal((await live(k, owner, "publish:secret:")).length, 0);
 });
@@ -61,7 +61,7 @@ test("a module ends only its own grants", async () => {
 
 test("Wink's grants for a lent computer are inside its manifest", async () => {
   const { wink } = await rig();
-  const id = await wink.mint.make({ ...made.sharedComputer, resource: { prefix: `vyre://${SPACE}/node/dev_a/` } });
+  const id = await wink.mint.make({ ...made.sharedComputer, resource: { prefix: `vyre://${SPACE}/node/dev_a` } });
   assert.match(id, /^gr_/);
   await assert.rejects(() => wink.mint.make({ ...made.sharedComputer, actions: ["vault.run"] }), { code: "not_allowed" });
 });
