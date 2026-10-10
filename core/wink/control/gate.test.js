@@ -706,3 +706,62 @@ test("gate tunnel address: over TLS the header comes first, the handshake and th
   assert.equal((await visit(A, get("/key"))).length, 0);
   assert.match((await visit(B, get("/key", "Connection: close\r\n"))).toString(), /^HTTP\/1\.1 200 /);
 });
+
+// ---- a WebSocket on an app host (a published server's live page): carried to the apps' front, with the real address, under its own budgets
+/** A front that answers a WebSocket handshake and echoes what it is sent, and remembers the heads it was given. */
+async function wsFront() {
+  /** @type {Record<string, any>[]} */ const heads = [];
+  const srv = http.createServer((_q, r) => { r.writeHead(200).end("plain"); });
+  srv.on("upgrade", (q, sock) => {
+    heads.push({ url: q.url, ...q.headers });
+    sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: x\r\n\r\n");
+    sock.on("data", d => sock.write(Buffer.concat([Buffer.from("echo:"), d]))); sock.on("error", () => {});
+  });
+  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
+  return { heads, port: /** @type {net.AddressInfo} */ (srv.address()).port, close() { srv.close(); srv.closeAllConnections(); } };
+}
+const wsReq = (/** @type {string} */ host, extra = "") => `GET /live?x=1 HTTP/1.1\r\nHost: ${host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n${extra}\r\n`;
+
+test("gate apps: a WebSocket on a running app's host is carried both ways to the front, with the real address and no spoofed header; Headscale is never asked", async t => {
+  const f = await wsFront(); t.after(() => f.close());
+  const { be, port } = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(f) } });
+  const c = net.connect(port, "127.0.0.1");
+  t.after(() => c.destroy());
+  const got = [];
+  c.on("data", d => got.push(d));
+  c.write(wsReq("docuseal.alex.vyre.run", "X-Forwarded-For: 6.6.6.6\r\nCookie: a=1\r\nAuthorization: Bearer mine\r\n"));
+  await new Promise(r => setTimeout(r, 200));
+  assert.match(Buffer.concat(got).toString(), /^HTTP\/1\.1 101 /);
+  c.write("hello");
+  await new Promise(r => setTimeout(r, 200));
+  assert.match(Buffer.concat(got).toString(), /echo:hello$/);
+  const h = f.heads[0];
+  assert.equal(h.url, "/live?x=1");
+  assert.equal(h.host, "docuseal.alex.vyre.run");
+  assert.equal(h["x-forwarded-for"], "127.0.0.1", "the socket's address replaces the client's own header");
+  assert.equal(h.cookie, "a=1"); assert.equal(h.authorization, "Bearer mine", "the visitor's own cookie and credentials reach the front, which decides");
+  assert.equal(be.seen.length, 0, "Headscale was never asked");
+});
+
+test("gate apps: only a GET with Upgrade: websocket to a running app's host is carried; anything else is the same 404, and the upgrades have their own budget", async t => {
+  const f = await wsFront(); t.after(() => f.close());
+  const { port, gate } = await setup(t, { ingress: { hooks: () => null, share: () => null, ...appsOf(f) }, limits: { appsUpgradesPerWindow: 3, appsConcurrentUpgrades: 2, upgradesPerWindow: 1 } });
+  assert.deepEqual(await raw(port, wsReq("unknown.alex.vyre.run")), NOT_FOUND, "an app that is not running");
+  assert.deepEqual(await raw(port, wsReq("a.b.alex.vyre.run")), NOT_FOUND, "two labels");
+  assert.deepEqual(await raw(port, wsReq("docuseal.alex.vyre.run").replace("Upgrade: websocket", "Upgrade: h2c")), NOT_FOUND, "another protocol");
+  assert.deepEqual(await raw(port, wsReq("docuseal.alex.vyre.run").replace("GET ", "POST ")), NOT_FOUND, "a POST");
+  assert.equal(f.heads.length, 0, "none of those reached the front");
+  // Headscale's own budget is one per window here; the app's is its own
+  const open = [];
+  for (let i = 0; i < 2; i++) { const c = net.connect(port, "127.0.0.1"); c.on("error", () => {}); c.write(wsReq("docuseal.alex.vyre.run")); open.push(c); }
+  await new Promise(r => setTimeout(r, 250));
+  assert.equal(f.heads.length, 2);
+  const over = net.connect(port, "127.0.0.1"); const out = []; over.on("data", d => out.push(d)); over.on("error", () => {}); over.write(wsReq("docuseal.alex.vyre.run"));
+  await new Promise(r => setTimeout(r, 250));
+  assert.match(Buffer.concat(out).toString(), /^HTTP\/1\.1 429 /, "past the concurrent budget");
+  over.destroy(); for (const c of open) c.destroy();
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(gate.stats().limited >= 1, true);
+  const up = "POST /ts2021 HTTP/1.1\r\nHost: x\r\nUpgrade: tailscale-control-protocol\r\nConnection: Upgrade\r\n\r\n";
+  assert.equal(head(await raw(port, up, { wait: 150 })), "HTTP/1.1 101", "Headscale's control channel is not starved by the apps' upgrades");
+});
