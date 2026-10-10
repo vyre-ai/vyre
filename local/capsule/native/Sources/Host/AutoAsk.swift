@@ -174,6 +174,14 @@ extension CapsuleModel {
             Task { @MainActor in self.handle(await self.ask(words, context: context)) }
             return
         }
+        // An answer that came from the pinned chat is followed up in that chat, so the chat holds the whole conversation
+        if pinnedChat != nil, r.thread == pinnedThread {
+            Task { @MainActor in
+                if let out = await self.askPinned(words, append: "") { self.handle(out) }
+                else { self.handle(await self.send(words, to: VyreCandidate(kind: .thread, id: r.thread, label: "this answer"), model: r.model)) }
+            }
+            return
+        }
         let who = VyreCandidate(kind: .thread, id: r.thread, label: "this answer")
         Task { @MainActor in self.handle(await self.send(words, to: who, model: r.model)) }
     }

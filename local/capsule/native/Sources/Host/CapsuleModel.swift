@@ -256,6 +256,9 @@ public final class CapsuleModel: ObservableObject {
     var publishLog: [(token: Int, at: UInt64)] = []
     private var partial: [String: [ResultItem]] = [:]
     var replySub: VyredSubscription?
+    /// The person's one pinned assistant chat (R031-94, the app's own) once the box has named it, and the thread its run is on: Lumen's quick questions go into that chat, never a thread of their own.
+    var pinnedChat: String?
+    var pinnedThread: String?
     /// Slow providers whose rows are still from the previous keystroke.
     private var stale = Set<String>()
     private var staleTimer: Timer?
@@ -928,6 +931,8 @@ public final class CapsuleModel: ObservableObject {
         // the instructions.
         let append = ([context].compactMap { $0 } + attachments.map(\.body)).filter { !$0.isEmpty }.joined(separator: "\n\n")
         pending = true
+        // A question on the default fast model goes into the pinned assistant chat (the same chat the app shows); a box without it, or a model chosen on purpose, keeps the thread-of-its-own ask below.
+        if !computerUse, model == models.quick, vyred.has("work.chat.persistent"), vyred.has("stream.send"), let out = await askPinned(words, append: append) { return out }
         reply = nil
         replySub?.cancel()
         // Follow before starting, so the first words are not missed.
@@ -958,6 +963,43 @@ public final class CapsuleModel: ObservableObject {
         rep.model = computerUse ? nil : model
         for e in early where e.thread == id { rep = VyState.applyReply(rep, e) }
         reply = rep
+        return .said("")
+    }
+
+    // MARK: asking through the pinned chat
+
+    /// The person's one pinned assistant chat: its id from the box, made and pinned the first time (the server makes the chat's key for a person's own surface). nil when the box has none to give: the old ask stands.
+    func pinnedAssistantChat() async -> String? {
+        if let c = pinnedChat { return c }
+        let have = await vyred.call("work.chat.persistent", ["kind": "assistant"], presence: false)
+        guard Bridge.explain(have) == nil, let d = have.data as? [String: Any], VJ.bool(d["allowed"]) != false else { return nil }
+        if let c = VJ.nonEmpty(d["chat"]) { pinnedChat = c; return c }
+        let made = await vyred.call("work.chat.create", ["title": "Assistant", "people": [String](), "agents": [String]()], presence: false)
+        guard Bridge.explain(made) == nil, let m = made.data as? [String: Any], let id = VJ.nonEmpty(m["chat"]) ?? VJ.nonEmpty(m["id"]) else { return nil }
+        guard Bridge.explain(await vyred.call("work.chat.pin", ["kind": "assistant", "chat": id], presence: false)) == nil else { return nil }
+        pinnedChat = id
+        return id
+    }
+
+    /// Say the words in the pinned chat and follow the answer on the chat's thread. nil means "not through the chat": the caller asks the old way.
+    func askPinned(_ words: String, append: String) async -> ActionOutcome? {
+        guard let chat = await pinnedAssistantChat() else { return nil }
+        pinnedThread = nil
+        reply = VyState.reply("")
+        // the chat's run names its thread once it has started; the follow reads that thread's events from then
+        follow { [weak self] in self?.pinnedThread }
+        let r = await vyred.call("stream.send", ["chat": chat, "text": append.isEmpty ? words : words + "\n\n" + append], presence: false)
+        pending = false
+        if let why = Bridge.explain(r) { reply = nil; asked = nil; replySub?.cancel(); replySub = nil; return .failed(why) }
+        for _ in 0..<40 {
+            let g = await vyred.call("work.chat.get", ["chat": chat], presence: false)
+            if let d = g.data as? [String: Any], let slots = d["slots"] as? [[String: Any]], let t = slots.compactMap({ VJ.nonEmpty($0["thread"]) }).last {
+                pinnedThread = t
+                if reply?.thread.isEmpty == true { reply?.thread = t }
+                break
+            }
+            try? await Task.sleep(nanoseconds: 150_000_000)
+        }
         return .said("")
     }
 
