@@ -464,9 +464,9 @@ test("gate apps: the per-address budget, a refused upgrade, and the body limit (
   const chunked = `POST /up HTTP/1.1\r\nHost: docuseal.alex.vyre.run\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n${(1200).toString(16)}\r\n${"x".repeat(1200)}\r\n0\r\n\r\n`;
   const c = (await raw(big.port, chunked)).toString();
   assert.doesNotMatch(c, /^HTTP\/1\.1 200 /, "a streamed body over the limit is cut");
-  // a WebSocket upgrade on an app host is the same 404 as every upgrade that is not Headscale's
+  // a WebSocket upgrade on an app host is carried to the front, which decides (this front takes none, so nothing opens); the gate's own refusal is for what is not a WebSocket on a running app
   const up = await raw(big.port, `GET /cable HTTP/1.1\r\nHost: docuseal.alex.vyre.run\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\nSec-WebSocket-Version: 13\r\n\r\n`);
-  assert.deepEqual(up, NOT_FOUND);
+  assert.doesNotMatch(up.toString(), /^HTTP\/1\.1 101 /);
 });
 
 test("gate apps over TLS: the SNI must be the Host; one label under the name is served, anything else is the 404", async t => {
