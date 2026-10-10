@@ -68,6 +68,12 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
     // files shared with the project from its chats: the share records whose path is under the project's folder
     try {
       const proj = urn.split("/")[3] === "project" ? await k.records.get(chain, "project", urn.split("/")[4]) : null;
+      // where the story begins: a project that started from a template says which one (the template's own words, kept on the project)
+      if (proj && proj.data && proj.data.template_snapshot) {
+        let tname = "";
+        try { tname = String(JSON.parse(String(proj.data.template_snapshot)).name || ""); } catch { /* an unreadable snapshot says nothing */ }
+        if (tname) out.push({ type: "project-start", kind: "project", id: `start:${proj.id}`, urn, title: tname, line: `Started from the ${tname} template`, at: Number(proj.created_at || proj.updated_at || 0) });
+      }
       const root = proj && proj.data && proj.data.drive_path ? String(proj.data.drive_path) : "";
       if (root) {
         for (const r of (await k.records.query(chain, "file-share", { page: { limit: 200 } })).rows || []) {

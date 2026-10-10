@@ -94,6 +94,16 @@ test("a template is a draft until its owner puts it live; test mode shows every 
   const moved = await until(async () => { const r = (await d.kernel.gateway.records.get(ownerChain, "project", started.project.split("/").pop())).data; return r.template_stage === "Drafting" ? r : null; }, "the project to move to Drafting");
   assert.equal(moved.template_stage, "Drafting");
   await until(async () => (await d.kernel.gateway.ask.list(ownerChain, {})).some((/** @type {any} */ x) => x.title === "Draft the trust" && x.stage === "Drafting"), `the next stage's task to be made (${JSON.stringify((await d.kernel.gateway.ask.list(ownerChain, {})).map((/** @type {any} */ x) => [x.title, x.stage, x.state]))} ${/** @type {any} */ (d).testLogs.filter((/** @type {string} */ l) => /stage\./.test(l)).join(' | ')} ${JSON.stringify(host.stages.entries().map((/** @type {any} */ e) => [e.stage, e.advanced, e.tasks.length]))})`);
+  // J2, the timeline steps: the project's story says each move in plain lines, newest first, and none of them is an id or an event name
+  const story = (await call("work.timeline", { record: started.project })).entries;
+  const lines = story.map((/** @type {any} */ e) => e.line);
+  assert.equal(lines[lines.length - 1], "Started from the Estate plan template", `the story begins with the template: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("Entered the Intake stage"), `the Intake stage is on the timeline: ${JSON.stringify(lines)}`);
+  assert.ok(lines.includes("Entered the Drafting stage"), "and so is Drafting");
+  assert.ok(lines.some((/** @type {string} */ l) => /Gather documents/.test(l)), `the finished task is on it: ${JSON.stringify(lines)}`);
+  assert.ok(lines.every((/** @type {string} */ l) => !/\b(task|flow-run|stage)_[0-9a-f]{6}|vyre:\/\/|\w+-\w+\.\w+$/.test(l)), `no line shows an id or an event name: ${JSON.stringify(lines)}`);
+  const at = (/** @type {string} */ l) => story.find((/** @type {any} */ e) => e.line === l).at;
+  assert.ok(at("Entered the Drafting stage") >= at("Entered the Intake stage"), "in order");
   void space;
 });
 
