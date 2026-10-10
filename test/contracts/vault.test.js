@@ -117,3 +117,12 @@ test("each tool admits the callers the contract lists, takes the one yes where i
     void kind;
   }
 });
+
+test("the phone is the device caller, never a bare `mobile`: the health tools Now reads admit device and no label of their own", async t => {
+  const { tools } = await recorded(t);
+  for (const name of ["vault.health", "vault.health.summary"]) {
+    const callers = tools.get(name).callers;
+    assert.ok(callers.includes("device"), `${name} admits the paired phone as device:<id>`);
+    assert.ok(!callers.includes("mobile"), `${name} names no bare mobile (test/one-person-surfaces.test.js)`);
+  }
+});
