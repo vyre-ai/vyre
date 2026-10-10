@@ -15,6 +15,7 @@ import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { namesOf } from "./runtime.js";
 import { canonical } from "../../kernel/core/canonical.js";
+import { startFakeMail } from "../mail/testing/fake-imap.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -291,4 +292,49 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.ok(JSON.stringify(linked).includes("Vyre proof NDA") || JSON.stringify(linked).includes(docs[0].urn || "no-urn"), `the Contact shows the Document: ${JSON.stringify(linked).slice(0, 300)}`);
   const timeline = (await d.registry.call("records.events", { record: contact.urn }, "cli", await ownerMeta())).data;
   assert.ok(JSON.stringify(timeline).includes("last_signed_at") || JSON.stringify(timeline).includes(String(docs[0].urn || "x")), `the Contact's timeline has it: ${JSON.stringify(timeline).slice(0, 400)}`);
+
+  // R032-05 with the real engine and a real mail account: a matter enters the stage, the person says yes once to the signing request and its e-mail, the signer signs, the matter moves on, and the signed copy is e-mailed on the second yes.
+  const mailbox = await startFakeMail(t, { user: "alex@harlow.example", password: "hunter2-hunter2" });
+  const conn = await cli("vault.connect", { module: "mail", need: "imap", label: "alex", fields: { imap_host: "127.0.0.1", imap_port: String(mailbox.imap.port), smtp_host: "127.0.0.1", smtp_port: String(mailbox.smtp.port), username: "alex@harlow.example", password: "hunter2-hunter2", from: "alex@harlow.example", security: "tls" } });
+  assert.ok(conn.data && conn.data.item, JSON.stringify(conn));
+  await cli("vault.put", { name: conn.data.item, kind: "env-set", fields: { imap_host: "127.0.0.1", imap_port: String(mailbox.imap.port), smtp_host: "127.0.0.1", smtp_port: String(mailbox.smtp.port), username: "alex@harlow.example", password: "hunter2-hunter2", from: "alex@harlow.example", security: "none" } });
+  await d.kernel.gateway.records.define(admin, { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "email", kind: "text", label: "Email" }, { name: "signature_submission", kind: "text", label: "Signature" },
+    { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] }] });
+  const signingMade = await cli("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: Number(tpl.template_id), name_field: "name" });
+  const sdef = await d.registry.call("flows.define", { flow: signingMade.data.flow }, "cli", await ownerMeta());
+  assert.ok(sdef.data && sdef.data.ok, JSON.stringify(sdef.data && sdef.data.errors || sdef));
+  await host().flows.tools["flows.approve"](host().personChain(), { id: sdef.data.id, version: sdef.data.version, hash: sdef.data.hash });
+  /** The held act of this action, answered yes as the person (the Flow's own question is the yes). @param {string} action */
+  const sayYes = async action => {
+    const task = await until(async () => (await d.kernel.gateway.ask.list(admin, { state: ["needs_check"] })).find(/** @param {any} x */ x => x.form && x.form.kind === "held_act" && x.form.action === action), `the Flow's question for ${action}`);
+    const row2 = await d.kernel.gateway.ask.get(admin, task.id);
+    await d.kernel.gateway.ask.decide(admin, task.id, { outcome: "approved", proof: { op: "task.decide", fields: { task: task.id, payload_hash: row2.payload.payload_hash, decision: row2.payload.decision }, n: Math.random() } });
+  };
+  const matter = await d.kernel.gateway.records.create(admin, "matter", { name: "Dana Harlow", email: "dana@harlow.test", stage: "Intake" });
+  await d.kernel.gateway.records.update(admin, "matter", matter.id, { stage: "Out for signature" }, matter.version);
+  // wait until the run waits on its question before answering it (an answer in the instant before the wait is a race a person never wins)
+  await until(async () => { const r = (await d.registry.call("flows.runs", { id: sdef.data.id }, "cli", await ownerMeta())).data; return r && r.length && r[0].state === "waiting"; }, "the signing run to wait on its question");
+  await sayYes("documents.send");
+  await until(() => mailbox.sent.length === 1, "the signer's e-mail reached the mail server");
+  const decode = (/** @type {{ data: string }} */ m) => Buffer.from(m.data.split("\r\n\r\n").slice(1).join("").replace(/\s+/g, ""), "base64").toString();
+  assert.deepEqual(mailbox.sent[0].rcpt, ["dana@harlow.test"]);
+  const link = /\/sign\/(\d+)\/([A-Za-z0-9_-]+)/.exec(decode(mailbox.sent[0]));
+  assert.ok(link, `the e-mail carries the signer's link: ${decode(mailbox.sent[0])}`);
+  const submissionId = Number(link[1]);
+  assert.equal((await web(`/sign/${link[1]}/${link[2]}`)).status, 302, "and the link opens the signing page");
+  // the signer signs (by the app's own API, as the earlier part of this test does)
+  const mine = await api("GET", `/api/submissions/${submissionId}`);
+  assert.equal(mine.s, 200, JSON.stringify(mine.j).slice(0, 200));
+  const sign = await api("PUT", `/api/submitters/${mine.j.submitters[0].id}`, { completed: true, values: { Signature: png } });
+  assert.equal(sign.s, 200, JSON.stringify(sign.j).slice(0, 200));
+  // the matter moves on by itself, and the signed copy goes out on the second yes
+  await until(async () => (await d.kernel.gateway.records.get(admin, "matter", matter.id)).data.stage === "Signed", "the matter to move to Signed");
+  assert.equal((await d.kernel.gateway.records.get(admin, "matter", matter.id)).data.signature_submission, String(submissionId));
+  await sayYes("documents.send-signed");
+  await until(() => mailbox.sent.length === 2, "the signed copy's e-mail reached the mail server");
+  const copy = /\/signed\/[A-Za-z0-9_.-]+/.exec(decode(mailbox.sent[1]));
+  assert.ok(copy, `the second e-mail carries the signed copy's link: ${decode(mailbox.sent[1])}`);
+  const pdf2 = /** @type {any} */ (await new Promise((resolve, reject) => { const r = http.request({ host: "127.0.0.1", port: bridgePort, path: copy[0], method: "GET", headers: { host: H } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(c) })); }); r.on("error", reject); r.end(); }));
+  assert.equal(pdf2.status, 200); assert.equal(pdf2.body.subarray(0, 5).toString(), "%PDF-", "the e-mailed link opens the signed PDF");
+  console.log("R032-05 end to end: two yeses, two e-mails, the matter moved on");
 });
