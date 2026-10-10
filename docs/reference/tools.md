@@ -2851,11 +2851,12 @@ Fill a template with values and records, and file the document: { template, valu
 
 ### `documents.send`
 
-Send a document for signature: { template_id, email, signer?, subject?, note? }. Makes the signing request and emails the signer their link; one yes.
+Send a document for signature: { template_id, email or contact, signer?, subject?, note? }. Makes the request and emails the signer their link; one yes.
 
 - Input:
-  - `email` string, required
   - `template_id` integer, required
+  - `contact` any
+  - `email` string
   - `note` string
   - `signer` string
   - `space` string
@@ -2864,12 +2865,13 @@ Send a document for signature: { template_id, email, signer?, subject?, note? }.
 
 ### `documents.send-signed`
 
-Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes. Lasts until revoked unless days.
+Email the signer their signed copy: { slug, email or contact, days? }. Makes the link and emails it; one yes. No end unless days.
 
 - Input:
-  - `email` string, required
   - `slug` string, required
+  - `contact` any
   - `days` integer
+  - `email` string
   - `space` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`
 
@@ -2893,13 +2895,14 @@ End every link to a signed copy made so far: {}. Holders get the refusal a made-
 
 ### `documents.signing.flow`
 
-The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field?, name_field?, submission_field?, wait_days?, subject? }. Creates nothing.
+The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, wait_days? }. Creates nothing.
 
 - Input:
   - `out_stage` string, required
   - `signed_stage` string, required
   - `template_id` integer, required
   - `type` string, required
+  - `contact_field` string
   - `email_field` string
   - `name_field` string
   - `subject` string

@@ -138,6 +138,18 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
         if ((await pg.getByText("Mark done", { exact: true }).count()) >= before) problems.push("Mark done left the to-do on Now");
       }
     }
+    if (name === "projects" && wide === "wide") {
+      // a person makes a plain project: New, then Project
+      await pg.getByLabel("New", { exact: true }).first().click({ timeout: 8000 }).catch(() => problems.push("no New button on Projects"));
+      await pg.waitForTimeout(1500);
+      const item = pg.getByText("New project", { exact: true }).first();
+      if (await item.count()) {
+        await item.click({ timeout: 8000 }).catch((e) => problems.push(`New project could not be chosen: ${String(e.message || e).split("\n")[0].slice(0, 100)}`));
+        await pg.waitForTimeout(3500);
+        if (!pg.url().includes("/u/project/")) problems.push(`New project did not open a project (${pg.url().slice(-50)})`);
+        else { await pg.waitForTimeout(4000); await pg.screenshot({ path: path.join(OUT, "project-new-wide.png"), fullPage: true }); const t = (await pg.locator("body").innerText()).replace(/\s+/g, " "); console.log("new project page:", t.slice(0, 300)); if (/no short name/i.test(t)) problems.push("a new project has no short name chats can be filed under"); }
+      } else problems.push(`the New menu has no New project: ${(await pg.locator("body").innerText()).replace(/\s+/g, " ").slice(0, 200)}`);
+    }
     if (name === "flows") {
       // the switch on a Flow pauses it and turns it on again
       const sw = pg.getByRole("switch").first();
