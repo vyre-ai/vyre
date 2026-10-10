@@ -51,3 +51,24 @@ export function signalTree(root, sig, o = {}) {
 
 /** The pids of everything under a process now (not the process itself), for a caller that wants to see them gone after it ended the first. @param {number} root @param {Proc[]} [procs] */
 export function pidsUnder(root, procs = allProcs()) { return treeOf(root, procs).map(p => p.pid).filter(p => p !== root); }
+
+/**
+ * End a session's whole tree so that nothing escapes it. Signalling a tree that is still running leaks: a process forked between the snapshot and the signal is not in it, and once its parent is killed it is
+ * re-parented away from the root, so the second pass of signalTree cannot find it either (the sandbox's second process outlived the reader on a loaded runner). Here every process found is first STOPPED, so none can
+ * fork any more, the tree is read again until a pass finds nothing new, and only then is every one of them killed.
+ * @param {number} root @param {{ procs?: () => Proc[], kill?: (pid: number, sig: NodeJS.Signals) => void, passes?: number }} [o] @returns {number} how many processes were ended
+ */
+export function killTree(root, o = {}) {
+  const procs = o.procs || (() => allProcs());
+  const kill = o.kill || ((/** @type {number} */ pid, /** @type {NodeJS.Signals} */ s) => process.kill(pid, s));
+  // never signal this process or pid 1, whatever the walk reaches: a wrong root or a re-parented walk must not stop vyred itself
+  if (!(root > 1) || root === process.pid) return 0;
+  const seen = new Set();
+  for (let pass = 0; pass < (o.passes ?? 8); pass++) {
+    let fresh = 0;
+    for (const p of treeOf(root, procs())) { if (seen.has(p.pid) || p.pid <= 1 || p.pid === process.pid) continue; seen.add(p.pid); fresh++; try { kill(p.pid, "SIGSTOP"); } catch { /* gone */ } }
+    if (!fresh) break;
+  }
+  for (const pid of seen) { try { kill(pid, "SIGKILL"); } catch { /* gone */ } }
+  return seen.size;
+}
