@@ -45,5 +45,6 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   await w.tool("recall.index", {}).catch(() => null);
   const db = w.d.registry.deps.db;
   const lines = (() => { try { return db.prepare("SELECT COUNT(*) n FROM memory_engine_lines WHERE text LIKE ?").get("%hello team, please answer%"); } catch { return { n: 0 }; } })();
-  assert.equal(Number(lines.n), 0, "nothing the team said is in the home's personal memory");
+  const which = (() => { try { return JSON.stringify(db.prepare("SELECT * FROM memory_engine_lines WHERE text LIKE ?").all("%hello team, please answer%")).slice(0, 700); } catch { return ""; } })();
+  assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory: ${which}`);
 });
