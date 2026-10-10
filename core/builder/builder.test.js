@@ -24,7 +24,7 @@ test("a folder of ready files builds: files, digest, a static runtime, and a log
   const build = await tool(t);
   const r = await build(dep({ source: { kind: "folder", ref: d } }));
   assert.deepEqual(r.files.map((/** @type {any} */ f) => f.path), ["index.html"]);
-  assert.match(r.digest, /^[0-9a-f]{64}$/);
+  assert.match(r.digest, /^sha256:[0-9a-f]{64}$/);
   assert.deepEqual(r.runtime, { kind: "static" });
   assert.match(r.logs, new RegExp(`Read 1 file \\(1 KB\\) from ${path.basename(d)}; left out: \\.env\\.`));
   assert.ok(!r.logs.includes(d), "the log names the folder, not its path on the disk");
