@@ -15,6 +15,7 @@
 import path from "node:path";
 import { createRelay } from "./server.js";
 import { createDirectoryServer } from "./directory.js";
+import { directoryResolve } from "./resolve.js";
 
 const env = process.env;
 const host = env.VYRE_RELAY_HOST || "0.0.0.0";
@@ -27,14 +28,7 @@ if (relayPort > 0) {
   const tunnelDir = env.VYRE_TUNNEL_DIRECTORY, secret = env.VYRE_RELAY_SECRET || "";
   if (tunnelDir && secret.length < 32) { log("VYRE_RELAY_SECRET must be at least 32 characters when VYRE_TUNNEL_DIRECTORY is set"); process.exit(1); }
   // Which route serves this public host: the directory says (declared app or share hosts of a box that is not suspended), or nothing.
-  const resolve = async (/** @type {string} */ h) => {
-    const r = await fetch(`${tunnelDir.replace(/\/$/, "")}/v1/tunnel/resolve?host=${encodeURIComponent(h)}`, { headers: { "x-vyre-relay": secret }, signal: AbortSignal.timeout(3000) });
-    if (!r.ok) return null;
-    // the directory wraps every answer as { data: ... } (names/worker)
-    const j = /** @type {any} */ (await r.json());
-    const route = j && j.data && j.data.route;
-    return typeof route === "string" ? { route } : null;
-  };
+  const resolve = directoryResolve({ base: tunnelDir || "", secret });
   const relay = createRelay({ ...(tunnelDir ? { tunnel: { resolve } } : {}), log, clientAddress: req => (trust && String(req.headers["x-forwarded-for"] || "").split(",").pop()?.trim()) || String(req.socket.remoteAddress || "") });
   log(`relay on ${await relay.listen(relayPort, host)}`);
   if (tunnelDir) { const t = await relay.listenTunnel({ tlsPort: num(env.VYRE_TUNNEL_TLS_PORT, 443), httpPort: num(env.VYRE_TUNNEL_HTTP_PORT, 80), host }); log(`publish tunnel: tls ${t.tls}, http ${t.http}`); }
