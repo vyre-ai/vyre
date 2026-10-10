@@ -519,9 +519,12 @@ export function locateSecrets(text) {
       for (let u; (u = q.exec(w));) hit(u[2], at + u.index + 1);
       continue;
     }
-    const pair = /^[A-Za-z0-9_.-]{1,64}[=:]/.exec(w);
-    if (pair) { w = w.slice(pair[0].length); at += pair[0].length; }
+    // The whole word first: a token that ends in "=" (base64 padding: a Stripe signing secret, a Sentry token) is one credential, not a NAME= with nothing after it.
+    const before = out.length;
     hit(w, at);
+    if (out.length > before) continue;
+    const pair = /^[A-Za-z0-9_.-]{1,64}[=:]/.exec(w);
+    if (pair) { w = w.slice(pair[0].length); at += pair[0].length; hit(w, at); }
   }
   return out.sort((a, b) => a.start - b.start);
 }
