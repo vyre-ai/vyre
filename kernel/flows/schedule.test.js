@@ -54,6 +54,21 @@ test("business hours: a once-a-minute line is not walked through the night, and 
   assert.equal(week.times[0], ny(5, 9), "the first due time is the opening of Monday");
 });
 
+test("row 15: a once-a-minute line with a one-hour Monday window, and one over a long holiday stretch, still find their next time", () => {
+  const t0 = Date.now();
+  // the old walk gave up after 5,000 cron steps (about three and a half days of minutes), so the schedule never fired again
+  const monday = { on: "time", cron: "* * * * *", tz: NY, hours: { days: ["mon"], from: "09:00", to: "10:00" } };
+  assert.equal(nextFire(monday, ny(6, 10, 30), NY), ny(12, 9), "Tuesday-to-Monday gap: the next Monday at the opening minute");
+  assert.equal(nextFire(monday, ny(12, 9, 59), NY), ny(19, 9), "the window closes at 10:00: the next time is the Monday after");
+  const days = ["2026-10-07", "2026-10-08", "2026-10-09", "2026-10-10", "2026-10-11", "2026-10-12", "2026-10-13", "2026-10-14"];
+  const stretch = { on: "time", cron: "* * * * *", tz: NY, holidays: days };
+  assert.equal(nextFire(stretch, ny(7, 0, 0), NY), ny(15, 0, 0), "eight days off: the first minute after them");
+  assert.equal(nextFire({ ...stretch, cron: "0 9 * * *" }, ny(7, 0, 0), NY), ny(15, 9, 0));
+  const due = dueTimes(monday, ny(6, 10, 30), ny(12, 9, 2), NY, [], 50);
+  assert.deepEqual(due.times, [ny(12, 9, 0), ny(12, 9, 1), ny(12, 9, 2)], "and the times it was due are found, not lost");
+  assert.ok(Date.now() - t0 < 5000, `it took ${Date.now() - t0} ms`);
+});
+
 test("holidays: a date is skipped once, a month-day every year, and the Space's list applies with business hours", () => {
   const t = { on: "time", cron: "0 9 * * 1-5", tz: NY, holidays: ["2026-10-12", "12-25"] };
   assert.equal(nextFire(t, ny(9, 10), NY), ny(13, 9), "Monday 12 Oct is a holiday");

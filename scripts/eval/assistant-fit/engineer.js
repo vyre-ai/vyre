@@ -1,5 +1,5 @@
 // @ts-check
-// The @Engineer tasks, registered before any live run (R031-16): five things an owner asks it to set up by conversation, each with a deterministic checker (no model judges a model).
+// The @Engineer tasks, registered before any live run (R031-16): six things an owner asks it to set up by conversation, each with a deterministic checker (no model judges a model).
 // A set-up template, a changed agent, a Flow, a drafted skill and a screen fix. What the Engineer may and may not do is the contract the checkers hold it to: it only PROPOSES (one card, the
 // owner's yes applies it), it reads before it writes, it checks a Flow before it asks for it, and it never says a change is live while it is only waiting for the card.
 // The fixture is a stand-in world with the Engineer's own tool names and the shape of their results; the live run (windows-setup's harness, a paid round) swaps in the real surface.
@@ -49,7 +49,7 @@ export async function buildEngineerFixture() {
     if (!known.has(name)) return { ok: false, error: "no_such_tool", reason: `You do not have a tool called ${name}.` };
     if (name === "agents.list") { state.read.push("agents"); return { agents: AGENTS }; }
     if (name === "records.types") { state.read.push("types"); return { types: TYPES }; }
-    if (name === "flows.cheatsheet") { state.cheatsheet = true; return { text: "A Flow has a trigger, steps and an essential verify on every effect step. Use len(output.records) >= 1 for a read that must find something." }; }
+    if (name === "flows.cheatsheet") { state.cheatsheet = true; return { text: "A Flow has a trigger, steps and an essential verify on every effect step. Use len(output.records) >= 1 for a read that must find something. `parallel` runs lanes (2 to 8 `branch` steps) together and the next step waits for all of them. `subflow flow=<name>` runs another active Flow and reads its `returns`. A time trigger takes `hours=true` (weekdays 9 to 17), `holidays=space` and `catch_up=once|all|skip`. A send may ride an earlier send's yes with `with=<earlier step>`." }; }
     if (name === "flows.define") { const id = `flow_${state.defined.length + 1}`; state.defined.push({ id, input }); return { id, hash: `h${state.defined.length}`, state: "unapproved" }; }
     if (name === "flows.compile-text") { state.compiled.push(input); return { ok: true, errors: [] }; }
     if (name === "flows.simulate") { state.simulated.push(input); return { ok: true, sent: 0, steps: [{ step: "task", ok: true }] }; }
@@ -117,6 +117,21 @@ export const ENGINEER_TASKS = [
       if (p && order(t, ["flows.define", "flows.propose"]) && (p.input.what === "flow" || p.input.flow)) score += 3; else notes.push("did not ask for it with flows.propose after writing it");
       const s = said(t);
       if (waits(s) && !claimsLive(s)) score += 3; else notes.push("said it was live, or did not wait for the card");
+      return { score, notes };
+    } },
+  { id: "lanes", title: "Build a Flow with lanes, a sub-flow and a business-hours schedule, and check it before asking",
+    prompt: "Every weekday at 9 in business hours, skipping our holidays: look up each open matter's fee and, at the same time, ask the paralegal to call the client. The follow-up email is its own Flow that this one runs.",
+    check(t) {
+      const notes = []; let score = 0;
+      const d = t.calls.filter((/** @type {any} */ c) => c.name === "flows.define").map((/** @type {any} */ c) => JSON.stringify(c.input).toLowerCase()).join("\n");
+      if (called(t, "flows.cheatsheet")) score += 2; else notes.push("did not read the cheat sheet");
+      if (/parallel|branch|lane/.test(d)) score += 4; else notes.push("did not use lanes for the two jobs that happen at the same time");
+      if (/subflow|sub-flow/.test(d)) score += 3; else notes.push("did not run the follow-up email as its own Flow (a sub-flow)");
+      if (/hours/.test(d) && /holidays/.test(d)) score += 3; else notes.push("did not set business hours and holidays on the schedule");
+      if (/verify/.test(d)) score += 2; else notes.push("no step checks its own result (verify)");
+      if (order(t, ["flows.define", "flows.simulate", "flows.propose"])) score += 4; else notes.push("did not simulate before asking");
+      const s = said(t);
+      if (waits(s) && !claimsLive(s)) score += 2; else notes.push("said it was live, or did not wait for the card");
       return { score, notes };
     } },
   { id: "skill", title: "Draft a skill for an agent and leave the approving to its owner",
