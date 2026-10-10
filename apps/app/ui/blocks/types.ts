@@ -10,8 +10,8 @@ export type Handlers = {
   act?: (block: string, action: string, id?: string) => void;
   move?: (block: string, row: any, to: string) => void;
   filter?: (block: string, q: string, pill: string) => void;
-  /** A named place a block leaves for its host to fill (the records list leaves its view switcher in the controls row). */
-  slot?: (block: string, name: "lead") => React.ReactNode;
+  /** A named place a block leaves for its host to fill: the records list leaves its view switcher in the controls row ("lead"), and a grouped list leaves a place after each group's card ("after:<group>"). */
+  slot?: (block: string, name: "lead" | `after:${string}`) => React.ReactNode;
   /** A link cell was pressed: open the thing it points at. */
   openLink?: (urn: string) => void;
   submit?: (block: string, form: string, values: Record<string, string>) => void;

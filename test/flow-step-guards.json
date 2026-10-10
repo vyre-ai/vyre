@@ -3,6 +3,21 @@
  "tools": {
   "work.start-project": {
    "reason": "runs under the Flow person's own chain (ctx.kernel.chainFor): the project is made, updated and its team added with that person's grants, a draft or retired template version cannot be started, and the first stage's tasks are made by the stage module as that person's service"
+  },
+  "comms.send": {
+   "reason": "holds every send at the Gate for the person's own yes: an email goes through mail.send and a text through gate.request, both asked of the person on the call's chain, so a Flow cannot send anything the person has not approved"
+  },
+  "documents.generate": {
+   "reason": "opens the Space through lib/gateway-door.js, which refuses a call that proved no person; the kernel's grants on that person's chain decide which template, records and Drive path may be read and written"
+  },
+  "documents.signed-link": {
+   "reason": "opens the Space through lib/gateway-door.js, which refuses a call that proved no person; the kernel's grants on that person's chain decide whether the signed copy's link may be made, and the link it makes is signed and expires"
+  },
+  "documents.send": {
+   "reason": "opens the Space through lib/gateway-door.js, which refuses a call that proved no person; the kernel's grants on that person's chain decide the signing request, and the email that carries the link goes through comms.send, held at the Gate for the person's yes"
+  },
+  "documents.send-signed": {
+   "reason": "opens the Space through lib/gateway-door.js, which refuses a call that proved no person; the kernel's grants on that person's chain decide the signed link, and the email that carries it goes through comms.send, held at the Gate for the person's yes"
   }
  }
 }

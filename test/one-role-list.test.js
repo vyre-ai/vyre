@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ROLE_IDS, ROLE_RANK, ROLE_MAY_SET } from "../kernel/contracts/index.js";
+import { ROLE_IDS, ROLE_RANK, ROLE_LABELS, ROLE_MAY_SET } from "../kernel/contracts/index.js";
+import { CORE_ROLES } from "../records/language/compile.js";
 import { MAY_SET } from "../kernel/grants/roles.js";
 import { roleRank, canAssign, roleAtLeast } from "../lib/spaces/members.js";
 
@@ -49,4 +50,18 @@ test("grep finds one role list: no source file but the contracts and four named 
   const re = /["']owner["']\s*,\s*["']admin["']|["']admin["']\s*,\s*["']manager["']\s*,\s*["']member["']/;
   const hits = files.map((f) => path.relative(ROOT, f)).filter((f) => !ALLOWED.has(f) && re.test(fs.readFileSync(path.join(ROOT, f), "utf8")));
   assert.deepEqual(hits, [], "import ROLE_IDS / ROLE_MAY_SET from kernel/contracts (roleAtLeast from lib/spaces/members.js) instead, or add the file here with the reason");
+});
+
+test("the five roles, their rank and their labels come from kernel/contracts and agree, and a Kit role is built on the same five", () => {
+  assert.deepEqual([...ROLE_IDS], ["owner", "admin", "manager", "member", "temp"]);
+  assert.deepEqual(ROLE_IDS.map(id => ROLE_RANK[id]), [4, 3, 2, 1, 0]);
+  assert.deepEqual(ROLE_IDS.map(id => ROLE_LABELS[id]), ["Owner", "Admin", "Manager", "Member", "Temp"]);
+  assert.deepEqual(Object.keys(ROLE_LABELS), [...ROLE_IDS]);
+  assert.deepEqual([...CORE_ROLES], [...ROLE_IDS], "CORE_ROLES is the contract's list, not a second one");
+});
+
+test("the Flows host offers all five roles, temp included, and the other role lists keep names that say what they are", () => {
+  assert.match(fs.readFileSync(path.join(ROOT, "core/daemon/flows-host.js"), "utf8"), /roles: \[\.\.\.ROLE_IDS\]/);
+  assert.match(fs.readFileSync(path.join(ROOT, "core/vault/shared.js"), "utf8"), /export const ROLE_LEVEL = Object\.freeze\(\{ owner: "manage", admin: "manage", member: "reveal", "read-only": "use" \}\);\nexport const VAULT_MEMBER_ROLES = Object\.keys\(ROLE_LEVEL\)/, "a vault's own sharing roles are access levels, not Space roles");
+  assert.match(fs.readFileSync(path.join(ROOT, "core/wink/index.js"), "utf8"), /const WINK_PAIR_ROLES = /, "the roles a Wink invitation can carry");
 });

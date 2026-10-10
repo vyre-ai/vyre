@@ -1,6 +1,6 @@
 // @ts-check
-// R031-00c: "grep finds one of each". Four jobs, one mechanism each: the role list, the secret detector, the grant model, the approval path. The first two pass today. The grant model (owner:
-// connect-anything) and the approval path (owner: session-transfer) are marked `todo` with what they find; the owner removes the `todo` in the commit that lands the work, and the test then holds.
+// R031-00c: "grep finds one of each". Four jobs, one mechanism each: the role list, the secret detector, the grant model, the approval path. All four hold today; each names its few
+// exceptions with a reason, and a list may only shrink.
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -45,11 +45,41 @@ test("B. one secret detector: a token shape or a private key header is spelled o
   assert.deepEqual(find(sources(), shapes, allowed), [], "use lib/credential-shapes.js (classify, findRules, redact, hasPrivateKey, privateKeyBlock, anthropicKind), or add the file with the reason");
 });
 
-test("C. one grant model: the vault, publish, wink and bridges grants are kernel grants", { todo: "owner: connect-anything (INVENTORY.md 00c, C); remove this todo when the second models are gone" }, () => {
-  const second = [
-    ["core/wink/grants.js", /checkGrantInput/], ["lib/publish/secrets.js", /export function grantSecret/], ["core/vault/index.js", /tool\("vault\.grant"/], ["core/bridges/index.js", /ctx\.tool\("bridges\.accept"/],
-  ].filter(([f, re]) => fs.existsSync(path.join(ROOT, /** @type {string} */ (f))) && /** @type {RegExp} */ (re).test(fs.readFileSync(path.join(ROOT, /** @type {string} */ (f)), "utf8"))).map(([f]) => f);
-  assert.deepEqual(second, [], "a second grant model is still defined here");
+test("C. one grant model: who may act is a kernel grant; every other table with `grant` in its name is named below with why it is not a second model, and the list may only shrink", () => {
+  // The kernel (kernel/grants) is the one place that answers "may this actor do this to that". Publish's deployment secrets, Wink's members, lent computers and storage devices, the Vault's agent
+  // logins, Connections, passes and module releases are all grants in the kernel's shape, made by their owner through the kernel (the `mint` handle or the Vault's hooks). A table that keeps a grant of
+  // its own must be named here with the reason, and deleted from this list when the table goes (the test fails if a listed table no longer exists).
+  /** @type {Record<string, string>} */
+  const NAMED = {
+    "wink_grants": "legacy: kept for its migration; core/wink/grants.js moveLocalGrants carries the rows into kernel grants and empties it; a later release drops the table (BACKLOG)",
+    "wink_storage_grants": "legacy, same as wink_grants",
+    "vault_agent_grants": "legacy: read once into kernel grants (core/vault/agents.js carryOver), then idle",
+    "vault_grants_v2": "legacy: the older module-release table, read once when the Vault converts it",
+    "vault_grants": "vyre-core's own home of module release grants: the same grant shape and the same matchGrant as the kernel (ADR 0040: core does not trust vyred's kernel). One format, one check, two homes",
+    "vault_grant_requests": "what an assistant asked for; carries no authority until a person approves, and then a grant is made",
+    "presence_grants": "single-use tokens for the presence check (a hash, an expiry, used once): proof records, not who-may-act",
+    "presence_pair_grants": "the challenge of a pairing in progress: a proof record, not who-may-act",
+    "artifacts_grants": "tag grants: a # tag lends one thread a read of one artifact and ends with the thread; owner chat; moves onto kernel grants with the other tag grants (BACKLOG 0.3.4)",
+    "files_mention_grants": "tag grants for one file in a shared folder, same as artifacts_grants (BACKLOG 0.3.4)",
+    "previews_grants": "what a preview page may use for one person (camera, location and so on): a capability switch the person sets in the preview; owner chat; moves onto kernel grants with the tag grants (BACKLOG 0.3.4)",
+  };
+  const made = new Set();
+  for (const f of sources(["core", "lib", "kernel", "records"])) for (const { l } of code(f)) { const m = l.match(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z0-9_]*grant[a-z0-9_]*)/i); if (m) made.add(m[1]); }
+  assert.deepEqual([...made].filter((t) => !(t in NAMED)), [], "a table that keeps grants of its own: make the thing a kernel grant (kernel `mint` handle or the Vault's hooks), or name the table in NAMED with the reason");
+  assert.deepEqual(Object.keys(NAMED).filter((t) => !made.has(t)), [], "listed here but no longer created anywhere: delete its line from NAMED");
+  // The other way to keep a second model is an engine, not a table: lib/spaces/authz.js `createRoleAuthorize` answers "may this role do this" from a member's role. Three modules still ask it instead of the
+  // kernel's authorize. They are named here, and the list may only shrink.
+  /** @type {Record<string, string>} */
+  const ROLE_ENGINE = {
+    "core/spaces/index.js": "who is in a Space and what a role may do there: the roles table the kernel's own roles (kernel/contracts) mirror; moves onto kernel authorize with the 0.3.4 grant work (BACKLOG)",
+    "core/bridges/index.js": "a bridge's two ends by role; the bridge's lifecycle is not a grant (DESIGN-one-grant section 10 F); the role check moves to kernel authorize (BACKLOG 0.3.4)",
+    "core/publish/index.js": "who may create, approve and publish a deployment by role; a deployment's secrets are already kernel grants; the role checks move to kernel authorize (BACKLOG 0.3.4)",
+  };
+  const engineUsers = sources(["core"]).filter((f) => code(f).some(({ l }) => /\bcreateRoleAuthorize\s*\(/.test(l)));
+  assert.deepEqual(engineUsers.filter((f) => !(f in ROLE_ENGINE)), [], "a new asker of createRoleAuthorize: ask the kernel's authorize instead, or name the file in ROLE_ENGINE with the reason");
+  assert.deepEqual(Object.keys(ROLE_ENGINE).filter((f) => !engineUsers.includes(f)), [], "listed here but no longer asks the role engine: delete its line from ROLE_ENGINE");
+  // Publish's old bookkeeping: a deployment's secret is a kernel grant, and its record carries no list
+  assert.ok(fs.existsSync(path.join(ROOT, "lib/publish/grants.js")), "Publish keeps deployment secrets as kernel grants (lib/publish/grants.js)");
 });
 
 test("D. one approval path: what waits on the person is ONE list (approvals.items); the three owner lists are read only by their owners and the named readers below, and the list may only shrink", () => {

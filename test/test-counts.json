@@ -531,6 +531,7 @@
  "core/wink/storage/hold.test.js": 3,
  "core/wink/storage/index.test.js": 10,
  "core/wink/storage/pool.test.js": 5,
+ "core/wink/grants.test.js": 4,
  "core/wink/storage/s3.test.js": 4,
  "core/work/capture.test.js": 2,
  "core/work/e2e-estate.test.js": 5,
@@ -1000,5 +1001,11 @@
  "apps/app/screens/settings/backups.test.js": 2,
  "core/vault/health-summary.test.js": 2,
  "apps/app/screens/now/vault-health.test.js": 1,
- "lib/publish/grants-kernel.test.js": 4
+ "lib/publish/grants-kernel.test.js": 4,
+ "apps/app/ui/tasks/one-vault.test.js": 1,
+ "apps/app/screens/spaces/add-space.test.js": 1,
+ "apps/app/scripts/check-design-rules.test.js": 2,
+ "test/design-rules.test.js": 2,
+ "apps/app/ui/blocks/symbols.test.js": 2,
+ "test/agent-reach-classes.test.js": 3
 }

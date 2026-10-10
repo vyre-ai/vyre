@@ -17,7 +17,7 @@ Flows and Kits live in a space that runs on a server, which means My Cloud or a 
 ## What a Flow can start from
 
 - **A person.** You or an assistant press Run.
-- **The clock.** Every day at 7:00, or every Monday. A schedule uses the space's time zone, never the server's. See [time zones](time-zones.md).
+- **The clock.** Every day at 7:00, or every Monday. A schedule uses the space's time zone, never the server's, and can keep to business hours, skip holidays, and say what to do about the times it missed while the server was off. See [time zones](time-zones.md).
 - **A change.** A record is made or changed, or a record enters a stage, such as a project entering Drafting.
 - **A form or a link.** Someone fills in a form on your site, or another program calls your Flow's address.
 - **A watcher.** Something new shows up in a place Vyre watches, such as a mailbox or a folder. See [watchers](watchers.md).
@@ -30,12 +30,31 @@ A Flow is a list of steps. In plain words, a step can:
 
 - find, make, change or remove records;
 - choose between two paths, or repeat for every record in a list;
+- do two or more things at the same time and carry on when all of them are done, or run another Flow and use what it gives back;
 - wait for a time, or for a person;
 - ask a person to decide, or give a task to a person or an assistant;
 - run one of the tools Vyre or a module offers, such as "send an email";
 - have an assistant read a document, sort it or pull facts out of it, and use only what you allowed it to see.
 
 Open **Flows** in the Vyre app to see yours. Each one shows whether it runs on its own, its run history, and the steps. **See as code** shows the same Flow as text, for people who like that.
+
+A run is about the record that started it. Open that record or its project and its timeline lists the run in plain words, next to the emails, tasks and documents: "Welcome the client: done", or "Welcome the client: did not finish".
+
+### Doing things at the same time
+
+A **parallel** step has two to eight lanes. Each lane is its own list of steps. The lanes start together, and the step after the parallel step starts when every lane is done. A lane can wait for a person while the others finish. If a lane fails, the others still finish, then the parallel step fails and says which lane did not finish and why. Retry the run and only the lane that failed goes round again.
+
+Steps after the parallel step can read anything a lane made, by the step's name. Lanes cannot read each other. A Flow that allows only one run at a time (`concurrency: 1`) runs its lanes one after the other, since each lane is a run.
+
+Each lane shows in the Flow's run list as a run of its own, marked as belonging to its parent, so a lane that needs a person is in your Now list like any other.
+
+### Running another Flow
+
+A **run another Flow** step names a Flow that is already switched on in this space and hands it some input. The step is done when that Flow is. The Flow can say what it gives back with `returns`, and the steps after read it as `steps.<step>.result`. The Flow that makes the call needs your yes to run other Flows, and each call is checked the same way a run by hand is. A Flow that runs itself stops after eight levels and says so.
+
+### Try it on last week
+
+Before you switch on a change, Vyre replays the last week through it. Nothing is done: every action is a stand-in. When the Flow has really run that week, you see the two side by side: "In that time it really ran 12 times. This version would run 12 times: 11 the same, 1 different, 0 new, 0 it would not run." A different run says which steps it did and which this version would do. Ask your assistant to try a Flow on last week, or look at the line on the approval card.
 
 ## You say yes before it runs
 

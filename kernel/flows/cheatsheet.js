@@ -19,6 +19,9 @@ export const EXAMPLES = Object.freeze({
   remove: { id: "drop", kind: "remove", type: "matter", record: { expr: "steps.make.record.id" } },
   decide: { id: "big", kind: "decide", if: "trigger.amount > 1000", then: [{ id: "alert", kind: "assign", to: "role:partner", title: "Large payment", output: { kind: "note" } }], else: [] },
   repeat: { id: "each", kind: "repeat", over: "steps.who.rows", as: "row", max: 50, steps: [{ id: "tag", kind: "update", type: "client", record: { expr: "row.id" }, set: { tagged: true } }] },
+  parallel: { id: "both", kind: "parallel", steps: [{ id: "left", kind: "branch", steps: [{ id: "mail", kind: "create", type: "matter", set: { client: "A" } }] }, { id: "right", kind: "branch", steps: [{ id: "note", kind: "create", type: "matter", set: { client: "B" } }] }] },
+  branch: { id: "left", kind: "branch", steps: [{ id: "mail", kind: "create", type: "matter", set: { client: "A" } }] },
+  subflow: { id: "welcome", kind: "subflow", flow: "send_welcome", input: { client: { expr: "trigger.client" } } },
   wait: { id: "pause", kind: "wait", for_ms: 3_600_000 },
   ask: { id: "yes", kind: "ask", to: "role:partner", title: "Send the welcome email?" },
   assign: { id: "task", kind: "assign", to: "teammate:paralegal", title: "Draft the engagement letter", output: { kind: "draft" } },
@@ -53,7 +56,7 @@ export function cheatsheet() {
   out.push("## Steps (id kind key=value)");
   for (const kind of STEP_KINDS) {
     const keys = /** @type {Record<string, string[]>} */ (STEP_KEYS)[kind] || [];
-    const policy = BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (kind)] ? "on_fail, verify" : kind === "wait" ? "retry, on_fail, verify" : "timeout_ms, retry, on_fail, verify";
+    const policy = kind === "branch" ? "nothing (its steps have their own)" : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (kind)] || kind === "subflow" ? "on_fail, verify" : kind === "wait" ? "retry, on_fail, verify" : "timeout_ms, retry, on_fail, verify";
     out.push(`- ${kind}: ${keys.join(", ")}; also ${policy}`, `    ${EXAMPLES[kind] ? oneLine(EXAMPLES[kind]) : ""}`);
   }
   out.push("", "## If it can fail");

@@ -15,43 +15,7 @@ import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { createMemoryTransport } from "../../kernel/remote/memory-transport.js";
 import { createLentHome, CHUNK_BYTES } from "./lent-home.js";
 import { createLentClient } from "./lent-client.js";
-
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", BOB = "per_bob", CAROL = "per_carol";
-const proof = (action, input, resource) => ({ op: `grant.${action.split(".")[1]}`, fields: { resource, input_hash: sha256(canonical({ action, input })) }, n: Math.random() });
-const used = new Set();
-const presence = { check: async ({ chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_payload") };
-function fakeSealer() {
-  const st = { live: new Map(), revoked: new Set() }; let n = 0;
-  const one = c => { if (!c || c.hops.length !== 1 || c.hops[0].actor.kind !== "person") throw Object.assign(new Error("human_only"), { code: "human_only" }); };
-  return { st, lease: {
-    // like the real process, issue gives the same member and computer the same key while access holds
-    issue: async i => { one(i.chain); const m = i.chain.hops[0].actor.id; if (!i.allowed || st.revoked.has(`${m}|${i.device}`)) return { revoked: true }; const id = `lease_${++n}`; st.live.set(id, `${m}|${i.device}`); return { id, key: crypto.createHash("sha256").update(`${m}|${i.device}`).digest("base64"), ttlMs: 3600000 }; },
-    renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
-    revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
-    reinstate: async () => ({ reinstated: true }),
-    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
-  } };
-}
-
-async function rig(t, o = {}) {
-  const acceptCap = o.acceptCap;
-  const keyOf = o.keyIsDevice ? "dev_laptop" : "KEY_LAPTOP";
-  const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const sealer = fakeSealer();
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
-  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
-  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });
-  const g = k.gateway.grants;
-  for (const p of [BOB, CAROL]) { const role = { person: p, role: "member" }; await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${p}`) }); }
-  const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
-  await mk(owner, { side: "space_allows", member: BOB });
-  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
-  const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, chatHas: (chain, id) => { try { g.chats.read(chain, id); return true; } catch { return false; } }, leases: k.gateway.leases, lenderCap: () => o.cap,
-    specFor: o.specFor || (async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] })) });
-  const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
-  const as = (person, device) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP" }); };
-  return { k, owner, bob, g, mk, accept, home, server, sealer, as, dir };
-}
+import { SPACE, OWNER, BOB, CAROL, proof, rig } from "./testing/lent-rig.js";
 
 test("a lent session end to end: lease, definition with the lender's cap, transcript, a multi-chunk file, a checkpoint, and the same read back", async t => {
   const r = await rig(t, { cap: "provider" });
@@ -110,9 +74,8 @@ test("a withdrawn Offer, a removed member and a stopped session end the very nex
   await assert.rejects(c.sync.getCheckpoint("s1"), e => e.code === "not_found", "a stopped session is gone");
 });
 test("file chunks are checked: out of order, repeated, oversize and a bad upload id are refused, and nothing half-written reaches the store", async t => {
-  const r = await rig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease(); await c.spec({ session: "s1" });
-  const inv = (rel, ch) => r.as(BOB, "dev_laptop") && c; void inv;
-  const call = (x) => createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) }).call("lent.putFile", ["s1", "f", x]);
+  const r = await rig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease(); const { epoch } = await c.spec({ session: "s1" });
+  const call = (x) => createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) }).call("lent.putFile", ["s1", "f", { epoch, ...x }]);
   const b64 = n => crypto.randomBytes(n).toString("base64");
   await assert.rejects(call({ upload: "uploadid1", index: 1, total: 2, b64: b64(10) }), e => e.code === "gap", "chunk 1 before 0");
   await call({ upload: "uploadid2", index: 0, total: 2, b64: b64(10) });
@@ -335,4 +298,140 @@ test("a lent session may name its chat: kept only when the lender's person is in
 test("the lent service's rows are not a wire call", async () => {
   const { CALLS } = await import("../../kernel/remote/wire.js");
   assert.equal(CALLS.lent.includes("rows"), false);
+});
+
+// ---- the place of a lent session (R031-95 2.4, 2.5): the epoch, the heartbeat, the release and the server's take-over ---------------------------------------------------------------------
+import { LAPSE_MS, HEARTBEAT_MS } from "./placement-book.js";
+const clockRig = async (t, o = {}) => {
+  const c = { t: 1_000_000 }; const resumed = [], said = [];
+  const r = await rig(t, { now: () => c.t, resume: async i => { resumed.push(i); }, emit: (type, p) => said.push([type, p]), ...o });
+  const chat = (await r.g.chats.create(r.bob, { people: [] })).id;
+  return { ...r, c, resumed, said, chat };
+};
+
+test("every write names the epoch the session was lent under: none, or an older one, is refused", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  const first = await c.spec({ session: "s1", chat: r.chat });
+  assert.equal(first.epoch, 1); assert.equal(c.epochOf("s1"), 1);
+  await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }]);
+  const raw = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  await assert.rejects(raw.call("lent.appendTranscript", ["s1", [{ seq: 2, line: "b" }]]), e => e.code === "bad_input", "a write that names no epoch is refused");
+  await assert.rejects(raw.call("lent.putCheckpoint", ["s1", { turn: 1, seq: 1, manifest: {}, state: {} }, 7]), e => e.code === "conflict", "a write at another epoch is refused");
+  await assert.rejects(raw.call("lent.putFile", ["s1", "f", { deleted: true, epoch: 0 }]), e => e.code === "conflict");
+});
+
+test("the split case: the computer is paused, not dead; the server resumes from the last acknowledged turn; the computer wakes and nothing it says is written", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }, { seq: 2, line: "b" }]);
+  await c.sync.putCheckpoint("s1", { turn: 1, seq: 2, manifest: {}, state: { n: 1 } });
+  await c.sync.appendTranscript("s1", [{ seq: 3, line: "c, a turn the checkpoint does not cover" }]);
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: c.epochOf("s1"), turn: 1, cpuPercent: 12, memoryMb: 300 }] })).fenced, [], "while it beats it keeps the session");
+  // the lid closes: no beat for the lapse
+  r.c.t += LAPSE_MS + 1;
+  await r.home.sweep();
+  assert.equal(r.resumed.length, 1, "the server took the session once");
+  assert.deepEqual([r.resumed[0].session, r.resumed[0].chat, r.resumed[0].epoch, r.resumed[0].reason], ["s1", r.chat, 2, "offline"]);
+  assert.equal((await r.resumed[0].view.checkpoint()).turn, 1, "from the last whole turn");
+  assert.deepEqual((await r.resumed[0].view.transcript(1)).map(e => e.line).slice(0, 2), ["a", "b"]);
+  assert.deepEqual(r.said.map(([type, p]) => [type, p.thread, p.to, p.reason, p.epoch, p.from]), [["thread.moved", r.chat, "server", "offline", 2, "mac"]]);
+  await r.home.sweep(); assert.equal(r.resumed.length, 1, "a second sweep does not take it again");
+  // the computer wakes: its client learns it was fenced, its writes are refused, nothing reaches the store
+  const fenced = []; c.onFenced(s => fenced.push(s));
+  await assert.rejects(c.sync.appendTranscript("s1", [{ seq: 4, line: "d, written after the server took over" }]), e => e.code === "not_found");
+  await assert.rejects(c.sync.putCheckpoint("s1", { turn: 2, seq: 4, manifest: {}, state: {} }), e => e.code === "not_found");
+  assert.deepEqual(fenced, ["s1", "s1"]);
+  assert.deepEqual((await r.resumed[0].view.transcript(1)).map(e => e.line).filter(l => l.startsWith("d")), [], "the late line is not in the server's copy");
+  assert.equal((await r.resumed[0].view.checkpoint()).turn, 1);
+  const beat = await c.beat({ sessions: [{ session: "s1", epoch: 1 }] });
+  assert.deepEqual(beat.fenced, ["s1"], "its next heartbeat says the same");
+  // it cannot take the session back by starting it again; the person bringing it back is what allows that
+  await assert.rejects(c.spec({ session: "s1" }), e => e.code === "conflict");
+  r.home.book.bringBack("s1", BOB);
+  assert.deepEqual((await c.beat({ sessions: [] })).directives, [{ do: "start", session: "s1", chat: r.chat, reason: null }], "the lender is told to start it");
+  const again = await c.spec({ session: "s1" });
+  assert.equal(again.epoch, 3);
+  await c.sync.appendTranscript("s1", [{ seq: 3, line: "c again, on the computer" }]);
+});
+
+test("a computer that hands the session over after its final checkpoint is fenced at once, and the server resumes from that checkpoint", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  await c.sync.appendTranscript("s1", [{ seq: 1, line: "a" }]);
+  await c.sync.putCheckpoint("s1", { turn: 1, seq: 1, manifest: {}, state: {} });
+  await assert.rejects(c.release({ session: "s1", reason: "whatever" }), e => e.code === "bad_input");
+  assert.deepEqual(await c.release({ session: "s1", reason: "lid-closed" }), { moved: true, epoch: 2 });
+  assert.equal(r.resumed.length, 1); assert.equal(r.resumed[0].reason, "lid-closed");
+  await assert.rejects(c.sync.appendTranscript("s1", [{ seq: 2, line: "late" }]), e => e.code === "not_found");
+  // a computer that was never this session's cannot release it
+  await assert.rejects(r.as(BOB, "dev_other").release({ session: "s1", reason: "you" }), e => e.code === "not_found");
+});
+
+test("an automatic move is held back inside the cooldown, and the lender keeps the session; the person's own move is not", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  assert.equal((await c.release({ session: "s1", reason: "unplugged" })).moved, true);
+  r.home.book.bringBack("s1", BOB); r.c.t += 30_000;
+  await c.spec({ session: "s1" });
+  assert.deepEqual(await c.release({ session: "s1", reason: "unplugged" }), { moved: false, why: "cooldown" }, "no ping-pong");
+  assert.equal(c.epochOf("s1"), 3, "the lender still holds the session");
+  assert.equal((await c.release({ session: "s1", reason: "you" })).moved, true, "the person's move never waits");
+});
+
+test("the heartbeat tells a computer what the home wants: hand a session over, or that a condition cleared and the session is offered back", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat }); await c.spec({ session: "s2" });
+  r.home.book.askRelease("s1", "you");
+  const a = await c.beat({ sessions: [{ session: "s1", epoch: 1 }, { session: "s2", epoch: 1 }] });
+  assert.deepEqual(a.directives, [{ do: "release", session: "s1", chat: r.chat, reason: "you" }]);
+  assert.equal(r.home.book.get("s1").state, "moving");
+  await c.release({ session: "s2", reason: "lid-closed" });
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).offers, [], "not well yet: nothing is offered");
+  const b = await c.beat({ sessions: [{ session: "s1", epoch: 1 }], well: true });
+  assert.deepEqual(b.offers, ["s2"], "the lid is open: the session that went for it is offered back, not moved");
+  assert.equal(r.home.book.get("s2").where, "server");
+  // a computer that does not hand the session over when asked is overruled after a minute
+  r.c.t += 61_000; await c.beat({ sessions: [{ session: "s1", epoch: 1 }] });
+  await r.home.sweep();
+  assert.equal(r.home.book.get("s1").where, "server"); assert.equal(r.home.book.get("s1").reason, "you");
+});
+
+test("a home that restarts keeps the sessions on lenders' computers, and gives each a whole lapse to show itself", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  r.c.t += LAPSE_MS * 3;
+  // the same folder, a new process: the book is read back from its file
+  const home2 = createLentHome({ space: SPACE, root: path.join(r.dir, "home"), offers: r.g.offers, leases: r.k.gateway.leases, now: () => r.c.t, specFor: async () => ({ command: "x", routes: [] }) });
+  assert.deepEqual(home2.rows().map(x => x.session), ["s1"], "still lent");
+  assert.deepEqual(home2.book.lapsed(), [], "and not taken before it has had a lapse to beat");
+  r.c.t += LAPSE_MS + 1;
+  assert.deepEqual(home2.book.lapsed().map(x => x.session), ["s1"]);
+});
+
+test("a heartbeat is cheap and bounded: a lender names at most fifty sessions, and the beat interval is the one the book promises", () => {
+  assert.ok(HEARTBEAT_MS < LAPSE_MS / 3, "three beats can be lost before a lender is taken");
+});
+
+test("a runner older than the server needs is told so: the session is the server's and the chat says this computer is updating; once the runner is current it may start the session", async t => {
+  const r = await clockRig(t);
+  let protocol = 1;
+  const kl = r.k.gateway.leases;
+  const leases = { renew: (/** @type {any[]} */ ...a) => kl.renew(...a), bind: (/** @type {any[]} */ ...a) => kl.bind(...a), unbind: (/** @type {any[]} */ ...a) => kl.unbind(...a), helloOf: () => ({ protocol }) };
+  const home = createLentHome({ space: SPACE, root: path.join(r.dir, "home-skew"), offers: r.g.offers, leases, now: () => r.c.t, chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { r.g.chats.read(chain, id); return true; } catch { return false; } },
+    specFor: async () => ({ command: "/usr/bin/agent", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const server = createRemoteServer({ space: SPACE, kernel: r.k, services: { lent: home } });
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const c = createLentClient({ invoke: remote.call, device: "dev_laptop", deviceKey: "KEY_LAPTOP" });
+  await c.vault.lease();
+  const old = await c.spec({ session: "s1", chat: r.chat });
+  assert.deepEqual(old, { skew: { need: 2, have: 1 } }, "an old runner is told what it needs, and no definition");
+  assert.equal(c.epochOf("s1"), undefined, "nothing was lent");
+  const row = home.book.get("s1");
+  assert.deepEqual([row.where, row.state, row.reason, row.chat], ["server", "updating", "version-skew", r.chat]);
+  await assert.rejects(c.sync.appendTranscript("s1", [{ seq: 1, line: "x" }]), e => e.code === "not_found", "it can write nothing");
+  protocol = 2;   // the Mac updated itself and started again
+  const now = await c.spec({ session: "s1", chat: r.chat });
+  assert.equal(now.command, "/usr/bin/agent");
+  assert.equal(home.book.get("s1").where, "mac");
+  assert.ok(now.epoch >= 2);
 });

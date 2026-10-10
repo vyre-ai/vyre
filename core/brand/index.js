@@ -22,14 +22,14 @@ export default {
     ctx.tool("brand.get", { callers: ANYONE, description: "The space's brand profile as saved: { profile, version }. Empty when none was set.", input: { type: "object", properties: {} }, run: async () => read() });
     ctx.tool("brand.resolve", {
       callers: ANYONE,
-      description: "What to use for this space by default: { names, theme, accent (as drawn in dark and paper, with a note when it moved), fonts, logos, letterhead, version }. Use it for every artifact, preview, document and message unless told otherwise.",
+      description: "The space's default brand: names, theme, accent, fonts, logos, letterhead, version. Use it for every artifact, preview, document and message unless told otherwise.",
       input: { type: "object", properties: {} },
       run: async () => { const { profile, version } = read(); return { ...resolveBrand(profile), version }; },
     });
     ctx.tool("brand.draft", {
       callers: ANYONE,
-      description: "A draft brand profile from a company website's HTML: { html, url }. Fetch the page yourself and pass it in. Returns { draft, found, logoUrl }; nothing is saved. Show the person the draft; they save it with brand.set.",
-      input: { type: "object", required: ["html"], properties: { html: { type: "string", maxLength: 600000 }, url: { type: "string", maxLength: 500 } } },
+      description: "Draft a brand profile from a company website's HTML (fetch it yourself). Returns { draft, found, logoUrl }, saves nothing; person saves with brand.set.",
+      input: { type: "object", required: ["html"], properties: { html: { type: "string", maxLength: 600000, description: "The page HTML, fetched by you" }, url: { type: "string", maxLength: 500, description: "The page address" } } },
       run: async (/** @type {any} */ i) => brandFromHtml(String(i.html), i.url ? String(i.url) : ""),
     });
     ctx.tool("brand.set", {

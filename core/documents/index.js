@@ -39,7 +39,7 @@ export function registerDocuments(ctx) {
   /** The newest version number of a Drive file, or 0. */
   const latest = async (/** @type {any} */ d, /** @type {string} */ p) => { try { const h = await d.gateway.drive.history(d.chain, p); const v = Array.isArray(h) ? h : h && h.versions; return v && v.length ? Number(v[v.length - 1].ver) : 0; } catch (e) { if (/** @type {any} */ (e).code === "not_found") return 0; throw e; } };
 
-  tool("documents.template.add", `Put a Word template in the Space's Drive as Templates/<name>.docx, a new version if the name is taken: { name, base64 (at most ${MAX_BYTES / 1048576} MB), space? }. Checks it is a Word file and reads its {placeholders}. Answers { name, version, placeholders, loops, loopFields }.`,
+  tool("documents.template.add", "Put a Word template in the Drive as Templates/<name>.docx, a new version if the name exists: { name, base64 }. Answers its placeholders.",
     obj({ space: str, name: str, base64: str }, ["name", "base64"]), async (i, d) => {
       const name = nameOf(i.name), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
@@ -69,7 +69,7 @@ export function registerDocuments(ctx) {
     return { name, version, ...(({ names, loops, loopFields }) => ({ placeholders: names, loops, loopFields }))(placeholders(bytes)) };
   }, { effect: "read" });
 
-  tool("documents.generate", "Make a document from a template and values, and file it: { template, values?, records?: { alias: record reference }, name?, project?, contact?, format? (docx or pdf), version?, space? }. `values` and the fields of each record (under its alias, {client.name}) fill the {placeholders}. A missing value stops it and names every one; nothing is guessed. Files the result in the Drive under Documents/<project>/ and, when the Space has a Document type, a Document record linked to `contact` and `project`. Answers { path, version, size, sha256, format, record? }.",
+  tool("documents.generate", "Fill a template with values and records, and file the document: { template, values?, records?, project?, contact?, format? }. A missing value stops it, named.",
     obj({ space: str, template: str, values: { type: "object" }, records: { type: "object" }, name: str, project: str, contact: str, format: { type: "string", enum: ["docx", "pdf"] }, version: { type: "integer" } }, ["template"]), async (i, d) => {
       const tname = nameOf(i.template), tpath = templatePath(tname);
       const tver = i.version ?? (await latest(d, tpath));
@@ -100,7 +100,7 @@ export function registerDocuments(ctx) {
     });
 
   ctx.tool("documents.signed-link", {
-    description: "A link to the signed copy of a finished document that stops working after 30 days (or sooner): { slug (the signer's, from documents.send or the signing request), days? (1 to 30) } -> { url, expires }. The signing page's own address does not open the finished file; this does, for the time you give it. Call it again for a new one. Outward: it makes the finished file reachable by whoever holds the link.",
+    description: "A link to a signed copy that stops working after 30 days: { slug, days? }. Whoever holds the link can open the file.",
     input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {

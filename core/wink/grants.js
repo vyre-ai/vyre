@@ -1,7 +1,6 @@
 // @ts-check
-// grants: the grant table Wink writes, in the shape of the kernel contract (kernel/contracts/grant.d.ts, contract 6.2): a grant lives where
-// the thing it protects lives, is never widened (a wider one is a new grant), and every create and revoke writes an event. When the kernel
-// takes over device grants, they move to it; today the kernel's grants store takes chains and other actions (its `create(chain, input)`), not this module's `create(input, issuer)`, so these grants live in one table of this box's store with exactly the contract's fields, so nothing changes when the kernel arrives.
+// grants: what Wink grants (a member joining, a computer lent, a storage device) are kernel grants: Wink makes them through the kernel's `mint` handle, inside `needs.kernel.mints` in its manifest, from a
+// source that starts `wink:`. The kernel writes the event. Wink keeps no grant table of its own; the old tables stay only until `moveLocalGrants` has carried their rows over (one grant model).
 
 import crypto from "node:crypto";
 import { base32 as libBase32 } from "../../lib/bytes.js";
@@ -32,52 +31,92 @@ export function checkGrantInput(g) {
   if (JSON.stringify(g).length > 8192) throw bad("a grant is at most 8 KB");
 }
 
-/** The grant table's migrations; the module passes them in its one `ctx.store.migrate` call, since a module has one migration list. */
+/** Migrations of the old grant table. Kept because a migration that ran cannot be unwritten; the table is empty after `moveLocalGrants` and a later release drops it. */
 export const MIGRATIONS = [
   `CREATE TABLE wink_grants (id TEXT PRIMARY KEY, status TEXT NOT NULL, source TEXT NOT NULL, subject_key TEXT NOT NULL, resource_prefix TEXT NOT NULL,
      body TEXT NOT NULL, created_at INTEGER NOT NULL, revoked_at INTEGER)`,
   `CREATE INDEX wink_grants_subject ON wink_grants (subject_key, status)`,
 ];
 
-/**
- * @param {{ ctx: any, space: () => string, now?: () => number }} o  space: the space this box's grants live in, read at each call (it is known once the relay has a route)
- */
-export function createGrants({ ctx, space: spaceOf, now = Date.now }) {
-  const db = ctx.store.db;
-  const subjectKey = (/** @type {any} */ s) => s.kind === "actor" ? `actor:${s.actor.kind}:${s.actor.id}@${s.actor.space}` : `${s.kind}:${s.name || s.id}`;
-  const row = (/** @type {any} */ r) => (r ? JSON.parse(r.body) : null);
+const subjectKey = (/** @type {any} */ s) => s.kind === "actor" ? `actor:${s.actor.kind}:${s.actor.id}@${s.actor.space}` : `${s.kind}:${s.name || s.id}`;
 
+/** The kernel's mint handle, or the plain reason there is none. @param {any} ctx */
+function mintOf(ctx) {
+  const m = ctx && ctx.kernel && ctx.kernel.mint;
+  if (!m) throw Object.assign(new Error("this server has no kernel to keep the grant in, so nothing was added"), { code: "unavailable" });
+  return m;
+}
+
+/** A grant lives in the kernel's own Space, so its addresses and its actors say that Space (Wink's stand-in id from the relay route is only a name for it until then). @param {any} ctx @param {any} input */
+function inKernelSpace(ctx, input) {
+  const sp = ctx && ctx.kernel && typeof ctx.kernel.space === "string" ? ctx.kernel.space : "";
+  if (!sp) return input;
+  const actor = input.subject && input.subject.kind === "actor" ? { ...input.subject, actor: { ...input.subject.actor, space: sp } } : input.subject;
+  return { ...input, subject: actor, resource: { ...input.resource, prefix: String(input.resource.prefix).replace(/^vyre:\/\/[^/]+\//, `vyre://${sp}/`) } };
+}
+
+/**
+ * The grants Wink made, through the kernel. A revoked grant is gone from `get` and `list` (the kernel's log keeps the history), so `status: "revoked"` lists nothing.
+ * @param {{ ctx: any }} o
+ */
+export function createGrants({ ctx }) {
+  /** @param {string} [source] @returns {Promise<any[]>} */
+  const held = async source => mintOf(ctx).list({ source: source || "wink:" });
   return {
-    /** @param {any} input a GrantInput @param {any} issuer an Actor */
-    async create(input, issuer) {
-      checkGrantInput(input);
-      const t = now();
-      /** @type {any} */
-      const g = { id: timeId("gr_", t), space: spaceOf(), subject: input.subject, actions: [...input.actions], action_set_version: 1, resource: input.resource,
-        conditions: input.conditions || {}, issuer, source: input.source, ...(input.parent ? { parent: input.parent } : {}), status: "active", created_at: t, ...(input.reason ? { reason: input.reason } : {}) };
-      db.prepare("INSERT INTO wink_grants (id, status, source, subject_key, resource_prefix, body, created_at) VALUES (?, 'active', ?, ?, ?, ?, ?)")
-        .run(g.id, g.source, subjectKey(g.subject), g.resource.prefix, JSON.stringify(g), t);
-      ctx.events.emit("grant.created", { grant: g });
+    /** @param {any} input a GrantInput */
+    async create(given) {
+      checkGrantInput(given);
+      const input = inKernelSpace(ctx, given);
+      const id = await mintOf(ctx).make({ subject: input.subject, actions: [...input.actions], resource: input.resource, conditions: input.conditions || {}, source: input.source, ...(input.reason ? { reason: input.reason } : {}) });
+      const g = (await held(input.source)).find(x => x.id === id);
+      if (!g) throw Object.assign(new Error("the kernel did not keep the grant"), { code: "failed" });
       return g;
     },
-    /** @param {string} id @param {string} reason */
+    /** Ending a grant that is already gone is the same as ending it. @param {string} id @param {string} reason */
     async revoke(id, reason) {
-      const g = row(db.prepare("SELECT body FROM wink_grants WHERE id = ?").get(String(id)));
-      if (!g) throw Object.assign(new Error("no such grant"), { code: "not_found" });
-      if (g.status === "revoked") return g;
-      const t = now();
-      const out = { ...g, status: "revoked", revoked_at: t, reason: String(reason || "").slice(0, 200) };
-      db.prepare("UPDATE wink_grants SET status = 'revoked', body = ?, revoked_at = ? WHERE id = ?").run(JSON.stringify(out), t, g.id);
-      ctx.events.emit("grant.revoked", { grant: out });
-      return out;
+      await mintOf(ctx).end({ id: String(id), reason: String(reason || "").slice(0, 200) });
+      return { id: String(id), status: "revoked" };
     },
     /** @param {{ subject?: any, resource_prefix?: string, status?: "active" | "revoked", source?: string }} [f] */
     async list(f = {}) {
-      const rows = db.prepare("SELECT body FROM wink_grants ORDER BY created_at, id").all().map(row);
-      return rows.filter((/** @type {any} */ g) => (!f.status || g.status === f.status) && (!f.source || g.source.startsWith(f.source))
-        && (!f.resource_prefix || g.resource.prefix.startsWith(f.resource_prefix)) && (!f.subject || subjectKey(g.subject) === subjectKey(f.subject)));
+      if (f.status === "revoked") return [];
+      return (await held(f.source)).filter(g => (!f.resource_prefix || g.resource.prefix.startsWith(f.resource_prefix)) && (!f.subject || subjectKey(g.subject) === subjectKey(f.subject)));
     },
     /** @param {string} id */
-    async get(id) { return row(db.prepare("SELECT body FROM wink_grants WHERE id = ?").get(String(id))) || null; },
+    async get(id) { return (await held()).find(g => g.id === String(id)) || null; },
   };
+}
+
+/**
+ * The once-only move of the old tables' active rows into kernel grants (the first start after the update, which backs up first). A member grant's resource narrows from the Space root to
+ * `member/<person>`, a storage device's `grant_id` follows its new grant, and a device grant an older build wrote is handed to `adoptDevice` (it becomes a registry row, not a grant). The rows go
+ * once they are carried. A server with no kernel keeps them where they are and tries again at the next start.
+ * @param {{ ctx: any, adoptDevice: (row: any) => void }} o @returns {Promise<number>} grants moved
+ */
+export async function moveLocalGrants({ ctx, space, adoptDevice }) {
+  const db = ctx.store.db;
+  const has = (/** @type {string} */ t) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(t));
+  const rows = [
+    ...(has("wink_grants") ? db.prepare("SELECT id, body FROM wink_grants WHERE status = 'active' ORDER BY created_at, id").all().map((/** @type {any} */ r) => ({ ...r, table: "wink_grants" })) : []),
+    ...(has("wink_storage_grants") ? db.prepare("SELECT id, body FROM wink_storage_grants WHERE status = 'active'").all().map((/** @type {any} */ r) => ({ ...r, table: "wink_storage_grants" })) : []),
+  ].map((/** @type {any} */ r) => ({ id: r.id, table: r.table, g: JSON.parse(r.body) }));
+  if (!rows.length) return 0;
+  const mint = mintOf(ctx);
+  let moved = 0;
+  // a row goes the moment its grant is made, so a stop in the middle leaves each grant either moved or still waiting, never both
+  for (const { id, table, g } of rows) {
+    const sub = g.subject.kind === "actor" ? g.subject.actor : null;
+    if (sub && sub.kind === "device" && g.actions.includes("space.act")) { adoptDevice(g); db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id); continue; }
+    const root = /^vyre:\/\/[^/]+\/$/;
+    const resource = root.test(g.resource.prefix) && g.actions.includes("member.act") && sub ? { ...g.resource, prefix: `${g.resource.prefix}member/${sub.id}` } : g.resource;
+    const given = inKernelSpace(ctx, { subject: g.subject, resource });
+    const made = await mint.make({ subject: given.subject, actions: g.actions, resource: given.resource, conditions: g.conditions || {}, source: g.source, ...(g.reason ? { reason: g.reason } : {}) });
+    if (has("wink_storage_devices")) db.prepare("UPDATE wink_storage_devices SET grant_id = ? WHERE grant_id = ?").run(made, id);
+    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
+    moved++;
+  }
+  // rows that were already revoked carry no authority; the kernel's log has the history
+  if (has("wink_grants")) db.prepare("DELETE FROM wink_grants").run();
+  if (has("wink_storage_grants")) db.prepare("DELETE FROM wink_storage_grants").run();
+  return moved;
 }

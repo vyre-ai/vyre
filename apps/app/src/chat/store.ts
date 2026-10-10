@@ -13,7 +13,7 @@ import { createReveal } from "../session/reveal.js";
 import { isKind } from "./frame-type.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
-import { boxStream, type GroupActions, type SessionActions } from "./box-stream";
+import { boxStream, type Attached, type GroupActions, type SessionActions } from "./box-stream";
 import { createGroup } from "./group.js";
 
 export type Meta = { state: string; turn: string | null; stopping: boolean; word: string; busy: boolean; canStop: boolean; queue: readonly Item[]; connection: StreamState; rev: number };
@@ -32,7 +32,7 @@ export type ChatStore = {
   shown(key: string): number | undefined;
   meta(): Meta;
   /** Resolves with why the box refused it, or null. */
-  send(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue" }): Promise<string | null>;
+  send(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null>;
   interrupt(): Promise<string | null>;
   answer(ask: string, decision: "approve" | "deny"): Promise<string | null>;
   /** The group side: authors, presence, reactions, pins, threads, the read marker, fan-out sets (group.js). */
@@ -43,7 +43,7 @@ export type ChatStore = {
   /** Teach the chat names a frame did not carry (who is in it, the model slots). */
   learnNames(list: { id: string; name: string }[]): void;
   /** Send to chosen assistants (two or more make a fan-out). Falls back to a plain send when the source cannot. */
-  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }): Promise<string | null>;
+  sendTo(text: string, o: { to: string[]; fanout: boolean; parent?: string; replyTo?: string; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[]; attachments?: Attached[] }): Promise<string | null>;
   /** Social actions; each is a no-op when the source does not have it. */
   social: { keep(group: string, message: string): void; react(message: string, emoji: string, remove?: boolean): void; pin(message: string, pinned: boolean): void; markRead(upto: number): void };
   /** Edit and retry, retry and branch: only a real session has them (the mock does not). */
@@ -174,11 +174,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
   }
 
   /** The plain send: the group route, the session's own, or the source's. */
-  async function sendPlain(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue" }): Promise<string | null> {
+  async function sendPlain(text: string, o?: { mentions?: { kind: string; id: string; name: string }[]; mode?: "steer" | "queue"; attachments?: Attached[] }): Promise<string | null> {
       const a = withActions(source);
       // A group chat on a real box (it has assistants in its participant list) goes through stream.send, which routes by mention.
       if (a.sendGroupText && group.participants().some((p) => p.family === "assistant")) {
-        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
+        const r = await a.sendGroupText(text, { ...(o?.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(o?.attachments?.length ? { attachments: o.attachments } : {}) });
         return r.ok ? null : r.reason;
       }
       if (a.sendText) return a.sendText(text, o);
@@ -240,11 +240,11 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
       return withOptimistic(text, async () => {
       const a = withActions(source);
       if (a.sendGroupText && (o.replyTo || group.participants().some((p) => p.family === "assistant"))) {
-        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}) });
+        const r = await a.sendGroupText(text, { to: o.to, ...(o.mode ? { mode: o.mode } : {}), ...(o.replyTo ? { replyTo: o.replyTo } : {}), ...(o.mentions?.length ? { mentions: o.mentions.map((m) => m.id) } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
         return r.ok ? null : r.reason;
       }
       if (source.sendGroup && (o.to.length || o.fanout || o.parent || o.replyTo)) { source.sendGroup(text, o); return null; }
-      return sendPlain(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}) });
+      return sendPlain(text, { ...(o.mentions?.length ? { mentions: o.mentions } : {}), ...(o.mode ? { mode: o.mode } : {}), ...(o.attachments?.length ? { attachments: o.attachments } : {}) });
       });
     },
     social: {

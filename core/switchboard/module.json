@@ -193,6 +193,11 @@
         "effect": "write"
       },
       {
+        "name": "threads.undo-edit",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "threads.model",
         "reach": "anyone",
         "effect": "write"
@@ -379,7 +384,8 @@
       "thread.thinking",
       "thinking.switched",
       "thread.shell",
-      "thread.remembered"
+      "thread.remembered",
+      "thread.edit-undone"
     ]
   },
   "shows": {
@@ -517,5 +523,19 @@
         "docs": "using/projects-and-threads.md#headless-threads"
       }
     ]
-  }
+  },
+  "settings": [
+    {
+      "key": "threads.cards",
+      "group": "sessions",
+      "label": "Cards for records you name",
+      "help": "When your message names a client, matter or other record exactly, the model is shown a short card of it with your words, so it need not look it up. Sealed parts stay sealed. Off means the model fetches it itself.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account"
+      ],
+      "apply": "live"
+    }
+  ]
 }

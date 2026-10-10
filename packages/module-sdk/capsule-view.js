@@ -189,7 +189,7 @@ export function checkCapsuleShows(capsule, c) {
   const ids = new Set();
   for (const [key, entry] of Object.entries(capsule)) {
     if (!key.startsWith("view:")) continue;
-    const allowed = c.firstParty ? new Set() : c.needsTools;
+    const allowed = c.needsTools;
     out.push(...checkView(key, entry, { tools: c.tools, allowed, firstParty: c.firstParty }));
     if (ids.has(key)) out.push(`shows.capsule "${key}" is declared twice`);
     ids.add(key);

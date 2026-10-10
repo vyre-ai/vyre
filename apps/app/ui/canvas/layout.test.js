@@ -25,6 +25,7 @@ test("an edge leaves the bottom middle and arrives at the top middle", () => {
 
 test("lane words and the phone order", () => {
   assert.equal(edgeWords("then"), "If yes");
+  assert.equal(edgeWords("lane"), "At the same time");
   assert.equal(edgeWords("next"), "");
   assert.deepEqual(listOrder([...nodes].reverse()).map((n) => n.id), ["t", "d", "n", "e"]);
 });

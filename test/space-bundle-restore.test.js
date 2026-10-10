@@ -14,6 +14,8 @@ import { enrol, exportBundle, restoreAll, bundlesIn, bundleFile } from "../lib/s
 import { createRing, openRing } from "../lib/keywrap.js";
 import { newDeviceKey, fingerprint } from "../lib/keywrap.js";
 import { canonical, sha256 } from "../kernel/core/canonical.js";
+import { backup, restore } from "../core/names/backup.js";
+import os from "node:os";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -45,6 +47,17 @@ test("every Space on a box comes back on a fresh one, each with its own owner's 
   // a third Space nobody turned backups on for
   const quiet = await a.kernel.spaces.host({ owner: "per_" + "d".repeat(26), name: "Quiet" });
 
+  // a firm's documents ARE the Drive: a project file and a plain one in the home Space, and one in the team's
+  const enc = (/** @type {string} */ x) => new TextEncoder().encode(x);
+  const deed = "Deed of trust, Raleigh house, signed 2019.";
+  const tok = (await a.kernel.surfaces.open(ownerChain, {})).token;
+  const proj = await a.registry.call("work.project.create", { name: "Rivera Family Trust" }, "cli", { token: tok });
+  assert.ok(proj.data, JSON.stringify(proj.error));
+  const projFile = `Projects/${String(proj.data.project).split("/").pop()}/files/Deed.txt`;
+  await a.kernel.gateway.drive.put(ownerChain, projFile, enc(deed));
+  await a.kernel.gateway.drive.put(ownerChain, "Documents/Trust letter.txt", enc("Dear Ms Rivera, your trust is ready."));
+  await harbor.gateway.drive.put(harborOwner, "Documents/Harbor engagement.txt", enc("Harbor engagement terms."));
+
   // each owner gives their own code once; then the export is unattended
   const sp = a.kernel.kernelFor({ name: "spaces", needs: { kernel: { bundle: true } } });
   await enrol(sp.bundle.of(space), space, CODE);
@@ -57,9 +70,14 @@ test("every Space on a box comes back on a fresh one, each with its own owner's 
   for (const f of [home.file, hosted.file]) { const b = fs.readFileSync(f); assert.ok(!b.includes(oldMaster) && !b.includes(oldMaster.toString("hex")) && !b.includes(oldMaster.toString("base64")), "no key of the old box is in a bundle"); assert.ok(!b.toString("latin1").includes("Northwind") && !b.toString("latin1").includes("Harbor Law"), "nothing readable in a bundle"); }
   await a.stop();
 
-  // the fresh box: what a restored backup carries (the store, the config, space-bundles/) and none of the old kernel folder
-  for (const f of fs.readdirSync(A)) if (f !== "kernel") fs.cpSync(path.join(A, f), path.join(B, f), { recursive: true });
+  // a real backup of the stopped box, and a real restore of it onto a fresh one: the store, the config, the bundles and every Space's Drive, and none of the old kernel folder or keys
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-bundle-backup-")), file = path.join(out, "box.vyre"), passphrase = "correct horse battery staple";
+  t.after(() => fs.rmSync(out, { recursive: true, force: true }));
+  const made = await backup({ root: A, file, passphrase });
+  assert.ok(made.included.includes("space-drives") && made.included.includes("space-bundles"), "the backup carries the Drives and the bundles");
   fs.mkdirSync(path.join(B, "kernel"), { recursive: true, mode: 0o700 });
+  await restore({ root: B, file, passphrase, force: true });
+  assert.ok(!fs.existsSync(path.join(B, "kernel", "seal")), "no key of the old box came along");
   assert.deepEqual(bundlesIn(B).map(b => b.space).sort(), [space, hid].sort());
   await assert.rejects(() => restoreAll({ root: B, codes: () => CODE2.split("").reverse().join(""), startSealer: sealerOf }), { code: "bad_code" }, "the wrong code opens nothing");
   const r = await restoreAll({ root: B, codes: s => (s === space ? CODE : s === hid ? CODE2 : undefined), startSealer: sealerOf });
@@ -85,6 +103,13 @@ test("every Space on a box comes back on a fresh one, each with its own owner's 
   assert.equal(harborB.kernel.log.read({ type: "space.restored" }).length, 1);
   if (hRef) assert.ok((await b.kernel.sealer.spaceDump({ space: hid, bk: crypto.randomBytes(32) })).items.some((/** @type {any} */ i) => i.meta.ref === hRef.ref.ref), "the team's sealed value is back under the same reference");
   assert.equal(b.kernel.spaces.list().includes(quiet.space), false, "the Space nobody enrolled is not there, and was named as left out");
+
+  // the files open with the same content: the Drive came with the backup, its pool key with the bundle
+  const read = async (/** @type {any} */ gw, /** @type {any} */ who, /** @type {string} */ p) => { const g = await gw.drive.get(who, p); return new TextDecoder().decode(g.bytes || g.data || g); };
+  assert.equal(await read(b.kernel.gateway, ownerB, projFile), deed, "the project file opens with the same content");
+  assert.equal(await read(b.kernel.gateway, ownerB, "Documents/Trust letter.txt"), "Dear Ms Rivera, your trust is ready.");
+  assert.equal(await read(harborB.gateway, harborOwnerB, "Documents/Harbor engagement.txt"), "Harbor engagement terms.", "and the team's");
+  assert.equal(fs.existsSync(path.join(B, "space-drives", space)), false, "the carried copy was put in place, not left behind");
 
   // a member opens their own chat's ring with their own device, as before: the restore never held it
   const bobB = b.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });

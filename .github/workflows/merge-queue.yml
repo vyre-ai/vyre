@@ -1,19 +1,17 @@
 # The merge queue (team/FOUNDATION.md, part 7): a teammate pushes a finished branch to
-# work/q/<team>/<item> (scripts/team/queue.sh). This merges it into the integration branch,
-# regenerates the generated files, runs preflight (rules + guard tests + the touched tests + app
-# types) on the merged tree, and lands it. One at a time, in push order, so the integration branch
-# only ever moves through a checked merge. The full suite then runs once on the new tip (node.yml).
+# work/q/<team>/<item> (scripts/team/queue.sh). Each run lands EVERY waiting queue branch, oldest
+# first, through scripts/team/land-queue.sh: merge into the integration branch, preflight the
+# merged tree, regenerate the generated files, push. GitHub keeps only the newest pending run of a
+# concurrency group, so a skipped run loses nothing: the next one finds the branch still waiting.
+# The full suite then runs once on the new tip (node.yml).
 name: merge-queue
 on:
   push:
     branches: ["work/q/**"]
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "A work/q/<team>/<item> branch to land"
-        required: true
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: merge-queue
   cancel-in-progress: false
@@ -23,14 +21,8 @@ env:
 jobs:
   land:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
-      - name: Which branch
-        id: q
-        run: |
-          ref="${{ github.event.inputs.ref || github.ref_name }}"
-          case "$ref" in work/q/*) ;; *) echo "not a queue branch: $ref" >&2; exit 1;; esac
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET }}
@@ -39,49 +31,11 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - name: Merge into the integration branch
-        id: merge
-        run: |
-          sh scripts/team/setup.sh || true
-          git fetch -q origin "${{ steps.q.outputs.ref }}"
-          # The queue's own commits carry the same public identity as the branch's author, so the pre-push identity check passes for anyone who later merges the tip.
-          git config user.name "$(git log -1 --format=%an FETCH_HEAD)"
-          git config user.email "$(git log -1 --format=%ae FETCH_HEAD)"
-          git merge-base --is-ancestor FETCH_HEAD HEAD && { echo "already landed"; echo "noop=1" >> "$GITHUB_OUTPUT"; exit 0; }
-          if ! git merge --no-ff --no-edit -m "merge: ${{ steps.q.outputs.ref }} into $TARGET" FETCH_HEAD; then
-            echo "## Merge conflict" >> "$GITHUB_STEP_SUMMARY"
-            git diff --name-only --diff-filter=U | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
-            echo "Base your branch on the current $TARGET, resolve, and queue again." >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-      - if: steps.merge.outputs.noop != '1'
-        run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
-      - if: steps.merge.outputs.noop != '1'
-        run: npm ci --no-audit --no-fund
-      - if: steps.merge.outputs.noop != '1'
-        run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --ignore-scripts --no-audit --no-fund
         working-directory: apps/app
-      - name: Preflight on the merged tree
-        if: steps.merge.outputs.noop != '1'
-        run: |
-          base=$(git rev-parse "origin/$TARGET")
-          node scripts/team/preflight.mjs --ci --base "$base" 2>&1 | tee preflight.log
-          status=${PIPESTATUS[0]}
-          { echo "## Preflight"; echo '```'; tail -60 preflight.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          exit $status
-        shell: bash
-      - name: Regenerate generated files
-        if: steps.merge.outputs.noop != '1'
-        run: |
-          node scripts/team/regen.mjs
-          git add -A docs kernel/golden
-          git diff --cached --quiet || git commit -q -m "chore(docs): regenerated after ${{ steps.q.outputs.ref }}"
-      - name: Land
-        if: steps.merge.outputs.noop != '1'
-        run: |
-          git push origin "HEAD:$TARGET"
-          echo "Landed ${{ steps.q.outputs.ref }} on $TARGET at $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
-      # Landed or not, the queue branch goes: the run's summary keeps the reason, and the item name can be queued again.
-      - name: Remove the queue branch
-        if: always()
-        run: git push -q origin --delete "${{ steps.q.outputs.ref }}" || true
+      - name: Land every waiting queue branch
+        run: bash scripts/team/land-queue.sh
+        env:
+          GH_TOKEN: ${{ github.token }}

@@ -2,6 +2,7 @@
 // The host app (screens/glass) speaks to it with messages; nothing here knows React. The rules are the Deck's (deck/glass/watch.js, ADR 0005): view only unless this surface
 // holds the keyboard, keysyms only (the relay does not take QEMU extended key events), the fit or 1:1 view, quality by link, and the last frame kept when the stream drops.
 //
+// (on the phone the same messages travel through the WebView: see screens/glass/GlassFrame.native.tsx)
 // host -> page   {t:"connect", url, quality, compression, fit}   {t:"holding", on}   {t:"fit", on}   {t:"drop"}
 // page -> host   {t:"ready"}   {t:"live"}   {t:"down", code, reason, clean}   {t:"handback"}   {t:"paste", sent, cut}   {t:"security", reason}
 import RFB from "./novnc/core/rfb.js";
@@ -9,7 +10,10 @@ import { attach } from "./input.js";
 
 const host = document.getElementById("g");
 const snap = document.getElementById("snap");
-const post = (m) => { try { window.parent.postMessage(m, location.origin); } catch {} };
+// In a browser the page is an iframe and talks to its parent window. On the phone it is a WebView with no parent: the app's WebView gives it ReactNativeWebView to speak to, and hears the app through messages it
+// marks `__host` (the app injects them; nothing else can reach a message listener of this page).
+const native = typeof window.ReactNativeWebView === "object" && window.ReactNativeWebView ? window.ReactNativeWebView : null;
+const post = (m) => { try { if (native) native.postMessage(JSON.stringify(m)); else window.parent.postMessage(m, location.origin); } catch {} };
 
 let rfb = null;
 let canvas = null;
@@ -84,7 +88,8 @@ function connect(m) {
 }
 
 window.addEventListener("message", (e) => {
-  if (e.source !== window.parent || e.origin !== location.origin || !e.data || typeof e.data !== "object") return;
+  if (!e.data || typeof e.data !== "object") return;
+  if (native ? e.data.__host !== true : e.source !== window.parent || e.origin !== location.origin) return;
   const m = e.data;
   if (m.t === "connect") connect(m);
   else if (m.t === "holding") { holding = Boolean(m.on); applyHolding(); }

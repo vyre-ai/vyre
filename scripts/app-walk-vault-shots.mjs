@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// app-walk-vault-shots: the Vault as a person sees it, against a real vyred with real items (never the sample world). One picture per page at 1280 and 390, light and dark. TEST ONLY; ssh login shell, foreground.
-//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--seed] [--old]
+// app-walk-vault-shots: the Vault as a person sees it, against a real vyred with real items (never the sample world); with --routes, any other route the same way. One picture per page at 1280 and 390, light and dark. TEST ONLY; ssh login shell, foreground.
+//   node scripts/app-walk-vault-shots.mjs --dist apps/app/dist --socket <home>/.vyre/vyred.sock --out <dir> [--only 1280:dark] [--seed] [--old] [--routes u/now,u/chats]
 // --seed puts a handful of believable items in the vault first (vault.put with the dev stand-in), so a fresh box has something to draw.
 import fs from "node:fs";
 import http from "node:http";
@@ -15,6 +15,7 @@ const DIST = path.resolve(flag("--dist", "apps/app/dist"));
 const SOCKET = flag("--socket", "");
 const OUT = path.resolve(flag("--out", "vault-shots-out"));
 const ONLY = flag("--only", "");
+const ROUTES = (flag("--routes", "") || "").split(",").filter(Boolean); // draw these routes (u/now, u/chats) instead of the Vault's pages
 const OLD = args.includes("--old"); // the layout before R031-76: its own labels, for before and after pictures
 if (!SOCKET) { console.error("give --socket"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
@@ -38,9 +39,13 @@ if (args.includes("--seed")) {
     { name: "firm-card", kind: "card", fields: { number: "4242424242424242", expiry: "12/28", cvc: "123" } },
   ];
   for (const it of items) await box("vault.put", it, { "x-vyre-presence": "stand-in" });
+  await box("vault.vaults.create", { name: "Acme-client" }, { "x-vyre-presence": "stand-in" });
 }
 
-const TOKEN = (await box("signin.dev", { node: "vault-shots", label: "walk" })).data?.token ?? "";
+// A dev sign-in lapses after a few minutes, so each width and theme signs in again (the proxy below reads the latest).
+let TOKEN = "";
+const signIn = async () => { TOKEN = (await box("signin.dev", { node: "vault-shots", label: "walk" })).data?.token ?? TOKEN; };
+await signIn();
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" };
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/v1")) {
@@ -62,7 +67,8 @@ const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const errors = [];
 for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "light"]) {
   if (ONLY && ONLY !== `${w}:${theme}`) continue;
-  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, serviceWorkers: "block", deviceScaleFactor: w > 600 ? 1 : 2 });
+  await signIn();
+  const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: theme, serviceWorkers: "block", reducedMotion: ROUTES.length ? "reduce" : "no-preference", deviceScaleFactor: w > 600 ? 1 : 2 });
   // The app is a native window, not a browser: stand in for the Mac shell so the screen is the one a person has (Add, Share and Reveal are there, not "on your phone").
   await ctx.addInitScript(() => { window.__vyreShell = { kind: "mac", identity: { has: async () => false, public: async () => "", sign: async () => "" }, presence: async () => "x", notify: async () => {}, open: async () => {}, onCommand: () => () => {} }; });
   const pg = await ctx.newPage();
@@ -74,11 +80,21 @@ for (const [w, h] of [[1280, 900], [390, 844]]) for (const theme of ["dark", "li
 
   const menu = async (item) => { await click("Add"); await pg.getByRole("menuitem", { name: item, exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(700); };
   const section = async (label) => { await pg.getByRole("button", { name: label, exact: true }).first().click({ timeout: 8000 }).catch(async () => { await pg.getByText(label, { exact: true }).first().click({ timeout: 8000 }); }); await pg.waitForTimeout(1500); };
+  if (ROUTES.length) {
+    for (const r of ROUTES) await step(r.replace(/\//g, "_"), async () => { await pg.goto(`${BASE}/${r}`, { waitUntil: "domcontentloaded" }); await pg.waitForTimeout(3500); await shot(r.replace(/\//g, "_")); });
+    await ctx.close(); continue;
+  }
   await step("1-home", async () => { await home(); await shot("1-home"); });
   await step("2-item", async () => { if (OLD) await pg.getByRole("tab", { name: "Keys" }).first().click({ timeout: 8000 }).catch(() => {}); await pg.getByText("stripe-live", { exact: true }).first().click({ timeout: 8000 }); await pg.waitForTimeout(900); await shot("2-item"); });
   await step("3-add", async () => { await home(); if (OLD) await click("Add an item"); else await menu("Login"); await shot("3-add"); });
   await step("4-sharing", async () => { await home(); await section(OLD ? "Passes" : "Sharing"); await shot("4-sharing"); });
   if (OLD) await step("4b-shared", async () => { await home(); await section("Shared"); await shot("4b-shared"); });
+  if (!OLD) {
+    await step("4c-vaults", async () => { await home(); await section("Sharing"); await pg.getByText("Acme-client").first().scrollIntoViewIfNeeded({ timeout: 8000 }); await pg.waitForTimeout(500); await shot("4c-vaults"); });
+    await step("4d-new-vault", async () => { await home(); await section("Sharing"); await click("New shared vault"); await shot("4d-new-vault"); });
+    await step("4e-invite", async () => { await home(); await section("Sharing"); await click("Invite"); await shot("4e-invite"); });
+    await step("4f-accept", async () => { await home(); await section("Sharing"); await click("Accept a share"); await shot("4f-accept"); });
+  }
   await step("5-browsers", async () => { await home(); await section(OLD ? "Devices" : "Browsers"); await shot("5-browsers"); });
   await step("6-health", async () => { await home(); await section("Health"); await shot("6-health"); });
   await step("7-import", async () => { await home(); if (OLD) await click("Import"); else await menu("Bring in from another app"); await shot("7-import"); });

@@ -132,8 +132,8 @@ export default {
     // Custom styling (R031-61): only the Engineer (or the person) writes it, the owner says yes with before and after, it is checked again at every start, and CSS that breaks is turned off with a reason.
     ctx.tool("design.css.propose", {
       callers: ANYONE,
-      description: "Propose custom CSS for the space or one screen: { scope: \"space\" | \"screen:<id>\", css, why }. Only the Engineer proposes it. It must pass the linter (hooks [data-screen] and [data-block], design tokens only); the owner sees it before and after. It styles the web app only: phones and Lumen keep the tokens.",
-      input: { type: "object", required: ["scope", "css", "why"], properties: { scope: { type: "string" }, css: { type: "string", maxLength: 9000 }, why: { type: "string", maxLength: 500 } } },
+      description: "Propose custom CSS for the space or one screen. Only the Engineer proposes it; the owner sees it before and after. Web app only.",
+      input: { type: "object", required: ["scope", "css", "why"], properties: { scope: { type: "string", description: "space, or screen:<id>" }, css: { type: "string", maxLength: 9000, description: "Must pass the linter: hooks [data-screen] and [data-block], design tokens only. Phones and Lumen keep the tokens" }, why: { type: "string", maxLength: 500 } } },
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = agentName(meta);
         if (who !== "engineer" && !isPerson(meta)) throw Object.assign(new Error("custom styling goes through the Engineer: ask @Engineer"), { code: "denied" });

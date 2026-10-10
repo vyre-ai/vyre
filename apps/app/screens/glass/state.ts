@@ -9,14 +9,19 @@ import { glass } from "./source-real";
 import { EVENTS, LIFECYCLE, handedBackBanner, agentOf, closeMeaning, errText, eventLine, isRepeat, levels, mine as isMine, nextBackoff, other as isOther, pickTargets,
   type Conn, type Holder, type Link, type Target } from "./model";
 
-export const FRAME_URL = `${APP_BASE}/glass/frame.html`;
+/** The frame page: on the web the app's own, on the phone the paired box's (the WebView needs an absolute address). */
+export const frameUrl = (): string => `${Platform.OS === "web" ? "" : boxOrigin()}${APP_BASE}/glass/frame.html`;
 
 /** This browser's surface id: glass:<id>, kept so a reload is the same screen. */
+let phoneId = "";
 export function surfaceId(): string {
   let id = "";
   try { id = window.localStorage.getItem("vyre.glass.surface") || ""; } catch {}
   if (!/^[a-z0-9]{6,32}$/.test(id)) {
-    id = Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
+    // a phone has no localStorage and may have no crypto.getRandomValues: it keeps its id for as long as the app runs, which is as long as a screen is held
+    const bytes = typeof crypto !== "undefined" && crypto.getRandomValues ? Array.from(crypto.getRandomValues(new Uint8Array(8))) : Array.from({ length: 8 }, () => Math.floor(Math.random() * 256));
+    id = phoneId || bytes.map((b) => b.toString(36).padStart(2, "0")).join("").slice(0, 12);
+    phoneId = id;
     try { window.localStorage.setItem("vyre.glass.surface", id); } catch {}
   }
   return `glass:${id}`;

@@ -10,7 +10,7 @@ export type ListRow = {
 export type UseRow = { at: number; action: string; item: string | null; who: string; origin?: string; surface?: string; ok: boolean };
 
 export type Tab = "Login" | "Key" | "Card";
-export type RealItem = { id: string; kind: string; tab: Tab; name: string; title: string; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
+export type RealItem = { id: string; kind: string; tab: Tab; name: string; title: string; icon: ReturnType<typeof iconOf>; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
 
 /** Logins and cards have their own tabs; every other kind (api keys, secrets, ssh keys, notes, env sets) is a Key. */
 export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind === "card" ? "Card" : "Key");
@@ -18,8 +18,16 @@ export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind =
 const KIND_WORD: Record<string, string> = { login: "Login", card: "Card", "api-key": "API key", secret: "Secret", "ssh-key": "SSH key", note: "Note", "env-set": "Env set", authenticator: "Authenticator", passkey: "Passkey", identity: "Identity", address: "Address", wifi: "Wi-Fi" };
 export const kindWord = (kind: string): string => KIND_WORD[kind] ?? kind;
 
+/** The icon of a kind in the list, so a long list reads at a glance: a login is a site, a card is a card, a terminal key is a terminal. */
+const KIND_ICON: Record<string, "globe" | "key" | "card" | "term" | "file" | "person"> = { login: "globe", card: "card", "ssh-key": "term", note: "file", "env-set": "file", identity: "person", address: "person" };
+export const iconOf = (kind: string): "globe" | "key" | "card" | "term" | "file" | "person" => KIND_ICON[kind] ?? "key";
+
 /** A name as a person reads it: the vault keeps letters, digits, dot, dash and underscore, so "Airline-account" is shown as "Airline account". The name itself is still what every action sends. */
 export const displayName = (name: string): string => name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+const FIELD_WORD: Record<string, string> = { totp: "One-time code", cvc: "Security code", expiry: "Expires", number: "Number", url: "Web address", ssh_private_key: "Private key", public_key: "Public key", client_id: "Client ID", client_secret: "Client secret" };
+/** A field's name as a person reads it: "totp" is "One-time code"; anything else is the name with a capital and no underscores. */
+export const fieldWord = (f: string): string => FIELD_WORD[f] ?? (f.charAt(0).toUpperCase() + f.slice(1).replace(/[_-]+/g, " "));
 
 /** A site as a person reads it: the host, with no scheme or path. */
 export const hostWord = (h: string): string => h.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "").replace(/^www\./, "");
@@ -32,7 +40,7 @@ export function lineOf(r: ListRow): string {
 
 export function toItem(r: ListRow): RealItem {
   return {
-    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
+    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), icon: iconOf(r.kind), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
     grants: r.grants.map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
   };
 }

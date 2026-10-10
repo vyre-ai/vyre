@@ -38,6 +38,8 @@ import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
+import { cardsFor, ownerChain } from "../../lib/record-cards.js";
+import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -3922,6 +3924,7 @@ export default {
     /** The kernel chain of the call being run (set by tool()): undefined when this build has no kernel, null when the kernel refused the call. */
     const kchainNow = () => { const v = /** @type {any} */ (calls.getStore()); return v && "kchain" in v ? v.kchain : (ctx.kernel ? null : undefined); };
     const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner, kchainNow(), kernelOwner());
+    const cardsNote = cardsFor({ kernel: ctx.kernel, call: ctx.call, chain: () => ownerChain(ctx.kernel, kchainNow()) });
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
@@ -4247,9 +4250,9 @@ export default {
         if (over && !personTurn(caller)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
-        const heard = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid) ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
-        const files = heard.length ? await sb.mediaFor(i.thread, heard) : [];
-        const note = [heard.length ? tagNote(heard) : "", ...files].filter(Boolean).join("\n");
+        const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);
+        const heard = mine ? await sb.ingress(i.thread, String(i.text), surfaceOf(i, caller), uuid, Array.isArray(i.mentions) ? i.mentions : [], Array.isArray(i.pasted) ? i.pasted.filter(x => typeof x === "string").slice(0, 20) : []) : [];
+        const note = [heard.length ? tagNote(heard) : "", ...(heard.length ? await sb.mediaFor(i.thread, heard) : []), mine ? await cardsNote(i) : ""].filter(Boolean).join("\n");
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
@@ -4450,6 +4453,8 @@ export default {
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can rewind a session"), { code: "denied" });
         return sb.rewind(i.thread, i.uuid, i.restore || "conversation");
       });
+
+    offs.push(registerEdits({ ctx, tool, guard, queuesFor, cwdOf: id => (sb.record(id) || {}).cwd || null, runsOf: chat => sb.db.prepare("SELECT id FROM threads_runs WHERE chat = ?").all(chat).map(r => String(/** @type {any} */ (r).id)), tell: (id, note) => sb.carry.set(id, [sb.carry.get(id), note].filter(Boolean).join("\n")) }).stop);
 
     const EDIT_SHAPE = { thread: str, message: { type: "string", description: "The user message's uuid (thread.turn's uuid). Omitted: the last message a person typed." }, surface: str,
       restore: { type: "string", enum: ["conversation", "code", "both"], description: "As threads.rewind: the conversation (the default), the files its tools changed since (code), or both." } };

@@ -186,11 +186,12 @@ shardTest("wink: an invitation is sealed into a ticket; the invited person's red
   assert.deepEqual(looked.invite.projects, ["intake"]);
   const paired = await pairTicket(ticket, { relay: w.status.url, name: "Chris's laptop", crypto: nodeCrypto(), keyStore: keystore(t) });
   assert.equal(paired.device, undefined, "no device is enrolled by an invitation");
-  const grants = (await w.call("wink.access")).data.grants;
+  // the kernel keeps the grant a moment after the redemption (the admission runs on the relay's event), so the screen's list is read when it has it
+  const grants = await until(async () => { const l = (await w.call("wink.access")).data.grants; return l.length ? l : null; });
   assert.equal(grants.length, 1);
   assert.equal(grants[0].source, "wink:W5");
   assert.equal(grants[0].subject.actor.kind, "person");
-  assert.ok(w.events.some(e => e[0] === "wink.joined" && e[1].role === "member"));
+  await until(() => w.events.some(e => e[0] === "wink.joined" && e[1].role === "member"));
   assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.filter(d => d.id !== SCREEN.slice(7)).length, 0, "no device row for the invitee (the screen's own row is this test world's)");
   // the invitation is single use
   await assert.rejects(() => pairTicket(ticket, { relay: w.status.url, crypto: nodeCrypto(), keyStore: keystore(t) }), /expired or was already used/);
@@ -231,7 +232,7 @@ shardTest("wink: sharing a computer is a node.host grant with limits, and only f
   assert.ok(shared.data?.grant, JSON.stringify(shared.error));
   const g = (await w.call("wink.access")).data.grants.find(x => x.source === "wink:W4");
   assert.ok(g);
-  assert.ok(g.resource.includes(`/node/${r.paired.device}/`));
+  assert.ok(g.resource.endsWith(`/node/${r.paired.device}`));
   assert.ok(w.events.some(e => e[0] === "wink.shared"));
   // Sharing is the two sides of the compute offer, not only a grant: the computer now offers compute and its owner accepts, so the runner may lease it for the personal space.
   assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));

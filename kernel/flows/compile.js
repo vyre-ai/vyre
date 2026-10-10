@@ -30,7 +30,7 @@ import { decorate } from "./places.js";
 export const STEP_ACTIONS = Object.freeze({
   find: "records.read", pick: "records.read", create: "records.create", update: "records.update", upsert: "records.update",
   remove: "records.remove", stage: "records.update", ask: "ask.request", assign: "ask.request", agent: "ask.request",
-  classify: "model.call", extract: "model.call", service: "service.call", fn: "fn.run",
+  classify: "model.call", extract: "model.call", service: "service.call", fn: "fn.run", subflow: "flows.run",
 });
 
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -68,6 +68,7 @@ export function needs(flow, cat) {
     if (!action) return;
     if (["find", "pick", "create", "update", "upsert", "remove", "stage"].includes(s.kind)) out.push({ step: s.id, path, action, resource: typeUrn(cat.space, String(s.type)) });
     else if (s.kind === "service") out.push({ step: s.id, path, action: serviceActionOf(cat, s), resource: serviceResource(cat.space, s.connector) });
+    else if (s.kind === "subflow") out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/flow/*` });
     else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action === "ask.request" ? "task" : action.split(".")[0]}/*` });
     if (s.kind === "upsert") out.push({ step: s.id, path, action: "records.create", resource: typeUrn(cat.space, String(s.type)) });
   };
@@ -257,7 +258,17 @@ function compileRaw(flow, cat) {
       } else if (s.kind === "repeat") {
         ex(s.over, "over");
         visit(s.steps || [], `${p}.steps`, new Set([...scope, s.as]), new Set(done));
-      }
+      } else if (s.kind === "parallel") {
+        // lanes run at the same time: a lane reads what ran before the parallel step, never what a sibling lane makes; after it, every lane's steps have run
+        const after = new Set(done);
+        for (const [j, lane] of (s.steps || []).entries()) {
+          const inLane = new Set(done);
+          visit(lane.steps || [], `${p}.steps[${j}].steps`, scope, inLane);
+          for (const id of inLane) after.add(id);
+          after.add(lane.id);
+        }
+        for (const id of after) done.add(id);
+      } else if (s.kind === "subflow") nm(s.input, "input");
       // the failure path reads the error that sent it there; a VERIFY reads the step's own output (R031 Flows reliability)
       if (s.on_fail && Array.isArray(s.on_fail.steps)) visit(s.on_fail.steps, `${p}.on_fail.steps`, new Set([...scope, "error"]), new Set(done));
       if (s.verify && typeof s.verify.check === "string") checkExprNames(s.verify.check, `${p}.verify.check`, new Set([...scope, "output"]), done);
@@ -267,6 +278,7 @@ function compileRaw(flow, cat) {
   visit(flow.steps, "steps", baseScope, new Set());
   // Flow-level failure path: any step may have run before it, and it reads the error
   if (Array.isArray(flow.on_failure)) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); visit(flow.on_failure, "on_failure", new Set([...baseScope, "error"]), all); }
+  if (flow.returns !== undefined) { /** @type {Set<string>} */ const all = new Set(); walkSteps(flow.steps, (x) => all.add(x.id)); checkValueNames(flow.returns, "returns", new Set(baseScope), all); }
   if (typeof flow.lock === "string") checkExprNames(flow.lock, "lock", new Set(triggerScope), new Set());
   if ((tr.on === "event" || tr.on === "watcher") && tr.where) checkExprNames(tr.where, "trigger.where", new Set(triggerScope), new Set());
 
@@ -275,7 +287,7 @@ function compileRaw(flow, cat) {
   const caps = Array.isArray(flow.caps) ? flow.caps : derived;
   if (Array.isArray(flow.caps)) {
     for (const n of needs(flow, cat)) if (!caps.some((/** @type {any} */ c) => capCovers(c, n.action, n.resource))) errors.push({ path: n.path, message: `the Flow's caps do not cover ${n.action} on ${n.resource}` });
-    for (const c of caps) if (c.action !== "*.*" && !cat.actions[c.action] && !/^(?:records|ask|model|service|fn)\./.test(c.action)) warnings.push({ path: "caps", message: `the cap names an unknown action ${c.action}` });
+    for (const c of caps) if (c.action !== "*.*" && !cat.actions[c.action] && !/^(?:records|ask|model|service|fn|flows)\./.test(c.action)) warnings.push({ path: "caps", message: `the cap names an unknown action ${c.action}` });
   } else if (derived.length) warnings.push({ path: "caps", message: "no caps are declared, so the Flow's own steps set them" });
 
   if (flow.authorship === "model" && (effects.sealed_uses.length || effects.outward.some(o => !o.destination_constant))) {
