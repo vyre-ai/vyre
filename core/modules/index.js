@@ -1404,7 +1404,7 @@ export class Registry {
 
   /** The tools a Flow's call step may run, with their risk and typed fields: `[{ name, risk: "read" | "outward", summary, inputs, outputs }]`. Declared by the module (`flow.steps` in its manifest), never by a Flow. */
   flowTools() {
-    return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [] }));
+    return [...this.tools.entries()].filter(([, d]) => d.flowStep && !d.internal).map(([name, d]) => ({ name, risk: d.flowStep.risk, summary: d.flowStep.label || d.description || "", inputs: d.flowStep.inputs || {}, outputs: d.flowStep.outputs || {}, covers: Array.isArray(d.covers) ? d.covers : [], recipients: this.isFirstParty(/** @type {string} */ (this.modules.get(d.module)?.dir)) && Array.isArray(d.flowStep.recipients) ? d.flowStep.recipients : [] }));
   }
 
   /** The ways a running module offers to start a Flow (`flow.triggers`): `[{ name, label, trigger: { on: "event", event } | { on: "watcher", watcher }, inputs }]`. A Flow stores the `trigger`, a kind that already exists. */

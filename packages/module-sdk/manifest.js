@@ -340,11 +340,11 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
 
 /**
  * The Flow steps a module declares (manifest `flow.steps`), each in one shape: the tool it runs, how a card names it, its typed fields and whether it leaves Vyre.
- * @param {any} m @returns {{ name: string, label: string, risk: "read" | "outward", inputs: Record<string, string>, outputs: Record<string, string> }[]}
+ * @param {any} m @returns {{ name: string, label: string, risk: "read" | "outward", inputs: Record<string, string>, outputs: Record<string, string>, recipients: string[] }[]}
  */
 export function flowSteps(m) {
   const list = TYPES.object(m) && TYPES.object(m.flow) && Array.isArray(m.flow.steps) ? m.flow.steps : [];
-  return list.filter((/** @type {any} */ s) => TYPES.object(s) && typeof s.name === "string").map((/** @type {any} */ s) => ({ name: s.name, label: typeof s.label === "string" ? s.label : s.name, risk: s.outward === true ? "outward" : "read", inputs: TYPES.object(s.inputs) ? { ...s.inputs } : {}, outputs: TYPES.object(s.outputs) ? { ...s.outputs } : {} }));
+  return list.filter((/** @type {any} */ s) => TYPES.object(s) && typeof s.name === "string").map((/** @type {any} */ s) => ({ name: s.name, label: typeof s.label === "string" ? s.label : s.name, risk: s.outward === true ? "outward" : "read", inputs: TYPES.object(s.inputs) ? { ...s.inputs } : {}, outputs: TYPES.object(s.outputs) ? { ...s.outputs } : {}, recipients: Array.isArray(s.recipients) ? s.recipients.filter((/** @type {any} */ f) => typeof f === "string") : [] }));
 }
 
 /**

@@ -5,7 +5,7 @@ export type Problem = { path?: string; message: string };
 /** One thing a Flow does, as the kernel gives it (a name, or an object naming the step, the action, the connector, the person or the field it is about). */
 type Item = string | { step?: string; action?: string; to?: string; connector?: string; method?: string; path?: string; field?: string; note?: string; with?: string };
 export type Effects = { reads?: string[]; writes?: string[]; outward?: Item[]; services?: Item[]; code?: Item[]; asks?: number; assigns?: Item[]; sealed_uses?: Item[]; destinations?: Item[]; model_steps?: string[]; needs_run_ask?: boolean; sends?: Sends };
-type Sends = { steps: { step: string; action: string; to: string[]; source: "literal" | "outside"; approve: boolean }[]; allow: string[]; max: number; per_minute: number; outside: "ask" | "run" };
+type Sends = { steps: { step: string; action: string; to: string[]; source: "literal" | "outside"; approve: boolean; covered?: boolean }[]; allow: string[]; max: number; per_minute: number; outside: "ask" | "run" };
 export type Checked = { ok: boolean; errors: Problem[]; warnings?: (string | Problem)[]; effects?: Effects; changes?: string[]; hash?: string };
 export type Defined = { ok: boolean; id?: string; version?: number; hash?: string; errors?: Problem[]; warnings?: (string | Problem)[]; changes?: string[] };
 
@@ -22,11 +22,11 @@ export function effectLines(e: Effects | undefined): string[] {
   const list = (a?: Item[]) => (a && a.length ? [...new Set(a.map(word).filter(Boolean))].join(", ") : "");
   // the one yes at turn-on: who a send goes to on its own, how many, and what still asks a person
   const sd = e.sends, plural = (n: number) => `${n} ${n === 1 ? "send" : "sends"}`;
-  const own = sd ? sd.steps.filter(x => !x.approve && (x.source === "literal" || sd.outside === "run")) : [];
+  const own = sd ? sd.steps.filter(x => x.covered !== false && !x.approve && (x.source === "literal" || sd.outside === "run")) : [];
   const asks = sd ? sd.steps.filter(x => !own.includes(x)) : [];
   return [
-    sd && own.length ? `After you approve it, it sends on its own to ${sd.allow.length ? sd.allow.join(", ") : "its fixed destination"}: up to ${plural(sd.max)} in all and ${plural(sd.per_minute)} a minute, then it stops and tells you.` : "",
-    sd && asks.length ? `Still asks you first: ${asks.map(x => x.approve ? `${x.action} (you marked it to always ask)` : `${x.action} (it goes to someone found in the message)`).join(", ")}.` : "",
+    sd && own.length ? `After you approve it, it sends on its own to ${sd.allow.length ? sd.allow.join(", ") : "its fixed destination"}: up to ${plural(sd.max)} in all and ${plural(sd.per_minute)} a minute, then it stops and tells you. Approving a new version starts the count again.` : "",
+    sd && asks.length ? `Still asks you first: ${asks.map(x => x.approve ? `${x.action} (you marked it to always ask)` : x.covered === false ? `${x.action} (this kind of send always asks)` : `${x.action} (it goes to someone found in the message)`).join(", ")}.` : "",
     list(e.reads) && `Reads: ${list(e.reads)}.`,
     list(e.writes) && `Writes: ${list(e.writes)}.`,
     list(e.outward) && `Sends or publishes: ${list(e.outward)}.`,

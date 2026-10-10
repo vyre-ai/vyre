@@ -76,7 +76,7 @@ export function createFlowsHost(o) {
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
       // A registered tool its module lists in flow.steps is an action a call step may name: read runs at once, outward is held for a yes first. `tool: true` says the runner
       // does not ask the kernel's action table about it: the person's approval is the yes, and the tool's own module gates the rest. Its typed fields ride along for the editor.
-      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true, inputs: t.inputs, outputs: t.outputs, ...(t.covers && t.covers.length ? { covers: t.covers } : {}) };
+      for (const t of o.flowTools ? o.flowTools() : []) actions[t.name] = { risk: t.risk === "outward" ? "outward.send" : "read", label: t.summary || t.name, tool: true, inputs: t.inputs, outputs: t.outputs, ...(t.covers && t.covers.length ? { covers: t.covers } : {}), ...(t.recipients && t.recipients.length ? { recipients: t.recipients } : {}) };
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
       // The triggers modules offer by name (flow.triggers): the Flow stores the `trigger` of one, an event or watcher trigger that already exists.
       const triggers = o.flowTriggers ? o.flowTriggers() : [];

@@ -18,15 +18,18 @@ const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ 
 const MANIFEST = { version: "0.1.0", does: { tools: [
   { name: "zzflow.lookup", effect: "read", reach: "anyone" },
   { name: "zzflow.notify", reach: "anyone", outward: true },
+  { name: "zzflow.silent", reach: "anyone", outward: true },
   { name: "zzflow.plain", effect: "read", reach: "anyone" },
 ] }, flow: { steps: [
   { name: "zzflow.lookup", label: "Look up a client", inputs: { q: "string" }, outputs: { found: "string" } },
-  { name: "zzflow.notify", label: "Notify the client", outward: true },
+  { name: "zzflow.notify", label: "Notify the client", outward: true, recipients: ["to", "cc"], inputs: { to: "string", cc: "string", body: "string" } },
+  { name: "zzflow.silent", label: "Notify, destinations not declared", outward: true, inputs: { to: "string", body: "string" } },
 ], triggers: [{ name: "zzflow.arrived", label: "A client arrives", event: "zzflow.arrived", inputs: { who: "string" } }] }, watches: { emits: ["zzflow.arrived"] } };
 const SRC = `export default { async start(ctx) {
   const rec = (tool, meta, input) => { (globalThis.__zzflow ||= []).push({ tool, caller: meta.caller, origin: meta.origin, token: typeof meta.token === "string", input }); };
   ctx.tool("zzflow.lookup", { effect: "read", input: { type: "object" }, run: async (i, meta) => { rec("lookup", meta, i); return { found: "Acme", asked: i.q }; } });
   ctx.tool("zzflow.notify", { input: { type: "object" }, run: async (i, meta) => { rec("notify", meta, i); return { sent: true }; } });
+  ctx.tool("zzflow.silent", { input: { type: "object" }, run: async (i, meta) => { rec("silent", meta, i); return { sent: true }; } });
   ctx.tool("zzflow.plain", { effect: "read", input: { type: "object" }, run: async (i, meta) => { rec("plain", meta, i); return {}; } });
   return {};
 } };`;
@@ -108,4 +111,60 @@ test("a new approved version ends the old version's grant; a pause ends the stan
   await host.flows.tools["flows.resume"](host.personChain(), { id: first.id });
   await run(host, first.id);
   await until(async () => (await grants()).length === 1 && notified(calls).length === 2, "a fresh grant and a second send after resume");
+});
+
+const asks = async (/** @type {any} */ t, /** @type {any} */ flowFor, /** @type {any} */ input = {}) => {
+  const { d, host, admin, install, calls, space } = await boot(t);
+  const flow = await install(flowFor(space));
+  await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input });
+  await until(async () => (await cards(d, admin)).length === 1, "a card");
+  await new Promise(r => setTimeout(r, 600));
+  assert.equal(notified(calls).length, 0, "nothing went out before the yes");
+};
+
+test("a recipient taken from the trigger asks", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: { expr: "trigger.who" }, body: "hi" }), { who: "someone@elsewhere.com" });
+});
+
+test("a second destination field (cc) that comes from the trigger asks, even with a literal to", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", cc: { expr: "trigger.who" }, body: "hi" }), { who: "x@elsewhere.com" });
+});
+
+test("a literal cc off the Flow's allow list asks", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", cc: "boss@elsewhere.com", body: "hi" }, { sends: { allow: ["sam@example.com"] } }));
+});
+
+test("an input field the tool never declared (bcc) asks", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", bcc: "x@elsewhere.com", body: "hi" }));
+});
+
+test("a tool whose module declared no destination fields is never covered", { timeout: 120_000 }, async t => {
+  await asks(t, (/** @type {string} */ space) => flowOf(space, { to: "sam@example.com", body: "hi" }, {}, { action: "zzflow.silent", resource: `vyre://${space}/tool/zzflow.silent` }));
+});
+
+test("only a Flow run can ask for the standing send: a person, the CLI or a module is refused", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install, space } = await boot(t);
+  const flow = await install(flowOf(space, { to: "sam@example.com", body: "hello" }));
+  const res = `vyre://${space}/flow-act/${flow.id}@${flow.hash}/c`;
+  const person = host.personChain();
+  for (const [who, chain] of [["person", person], ["owner device", admin]]) {
+    const dec = await d.kernel.gateway.authorize({ chain, action: "flows.act-standing", resource: res });
+    assert.notEqual(dec.effect, "allow", `${who} may not use the standing send`);
+  }
+  await d.registry.call("flows.act-standing", { resource: res }, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token }).then(r => assert.ok(r.error, "no such tool for the CLI"), () => {});
+});
+
+test("a run on an older version gets no standing yes after a new version is approved", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install, calls, space } = await boot(t);
+  const wait = { id: "w", kind: "wait", for_ms: 3000 };
+  const send = (/** @type {string} */ body) => ({ id: "c", kind: "call", action: "zzflow.notify", resource: `vyre://${space}/tool/zzflow.notify`, input: { to: "sam@example.com", body } });
+  const v1 = await install({ format: 1, name: "edited", label: "Notify", authorship: "human", trigger: { on: "manual" }, steps: [wait, send("one")] });
+  await host.flows.tools["flows.start"](host.personChain(), { id: v1.id, input: {} });
+  const r2 = await d.registry.call("flows.define", { id: v1.id, flow: { format: 1, name: "edited", label: "Notify", authorship: "human", trigger: { on: "manual" }, steps: [wait, send("two")] } }, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token });
+  assert.ok(r2.data && r2.data.ok, JSON.stringify(r2));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: v1.id, version: r2.data.version, hash: r2.data.hash });
+  await until(async () => (await cards(d, admin)).length === 1, "the run on the old version asks");
+  assert.equal(notified(calls).length, 0);
+  const live = (await d.kernel.gateway.grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active");
+  assert.ok(live.every((/** @type {any} */ g) => g.resource.prefix.endsWith(`@${r2.data.hash}`)), "only the new version's grant stands");
 });

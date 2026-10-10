@@ -243,7 +243,8 @@
         "label": { "type": "string", "minLength": 1, "maxLength": 80, "description": "How a Flow's card names the step." },
         "inputs": { "$ref": "#/$defs/flowFields" },
         "outputs": { "$ref": "#/$defs/flowFields" },
-        "outward": { "type": "boolean", "description": "The step leaves Vyre. The tool must be marked outward too, so a Flow holds it for the person's yes." }
+        "outward": { "type": "boolean", "description": "The step leaves Vyre. The tool must be marked outward too, so a Flow holds it for the person's yes." },
+        "recipients": { "type": "array", "maxItems": 8, "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" }, "description": "The input fields that say who the step sends to (to, cc, bcc, channel...), ALL of them. A turned-on Flow sends on its own only when these are declared and every one is checked; no declaration means it asks each time. Only Vyre's own modules are believed." }
       }
     },
     "flowTrigger": {
