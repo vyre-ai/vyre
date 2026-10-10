@@ -87,10 +87,11 @@ export function createEdits({ cwdOf }) {
 }
 
 /**
- * Watch a module's thread events and give the person's surface the one tool. @param {{ ctx: any, tool: Function, guard: (caller: string, what: string) => void, queuesFor: (caller: string) => boolean,
- *   cwdOf: (thread: string) => string | null, tell: (thread: string, note: string) => void }} o
+ * Watch a module's thread events and give the person's surface the one tool. `thread` may be a chat's id (the app only knows that): the file is looked for in each of the chat's runs. @param {{ ctx: any,
+ *   tool: Function, guard: (caller: string, what: string) => void, queuesFor: (caller: string) => boolean, cwdOf: (thread: string) => string | null, runsOf: (chat: string) => string[],
+ *   tell: (thread: string, note: string) => void }} o
  */
-export function registerEdits({ ctx, tool, guard, queuesFor, cwdOf, tell }) {
+export function registerEdits({ ctx, tool, guard, queuesFor, cwdOf, runsOf, tell }) {
   const edits = createEdits({ cwdOf });
   const offs = [
     ctx.events.on("thread.tool", (/** @type {any} */ e) => { try { if (e.payload && e.payload.phase === "started") edits.started(e.thread, e.payload); else edits.finished(e.thread, e.payload); } catch { /* a file that cannot be read is simply not kept */ } }),
@@ -101,9 +102,12 @@ export function registerEdits({ ctx, tool, guard, queuesFor, cwdOf, tell }) {
     async (/** @type {any} */ i, /** @type {{ caller: string }} */ { caller }) => {
       guard(caller, "put a file back");
       if (!queuesFor(caller)) throw fail("only a person's surface puts a file back", "denied");
-      const r = edits.undo(String(i.thread || ""), String(i.path || ""));
-      tell(String(i.thread), `[Vyre: the person undid your last edit to ${r.path}: it is ${r.restored === "removed" ? "removed again (it did not exist before your turn)" : "back as it was before your turn"}. Read it before you change it.]`);
-      ctx.events.emit("thread.edit-undone", { path: r.path, restored: r.restored }, { thread: String(i.thread) });
+      const given = String(i.thread || ""), file = String(i.path || "");
+      // the run that edited it: the thread named, else (a chat's id) the run of that chat that did
+      const run = [given, ...runsOf(given)].find(id => edits.has(id, file)) || given;
+      const r = edits.undo(run, file);
+      tell(run, `[Vyre: the person undid your last edit to ${r.path}: it is ${r.restored === "removed" ? "removed again (it did not exist before your turn)" : "back as it was before your turn"}. Read it before you change it.]`);
+      ctx.events.emit("thread.edit-undone", { path: r.path, restored: r.restored }, { thread: run });
       return r;
     });
   return { has: edits.has, stop() { for (const off of offs) { try { off(); } catch { /* gone */ } } } };

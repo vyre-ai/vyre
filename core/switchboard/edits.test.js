@@ -75,14 +75,14 @@ test("the tool is a person's, puts the file back and tells the session", async t
   const told = [], emitted = [];
   const ctx = { events: { on: (/** @type {string} */ type, /** @type {Function} */ fn) => { handlers[type] = fn; return () => {}; }, emit: (/** @type {string} */ ...a) => emitted.push(a) } };
   let run;
-  const reg = registerEdits({ ctx, tool: (/** @type {string} */ _n, /** @type {string} */ _d, /** @type {any} */ _s, /** @type {Function} */ fn) => { run = fn; }, guard: (/** @type {string} */ c) => { if (/^mcp/.test(c)) throw Object.assign(new Error("no"), { code: "denied" }); }, queuesFor: (/** @type {string} */ c) => c === "deck", cwdOf: () => d, tell: (/** @type {string} */ id, /** @type {string} */ n) => told.push([id, n]) });
+  const reg = registerEdits({ ctx, tool: (/** @type {string} */ _n, /** @type {string} */ _d, /** @type {any} */ _s, /** @type {Function} */ fn) => { run = fn; }, guard: (/** @type {string} */ c) => { if (/^mcp/.test(c)) throw Object.assign(new Error("no"), { code: "denied" }); }, queuesFor: (/** @type {string} */ c) => c === "deck", cwdOf: () => d, runsOf: (/** @type {string} */ c) => (c === "chat_1" ? ["t1"] : []), tell: (/** @type {string} */ id, /** @type {string} */ n) => told.push([id, n]) });
   handlers["thread.tool"]({ thread: "t1", payload: { phase: "started", call: "c1", kind: "edit", path: "a.txt" } });
   fs.writeFileSync(file, "two");
   handlers["thread.tool"]({ thread: "t1", payload: { phase: "done", call: "c1", status: "completed" } });
   await assert.rejects(run({ thread: "t1", path: "a.txt" }, { caller: "mcp" }), { code: "denied" });
   await assert.rejects(run({ thread: "t1", path: "a.txt" }, { caller: "cli" }), { code: "denied" });
-  const r = await run({ thread: "t1", path: "a.txt" }, { caller: "deck" });
-  assert.deepEqual(r, { path: "a.txt", restored: "put back" });
+  const r = await run({ thread: "chat_1", path: "a.txt" }, { caller: "deck" });
+  assert.deepEqual(r, { path: "a.txt", restored: "put back" }, "the app names the chat; the run that edited the file is found");
   assert.equal(fs.readFileSync(file, "utf8"), "one");
   assert.match(String(told[0][1]), /the person undid your last edit to a\.txt: it is back as it was before your turn/);
   assert.equal(told[0][0], "t1");

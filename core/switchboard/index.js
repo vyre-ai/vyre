@@ -4454,7 +4454,7 @@ export default {
         return sb.rewind(i.thread, i.uuid, i.restore || "conversation");
       });
 
-    offs.push(registerEdits({ ctx, tool, guard, queuesFor, cwdOf: id => (sb.record(id) || {}).cwd || null, tell: (id, note) => sb.carry.set(id, [sb.carry.get(id), note].filter(Boolean).join("\n")) }).stop);
+    offs.push(registerEdits({ ctx, tool, guard, queuesFor, cwdOf: id => (sb.record(id) || {}).cwd || null, runsOf: chat => sb.db.prepare("SELECT id FROM threads_runs WHERE chat = ?").all(chat).map(r => String(/** @type {any} */ (r).id)), tell: (id, note) => sb.carry.set(id, [sb.carry.get(id), note].filter(Boolean).join("\n")) }).stop);
 
     const EDIT_SHAPE = { thread: str, message: { type: "string", description: "The user message's uuid (thread.turn's uuid). Omitted: the last message a person typed." }, surface: str,
       restore: { type: "string", enum: ["conversation", "code", "both"], description: "As threads.rewind: the conversation (the default), the files its tools changed since (code), or both." } };
