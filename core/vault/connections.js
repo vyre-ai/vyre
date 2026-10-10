@@ -321,7 +321,7 @@ export class Connections {
       .filter(i => i.details && typeof i.details.provider === "string" && catalog(i.details.provider) && !i.name.includes("/") && !claimed.has(i.name))
       .map(i => {
         const p = /** @type {import("./providers.js").Provider} */ (catalog(i.details.provider));
-        return { ref: i.name, provider: p.name, account: i.name, auth: AUTH_OF_KIND[/** @type {keyof typeof AUTH_OF_KIND} */ (i.kind)] || "api-key",
+        return { ref: i.name, provider: p.name, account: i.details.address || i.name, auth: AUTH_OF_KIND[/** @type {keyof typeof AUTH_OF_KIND} */ (i.kind)] || "api-key",
           label: cut(i.description || i.name, 200), capabilities: [...p.capabilities], items: [i.name], use: null };
       });
     // Signing a row needs the key; nothing to sign means nothing to open the vault for.

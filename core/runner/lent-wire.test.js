@@ -435,3 +435,44 @@ test("a runner older than the server needs is told so: the session is the server
   assert.equal(home.book.get("s1").where, "mac");
   assert.ok(now.epoch >= 2);
 });
+
+test("a session the server took but has not yet carried on is still owed after the home restarts, is carried on once even when asked twice, and the id stays its owner's", async t => {
+  /** @type {any[]} */ const calls = [];
+  let fail = true;
+  const r = await clockRig(t, { resume: async i => { calls.push(i.session); if (fail) throw new Error("not yet"); } });
+  const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  await c.release({ session: "s1", reason: "lid-closed" });
+  assert.equal(calls.length, 1); assert.deepEqual(r.home.book.pendingResume().map(x => x.session), ["s1"], "the continuation failed: it is still owed, and the book says so on disk");
+  // the home restarts (the same folder): what is owed is read back, and one sweep carries it on
+  fail = false;
+  const home2 = createLentHome({ space: SPACE, root: path.join(r.dir, "home"), offers: r.g.offers, leases: r.k.gateway.leases, now: () => r.c.t, resume: async i => { calls.push(i.session); }, specFor: async () => ({ command: "x", routes: [] }) });
+  await home2.sweep(); await home2.sweep();
+  assert.equal(calls.length, 2, "carried on once more, not twice");
+  assert.deepEqual(home2.book.pendingResume(), []);
+  assert.equal(home2.book.ownerOf("s1"), BOB);
+});
+
+test("an Offer that no longer stands ends the lending even while the lender keeps beating: the server takes the session", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1", chat: r.chat });
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, []);
+  const id = r.accept.id;
+  await r.k.gateway.grants.offers.unoffer(r.bob, id, { presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, [], "one beat with no Offer is a blip");
+  assert.deepEqual((await c.beat({ sessions: [{ session: "s1", epoch: 1 }] })).fenced, ["s1"], "two running are not");
+  assert.deepEqual([r.home.book.get("s1").where, r.home.book.get("s1").reason], ["server", "switched-off"]);
+});
+
+test("a release the home refuses as moved tells the lender it was fenced, like any other refused write; an upload cannot claim more chunks than a file can have", async t => {
+  const r = await clockRig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  await c.spec({ session: "s1" });
+  const fenced = []; c.onFenced(s => fenced.push(s));
+  r.home.book.toServer("s1", "offline");   // the server took it behind the lender's back
+  await assert.rejects(c.release({ session: "s1", reason: "lid-closed" }));
+  assert.deepEqual(fenced, ["s1"]);
+  const r2 = await clockRig(t); const c2 = r2.as(BOB, "dev_laptop"); await c2.vault.lease();
+  const { epoch } = await c2.spec({ session: "s2" });
+  const raw = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r2.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  await assert.rejects(raw.call("lent.putFile", ["s2", "big", { upload: "uploadid1", index: 0, total: 5000, b64: "AAAA", epoch }]), e => e.code === "bad_input");
+});

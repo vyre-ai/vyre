@@ -10,10 +10,10 @@ import { createLearner, stemsOf, LIMITS } from "../lib/tools-learn.js";
 import { shapeFind, weak, indexOf, find } from "../harness/mcp/core-tools.js";
 import { agentCatalog } from "./tools-universe.js";
 
-const hit = (/** @type {string} */ name, /** @type {number} */ score) => ({ name, score, description: `${name} does a thing. It is long enough to be cut at eighty characters when it is shown compactly, for sure.`, call: { tool: name, arguments: { a: 1 } } });
+const hit = (/** @type {string} */ name, /** @type {number} */ score, /** @type {number} */ agree = 0) => ({ name, score, agree, description: `${name} does a thing. It is long enough to be cut at eighty characters when it is shown compactly, for sure.`, call: { tool: name, arguments: { a: 1 } } });
 
-test("the answer is three in full and the next ones compactly, and a weak answer points at the module map", () => {
-  const found = [hit("a", 90), hit("b", 70), hit("c", 60), hit("d", 50), hit("e", 40)];
+test("the answer is three in full and the next ones compactly, a close call names the two, and an empty answer points at the module map", () => {
+  const found = [hit("a", 90, 3), hit("b", 70), hit("c", 60), hit("d", 50), hit("e", 40)];
   const s = /** @type {any} */ (shapeFind(found, (n) => (n === "d" ? { required: ["x", "y"] } : null)));
   assert.equal(s.tools.length, 3);
   assert.deepEqual(s.tools[0].call, { tool: "tools_call", arguments: { tool: "a", arguments: { a: 1 } } });
@@ -21,10 +21,16 @@ test("the answer is three in full and the next ones compactly, and a weak answer
   assert.ok(s.also[0].description.length <= 80 && !("call" in s.also[0]));
   assert.deepEqual(s.also[0].needs, ["x", "y"]);
   assert.equal(s.browse, undefined, "a clear answer needs no pointer");
-  assert.equal(weak([hit("a", 20), hit("b", 10)]), true, "a low top score");
-  assert.equal(weak([hit("a", 60), hit("b", 58)]), true, "a near tie");
+  assert.equal(s.unsure, undefined, "a clear answer is not a close call");
+  assert.equal(weak([hit("a", 90, 3), hit("b", 85)]), false, "all three views agree: clear, whatever the margin");
+  assert.equal(weak([hit("a", 90, 1), hit("b", 50)]), false, "the first leads by more than a seventh");
+  assert.equal(weak([hit("a", 60, 1), hit("b", 58)]), true, "a near tie the views do not agree on");
   assert.equal(weak([]), true);
-  assert.match(/** @type {any} */ (shapeFind([hit("a", 20)])).browse, /vyre_core/);
+  const close = /** @type {any} */ (shapeFind([hit("a", 60, 1), hit("b", 58), hit("c", 20)]));
+  assert.match(close.unsure, /Close call between a and b/);
+  assert.match(close.unsure, /ask them which they mean/);
+  assert.equal(close.browse, undefined);
+  assert.match(/** @type {any} */ (shapeFind([])).browse, /vyre_core/);
 });
 
 test("tools_find returns five by default's worth of candidates from the real catalog", async (t) => {

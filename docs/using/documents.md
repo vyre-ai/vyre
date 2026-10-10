@@ -16,25 +16,31 @@ A template is a Word file in your Drive under `Templates/`, with `{placeholders}
 
 `documents.generate` fills a template from values and from records you name by reference (`records: { client: <record> }`, so `{client.name}` fills from the record's field). It answers the path, version, size, hash and format. The same input makes the same file. If a value is missing, blank, or a list has nothing to repeat, nothing is made and the error names every one of them; Vyre never guesses.
 
-The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; elsewhere a PDF says plainly that it needs the Records server, and the Word file is still made.
+The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; on any other server, install "PDF converter" from Apps (the same converter, pinned, with no way out of your server), and Documents finds it by itself. With neither, a PDF says plainly what it needs, and the Word file is still made.
 
 ## Send for signature
 
-`documents.send` sends a template for signature: it makes the signing request and emails the signer their link through Comms. That is one act with one yes: you read the words once, and the signing app sends nothing of its own. When the signer has signed, `documents.send-signed` makes a link to the finished copy that stops working after 30 days and emails it to the signer, again one yes. A new link is one call away: `documents.signed-link` with the signer's `slug` and `days` (1 to 30).
+`documents.send` sends a template for signature: it makes the signing request and emails the signer their link through Comms. That is one act with one yes: you read the words once, and the signing app sends nothing of its own. When the signer has signed, `documents.send-signed` makes a link to the finished copy and emails it to the signer, again one yes. The link does not expire: a client can open their signed contract from that email years later. The setting `documents.signed_link_days` (Settings, Documents) gives new links an end after that many days; 0 turns it off. A new link is one call away: `documents.signed-link` with the signer's `slug` (and `days`, 1 to 3650, to end it sooner). The finished file is behind a separate key held by your server, not behind the signer's own address, so the signing page alone never opens it. `documents.signed-link.revoke` ends every link made so far, and the next link made works again.
 
 In the Documents screen, Send for signature shows the signer, the template and your note; confirm it and the signer gets their link by e-mail. From an agent, the approval card for `documents.send` carries the whole act. From a Flow, your answer to the Flow's own question is the yes: nothing waits at the Gate afterwards. Either way, what you read before saying yes is the signer, the template and any note; the link line is fixed.
 
 If the signer declines instead, Documents says so at once: the Document is filed as Declined on the signer's Contact (their timeline shows it), and the event `documents.declined` carries the reason they gave for a Flow of your own to use.
 
+## Waiting for a signature
+
+A document you sent that nobody has signed shows in Needs you as a quiet row: "Dana Harlow has not signed Engagement letter", with the address it went to. Nothing pushes for it. It goes away when the signature arrives, the signer declines, or the request lapses. Its answer is `documents.signing.remind`, which emails the signer their link again (the same one yes as any send; add a short note if you like). `documents.signing.waiting` returns the same list to an assistant. The signer's link and code are never on the row.
+
 ## Sign from a stage
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
+
+The signer is either on the record (`email_field`, and `name_field` for the name) or is the Contact the record links to (`contact_field`, such as a project's `client`). With a Contact, Documents reads the address and the name from the Contact itself, so a Kit's own types (a client, a project) work as they are: the Flow needs no e-mail field and no field to remember the request in, and the stage's one run per entry is what sends it once. A Contact with no e-mail address is said plainly and nothing is sent. `documents.send` and `documents.send-signed` take `contact` in place of `email` the same way.
 
 ## Signing pages
 
 A signer outside your network needs a way in. Set the public address of an edge in Settings (Devices, Public address for signing pages and shared links) and their browser reaches your server through it; the edge sees only encrypted traffic and cannot read the page or the signed contract. With none set, only your own devices open these pages.
 
-When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer for your yes), and a new one is one call away.
+When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it (the signing flow emails it to the signer for your yes) that does not expire unless you set `documents.signed_link_days`, and `documents.signed-link.revoke` ends them all.
 
 ### Your own address for signing pages
 

@@ -15,6 +15,7 @@ import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
 import { workspaceUnavailable, driverFor } from "./workspace.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
+import { pidsUnder } from "./proctree.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
 const hmac = s => crypto.createHmac("sha256", "test-seal-key").update(s).digest("hex");
@@ -280,7 +281,7 @@ async function rig(t, over = {}) {
   const sp = over.space || fakeSpace({ ttlMs: over.ttlMs || 3_600_000 });
   const grants = over.grants || { spaceAllows: true, memberAccepts: true };
   const server = { starts: 0, asked: [] };
-  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: over.requestServer || ((session, reason) => { server.starts++; server.asked.push([session, reason]); }), retryMs: 50, sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
+  const mk = (b = base) => createRunner({ base: b, space: "harlow", device: "kit", vault: sp.vault, sync: sp.sync, grants: () => grants, requestServer: over.requestServer || ((session, reason) => { server.starts++; server.asked.push([session, reason]); }), retryMs: 50, ...(over.onEvent ? { onEvent: over.onEvent } : {}), sealState: seal, verifyState: unseal, sessionState: s => ({ v: 1, session: s, taint: "external" }) });
   const runner = mk();
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
@@ -544,4 +545,99 @@ test("runner: when the lease ends the sessions are handed to the server first, w
   await h.done;
   await waitFor(() => r.runner.status().open === false);
   assert.deepEqual(r.server.asked, [["s1", "lease-expired"]]);
+});
+
+test("runner: a hand-over under way is not woken by anything else, and a second ask joins the first", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  /** @type {(v: any) => void} */ let answer = () => {};
+  let asked = 0;
+  const r = await rig(t, { requestServer: () => { asked++; return new Promise(res => { answer = res; }); } });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  const first = r.runner.moveToServer("s1", "lid-closed"), second = r.runner.moveToServer("s1", "unplugged");
+  assert.equal(first, second, "the same hand-over");
+  await waitFor(() => procState(h.pid) === "T" && asked === 1);
+  r.runner.freeze("offline"); r.runner.thaw("offline");   // a good heartbeat that thaws what was frozen for being offline
+  await sleep(300);
+  assert.equal(procState(h.pid), "T", "the session being handed over stays still");
+  answer({ moved: true });
+  assert.deepEqual(await first, { moved: true });
+  assert.equal(asked, 1);
+});
+
+test("runner: a second start of a session that is being started is refused, and leaves no child", { skip: SKIP || false, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const a = r.launch(r.runner, "s1"), b = r.launch(r.runner, "s1");
+  const out = await Promise.allSettled([a, b]);
+  assert.deepEqual(out.map(x => x.status).sort(), ["fulfilled", "rejected"]);
+  assert.match(String(/** @type {any} */ (out.find(x => x.status === "rejected")).reason.message), /already/);
+  assert.deepEqual(r.runner.status().sessions, ["s1"]);
+});
+
+test("runner: stopping a session that is frozen ends everything under it", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const h = await r.launch(r.runner, "s1");
+  await waitFor(() => pidsUnder(h.pid).length > 0);
+  const under = pidsUnder(h.pid);
+  r.runner.pause();
+  await waitFor(() => procState(h.pid) === "T");
+  await r.runner.stop("s1");
+  await waitFor(() => under.every(p => { try { process.kill(p, 0); return false; } catch { return true; } }), 8000);
+  assert.deepEqual(r.runner.status().sessions, []);
+});
+
+test("runner: a session says why it ended: finished by itself, stopped by the person, or died", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  /** @type {any[]} */ const ended = [];
+  const r = await rig(t, { onEvent: e => { if (e.type === "stopped") ended.push([e.session, e.why]); } });
+  const a = await r.launch(r.runner, "fin");
+  a.send("exit");   // the program ends itself, successfully
+  await waitFor(() => ended.length === 1);
+  const b = await r.launch(r.runner, "stp");
+  await r.runner.stop("stp");
+  const c = await r.launch(r.runner, "die");
+  process.kill(c.pid, "SIGKILL");
+  await waitFor(() => ended.length === 3);
+  void b;
+  assert.deepEqual(ended, [["fin", "finished"], ["stp", "stopped"], ["die", "crashed"]]);
+});
+
+test("runner: a server that never answers a hand-over leaves the session running, not frozen for ever", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  const r = await rig(t, { requestServer: () => new Promise(() => {}), handoverMs: 400 });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+  await waitFor(() => procState(h.pid) !== "T");
+  assert.deepEqual(r.runner.status().sessions, ["s1"]);
+  // and the next hand-over can be asked: the first left nothing set
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+});
+
+test("runner: a hand-over the home holds back, or that fails, does not wake a session the person paused", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  let answer = /** @type {() => any} */ (() => ({ moved: false, why: "cooldown" }));
+  const r = await rig(t, { requestServer: () => answer(), handoverMs: 400 });
+  const h = await r.launch(r.runner, "s1");
+  r.runner.pause(); await waitFor(() => procState(h.pid) === "T");
+  assert.deepEqual(await r.runner.moveToServer("s1", "lid-closed"), { moved: false, why: "cooldown" });
+  await sleep(300);
+  assert.equal(procState(h.pid), "T", "Pause all stands after a refused hand-over");
+  answer = () => new Promise(() => {});
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+  await sleep(300);
+  assert.equal(procState(h.pid), "T", "and after one that never answered");
+  r.runner.resume();
+  await waitFor(() => procState(h.pid) !== "T");
+});
+
+test("runner: thawing a reason nobody froze for sends no signal; a session stopped by the machine's teardown says so, not that the person stopped it", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  /** @type {any[]} */ const ended = [];
+  const r = await rig(t, { onEvent: e => { if (e.type === "stopped") ended.push(e.why); } });
+  const h = await r.launch(r.runner, "s1");
+  r.runner.pause(); await waitFor(() => procState(h.pid) === "T");
+  r.runner.thaw("offline");   // never frozen for that: the person's pause stands
+  await sleep(200);
+  assert.equal(procState(h.pid), "T");
+  r.runner.resume();
+  await r.runner.stopAll();
+  assert.deepEqual(ended, ["teardown"]);
 });

@@ -320,13 +320,14 @@ export default {
       description: "Make a GitHub repo for a folder (private unless public is asked), under the account or an organisation, and send the folder there.",
       input: obj({ account: str, owner: str, name: str, visibility: { type: "string", enum: ["private", "public"] }, dir: str, description: str }, ["name", "dir"]),
       callers: PEOPLE,
-      presence: { summary: async (i) => `Make the ${i && i.visibility === "public" ? "public" : "private"} GitHub repo ${String((i && i.owner) ? i.owner + "/" : "")}${String((i && i.name) || "")} and send a folder there` },
+      presence: { summary: async (i) => `Make the ${i && i.visibility === "public" ? "public" : "private"} GitHub repo ${String((i && i.owner) ? i.owner + "/" : "")}${String((i && i.name) || "")} and send the folder ${String((i && i.dir) || "").split(/[\\/]/).filter(Boolean).pop() || "you named"} there` },
       run: async (input, meta = {}) => {
         const dir = path.resolve(String(input.dir || ""));
         const acct = forOne(accounts.all(), named(input.account));
         const token = await ctx.vault.fetch(acct.item, { field: "token" });
         // The folder is made ready and scanned first: nothing is made on GitHub for a folder that would be refused.
         const ready = await prepareFirstPush({ dir });
+        if (ready.hit && "unreadable" in ready.hit) throw fail("the folder, with its history, is too large to check for secrets here, so nothing was sent; send a smaller folder or one without the old commits. Nothing was made on GitHub.", "too_large");
         if (ready.hit) throw fail(`a ${ready.hit.pattern} was found at ${ready.hit.file}:${ready.hit.line}; take it out of the folder first, nothing was made on GitHub`, "secret_found", ready.hit);
         const visibility = input.visibility === "public" ? "public" : "private";
         const repo = await createRepo({ token, login: acct.login, owner: named(input.owner), name: String(input.name || ""), visibility, description: named(input.description) });

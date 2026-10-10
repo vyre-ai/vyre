@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { Frame, Sec } from "../places/Frame";
-import { bodyText, errWords, parseBody, roleLines, stateWord, treeOf, type Version } from "./model";
+import { bodyText, errWords, parseBody, projectIdOf, roleLines, startName, stateWord, treeOf, type Version } from "./model";
 import { templates } from "./templates";
 
 /**
@@ -12,6 +12,7 @@ import { templates } from "./templates";
  */
 export default function TemplateScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const template = String(id);
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [pick, setPick] = useState<number | null>(null);
@@ -19,6 +20,7 @@ export default function TemplateScreen() {
   const [err, setErr] = useState("");
   const [test, setTest] = useState<string[] | null>(null);
   const [edit, setEdit] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState("");
   const [busy, setBusy] = useState("");
   const load = useCallback(() => {
     setErr("");
@@ -35,6 +37,13 @@ export default function TemplateScreen() {
     const v = await templates.define(p.body, template, "edited in the studio");
     showToast(`Saved as draft version ${v.version}.`); setEdit(null); setPick(v.version); load();
   });
+  const start = () => run("start", async () => {
+    const n = startName(projectName);
+    if (!n.ok) { showToast(n.why); return; }
+    const r = await templates.start(template, n.name);
+    showToast(`${n.name} is started. Its first tasks are in Now.`);
+    router.push(`/u/project/${projectIdOf(r.project)}` as never);
+  });
   const tree = cur?.body ? treeOf(cur.body) : [];
   return (
     <Frame back="/u/templates" title={cur?.name || "Template"} sub={cur ? `Version ${cur.version}, ${stateWord(cur.state).toLowerCase()}` : undefined}
@@ -49,6 +58,13 @@ export default function TemplateScreen() {
           <Field name="Template body (JSON)" value={edit} onChangeText={setEdit} multiline lines={18} />
           <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Save as a draft version" loading={busy === "save"} onPress={() => void save()} /><Button kind="ghost" size="sm" label="Cancel" onPress={() => setEdit(null)} /></View>
         </Sec>
+      ) : null}
+      {cur && cur.state === "live" ? (
+        <Sec title="Start a project"><View className="gap-s3">
+          <Text tone="muted">Makes the project with its team and these stages, and puts the first stage's tasks in Now. Projects already running keep their own version.</Text>
+          <Field name="Project name" value={projectName} onChangeText={setProjectName} placeholder="Rivera Family Trust" />
+          <View className="self-start"><Button kind="primary" size="sm" label={busy === "start" ? "Starting" : "Start project"} loading={busy === "start"} disabled={!projectName.trim()} onPress={() => void start()} /></View>
+        </View></Sec>
       ) : null}
       {cur?.body ? (
         <Sec title="Stages and tasks">

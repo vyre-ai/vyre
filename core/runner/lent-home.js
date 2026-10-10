@@ -23,11 +23,20 @@ import { effectiveNetwork } from "./runner.js";
 import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_MS } from "./placement-book.js";
+import { createPipes } from "./pipe-home.js";
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
+/** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
+const RESUME_MS = 30_000;
+/** The most sessions one heartbeat names; a lender with more sends them in several, so none is ever missed (a missed one looks dead). */
+export const BEAT_MAX = 100;
+/** A file is at most 100 MB (the checkpoint's own cap) in chunks of CHUNK_BYTES: an upload that says it has more chunks than that is refused before anything is written. */
+const MAX_CHUNKS = Math.ceil(100 * 1024 * 1024 / CHUNK_BYTES) + 2;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
+/** A computer that beat this lately, and said it was well, is one a chat may be started on (three heartbeats). */
+const LENDER_FRESH_MS = 15_000;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
 export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "provider" : a === "internet" || b === "internet" ? "internet" : undefined);
 
@@ -35,22 +44,33 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  * @param {{ space: string, root: string, offers: { active(q: { member: string, device: string }): { spaceAllows: boolean, memberAccepts: boolean }, capOf?(q: { member: string, device: string }): "provider" | "internet" | undefined },
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
- *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
+ *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void, helloOf?(id: string): { cap?: "provider" | "internet" | null } | null },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
+ *   lapseMs?: number,
+ *   canResume?: () => boolean,
  *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
+ *   canResume: can the server carry a session on right now (the loader that turns a lent transcript into a chat exists)? When it cannot, the server takes no session from a lender: a move answers `unavailable` and the lender keeps
+ *   running it, because a session taken with nothing to continue it is a session lost. Unset: yes.
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
 export function createLentHome(o) {
   const now = o.now || Date.now;
-  const book = o.book || createPlacementBook({ now, ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
+  const book = o.book || createPlacementBook({ now, ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
   const lent = new Map();
   // A restart of the home keeps the sessions that were on lenders' computers: they are lent again as they were, and each lender gets a whole lapse to show itself.
   for (const r of book.all()) if (r.where === "mac" && r.key !== undefined) lent.set(r.session, { person: r.person, device: r.device, key: r.key || undefined, ...(r.chat ? { chat: r.chat } : {}) });
   book.grace();
-  /** Sessions the server took and has not yet resumed. @type {Set<string>} */ const owed = new Set();
+  /** Sessions the server took and has not yet carried on, including those a restart of this home found still owed. @type {Set<string>} */ const owed = new Set(book.pendingResume().map(r => r.session));
+  /** Continuations running now, one per session: a slow one is not started a second time. @type {Map<string, Promise<void>>} */ const resuming = new Map();
+  // partial uploads of a lender that vanished are not kept across a restart
+  try { if (o.root) fs.rmSync(path.join(o.root, ".uploads"), { recursive: true, force: true }); } catch { /* nothing there */ }
   const uploads = new Map();
   const downloads = new Map();
+  /** The pipes of lent spawns (contracts/lent-spawn.md): a chat's agent process on a lender, as the SDK on this home sees it. */
+  const pipes = o.pipes || createPipes({ now });
+  /** The key each computer lent under, as it last said it (in `status`): the Offers are made for the computer and its key. @type {Map<string, string>} */ const keys = new Map();
+  /** Computers that beat lately and said nothing holds them back: a chat may be started on one. @type {Map<string, { person: string, at: number, well: boolean }>} */ const lenders = new Map();
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw err("not_found", "not found");
@@ -75,20 +95,36 @@ export function createLentHome(o) {
     return w;
   };
   // The server takes a session: the book moves it (the lender is fenced from this moment), the lender's table entry and credential binding go, and the resume is owed until it answers.
+  const canResume = () => (typeof o.canResume === "function" ? o.canResume() === true : true);
   const takeOver = async (session, reason, opt = {}) => {
+    if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
     lent.delete(String(session)); owed.add(String(session));
+    pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
-    await resumeOwed(String(session));
+    kickResume(String(session));
     return r;
   };
-  const resumeOwed = async (session) => {
+  /** Start the server's continuation of a session, once at a time; the caller does not wait for it (a slow continuation must not hold a lender's release or the sweep of the others). */
+  const kickResume = (/** @type {string} */ session) => {
+    if (resuming.has(session)) return;
+    const p = resumeOwed(session).finally(() => { resuming.delete(session); });
+    resuming.set(session, p);
+  };
+  const resumeOwed = async (/** @type {string} */ session) => {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
-    if (!o.resume) { owed.delete(session); return; }
-    try { await o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) }); owed.delete(session); }
-    catch { /* told again at the next sweep */ }
+    if (!canResume()) return;   // still owed: told again when the loader exists
+    if (!o.resume) { owed.delete(session); book.resumed(session); return; }
+    // writes that passed their checks before the take-over finish first, so the server carries on from what the store really holds
+    try { await store.drain(session); } catch { /* the store answers for itself */ }
+    // a continuation that hangs is given half a minute and told again at the next sweep
+    try {
+      await Promise.race([Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), new Promise((_, no) => { const t = setTimeout(() => no(new Error("the continuation did not answer")), RESUME_MS); t.unref?.(); })]);
+      // only what was owed at THIS take-over: a later one of the same session is owed its own
+      if (book.get(session)?.epoch === row.epoch) { owed.delete(session); book.resumed(session); }
+    } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
   let timer = null;
@@ -98,10 +134,16 @@ export function createLentHome(o) {
     timer.unref?.();
     return () => { if (timer) clearInterval(timer); timer = null; };
   };
+  let sweeping = false;
   const sweepOnce = async () => {
+    if (sweeping) return;
+    sweeping = true;
+    try { await sweepAll(); } finally { sweeping = false; }
+  };
+  const sweepAll = async () => {
     for (const r of book.lapsed()) await takeOver(r.session, "offline");
     for (const r of book.overdue()) await takeOver(r.session, r.ask && r.ask.reason ? r.ask.reason : "you");
-    for (const s of [...owed]) await resumeOwed(s);
+    for (const s of [...owed]) kickResume(s);
   };
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
   // The home's own chain: it reads a session the lender gave up from the same store, to resume it on the server. A private object, never on the wire, so nothing a peer sends can be it.
@@ -122,7 +164,7 @@ export function createLentHome(o) {
   return {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
-    book, watch, sweep: sweepOnce, takeOver,
+    book, watch, sweep: sweepOnce, takeOver, canResume, view: viewOf, pipes,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
@@ -132,6 +174,7 @@ export function createLentHome(o) {
     /** Whether this person's computer may run the Space's work now (both Offers), and the lender's own cap: the lender's runner polls it (never faster than once a minute). @param {any} chain @param {{ device_key?: string }} [i] */
     async status(chain, i = {}) {
       const w = who(chain); const a = o.offers.active({ member: w.person, device: w.device, ...(i && i.device_key ? { device_key: String(i.device_key) } : {}) });
+      if (i && typeof i.device_key === "string" && i.device_key.length <= 200 && a && a.memberAccepts) keys.set(w.device, i.device_key);
       return { spaceAllows: Boolean(a && a.spaceAllows), memberAccepts: Boolean(a && a.memberAccepts), lenderCap: tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined) || null };
     },
     /** @param {any} chain @param {{ session: string, lease?: string, device_key?: string, cap?: "provider" | "internet" | null, chat?: string }} i */
@@ -139,15 +182,21 @@ export function createLentHome(o) {
       const w = who(chain);
       if (!i || !SESSION.test(String(i.session))) throw err("bad_input", "name the session");
       if (!stands(w, i.device_key)) throw err("not_allowed", "this computer is not allowed to run this Space's work");
+      // a session id belongs to the first person who used it, for good: nobody else reads what it left in the store
+      { const owner = book.ownerOf(String(i.session)); if (owner !== null && owner !== w.person) throw err("not_found", "not found"); }
       { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
-      const spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
+      let spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
+      // A chat spawned on this computer (lent spawn): the SDK's flags replace the Space's bare program, and the runner pumps the process's bytes through `lent.pipe`.
+      const asked = pipes.pending(String(i.session), w.device);
+      if (asked) spec = { ...spec, command: asked.command, args: asked.args, env: {}, pipe: true };
       if (i.cap !== undefined && i.cap !== null && i.cap !== "provider" && i.cap !== "internet") throw err("bad_input", "the lender's network limit is provider or internet");
       // The tightest of what the home knows (the lender's acceptance and the floor of every limit this computer was ever lent with) and what the lender's runner signed in its hello: a runner can only ask for less.
-      const cap = tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined);
+      // The limit the lender's key signed with the lease request counts too, whatever a later, unsigned start says.
+      const signedCap = i.lease && o.leases && typeof o.leases.helloOf === "function" ? ((o.leases.helloOf(String(i.lease)) || {}).cap || undefined) : undefined;
+      const cap = tighterCap(tighterCap(tighterCap((o.lenderCap && o.lenderCap(w)) || undefined, o.offers.capOf ? o.offers.capOf({ member: w.person, device: w.device }) : undefined), i.cap || undefined), signedCap);
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
-      if (o.leases && i.lease) { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
       // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
       const had = lent.get(String(i.session));
       if (had && had.person !== w.person) throw err("not_found", "not found");
@@ -158,14 +207,26 @@ export function createLentHome(o) {
       // protocol is needed. Where no hello was signed (a test, a home that does not require it) there is nothing to compare.
       const hello = o.leases && i.lease && typeof o.leases.helloOf === "function" ? o.leases.helloOf(String(i.lease)) : null;
       if (hello && Number.isInteger(hello.protocol) && hello.protocol < RUNNER_PROTOCOL_MIN) {
+        const live = book.get(String(i.session));
         book.skew({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null });
-        if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } }
+        // an old runner on a second computer must not take the credentials of a session that is running well on the first
+        if (o.leases && !(live && live.where === "mac")) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } }
         return { skew: { need: RUNNER_PROTOCOL_MIN, have: hello.protocol } };
       }
       // The book decides whether this computer may run it (a session the server took comes back only when the person asked) and gives the epoch every later write names.
-      let row;
-      try { row = book.lend({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null }); }
-      catch (e) { if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } } throw e; }
+      // Nothing of a session that is running well elsewhere is touched until the book has said this computer may have it: the refusals above and the book's own (a second computer, a session on the server) leave its
+      // credentials and its row as they were.
+      const before = book.get(String(i.session));
+      const row = book.lend({ session: String(i.session), chat: chat || (asked && asked.chat) || null, person: w.person, device: w.device, key: i.device_key || null });
+      if (asked) pipes.claimed(String(i.session), w.device);
+      if (o.leases && i.lease) {
+        try { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
+        catch (e) {
+          // the lease did not hold: the lend is undone, and the epoch it used stays used (a row that existed goes back to the server; one that did not is forgotten, its id still the person's)
+          if (before) book.toServer(String(i.session), "crash"); else book.forget(String(i.session));
+          throw e;
+        }
+      }
       owed.delete(String(i.session));
       lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
       const title = chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null;
@@ -180,14 +241,20 @@ export function createLentHome(o) {
      */
     async beat(chain, i = {}) {
       const w = who(chain);
-      const list = i && Array.isArray(i.sessions) ? i.sessions.slice(0, 50) : [];
+      const list = i && Array.isArray(i.sessions) ? i.sessions.slice(0, BEAT_MAX) : [];
       /** @type {string[]} */ const fencedList = [];
       for (const x of list) {
         const sid = String(x && x.session), l = lent.get(sid);
+        // an Offer that no longer stands ends the lending: the server takes the session instead of counting a healthy beat
+        if (l && l.person === w.person && l.device === w.device) {
+          if (stands(w, l.key)) l.unstood = 0;
+          else if ((l.unstood = (l.unstood || 0) + 1) >= 2 && (await takeOver(sid, "switched-off")).changed) { fencedList.push(sid); continue; }   // twice running: a home that has only just started and not yet read its Offers must not take a healthy session
+        }
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);
-      return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: book.directives(w.device) };
+      lenders.set(w.device, { person: w.person, at: now(), well: i && i.well === true });
+      return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: [...book.directives(w.device), ...pipes.wants(w.device)] };
     },
     /**
      * The lender hands a session to the server, after its final checkpoint. Only at the epoch it holds. A move its own condition asked for (lid, battery, a cap) is held back inside the cooldown and the lender
@@ -201,7 +268,30 @@ export function createLentHome(o) {
       const r = await takeOver(String(i.session), reason, { auto: AUTO.includes(reason) });
       return r.changed ? { moved: true, epoch: r.row ? r.row.epoch : undefined } : { moved: false, why: r.why };
     },
-    async stop(chain, i) { mine(chain, i && i.session); lent.delete(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    /**
+     * The lender's side of a lent spawn: bytes of the process it runs for a chat, up; bytes for its stdin, down. A long poll (contracts/lent-spawn.md). Fenced like every write: an old epoch is `conflict`.
+     * @param {any} chain @param {{ session: string, epoch: number, up?: any[], exit?: any, ack?: number, wait_ms?: number }} i
+     */
+    async pipe(chain, i) {
+      const w = writer(chain, i && i.session, i && i.epoch);
+      return pipes.poll(String(i.session), i.epoch, w.device, i);
+    },
+    /**
+     * A chat's agent process on this person's computer, for the Agent SDK on this home (`sandboxSpawn`): a ChildProcess whose bytes ride `lent.pipe`. The computer is the person's own that beat lately with nothing holding
+     * it back, or the one already running the session. With none ready it fails as a spawn that never started.
+     * @param {{ session: string, chat?: string | null, person: string, command?: string, args?: string[], signal?: AbortSignal }} i
+     */
+    spawn(i) {
+      const session = String(i && i.session), person = String(i && i.person);
+      const row = SESSION.test(session) ? book.get(session) : null;
+      const fresh = [...lenders].filter(([device, l]) => l.person === person && l.well && now() - l.at <= LENDER_FRESH_MS && stands({ person, device }, keys.get(device)));
+      // A chat is not started on a computer while the server could not carry it on if the lid closed: it would sit frozen on a sleeping Mac. It fails as a spawn that never started and runs on the box.
+      const pick = !canResume() || !SESSION.test(session) || (row && row.person !== person) || (row && row.where === "server" && !row.allowMac) ? null
+        : row && row.where === "mac" ? (fresh.find(([d]) => d === row.device) || [null])[0]
+        : fresh.sort((a, b) => b[1].at - a[1].at).map(x => x[0])[0] || null;
+      return pipes.spawn({ session, chat: i.chat || null, person, device: pick, command: "claude", args: i.args, ...(i.signal ? { signal: i.signal } : {}) });
+    },
+    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },
@@ -214,7 +304,7 @@ export function createLentHome(o) {
     async putFile(chain, s, rel, c = {}) {
       writer(chain, s, c && c.epoch);
       if (c.deleted) return store.putFile(chain, String(s), String(rel), null);
-      if (!Number.isInteger(c.index) || !Number.isInteger(c.total) || c.total < 1 || c.index < 0 || c.index >= c.total || typeof c.b64 !== "string" || typeof c.upload !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(c.upload)) throw err("bad_input", "a file chunk is numbered and carries its bytes");
+      if (!Number.isInteger(c.index) || !Number.isInteger(c.total) || c.total < 1 || c.total > MAX_CHUNKS || c.index < 0 || c.index >= c.total || typeof c.b64 !== "string" || typeof c.upload !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(c.upload)) throw err("bad_input", "a file chunk is numbered and carries its bytes");
       const bytes = Buffer.from(c.b64, "base64");
       if (bytes.length > CHUNK_BYTES) throw err("too_large", "that chunk is too large");
       const key = `${w2(chain)}|${s}|${c.upload}`;

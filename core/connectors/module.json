@@ -44,6 +44,7 @@
       { "name": "connectors.site.sync", "reach": "person", "effect": "write" },
       { "name": "connectors.site.operations", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.list", "reach": "anyone", "effect": "read" },
+      { "name": "connectors.site.attention", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.rows", "reach": "anyone", "effect": "read" },
       { "name": "connectors.site.rollback", "reach": "person", "effect": "write" },
       { "name": "connectors.site.limits", "reach": "anyone", "effect": "read" },

@@ -42,6 +42,23 @@
         "reach": "anyone"
       },
       {
+        "name": "documents.signed-link.revoke",
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.signing.waiting",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.signing.remind",
+        "outward": true,
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
         "name": "documents.send",
         "outward": true,
         "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
@@ -61,7 +78,8 @@
     "emits": [
       "documents.generated",
       "documents.sent",
-      "documents.copy-sent"
+      "documents.copy-sent",
+      "documents.reminded"
     ]
   },
   "shows": {},
@@ -112,7 +130,7 @@
       },
       {
         "name": "documents.signed-link",
-        "label": "Make a 30-day link to the signed copy",
+        "label": "Make a link to the signed copy",
         "outward": true,
         "inputs": {
           "slug": "string",
@@ -157,6 +175,23 @@
     ]
   },
   "settings": [
+    {
+      "key": "documents.signed_link_days",
+      "group": "documents",
+      "label": "Links to signed copies expire after (days)",
+      "help": "0 means they never expire, so a client can open their signed contract from the email years later. Give a number of days to make new links expire. A link already sent keeps the end it was made with; ask the assistant to end every link and they all stop.",
+      "type": "int",
+      "min": 0,
+      "max": 3650,
+      "default": 0,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "documents.signed_link_days"
+      }
+    },
     {
       "key": "documents.pdf",
       "group": "documents",

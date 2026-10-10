@@ -23,6 +23,7 @@ export function createLenderHost(o) {
   const refresh = async () => {
     let next;
     try { next = await o.invoke("lent.status", [{ device_key: o.deviceKey }]); } catch { return; }   // an unreachable home changes nothing; the lease's own expiry covers a long absence
+    if (!next || typeof next !== "object") return;   // an answer that is not an answer changes nothing
     cap = next.lenderCap || o.lenderCap; const was = state; state = { spaceAllows: Boolean(next.spaceAllows), memberAccepts: Boolean(next.memberAccepts) };
     if ((was.spaceAllows && !state.spaceAllows) || (was.memberAccepts && !state.memberAccepts)) for (const fn of told) { try { fn({ device: o.deviceId, reason: "withdrawn" }); } catch {} }
   };
@@ -37,7 +38,7 @@ export function createLenderHost(o) {
     sync: client.sync,
     grants: () => state,
     onRevoke: fn => { told.add(fn); if (!timer) { timer = setInterval(refresh, pollMs); timer.unref?.(); } return () => { told.delete(fn); if (!told.size && timer) { clearInterval(timer); timer = null; } }; },
-    spec: client.spec, stop: client.stop, beat: client.beat, release: client.release, epochOf: client.epochOf, onFenced: client.onFenced,
+    spec: client.spec, stop: client.stop, beat: client.beat, release: client.release, pipe: client.pipe, epochOf: client.epochOf, onFenced: client.onFenced,
     server: o.server, requestServer: o.requestServer || ((/** @type {string} */ _space, /** @type {string} */ session, /** @type {string} */ reason) => client.release({ session, reason: reason || "you" })),
   };
   // `ready` settles once the first answer is in (or the home was unreachable): await it before handing the ports to the runner, so its first `grants()` is not a guess.

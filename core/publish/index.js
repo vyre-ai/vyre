@@ -61,6 +61,8 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
+/** What publish.quick says while the box has no public door. */
+const PUBLIC_LATER = "Public once the public door is on. Until then the address works on your own devices only.";
 const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
@@ -312,7 +314,7 @@ export default {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
         // A folder on this server is read off its disk by the builder: whose folder it may be is judged here, once, with the caller known.
-        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta), home: ctx.paths.root }); if (no) throw refuse(no.message, no.code); }
+        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta) }); if (no) throw refuse(no.message, no.code); }
         return { deployment: shown(await b.pub.create(b.chain, draft)) };
       },
     });
@@ -365,12 +367,15 @@ export default {
       input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
-        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta), home: ctx.paths.root });
+        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta) });
         if (no) throw refuse(no.message, no.code);
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
         const held = await b.pub.goLive(b.chain, made.id, {});
-        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+        // until the public door (names.status listening) is on, the address a yes makes live is reachable on the person's own devices only: say so, in the same answer as the yes
+        const door = await call("names.status", {}).catch(() => ({ data: null }));
+        const open = Boolean(door.data && door.data.listening === true);
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan, public: open, ...(open ? {} : { note: PUBLIC_LATER }) };
       },
     });
     ctx.tool("publish.rollback", {
@@ -530,7 +535,7 @@ export default {
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
           if (!compose.services["w-" + d.id.replace(/^dep_/, "")] || (d.runtime && d.runtime.kind === "static")) continue;
-          for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
+          for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref, { deployment: d.id }), 0o600);
         }
         // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
         // Where each live static site's files wait, and the docker call that copies them into the site's volume (the box runs it; this module starts nothing).

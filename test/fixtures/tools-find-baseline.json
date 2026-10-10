@@ -1,0 +1,5 @@
+{
+ "_note": "Counts from the run that landed this ranker (10 Oct 2026). A change may not lower them by more than the slack in tools-find-quality.test.js (2 asks, so a new tool in the catalog does not fail an unrelated change); raise them when a change earns it. Before this ranker: dev 36 of 92 first, 52 in the first three; sealed (133 of today's 202) 61 first, 93 in the first three.",
+ "dev": { "n": 92, "top1": 63, "top3": 82 },
+ "sealed": { "n": 202, "top1": 135, "top3": 182 }
+}

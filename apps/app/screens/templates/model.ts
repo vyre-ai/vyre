@@ -14,14 +14,22 @@ export function rowLine(r: Row): string {
   return `${plural(r.versions, "version")}, ${r.live === null ? `none live (version ${r.latest} is the newest)` : `version ${r.live} is live`}`;
 }
 
+/** A task's doer or checker in words a person says: "the attorney", "Research", "a person", never `role:attorney`. */
+export function whoWords(ref: string): string {
+  const [kind, ...rest] = String(ref).split(":");
+  const name = rest.join(":");
+  return kind === "role" ? `the ${name}` : kind === "teammate" ? name.charAt(0).toUpperCase() + name.slice(1) : kind === "person" ? "a person" : kind === "pool" ? `anyone in ${name}` : String(ref);
+}
+const first = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+
 /** The tree of a version as lines a screen indents: the stage, its owner and condition, then each task with its doer. Empty stages say so. */
 export function treeOf(b: Body): { depth: 0 | 1; text: string; note?: string }[] {
   const out: { depth: 0 | 1; text: string; note?: string }[] = [];
   b.stages.forEach((s, i) => {
-    const bits = [s.owner ? `${s.owner} may move it early` : "", i > 0 && b.stages[i - 1].moves_on_when ? `entered when ${b.stages[i - 1].moves_on_when}` : ""].filter(Boolean);
+    const bits = [s.owner ? `${first(whoWords(s.owner))} may move it early` : "", i > 0 && b.stages[i - 1].moves_on_when ? `entered when ${b.stages[i - 1].moves_on_when}` : ""].filter(Boolean);
     out.push({ depth: 0, text: `${i + 1}. ${s.name}`, ...(bits.length ? { note: bits.join("; ") } : {}) });
     if (!(s.tasks || []).length) out.push({ depth: 1, text: i === b.stages.length - 1 ? "The last stage: the project ends here." : "No tasks: a person moves it on." });
-    for (const t of s.tasks || []) out.push({ depth: 1, text: t.title, note: `${t.doer}${t.checker ? `, checked by ${t.checker}` : ""}${t.required === false ? ", optional" : ""}` });
+    for (const t of s.tasks || []) out.push({ depth: 1, text: t.title, note: `${first(whoWords(t.doer))}${t.checker ? `, checked by ${whoWords(t.checker)}` : ""}${t.required === false ? ", optional" : ""}` });
   });
   return out;
 }
@@ -41,3 +49,14 @@ export function parseBody(text: string): { ok: true; body: Body } | { ok: false;
 
 /** The words under a refused or failed call: the box says what and why. */
 export const errWords = (e: unknown): string => (e instanceof Error && e.message ? e.message : "That did not work.");
+
+/** The name a project is started under, or why it cannot be: a name is what the person calls the project ("Rivera Family Trust"). */
+export function startName(text: string): { ok: true; name: string } | { ok: false; why: string } {
+  const name = text.trim().replace(/\s+/g, " ");
+  if (!name) return { ok: false, why: "Give the project a name, such as the client's." };
+  if (name.length > 120) return { ok: false, why: "A project name is at most 120 characters." };
+  return { ok: true, name };
+}
+
+/** The id a project page opens by, from the address the box answers with. */
+export const projectIdOf = (urn: string): string => String(urn).split("/").pop() || "";

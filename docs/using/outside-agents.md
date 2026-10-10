@@ -14,13 +14,17 @@ An outside agent is any agent that is not one of Vyre's own sessions: Dots, Muse
 
 Register the agent with a name, and Vyre shows its token once, with the line to paste into the agent's own settings. For Claude Code that is a `claude mcp add` line; for Codex a `codex mcp add` line. A new agent can reach nothing. Its token lasts a week unless you ask for longer, at most 90 days, and you can make a new one at any time: the old one stops working at once.
 
+An agent lasts 7 days unless you choose otherwise. To keep one longer, choose New token, 30 more days on its row: the old token stops, the new one is shown once, and what the agent was given lasts as long as the agent does.
+
 ## Give it something to reach
 
 You give an agent reach in three kinds:
 
 - **Records**: chosen record types, such as Clients and Matters. It reads them like you do, with every sealed field shown as "[sealed]". It never sees a sealed value or the reference to one.
-- **Memory**: what Vyre has filed about one project.
+- **Memory**: what Vyre has filed about one project, and nothing filed for the whole Space.
 - **Files**: one project's folder.
+
+In Settings, type the project's name under "Or one project's memory or files" and choose Give its memory or Give its files.
 
 You can only give what you hold yourself. Taking one thing back leaves the rest. Giving or changing reach asks for your approval on your device.
 
@@ -34,4 +38,4 @@ Nothing but what you gave it. It cannot register another agent, give itself more
 
 ## End it
 
-Ending an agent takes back everything at once: its token opens nothing, its reach is gone, and anything it was still waiting on is dropped. If you approve a card from it afterwards, nothing happens. Ending needs no one's proof, so you can always do it.
+Ending an agent takes back everything at once: its token opens nothing, its reach is gone, and anything it was still waiting on is dropped and leaves your list of things waiting for you. If you approve a card from it afterwards, nothing happens. Ending needs no one's proof, so you can always do it.

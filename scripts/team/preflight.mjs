@@ -23,6 +23,7 @@ const CI = flag("--ci");
 
 const git = (/** @type {string[]} */ a) => execFileSync("git", a, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 /** @type {{rule: string, msg: string}[]} */ const fails = [];
+/** @type {string[]} */ const warns = [];
 const fail = (/** @type {string} */ rule, /** @type {string} */ msg) => fails.push({ rule, msg });
 
 if (!STATIC && process.platform === "darwin") {
@@ -89,7 +90,6 @@ for (const { file: f, line } of added) {
 }
 
 // ---- W1: edits in another team's paths (a warning, not a failure): the two ends of a seam talk first
-/** @type {string[]} */ const warns = [];
 try {
   const own = JSON.parse(fs.readFileSync("scripts/team/owners.json", "utf8"));
   const me = process.env.VYRE_TEAM || "";
@@ -110,6 +110,11 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
+  // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
+  "test/no-lime.test.js", "test/no-tailscale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
+  "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
+  "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
+  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
 ].filter(f => fs.existsSync(f));
 // Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.
 if (fs.existsSync("test/contracts")) for (const t of fs.readdirSync("test/contracts")) if (/\.test\.m?js$/.test(t)) GUARDS.push(`test/contracts/${t}`);

@@ -23,23 +23,26 @@ export const SETTING_DEFAULTS = Object.freeze({ enabled: false, pluggedInOnly: t
  * @param {(key: string) => Promise<any>} get the settings module's read of one key (the caller names the tool with a literal)
  */
 export function settingsReader(get) {
+  /** The last good value of each key: a read that fails changes nothing, so a hiccup of the settings module can never read as "switched off". @type {Partial<typeof SETTING_DEFAULTS>} */
+  const last = {};
   let known = false;
   const read = async () => {
-    const out = { ...SETTING_DEFAULTS };
-    let any = false;
     for (const [name, key] of Object.entries(SETTING_KEYS)) {
-      try { const r = await get(key); const v = r && r.data && r.data.value; if (r && r.data) any = true; if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (out)[name] = v; } catch { /* the default */ }
+      try {
+        const r = await get(key); const v = r && r.data && r.data.value;
+        if (r && r.data) known = true;
+        if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (last)[name] = v;
+      } catch { /* the last good value stands */ }
     }
-    known = any;
-    return out;
+    return { ...SETTING_DEFAULTS, ...last };
   };
-  /** Whether the settings module has ever answered: a daemon without it has no master switch to honour. */
+  /** Whether the settings module has ever answered: a daemon without it has no master switch to honour, and nothing moves for want of one. */
   return Object.assign(read, { known: () => known });
 }
 
 /**
  * @param {any} ctx the module's context
- * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string> }} d
+ * @param {{ person: (meta: any, what: string) => Promise<string | null>, hostOf: () => any, runners: Map<string, any>, readSettings: () => Promise<typeof SETTING_DEFAULTS>, titles: Map<string, string>, platform?: string }} d
  */
 export function registerPlaceTools(ctx, d) {
   /** The one person a call is, in a Space, or a refusal: the home tells a person about their own chats only. */
@@ -57,9 +60,9 @@ export function registerPlaceTools(ctx, d) {
     return (/** @type {string | null} */ id) => { const x = list.find((/** @type {any} */ y) => y.id === id); return x && x.name ? String(x.name) : null; };
   };
   /** Find a thread's row (a chat or a session id) in the Spaces this home serves. @returns {{ space: string, row: any } | null} */
-  const find = (/** @type {string} */ thread, /** @type {string | undefined} */ space) => {
+  const find = (/** @type {string} */ thread, /** @type {string | undefined} */ space, /** @type {string} */ person) => {
     const p = placements();
-    for (const sp of space ? [space] : p.spaces()) { const row = p.find(sp, thread); if (row) return { space: sp, row }; }
+    for (const sp of space ? [space] : p.spaces()) { const row = p.find(sp, thread, person); if (row) return { space: sp, row }; }
     return null;
   };
   const mineChat = async (/** @type {any} */ chain, /** @type {string} */ thread) => {
@@ -76,7 +79,7 @@ export function registerPlaceTools(ctx, d) {
     run: async (i, meta) => {
       const thread = threadOf(i);
       const { chain, person } = await who(meta, i.space);
-      const hit = find(thread, i.space);
+      const hit = find(thread, i.space, person);
       if (!hit) {
         // a session the server runs itself has no row: it is the server's, and only the chat's own people are told so
         if (!(await mineChat(chain, thread))) throw refuse("no such chat", "not_found");
@@ -93,7 +96,7 @@ export function registerPlaceTools(ctx, d) {
     run: async (i, meta) => {
       const thread = threadOf(i);
       const { person } = await who(meta, i.space);
-      const hit = find(thread, i.space);
+      const hit = find(thread, i.space, person);
       if (!hit || hit.row.person !== person) return { reason: null };
       return { reason: hit.row.where === "server" ? hit.row.reason : null };
     },
@@ -104,14 +107,15 @@ export function registerPlaceTools(ctx, d) {
     const thread = threadOf(i);
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
     const { person } = await who(meta, i.space);
-    const hit = find(thread, i.space);
+    const hit = find(thread, i.space, person);
     if (!hit) {
       if (i.to === "server") return answer(null);
       throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet", "unavailable");
     }
     if (hit.row.person !== person) throw refuse("no such chat", "not_found");
     const p = placements();
-    const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you") : p.bringBack(hit.space, hit.row.session, person);
+    if (i.to === "server" && typeof p.resumable === "function" && !p.resumable(hit.space)) throw refuse("Coming in this release: moving a chat from a computer to the server. It keeps running where it is.", "unavailable");
+    const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
 
@@ -158,6 +162,8 @@ export function registerPlaceTools(ctx, d) {
       input: obj(),
       run: async (_i, meta) => {
         await d.person(meta, "the sessions on this computer");
+        // Windows has no way to freeze a process the way a Mac or Linux does (a stop signal there ends it), so Pause all would say "paused" over sessions that are running or gone
+        if (verb === "pause" && (d.platform || process.platform) === "win32") throw refuse("Pausing sessions is not available on Windows yet. Stop a session from its chat instead.", "unavailable");
         let n = 0; for (const r of d.runners.values()) { n += r.info().length; r[verb](); }
         return { [verb === "pause" ? "paused" : "resumed"]: n };
       },

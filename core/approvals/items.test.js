@@ -146,3 +146,55 @@ test("R031-80s: the vault's health is one calm row of counts, never a row per it
   assert.deepEqual(fromHealth({ total: 1, rotate: 1, fix: 0 })[0].answers.map((/** @type {any} */ a) => a.label), ["Rotate", "Dismiss"]);
   assert.ok(JSON.stringify(row).includes("password") === false && !JSON.stringify(row).includes("name"), "counts only");
 });
+
+test("a document waiting for a signature is one quiet `signing` card naming the signer, answered by a reminder, with no link or code on it, and it closes when the owner stops listing it", async () => {
+  const { fromSigning, OWNERS } = await import("./items.js");
+  const rows = fromSigning([
+    { submission: 4411, signer: "Dana Harlow", email: "dana@harlow.test", template: "Engagement letter", at: 5, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123" },
+    { submission: 4412, signer: "", email: "sam@harlow.test", template: "", at: 4 },
+    { signer: "no id" },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail, r.quiet]), [
+    ["documents:4411", "signing", "Dana Harlow has not signed Engagement letter", "Sent to dana@harlow.test", true],
+    ["documents:4412", "signing", "sam@harlow.test has not signed the document", undefined, true],
+  ]);
+  assert.deepEqual(rows[0].answer, { tool: "documents.signing.remind", input: { submission: 4411 }, fill: [] });
+  assert.ok(!JSON.stringify(rows).includes("abc123") && !JSON.stringify(rows).includes("/sign/"), "no signer's code and no link on a card");
+  // it is one of the owners, quiet when Documents is not there, and the signature's own event says why it closed
+  const owner = OWNERS.find(o => o.name === "documents");
+  assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "documents.signing.waiting");
+  assert.deepEqual(owner.map({ requests: [{ submission: 9, signer: "A", email: "a@b.test", template: "T", at: 1 }] }).map((/** @type {any} */ r) => r.id), ["documents:9"]);
+  assert.deepEqual(owner.map(null), []);
+  const hint = owner.watch[0][1];
+  assert.deepEqual(hint && hint("documents.signed", { submission: 9 }), ["documents:9", "signed"]);
+  assert.deepEqual(hint && hint("documents.declined", { submission: 9 }), ["documents:9", "declined"]);
+  assert.equal(hint && hint("documents.sent", { submission: 9 }), null);
+});
+
+test("R031-79: a website Connection that waits for a person is one `signin` card that says what to do; a box opens the agent's computer, a stopped account can be resumed, and nothing else is a card", async () => {
+  const { fromSignIn, OWNERS } = await import("./items.js");
+  const rows = fromSignIn([
+    { id: "linkedin", host: "www.linkedin.com", site: "https://www.linkedin.com", class: "auth", words: "sign in to www.linkedin.com again in the browser Vyre uses (ops's computer: open its screen and sign in once)", agent: "ops", at: 5 },
+    { id: "crm", host: "crm.example.com", class: "blocked", words: "crm.example.com is challenging the browser: a person has to clear it once", stopped: true, at: 4 },
+    { id: "mac", host: "app.example.com", class: "no_browser", words: "needs your Chrome: the Mac is offline", at: 3 },
+    { id: "slow", host: "x.example.com", class: "rate", words: "slow down", at: 2 }, { id: "fine", class: "ok" }, null, { class: "auth" },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title]), [
+    ["connectors:linkedin", "signin", "Sign in to www.linkedin.com again"],
+    ["connectors:crm", "signin", "crm.example.com is checking the browser"],
+    ["connectors:mac", "signin", "No browser is signed in to app.example.com"],
+  ]);
+  assert.deepEqual(rows[0].answers.map((/** @type {any} */ a) => a.label), ["Open the computer's screen", "Check it now"]);
+  assert.equal(rows[0].answers[0].open, "/u/glass/ops");
+  assert.deepEqual(rows[0].answer, { tool: "connectors.connection.check", input: { id: "linkedin" }, fill: [] });
+  assert.deepEqual(rows[1].answer, { tool: "connectors.site.resume", input: { id: "crm" }, fill: [] }, "a stopped account is resumed by the person once the check is cleared");
+  assert.deepEqual(rows[1].answers.map((/** @type {any} */ a) => a.label), ["Check it now", "I cleared it"]);
+  assert.deepEqual(rows[2].answers.map((/** @type {any} */ a) => a.label), ["Check it now"], "a Mac's own Chrome has no screen of ours");
+  assert.ok(!JSON.stringify(rows).includes("https://www.linkedin.com"), "no page address rides on a card");
+  assert.equal(fromSignIn([{ id: "x", class: "auth", agent: "../etc", host: "h.example.com" }])[0].answers[0].label, "Check it now", "an agent name that is not a name opens nothing");
+  const owner = OWNERS.find(o => o.name === "connectors");
+  assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "connectors.site.attention");
+  assert.deepEqual(owner.map(null), []);
+  const hint = owner.watch[0][1];
+  assert.deepEqual(hint && hint("connectors.connection-checked", { id: "linkedin", light: "green" }), ["connectors:linkedin", "signed in"]);
+});

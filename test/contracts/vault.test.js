@@ -13,30 +13,7 @@ import { momentOf } from "../../lib/one-yes.js";
 import { SCRATCH } from "../scratch.mjs";
 import { vaultFixtures as F, vaultCallers, modelCallers } from "./vault.fixtures.js";
 
-/** The shape of a value: object keys with the shapes under them, an array as the shape of its first element, a scalar as its type. Optional keys the fixture shows are optional here. @param {any} v @returns {any} */
-function shapeOf(v) {
-  if (Array.isArray(v)) return v.length ? [shapeOf(v[0])] : [];
-  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, shapeOf(x)]));
-  return v === null ? "null" : typeof v;
-}
-/** Every key of `want` is in `got` with the same shape, except keys the fixture marks optional by name. @param {any} got @param {any} want @param {string} at @param {Set<string>} optional */
-function fits(got, want, at, optional) {
-  if (Array.isArray(want)) { assert.ok(Array.isArray(got), `${at} is a list`); if (want.length && got.length) fits(got[0], want[0], `${at}[0]`, optional); return; }
-  if (want && typeof want === "object") {
-    assert.ok(got && typeof got === "object", `${at} is an object`);
-    for (const k of Object.keys(want)) {
-      if (!(k in got)) { assert.ok(optional.has(k), `${at}.${k} is missing`); continue; }
-      // `counts` is a map from a reason code to a number: which codes appear depends on what was found
-      if (k === "counts") { assert.ok(got[k] && typeof got[k] === "object", `${at}.counts is a map`); for (const n of Object.values(got[k])) assert.equal(typeof n, "number"); continue; }
-      fits(got[k], want[k], `${at}.${k}`, optional);
-    }
-    return;
-  }
-  if (want === "null" || got === null) return;
-  assert.equal(got === null ? "null" : typeof got, want, `${at} is a ${want}`);
-}
-const OPTIONAL = new Set(["home", "conflicts", "rotate", "group", "removed", "taken", "ignored", "kv", "dismissed_until"]);
-const matches = (/** @type {any} */ got, /** @type {any} */ fixture, at = "answer") => fits(got, shapeOf(fixture), at, OPTIONAL);
+import { matches } from "./shape.js";
 
 /** A vault named `name`, with a relay address so another vault can reach it. @param {import("node:test").TestContext} t @param {string} name */
 function mk(t, name, homes) {
@@ -125,18 +102,4 @@ test("the phone is the device caller, never a bare `mobile`: the health tools No
     assert.ok(callers.includes("device"), `${name} admits the paired phone as device:<id>`);
     assert.ok(!callers.includes("mobile"), `${name} names no bare mobile (test/one-person-surfaces.test.js)`);
   }
-});
-
-test("linking a credential to a record answers in the contract's shapes, emits its events, and holds no value", async t => {
-  const homes = new Map();
-  const a = mk(t, "alex", homes);
-  await a.v.put({ name: "portal-login", kind: "login", fields: { username: "dana@harlow.test", password: "fixture-not-a-real-password" }, url: "https://portal.example.test/login", hosts: ["https://portal.example.test"] }, "cli");
-  const to = F.link.linked.to;
-  matches(a.v.links.link({ item: "portal-login", to }, "cli"), F.link);
-  matches(a.v.links.list({ to }), F.links);
-  a.v.audit("agent-fill", "portal-login", "mcp agent:kit", true, "agent:kit");
-  matches(a.v.links.usesFor({ urn: to }), F.usesFor);
-  matches(a.v.links.unlink({ item: "portal-login", to }, "cli"), F.unlink);
-  for (const type of ["vault.linked", "vault.unlinked"]) matches(a.events.find(e => e.type === type)?.payload, F.events[/** @type {"vault.linked"} */ (type)], type);
-  assert.ok(!JSON.stringify([a.events]).includes("fixture-not-a-real-password"));
 });

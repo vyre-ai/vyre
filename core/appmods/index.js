@@ -16,7 +16,7 @@ import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
-import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -341,7 +341,11 @@ export default {
       for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all())) {
         const m = catalog.get(String(r.name));
         if (!m || !(m.app.secrets || []).some((/** @type {any} */ s) => item(r.name, s.env.toLowerCase()) === changed) || rotating.has(r.name)) continue;
-        rotating.set(r.name, setTimeout(() => { rotating.delete(r.name); rotate(r).catch(err => ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`)); }, seam.rotateMs ?? 300));
+        rotating.set(r.name, setTimeout(() => {
+          rotating.delete(r.name);
+          // The container is gone before the new one starts: if it does not start, the app is stopped, not "running" in the list, and the person can start it again.
+          rotate(r).catch(err => { db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(r.name); tickets.drop(r.name); ctx.events.emit("appmods.stopped", { name: r.name }); ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`); });
+        }, seam.rotateMs ?? 300));
       }
     });
 
@@ -383,7 +387,7 @@ export default {
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
-        if (!m) return null;
+        if (!m || m.app.service) return null;
         return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [], ...(m.app.signing ? { signing: m.app.signing } : {}),
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
@@ -426,6 +430,7 @@ export default {
         const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
         if (!(await ownerOrAdmin(meta))) throw refuse("only the owner or an admin of this Space opens this app", "denied");
         const m = known(r.name);
+        if (m.app.service) throw refuse(`${r.name} is a service other modules use; it has no screen to open`, "unsupported");
         const screen = (m.screens || []).find((/** @type {any} */ s) => s.id === i.screen) || (m.screens || [])[0];
         let base = baseHost();
         if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
@@ -459,7 +464,7 @@ export default {
     });
     ctx.tool("appmods.signed.link", {
       internal: true, callers: ["module"],
-      description: "An expiring link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 30, default 30) } -> { url, expires }. Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else.",
+      description: "A link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 3650; left out, the link does not expire) } -> { url, expires } (expires is null for a link with no end). Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else. appmods.signed.revoke ends every link made so far.",
       input: obj({ name: str, slug: str, days: { type: "integer" } }, ["name", "slug"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const name = String(i.name || "");
@@ -467,11 +472,22 @@ export default {
         const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
         const m = known(name);
         if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link", "unsupported");
-        const days = i.days === undefined ? MAX_LINK_DAYS : i.days;
-        if (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days`, "bad_input");
-        const expires = Date.now() + days * 86_400_000;
+        const days = i.days === undefined || i.days === null ? null : i.days;
+        if (days !== null && (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS)) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days, or does not expire`, "bad_input");
+        const expires = days === null ? null : Date.now() + days * 86_400_000;
         let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
         return { url: `${await signerOrigin(name)}${SIGNED}${token}`, expires };
+      },
+    });
+    ctx.tool("appmods.signed.revoke", {
+      internal: true, callers: ["module"],
+      description: "End every link made so far to an app's signed copies: { name } -> { revoked }. The key they were made under is thrown away; links made afterwards use a new one. Only the app's own module asks (documents for Documents).",
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module ends the links to its signed copies", "denied");
+        const gone = db.prepare("DELETE FROM appmods_link_keys WHERE name = ?").run(name).changes;
+        return { revoked: gone > 0 };
       },
     });
     ctx.tool("appmods.signing.request", {
@@ -491,8 +507,22 @@ export default {
         return { ...got, url: `${await signerOrigin(name)}/sign/${got.submission}/${got.slug}` };
       },
     });
+    ctx.tool("appmods.signing.waiting", {
+      internal: true, callers: ["module"],
+      description: "The signature requests an app is still waiting on: { name } -> { requests: [{ submission, slug, url, email, signer, template, at }] }, newest first. Only the app's own module asks (documents for Documents). An app that is not running has none.",
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks what is waiting for a signature", "denied");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin || !(known(name).app || {}).signing) return { requests: [] };
+        const res = await fetch(`${r.origin}/api/submissions?status=pending&limit=100`, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+        if (!res || !res.ok) throw refuse(`${name} would not say what is waiting (${res ? res.status : "no answer"})`, "app_refused");
+        const origin = await signerOrigin(name);
+        return { requests: readWaiting(await res.json().catch(() => null)).map(q => ({ ...q, url: `${origin}/sign/${q.submission}/${q.slug}` })) };
+      },
+    });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
-      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
+      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().filter((/** @type {any} */ r) => !(catalog.get(r.name) || { app: {} }).app.service).map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
         ...domains.list().filter(d => (row(d.app) || {}).state === "running").map(d => d.host)] }) });
     registerDomainTools({ ctx, domains, running: app => (row(app) || {}).state === "running", ownerOrAdmin,
       signingApp: () => { for (const m of catalog.values()) if (m.app && m.app.signing && (row(m.name) || {}).state === "running") return m.name; return null; } });

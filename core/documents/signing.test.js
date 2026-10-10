@@ -8,6 +8,8 @@ import { SPACE } from "../../kernel/flows/testing/fixtures.js";
 import { catalog } from "../../kernel/flows/testing/fixtures.js";
 import { signingFlow } from "./signing.js";
 
+/** A module's event as the kernel log carries it to a wait: its facts under payload (kernel/bus.js). */
+const ev = (/** @type {any} */ payload) => ({ legacy: 1, source: "appmods", at: Date.now(), project: null, thread: null, payload });
 const mine = (/** @type {any} */ w, /** @type {string} */ type) => [.../** @type {Map<string, any>} */ (w.kernel.tables.get(type) || new Map()).values()];
 const OPTS = { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, email_field: "email", name_field: "client" };
 
@@ -61,17 +63,60 @@ test("a matter entering the stage is sent for signature with one yes; the signed
   assert.deepEqual(calls[0].input, { template_id: 12, email: "dana@harlow.test", signer: "Dana Harlow" });
   assert.equal(mine(w, "matter")[0].data.signature_submission, "4411");
   // Documents says it was signed: the matter that asked for it moves to Signed
-  w.kernel.inbound("documents.signed", { submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" });
+  w.kernel.inbound("documents.signed", ev({ submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Signed");
-  // the signed copy: a 30-day link made and emailed to the signer, one yes
+  // the signed copy: a link made and emailed to the signer, one yes (it has no end unless the setting gives one)
   await answer();
   assert.equal(asks, 2, "two yeses for the whole signing");
-  assert.deepEqual(calls[1], { action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: "abc123", email: "dana@harlow.test", days: 30 } });
+  assert.deepEqual(calls[1], { action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: "abc123", email: "dana@harlow.test" } });
   // a different submission moves nothing
   const again = mine(w, "matter")[0];
   await w.kernel.records.update(alex, "matter", again.id, { stage: "Intake" }, again.version);
-  w.kernel.inbound("documents.signed", { submission: 9999, email: "x@y.test", template: "T", at: "2026-10-10T11:00:00Z" });
+  w.kernel.inbound("documents.signed", ev({ submission: 9999, email: "x@y.test", template: "T", at: "2026-10-10T11:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Intake");
 });
+
+test("a record whose person is a linked Contact is sent by the link: no e-mail field and no field to remember the request in, the Contact read by Documents", async () => {
+  assert.throws(() => signingFlow({ ...OPTS, email_field: "email", contact_field: "client" }), /not both/);
+  assert.throws(() => signingFlow({ ...OPTS, email_field: undefined, contact_field: "Client!" }), /contact must be/);
+  const f = signingFlow({ type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, contact_field: "client" });
+  const steps = f.steps[1].then;
+  assert.deepEqual(steps.map((/** @type {any} */ x) => x.id), ["send", "signed", "move", "copy"], "no claim and no mark: the stage runs this once per entry");
+  assert.deepEqual(steps[0].input, { template_id: 12, contact: { expr: "steps.rec.record.data.client" } });
+  assert.deepEqual(steps[3].input, { slug: { expr: "steps.send.slug" }, contact: { expr: "steps.rec.record.data.client" } });
+  assert.equal(f.steps[1].if, "steps.rec.found");
+  // a field to remember it in can still be asked for
+  assert.equal(signingFlow({ type: "matter", out_stage: "A", signed_stage: "B", template_id: 12, contact_field: "client", submission_field: "signature_submission" }).steps[1].then[0].id, "claim");
+  // in the Flows world: the link goes to Documents exactly as the record holds it, nothing is written to the record but its stage
+  /** @type {any[]} */ const calls = [];
+  const w = await world({ cat: catalogWithActions(), ports: {
+    call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => {
+      calls.push({ action, input });
+      return action === "documents.send" ? { submission: 7001, slug: "zzz999", url: "https://documents.harlow.vyre.run/sign/7001/zzz999", sent: { held: "gi_1" } } : { url: "https://x/signed/1.a.s", expires: null, sent: { held: "gi_2" } };
+    },
+  } });
+  await install(w, f);
+  const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
+  const rec = await w.kernel.records.create(alex, "matter", { client: "vyre://spc_x/contact/c-1", stage: "Intake" });
+  await w.kernel.records.update(alex, "matter", rec.id, { stage: "Out for signature" }, rec.version);
+  await settle(w);
+  for (let i = 0; i < 6; i++) {
+    const held = w.kernel.tasks.filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.state !== "done");
+    if (!held.length) break;
+    for (const t of held) w.kernel.completeTask(t.id, { outcome: "approved" });
+    await settle(w);
+  }
+  assert.deepEqual(calls.map(c => c.action), ["documents.send"]);
+  assert.deepEqual(calls[0].input, { template_id: 12, contact: "vyre://spc_x/contact/c-1" });
+  w.kernel.inbound("documents.signed", ev({ submission: 7001, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
+  await settle(w);
+  assert.equal(mine(w, "matter")[0].data.stage, "Signed");
+});
+
+function catalogWithActions() {
+  const c = catalog();
+  return { ...c, types: { ...c.types, matter: { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] } },
+    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
+}

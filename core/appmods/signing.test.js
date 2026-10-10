@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -44,7 +44,7 @@ test("the matcher is by method and path, and a pretty link goes to the page", ()
 test("the Documents manifest lists the signer's routes and no admin path", () => {
   const sign = manifest.app.signing;
   const m = matcher(sign);
-  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["GET", "/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
+  for (const [method, path] of [["GET", "/s/xYz123"], ["PUT", "/s/xYz123"], ["POST", "/s/xYz123"], ["POST", "/api/attachments"], ["GET", "/packs/js/application.js"], ["GET", "/file/abc/def/Contract.pdf"], ["GET", "/disk/eyJfcmFpbHMiOnsiZGF0YSI6e30=--0a1b2c/0.png"], ["POST", "/s/xYz123/decline"]]) assert.ok(m.open(method, path), `${method} ${path}`);
   for (const [method, path] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/settings/api"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["GET", "/api/templates"], ["GET", "/users"], ["POST", "/s/xYz123/invite"], ["POST", "/s/xYz123/delegate"], ["GET", "/sign_in"], ["GET", "/d/abc"], ["GET", "/mcp"], ["DELETE", "/s/xYz123"]]) assert.ok(!m.open(method, path), `${method} ${path} must not be public`);
   assert.equal(m.redirect("/sign/12/abc"), "/s/abc");
 });
@@ -117,7 +117,7 @@ test("a signer opens the page with no ticket: dressed, credited, uncached, and t
   assert.match(r.body, /Sign here/);
   assert.match(r.body, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
   assert.ok(r.body.includes("Signatures by"));
-  assert.equal(r.headers["referrer-policy"], "no-referrer");
+  assert.equal(r.headers["referrer-policy"], "same-origin");
   assert.match(String(r.headers["x-robots-tag"]), /noindex/);
   assert.equal(r.headers["cache-control"], "no-store");
   assert.deepEqual(r.headers["set-cookie"], ["_ds=signer1; Path=/; HttpOnly"], "the signer's cookie goes back to the signer, without its Domain");
@@ -133,7 +133,7 @@ test("a signer opens the page with no ticket: dressed, credited, uncached, and t
 
 test("what is not on the list is a plain 404 to a stranger and never reaches the app", async t => {
   const f = await front(t);
-  for (const [m, p] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["POST", "/s/abc/delegate"], ["POST", "/s/abc"], ["DELETE", "/s/abc"], ["GET", "/settings/api"]]) {
+  for (const [m, p] of [["GET", "/"], ["GET", "/templates"], ["GET", "/submissions"], ["GET", "/api/submissions"], ["POST", "/api/submissions"], ["POST", "/s/abc/delegate"], ["DELETE", "/s/abc"], ["GET", "/settings/api"]]) {
     const r = await f.call(m, p);
     assert.equal(r.status, 404, `${m} ${p}`);
   }
@@ -143,12 +143,13 @@ test("what is not on the list is a plain 404 to a stranger and never reaches the
 test("a signer's actions go through: the submit, the decline, the signature upload; the pretty link redirects", async t => {
   const f = await front(t);
   assert.equal((await f.call("PUT", "/s/abc123", {}, '{"values":[]}')).status, 200);
+  assert.equal((await f.call("POST", "/s/abc123", {}, "_method=put")).status, 200, "a browser's form posts the submit and tells Rails it is a PUT");
   assert.equal((await f.call("POST", "/s/abc123/decline", {}, "{}")).status, 200);
   assert.equal((await f.call("POST", "/api/attachments", {}, "x")).status, 200);
   const red = await f.call("GET", "/sign/4411/abc123");
   assert.equal(red.status, 302);
   assert.equal(red.headers.location, "/s/abc123");
-  assert.equal(f.a.seen.filter(s => s.url === "/s/abc123").length, 1, "the redirect did not touch the app");
+  assert.equal(f.a.seen.filter(s => s.url === "/s/abc123").length, 2, "only the two submits reached the app (the PUT and the browser's POST); the redirect did not touch it");
   // a stranger cannot send a huge body: the declared length is refused before a byte is read, and the app is not touched
   const before = f.a.seen.length;
   const status = await new Promise(resolve => {
@@ -183,6 +184,24 @@ test("a link to the signed copy is made under a key, ends on its day, and is che
   for (const bad of [`${e}.other.${m}`, `${Number(e) + 99999}.abc123.${m}`, "", "x.y.z", `${e}.abc123.${m}x`]) assert.equal(checkLink(KEY, bad, exp - 1000).ok, false, bad);
   assert.throws(() => mintLink(KEY, "../x", exp), /slug/);
   assert.deepEqual(filePaths([{ url: "/file/AA==--b/proof.pdf" }, { url: "/s/x/documents" }, { nested: { u: "/blobs_proxy/id/c/d.pdf" } }, { u: "/file/x/../etc" }, "javascript:1"]), ["/file/AA==--b/proof.pdf", "/blobs_proxy/id/c/d.pdf"]);
+});
+
+test("a link with no end opens the signed copy years later, only for the key it was made under, and cannot be given an end by changing it", async t => {
+  const forever = mintLink(KEY, "abc123", null);
+  assert.match(forever, /^0\.abc123\.[A-Za-z0-9_-]{43}$/);
+  for (const when of [Date.UTC(2026, 9, 10), Date.UTC(2026, 10, 10) + 31 * 86_400_000, Date.UTC(2046, 0, 1)]) assert.deepEqual(checkLink(KEY, forever, when), { ok: true, slug: "abc123" }, new Date(when).toISOString());
+  const m = forever.split(".")[2];
+  // the end is under the MAC: neither a made-up end nor another signer's slug passes, and another key (the links were ended) refuses it
+  for (const bad of [`9999999999.abc123.${m}`, `0.other.${m}`, `1.abc123.${m}`]) assert.equal(checkLink(KEY, bad, 0).ok, false, bad);
+  assert.deepEqual(checkLink(Buffer.alloc(32, 9), forever, 0), { ok: false, expired: false });
+  // through the real front, after 31 days and after ten years
+  let now = Date.UTC(2026, 9, 10);
+  const g = await front(t, { now: () => now });
+  now += 31 * 86_400_000;
+  assert.equal((await g.call("GET", `/signed/${forever}`)).status, 200, "still opens after 31 days");
+  now += 10 * 365 * 86_400_000;
+  assert.equal((await g.call("GET", `/signed/${forever}`)).status, 200, "and after ten years");
+  assert.equal((await g.call("GET", "/s/abc123/documents")).status, 404, "the slug alone still does not reach the file");
 });
 
 test("the signed copy opens only by its link: the slug no longer lists or downloads it, an expired link says so, a bad one is a 404", async t => {
@@ -220,4 +239,22 @@ test("a signing request tells the app to send nothing, and the answer is read fo
   assert.deepEqual(readRequest([{ id: 7, submission_id: 4411, slug: "abc123" }]), { submission: 4411, slug: "abc123" });
   assert.deepEqual(readRequest({ submitters: [{ submission_id: 5, slug: "x_y-z" }] }), { submission: 5, slug: "x_y-z" });
   for (const junk of [null, [], [{}], [{ submission_id: 0, slug: "a" }], [{ submission_id: 4, slug: "../x" }], "text"]) assert.equal(readRequest(junk), null);
+});
+
+test("the stylesheet every signer page carries hides what the signer's link cannot serve and the engine's own branding, and keeps the licence credit", () => {
+  assert.match(CREDIT_CSS, /download-button[^}]*display:none/, "no Download button: the signed copy comes by its own link");
+  assert.match(CREDIT_CSS, /a\[href\*="docuseal\.com"\][^}]*display:none/, "the engine's logo and powered-by links are not shown");
+  assert.ok(!/#vyre-credit[^{]*\{[^}]*display:none/.test(CREDIT_CSS), "the licence credit stays");
+  assert.ok(CREDIT_HTML.includes("github.com/docusealco/docuseal") && !CREDIT_HTML.includes("docuseal.com"), "and its link is not one the stylesheet hides");
+});
+
+test("readWaiting: the requests nobody has signed, from the app's own list, newest first; signed, declined, archived and malformed ones are left out", () => {
+  const row = (id, extra = {}, sub = {}) => ({ id, status: "pending", created_at: `2026-10-0${id}T10:00:00.000Z`, template: { name: `Letter ${id}` }, submitters: [{ email: `s${id}@x.test`, name: `Signer ${id}`, slug: `slug${id}`, completed_at: null, ...sub }], ...extra });
+  const got = readWaiting({ data: [row(1), row(3), row(2, { archived_at: "2026-10-05T00:00:00Z" }), row(4, { status: "completed" }), row(5, {}, { completed_at: "2026-10-06T00:00:00Z" }), row(6, {}, { declined_at: "2026-10-06T00:00:00Z" }),
+    row(7, {}, { slug: "../etc" }), { id: "x", submitters: [] }, null, "junk", row(8, { submitters: [{ email: "a@x.test", completed_at: "t", slug: "d1" }, { email: "b@x.test", name: "B", slug: "waiting8" }] })] });
+  assert.deepEqual(got.map(r => r.submission), [8, 3, 1], "newest first; only the open ones");
+  assert.deepEqual(got[0], { submission: 8, slug: "waiting8", email: "b@x.test", signer: "B", template: "Letter 8", at: Date.parse("2026-10-08T10:00:00.000Z") }, "the first signer who has not signed");
+  assert.deepEqual(readWaiting([row(1)]).map(r => r.submission), [1], "a bare array too");
+  for (const bad of [null, undefined, 5, "x", {}, { data: "no" }]) assert.deepEqual(readWaiting(bad), []);
+  assert.equal(readWaiting({ data: Array.from({ length: 80 }, (_, i) => row(i + 1, { created_at: `2026-10-01T10:${String(i % 60).padStart(2, "0")}:00Z` })) }).length, 50, "at most 50");
 });

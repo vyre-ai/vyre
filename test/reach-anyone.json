@@ -2217,6 +2217,10 @@
    "module": "connectors",
    "reason": "read-only: the website Connections, names and lights, never a cookie (callers list)"
   },
+  "connectors.site.attention": {
+   "module": "connectors",
+   "reason": "read-only: the website Connections whose light is red for a reason only a person can clear, with the light's words, never a cookie (callers list); the approvals queue reads it for Needs you"
+  },
   "connectors.site.operations": {
    "module": "connectors",
    "reason": "read-only: one website Connection's operations and their health, never a value (callers list)"
@@ -2267,7 +2271,7 @@
   },
   "documents.signed-link": {
    "module": "documents",
-   "reason": "held: outward, so the registry holds it as a card for the person's yes before a link to a signed copy exists; the link stops working after 30 days; under the caller's own chain (callers list, gate, check)"
+   "reason": "held: outward, so the registry holds it as a card for the person's yes before a link to a signed copy exists; the link does not expire unless the setting or the call gives it an end; under the caller's own chain (callers list, gate, check)"
   },
   "documents.send": {
    "module": "documents",
@@ -2276,6 +2280,18 @@
   "documents.send-signed": {
    "module": "documents",
    "reason": "held: outward, so the registry holds it as a card for the person's yes before a link to a signed copy exists or an email leaves; under the caller's own chain (callers list, gate, check)"
+  },
+  "documents.signing.remind": {
+   "module": "documents",
+   "reason": "held: outward, so the registry holds it as a card for the person's yes before the signer's link is emailed again; under the caller's own chain (callers list, gate, check)"
+  },
+  "documents.signing.waiting": {
+   "module": "documents",
+   "reason": "read-only list of the requests nobody has signed; under the caller's own chain (callers list, gate, check), or the approvals queue's module reading it for the owner's Needs you"
+  },
+  "documents.signed-link.revoke": {
+   "module": "documents",
+   "reason": "ends access only: every earlier link to a signed copy stops opening and a new link works; under the caller's own chain (callers list, gate, check)"
   },
   "agents.spawn": {
    "module": "agents",
@@ -2503,15 +2519,11 @@
   },
   "vault.links": {
    "module": "vault",
-   "reason": "read-only: item names and record addresses, never a value"
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; read-only: item names and record addresses, never a value"
   },
   "vault.unlink": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
-  },
-  "vault.uses.for": {
-   "module": "vault",
-   "reason": "read-only: when and by whom the items linked to one record were used, in words; person surfaces and modules only; never a value"
   },
   "appmods.domain.list": {
    "module": "appmods",

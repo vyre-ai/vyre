@@ -43,6 +43,7 @@ const fakeSource = `export default { async start(ctx) {
     t("builder.build", async i => pf().build(i));
   } else if (tools === "names") {
     t("names.owns", async i => ({ owns: pf().owns(i.host, i.space) }));
+    t("names.status", async () => ({ listening: pf().door === true }));
   } else if (tools === "projects") {
     t("projects.reach", async () => ({ all: true }));
   } else if (tools === "tasks") {
@@ -52,7 +53,7 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
@@ -585,7 +586,15 @@ test("publish: quick takes a folder of ready files to live on one decision, with
   assert.equal(q.deployment.stage, "Preview");
   assert.equal(q.plan.goes_public, true, "what the person says yes to is the public plan");
   assert.match(q.logs, /^Read 1 file/);
+  assert.deepEqual(q.plan.files.paths, ["index.html"], "the plan lists what would go public");
+  assert.equal(q.public, false);
+  assert.match(q.note, /^Public once the public door is on\./, "with no public door the answer says so, beside the yes");
   const q2 = await b.ok("publish.quick", { name: "bakery-two", folder: dir, project: "bakery" });
+  globalThis.__publishFakes.door = true;
+  const q3 = await b.ok("publish.quick", { name: "bakery-three", folder: dir, project: "bakery" });
+  assert.equal(q3.public, true);
+  assert.equal(q3.note, undefined, "with the door on there is nothing to wait for");
+  globalThis.__publishFakes.door = false;
   const wrong = await b.call("publish.decide", { task: q2.task, approve: true, plan_hash: q.plan.hash });
   assert.equal(wrong.error?.code, "approval_mismatch", "a hash for another plan is refused");
   const done = await b.ok("publish.decide", { task: q.task, approve: true, plan_hash: q.plan.hash });

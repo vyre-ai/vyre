@@ -62,6 +62,22 @@ test("acp: conform() passes the whole scenario and the fixed safety set against 
   assert.deepEqual(fails, []);
 });
 
+test("acp: an image goes to an agent that takes images as an image block, and to one that does not as words saying so", async t => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+  const msg = { type: "user", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: "what is in this picture" }] } };
+  const blind = world(t), sighted = world(t);
+  sighted.env.FAKE_ACP_IMAGE = "1";
+  for (const [w, types, echo] of [[blind, ["text", "text"], /an image was attached, but this model cannot look at images/i], [sighted, ["image", "text"], /^echo: what is in this picture$/]]) {
+    const s = open(w);
+    await s.until(m => m.type === "system" && m.subtype === "init", "init");
+    s.proc.write(msg);
+    const text = (await s.until(m => m.type === "result", "result"), s.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text || "").join(""));
+    assert.match(text, echo);
+    assert.deepEqual(w.launches().filter(l => l.types).pop().types, types);
+    await s.proc.stop(1000);
+  }
+});
+
 test("acp: the client advertises fs and terminal, and the entry's args and env reach the agent (never read from the agent's own config)", async t => {
   const w = world(t, { args: o => ["--ask", "untrusted", "--cwd", o.cwd], env: { HOME: "/acct/home" } });
   const s = open(w);

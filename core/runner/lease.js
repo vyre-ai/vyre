@@ -93,7 +93,7 @@ export function createLease(o) {
     async acquire() {
       if (state === "open") return { ok: true };
       let r;
-      try { r = await o.vault.lease({ space: o.space, device: o.device }); } catch (e) { return { ok: false, why: "the space could not be reached" }; }
+      try { r = await o.vault.lease({ space: o.space, device: o.device }); } catch (e) { return { ok: false, why: /** @type {any} */ (e) && /** @type {any} */ (e).code === "needs_presence" ? "lending this computer to the space was not approved on this computer" : "the space could not be reached" }; }
       if (!r || r.revoked) { await end("revoked"); return { ok: false, why: "access to this space has ended" }; }
       zero();
       key = Buffer.from(String(r.key), "base64");

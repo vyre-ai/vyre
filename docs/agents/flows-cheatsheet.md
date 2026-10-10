@@ -78,7 +78,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
     yes ask to=role:partner title="Send the welcome email?"
 - assign: to, title, record, output, how, template, checker, await, skills
     task assign to=teammate:paralegal title="Draft the engagement letter" output={kind: draft}
-- call: action, resource, input
+- call: action, resource, input, with
     mail call action=email.send resource=vyre://space/email/outbox input={to: `trigger.email`, subject: Welcome}
 - stage: type, record, to
     move stage type=matter record=`steps.make.record.id` to=Active
@@ -107,6 +107,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 
 ## Expressions
 - Read: trigger, steps.<id>, run, now, the loop name in a repeat, error in a failure path, output in a check. Operators: == != < <= > >= && || ! + - * / %, a ? b : c, a.b, a[0].
+- An event a module emits (documents.signed, comms.sent) keeps its facts under `payload`: `trigger.payload.<fact>`, and in a wait's where `event.data.payload.<fact>`.
 - Functions: len, lower, upper, trim, startsWith, endsWith, coalesce, round, floor, min, max, number, text, isnull, days, hours, minutes. Nothing else is callable.
 
 ## Limits
