@@ -10,7 +10,7 @@ import { lentOrBox } from "./lent-spawn.js";
 import { lentSpawnFor } from "../../lib/lent-placement.js";
 import { spawnSession } from "./spawn.js";
 import { Switchboard } from "../switchboard/index.js";
-import { rig, BOB } from "../runner/testing/lent-rig.js";
+import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
 
 /** A ChildProcess-shaped stand-in that records what it was written. */
@@ -177,7 +177,7 @@ test("a new chat of the home's owner is placed once at creation: a ready compute
   });
   const q = { thread: "thr_9", chat: "chat_9", native: "ses_9", fresh: true };
   assert.equal(await lentSpawnFor(make({ where: "box" }), q), null, "none ready: the box");
-  assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "ses_9", "chat_9", "per_owner"]]);
+  assert.deepEqual(placed.map(p => [p.space, p.session, p.chat, p.person]), [["spc_a", "thr_9", "chat_9", "per_owner"]]);
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, asker: "per_member" }), null, "another person's chat is not placed on the owner's computer");
   assert.equal(await lentSpawnFor(make({ where: "mac" }), { ...q, fresh: false }), null, "a chat that already ran is not placed now");
   assert.equal(placed.length, 1);
@@ -196,4 +196,22 @@ test("the lent process says it is starting on its computer from the first moment
   lent.lent = { ...lent.lent, state: "up" };
   lent.emit("spawn");
   assert.equal(p.lent.state, "up");
+});
+
+test("on the real home: a new chat of the owner is placed at creation on the owner's ready computer, the row says mac under the thread's id, and the process is lent; with no computer ready it stays on the box", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const kernel = (/** @type {any} */ h) => ({ owner: BOB, id: { space: SPACE, owner: BOB }, runnerHost: () => ({ lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => h.spawn(i), placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => h.placeNew(i), placements: { spaces: () => [SPACE], find: (/** @type {string} */ _s, /** @type {string} */ id) => h.book.find(id) } }) });
+  const q = { thread: "thr_new", chat: "chat_new", native: "thr_new", fresh: true, title: "Harlow intake" };
+  assert.equal(await lentSpawnFor(kernel(r.home), q), null, "no computer ready: the box");
+  assert.equal(r.home.book.find("thr_new"), null, "nothing was written");
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const spawn = await lentSpawnFor(kernel(r.home), q);
+  assert.ok(spawn, "a ready computer: the chat is placed there");
+  const row = r.home.book.find("thr_new");
+  assert.deepEqual([row.where, row.person, row.session], ["mac", BOB, "thr_new"]);
+  const proc = spawn("claude", ["--output-format", "stream-json"], {}, "/box/work", {});
+  assert.equal(typeof proc.kill, "function");
+  proc.kill();
 });
