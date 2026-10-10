@@ -110,7 +110,7 @@ test("what a Dockerfile build cannot do is refused in words: no Dockerfile, no p
   const d = tmp(t);
   let built = 0;
   seam.buildImage = async () => { built++; return { image: "sha256:" + "d".repeat(64), logs: "" }; };
-  const build = await tool(t, { builder: { from: ["ghcr.io/vyre-ai/"] } });
+  const build = await tool(t, { builder: { from: ["ghcr.io/vyre-ai/"] }, publish: { servers: true } });
   fs.writeFileSync(path.join(d, "index.html"), "<p>x</p>");
   await assert.rejects(build(dep(d)), /no Dockerfile at its top/);
   fs.writeFileSync(path.join(d, "Dockerfile"), "FROM nginx\n");
