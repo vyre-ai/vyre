@@ -3,8 +3,8 @@
 // "Not now" on "I don't have Vyre running yet" is the one way out: it keeps the new UI's own landing ("Not connected to a Vyre", with its Scan the code action) and nothing else.
 // Pure, so Node tests it; src/shell/SetupGate.tsx reads the pairing and calls this.
 
-/** Routes that stay reachable with no server: the install flow itself, a pairing link and a join link. */
-export const OPEN_ROUTES = /^\/(u\/install|pair|join)(\/|$)/;
+/** Routes that stay reachable with no server: the install flow itself, a pairing link and a join link, and the sample-world proof page for the Glass relay path (a mock build only: it draws nothing in a real one). */
+export const OPEN_ROUTES = /^\/(u\/install|pair|join|glass-relay-proof)(\/|$)/;
 
 /** Where an unpaired phone goes. */
 export const SETUP_ROUTE = "/u/install";
