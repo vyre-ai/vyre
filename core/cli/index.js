@@ -112,8 +112,8 @@ function crashed(name, err) {
 
 /** @param {string[]} argv */
 export async function main(argv) {
-  // Session mode: a session Vyre started gets three commands over its own socket, and nothing local runs (core/session-cli).
-  if (process.env.VYRE_SOCKET && process.env.VYRE_THREAD) return (await import("../session-cli/index.js")).run(argv);
+  // Session mode: a session Vyre started gets three commands over its own socket, and nothing local runs (core/cli/session.js).
+  if (process.env.VYRE_SOCKET && process.env.VYRE_THREAD) return (await import("./session.js")).run(argv);
   const [cmd, ...rest] = argv;
   if (cmd === "version" || cmd === "--version" || cmd === "-v") { out(VERSION); return 0; }
   const all = await commands();

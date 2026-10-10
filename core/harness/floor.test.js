@@ -306,7 +306,7 @@ test("floor: a symlink, `..` after one, or a hard link cannot carry a write into
   assert.equal(sh("cat notes.json"), null, "reading settings through a link is fine");
 });
 
-// ---- the session CLI: the one command form the floor allows (core/session-cli) ----
+// ---- the session CLI: the one command form the floor allows (core/cli/session.js) ----
 test("the session CLI: exactly the three forms, written plainly, are recognised", () => {
   assert.equal(sessionCommand('vyre tools find "send an email"'), "find");
   assert.equal(sessionCommand("vyre tools find send an email to Dana"), "find");

@@ -13,9 +13,9 @@ if (process.env.VYRE_SUPERVISOR === "docker" && process.getuid && process.getuid
     process.execPath, process.argv[1], ...process.argv.slice(2)], { stdio: "inherit", env: { ...process.env, HOME: "/home/vyre" } });
   process.exit(r.status ?? 1);
 }
-// Inside a session Vyre started (its own socket and thread), this is the session-mode CLI: three commands, everything else refused before it loads (core/session-cli).
+// Inside a session Vyre started (its own socket and thread), this is the session-mode CLI: three commands, everything else refused before it loads (core/cli/session.js).
 if (process.env.VYRE_SOCKET && process.env.VYRE_THREAD) {
-  const { run } = await import("../core/session-cli/index.js");
+  const { run } = await import("../core/cli/session.js");
   process.exit(await run(process.argv.slice(2)));
 }
 await import("../core/quiet.js");

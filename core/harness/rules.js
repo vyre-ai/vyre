@@ -84,7 +84,7 @@ export function rules({ tool, input, cwd, home, userHome, agent = null, sessionC
       return { decision: "ask", rule: 1, reason: `This sends as you, to ${where.slice(0, 200)}. Vyre asks before anything goes out.` };
     }
   }
-  // The one positive answer the floor gives: inside a sandboxed session whose PATH starts with the session's own `vyre` (core/session-cli), exactly that command in its three forms is allowed
+  // The one positive answer the floor gives: inside a sandboxed session whose PATH starts with the session's own `vyre` (core/cli/session.js), exactly that command in its three forms is allowed
   // without a question. What it can do is bounded elsewhere (the session's own socket, the registry's floor, the Gate that holds a send); this only spares the person a question per call.
   if (sessionCli === true && tool === "Bash" && typeof input.command === "string" && sessionCommand(input.command)) return { decision: "allow", rule: 0, reason: "the session's own vyre: find a tool, describe it, or call it; a send is still held for approval" };
   return { decision: null };

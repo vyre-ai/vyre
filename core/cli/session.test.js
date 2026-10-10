@@ -1,9 +1,9 @@
 // @ts-check
-// The limited `vyre` of a session sandbox (core/session-cli/index.js), over a fake socket: three verbs, the session's own identity, a held send said plainly, the person's own tools refused before they leave.
+// The limited `vyre` of a session sandbox (core/cli/session.js), over a fake socket: three verbs, the session's own identity, a held send said plainly, the person's own tools refused before they leave.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { run, inSession } from "./index.js";
+import { run, inSession } from "./session.js";
 
 const TOOLS = [
   { name: "comms.send", description: "Send an email or a text as the person; it is held for their approval.", input: { type: "object", properties: { to: { type: "string", description: "who gets it" }, subject: { type: "string" }, body: { type: "string" } }, required: ["to", "body"] } },
