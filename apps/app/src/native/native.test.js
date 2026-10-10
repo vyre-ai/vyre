@@ -6,6 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const OFFER = "https://vyre.run/pair#eyJhIjoxfQ";
