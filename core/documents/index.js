@@ -155,7 +155,7 @@ export function registerDocuments(ctx) {
     const raw = i.contact && typeof i.contact === "object" ? i.contact.urn ?? i.contact.id : i.contact;
     if (raw === undefined || raw === null || raw === "") throw refuse("name who signs: email, or contact (the Contact record)", "bad_input");
     const s = segments(String(raw));
-    const id = s ? (s.length === 3 && s[1] === "contact" ? s[2] : "") : (/^[A-Za-z0-9_-]{6,80}$/.test(String(raw)) ? String(raw) : "");
+    const id = s ? (s.length === 3 && s[1] === "contact" ? s[2] : "") : (/^[A-Za-z0-9_-]{1,80}$/.test(String(raw)) ? String(raw) : "");
     if (!id) throw refuse("contact is a Contact record", "bad_input");
     const rec = await d.gateway.records.get(d.chain, "contact", id);
     if (!rec) throw refuse("that Contact is not there, or is not yours to see", "not_found");
@@ -218,7 +218,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email or contact, days? }. Makes the link and emails it; one yes. Lasts until revoked unless days.",
+    description: "Email the signer their signed copy: { slug, email or contact, days? }. Makes the link and emails it; one yes. No end unless days.",
     input: obj({ space: str, slug: str, email: str, contact: {}, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
