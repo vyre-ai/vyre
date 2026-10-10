@@ -2,6 +2,7 @@
 // "Run on this computer": the words and rules for the UX half of R031-95, without a screen. A session runs on this Mac or on the server, and the person is told where and, when it moved, why.
 // The box (session-transfer's runner) answers with a placement { where, computer, reason, since }, settings, and the sessions running here; this turns them into the chip, the chat line, the
 // Settings page's limits and the list. Pure, so Node tests it.
+import { spaceTitle } from "../devices/device-model.js";
 
 /** Why a session is on the server, in the words a person uses. A code the app does not know is shown plainly, never as the code. */
 export const REASON_WORDS = /** @type {Record<string, string>} */ ({
@@ -64,10 +65,26 @@ export function parseLimit(key, text) {
   return { value: v };
 }
 
-/** The sentence under the switch. @param {MacSettings} s */
-export function switchNote(s) {
-  if (!s.enabled) return "Sessions run on the server. Turn this on to let them run on this Mac too.";
-  return `Sessions may run on this Mac${s.pluggedInOnly ? " while it is plugged in" : ""}, up to ${s.cpuPercent}% of the processor and ${s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`} of memory. Past a limit, a session moves to the server and carries on.`;
+/** The sentence under the switch; `shared` names the spaces this computer is lent to. @param {MacSettings} s @param {string[]} [shared] */
+export function switchNote(s, shared = []) {
+  if (!s.enabled) return "Sessions run on the server. Turn this on to let them run on this Mac too. You approve once. Turn it off any time and they go back to the server.";
+  const names = shared.length > 1 ? `${shared.slice(0, -1).join(", ")} and ${shared[shared.length - 1]}` : shared[0] || "";
+  return `Sessions may run on this Mac${s.pluggedInOnly ? " while it is plugged in" : ""}, up to ${s.cpuPercent}% of the processor and ${s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`} of memory. Past a limit, a session moves to the server and carries on.${names ? ` Shared with ${names}.` : ""}`;
+}
+
+/** What turning the switch on or off has to do, from spaces.devices.list for this computer: the spaces to lend it to and the ones it is lent to now. A space it was removed from is left alone. @param {any} d */
+export function lendPlan(d) {
+  const rows = d && Array.isArray(d.spaces) ? d.spaces : [];
+  const live = rows.filter((/** @type {any} */ r) => r && r.space && r.enrolled && !r.removed);
+  const pick = (/** @type {any} */ r) => ({ space: String(r.space), title: spaceTitle(r) });
+  return { device: d && d.device && typeof d.device.eid === "string" ? d.device.eid : "", toLend: live.filter((/** @type {any} */ r) => !r.lent).map(pick), lent: live.filter((/** @type {any} */ r) => r.lent).map(pick) };
+}
+
+/** Why the switch did not turn on, in words. @param {string | undefined} code @param {string} message */
+export function switchRefusal(code, message) {
+  if (code === "presence_required" || code === "presence_denied" || code === "denied") return "Not turned on: it needs your approval. Approve on this computer, then try again.";
+  if (code === "device_removed") return "Not turned on: this computer was removed from a space. Add it again from Spaces.";
+  return message ? `Not turned on: ${message.charAt(0).toLowerCase()}${message.slice(1)}` : "Not turned on. That did not go through.";
 }
 
 /** The sessions running here, for the Settings page and the menu bar. The box words each row's second line and accessory (`line`, `cpu`: runner.here in contracts/runner.md), so the Lumen list and this list read the same; an older box sends the numbers only. @param {any} d */

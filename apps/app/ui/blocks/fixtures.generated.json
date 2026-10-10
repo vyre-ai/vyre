@@ -3949,6 +3949,20 @@
     }
    }
   },
+  "runner-settings-off": {
+   "title": "Run on this computer, off",
+   "screens": {
+    "full": {
+     "component": "runner-settings-off"
+    },
+    "compact": {
+     "component": "runner-settings-off"
+    },
+    "glance": {
+     "component": "runner-settings-off"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
