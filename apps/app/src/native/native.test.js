@@ -6,6 +6,7 @@ import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 const OFFER = "https://vyre.run/pair#eyJhIjoxfQ";
@@ -90,4 +91,29 @@ test("keyStorage: what the pairing hello reports about the key", { skip: !strip 
   assert.equal(keyStorage("software"), "software");
   assert.equal(keyStorage("none"), undefined);
   assert.equal(keyStorage(undefined), undefined);
+});
+
+test("notices with the app closed: the connection is kept when notices are allowed and wanted, stopped when the person turns it off, and left alone otherwise; the row says what a tap does", { skip: !strip }, async () => {
+  const { keepPlan, keepState, keepTap, KEEP_SAY } = await import("./keepalive-model.ts");
+  const i = (/** @type {any} */ o) => ({ android: true, permission: "granted", wanted: true, ...o });
+  assert.equal(keepPlan(i({})), "start");
+  assert.equal(keepPlan(i({ wanted: false })), "stop");
+  for (const permission of ["ask", "denied", "unavailable"]) assert.equal(keepPlan(i({ permission })), "nothing", `not allowed (${permission}): nothing is started`);
+  assert.equal(keepPlan(i({ android: false })), "nothing", "no service off Android");
+  assert.deepEqual(["on", "off", "ask", "denied"].map(s => keepState(i(s === "on" ? {} : s === "off" ? { wanted: false } : { permission: s }))), ["on", "off", "ask", "denied"]);
+  assert.equal(keepState(i({ android: false })), "unavailable");
+  assert.deepEqual(["on", "off", "ask", "denied", "unavailable"].map(s => keepTap(/** @type {any} */ (s))), ["turn-off", "turn-on", "ask", "open-settings", "nothing"]);
+  for (const s of ["on", "off", "ask", "denied"]) assert.ok(KEEP_SAY[/** @type {"on"} */ (s)].line.length > 10 && !/push|token|Firebase|Google/i.test(KEEP_SAY[/** @type {"on"} */ (s)].line), `${s}: the line is plain and promises no push service`);
+});
+
+test("the service that runs the notice loop asks for the wake lock React Native holds for a headless task, or it crashes the app when it starts (found on the emulator)", () => {
+  const dir = new URL("../../modules/vyre-notify/android/src/main/", import.meta.url);
+  const manifest = fs.readFileSync(new URL("AndroidManifest.xml", dir), "utf8");
+  const service = fs.readFileSync(new URL("java/sh/vyre/notify/KeepAliveService.kt", dir), "utf8");
+  assert.match(service, /HeadlessJsTaskService/);
+  assert.match(manifest, /android\.permission\.WAKE_LOCK/);
+  const app = JSON.parse(fs.readFileSync(new URL("../../app.json", import.meta.url), "utf8"));
+  assert.ok(!(app.expo.android.blockedPermissions || []).includes("android.permission.WAKE_LOCK"), "app.json does not strip the wake lock back out of the merged manifest");
+  const perms = JSON.parse(fs.readFileSync(new URL("../../android-permissions.json", import.meta.url), "utf8"));
+  assert.ok(perms.allowed.includes("android.permission.WAKE_LOCK") && perms.reasons["android.permission.WAKE_LOCK"], "allowed, with its reason in words");
 });
