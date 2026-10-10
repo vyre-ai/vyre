@@ -854,7 +854,7 @@ function onAsk(s, type, p, at, out) {
     return;
   }
   // The old switchboard says a withdrawn ask as ask.answered with decision "cancelled".
-  const cancelled = type === "ask.cancelled" || p.decision === "cancelled";
+  const cancelled = p.decision === "cancelled";
   const state = cancelled ? "cancelled" : "answered";
   const decision = cancelled ? (p.decision ?? "cancelled") : (p.decision ?? null);
   const a = s.asks.get(id) ?? { ask: id, kind: p.kind || "permission", tool: p.tool ?? null, state, decision, at: at ?? null };
@@ -1098,7 +1098,7 @@ export function applyEvent(s, e) {
       // With a scope it is sessions.models.set (a purpose's or a project's default), not this thread.
       if (p.scope != null) break;
     // falls through
-    case "model.switched": case "thread.model":
+    case "model.switched":
       if (p.model != null && p.model !== "") { s.model = String(p.model); out.add("@session"); }
       break;
     case "effort.switched":
@@ -1150,7 +1150,7 @@ export function applyEvent(s, e) {
       out.add(key);
       break;
     }
-    case "ask.raised": case "ask.answered": case "ask.cancelled": onAsk(s, e.type, p, at, out); break;
+    case "ask.raised": case "ask.answered": onAsk(s, e.type, p, at, out); break;
     case "thread.usage":
       // cost_usd is the turn's own, total_cost_usd the session's so far: never the one for the other.
       s.usage = { ...(s.usage || {}), ...(p.tokens ? { tokens: p.tokens } : {}), ...(p.cost_usd != null ? { cost_usd: p.cost_usd } : {}),
