@@ -112,13 +112,15 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   for (const r of db.prepare("SELECT person, session, upto FROM stream_groups_marks").all()) markers.set(String(r.person), String(r.session), Number(r.upto));
   /** @type {Map<string, Group>} */ const groups = new Map();
   /** The team Space a chat belongs to (none for the home's own). @type {Map<string, string>} */ const spaceOfChat = new Map();
+  // prepared now, while the module's store is the home's: a statement prepared inside a call routed to a team Space would run against that Space's own (empty) file
+  const spaceAdd = db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)");
   for (const r of db.prepare("SELECT grp, space FROM stream_groups_space").all()) spaceOfChat.set(String(r.grp), String(r.space));
   /** Say which Space a chat belongs to, once: the first call that carries the Space (the member door's, through callInSpace) records it; a chat never changes Space. @param {string} grp @param {string} space */
   const setSpace = (grp, space) => {
     if (!/^spc_[a-z2-7]{12,26}$/.test(String(space))) return;
     const had = spaceOfChat.get(grp);
     if (had) { if (had !== space) throw fail("denied", "this chat belongs to another Space"); return; }
-    db.prepare("INSERT OR IGNORE INTO stream_groups_space (grp, space) VALUES (?, ?)").run(grp, space);
+    spaceAdd.run(grp, space);
     spaceOfChat.set(grp, space);
   };
   /** The kernel's chat calls for the Space a chat belongs to: the team's own kernel for a team chat, else the home's. @param {string} grp */
