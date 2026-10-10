@@ -82,6 +82,15 @@ server.on("upgrade", (req, client, head) => {
   });
   up.on("error", () => client.destroy()); client.on("error", () => up.destroy());
 });
+// a chat whose assistant cites a field of Northwind Bakery (a field-ref block on its reply, which the server draws per viewer): c5, a cited field opens its record
+const chat3 = await d.kernel.gateway.grants.chats.create(ownerChain, {});
+await new Promise((r) => setTimeout(r, 6000));
+const log3 = d.registry.modules.get("stream").handle.logs.get(chat3.id);
+const author = "assistant:claude";
+log3.append("participant-joined", { who: "person:" + owner }, { turn: null });
+log3.append("user-message", { message: "m-c5", text: "What is the name on the Northwind account?", state: "sent" }, { turn: null, author: "person:" + owner });
+log3.append("text-delta", { message: "m-c5.a", index: 0, text: "The account is held under " }, { turn: null, author });
+log3.append("text-done", { message: "m-c5.a", index: 0, blocks: [{ block: "field-ref", record: String(client.urn), field: "name", label: "Name" }] }, { turn: null, author });
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const SIZES = [["1440", { width: 1440, height: 900 }], ["390", { width: 390, height: 844 }]];
 let failed = 0;
@@ -112,6 +121,13 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await shot("c6-linked", 1500);
   const linked = await call("work.timeline", { record: String(client.urn) });
   must(JSON.stringify(linked).includes(chat.id), "after Link the chat is not on Northwind's timeline");
+  // c5: the reply cites the account's name as a chip; pressing it opens the record
+  await pg.goto(`${BASE}/u/chats/${chat3.id}`, { waitUntil: "domcontentloaded" });
+  await pg.getByText("Name: Northwind Bakery", { exact: false }).first().waitFor({ timeout: 20000 }).catch(() => must(false, "the cited field is not drawn on the reply"));
+  await shot("c5-cited-field", 800);
+  await pg.getByText("Name: Northwind Bakery", { exact: false }).first().click().catch(() => must(false, "the cited field cannot be pressed"));
+  await pg.waitForURL(new RegExp(`/u/record/${RECORD}`), { timeout: 8000 }).catch(() => must(false, `the cited field did not open the record: ${pg.url()}`));
+  await shot("c5-opened-record", 1500);
   await ctx.close();
 }
 await browser.close(); server.close(); await d.stop(); process.exit(failed ? 1 : 0);
