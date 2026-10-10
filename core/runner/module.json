@@ -133,7 +133,7 @@
           "pause",
           "lend"
         ],
-        "icon": "laptopcomputer",
+        "icon": "bolt",
         "root": true,
         "list": {
           "tool": "runner.here",

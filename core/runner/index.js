@@ -131,7 +131,7 @@ export default {
     });
     /** The limits the person set for this computer, as last read. */
     const limits = { ...SETTING_DEFAULTS };
-    const readSettings = settingsReader((tool, input) => ctx.call(tool, input));
+    const readSettings = settingsReader(key => ctx.call("settings.get", { key }));
     const refreshSettings = async () => { Object.assign(limits, await readSettings()); return limits; };
     /** Titles of the chats the sessions here belong to, as the home told this computer when it lent them. @type {Map<string, string>} */ const titles = new Map();
     /** Start (or resume) a session here: the Space's own definition says what runs. Both the person's tool and the home's "start it" (the person brought a session back) come here. */

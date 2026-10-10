@@ -20,15 +20,15 @@ export const SETTING_DEFAULTS = Object.freeze({ enabled: false, pluggedInOnly: t
 
 /**
  * What a computer's limits are, read through the one settings mechanism (core/settings): a key the settings module cannot give now reads as its default, so a daemon without it still answers.
- * @param {(tool: string, input: any) => Promise<any>} call
+ * @param {(key: string) => Promise<any>} get the settings module's read of one key (the caller names the tool with a literal)
  */
-export function settingsReader(call) {
+export function settingsReader(get) {
   let known = false;
   const read = async () => {
     const out = { ...SETTING_DEFAULTS };
     let any = false;
     for (const [name, key] of Object.entries(SETTING_KEYS)) {
-      try { const r = await call("settings.get", { key }); const v = r && r.data && r.data.value; if (r && r.data) any = true; if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (out)[name] = v; } catch { /* the default */ }
+      try { const r = await get(key); const v = r && r.data && r.data.value; if (r && r.data) any = true; if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (out)[name] = v; } catch { /* the default */ }
     }
     known = any;
     return out;
