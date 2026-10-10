@@ -124,6 +124,10 @@ Open the chat's tools and choose Files. The panel lists what the chat made and w
 
 Select a file to see it: text and images show right there, anything else says so. Share to project opens that one file to the project's members and nothing else in the chat. Unshare takes it back at once. File names are encrypted to the people in the chat, so only they see this list. See [Private chats](private-chats.md).
 
+## Add files to a message
+
+Tap the plus in the box and choose Attach a file or Attach a photo, or drop a file or paste a screenshot onto the chat in a browser. Each file is added to the chat's own folder at once, sealed like every chat file, and shows as a chip above the box; tap a chip to take it off. Send the message and the assistants get the files: an image comes with your words, and any other file (a PDF, a spreadsheet, a document) is put in the assistant's folder, where it reads it with its own tools. You can add up to five files a message: an image up to 5 MB, anything else up to 8 MB, 20 MB together. The chat keeps your words and the file names; the files are in the chat's Files panel.
+
 ## Put a file back
 
 After a turn that edited files, the line under it ("2 files, 1 min") opens the changes. Each file there has Undo: it puts that one file back as it was before the turn. Undo only works while the file still holds what the turn left, so your own later edits are never overwritten; if the file changed since, nothing is touched and it says so. A file the session created is removed again. The session is told on its next message, so it does not build on what you took out. Vyre keeps the earlier versions until it restarts, and only for files inside the session's folder.

@@ -38,7 +38,7 @@ import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
-import { cardsFor } from "./record-cards.js";
+import { cardsFor } from "../../lib/record-cards.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
