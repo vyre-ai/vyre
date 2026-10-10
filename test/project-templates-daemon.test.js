@@ -147,3 +147,22 @@ test("a template's chosen opening page is pinned in the project it starts (G21)"
   assert.equal(JSON.parse(rec.data.template_snapshot).opens_on, "files");
   await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad open", opens_on: "dashboard" } }), /opens_on is the page/);
 });
+
+test("a free-flow project becomes a draft template: its tasks are the working stage's tasks, and the person refines it in the studio (G21)", { timeout: 180_000 }, async t => {
+  const { d, call, ownerChain } = await boot(t);
+  const made = await call("work.project.create", { name: "Okafor Estate" });
+  const urn = String(made.urn || made.project || made.record);
+  assert.ok(urn, `a project was made: ${JSON.stringify(made).slice(0, 200)}`);
+  const slug = String(made.slug || "okafor-estate");
+  for (const [title, note] of [["Collect the death certificate", "Ask the family for a certified copy"], ["Open the estate account", ""]]) {
+    await d.kernel.gateway.records.create(ownerChain, "task", { title, project: { urn }, ...(note ? { note } : {}) });
+  }
+  const draft = await call("work.template.from-project", { project: slug, name: "Estate intake" });
+  assert.equal(draft.state, "draft");
+  const got = await call("work.template.get", { template: draft.template, version: draft.version });
+  const stages = got.body.stages;
+  assert.deepEqual(stages.map((/** @type {any} */ s) => s.name), ["Working", "Done"]);
+  assert.deepEqual(stages[0].tasks.map((/** @type {any} */ x) => x.title).sort(), ["Collect the death certificate", "Open the estate account"]);
+  assert.equal(stages[0].tasks.find((/** @type {any} */ x) => x.title.startsWith("Collect")).brief, "Ask the family for a certified copy");
+  assert.equal(got.body.name, "Estate intake");
+});
