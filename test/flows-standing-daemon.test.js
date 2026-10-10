@@ -1,0 +1,111 @@
+// @ts-check
+// The standing approval, in a REAL vyred (kernel on): the person's one yes at turn-on lets an outward step of that approved version send without a card per run, bounded by the kernel grant
+// minted for exactly that version (allow list, count, rate). A new version, a pause, an `approve: true` step, a recipient off the list, or a hit bound each put a person back in the loop.
+import "../scripts/mac-test-guard.mjs";
+import test from "node:test";
+import assert from "node:assert/strict";
+import path from "node:path";
+import { start } from "../core/daemon/index.js";
+import { tempHome, present, writeModule } from "./helpers.js";
+
+process.env.VYRE_SEAL_DEV = "1";
+process.env.VYRE_KERNEL_PATH_RULE = "1";
+
+const canonical = (/** @type {any} */ x) => JSON.stringify(x, Object.keys(x).sort());
+const signedPresence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 30_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 100)); } };
+
+const MANIFEST = { version: "0.1.0", does: { tools: [
+  { name: "zzflow.lookup", effect: "read", reach: "anyone" },
+  { name: "zzflow.notify", reach: "anyone", outward: true },
+  { name: "zzflow.plain", effect: "read", reach: "anyone" },
+] }, flow: { steps: [
+  { name: "zzflow.lookup", label: "Look up a client", inputs: { q: "string" }, outputs: { found: "string" } },
+  { name: "zzflow.notify", label: "Notify the client", outward: true },
+], triggers: [{ name: "zzflow.arrived", label: "A client arrives", event: "zzflow.arrived", inputs: { who: "string" } }] }, watches: { emits: ["zzflow.arrived"] } };
+const SRC = `export default { async start(ctx) {
+  const rec = (tool, meta, input) => { (globalThis.__zzflow ||= []).push({ tool, caller: meta.caller, origin: meta.origin, token: typeof meta.token === "string", input }); };
+  ctx.tool("zzflow.lookup", { effect: "read", input: { type: "object" }, run: async (i, meta) => { rec("lookup", meta, i); return { found: "Acme", asked: i.q }; } });
+  ctx.tool("zzflow.notify", { input: { type: "object" }, run: async (i, meta) => { rec("notify", meta, i); return { sent: true }; } });
+  ctx.tool("zzflow.plain", { effect: "read", input: { type: "object" }, run: async (i, meta) => { rec("plain", meta, i); return {}; } });
+  return {};
+} };`;
+
+async function boot(/** @type {import("node:test").TestContext} */ t) {
+  const root = tempHome(t);
+  const mods = path.join(root, "modules");
+  writeModule(mods, "zzflow", MANIFEST, SRC);
+  globalThis.__zzflow = [];
+  t.after(() => { delete globalThis.__zzflow; });
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, presence: present, log: (/** @type {string} */ m) => { lines.push(String(m)); }, kernel: true, kernelPresence: signedPresence(), firstPartyRoots: [mods] });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const host = d.registry.deps.flowsHost.get(space);
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(admin, {})).token });
+  const install = async (/** @type {any} */ flow) => {
+    const r = await d.registry.call("flows.define", { flow }, "cli", await meta());
+    assert.ok(r.data && r.data.ok, JSON.stringify(r));
+    await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
+    return r.data;
+  };
+  const calls = () => /** @type {any[]} */ (globalThis.__zzflow);
+  return { d, host, admin, space, install, calls, lines };
+}
+const flowOf = (/** @type {string} */ space, /** @type {any} */ input, /** @type {any} */ extra = {}, /** @type {any} */ step = {}) => ({ format: 1, name: `standing_${Math.random().toString(36).slice(2, 7)}`, label: "Notify", authorship: "human", trigger: { on: "manual" }, ...extra,
+  steps: [{ id: "c", kind: "call", action: "zzflow.notify", resource: `vyre://${space}/tool/zzflow.notify`, input, ...step }] });
+const notified = (/** @type {() => any[]} */ calls) => calls().filter(x => x.tool === "notify");
+const run = async (/** @type {any} */ host, /** @type {string} */ id) => host.flows.tools["flows.start"](host.personChain(), { id, input: {} });
+const cards = async (/** @type {any} */ d, /** @type {any} */ admin) => (await d.kernel.gateway.ask.list(admin, {})).filter((/** @type {any} */ x) => /zzflow|Notify/.test(x.title) && x.state !== "done");
+
+test("a turned-on Flow sends to its own recipient with no card, once per run", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install, calls, space } = await boot(t);
+  const flow = await install(flowOf(space, { to: "sam@example.com", body: "hello" }));
+  await run(host, flow.id);
+  await until(async () => notified(calls).length === 1, "the send to go out with nobody asked");
+  assert.deepEqual(await cards(d, admin), [], "no card was put in front of the person");
+  assert.equal(notified(calls)[0].input.to, "sam@example.com");
+});
+
+test("a step marked approve: true still asks, even in a turned-on Flow", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install, calls, space } = await boot(t);
+  const flow = await install(flowOf(space, { to: "sam@example.com", body: "hello" }, {}, { approve: true }));
+  await run(host, flow.id);
+  await until(async () => (await cards(d, admin)).length === 1, "a card");
+  await new Promise(r => setTimeout(r, 800));
+  assert.equal(notified(calls).length, 0, "nothing went out before the yes");
+});
+
+test("a recipient off the Flow's allow list asks", { timeout: 120_000 }, async t => {
+  const { d, host, admin, install, calls, space } = await boot(t);
+  const flow = await install(flowOf(space, { to: "stranger@elsewhere.com", body: "hi" }, { sends: { allow: ["sam@example.com"] } }));
+  await run(host, flow.id);
+  await until(async () => (await cards(d, admin)).length === 1, "a card");
+  assert.equal(notified(calls).length, 0);
+});
+
+test("the cap set at turn-on stops the run that would pass it, and says so", { timeout: 120_000 }, async t => {
+  const { host, install, calls, space } = await boot(t);
+  const flow = await install(flowOf(space, { to: "sam@example.com", body: "hello" }, { sends: { max: 2 } }));
+  for (let i = 0; i < 3; i++) { await run(host, flow.id); await new Promise(r => setTimeout(r, 600)); }
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal(notified(calls).length, 2, "two sends, the third stopped by the grant's budget");
+  const runs = JSON.stringify(await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }));
+  assert.match(runs, /bound|allowed when they turned it on/, "the person can see why it stopped");
+});
+
+test("a new approved version ends the old version's grant; a pause ends the standing yes", { timeout: 120_000 }, async t => {
+  const { d, host, install, calls, admin, space } = await boot(t);
+  const grants = async () => (await d.kernel.gateway.grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active");
+  const first = await install(flowOf(space, { to: "sam@example.com", body: "one" }));
+  await run(host, first.id);
+  await until(async () => (await grants()).length === 1, "one standing grant");
+  const g1 = (await grants())[0];
+  assert.match(g1.resource.prefix, new RegExp(`flow-act/${first.id}@${first.hash}$`));
+  await host.flows.tools["flows.pause"](host.personChain(), { id: first.id });
+  assert.equal((await grants()).length, 0, "paused: the grant is ended");
+  await host.flows.tools["flows.resume"](host.personChain(), { id: first.id });
+  await run(host, first.id);
+  await until(async () => (await grants()).length === 1 && notified(calls).length === 2, "a fresh grant and a second send after resume");
+});

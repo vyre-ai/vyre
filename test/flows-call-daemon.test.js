@@ -1,6 +1,6 @@
 // @ts-check
 // A Flow's call step runs a registered tool its module offered as a Flow step (`flow.steps`), in a REAL vyred (kernel on): a read tool runs at once as the Flow's person; an outward tool is
-// held for the person's yes and then goes out exactly once, with that approval spent at the call. Not rigs: the daemon builds the Flows host, the runner and the call port.
+// held for the person's yes (a step marked approve: true, or any outward one the turn-on yes does not cover) and then goes out exactly once, with that approval spent at the call. Not rigs: the daemon builds the Flows host, the runner and the call port.
 import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -84,7 +84,7 @@ test("a read tool runs at once as the Flow's person; a tool not listed in flow.s
 test("an outward tool is held for the person's yes, then goes out exactly once", { timeout: 120_000 }, async t => {
   const { d, host, admin, install, calls, space, lines } = await boot(t);
   const gw = d.kernel.gateway;
-  const flow = await install(flowOf(space, "zzflow.notify", { to: "sam@example.com", body: "hello" }));
+  const flow = await install({ ...flowOf(space, "zzflow.notify", { to: "sam@example.com", body: "hello" }), steps: [{ id: "c", kind: "call", action: "zzflow.notify", resource: `vyre://${space}/tool/zzflow.notify`, input: { to: "sam@example.com", body: "hello" }, approve: true }] });
   await host.flows.tools["flows.start"](host.personChain(), { id: flow.id, input: {} });
   const task = await until(async () => (await gw.ask.list(admin, {})).find((/** @type {any} */ x) => /Run zzflow.notify|zzflow/.test(x.title)), "the held card");
   await new Promise(r => setTimeout(r, 800));

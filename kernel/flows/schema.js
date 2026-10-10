@@ -70,9 +70,9 @@ export const STEP_KEYS = {
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
-  call: ["action", "resource", "input", "with"], stage: ["type", "record", "to"],
+  call: ["action", "resource", "input", "with", "approve"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await", "skills"], classify: ["input", "labels"], extract: ["input", "fields"],
-  service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input"],
+  service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input", "approve"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
 
@@ -110,6 +110,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
     const policyKeys = s.kind === "branch" ? [] : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (s.kind)] || s.kind === "subflow" ? ["on_fail", "verify"] : POLICY_KEYS.filter((k) => !(k === "timeout_ms" && s.kind === "wait"));
     onlyKeys(s, ["id", "kind", "label", ...keys, ...policyKeys], p, out);
     checkPolicy(s, p, out, ids, depth, budget, inHandler);
+    if (s.approve !== undefined && typeof s.approve !== "boolean") out.push({ path: `${p}.approve`, message: "approve is true when this send always asks a person, even in a turned-on Flow" });
     if (s.label !== undefined && (typeof s.label !== "string" || s.label.length > LIMITS.name)) out.push({ path: `${p}.label`, message: "a label is a short string" });
     const need = (/** @type {string} */ k, /** @type {(v: any) => boolean} */ ok, /** @type {string} */ msg) => { if (s[k] === undefined || !ok(s[k])) out.push({ path: `${p}.${k}`, message: msg }); };
     const typeName = (/** @type {any} */ v) => typeof v === "string" && NAME_RE.test(v);
@@ -294,7 +295,7 @@ export function checkFlow(flow) {
   /** @type {Problem[]} */
   const out = [];
   if (!isObj(flow)) return [{ path: "", message: "a Flow is an object" }];
-  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "concurrency", "lock", "stuck_after_ms"], "", out);
+  onlyKeys(flow, ["format", "name", "label", "description", "authorship", "caps", "trigger", "steps", "on_failure", "returns", "sends", "concurrency", "lock", "stuck_after_ms"], "", out);
   if (flow.format !== FLOW_FORMAT) out.push({ path: "format", message: `format is ${FLOW_FORMAT}` });
   if (typeof flow.name !== "string" || !NAME_RE.test(flow.name)) out.push({ path: "name", message: "a Flow name is lowercase letters, digits and underscores" });
   if (flow.label !== undefined && (typeof flow.label !== "string" || flow.label.length > LIMITS.name)) out.push({ path: "label", message: "a label is a short string" });
@@ -315,6 +316,17 @@ export function checkFlow(flow) {
     else checkSteps(flow.on_failure, "on_failure", out, ids, 0, budget, true);
   }
   // what a Flow gives back to the Flow that ran it as a sub-flow: values and expressions over its steps
+  // What the one yes at turn-on covers for sends (kernel/flows/standing.js): who it may send to, how many, how fast, and what to do when a recipient comes from outside content.
+  if (flow.sends !== undefined) {
+    const sd = flow.sends;
+    if (!isObj(sd)) out.push({ path: "sends", message: "sends is { allow?, max?, per_minute?, outside? }" });
+    else {
+      onlyKeys(sd, ["allow", "max", "per_minute", "outside"], "sends", out);
+      if (sd.allow !== undefined && !(Array.isArray(sd.allow) && sd.allow.length <= 200 && sd.allow.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 200))) out.push({ path: "sends.allow", message: "allow is a list of recipients (an address, or @domain for a whole domain)" });
+      for (const k of ["max", "per_minute"]) if (sd[k] !== undefined && !(Number.isInteger(sd[k]) && sd[k] >= 1 && sd[k] <= 100000)) out.push({ path: `sends.${k}`, message: `${k} is a whole number from 1` });
+      if (sd.outside !== undefined && !["ask", "run"].includes(sd.outside)) out.push({ path: "sends.outside", message: "outside is ask (a recipient that comes from outside content asks) or run" });
+    }
+  }
   if (flow.returns !== undefined) { if (!isObj(flow.returns)) out.push({ path: "returns", message: "returns is an object of names and values" }); else checkValue(flow.returns, "returns", out); }
   if (flow.concurrency !== undefined && !(Number.isInteger(flow.concurrency) && flow.concurrency >= 1 && flow.concurrency <= 32)) out.push({ path: "concurrency", message: "concurrency is 1 to 32 runs at once" });
   if (flow.lock !== undefined) { if (typeof flow.lock !== "string") out.push({ path: "lock", message: "lock is an expression giving a key (runs with the same key never run at the same moment)" }); else checkExpr(flow.lock, "lock", out); }

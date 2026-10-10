@@ -95,3 +95,11 @@ test("What it would do reads the kernel's real effects (objects, not names): no 
   assert.ok(lines.some((l) => /Hands work to: the manager role/.test(l)), JSON.stringify(lines));
   assert.ok(lines.every((l) => !/\brole:/.test(l)), "no raw role:x");
 });
+
+test("the card says what sends on its own after the one yes, and what still asks", async () => {
+  const m = await import("./engineer-model.ts");
+  const sends = { steps: [{ step: "a", action: "email.send", to: ["sam@x.com"], source: "literal", approve: false }, { step: "b", action: "email.send", to: [], source: "outside", approve: false }], allow: ["sam@x.com"], max: 20, per_minute: 5, outside: "ask" };
+  const lines = m.effectLines({ sends });
+  assert.match(lines[0], /sends on its own to sam@x\.com: up to 20 sends in all and 5 sends a minute, then it stops and tells you/);
+  assert.match(lines[1], /Still asks you first: email\.send \(it goes to someone found in the message\)/);
+});

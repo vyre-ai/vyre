@@ -12,6 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { createWakeTimer } from "./wake-timer.js";
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES, assistantOf } from "../../kernel/flows/index.js";
+import { boundsOf } from "../../kernel/flows/standing.js";
 import { createStages, taskIdOf } from "../../kernel/flows/stages.js";
 import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
@@ -52,7 +53,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"], mints: [{ prefix: "flow-act", actions: ["flows.act-standing"] }] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
@@ -86,6 +87,8 @@ export function createFlowsHost(o) {
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
+    /** Receipts the standing approval gave this host for sends about to run (spent once at the call). */
+    const standingReceipts = new Set();
     const ports = {
       // "Call a tool": a registered tool its module offered as a Flow step. A read tool runs as the Flow's person at once; an outward one runs only with the approval the person gave for exactly this
       // act, spent here (once, for the task's doer, bound to this input), and then it is the person's own act: no second hold. Anything else is refused.
@@ -102,7 +105,7 @@ export function createFlowsHost(o) {
           // (read from the task itself, which a restart keeps: the person's yes was proven when they answered it, and the rider may come days later)
           const ride = opts.ride, row = ride ? await gw.ask.get(flowsChain(), String(opts.approval)).catch(() => null) : null, form = row && row.state === "done" && row.outcome === "approved" ? row.form : null;
           const rides = ride && form && form.kind === "held_act" && form.run === ride.run && form.step === ride.with && Array.isArray(form.rides) && form.rides.some((/** @type {any} */ r) => r.step === ride.step && r.action === action && r.resource === resource);
-          if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
+          if (standingReceipts.has(String(opts.approval))) { standingReceipts.delete(String(opts.approval)); } else if (ride ? !rides : (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true }))) {
             throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
           }
         }
@@ -240,6 +243,44 @@ export function createFlowsHost(o) {
       return (Array.isArray(rows) ? rows : []).slice(0, 50).map((/** @type {any} */ t) => ({ task: t.id, label: String(t.title || "").slice(0, 120), reason: String((t.stuck && t.stuck.reason) || "").slice(0, 200), since: (t.stuck && t.stuck.since) || t.updated_at || 0, ...(t.record ? { record: t.record } : {}) }));
     };
     const flows = createFlows({ kernel, chains, catalog, store, kitStore, clock, emit, ports, proposals, settings: o.settings, stuckTasks });
+    // The standing approval (kernel/flows/standing.js): the person's yes at turn-on is a kernel grant for exactly that approved version, made through the module's mint handle and ended when the
+    // version stops being the one that runs. A send is covered only when the kernel, asked with the run's own chain, allows it: the budget and rate on the grant are the kernel's to count.
+    const standingUrn = (/** @type {string} */ flow, /** @type {string} */ hash) => `vyre://${space}/flow-act/${flow}@${hash}`;
+    const reconcileStanding = async (/** @type {string} */ flow) => {
+      if (!sh.mint) return null;
+      const live = await store.active(flow).catch(() => null), want = live && live.approver ? standingUrn(flow, live.hash) : null;
+      const have = (await sh.mint.list({ source: `flows:standing:${flow}@` })) || [];
+      for (const g of have) if (g.resource.prefix !== want) await sh.mint.end({ id: g.id, reason: "the approved version changed, paused or ended" });
+      if (!want || have.some((/** @type {any} */ g) => g.resource.prefix === want)) return want;
+      const b = boundsOf(live.flow, await catalog().catch(() => null));
+      await sh.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: live.approver.id, space } }, actions: ["flows.act-standing"], resource: { prefix: want }, source: `flows:standing:${flow}@${live.hash}`,
+        conditions: { budget: { meter: `flow-act:${flow}@${live.hash}`, limit: b.max }, rate: { n: b.per_minute, per_seconds: 60 } }, reason: "the person turned this Flow on" });
+      return want;
+    };
+    for (const name of ["flows.approve", "flows.pause", "flows.resume", "flows.disable", "flows.rollback", "flows.remove", "flows.delete"]) {
+      const orig = flows.tools[name];
+      if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id)).catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
+    }
+    ports.standing = async (/** @type {any} */ x) => {
+      const want = await reconcileStanding(x.flow);
+      const live = await store.active(x.flow).catch(() => null);
+      if (!want || !live || live.version !== x.version) return null;
+      /** @type {any} */ let d = null;
+      try {
+        d = await gw.authorize({ chain: x.chain, action: "flows.act-standing", resource: `${want}/${x.step}` });
+        // the grant's budget and rate are counted here, as the gate counts any allowed act: a send past the bound throws before anything goes out
+        if (d && d.effect === "allow" && gw.limits) gw.limits.enforce(x.chain, d);
+      } catch (e) {
+        const code = /** @type {any} */ (e) && /** @type {any} */ (e).code;
+        if (code === "budget_exhausted" || code === "rate_limited") throw Object.assign(new Error(code === "rate_limited" ? "this Flow sent as many as its limit allows for a minute, so it stopped" : "this Flow sent as many as the person allowed when they turned it on, so it stopped"), { code: "bound" });
+        return null;
+      }
+      if (!d || d.effect !== "allow") { log(`flows ${space}: standing not allowed ${JSON.stringify(d).slice(0, 300)}`); return null; }
+      const receipt = `standing:${x.run}-${x.step}`;
+      standingReceipts.add(receipt);
+      emit("flow.standing", { run: x.run, flow: x.flow, step: x.step, action: x.action, recipients: x.recipients });
+      return { receipt };
+    };
     // A template project's `role:x` doer is the agent or person its team gave that role (team-member rows), before the Space's own roles are asked.
     const projectRoleDoer = async (/** @type {string} */ role, /** @type {any} */ c) => {
       if (!c || c.type !== "project" || typeof c.record !== "string") return null;

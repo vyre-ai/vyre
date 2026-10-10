@@ -55,6 +55,7 @@ export const GRANT_ACTIONS = Object.freeze([
   // projects module's own access table: one permission system, the kernel's.
   { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
+  { action: "flows.act-standing", resource_type: "flow-act", risk: "write", label: "send as a turned-on Flow", gloss: "What a Flow the person turned on may send by itself, within the limits they approved. Only a Flow run asks for it." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
   { action: "model.call", resource_type: "model", risk: "read", label: "ask a model", gloss: "Send text to an AI model through the Space's inference door. Sealed values go as placeholders." },
