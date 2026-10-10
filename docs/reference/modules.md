@@ -29,6 +29,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
+| [`builder`](#builder) | `core/builder` | `box` | 1 | 0 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
@@ -72,7 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`previews`](#previews) | `core/previews` | `box` | 20 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 21 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
@@ -255,6 +256,17 @@ Lets one Space share with another on purpose: a shared view, a reference, an eve
 - Tools: [17](tools.md#bridges)
 - Emits: [16 events](events.md#bridges)
 - Shows on: capsule, cli, deck
+
+## builder
+
+Builds a site for Publish. For now it turns a folder of ready files into a build, with no command run; building from a repo or running a build command needs a container builder this server does not have yet.
+
+- Folder: `core/builder`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [1](tools.md#builder), 1 of them only for other modules
+- Emits: no events
+- Shows on: no surface
 
 ## capsule
 
@@ -750,7 +762,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [19](tools.md#publish)
+- Tools: [21](tools.md#publish)
 - Emits: [6 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
