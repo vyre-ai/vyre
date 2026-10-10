@@ -13,7 +13,7 @@ export const REASONS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-
 export const AUTO = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off"]);
 /** The reasons that clear by themselves: when the computer is well again the session is offered back (never moved back). */
 export const CLEARS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "offline", "lease-expired"]);
-export const STATES = Object.freeze(["here", "moving", "server", "locked", "updating"]);
+export const STATES = Object.freeze(["here", "moving", "server", "locked", "updating", "paused"]);
 /** A lent session whose computer has not been heard from for this long is taken back by the server. The computer beats every HEARTBEAT_MS. */
 export const HEARTBEAT_MS = 5_000;
 export const LAPSE_MS = 20_000;
@@ -26,7 +26,7 @@ const bad = (/** @type {string} */ message, /** @type {string} */ code) => Objec
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
- * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating",
+ * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating" | "paused",
  *   reason: string | null, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
  *   facts?: { cpuPercent?: number, memoryMb?: number, turn?: number } }} Row
  * @typedef {{ load(): Row[], save(rows: Row[]): void }} Store
@@ -100,7 +100,7 @@ export function createPlacementBook(o = {}) {
     /**
      * The lender is alive and says how its sessions are. Answers `{ ok, epoch }`, or `{ ok: false, fenced: true }` when the session is no longer this epoch's (it moved, or it was never this lender's):
      * the lender stops it at once.
-     * @param {{ session: string, epoch: number, device: string, cpuPercent?: number, memoryMb?: number, turn?: number }} i
+     * @param {{ session: string, epoch: number, device: string, cpuPercent?: number, memoryMb?: number, turn?: number, paused?: boolean }} i
      */
     beat(i) {
       const r = rows.get(String(i.session));
@@ -108,6 +108,8 @@ export function createPlacementBook(o = {}) {
       r.beat = now();
       const f = {}; for (const k of /** @type {const} */ (["cpuPercent", "memoryMb", "turn"])) if (Number.isFinite(i[k])) /** @type {any} */ (f)[k] = Number(i[k]);
       r.facts = f;
+      // Pause all froze it on the computer: the chat says so; a session being handed over stays "moving"
+      if (i.paused === true && r.state === "here") r.state = "paused"; else if (i.paused === false && r.state === "paused") r.state = "here";
       return { ok: true, epoch: r.epoch };
     },
 

@@ -286,7 +286,7 @@ export default {
         for (const [space, l] of lenders) {
           const p = l.ports; if (typeof p.beat !== "function") continue;
           const r = runners.get(space);
-          const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb })) : [];
+          const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true })) : [];
           let ans; try { ans = await p.beat({ sessions, well }); } catch { continue; }
           for (const d of ans && Array.isArray(ans.directives) ? ans.directives : []) {
             const key = `${space}/${d.do}/${d.session}`;

@@ -167,7 +167,7 @@ export function createLentHome(o) {
      * The lender is alive. Each session it still runs is checked against the book: one whose epoch is not current (it moved, or the home restarted without it) is listed in `fenced`, and the lender stops it
      * at once. `well` is the lender saying nothing holds its sessions back now (lid open, plugged in, online): sessions it gave up for a condition that clears are then offered back. The answer also carries
      * what the home wants done: hand a session over (the person's move), or start one the person brought back.
-     * @param {any} chain @param {{ sessions?: { session: string, epoch: number, cpuPercent?: number, memoryMb?: number, turn?: number }[], well?: boolean }} [i]
+     * @param {any} chain @param {{ sessions?: { session: string, epoch: number, cpuPercent?: number, memoryMb?: number, turn?: number, paused?: boolean }[], well?: boolean }} [i]
      */
     async beat(chain, i = {}) {
       const w = who(chain);
@@ -175,7 +175,7 @@ export function createLentHome(o) {
       /** @type {string[]} */ const fencedList = [];
       for (const x of list) {
         const sid = String(x && x.session), l = lent.get(sid);
-        if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn }).ok) fencedList.push(sid);
+        if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);
       return { ok: true, fenced: fencedList, offers: book.offered(w.device), directives: book.directives(w.device) };
