@@ -439,6 +439,16 @@ question, and asks for your yes (the same one as for showing a secret) before it
 changes a role, removes a member or changes the vault's key. An assistant or an outside agent can
 read the list and pull changes, and can do nothing else here.
 
+## Keys for a published site
+
+A site or app you publish gets the keys it needs from the Vault, one at a time, and only the ones
+you give it. You put a key in the Vault once (say a Deepgram key), then give it to each deployment
+that needs it from that deployment's secrets. Two deployments and your chat's transcripts can use
+the same key: each has its own permission, taking it away from one leaves the others, and
+changing the key in the Vault changes it for all of them at the next build. Deleting the key from
+the Vault takes it away from every deployment. A key never appears in a site's files, its build log
+or the page; the Vault's log shows which deployment used which key and when.
+
 ## Emergency access
 
 Emergency access lets someone you trust open your items if something happens to you. They have
