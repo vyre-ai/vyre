@@ -279,6 +279,7 @@ Claude Code and other sessions, the agents you name, and how they run.
 | `attachments` | `core/attachments/` | box | Files added to a chat message: stored once in the chat's folder, handed to the assistants as an image or a path. |
 | `harness` | `core/harness/` | box and local | What the Claude Code hooks ask vyred. |
 | `import` | `core/import/` | box and local | Find this device's Claude Code sessions and import the ones you choose. |
+| `models` | `core/models/` | box and local | The model registry: one list every picker reads from each provider, CLI and OpenRouter, and a pending eval card for a new model; it never holds a key. |
 | `pluginagent` | `core/pluginagent/` | box and local | Claude Code on a computer as a named agent the person grants once. |
 | `providers` | `core/providers/` | box and local | Every session provider on this machine, with its accounts and models. |
 | `runner` | `core/runner/` | local and box | Runs a Space's AI sessions on a computer: sandboxed, in an encrypted workspace. |
@@ -296,6 +297,7 @@ Projects, records, tasks, rules, Flows, files.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `artifacts` | `core/artifacts/` | box | Documents, pages, dashboards and small apps your agents make, kept on your server. |
+| `builder` | `core/builder/` | box | Builds a site for Publish: a folder of ready files, a React page, or a folder with a Dockerfile built into an image in a rootless BuildKit. |
 | `documents` | `core/documents/` | box | Word templates filled from records, PDFs, documents sent for signature and their signed copies filed on the client. |
 | `files` | `core/files/` | box and local | Find and bring over files on this machine and the server, inside folders the person chose. |
 | `flows` | `core/flows/` | box and local | Flows and Kits: write, approve and run a Flow with its triggers, waits and tasks. |
