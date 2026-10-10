@@ -78,3 +78,12 @@ test("which repos may be named, and the clone's git arguments: https GitHub only
   assert.deepEqual(a.slice(-3), ["--", "https://github.com/o/n.git", "/tmp/x"]);
   for (const want of ["core.hooksPath=/dev/null", "protocol.allow=never", "--depth", "--single-branch"]) assert.ok(a.includes(want), want);
 });
+
+test("a clone past the size limit is refused and removed", async t => {
+  /** @type {string} */ let where = "";
+  seam.clone = async (_u, _b, dir) => { where = dir; fs.mkdirSync(dir, { recursive: true }); const fd = fs.openSync(path.join(dir, "big.bin"), "w"); fs.ftruncateSync(fd, 301 * 1024 * 1024); fs.closeSync(fd); };
+  t.after(() => { seam.clone = null; });
+  const build = await tool(t);
+  await assert.rejects(() => build(dep({ source: { kind: "repo", ref: "northwind/huge" } })), /more than 300 MB/);
+  assert.ok(!fs.existsSync(where) && !fs.existsSync(path.dirname(where)), "nothing is left on the disk");
+});

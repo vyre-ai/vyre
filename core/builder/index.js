@@ -6,7 +6,7 @@ import { readSite, digestOf } from "../../lib/publish/folder-build.js";
 import { checkDockerfile, buildImage } from "./container.js";
 import { askHelper, helperPresent } from "../../stores/twenty/helper.js";
 import { requestText, writeServerFolder, removeServerFolder } from "../../lib/publish/server-folder.js";
-import { repoOf, cloneArgs, cloneEnv } from "../../lib/publish/repo-source.js";
+import { repoOf, cloneArgs, cloneEnv, CLONE_MAX_BYTES } from "../../lib/publish/repo-source.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -126,13 +126,23 @@ async function gitClone(url, branch, dir) {
   });
 }
 
+/** Bytes under a folder (links are not followed). @param {string} dir @returns {number} */
+function dirBytes(dir) {
+  let n = 0;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const p = path.join(dir, e.name); n += e.isDirectory() ? dirBytes(p) : e.isFile() ? fs.statSync(p).size : 0; }
+  return n;
+}
+
 /** The folder a deployment builds from: its own folder, or a fresh clone of its repo in a folder that `done` removes. @param {any} plan @returns {Promise<{ dir: string, done: () => void }>} */
 async function sourceDir(plan) {
   if (!plan.repo) return { dir: plan.dir, done() {} };
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-repo-"));
   const done = () => fs.rmSync(dir, { recursive: true, force: true });
   const at = path.join(dir, path.basename(plan.repo.url, ".git"));
-  try { await (seam.clone || gitClone)(plan.repo.url, plan.repo.branch, at); } catch (e) { done(); throw e; }
+  try {
+    await (seam.clone || gitClone)(plan.repo.url, plan.repo.branch, at);
+    if (dirBytes(at) > CLONE_MAX_BYTES) throw refuse(`the repo is more than ${CLONE_MAX_BYTES / 1048576} MB; it was not built: publish a smaller repo, or a folder of what the site needs`, "refused");
+  } catch (e) { done(); throw e; }
   return { dir: at, done };
 }
 
