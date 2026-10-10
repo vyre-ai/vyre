@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 /** When a process started, as the system tells it (a value to compare, not to read): a pid that has been reused is a different process with a different start. Empty when it cannot be told. @param {number} pid */
 export function startedOf(pid) {
   if (process.platform === "linux") { try { const t = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return t.slice(t.lastIndexOf(")") + 2).split(" ")[19] || ""; } catch { return ""; } }
-  try { return execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim(); } catch { return ""; }
+  try { return execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000, env: { ...process.env, TZ: "UTC", LC_ALL: "C" } }).trim(); } catch { return ""; }   // in UTC: a change of time zone must not make a process look new
 }
 
 /**
@@ -28,7 +28,7 @@ export function endOrphans(base, only = "") {
       const pid = Number(rec.pid); if (!Number.isInteger(pid) || pid < 2) throw new Error("bad");
       // still the process we recorded: alive, and the same start (a pid is reused; a process that merely has the number now is somebody else's)
       const started = startedOf(pid);
-      const same = Boolean(started) && (!rec.started || String(rec.started) === started);
+      const same = Boolean(started) && Boolean(rec.started) && String(rec.started) === started;   // a record that could not say when its process started is not obeyed
       if (same) { for (const sig of ["SIGTERM", "SIGKILL"]) { try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch {} } } n++; }
     } catch { /* not a record we can read */ }
     try { fs.rmSync(file, { force: true }); } catch {}

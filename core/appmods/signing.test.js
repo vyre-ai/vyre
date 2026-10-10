@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -221,4 +221,11 @@ test("a signing request tells the app to send nothing, and the answer is read fo
   assert.deepEqual(readRequest([{ id: 7, submission_id: 4411, slug: "abc123" }]), { submission: 4411, slug: "abc123" });
   assert.deepEqual(readRequest({ submitters: [{ submission_id: 5, slug: "x_y-z" }] }), { submission: 5, slug: "x_y-z" });
   for (const junk of [null, [], [{}], [{ submission_id: 0, slug: "a" }], [{ submission_id: 4, slug: "../x" }], "text"]) assert.equal(readRequest(junk), null);
+});
+
+test("the stylesheet every signer page carries hides what the signer's link cannot serve and the engine's own branding, and keeps the licence credit", () => {
+  assert.match(CREDIT_CSS, /download-button[^}]*display:none/, "no Download button: the signed copy comes by its own link");
+  assert.match(CREDIT_CSS, /a\[href\*="docuseal\.com"\][^}]*display:none/, "the engine's logo and powered-by links are not shown");
+  assert.ok(!/#vyre-credit[^{]*\{[^}]*display:none/.test(CREDIT_CSS), "the licence credit stays");
+  assert.ok(CREDIT_HTML.includes("github.com/docusealco/docuseal") && !CREDIT_HTML.includes("docuseal.com"), "and its link is not one the stylesheet hides");
 });

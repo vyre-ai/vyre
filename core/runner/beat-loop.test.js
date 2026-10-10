@@ -42,9 +42,9 @@ async function world(/** @type {import("node:test").TestContext} */ t, /** @type
   const root = fs.mkdtempSync(path.join(SCRATCH, "bl-root-"));
   const r = await rig(t, { keyIsDevice: true, lapseMs: 1500, specFor: async () => ({ command: process.execPath, args: [path.join(agentDir, "agent.js")], env: {}, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }), ...over });
   const chat = (await r.g.chats.create(r.bob, { people: [] })).id;
-  const net = { cut: false, hang: false };
+  const net = { cut: false, hang: false, slow: 0 };
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
-  const call = (/** @type {string} */ name, /** @type {any[]} */ args) => (net.cut ? Promise.reject(Object.assign(new Error("the network is down"), { code: "unavailable" })) : net.hang && name === "lent.beat" ? new Promise(() => {}) : remote.call(name, args));
+  const call = (/** @type {string} */ name, /** @type {any[]} */ args) => (net.cut ? Promise.reject(Object.assign(new Error("the network is down"), { code: "unavailable" })) : net.hang && name === "lent.beat" ? new Promise(() => {}) : net.slow && name === "lent.beat" ? new Promise(res => setTimeout(res, net.slow)).then(() => remote.call(name, args)) : remote.call(name, args));
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();
   const ctx = {
@@ -189,4 +189,15 @@ test("a home whose call hangs (no error, no answer) freezes the sessions like a 
   w.net.hang = false;
   await waitFor(() => statesOf(w.agent).every(x => x !== "T"), 15_000);
   assert.equal(w.book.get("s1").where, "mac");
+});
+
+test("a home that answers late is a home that answers: the sessions freeze while it is slow and run again when its answers arrive", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
+  const w = await world(t, { lapseMs: 60_000 });
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x !== "T"), 10_000);
+  w.net.slow = 1500;   // longer than a beat's patience (300 ms)
+  await waitFor(() => statesOf(w.agent).every(x => x === "T"), 15_000);
+  await waitFor(() => statesOf(w.agent).every(x => x !== "T"), 15_000);   // the slow answers arrive and are believed
+  assert.equal(w.book.get("s1").where, "mac");
+  w.net.slow = 0;
 });

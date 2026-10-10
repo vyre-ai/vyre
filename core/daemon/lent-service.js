@@ -74,8 +74,8 @@ export function lentPlacements(registry) {
   const book = (/** @type {string} */ space) => { const h = homeOf(space); if (!h) throw Object.assign(new Error("no such Space here"), { code: "not_found" }); return h.book; };
   return Object.freeze({
     spaces: () => { const f = registry.deps.lentSpaces; return typeof f === "function" ? f() : []; },
-    find: (/** @type {string} */ space, /** @type {string} */ id) => { const h = homeOf(space); return h ? h.book.find(id) : null; },
-    askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason) => book(space).askRelease(session, reason),
+    find: (/** @type {string} */ space, /** @type {string} */ id, /** @type {string} */ person) => { const h = homeOf(space); return h ? h.book.find(id, person) : null; },
+    askRelease: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason, /** @type {string} */ person) => book(space).askRelease(session, reason, person),
     bringBack: (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ person) => book(space).bringBack(session, person),
   });
 }

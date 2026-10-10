@@ -600,3 +600,28 @@ test("runner: a session says why it ended: finished by itself, stopped by the pe
   void b;
   assert.deepEqual(ended, [["fin", "finished"], ["stp", "stopped"], ["die", "crashed"]]);
 });
+
+test("runner: a server that never answers a hand-over leaves the session running, not frozen for ever", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  const r = await rig(t, { requestServer: () => new Promise(() => {}), handoverMs: 400 });
+  const h = await r.launch(r.runner, "s1");
+  h.send("turn a");
+  await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 1);
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+  await waitFor(() => procState(h.pid) !== "T");
+  assert.deepEqual(r.runner.status().sessions, ["s1"]);
+  // and the next hand-over can be asked: the first left nothing set
+  await assert.rejects(r.runner.moveToServer("s1", "lid-closed"), /did not answer/);
+});
+
+test("runner: thawing a reason nobody froze for sends no signal; a session stopped by the machine's teardown says so, not that the person stopped it", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  /** @type {any[]} */ const ended = [];
+  const r = await rig(t, { onEvent: e => { if (e.type === "stopped") ended.push(e.why); } });
+  const h = await r.launch(r.runner, "s1");
+  r.runner.pause(); await waitFor(() => procState(h.pid) === "T");
+  r.runner.thaw("offline");   // never frozen for that: the person's pause stands
+  await sleep(200);
+  assert.equal(procState(h.pid), "T");
+  r.runner.resume();
+  await r.runner.stopAll();
+  assert.deepEqual(ended, ["teardown"]);
+});

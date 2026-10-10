@@ -10,7 +10,7 @@ import { yes, momentOf, MOMENTS, YES_REASONS, MOMENT_OPS, REUSE_OPS, opFitsMomen
 import { coveredRide } from "../../core/modules/index.js";
 import { COVERED } from "../../lib/covered.js";
 import { tempHome, present, asOwner } from "../helpers.js";
-import { moments, reasons, heldError, refusedError, manifestEntry, yesResults, coveredMark, shapeDiff } from "./one-yes.fixtures.js";
+import { moments, reasons, heldError, refusedError, manifestEntry, receiptKinds, yesResults, coveredMark, limits, shapeDiff } from "./one-yes.fixtures.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -72,12 +72,45 @@ test("one-yes v1: a tool marked outward holds a model's call as a card, a retry 
   const entry = (/** @type {string} */ name) => d.registry.tools.get(name);
   assert.deepEqual(entry("comms.send").covers, manifestEntry.covers);
   assert.equal(entry("comms.send").outward, true);
+  assert.deepEqual(entry("mail.send").covers, ["google.mail.send", "mcp.call"]);
   const docs = JSON.parse(fs.readFileSync(new URL("../../core/documents/module.json", import.meta.url), "utf8")).does.tools;
   assert.ok(docs.find((/** @type {any} */ x) => x.name === "documents.send").covers.includes("comms.send"), "Documents files its sends through Comms in the same act");
+  for (const name of ["documents.send", "documents.send-signed"]) assert.deepEqual(docs.find((/** @type {any} */ x) => x.name === name).covers, ["comms.send", ...manifestEntry.covers], `${name} names the whole way out`);
+  for (const [, def] of d.registry.tools) if (def.covers) assert.ok(def.covers.length <= limits.coversMax, `${def.name} names at most ${limits.coversMax} tools`);
   const tools = d.registry.tools;
   const cur = { [COVERED]: { ...coveredMark, via: [] } };
   const ride = coveredRide(tools, cur, "mail.send", "module:comms");
   assert.deepEqual(ride && ride.via, ["mail"], "the mark gains the module the nested tool belongs to");
   assert.equal(coveredRide(tools, cur, "mail.send", "module:other"), null, "only the covered tool's module (or one it passed the mark to) rides it");
   assert.equal(coveredRide(tools, cur, "gate.request", "module:comms"), null, "a tool the covered one did not name is held again");
+});
+
+test("one-yes v1.1: a Flow's spent task and a person's confirmed preview are receipts: only the registry records one, only a receipt's own kind of id, and the Gate uses it once for the tool, digest and asker it names", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", modules: { disable: ["agents", "computers"] } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const tool = (/** @type {string} */ name) => d.registry.tools.get(name);
+  const mine = { tool: "comms.send", input_sha256: coveredMark.input_sha256, asker: "module:flows>deck" };
+  const receipt = (/** @type {any} */ input, caller = "module:registry") => tool("approvals.receipt").run(input, { caller });
+  const cover = (/** @type {any} */ input) => tool("approvals.cover").run(input, { caller: "module:gate" });
+
+  // anyone but the registry is refused, through the registry's own call path too
+  await assert.rejects(() => receipt({ card: receiptKinds.ok[0], ...mine }, "module:gate"), /only the registry/);
+  assert.ok((await d.registry.call("approvals.receipt", { card: receiptKinds.ok[0], ...mine }, "cli")).error, "a client cannot record a receipt");
+  assert.ok((await d.registry.call("approvals.receipt", { card: receiptKinds.ok[0], ...mine }, "mcp:agent:kit")).error, "a model cannot record a receipt");
+  // only a receipt's own kind of id: a phone card's id, a short id, a made-up kind
+  for (const card of receiptKinds.notReceipts) await assert.rejects(() => receipt({ card, ...mine }), /not a Flow task's or a confirmed preview's receipt/, card);
+  // a recorded receipt covers exactly its tool, digest and asker, and only once
+  for (const card of receiptKinds.ok) {
+    assert.deepEqual(await receipt({ card, ...mine }), { ok: true });
+    await assert.rejects(() => receipt({ card, ...mine }), /already recorded/, "the same receipt id is never recorded twice");
+    assert.deepEqual(await cover({ card, ...mine, asker: "mcp:agent:juno" }), { ok: false }, "another asker is not covered");
+    assert.deepEqual(await cover({ card, ...mine, tool: "mail.send" }), { ok: false }, "another tool is not covered");
+    assert.deepEqual(await cover({ card, ...mine, input_sha256: "b".repeat(32) }), { ok: false }, "another input is not covered");
+    assert.deepEqual(await cover({ card, ...mine }), { ok: true });
+    assert.deepEqual(await cover({ card, ...mine }), { ok: false }, "one receipt, one send");
+  }
+  await assert.rejects(() => tool("approvals.cover").run({ card: receiptKinds.ok[0], ...mine }, { caller: "cli" }), /Gate/, "only the Gate uses one");
 });
