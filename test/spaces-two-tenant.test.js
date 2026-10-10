@@ -44,5 +44,6 @@ test("listCaller: the first person on the chain, whatever hops follow; a service
   assert.equal(await listCaller(K([service]), { caller: "mcp", token: "t" }), null, "a service-only chain is nobody's");
   assert.equal(await listCaller(K([service]), { caller: "cli", token: "t" }), null, "a token that gives no person is not the local terminal");
   assert.equal(await listCaller(K([service]), { caller: "cli" }), "per_owner", "the local terminal with no chain is the owner's own");
+  assert.equal(await listCaller(K([service]), { caller: "deck" }), "per_owner", "so is the deck");
   assert.equal(await listCaller(K([service]), { caller: "module:x" }), null);
 });

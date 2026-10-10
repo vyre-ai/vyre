@@ -293,6 +293,8 @@ export function createGrantsStore(cfg) {
     // A team named by a grant exists. An assistant is given the credential actions of `use` and no more: showing, changing, deleting, sharing and rotating a credential are a person's.
     if (s.kind === "group" && !(teams.has(String(s.id)) || /^project:[A-Za-z0-9_-]{1,80}$/.test(String(s.id)) || (String(s.id).startsWith("surface:") && Object.hasOwn(SURFACE_GROUPS, String(s.id).slice(8))))) throw new KernelError("bad_input", "a grant to a team names a team, a project of this Space or a surface");
     if (s.kind === "actor" && s.actor.kind === "agent" && i.actions.some((/** @type {string} */ a) => PERSON_ONLY_CREDENTIAL.has(a))) throw new KernelError("bad_input", "an assistant can be given use of a credential, never to show, change, delete, share or rotate it");
+    // A surface is some chain's way in, and `chat` and `agents` are the model's: a grant to a surface is use of a credential and no more, whoever makes it.
+    if (s.kind === "group" && String(s.id).startsWith("surface:") && i.actions.some((/** @type {string} */ a) => !ACCESS_LEVELS.use.includes(a))) throw new KernelError("bad_input", "a grant to a surface is use of a credential and nothing more");
   }
 
   async function gate(/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {any} */ presence) {
