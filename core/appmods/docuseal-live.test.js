@@ -236,6 +236,17 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
   assert.equal(act.frame.kind, "form");
   assert.equal(act.frame.fields.find(/** @param {any} f */ f => f.name === "email").default, "signer@example.com", "the e-mail is already in the form");
   if (process.env.VYRE_FRAMES_OUT) fs.writeFileSync(process.env.VYRE_FRAMES_OUT, JSON.stringify({ list: sendList, form: act.frame, waiting }));
+  // Needs you: the request just sent is waiting; Documents lists it without the signer's code, and the approvals queue holds one quiet card for it
+  {
+    const wl = await d.registry.call("documents.signing.waiting", {}, "cli", await ownerMeta());
+    const mine = wl.data && wl.data.requests.find(/** @param {any} r */ r => r.email === "signer@example.com");
+    assert.ok(mine, `the request just sent is waiting: ${JSON.stringify(wl).slice(0, 300)}`);
+    assert.equal(mine.template, "Vyre proof NDA");
+    assert.ok(!JSON.stringify(wl).includes(sub.j[0].slug), "no signer's code in the list");
+    const cards = (await d.registry.call("approvals.items", {}, "cli", await ownerMeta())).data.items.filter(/** @param {any} c */ c => c.kind === "signing" && c.id === `documents:${mine.submission}`);
+    assert.equal(cards.length, 1, "one card for it");
+    assert.match(cards[0].title, /signer@example\.com has not signed Vyre proof NDA/);
+  }
   const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
   const done = await api("PUT", `/api/submitters/${submitter}`, { completed: true, values: { Signature: png } });
   assert.equal(done.s, 200, JSON.stringify(done.j));
@@ -252,9 +263,22 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
     assert.equal(/** @type {any} */ (pdfBytes).body.subarray(0, 5).toString(), "%PDF-", "the link opens the signed PDF");
     assert.equal(/** @type {any} */ (pdfBytes).headers["cache-control"], "no-store");
     assert.equal((await web(u.pathname.replace(/\.[^.]*$/, ".x"))).status, 404, "a changed link opens nothing");
+    // the default link has no end: it opens the same file, and it is not under the signer's own address
+    const forever = await d.registry.call("documents.signed-link", { slug: slugDone }, "cli", { ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
+    assert.equal(forever.data && forever.data.expires, null, JSON.stringify(forever));
+    const fu = new URL(forever.data.url);
+    assert.match(fu.pathname, /^\/signed\/0\./);
+    const again = await new Promise((resolve, reject) => { const r = http.request({ host: "127.0.0.1", port: bridgePort, path: fu.pathname, method: "GET", headers: { host: H } }, res => { const c = []; res.on("data", x => c.push(x)); res.on("end", () => resolve({ status: res.statusCode, body: Buffer.concat(c) })); }); r.on("error", reject); r.end(); });
+    assert.equal(/** @type {any} */ (again).status, 200);
+    assert.equal(/** @type {any} */ (again).body.subarray(0, 5).toString(), "%PDF-");
   }
 
   // the event, the Flow's run, the record it made, and the signed PDF in the Drive
+  // signed: it is no longer waiting, and its card is closed
+  {
+    const wl = await d.registry.call("documents.signing.waiting", {}, "cli", await ownerMeta());
+    assert.ok(!wl.data.requests.some(/** @param {any} r */ r => r.email === "signer@example.com"), `a signed request is not waiting: ${JSON.stringify(wl).slice(0, 300)}`);
+  }
   const ev = await until(async () => { const e = d.registry.deps.events.since(0, { type: "documents.signed" }); return e.length ? e : null; }, "the documents.signed event");
   assert.equal(ev[0].payload.email, "signer@example.com");
   assert.equal(ev[0].payload.template, "Vyre proof NDA");

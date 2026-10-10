@@ -166,19 +166,35 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal(e.code, "unavailable"); assert.match(e.message, /install or start it from Apps/, "and a missing app says what to do");
 });
 
-test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {
+test("documents.send-signed makes the link (no end unless the setting or the call gives one) and emails it; the slug is checked before anything is made", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
-  const r = rig({ call: async (tool, input) => {
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
     if (tool === "spaces.self") return {};
     seen.push({ tool, input });
-    return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: Date.now() + 30 * 86_400_000 } } : { data: { held: "gi_2" } };
-  } });
+    return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: input.days === undefined ? null : Date.now() + input.days * 86_400_000 } } : { data: { held: "gi_2" } };
+  };
+  const r = rig({ call });
   const out = await r.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test" });
   assert.deepEqual(seen.map(s => s.tool), ["appmods.signed.link", "comms.send"]);
+  assert.deepEqual(seen[0].input, { name: "documents", slug: "abc123" }, "no days: the link has no end");
   assert.equal(seen[1].input.subject, "Your signed copy");
-  assert.match(seen[1].input.body, /works for 30 days.*signed\/1\.abc\.sig$/);
+  assert.equal(seen[1].input.body, "Thank you for signing. Your signed copy is here: https://documents.harlow.vyre.run/signed/1.abc.sig");
   assert.equal(out.sent.held, "gi_2");
-  assert.deepEqual(r.emitted, [{ type: "documents.copy-sent", payload: { days: 30 } }]);
+  assert.equal(out.expires, null);
+  assert.deepEqual(r.emitted, [{ type: "documents.copy-sent", payload: { days: null } }]);
+  // the setting gives every new link an end; a call that names days wins over it; 0 is off
+  seen.length = 0;
+  const set = rig({ call, config: { documents: { signed_link_days: 7 } } });
+  await set.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test" });
+  assert.equal(seen[0].input.days, 7);
+  assert.match(seen[1].input.body, /works for 7 days.*signed\/1\.abc\.sig$/);
+  await set.run("documents.send-signed", { slug: "abc123", email: "dana@harlow.test", days: 2 });
+  assert.equal(seen[2].input.days, 2);
+  assert.equal((await set.run("documents.signed-link", { slug: "abc123" })).expires > Date.now(), true);
+  const off = rig({ call, config: { documents: { signed_link_days: 0 } } });
+  seen.length = 0; await off.run("documents.signed-link", { slug: "abc123" });
+  assert.equal(seen[0].input.days, undefined);
+  seen.length = 0;
   const before = seen.length;
   assert.equal((await code(r.run("documents.send-signed", { slug: "../x", email: "dana@harlow.test" }))).code, "bad_input");
   assert.equal(seen.length, before, "nothing was made for a bad slug");
@@ -217,4 +233,36 @@ test("an agent sees lean tool descriptions, and documents.generate is held to th
   const manifest = JSON.parse(readFileSync(new URL("./module.json", import.meta.url), "utf8"));
   const entry = manifest.does.tools.find((/** @type {any} */ t) => t && t.name === "documents.generate");
   assert.equal(entry.projectArg, "project");
+});
+
+test("documents.signing.waiting lists what nobody has signed without the link or code; documents.signing.remind sends that signer their link again, once, and only for a request that is waiting", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const pending = [{ submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123", email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: 5 }];
+  const r = rig({ call: async (tool, input) => {
+    if (tool === "spaces.self") return {};
+    seen.push({ tool, input });
+    return tool === "appmods.signing.waiting" ? { data: { requests: pending } } : { data: { held: "gi_9" } };
+  } });
+  const listed = await r.run("documents.signing.waiting", {});
+  assert.deepEqual(listed.requests, [{ submission: 4411, email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: 5 }]);
+  assert.ok(!JSON.stringify(listed).includes("abc123") && !JSON.stringify(listed).includes("/sign/"));
+  // the approvals queue (a module) reads it with no person's chain; a surface with no signed-in person does not
+  const asQueue = rig({ chain: null, call: async tool => (tool === "appmods.signing.waiting" ? { data: { requests: pending } } : {}) });
+  assert.equal((await asQueue.run("documents.signing.waiting", {}, { caller: "module:approvals" })).requests.length, 1);
+  assert.equal((await code(asQueue.run("documents.signing.waiting", {}, { caller: "module:comms" }))).code, "denied");
+  assert.equal((await code(asQueue.run("documents.signing.waiting", {}))).code, "denied");
+  // no Documents app here: nothing waits, nothing fails
+  for (const error of [{ code: "not_found", message: "x" }, { code: "no_such_tool", message: "x" }]) assert.deepEqual((await rig({ call: async tool => (tool === "spaces.self" ? {} : { error }) }).run("documents.signing.waiting", {})).requests, []);
+  seen.length = 0;
+  const out = await r.run("documents.signing.remind", { submission: 4411, note: "Thanks, Dana." });
+  assert.deepEqual(seen.map(s => s.tool), ["appmods.signing.waiting", "comms.send"]);
+  assert.equal(seen[1].input.to, "dana@harlow.test");
+  assert.equal(seen[1].input.body, "Thanks, Dana.\n\nYour document is still waiting for your signature: https://documents.harlow.vyre.run/sign/4411/abc123");
+  assert.equal(out.sent.held, "gi_9");
+  assert.deepEqual(r.emitted, [{ type: "documents.reminded", payload: { submission: 4411 } }]);
+  seen.length = 0;
+  assert.equal((await code(r.run("documents.signing.remind", { submission: 9999 }))).code, "not_found", "a request that is not waiting is not reminded");
+  assert.equal((await code(r.run("documents.signing.remind", { submission: 4411, note: "x".repeat(1001) }))).code, "bad_input");
+  assert.ok(!seen.some(s => s.tool === "comms.send"), "nothing was sent for either");
+  assert.equal((await code(rig({ chain: null }).run("documents.signing.remind", { submission: 4411 }))).code, "denied");
 });

@@ -87,27 +87,29 @@ import crypto from "node:crypto";
 
 /** Where an expiring link to the signed copy lives on the app's host. */
 export const SIGNED = "/signed/";
-export const MAX_LINK_DAYS = 30;
+/** The longest a link may be asked to last; a link with no end is made by leaving the days out. */
+export const MAX_LINK_DAYS = 3650;
 const b64u = (/** @type {Buffer} */ b) => b.toString("base64url");
 const mac = (/** @type {Buffer} */ key, /** @type {string} */ exp, /** @type {string} */ slug) => b64u(crypto.createHmac("sha256", key).update(`vyre-signed-link\n${exp}\n${slug}`).digest());
 
 /**
- * A link to the signed copy of one document: the signer's slug and an end time, under a key only the box holds. The signing page's own address keeps working; this is the only way to the finished PDF.
- * @param {Buffer} key @param {string} slug @param {number} expiresMs
+ * A link to the signed copy of one document: the signer's slug and an end time (none: it works until the box's key for the app is replaced), under a key only the box holds. The signing page's own
+ * address keeps working; this is the only way to the finished PDF.
+ * @param {Buffer} key @param {string} slug @param {number | null} expiresMs
  */
 export function mintLink(key, slug, expiresMs) {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(slug)) throw new Error("not a signer's slug");
-  const exp = String(Math.floor(expiresMs / 1000));
+  const exp = expiresMs === null ? "0" : String(Math.floor(expiresMs / 1000));
   return `${exp}.${slug}.${mac(key, exp, slug)}`;
 }
 
 /** @param {Buffer} key @param {string} token @param {number} now @returns {{ ok: true, slug: string } | { ok: false, expired: boolean }} */
 export function checkLink(key, token, now) {
-  const m = /^(\d{9,11})\.([A-Za-z0-9_-]{1,80})\.([A-Za-z0-9_-]{43})$/.exec(String(token));
+  const m = /^(0|\d{9,11})\.([A-Za-z0-9_-]{1,80})\.([A-Za-z0-9_-]{43})$/.exec(String(token));
   if (!m) return { ok: false, expired: false };
   const want = Buffer.from(mac(key, m[1], m[2])), got = Buffer.from(m[3]);
   if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return { ok: false, expired: false };
-  return Number(m[1]) * 1000 > now ? { ok: true, slug: m[2] } : { ok: false, expired: true };
+  return m[1] === "0" || Number(m[1]) * 1000 > now ? { ok: true, slug: m[2] } : { ok: false, expired: true };
 }
 
 /** What the signed-copy answer looks like when the link has run out: plain, without the slug, and it says what to do. */
@@ -119,6 +121,25 @@ export function filePaths(v) {
   const walk = (/** @type {any} */ x, d = 0) => { if (d > 5) return; if (typeof x === "string") { if (/^\/(?:file|blobs_proxy)\/[A-Za-z0-9_=%.-]+\/[A-Za-z0-9_.~%\/-]+$/.test(x) && !x.includes("..")) out.push(x); } else if (Array.isArray(x)) x.forEach(y => walk(y, d + 1)); else if (x && typeof x === "object") Object.values(x).forEach(y => walk(y, d + 1)); };
   walk(v);
   return [...new Set(out)];
+}
+
+/**
+ * The signature requests still waiting, from the app's own list (GET /api/submissions?status=pending): one row each, newest first, at most 50. A request counts as waiting while any signer on
+ * it has not completed; the row names the first such signer. `slug` is the signer's page code and never leaves the box (the reminder uses it, the card does not carry it).
+ * @param {unknown} json @returns {{ submission: number, slug: string, email: string, signer: string, template: string, at: number }[]}
+ */
+export function readWaiting(json) {
+  const list = Array.isArray(json) ? json : json && typeof json === "object" && Array.isArray(/** @type {any} */ (json).data) ? /** @type {any} */ (json).data : [];
+  /** @type {{ submission: number, slug: string, email: string, signer: string, template: string, at: number }[]} */ const out = [];
+  for (const s of list) {
+    if (!s || typeof s !== "object" || s.archived_at || (typeof s.status === "string" && s.status !== "pending")) continue;
+    const who = Array.isArray(s.submitters) ? s.submitters.find((/** @type {any} */ x) => x && !x.completed_at && !x.declined_at) : null;
+    const id = Number(s.id), slug = who && who.slug;
+    if (!who || !Number.isInteger(id) || id < 1 || typeof slug !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(slug)) continue;
+    const at = Date.parse(String(s.created_at || "")) || 0;
+    out.push({ submission: id, slug, email: String(who.email || "").slice(0, 254), signer: String(who.name || "").slice(0, 120), template: String((s.template && s.template.name) || "").slice(0, 120), at });
+  }
+  return out.sort((a, b) => b.at - a.at || b.submission - a.submission).slice(0, 50);
 }
 
 /** The body that asks the signing app for one signature and tells it to send nothing itself: the person's own words go out through Comms. @param {number} templateId @param {string} email @param {string} [name] */
