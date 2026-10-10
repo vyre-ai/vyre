@@ -40,7 +40,7 @@ const F = process.env.FAKE;
 let args = process.argv.slice(2);
 fs.appendFileSync(F + "/calls.raw", args.join(" ") + "\\n");
 // A root run names its compose files, project and env file explicitly: the options come before the subcommand, and calls log the rest.
-if (args[0] === "compose") { let i = 1; while (["--project-directory", "--project-name", "--env-file", "-f"].includes(args[i])) i += 2; args = ["compose", ...args.slice(i)]; }
+if (args[0] === "compose") { let i = 1; while (["--project-directory", "--project-name", "--env-file", "-f", "--profile"].includes(args[i])) i += 2; args = ["compose", ...args.slice(i)]; }
 fs.appendFileSync(F + "/calls", args.join(" ") + "\\n");
 const img = t => path.join(F, "images", t.replace(/[/:]/g, "_"));
 const has = t => fs.existsSync(img(t));
