@@ -25,8 +25,10 @@ export function lentOrBox({ lent, box }) {
     active = p;
     p.stdout && p.stdout.pipe(stdout);
     p.stderr && p.stderr.pipe(stderr);
+    const said = new Set();
     const done = (/** @type {string} */ ev) => (/** @type {any} */ code, /** @type {any} */ signal) => {
-      if (active !== p || proc.exitCode !== null || proc.signalCode !== null) return;
+      if (active !== p || said.has(ev)) return;
+      said.add(ev);
       proc.exitCode = code ?? null; proc.signalCode = signal ?? null;
       if (p.moved) proc.moved = p.moved;
       proc.emit(ev, code, signal);
