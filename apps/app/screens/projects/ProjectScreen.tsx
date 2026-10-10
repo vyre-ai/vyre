@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { Button, EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, Text, projectHeader, useProject, useTaskActions } from "@vyre/ui";
 import { TeamTab } from "../teammates/TeamTab";
 import { projectId } from "../teammates/model";
-import { LABEL, WIDE, firstTab, panesAt, tabsFor, type PaneId } from "./panes";
+import { LABEL, WIDE, chatLabel, firstTab, panesAt, tabsFor, type PaneId } from "./panes";
 import { ChatsPane, FilesPane, MemoryPane, StagesPane, TimelinePane } from "./ProjectPanes";
 
 /** /u/project/:id: a record of a type that holds work, as a project: stages made of tasks, the team, linked records, chats and files. */
@@ -34,7 +34,7 @@ export default function ProjectScreen() {
   };
   return (
     <View className="min-h-0 flex-1">
-      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <Button kind="secondary" size="sm" label="Chat about this" onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /> : undefined} />
+      <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} actions={f ? <Button kind="secondary" size="sm" label={chatLabel(width)} onPress={() => router.push(`/u/chats/new?about=${encodeURIComponent(String((f.row as { urn?: string }).urn ?? ""))}&name=${encodeURIComponent(h?.title ?? "")}` as never)} /> : undefined} />
       <ScrollView contentContainerClassName={`gap-s4 px-s4 pb-s12 pt-s2 w-full self-center ${shown.length > 1 ? "max-w-full" : "max-w-page"}`}>
         {q.error && !q.data ? <ErrorState title="That project did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <SkeletonRows rows={4} />

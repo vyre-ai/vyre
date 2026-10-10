@@ -56,6 +56,7 @@ test("lanes and a sub-flow in a real daemon: a restart while a lane waits for a 
   assert.equal(again.lanes.length, 2, "no lane was started twice");
 
   const task = await until(async () => (await d.kernel.gateway.ask.list(chainOf(), { state: ["waiting", "ready", "working", "needs_check", "stuck"] })).find((/** @type {any} */ x) => x.title === "Look it over"), "the person's task");
+  assert.equal(task.flow, outer.id, "the task names the Flow that gave it (it once read \"[object Object]\")");
   await d.kernel.gateway.ask.start(chainOf(), task.id);
   await d.kernel.gateway.ask.complete(chainOf(), task.id, { answer: "yes", reason: "looks fine" });
   const done = await until(async () => { const r = await state(); return r && r.run.state === "done" ? r : r && r.run.state === "failed" ? assert.fail(JSON.stringify(r.run.error)) : null; }, "the run to finish after the answer");

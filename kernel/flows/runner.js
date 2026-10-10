@@ -1696,7 +1696,8 @@ export class FlowRunner {
         : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: String(val(s.instructions) ?? "") } } : {}) };
       // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
       const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
-      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: { run: run.id, step: s.id } }, { idem });
+      // (the task keeps `flow` as text: the Flow that gave it; an object here was stored as "[object Object]")
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: run.flow }, { idem });
       if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
       if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
       await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });

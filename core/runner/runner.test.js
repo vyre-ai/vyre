@@ -631,6 +631,14 @@ test("runner: a hand-over the home holds back, or that fails, does not wake a se
   await waitFor(() => procState(h.pid) !== "T");
 });
 
+test("seatbelt: the session may see that its door to Vyre exists (a hook checks VYRE_SOCKET before it trusts it), and open only that socket", () => {
+  const sock = "/private/var/folders/zz/T/vyre-door-abc.sock";
+  const p = seatbeltProfile({ platform: "darwin", workspace: "/tmp/ws", command: process.execPath, readOnly: [path.dirname(process.execPath)], proxy: { port: 4567 }, vyre: { socket: sock } });
+  assert.match(p, new RegExp(`\\(allow network-outbound \\(remote unix-socket \\(path-literal "${sock}"\\)\\)\\)`));
+  for (const d of [sock, "/private/var/folders/zz/T", "/private/var/folders/zz", "/private/var/folders"]) assert.ok(p.includes(`(allow file-read-metadata (literal "${d}"))`), d);
+  assert.ok(!p.includes('(allow file-read* (subpath "/private/var/folders'), "a stat, never a read or a listing");
+});
+
 test("runner: a chat's session gets a door to Vyre (VYRE_SOCKET) that asks the home, and a Vyre folder the sandbox will not bind leaves the session running without it, said in an event", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
   /** @type {any[]} */ const events = [];
   const r = await rig(t, { onEvent: e => events.push(e) });

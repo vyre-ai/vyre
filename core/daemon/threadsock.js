@@ -103,7 +103,7 @@ export async function openThreadSocket(o) {
     request: async (method, urlPath, headers, body) => {
       const sock = await lentFile();
       return await new Promise((resolve, reject) => {
-        const req = http.request({ socketPath: sock, method, path: urlPath, headers: { ...headers, "content-type": "application/json", ...(method === "GET" ? {} : { "content-length": Buffer.byteLength(body) }) }, agent: false, timeout: 25_000 }, res => {
+        const req = http.request({ socketPath: sock, method, path: urlPath, headers: { ...headers, "content-type": "application/json", ...(method === "GET" ? {} : { "content-length": Buffer.byteLength(body) }) }, agent: false, timeout: LENT_CALL_MS }, res => {
           const parts = /** @type {Buffer[]} */ ([]); let n = 0;
           res.on("data", c => { n += c.length; if (n <= LENT_MAX_REPLY) parts.push(c); });
           res.on("end", () => resolve({ status: res.statusCode || 502, body: n > LENT_MAX_REPLY ? JSON.stringify({ error: { code: "too_large", message: "that answer is too large to bring to a lent computer; ask for less" } }) : Buffer.concat(parts).toString("utf8") }));
@@ -125,6 +125,8 @@ export async function openThreadSocket(o) {
   };
 }
 
+/** How long one tool call of a session on a lent computer may run at the home (the lender asks again for it; lent-home keeps the same limit). */
+const LENT_CALL_MS = 30 * 60_000;
 /** The largest answer a lent computer is sent over the wire (the wire's own cap is 2 MiB). */
 const LENT_MAX_REPLY = 1_500_000;
 /** @typedef {{ request: (method: string, path: string, headers: Record<string, string>, body: string) => Promise<{ status: number, body: string }> }} LentDoor */

@@ -65,6 +65,7 @@ const idOf = (urn) => String(urn).split("/").pop();
 const PROJECT = idOf(started.project), PLAIN = idOf(plain.project);
 const contact = await d.kernel.gateway.records.create(ownerChain, "contact", { name: "Jane Rivera" }).catch(() => null);
 const task = await d.kernel.gateway.ask.request(ownerChain, { title: "Approve the draft trust", doer: { kind: "person", id: owner, space }, output: { kind: "decision" } }).catch(() => null);
+const open2 = await d.kernel.gateway.ask.request(ownerChain, { title: "Review the engagement letter", doer: { kind: "person", id: owner, space }, output: { kind: "decision" }, note: "Check the fee and the signing date before it goes to the client." }).catch(() => null);
 const chat = await d.kernel.gateway.grants.chats.create(ownerChain, {}).catch(() => null);
 await new Promise((r) => setTimeout(r, 4000));
 const ROUTES = [
@@ -74,7 +75,7 @@ const ROUTES = [
   ["chats", "/u/chats"], ["connections", "/u/connections"], ["spaces", "/u/spaces"], ["search", "/u/search"], ["records-contact", "/u/records/contact"],
   ["now-doing", "/u/now/doing"], ["settings", "/u/settings"], ["settings-account", "/u/settings/account"], ["settings-all", "/u/settings/all"], ["settings-devices", "/u/settings/devices"], ["settings-engineer", "/u/settings/engineer"], ["settings-notifications", "/u/settings/notifications"], ["settings-permissions", "/u/settings/permissions"], ["settings-privacy", "/u/settings/privacy"], ["settings-seeing", "/u/settings/seeing"], ["settings-spend", "/u/settings/spend"], ["settings-system", "/u/settings/system"], ["records-organization", "/u/records/organization"], ["tag", "/u/tags/estate"], ["wink", "/u/wink"], ["settings-ai", "/u/settings/ai"], ["settings-backups", "/u/settings/backups"], ["settings-rules", "/u/settings/rules"], ["settings-updates", "/u/settings/updates"], ["settings-outside", "/u/settings/outside"],
   ["vault", "/u/vault"], ["sites", "/u/sites"], ["sidebar", "/u/sidebar"], ["about", "/u/about"], ["access", "/u/access"], ["appearance", "/u/appearance"],
-  ...(contact ? [["record", `/u/record/${contact.id}`]] : []), ...(task ? [["task", `/u/task/${task.id}`]] : []), ...(chat ? [["chat", `/u/chats/${chat.id}`]] : []),
+  ...(contact ? [["record", `/u/record/${contact.id}`]] : []), ...(task ? [["task", `/u/task/${task.id}`]] : []), ...(open2 ? [["task-open", `/u/task/${open2.id}`]] : []), ...(chat ? [["chat", `/u/chats/${chat.id}`]] : []),
 ];
 // not walked: /u/memory (the main memory graph is drawn only for the real Deck surface; a walk answers as one caller and gets "denied"), /u/install/* and pairing (they need a fresh phone)
 const ONLY = flag("--only", "").split(",").filter(Boolean);
@@ -201,6 +202,7 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
       await pg.getByText("Timeline", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500);
     }
     const text = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (name === "task-open" && !/Check the fee and the signing date/.test(text)) problems.push("the task page does not show what to do (its brief)");
     if (text.replace(/My Cloud|Now|Chat|Projects|Contacts|Drive|More|Search|Settings|You/g, "").trim().length < 12) problems.push("blank page");
     for (const [re, what] of BAD) { const m = re.exec(text); if (m) problems.push(`shows ${what}: "${text.slice(Math.max(0, m.index - 30), m.index + 40)}"`); }
     await pg.screenshot({ path: path.join(OUT, `${name}-${wide}.png`), fullPage: false });

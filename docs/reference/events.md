@@ -746,7 +746,7 @@ Listens for: `link.unpaired`
 | `thread.finished` | `ok`, `via` |
 | `thread.limit` | built in a variable before the emit; see the source |
 | `thread.mentioned` | `mentions`, `uuid` |
-| `thread.placing` | `state`, `thread` |
+| `thread.placing` | not found in the source (the type is built at run time) |
 | `thread.plan` | built in a variable before the emit; see the source |
 | `thread.provider` | `account`, `from`, `model`, `reason`, `text`, `to`; sometimes `once` |
 | `thread.queued` | `queued`, `surface`, `text`, `uuid`; sometimes `author`, `edited`, `images`, `kind`, `queued_at`, `request`, `step` |

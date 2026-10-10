@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { tabsFor, firstTab, panesAt, isTemplateProject } from "./panes.ts";
+import { tabsFor, firstTab, panesAt, isTemplateProject, chatLabel } from "./panes.ts";
 
 const free = { name: "Plain chats" };
 const tpl = { name: "Rivera", template_snapshot: '{"stages":[]}' };
@@ -28,4 +28,10 @@ test("panes sit side by side on a wide window: one on a phone and a laptop, two 
   assert.deepEqual(panesAt(1200, "memory", free), ["chats", "memory"], "a tab outside the pair takes the last place");
   assert.deepEqual(panesAt(1920, "team", tpl), ["team"], "the team is a tab only");
   assert.deepEqual(panesAt(1920, "timeline", tpl), ["timeline"], "so is the timeline");
+});
+
+test("the chat button says Chat on a phone, where a longer label would cut the project's name, and the whole phrase on a wide screen", () => {
+  assert.equal(chatLabel(390), "Chat");
+  assert.equal(chatLabel(1099), "Chat");
+  assert.equal(chatLabel(1440), "Chat about this");
 });

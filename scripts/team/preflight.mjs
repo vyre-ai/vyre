@@ -40,7 +40,17 @@ const existing = changed.filter(f => fs.existsSync(f));
 console.log(`preflight: ${changed.length} files changed since ${BASE} (${mergeBase.slice(0, 9)})`);
 
 // ---- G1: generated files are never committed by hand (the merge queue regenerates them)
-const gen = changed.filter(f => GENERATED.some(re => re.test(f)));
+// docs/agents/ pages are hand-written prose around generated blocks (<!-- agent:NAME:start -->): prose may be committed, as long as the
+// generator leaves the page unchanged, i.e. the generated blocks are current.
+const agentPages = changed.filter(f => /^docs\/agents\//.test(f) && fs.existsSync(f));
+const agentStale = agentPages.length ? (() => {
+  const before = new Map(agentPages.map(f => [f, fs.readFileSync(f, "utf8")]));
+  spawnSync(process.execPath, ["scripts/gen-agent-docs.mjs"], { stdio: "ignore" });
+  const stale = agentPages.filter(f => fs.readFileSync(f, "utf8") !== before.get(f));
+  for (const [f, text] of before) fs.writeFileSync(f, text);
+  return stale;
+})() : [];
+const gen = changed.filter(f => GENERATED.some(re => re.test(f)) && !(agentPages.includes(f) && !agentStale.includes(f)));
 if (gen.length) fail("G1", `generated files are in your commits; drop them (git checkout ${BASE} -- <file>) and let the queue regenerate:\n    ${gen.join("\n    ")}`);
 
 // ---- G2: no conflict markers
@@ -133,9 +143,11 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
+  // The stored decisions: a branch that moves a cell re-records them with its ruling (node kernel/golden/index.js --write), so drift never reaches the tip.
+  "kernel/golden/golden-box-plain.test.js", "kernel/golden/golden-local-plain.test.js",
   // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
-  // The colour guard's own name is split so this list does not trip it (the guard splits its patterns the same way).
-  "test/no-" + "li" + "me.test.js", "test/no-tailscale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
+  // The colour and VPN guards' own names are split so this list does not trip them (the guards split their patterns the same way).
+  "test/no-" + "li" + "me.test.js", "test/no-" + "tail" + "scale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
   "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
   "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
   "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
