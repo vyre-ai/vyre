@@ -18,6 +18,7 @@ import { startSealer } from "../../kernel/seal/client.js";
 import * as seal from "../../kernel/seal/testing.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { start } from "../daemon/index.js";
+import { transcriptPlace } from "../switchboard/adopt.js";
 import { lentRequest } from "../daemon/threadsock.js";
 import { asOwner, tempHome, present } from "../../test/helpers.js";
 import { until, FAKE } from "../sessions/testing/boot.js";
@@ -120,7 +121,8 @@ test("G01 with a real Claude and the real vault: a chat on a member's own comput
   { const cp0 = await home.view(th.id).checkpoint(); say(`   the home holds the computer's checkpoint: ${cp0 ? JSON.stringify({ seq: cp0.seq, turn: cp0.turn, files: Object.keys(cp0.manifest || {}).length }) : "NONE"}`); }
   assert.ok(placing.some(p => p.state === "up"), "the chat said it is up on the computer");
   say("2. the person moves the chat to the server; the server carries on from the computer's last whole turn, and a new fact is told there");
-  { const tt = await d.registry.call("threads.transcript-target", { thread: th.id }, "module:vyred", { door: true }); const rec = (await ok("threads.get", { thread: th.id, limit: 1 })).thread; say(`   (diagnostic) transcript target before the move: ${JSON.stringify(tt.data)}; the thread: cwd=${rec.cwd} native=${rec.native || rec.session || "?"} provider=${rec.provider}`); }
+  { const tt = await d.registry.call("threads.transcript-target", { thread: th.id }, "module:vyred", { door: true }); const rec = (await ok("threads.get", { thread: th.id, limit: 1 })).thread; say(`   (diagnostic) transcriptPlace by hand: ${JSON.stringify(transcriptPlace([transcripts], String(rec.cwd), th.id))}; folders ${transcripts}; files there: ${JSON.stringify(fs.existsSync(transcripts) ? fs.readdirSync(transcripts) : "none")}`);
+  say(`   (diagnostic) transcript target before the move: ${JSON.stringify(tt.data)}; the thread: cwd=${rec.cwd} native=${rec.native || rec.session || "?"} provider=${rec.provider}`); }
   await ok("runner.move", { thread: chatId, to: "server" });
   await until(async () => where() === "server", "the chat is the server's", 120_000);
   say(`   where it runs: ${where()}; the server carried on from turn ${resumed[0] && resumed[0].turn} with ${resumed[0] && resumed[0].lines} lines of the computer's transcript`);
