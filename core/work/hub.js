@@ -286,6 +286,25 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return { id: made.id };
   }
 
+  /**
+   * The people who may open what a project shares with "the project": its owner, the people on its team (team-member rows of kind person) and the people of its chats. A Personal project is its person's alone.
+   * Null when there is no such project. Agents are not people here: an agent reaches a project only as its teammate (core/team).
+   * @param {string} ref @returns {Promise<{ people: string[], personal_of: string | null } | null>}
+   */
+  async function peopleOf(ref) {
+    const proj = await projectOf(ref);
+    if (!proj) return null;
+    const d = data(proj) || {};
+    if (d.personal_of) return { people: [String(d.personal_of)], personal_of: String(d.personal_of) };
+    const ids = new Set(), own = d.owner && d.owner.actor && d.owner.actor.kind === "person" ? String(d.owner.actor.id) : "";
+    if (own) ids.add(own);
+    const team = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+    for (const x of team) { const m = data(x) || {}; if (m.kind === "person" && m.actor && m.actor.actor && m.actor.actor.id) ids.add(String(m.actor.actor.id)); }
+    const chats = (await kernel.records.query(chain(), CHAT, { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 500 } }).catch(() => ({ rows: [] }))).rows || [];
+    for (const c of chats) for (const id of String((data(c) || {}).people || "").split(",")) if (id.trim()) ids.add(id.trim());
+    return { people: [...ids], personal_of: null };
+  }
+
   /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
   async function moveChat(chat, projectRef, by) {
     if (!by) throw Object.assign(new Error("a chat is moved by a person"), { code: "not_allowed" });
@@ -396,5 +415,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ peopleOf, teamMember, createProject, ensureProject, personalProject, migrateGeneral, isUnfiled, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, setChatFields, chatFolder: (/** @type {string} */ chat) => chat });
 }

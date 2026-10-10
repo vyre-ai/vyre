@@ -41,6 +41,15 @@ export type FormInput = {
 export const emptyForm = (): FormInput => ({ label: "", baseUrl: "", how: "bearer", name: "", item: "", field: "", headers: [{ name: "", value: "" }], vars: [{ name: "", value: "" }], checkPath: "" });
 
 /** The first thing wrong with the form, in the person's words, or null. */
+/** A starting point for a service people connect often: the form filled in, and the words that say which key to make. The key is still the person's, saved in the Vault first. */
+export type Preset = { id: string; label: string; hint: string; form: Partial<FormInput> };
+export const PRESETS: Preset[] = [
+  { id: "github", label: "GitHub", form: { label: "GitHub", baseUrl: "https://api.github.com", how: "bearer", checkPath: "/user", headers: [{ name: "Accept", value: "application/vnd.github+json" }] },
+    hint: "Make a personal access token at github.com/settings/tokens and save it in the Vault first. To clone, work in worktrees and push, a classic token needs the repo scope; a fine-grained token needs Contents (read and write) and Metadata (read), and Pull requests (read and write) to open pull requests." },
+];
+/** The form with a preset's values over an empty one. @param {Preset} p */
+export const withPreset = (p: Preset): FormInput => ({ ...emptyForm(), ...p.form } as FormInput);
+
 export function formProblem(f: FormInput): string | null {
   if (!f.label.trim()) return "Give the connection a name, like GoHighLevel Sales.";
   let u: URL | null = null;

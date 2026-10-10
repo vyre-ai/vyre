@@ -31,7 +31,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS, PLUGIN_LAYOUT } from ".
 import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
 import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
-import { prepareSandbox } from "../../lib/agent-sandbox.js";
+import { prepareSandbox, sessionCliEnv } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
@@ -782,7 +782,7 @@ export class Switchboard {
         }
         if (!data || !mime) continue;
         const privacy = await this.privacyOf(rec);
-        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(privacy ? { privacy } : {}) });
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(m.title ? { title: String(m.title).slice(0, 120) } : {}), ...(privacy ? { privacy } : {}) });
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {
@@ -817,7 +817,7 @@ export class Switchboard {
    * The account a session on `provider` runs as: sessions.accounts.resolve (scope-checked, never a
    * guess between two paid accounts). Null when the provider has only this machine's own login.
    * `resuming`: the thread this is for, whose account must still exist.
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} q @param {string|null} [resuming]
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} q `person`: whose turn it is, so only that person's own accounts (and the home's own for the owner) can be chosen @param {string|null} [resuming]
    */
   async accountFor(q, resuming = null) {
     const r = await this.deps.call("sessions.accounts.resolve", Object.fromEntries(Object.entries(q).filter(([, v]) => v)));
@@ -907,14 +907,14 @@ export class Switchboard {
       // The model: explicit (a launch, an agent's own), else the project's or the purpose's.
       // The models table is Claude's (aliases like opus); another provider's model is the one it reports, so none is recorded until then.
       if (!o.model && provider === "claude") {
-        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project }).filter(([, v]) => v))).catch(() => null);
+        const r = await this.deps.call("sessions.models.resolve", Object.fromEntries(Object.entries({ purpose, project: w.project, person: o.person }).filter(([, v]) => v))).catch(() => null);
         if (r && r.data && r.data.model) o = { ...o, model: r.data.model };
       }
       // Which of the person's accounts on this provider (an explicit one, the teammate's, the
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
       at("account");
-      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
+      const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent, person: o.person });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
@@ -962,7 +962,7 @@ export class Switchboard {
     // are the ones it always had.
     let acct = null;
     if (o.account) {
-      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent }, o.resume ? rec.id : null);
+      acct = await this.accountFor({ provider: rec.provider || o.provider || "claude", account: o.account, project: rec.project, agent: rec.agent, person: o.person }, o.resume ? rec.id : null);
       const c = this.deps.accountEnv ? await this.deps.accountEnv(acct) : { auth: "subscription", env: {} };
       o = { ...o, env: { ...(o.env || {}), ...c.env }, accountRun: { id: acct.id, uid: acct.uid, provider: acct.provider, home: this.deps.accountHome ? this.deps.accountHome(acct) : null } };
       this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(c.auth, id);
@@ -1334,7 +1334,7 @@ export class Switchboard {
     const ai = o.provider || rec.provider || "claude";
     if (o.plugin === false || !["claude", "codex", "grok"].includes(ai)) return null;
     try {
-      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}) });
+      const r = await this.deps.call("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest, ...(rec.agent ? { agent: rec.agent } : {}), ...(rec.project ? { project: rec.project } : {}), ...(o.person ? { person: String(o.person) } : {}) });   // the turn's person: their personal skills, not the owner's
       const dir = r && !r.error && r.data && typeof r.data.dir === "string" ? r.data.dir : null;
       return dir && (ai === "codex" ? fs.existsSync(path.join(dir, "skills")) : fs.existsSync(path.join(dir, ".claude-plugin", "plugin.json"))) ? dir : null;
     } catch { return null; }
@@ -1373,7 +1373,7 @@ export class Switchboard {
     // The session's own socket (option A): its plugin, hooks and any vyre it runs talk to vyred on
     // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
     const sock = this.socks.get(id);
-    if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
+    if (sock) { env.VYRE_SOCKET = sock.path; if (this.confinedBy.get(id) === "uid") Object.assign(env, sessionCliEnv(env)); } else delete env.VYRE_SOCKET;
     // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
     // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
     if (sock) delete env.VYRE_HOME;
@@ -1410,7 +1410,7 @@ export class Switchboard {
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
     const foreign = o.provider && o.provider !== "claude";
-    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null });
+    const floor = call => floorRules({ ...call, cwd: call.cwd || rec.cwd, home: this.deps.root || undefined, agent: rec.agent || null, sessionCli: this.confinedBy.has(id) });
     const mcpEnv = { VYRE_THREAD: id, ...(sock ? { VYRE_SOCKET: sock.path } : {}), ...(o.agent ? { VYRE_AGENT: o.agent, VYRE_AGENT_KIND: o.agent_kind || "agent" } : {}),
       ...(o.scope ? { VYRE_PROJECTS: o.scope.projects === "*" ? "*" : o.scope.projects.join(","), VYRE_SCOPE_CWDS: JSON.stringify(o.scope.cwds || []) } : {}) };
     // Memory for a prompt (memory.prompt, iq): blocks of text, scoped by vyred to this thread's own agent
@@ -1542,11 +1542,11 @@ export class Switchboard {
     // rules at PreToolUse for calls that never reach a question.
     if (t.ask && t.ask.kind === "permission") {
       let v = null;
-      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
-      if (v && v.decision === "deny") {
+      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined, sessionCli: this.confinedBy.has(id) }); } catch {}
+      if (v && v.decision === "allow" && t.ask.tool === "Bash") { st.proc.write(answerLine(t.ask.request_id, "allow", t.ask.input)); t.ask = null; }   // the session's own vyre; the registry still holds a send
+      else if (v && v.decision === "deny") {
         st.proc.write(answerLine(t.ask.request_id, "deny", t.ask.input, `Vyre's security floor refused this: ${v.reason || "not allowed"}`));
-        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project);
-        t.ask = null;
+        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project); t.ask = null;
       }
     }
     if (t.ask && t.ask.kind === "permission") {

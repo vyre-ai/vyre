@@ -13,8 +13,8 @@ export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 export { spaceName, isPersonal } from "../../src/state/space-name.js";
 import { spaceName, isPersonal } from "../../src/state/space-name.js";
 
-/** The line under a space in the switcher: the person's role there (a team space also carries its small "Cloud" tag), or that it is still being set up. */
-export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : [!isPersonal(s) && s.tier === "cloud" ? "Cloud" : "", roleWord(s.role)].filter(Boolean).join(" · "));
+/** The line under a space in the switcher: the person's role there (a Cloud space says so in its own name), or that it is still being set up. */
+export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
 
 export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, everything" };
 

@@ -9,14 +9,18 @@ import { spaceName } from "./space-name.js";
 
 const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
-test("the one naming function: Personal, My Cloud, a team's own name, never an id, Basic or Pro", () => {
+test("the one naming function: My Home, My Cloud, a team's Cloud, never an id, Basic or Pro", () => {
   const warn = console.warn; console.warn = () => {};
   try {
-    assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "Personal");
+    assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "My Home");
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "cloud", setup: { who: "personal" } }), "My Cloud");
-    assert.equal(spaceName({ id: "s", name: "juniper.vyre.run", tier: "cloud" }), "juniper");
-    assert.equal(spaceName({ id: "s", displayName: "Juniper Studio", tier: "cloud" }), "Juniper Studio");
+    assert.equal(spaceName({ id: "s", name: "juniper.vyre.run", tier: "cloud" }), "juniper's Cloud");
+    assert.equal(spaceName({ id: "s", displayName: "Juniper Studio", tier: "cloud" }), "Juniper Studio's Cloud");
     assert.equal(spaceName({ id: "spc_1", name: "spc_1", tier: "cloud" }), "Space");
+    assert.equal(spaceName({ id: "s", displayName: "Northwind", tier: "cloud" }), "Northwind's Cloud");
+    assert.equal(spaceName({ id: "s", label: "northwind", tier: "basic", setup: { who: "team" } }), "northwind", "a team Space on a computer keeps its own name, so two Spaces are never both called My Home");
+    assert.equal(spaceName({ id: "s", displayName: "Northwind Cloud", tier: "cloud" }), "Northwind Cloud", "a name that already says Cloud is not doubled");
+    assert.equal(spaceName({ id: "s", displayName: "Studio", setup: { who: "team" } }), "Studio", "a team space whose tier is not known claims no Cloud");
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "pro", setup: { who: "personal" } }), "alex", "pro is not a value any more: it is read as a name, not a tier");
   } finally { console.warn = warn; }
 });

@@ -200,7 +200,7 @@ export function createAdapter() {
         case "thread.signin":
           return typeof p.id === "string" && /^[0-9a-f]{12}$/.test(p.id) ? [spec("tool-finished", { tool_id: `signin:${p.id}`, ok: true, result: { block: "signin", id: p.id, computer: String(p.computer || "").slice(0, 64), site: String(p.site || "").slice(0, 80), why: String(p.why || "").slice(0, 200), state: String(p.state || "waiting") } })] : [];
         case "thread.artifact":
-          return p.artifact ? [spec("tool-finished", { tool_id: `art:${p.artifact}:${p.version ?? 0}`, ok: true, result: { block: "text", text: `Artifact ${String(p.title || p.artifact).slice(0, 120)}` } })] : [];
+          return p.artifact ? [spec("tool-finished", { tool_id: `art:${p.artifact}:${p.version ?? 0}`, ok: true, result: { block: "text", text: `Artifact ${String(p.title || p.artifact).slice(0, 120)}`, ...(typeof p.mime === "string" && /^image\/(png|jpeg|webp|gif)$/.test(p.mime) ? { mime: p.mime } : {}) } })] : [];
         case "ask.raised":
           return p.ask ? [spec("ask", { ask_id: String(p.ask), kind: ["permission", "question", "approval"].includes(p.kind) ? p.kind : "permission", ...(p.tool ? { tool: String(p.tool) } : {}), ...(p.summary ? { summary: String(p.summary) } : {}) })] : [];
         case "ask.answered": case "ask.cancelled":

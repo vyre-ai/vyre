@@ -220,3 +220,11 @@ test("adapter: a computer's operator card and a sign-in become blocks patched by
   assert.deepEqual(si.map(s => [s.data.tool_id, s.data.result.block, s.data.result.site]), [["signin:1b2c3d4e5f60", "signin", "GoHighLevel"]]);
   assert.deepEqual(a.event(ev("thread.operator", { run: "bad" })), []);
 });
+
+test("an artifact that is a picture tells the chat its type, so the chat can show it inline; any other artifact stays a plain row", () => {
+  const ad = createAdapter();
+  const pic = ad.event({ type: "thread.artifact", payload: { artifact: "a_1", version: 1, title: "Page shot", mime: "image/png" } });
+  assert.equal(pic[0].data.result.mime, "image/png");
+  const doc = ad.event({ type: "thread.artifact", payload: { artifact: "a_2", version: 1, title: "Notes", mime: "text/html" } });
+  assert.equal(doc[0].data.result.mime, undefined);
+});

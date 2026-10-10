@@ -37,12 +37,22 @@ export default {
 
     const ask = async (/** @type {string} */ tool, /** @type {any} */ input) => { try { const r = await ctx.call(tool, input); return r && !r.error ? r.data : null; } catch { return null; } };
 
-    /** The computers there are, for this caller. @returns {Promise<import("./route.js").Target[]>} */
-    async function targets() {
+    /** Is this call the box owner's? The paired Macs are the owner's own (the owner approved each pairing at the box), so another member of a Space this box hosts never reaches them. The person is the first hop of the call's own kernel chain; no chain, a non-person or a viewer is nobody. @param {any} meta */
+    async function isOwner(meta) {
+      try {
+        const k = ctx.kernel;
+        const chain = k && typeof k.chain === "function" ? await k.chain(meta || {}) : null;
+        const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
+        return Boolean(first && first.actor && first.actor.kind === "person" && chain.viewer !== true && typeof k.owner === "string" && String(first.actor.id) === k.owner);
+      } catch { return false; }
+    }
+
+    /** The computers there are, for this caller. @param {any} [meta] @returns {Promise<import("./route.js").Target[]>} */
+    async function targets(meta) {
       /** @type {import("./route.js").Target[]} */ const out = [];
       if (role === "box") {
         out.push({ id: "cloud", kind: "cloud", name: "Cloud computer" });
-        const macs = await ask("link.macs", {});
+        const macs = (await isOwner(meta)) ? await ask("link.macs", {}) : [];
         for (const m of Array.isArray(macs) ? macs : []) out.push({ id: `mac:${m.mac}`, kind: "mac", name: String(m.name || m.mac), online: m.online === true });
       } else {
         out.push({ id: "here", kind: "here", name: "This Mac", aliases: ["my Mac", "this computer", "here"], online: true });
@@ -141,7 +151,7 @@ export default {
     ctx.tool("computer.targets", {
       description: "The computers you can work on by name, the cloud one and each paired Mac, and whether each is online.",
       input: obj({}), effect: "read", callers: CALLERS,
-      run: async () => ({ computers: (await targets()).map(t => ({ name: t.name, kind: t.kind, ...(t.online !== undefined ? { online: t.online } : {}) })) }),
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => ({ computers: (await targets(meta)).map(t => ({ name: t.name, kind: t.kind, ...(t.online !== undefined ? { online: t.online } : {}) })) }),
     });
 
     ctx.tool("computer.use", {
@@ -151,7 +161,7 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta = {}) => {
         const action = String(input.do);
         const agent = agentOf(input, meta);
-        const all = await targets();
+        const all = await targets(meta);
         let picked = resolveTarget(input.on, all);
         if (!picked.ok) {
           // One card for the question, with the real names and room to type or speak another; the answer picks the computer and the work goes on.

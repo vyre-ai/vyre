@@ -6,14 +6,15 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION } from "./accounts.js";
+import { Accounts, ACCOUNTS_MIGRATION, ACCOUNTS_PENDING_MIGRATION, ACCOUNTS_ENDPOINT_MIGRATION, ACCOUNTS_PERSON_MIGRATION } from "./accounts.js";
 
 function fresh(o) {
   const db = new DatabaseSync(":memory:");
   db.exec(ACCOUNTS_MIGRATION);
   db.exec(ACCOUNTS_PENDING_MIGRATION);
   db.exec(ACCOUNTS_ENDPOINT_MIGRATION);
-  return new Accounts(db, o);
+  db.exec(ACCOUNTS_PERSON_MIGRATION);
+  return new Accounts(db, { owner: () => "per_owner", ...o });
 }
 
 test("accounts: with none configured, claude synthesizes a default; resolve returns it unchanged", async () => {
@@ -158,4 +159,41 @@ test("accounts: a provider's only account is its default, kept when another is r
   assert.equal(pend.is_default, false);
   const done = a.bind({ id: pend.id, confirm: true });
   assert.equal(done.is_default, true);
+});
+
+test("accounts: one person's sign-in never serves another's turn, by default, by project or by explicit id", async () => {
+  const a = fresh();
+  const own = await a.add({ provider: "claude", label: "Owner key", vault_item: "claude-owner" });                          // the home's own (no person)
+  const bob = await a.add({ provider: "claude", label: "Bob key", vault_item: "claude-bob", person: "per_bob" });
+  const eve = await a.add({ provider: "claude", label: "Eve key", vault_item: "claude-eve", person: "per_eve", scope: { projects: ["x-law"], agents: "*" } });
+  assert.equal(a.resolve({ provider: "claude", person: "per_bob" }).id, bob.id, "Bob's turn runs on Bob's account");
+  assert.equal(a.resolve({ provider: "claude", person: "per_owner" }).id, own.id, "the owner's turn runs on the home's own account");
+  assert.equal(a.resolve({ provider: "claude" }).id, own.id, "a call that names no person sees only the home's own");
+  assert.throws(() => a.resolve({ provider: "claude", person: "per_bob", account: eve.id }), /no account/, "Bob naming Eve's account by id: not found");
+  assert.throws(() => a.resolve({ provider: "claude", person: "per_owner", account: bob.id }), /no account/, "the owner is not served by a member's account either");
+  assert.equal(a.resolve({ provider: "claude", person: "per_eve", project: "x-law" }).id, eve.id);
+  assert.equal(a.resolve({ provider: "claude", person: "per_nobody" }), null, "a person with no account of their own gets none, not the owner's");
+  assert.deepEqual(a.list("claude", "per_bob").map(x => x.id), [bob.id], "and lists only their own");
+  assert.deepEqual(a.list("claude").map(x => x.id), [own.id]);
+});
+
+test("accounts: each person has their own default on a provider", async () => {
+  const a = fresh();
+  const o1 = await a.add({ provider: "codex", label: "Owner 1", vault_item: "c-o1" });
+  const b1 = await a.add({ provider: "codex", label: "Bob 1", vault_item: "c-b1", person: "per_bob" });
+  const b2 = await a.add({ provider: "codex", label: "Bob 2", vault_item: "c-b2", person: "per_bob", is_default: true });
+  assert.equal(o1.is_default, true, "the owner's first account is their default");
+  assert.equal(b1.is_default, true, "and Bob's first is Bob's default, not blocked by the owner's");
+  assert.equal(a.resolve({ provider: "codex", person: "per_bob" }).id, b2.id, "Bob made his second the default");
+  assert.equal(a.resolve({ provider: "codex", person: "per_owner" }).id, o1.id, "which left the owner's alone");
+});
+
+test("accounts: a member has one sign-in account of their own; keys are not limited, and the owner is not capped", async () => {
+  const a = fresh();
+  await a.add({ provider: "codex", label: "Bob login", kind: "login", person: "per_bob" });
+  await assert.rejects(() => a.add({ provider: "grok", label: "Bob second login", kind: "login", person: "per_bob" }), e => e.code === "too_many");
+  await a.add({ provider: "codex", label: "Bob key", vault_item: "bob-key", person: "per_bob" });
+  await a.add({ provider: "codex", label: "Eve login", kind: "login", person: "per_eve" });
+  await a.add({ provider: "codex", label: "Owner 1", kind: "login" });
+  await a.add({ provider: "grok", label: "Owner 2", kind: "login" });
 });
