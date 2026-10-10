@@ -8,6 +8,7 @@
 //   rollback   an earlier version, written again as a new approved one
 //   approved / versions   what is in use for a caller, and the history of one skill
 
+import { PLUGIN_LAYOUT } from "../sessions/drivers/plugin-layout.js";
 import { validName, skillProblems, pluginProblems, hashOf, hasCode, ackOf, declared, visibleFor, LEVELS } from "../../lib/skill-library.js";
 
 const TYPE = "skill";
@@ -41,7 +42,7 @@ export function createLibrary({ kernel, agentOwner, projectOwner, mcpAdd, log = 
   function checkBody(kind, name, body) {
     if (kind === "plugin") {
       let p; try { p = JSON.parse(body); } catch { throw fail("bad_input", "a plugin is JSON"); }
-      const problems = pluginProblems(p);
+      const problems = pluginProblems(p, PLUGIN_LAYOUT);
       if (problems.length) throw fail("bad_input", `that plugin is not valid: ${problems.slice(0, 4).join("; ")}${problems.length > 4 ? ` (and ${problems.length - 4} more)` : ""}`, { errors: problems });
       if (p.name !== name) throw fail("bad_input", `the plugin's name is ${name}`);
       return p;

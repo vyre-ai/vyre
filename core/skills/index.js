@@ -26,6 +26,7 @@ import { fit } from "../../lib/harness-caps.js";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { createLibrary } from "./library.js";
+import { PLUGIN_LAYOUT } from "../sessions/drivers/plugin-layout.js";
 import { materialise as writeFor, AIS, LEVELS, ackOf, declared, hasCode } from "../../lib/skill-library.js";
 
 const SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -265,7 +266,7 @@ export default {
         const id = createHash("sha256").update(JSON.stringify([i.ai, approved.map((/** @type {any} */ a) => [a.name, a.level, a.scope, a.version, a.hash])])).digest("hex").slice(0, 16);
         const dir = path.join(home || os.tmpdir(), "materialised", String(i.ai), id);
         const done = fs.existsSync(path.join(dir, ".done"));
-        const r = done ? { dir, skills: [], commands: [], hooks: 0 } : writeFor(dir, i.ai, approved, { hookCommand: (plugin, hook) => `vyre call skills.hook.run '{"plugin":"${plugin}","hook":"${hook}"}'` });
+        const r = done ? { dir, skills: [], commands: [], hooks: 0 } : writeFor(dir, i.ai, approved, { manifest: PLUGIN_LAYOUT.manifest, hookCommand: (plugin, hook) => `vyre call skills.hook.run '{"plugin":"${plugin}","hook":"${hook}"}'` });
         if (!done) fs.writeFileSync(path.join(dir, ".done"), "");
         return { ...r, dir };
       } });
