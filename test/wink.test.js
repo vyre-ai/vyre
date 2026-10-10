@@ -191,7 +191,7 @@ shardTest("wink: an invitation is sealed into a ticket; the invited person's red
   assert.equal(grants.length, 1);
   assert.equal(grants[0].source, "wink:W5");
   assert.equal(grants[0].subject.actor.kind, "person");
-  assert.ok(w.events.some(e => e[0] === "wink.joined" && e[1].role === "member"));
+  await until(() => w.events.some(e => e[0] === "wink.joined" && e[1].role === "member"));
   assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.filter(d => d.id !== SCREEN.slice(7)).length, 0, "no device row for the invitee (the screen's own row is this test world's)");
   // the invitation is single use
   await assert.rejects(() => pairTicket(ticket, { relay: w.status.url, crypto: nodeCrypto(), keyStore: keystore(t) }), /expired or was already used/);
