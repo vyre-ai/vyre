@@ -9,7 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 
 const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", ...opt });
 
-/** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
+/** @param {{ devBuild?: boolean, ownerId?: string, dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
  * `release` (the update proof): the server is the OLD release, installed by that release's own installer from a local release site, and its update unit is pointed at the candidate's site (signed by the same throwaway key). */
 export async function startInstallerServer(o) {
   if (!process.env.CI && process.env.VYRE_JOURNEY_BOX !== "1") throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds (a test box that holds nothing there says so with VYRE_JOURNEY_BOX=1)");
@@ -30,7 +30,10 @@ export async function startInstallerServer(o) {
     if (w.status !== 0) throw new Error(`could not seed the box's update look: ${w.stderr}`);
   }
   const logFile = path.join(o.dir, "install.log");
-  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir };
+  // A DEVELOPMENT build of the box (install-box.sh --from with VYRE_DEV_SIGN=0: no release signature), whose sealing process takes the three developer switches from vyre.env: a stand-in owner key can then
+  // give the person's yes. A packaged build ignores all of them (kernel/devbuild.js). Only for a throwaway test box; this is how Publish's card and the signed yes are walked without a hardware key.
+  if (o.devBuild) fs.writeFileSync(path.join(dir, "vyre.env"), "VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\nVYRE_SEAL_UNATTESTED=1\nVYRE_KERNEL_PATH_RULE=1\n", { mode: 0o600 });
+  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir, ...(o.devBuild ? { VYRE_DEV_SIGN: "0" } : {}) };
   // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
   // not a published release: it packs the checkout and signs it with a throwaway key for this server only (dev_sign), since a build that is not signed by Vyre's release key cannot run its modules.
   const child = o.release
@@ -58,8 +61,14 @@ export async function startInstallerServer(o) {
     const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", tool, JSON.stringify(input)], { encoding: "utf8" });
     return r;
   };
+  const ownerSigner = o.devBuild && o.ownerId ? (await import("../../../kernel/seal/testing.js")).signer(o.ownerId) : null;
   return {
-    kind: "installer", store: o.store, logs: /** @type {string[]} */ ([]),
+    kind: "installer", store: o.store, logs: /** @type {string[]} */ ([]), ownerSigner,
+    /** The owner's yes for a call the box answered presence_required to: a development key signs the exact act (only on a development build box that enrolled this key). @param {string} personId */
+    yesFor: ownerSigner ? (/** @type {string} */ personId) => async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
+      const proof = ownerSigner.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: personId, space: sign.space } }] }, sign.op, sign.fields);
+      return Buffer.from(JSON.stringify(proof)).toString("base64url");
+    } : undefined,
     /** The four words the installer printed on its terminal. */
     async words() { if (!printed) throw new Error("the installer printed no check words (IR-1: show_words)"); return printed; },
     /** @param {string} tool @param {any} [input] */

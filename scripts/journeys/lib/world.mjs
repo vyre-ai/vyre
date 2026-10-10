@@ -16,7 +16,7 @@ import { startInstallerServer } from "../../lib/proof/server-installer.mjs";
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
- * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain" }} o
+ * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain", devBuild?: boolean }} o
  */
 export async function bringUp(o) {
   const { run } = o;
@@ -62,7 +62,7 @@ export async function bringUp(o) {
     assert.ok(flow.state.installLine.includes(`VYRE_CODE=${flow.state.code}`), "the line carries the one-time code");
   }, { needs: [NAME] });
   await run.step(S(`the server installs from that line (${o.kind})`), async () => {
-    const a = { dir: path.join(dir, "server"), repo: REPO, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: o.store };
+    const a = { dir: path.join(dir, "server"), repo: REPO, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store: o.store , ...(o.devBuild ? { devBuild: true, ownerId: mac.identity.id } : {}) };
     srv = o.kind === "box" ? await startInstallerServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store: o.store, ownerId: mac.identity.id });
     return srv.kind;
   }, { needs: [S("add a server: the app shows the install line")] });
