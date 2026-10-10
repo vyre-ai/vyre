@@ -30,6 +30,11 @@ test("the @Engineer chat starts the way the app starts it, and is pinned", { tim
   const pinned = await call("work.chat.pin", { kind: "engineer", chat: made.data.chat });
   assert.ok(!pinned.error, JSON.stringify(pinned.error));
   assert.equal((await call("work.chat.persistent", { kind: "engineer" })).data.chat, made.data.chat, "the pinned chat is the one made");
+  // a name a caller makes up is not registered as an actor of the Space
+  const id2 = `chat_${crypto.randomUUID()}`;
+  const ring2 = createRing(id2, holdersOf([{ device: "dev_app", agree: dev.getPublicKey().toString("base64url") }]));
+  const made2 = await call("work.chat.create", { title: "x", id: id2, ring: ring2.doc, people: [], agents: ["not-an-agent"] });
+  assert.equal(made2.error && made2.error.code, "bad_input", JSON.stringify(made2));
 });
 
 test("asking for the same chat again, with the id the caller chose, answers the chat and does not refuse (a retried create, as the journey's store wait does)", { timeout: 120_000 }, async t => {

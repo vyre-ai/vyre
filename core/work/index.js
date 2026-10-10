@@ -640,7 +640,12 @@ export default {
           catch (e) {
             // A built-in agent (the Engineer) that no run has made an actor of the Space yet is registered, then the chat starts: a person's first Engineer chat is not refused.
             if (!/belongs to the Space/.test(String(e && /** @type {any} */ (e).message)) || !Array.isArray(input.agents) || !input.agents.length || typeof ctx.agentActor !== "function") throw e;
-            for (const a of input.agents) await ctx.agentActor(String(a));
+            // only a built-in agent (agents.list says builtin) is registered this way: a name a caller makes up is not made an actor of the Space
+            const known = await ctx.call("agents.list", {}).then((/** @type {any} */ r) => (r && r.data) || []).catch(() => []);
+            for (const a of input.agents) {
+              if (!known.some((/** @type {any} */ x) => x && x.name === String(a) && x.builtin === true)) throw e;
+              await ctx.agentActor(String(a));
+            }
             made = await open();
           }
         } catch (e) {
