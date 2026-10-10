@@ -49,7 +49,7 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
 }
 
 const stepsOf = (/** @type {any} */ rider, wait = 1500) => [
-  { id: "request", kind: "call", action: "esign.request", resource: "vyre://space/esign", input: { to: "dana@example.com" } },
+  { id: "request", kind: "call", action: "esign.request", resource: "vyre://space/esign", input: { to: "dana@example.com" }, approve: true },
   { id: "w", kind: "wait", for_ms: wait },
   { id: "copy", kind: "call", action: rider.action || "esign.copy", resource: "vyre://space/esign", label: "email Dana the signed copy", input: { to: "dana@example.com" }, with: "request", ...rider },
 ];
