@@ -52,6 +52,10 @@ Each lane shows in the Flow's run list as a run of its own, marked as belonging 
 
 A **run another Flow** step names a Flow that is already switched on in this space and hands it some input. The step is done when that Flow is. The Flow can say what it gives back with `returns`, and the steps after read it as `steps.<step>.result`. The Flow that makes the call needs your yes to run other Flows, and each call is checked the same way a run by hand is. A Flow that runs itself stops after eight levels and says so.
 
+### One yes for a send and the one after it
+
+A Flow that sends something now and something else days later (a document out for signature, then the signed copy) asks you once. The later step says `with: "<the earlier step>"`, and the question for the earlier step names both in plain words: "Send for signature, and then email Dana the signed copy with this same yes?". Your yes covers both, and the signed copy goes out when the time comes with no second question. Vyre only saves this when the earlier send's tool says it covers the later one, and only for a step after it on the same path (not inside a loop, not in another branch). If you say no to the first, the second never goes. A step that does not say `with` asks for itself.
+
 ### Try it on last week
 
 Before you switch on a change, Vyre replays the last week through it. Nothing is done: every action is a stand-in. When the Flow has really run that week, you see the two side by side: "In that time it really ran 12 times. This version would run 12 times: 11 the same, 1 different, 0 new, 0 it would not run." A different run says which steps it did and which this version would do. Ask your assistant to try a Flow on last week, or look at the line on the approval card.
