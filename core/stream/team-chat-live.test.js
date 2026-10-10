@@ -59,3 +59,14 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   const which = (() => { try { return JSON.stringify(db.prepare("SELECT * FROM memory_engine_lines WHERE text LIKE ?").all("%hello team, please answer%")).slice(0, 700); } catch { return ""; } })();
   assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory (home ${homeSpace}, team ${firm.space}): ${which} :: origin ${orig}`);
 });
+
+test("the model's own tools in a team turn act in the team Space, as the member who spoke", { timeout: 150_000 }, async t => {
+  const { firm, as, lines } = await world(t);
+  const made = await as(ANA, "create", { title: "Team tools", people: [BEN], agents: ["assistant"] });
+  await as(ANA, "reply-mode", { chat: made.chat, mode: "every" });
+  await as(ANA, "send", { chat: made.chat, text: "vyre records.me {}" });
+  let seen = "";
+  await until(async () => { seen = JSON.stringify(await as(BEN, "catchup", { chat: made.chat })); return seen.includes(firm.space) ? seen : null; }, "the model's tool answer, from the team Space")
+    .catch(e => { throw new Error(`${e.message} :: ${seen.slice(0, 700)} :: ${lines.filter(l => /stream|threads/.test(l)).slice(-6).join(" | ")}`); });
+  assert.match(seen, /per_bcdefghijklmnopqrstuvwxyza/, "as Ana, the member who spoke");
+});

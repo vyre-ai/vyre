@@ -534,11 +534,29 @@ async function startLocked(opts, root, p, release) {
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
     const reopenOpts = (/** @type {any} */ o) => ({ personChainFor, ...o });
+    // The open turns reopen after a restart in the engine they belong to: the home's own for a home chat, each TEAM Space's for that Space's (the stored turn says which: `space`).
+    const reopenAll = async (/** @type {any} */ o) => {
+      const home = await kernelSessions.reopenPending(reopenOpts({ ...o, filter: (/** @type {any} */ r) => !r.space }));
+      const resumed = [...home.resumed], gaveUp = [...home.gaveUp];
+      for (const sp of new Set(turns.all().map(([, r]) => r && r.space).filter(Boolean))) {
+        const mine = turns.all().filter(([, r]) => r && r.space === sp).map(([t]) => t);
+        try {
+          const e = teamEngine(String(sp));
+          const r = await e.sessions.reopenPending({ ...o, personChainFor: async (/** @type {string} */ p) => teamChain(e.kernel, p), filter: (/** @type {any} */ x) => x.space === sp });
+          for (const t of r.resumed) spaceOfThread.set(t, String(sp));
+          resumed.push(...r.resumed); gaveUp.push(...r.gaveUp);
+        } catch (err) {
+          // the team's Space is not here (retired, not hosted now): its turns are given up, said in their chats, and forgotten
+          for (const t of mine) { turns.delete(t); gaveUp.push(t); try { await o.onGiveUp?.(t, String(/** @type {any} */ (err).code || "failed")); } catch { /* the giving up stands */ } }
+        }
+      }
+      return { resumed, gaveUp };
+    };
     registry.deps.kernelThreads = Object.freeze({
       forThread: (/** @type {string} */ thread) => { const sp = spaceOfThread.get(thread); return sp && teamSessions.get(sp) ? teamSessions.get(sp).sessions.forThread(thread) : kernelSessions.forThread(thread); },
-      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return kernelSessions.reopenPending(reopenOpts(o)); },
+      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return reopenAll(o); },
     });
-    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
+    reopenLater = () => { if (!reopenCalled) void reopenAll({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
     closeKernelSessions = async () => { for (const e of teamSessions.values()) await e.sessions.closeAll(); await kernelSessions.closeAll(); };
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
@@ -599,7 +617,7 @@ async function startLocked(opts, root, p, release) {
         let agent = await kernelAgentOf(q);
         let project;
         if (!agent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) { agent = q.rec.slot; if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project; }
-        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
+        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread, space: q.space });
         spaceOfThread.set(q.thread, q.space);
         return { token: e.sessions.tokenFor(s.id), end: () => e.sessions.end(s.id) };
       }
