@@ -40,7 +40,7 @@ if (live) {
   const host = take("--host");
   if (!host) { console.error("proof-install: --live needs --host <ssh host> (the server it installs on and wipes)"); process.exit(64); }
   const { walkLive } = await import("./lib/proof/live.mjs");
-  try { await walkLive({ run, host, out, expectVersion: take("--expect-version", "") }); } finally { code = run.finish(); }
+  try { await walkLive({ run, host, out, expectVersion: take("--expect-version", ""), channel: take("--channel", "") }); } finally { code = run.finish(); }
   process.exit(code);
 }
 const inCI = process.env.GITHUB_ACTIONS === "true";
