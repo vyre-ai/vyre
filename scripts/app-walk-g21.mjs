@@ -96,7 +96,7 @@ try {
   await pg.getByPlaceholder("attorney").first().fill("attorney");
   await pg.getByRole("button", { name: /^Add$/ }).first().click();
   await pg.getByPlaceholder("Gather documents").first().fill("Collect the death certificate");
-  await choose("Who does it", "A person");
+  await choose("Who does it", "The owner");
   await choose("Attach a Flow", "Welcome the client");
   await pg.getByRole("button", { name: /^Attach$/ }).first().click();
   await shot("filled");
@@ -108,7 +108,7 @@ try {
   await shot("saved-draft");
   const tpl = pg.url().split("/").pop();
   const stored = await call("work.template.get", { template: tpl, version: 1 });
-  check(stored.body.opens_on === "files" && stored.body.automations?.length === 1 && stored.body.stages[0].tasks[0].doer === "person:owner", `the box stored what the fields said (opens_on ${stored.body.opens_on}, ${stored.body.automations?.length} automation, doer ${stored.body.stages[0].tasks[0].doer})`);
+  check(stored.body.opens_on === "files" && stored.body.automations?.length === 1 && stored.body.stages[0].tasks[0].doer === "role:owner", `the box stored what the fields said (opens_on ${stored.body.opens_on}, ${stored.body.automations?.length} automation, doer ${stored.body.stages[0].tasks[0].doer})`);
 
   say("4. Test mode, then Go live");
   await pg.getByText("Test mode", { exact: true }).first().click();
