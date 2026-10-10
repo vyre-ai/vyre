@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord } from "./model.ts";
+import { rowLine, treeOf, roleLines, bodyText, parseBody, plural, stateWord, whoWords } from "./model.ts";
 
 const body = () => ({ name: "Estate plan", roles: [{ role: "researcher", agent: "research", lead: true }, { role: "attorney" }], stages: [
   { name: "Intake", owner: "role:attorney", moves_on_when: 'status == "retained"', tasks: [{ title: "Gather documents", doer: "role:researcher", output: { kind: "note" } }, { title: "Conflict check", doer: "role:researcher", checker: "role:attorney", output: { kind: "decision" }, required: false }] },
@@ -19,9 +19,9 @@ test("a template's list line says how many versions and which is live", () => {
 test("the tree shows each stage with who may move it and what it waits for, each task with its doer, and says so when a stage has no tasks", () => {
   const t = treeOf(body());
   assert.deepEqual(t.filter((l) => l.depth === 0).map((l) => l.text), ["1. Intake", "2. Drafting", "3. Signing"]);
-  assert.equal(t[0].note, "role:attorney may move it early");
+  assert.equal(t[0].note, "The attorney may move it early");
   assert.equal(t.find((l) => l.text === "2. Drafting")?.note, 'entered when status == "retained"');
-  assert.equal(t.find((l) => l.text === "Conflict check")?.note, "role:researcher, checked by role:attorney, optional");
+  assert.equal(t.find((l) => l.text === "Conflict check")?.note, "The researcher, checked by the attorney, optional");
   assert.equal(t[t.length - 1].text, "The last stage: the project ends here.");
   assert.deepEqual(roleLines(body()), ["researcher is research (the project lead)", "attorney is a person with that role"]);
 });
@@ -33,4 +33,12 @@ test("the editor round-trips the body, refuses what is not JSON in plain words",
   assert.equal(bad.ok, false);
   assert.match(!bad.ok ? bad.why : "", /not valid JSON/);
   assert.equal(parseBody("[1]").ok, false);
+});
+
+test("who does a task is said as a person says it: the attorney, Research, a person, never role:attorney", () => {
+  assert.equal(whoWords("role:attorney"), "the attorney");
+  assert.equal(whoWords("teammate:research"), "Research");
+  assert.equal(whoWords("person:per_abc"), "a person");
+  assert.equal(whoWords("pool:drafters"), "anyone in drafters");
+  assert.equal(whoWords("something else"), "something else", "a form it does not know is shown as it came");
 });
