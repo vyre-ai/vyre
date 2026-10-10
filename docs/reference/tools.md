@@ -6795,7 +6795,7 @@ Live DNS check of the records for using your own domain: _acme-challenge.<domain
 
 - Input:
   - `domain` string, required
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `names.serve`
 
