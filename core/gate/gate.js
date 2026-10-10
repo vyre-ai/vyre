@@ -22,6 +22,7 @@
 
 import crypto from "node:crypto";
 import { TYPES, problem, scrub } from "./senders.js";
+import { canonical } from "../../kernel/core/canonical.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE gate_items (
@@ -182,6 +183,13 @@ export class Gate {
     const { kind, via, content, why, thread, project, tool_use_id } = input;
     const agent = who.agent ?? null;
     const { s, dest, t } = this.prepare(input);
+    // The same ask again while the first still waits is the same item: a turn that was cut and re-run from its start (a session that moved to the server) asks for what it asked before, and the person
+    // sees one draft, not two. Only a held item in the same chat from the same agent, to the same places, with the same words; once it is sent or discarded, asking again is a new ask.
+    const want = canonical({ kind, via, dest, content });
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT id, kind, via, dest, draft, agent, thread FROM gate_items WHERE state = 'held' AND thread IS ? AND agent IS ?").all(thread || null, agent))) {
+      let same = false; try { same = canonical({ kind: r.kind, via: r.via, dest: JSON.parse(r.dest), content: JSON.parse(r.draft) }) === want; } catch { same = false; }
+      if (same) return { id: r.id, state: "held", message: `Held at the Gate as ${r.id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
+    }
     const id = crypto.randomBytes(9).toString("hex");
     this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module, tool_use_id)
       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
