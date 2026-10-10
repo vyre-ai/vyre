@@ -84,7 +84,10 @@ async function front(/** @type {import("node:test").TestContext} */ t, /** @type
   const server = http.createServer((req, res) => { proxy(req, res, { url: new URL(req.url || "/", "http://x") }).then(done => { if (!done) { res.writeHead(404); res.end(); } }); });
   server.on("upgrade", (req, sock, head) => { proxy.upgrade(req, sock, head).then(done => { if (!done) sock.destroy(); }); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
-  t.after(() => { server.closeAllConnections(); server.close(); upstream.closeAllConnections(); upstream.close(); });
+  // an upgraded socket belongs to neither server's connection list any more: they are closed here
+  const socks = /** @type {Set<net.Socket>} */ (new Set());
+  for (const sv of [server, upstream]) sv.on("connection", c => { socks.add(c); c.on("close", () => socks.delete(c)); });
+  t.after(() => { for (const c of socks) c.destroy(); server.closeAllConnections(); server.close(); upstream.closeAllConnections(); upstream.close(); });
   const port = /** @type {any} */ (server.address()).port;
   const call = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}, body = "") => new Promise((resolve, reject) => {
     const r = http.request({ host: "127.0.0.1", port, method, path: p, headers: { host: HOST, ...headers, ...(body ? { "content-length": String(Buffer.byteLength(body)) } : {}) } }, res => { const c = /** @type {Buffer[]} */ ([]); res.on("data", d => c.push(d)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(c).toString() })); });
