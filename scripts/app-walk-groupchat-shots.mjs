@@ -99,6 +99,8 @@ for (const scheme of (process.env.SCHEMES || "light,dark").split(",")) for (cons
   await pg.keyboard.press("Escape");
   await pg.getByText(/set replies to: the AI answers/, { exact: false }).first().waitFor({ timeout: 10000 }).catch(() => must(false, "the change left no line in the chat"));
   await shot("g3-line-in-chat", 1200);
+  const seen = await pg.locator("body").innerText();
+  must(!/\bper[_ ][a-z2-7]{12,}|\bspc_|\bmodel:|mcp__/i.test(seen), "no internal word (an id or a tool name) shows in the chat");
   // the other way, so the next cell starts from a known state
   await pg.getByLabel("Chat tools").first().click().catch(() => {});
   await pg.getByText("AI replies", { exact: true }).first().click().catch(() => {});
