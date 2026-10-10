@@ -142,6 +142,7 @@ function Sample({ name }: { name: string }) {
     const noop = () => {};
     return <View style={{ gap: 24 }}><PublishView step={{ kind: "asking", held, later: "Public once the public door is on. Until then the address works on your own devices only." }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /><PublishView step={{ kind: "done", address: "intake-form.juniper.example", later: "" }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /></View>;
   }
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
