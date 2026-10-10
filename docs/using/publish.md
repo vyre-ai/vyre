@@ -40,7 +40,7 @@ What it gets and does not get:
 - Secrets: grant a Vault secret to the deployment (`publish.secret.grant` with `"use": ["runtime"]`, your yes) and it is in the app's environment under the name you gave. Taking the grant away restarts the app without it.
 - A place to keep data: the folder `/data` survives restarts and new versions. Make it writable by the user your app runs as in the Dockerfile (`RUN mkdir /data && chown node /data`). Everything else in the app is read-only except `/tmp`.
 - Limits: 512 MB of memory, half a CPU and 256 processes, the same hardening as Vyre's own apps (no extra privileges, no capabilities), and no way to reach anything outside its own network. Nothing of yours is mounted into it.
-- Visitors: your app sees each visitor's own cookies and headers, never your Vyre sign-in. Its cookies stay on its own address.
+- Visitors: your app sees each visitor's own cookies and headers, never your Vyre sign-in. Its cookies stay on its own address. WebSockets work the same way (live pages, chat widgets); one idles out after ten minutes without a message.
 - The build: it runs in a locked-down builder, not on the server itself. It may start from official images (node, python, nginx and the like) and from registries you allow in the setting `builder.from`; a Dockerfile that names another base, or its own build frontend (`# syntax=`), is refused. The build can reach the internet to fetch packages. The folder is read like any folder: `.env`, keys and `.git` are not in it.
 - A new version replaces the running one; if it does not answer its health check, the old one is started again and nothing goes live. Rolling back starts the previous image. Retiring removes the app and keeps its data.
 
