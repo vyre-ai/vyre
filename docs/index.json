@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1618,"event":533,"config":302,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1620,"event":533,"config":302,"env":282,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -547,7 +547,9 @@
     {"kind":"tool","name":"flows.compile-text","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscompile-text","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.connections","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsconnections","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.control","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscontrol","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.credential-uses","definedIn":"core/flows/index.js","page":"reference/tools.md#flowscredential-uses","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.define","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsdefine","module":"flows","mentions":[]},
+    {"kind":"tool","name":"flows.definitions.scan","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsdefinitionsscan","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.describe","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsdescribe","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.diff","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsdiff","module":"flows","mentions":[]},
     {"kind":"tool","name":"flows.from-chat","definedIn":"core/flows/index.js","page":"reference/tools.md#flowsfrom-chat","module":"flows","mentions":[]},
