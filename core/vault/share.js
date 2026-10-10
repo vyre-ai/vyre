@@ -23,7 +23,7 @@ import crypto from "node:crypto";
 import { canonical } from "./crypto.js";
 import { CONSONANTS, VOWELS } from "./generate.js";
 import * as relay from "./relay.js";
-import { callerKind } from "../modules/index.js";
+import { isAsker } from "./asker.js";
 import { newPrefixedId } from "../../lib/id.js";
 
 export const SHARE_MIGRATIONS = [
@@ -183,7 +183,7 @@ export class Share {
       if (c.v === 2) this.db.prepare("UPDATE vault_people SET card=?, version=2, relay=?, login=?, fingerprint=? WHERE name=?").run(String(card).trim(), c.relay || null, c.login || null, fp, who);
       return { person: this.personOut(this.row(who)), pinned: false };
     }
-    if (callerKind(caller) === "mcp") return this.request("person", who, String(card).trim(), caller, { fingerprint: fp });
+    if (isAsker(caller)) return this.request("person", who, String(card).trim(), caller, { fingerprint: fp });
     const t = now();
     if (old) {
       this.db.prepare("UPDATE vault_people SET sign=?, box=?, relay=?, login=?, card=?, version=?, fingerprint=?, verified=0, changed=? WHERE name=?")

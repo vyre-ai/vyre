@@ -6,6 +6,7 @@
 
 import { presence } from "./presence.js";
 import { callerKind, agentClaim } from "../../modules/index.js";
+import { isAsker } from "../asker.js";
 import { parseExpiry } from "../vault.js";
 
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -23,11 +24,11 @@ export function register({ vault, tool }) {
     obj({ agent: str, item: str, origin: str, expires: str }, ["agent", "item", "origin"]),
     ({ agent, item, origin, expires }, meta) => {
       if (callerKind(meta.caller) === "module") throw new Error("modules cannot lend logins to agents");
-      return vault.access.lend({ agent, item, origin, expires: parseExpiry(expires) }, meta, callerKind(meta.caller) === "mcp");
+      return vault.access.lend({ agent, item, origin, expires: parseExpiry(expires) }, meta, isAsker(meta.caller));
     },
     // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
     presence("Let an agent sign in with a vault login", input => vault.agents.summary(input, parseExpiry),
-      { skip: ({ caller }) => callerKind(caller) === "mcp" }));
+      { skip: ({ caller }) => isAsker(caller) }));
 
   tool("vault.agent.grants", ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"], "Agent logins, active, pending, expired and revoked, with the last use and a use count. Names and origins only.",
     obj({ agent: str, item: str }), (input, meta = {}) => {

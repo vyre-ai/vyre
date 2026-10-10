@@ -7,6 +7,7 @@ import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { load } from "../kernel/golden/index.js";
+import { AGENT_PENDS } from "../lib/one-yes.js";
 
 /** [model label, the surface or person label it must never exceed]. */
 export const PAIRS = Object.freeze([
@@ -25,7 +26,9 @@ export function wider(g, pairs = PAIRS) {
       if (mi < 0 || bi < 0) throw new Error(`the matrix has no caller ${mi < 0 ? model : base}; fix PAIRS or the matrix`);
       for (const tool of Object.keys(rows)) g.worlds.forEach((/** @type {string} */ world, /** @type {number} */ w) => {
         const m = g.legend[rows[tool][mi * W + w]], b = g.legend[rows[tool][bi * W + w]];
-        if (runs(m) && !runs(b)) out.push({ role, tool, world, model, base, baseCell: b });
+        // AGENT_PENDS: an agent's call to these only FILES a request for a person (the floor lets it reach the tool, and the tool keeps the request pending whatever the label: core/vault/asker.js isAsker); the surface
+        // is refused because acting takes a person's yes. test/vault-asker.test.js proves an agent label on a person's surface, not just Claude's session, gets a pending request and no secret.
+        if (runs(m) && !runs(b) && !AGENT_PENDS.includes(tool)) out.push({ role, tool, world, model, base, baseCell: b });
       });
     }
   }
