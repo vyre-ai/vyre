@@ -70,7 +70,7 @@ export const STEP_KEYS = {
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"], parallel: ["steps"], branch: ["steps"], subflow: ["flow", "input"],
   wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
   ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
-  call: ["action", "resource", "input"], stage: ["type", "record", "to"],
+  call: ["action", "resource", "input", "with"], stage: ["type", "record", "to"],
   agent: ["assistant", "title", "instructions", "record", "output", "await", "skills"], classify: ["input", "labels"], extract: ["input", "fields"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive", "connection", "operation", "input"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
@@ -184,6 +184,7 @@ function checkSteps(steps, path, out, ids, depth, budget, inHandler = false, inL
         need("action", v => typeof v === "string" && ACTION_RE.test(v), "an action is module.verb, written out (never read from a value)");
         need("resource", v => typeof v === "string" && URN_RE.test(v), "a resource is a vyre:// address, written out (never read from a value)");
         if (s.input !== undefined) checkValue(s.input, `${p}.input`, out);
+        if (s.with !== undefined && !(typeof s.with === "string" && ID_RE.test(s.with))) out.push({ path: `${p}.with`, message: "with is the id of an earlier send step, whose yes this step rides" });
         break;
       case "stage": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); need("to", v => typeof v === "string" && v.length > 0, "name the stage"); break;
       case "classify": need("input", () => true, "give the text to classify"); value("input"); need("labels", v => Array.isArray(v) && v.length >= 2 && v.every((x/** @type {any} */) => typeof x === "string"), "give at least two labels"); break;
