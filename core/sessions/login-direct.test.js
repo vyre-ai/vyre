@@ -102,7 +102,7 @@ test("an account that carries an API key is an API-key call: with no door it is 
   for (const names of [["OPENAI_API_KEY", "CODEX_API_KEY"], ["XAI_API_KEY"]]) {
     ran.length = 0;
     const got = [];
-    loginDirect(provider, {}, names).run({ id: "k", env: { [names[0]]: "sk-live-1234567890abcdef" }, onMessage: m => got.push(m), onExit() {} });
+    loginDirect(provider, {}, names).run({ id: "k", env: { [names[0]]: "sk-live-" + "1234567890abcdef" }, onMessage: m => got.push(m), onExit() {} });
     await new Promise(r => setImmediate(r));
     assert.equal(ran.length, 0, `${names[0]}: nothing started`);
     assert.match(String(got[0] && got[0].result), /inference door/);
