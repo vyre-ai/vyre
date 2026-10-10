@@ -12,6 +12,8 @@ export const PRESENCE_SIGNERS = f(["secure_enclave", "tpm", "windows_hello", "st
 export const TRUST_ORDER = f(["untrusted", "external", "member", "system"]);
 export const REDACTION_ORDER = f(["public", "internal", "pii", "privileged", "secret"]);
 
+/** The address of a credential, the one spelling every part uses (the lease gate, Publish's deployment grants, the Vault): the reference with its `vault://` stripped and encoded as one segment, so `harlow/stripe` is `credential/harlow%2Fstripe`. @param {string} space @param {string} ref */
+export const credentialUrn = (space, ref) => `vyre://${space}/credential/${encodeURIComponent(String(ref).replace(/^vault:\/\//, ""))}`;
 export const RISKS = f(["read", "write", "admin", "grant", "outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 export const OUTWARD_RISKS = f(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
 
