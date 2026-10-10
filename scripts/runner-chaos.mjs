@@ -212,7 +212,7 @@ else {
       const l = await lend("kill9");
       const before = await ctl({ cmd: "checkpoint", session: l.sess });
       check(mountedIn(l.base), "the workspace is open while the lender runs (the control: closing it later means something)");
-      process.kill(l.pid, "SIGKILL"); killAll(l.base);
+      process.kill(l.pid, "SIGKILL");   // the runner only: what the sandbox does with its agent is part of the test (macOS keeps it alive, the watchdog must end it)
       log("lender killed at checkpoint", before.turn);
       await until("the server to take it", async () => (await ctl({ cmd: "book", session: l.sess }))?.where === "server", 30_000);
       const row = await ctl({ cmd: "book", session: l.sess });
@@ -221,6 +221,7 @@ else {
       check(r.length === 1 && r[0].turn >= before.turn, `the server resumed once from the last whole turn (${r[0] && r[0].turn} >= ${before.turn})`);
       await whole(l.sess, "kill -9");
       await until("the workspace to close", () => !mountedIn(l.base), 40_000).then(() => check(true, "the workspace was closed by the watchdog"), () => check(false, "the workspace was closed by the watchdog"));
+      await until("the agent to end", () => sandboxOf(path.join(agentHome, "agent.js")).length === 0, 40_000).then(() => check(true, "no process of the dead runner's session is left"), () => { check(false, "no process of the dead runner's session is left"); killAll(path.join(agentHome, "agent.js")); });
     },
     async sleep() {
       const l = await lend("sleep");
