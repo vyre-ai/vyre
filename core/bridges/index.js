@@ -199,17 +199,16 @@ export default {
     /**
      * The person a call is for comes from the call's own kernel chain and from nothing else (BR-1, BR-2): `ctx.kernel.chain(meta)` is a session token's chain (the person and
      * their assistant) or the person's own chain built from the facts the daemon proved about the connection (a person's surface on the socket, a paired app device). A label never
-     * counts. No chain, a module's own service chain, a viewer chain or a chain whose first hop is not a person is a refusal. The kernel's person is mapped to this device's
-     * identity by the spaces module (spaces.self), only for the home's own person. An `input.person` is accepted only when it is that same person: naming another is a refusal.
+     * counts. No chain, a module's own service chain, a viewer chain or a chain whose first hop is not a person is a refusal. The kernel's person is the person (never mapped through
+     * this device's own identity, which a server that hosts a team's space does not have). An `input.person` is accepted only when it is that same person: naming another is a refusal.
      */
     const personOf = async (i, meta) => {
       let chain = null;
       try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { chain = null; }
       const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
       if (!first || !first.actor || first.actor.kind !== "person" || chain.viewer === true) throw new BridgeError("forbidden", "only a person, or their own assistant, can do that");
-      const r = await call("spaces.self", { person: String(first.actor.id) });
-      const who = value(r) && value(r).person;
-      if (typeof who !== "string" || !who) throw new BridgeError("forbidden", "only a person, or their own assistant, can do that");
+      // The chain's person is the person: a server that hosts a team's space holds no identity of its own (the owner's key lives in their app), so "who is this device" cannot be asked; membership is checked per share below.
+      const who = String(first.actor.id);
       if (i && i.person !== undefined && String(i.person) !== who) throw new BridgeError("bad_input", "that is not you");
       if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
       return who;

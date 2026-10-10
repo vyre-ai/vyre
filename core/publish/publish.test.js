@@ -28,7 +28,9 @@ const fakeSource = `export default { async start(ctx) {
   const t = (name, run) => ctx.tool(name, { internal: true, input: { type: "object" }, run });
   const tools = ctx.name;
   if (tools === "spaces") {
-    t("spaces.self", async i => i.person === "per_kernelowner" ? ({ space: pf().space, person: pf().actAs["*"] }) : ({ space: null, person: null }));
+    // A box-shaped home: it holds no identity of its own (the owner's key lives in their app), so "who is this device" cannot be answered; who is in which space can.
+    t("spaces.self", async () => { throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" }); });
+    t("spaces.merge-list", async i => pf().members[i.person] ? ({ spaces: [{ space: pf().space.id, name: pf().space.name }] }) : ({ spaces: [] }));
     t("spaces.membership", async i => pf().members[i.person] || null);
   } else if (tools === "vault") {
     t("vault.release", async i => { const v = pf().vault[i.name]; if (v === undefined) throw new Error("no such item"); return { value: v }; });
@@ -56,7 +58,7 @@ const fakeSource = `export default { async start(ctx) {
 } };`;
 
 const manifestOf = (/** @type {string} */ name, /** @type {string[]} */ tools) => ({ roles: ["box"], description: name, does: { tools: tools.map(n => ({ name: n, reach: "modules" })) } });
-const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove"], tasks: ["tasks.create"] };
+const FAKE_TOOLS = { projects: ["projects.reach"], spaces: ["spaces.self", "spaces.membership", "spaces.merge-list"], vault: ["vault.release"], seal: ["seal.ledger.has"], builder: ["builder.build"], names: ["names.owns", "names.status"], appmods: ["appmods.publish.install", "appmods.publish.remove"], tasks: ["tasks.create"] };
 
 /**
  * A real registry with publish and the chosen fakes. @param {any} t
@@ -92,7 +94,7 @@ async function boxRegistry(t, o = {}) {
   const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && (f.manifest.name === "publish" || (o.realBuilder && f.manifest.name === "builder"))), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: fakeKernelFor });
+  const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: (/** @type {any} */ spec) => { const k = /** @type {any} */ (fakeKernelFor)(spec); return { ...k, chain: async (/** @type {any} */ meta) => { const c = await k.chain(meta); return c.hops[0] && c.hops[0].actor.kind === "person" ? { ...c, hops: [{ actor: { kind: "person", id: pf.actAs["*"] } }, ...c.hops.slice(1)] } : c; } }; } });
   await reg.start(found, { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
   for (const name of ["publish", ...(o.realBuilder ? ["builder"] : []), ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
@@ -221,6 +223,16 @@ test("publish: a model chain can create, preview and request, never decide, appr
   assert.equal((await b.call("publish.publish", { deployment: id }, "module:flow")).error?.code, "forbidden");
   // a decision by a person publishes it
   assert.equal((await b.ok("publish.decide", { task: p.task, approve: true })).deployment.stage, "Production");
+});
+
+test("publish: on a box-shaped home (no identity of its own, a hosted space, a paired person) the owner publishes and a non-member is refused", async t => {
+  const b = await boxRegistry(t);
+  const made = await b.call("publish.create", DRAFT);
+  assert.ok(!made.error, JSON.stringify(made.error));
+  b.pf.actAs["*"] = "per_stranger";
+  assert.equal((await b.call("publish.create", { ...DRAFT, name: "other" })).error?.code, "forbidden", "a person who is in no space here is refused");
+  b.pf.actAs["*"] = "per_alex";
+  assert.equal((await b.call("publish.create", { ...DRAFT, name: "third", space: "someone-else.vyre.run" })).error?.code, "forbidden", "a space the person is not in is refused");
 });
 
 test("publish: a role without the ability is refused", async t => {
