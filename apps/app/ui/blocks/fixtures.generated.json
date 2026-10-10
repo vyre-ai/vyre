@@ -4103,6 +4103,20 @@
     }
    }
   },
+  "signin-card": {
+   "title": "Sign in again",
+   "screens": {
+    "full": {
+     "component": "signin-card"
+    },
+    "compact": {
+     "component": "signin-card"
+    },
+    "glance": {
+     "component": "signin-card"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {
