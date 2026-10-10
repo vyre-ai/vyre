@@ -10,6 +10,8 @@ import { decodeInvite } from "../shared.js";
 import { decodeJoin } from "../devices.js";
 
 const PEOPLE = ["cli", "local"];
+/** The person's own devices write to shared vaults too (invite, role, remove and rotate each take the one yes); a model never does. */
+const WRITERS = [...PEOPLE, "device"];
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
@@ -20,34 +22,34 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export function register({ vault, tool }) {
   const shared = vault.shared;
 
-  tool("vault.vaults.create", PEOPLE, "Make a shared vault. This Vyre is its owner and its home.",
+  tool("vault.vaults.create", WRITERS, "Make a shared vault. This Vyre is its owner and its home.",
     obj({ name: str }, ["name"]), (input, { caller }) => shared.create(input, caller));
 
   tool("vault.vaults.list", ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], "Shared vaults: members, roles, fingerprints and item names. Never a value.",
     obj({}), () => shared.list());
 
-  tool("vault.vaults.sync", [...PEOPLE, "mcp"], "Pull what changed in shared vaults from their homes.",
+  tool("vault.vaults.sync", [...WRITERS, "mcp"], "Pull what changed in shared vaults from their homes.",
     obj({ vault: str }), (input, { caller }) => shared.sync(input, caller));
 
-  tool("vault.members.invite", PEOPLE, "Invite a person whose card you pinned and verified into a shared vault. Returns an invite for them to accept.",
+  tool("vault.members.invite", WRITERS, "Invite a person whose card you pinned and verified into a shared vault. Returns an invite for them to accept.",
     obj({ vault: str, person: str, role: { type: "string", enum: ["admin", "member", "read-only"] } }, ["vault", "person"]),
     (input, { caller }) => shared.invite(input, caller),
     presence("Invite someone into a shared vault", ({ vault: v, person, role }) => `Let ${String(person).slice(0, 64)} read ${quoted(v)}${role === "read-only" ? "" : " and write to it"} as ${role || "member"}`));
 
-  tool("vault.members.accept", PEOPLE, "Join a shared vault from an invite.",
+  tool("vault.members.accept", WRITERS, "Join a shared vault from an invite.",
     obj({ invite: str }, ["invite"]), (input, { caller }) => shared.accept(input, caller),
     presence("Join a shared vault", ({ invite }) => { const i = decodeInvite(invite); return `Join ${quoted(i.name)}, trusting ${i.card.name}'s card`; }));
 
-  tool("vault.members.role", PEOPLE, "Change a member's role: admin, member or read-only.",
+  tool("vault.members.role", WRITERS, "Change a member's role: admin, member or read-only.",
     obj({ vault: str, person: str, role: { type: "string", enum: ["admin", "member", "read-only"] } }, ["vault", "person", "role"]),
     (input, { caller }) => shared.role(input, caller),
     presence("Change a member's role", ({ vault: v, person, role }) => `Make ${String(person).slice(0, 64)} ${role} in ${quoted(v)}`));
 
-  tool("vault.members.remove", PEOPLE, "Remove a member: a new key they never see, and every item they could read flagged for rotation.",
+  tool("vault.members.remove", WRITERS, "Remove a member: a new key they never see, and every item they could read flagged for rotation.",
     obj({ vault: str, person: str }, ["vault", "person"]), (input, { caller }) => shared.remove(input, caller),
     presence("Remove someone from a shared vault", ({ vault: v, person }) => `Remove ${String(person).slice(0, 64)} from ${quoted(v)} and change its key`));
 
-  tool("vault.vaults.rotate", PEOPLE, "Give a shared vault a new key. Members keep access; item keys are re-wrapped.",
+  tool("vault.vaults.rotate", WRITERS, "Give a shared vault a new key. Members keep access; item keys are re-wrapped.",
     obj({ vault: str }, ["vault"]), (input, { caller }) => shared.rotate(input, caller),
     presence("Change a shared vault's key", ({ vault: v }) => `Change the key of ${quoted(v)}`));
 

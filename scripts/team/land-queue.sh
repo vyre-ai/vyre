@@ -9,11 +9,13 @@ set -u
 TARGET="${TARGET:?}"
 SUM="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 sh scripts/team/setup.sh >/dev/null
-git fetch -q --prune origin "+refs/heads/work/q/*:refs/remotes/origin/work/q/*" "+refs/heads/$TARGET:refs/remotes/origin/$TARGET"
-mapfile -t refs < <(git for-each-ref --sort=committerdate --format='%(refname:strip=3)' refs/remotes/origin/work/q)
-[ ${#refs[@]} -eq 0 ] && { echo "Nothing waiting." | tee -a "$SUM"; exit 0; }
 landed=0; refused=0
 drop() { git push -q origin --delete "$1" 2>/dev/null || true; }
+waiting() { git fetch -q --prune origin "+refs/heads/work/q/*:refs/remotes/origin/work/q/*" "+refs/heads/$TARGET:refs/remotes/origin/$TARGET"; git for-each-ref --sort=committerdate --format='%(refname:strip=3)' refs/remotes/origin/work/q; }
+# Drain: keep sweeping while branches arrive (GitHub drops pending runs, so this run takes what was pushed meanwhile).
+for pass in 1 2 3 4 5 6; do
+mapfile -t refs < <(waiting)
+[ ${#refs[@]} -eq 0 ] && break
 for ref in "${refs[@]}"; do
   git fetch -q origin "+refs/heads/$TARGET:refs/remotes/origin/$TARGET"
   git checkout -q -f -B land "origin/$TARGET"
@@ -40,5 +42,8 @@ for ref in "${refs[@]}"; do
     echo "- $ref: $TARGET moved during the run; it stays queued for the next run" | tee -a "$SUM"
   fi
 done
+done
+# Anything still waiting (pushed during the last pass, or a lost race) gets a fresh run.
+if [ -n "$(waiting)" ] && [ -n "${GH_TOKEN:-}" ]; then gh workflow run merge-queue.yml --ref "$TARGET" >/dev/null 2>&1 && echo "More waiting: started another run." | tee -a "$SUM"; fi
 echo "Landed $landed, refused $refused." | tee -a "$SUM"
 [ "$refused" -eq 0 ]
