@@ -119,10 +119,10 @@ for (const name of ["dev", "sealed"]) {
   });
 }
 
-/** Tools land every few minutes, so a tool or two that arrived since the last bank edit are reported and tolerated; more than this means asks were not written for new tools. */
-const GRACE = 8;
+/** None is tolerated (a preflight guard): a tool brings three asks in lib/tools-asks-bank.js, a renamed tool takes its asks along. */
+const GRACE = 0;
 
-test("every tool an agent has carries at least three example asks, and the bank names only tools that exist (a few in flight are tolerated)", async (t) => {
+test("every tool an agent has carries at least three example asks, and the bank names only tools that exist ", async (t) => {
   const { ASK_BANK } = await import("../lib/tools-asks-bank.js");
   const catalog = await agentCatalog(t);
   const have = new Set(catalog.map((c) => c.name));
