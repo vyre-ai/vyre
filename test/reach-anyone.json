@@ -1237,9 +1237,17 @@
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
+  "publish.go": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and the one decision also approves the preview"
+  },
   "publish.publish": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.quick": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member (checked through spaces.membership in code); a model may only start the draft and ask, the folder it names must be under Vyre's home, and going live is held for a person (publish.decide)"
   },
   "publish.rollback": {
    "module": "publish",
@@ -1885,14 +1893,6 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
-  "vault.link": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; a link is a pair of names that grants nothing"
-  },
-  "vault.links": {
-   "module": "vault",
-   "reason": "read-only: item names and record addresses, never a value"
-  },
   "vault.list": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
@@ -2069,17 +2069,9 @@
    "module": "vault",
    "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
   },
-  "vault.unlink": {
-   "module": "vault",
-   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
-  },
   "vault.uses": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
-  },
-  "vault.uses.for": {
-   "module": "vault",
-   "reason": "read-only: when and by whom the items linked to one record were used, in words; person surfaces and modules only; never a value"
   },
   "vault.vaults.create": {
    "module": "vault",
@@ -2504,6 +2496,22 @@
   "work.timeline": {
    "module": "work",
    "reason": "read-only: tasks, files, messages, documents and chats that link to a record or project, each only if the caller may read it; a chat shows by title only to its people or when shared; runs under the caller's own kernel chain, which must begin with a person (a model with no valid session token has no chain and is refused)"
+  },
+  "vault.link": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; a link is a pair of names that grants nothing"
+  },
+  "vault.links": {
+   "module": "vault",
+   "reason": "read-only: item names and record addresses, never a value"
+  },
+  "vault.unlink": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
+  },
+  "vault.uses.for": {
+   "module": "vault",
+   "reason": "read-only: when and by whom the items linked to one record were used, in words; person surfaces and modules only; never a value"
   },
   "appmods.domain.list": {
    "module": "appmods",

@@ -85,6 +85,8 @@ const ASKS_PROOF = {
   "chrome.op.send": ["test/site-mac-rung.test.js", "an outward operation runs on the Mac only with the box's signed assertion for exactly that call, from the connectors module alone, and once"],
   "publish.approve": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
   "publish.publish": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
+  "publish.go": ["lib/publish/index.test.js", "one tap: a previewed version goes live on one decision that also approves the preview"],
+  "publish.quick": ["core/publish/publish.test.js", "publish: quick takes a folder of ready files to live on one decision"],
   "publish.rollback": ["core/publish/publish.test.js", "create, preview, plan, approve held then decided, publish held then decided, rollback"],
   "publish.secret.grant": ["core/publish/publish.test.js", "a secret granted to deployment A is absent from B"],
   "github.project.pr.open": ["core/github/registry.test.js", "reach asked - an agent is refused not_asked"],

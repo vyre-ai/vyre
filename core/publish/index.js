@@ -13,6 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { fail } from "../../lib/publish/util.js";
+import { folderRefusal } from "../../lib/publish/folder-build.js";
+import { isPerson } from "../../lib/caller.js";
 import { withSecretGrants, moveSecretsToGrants } from "../../lib/publish/grants.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
@@ -309,6 +311,8 @@ export default {
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
+        // A folder on this server is read off its disk by the builder: whose folder it may be is judged here, once, with the caller known.
+        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta), home: ctx.paths.root }); if (no) throw refuse(no.message, no.code); }
         return { deployment: shown(await b.pub.create(b.chain, draft)) };
       },
     });
@@ -348,6 +352,26 @@ export default {
       description: "Put an approved version on the internet. Held for a person every time: the first call asks, a person decides with publish.decide.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("publish"),
+    });
+    ctx.tool("publish.go", {
+      callers: WITH_MODELS,
+      description: "Approve a previewed version and put it live with one yes. The first call holds; a person's decision (publish.decide) completes it.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("goLive"),
+    });
+    ctx.tool("publish.quick", {
+      callers: WITH_MODELS,
+      description: "Publish a folder of ready files as a site: build, preview, then hold for one yes that puts it live. Answers the task and plan.",
+      input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta), home: ctx.paths.root });
+        if (no) throw refuse(no.message, no.code);
+        const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
+        const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
+        const held = await b.pub.goLive(b.chain, made.id, {});
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+      },
     });
     ctx.tool("publish.rollback", {
       callers: WITH_MODELS,
