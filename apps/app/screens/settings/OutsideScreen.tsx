@@ -86,9 +86,9 @@ export default function OutsideScreen() {
                   </View>
                 ) : (
                   <View className="flex-row flex-wrap gap-s2">
-                    {a.status === "revoked" ? null : <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} />}
-                    {a.status === "revoked" ? null : <Button size="sm" kind="ghost" label="New token" disabled={busy === a.id} onPress={() => void act(a.id, async () => setShown(await outside.token(a.id)))} />}
-                    {a.status === "revoked" ? null : <Button size="sm" kind="ghost" label="End it" onPress={() => setEnding(a.id)} />}
+                    <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} />
+                    <Button size="sm" kind="ghost" label="New token" disabled={busy === a.id} onPress={() => void act(a.id, async () => setShown(await outside.token(a.id)))} />
+                    <Button size="sm" kind="ghost" label="End it" onPress={() => setEnding(a.id)} />
                   </View>
                 )}
               </View>
