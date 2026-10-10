@@ -1034,5 +1034,6 @@
  "test/stage-gate-model-paths.test.js": 1,
  "test/journey-fork-continue.test.js": 3,
  "apps/app/screens/chat-tools/fork-move.test.js": 2,
- "core/previews/previews-project.test.js": 3
+ "core/previews/previews-project.test.js": 3,
+ "test/journey-space-names.test.js": 3
 }
