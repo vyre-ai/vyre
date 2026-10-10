@@ -48,23 +48,26 @@ export function lentOrBox({ lent, box }) {
     for (const c of held.splice(0)) b.stdin.write(c);
     stdin.removeAllListeners("data");
     stdin.on("data", (/** @type {Buffer} */ c) => { b.stdin.write(c); });
+    stdin.removeAllListeners("end");
     if (ended) b.stdin.end(); else stdin.on("end", () => b.stdin.end());
   };
 
-  // Everything the SDK writes before the lender's process is up is kept, and sent to whichever process takes the session.
+  // The lender holds what is written until its process is up and sends each byte once, so everything goes to it at once; a copy is kept until it says it is up, for the box if it never is.
   let up = false, settled = false;
-  stdin.on("data", (/** @type {Buffer} */ c) => { if (!settled) held.push(Buffer.from(c)); });
-  stdin.on("end", () => { ended = true; });
+  lent.stdin.on("error", () => {});
+  stdin.on("data", (/** @type {Buffer} */ c) => { if (settled) return; held.push(Buffer.from(c)); lent.stdin.write(c); });
+  stdin.on("end", () => { ended = true; if (!settled) lent.stdin.end(); });
 
   const lentUp = () => {
     if (settled) return;
     settled = up = true;
     proc.where = "lent"; proc.lent = lent.lent; proc.pid = lent.pid;
-    // bytes already written go down in order, then the rest follows the pipe as written (the lender holds them until its process is up and sends each once)
-    for (const c of held.splice(0)) lent.stdin.write(c);
+    held.length = 0;
     stdin.removeAllListeners("data");
     stdin.on("data", (/** @type {Buffer} */ c) => { lent.stdin.write(c); });
-    if (ended) lent.stdin.end(); else stdin.once("end", () => lent.stdin.end());
+    stdin.removeAllListeners("end");
+    stdin.on("end", () => lent.stdin.end());
+    if (ended) lent.stdin.end();
     follow(lent);
     proc.emit("spawn");
   };

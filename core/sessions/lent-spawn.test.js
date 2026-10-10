@@ -28,7 +28,7 @@ test("the lender's process is up: everything written, before and after, goes dow
   const p = lentOrBox({ lent, box: () => { boxed++; return fake(); } });
   p.stdin.write("{\"a\":1}\n");
   await tick();
-  assert.equal(lent.got, "", "held until the lender's process is up");
+  assert.equal(lent.got, "{\"a\":1}\n", "written down at once: the lender holds it until its process is up");
   lent.emit("spawn");
   p.stdin.write("{\"b\":2}\n");
   await tick();
@@ -52,7 +52,6 @@ test("nothing could start on the lender (lent_unavailable): the box runs it, and
   p.stdin.write("{\"user\":1}\n");
   await tick();
   assert.equal(box.got, "{\"initialize\":1}\n{\"user\":1}\n");
-  assert.equal(lent.got, "", "the lender got none of it");
   assert.equal(p.where, "box");
   assert.equal(p.pid, 4242);
   const closed = new Promise(res => p.on("close", (/** @type {any} */ c, /** @type {any} */ s) => res([c, s])));
