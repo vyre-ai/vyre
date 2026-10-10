@@ -3,7 +3,7 @@
 // The proof the host is theirs is the record the certificate needs anyway: a CNAME at _acme-challenge.<host> to <routehash>.acme.<zone>, which only the owner of the domain can set and only this
 // box's key can then use. The relay asks `tunnelResolve` as for any name; this file adds the host list a box keeps here and the lookup behind that answer.
 import { routeHash, dnsFor } from "./index.js";
-import { aliasDomain } from "./ids.js";
+import { aliasDomain, dohAnswers } from "./ids.js";
 
 export const HOST_LIMITS = Object.freeze({ perName: 5, perRoute: 20 });
 
@@ -12,11 +12,7 @@ const err = (/** @type {number} */ status, /** @type {string} */ code, /** @type
 /** The CNAME targets at a name (lower case, no trailing dot), over DNS-over-HTTPS unless the environment gives a resolver. @param {any} env @param {string} name @returns {Promise<string[]>} */
 export async function cnameOf(env, name) {
   const clean = (/** @type {unknown[]} */ xs) => xs.map(x => String(x).toLowerCase().replace(/\.$/, ""));
-  if (typeof env.RESOLVE_CNAME === "function") return clean(await env.RESOLVE_CNAME(name));
-  const f = env.DOH_FETCH || globalThis.fetch.bind(globalThis);
-  const res = await f(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=CNAME`, { headers: { accept: "application/dns-json" } });
-  const j = await res.json();
-  return clean((j.Answer || []).filter((/** @type {any} */ a) => a.type === 5).map((/** @type {any} */ a) => a.data));
+  return clean(typeof env.RESOLVE_CNAME === "function" ? await env.RESOLVE_CNAME(name) : await dohAnswers(env, name, "CNAME"));
 }
 
 /** The mixin: methods the Directory gains. `this` is the Directory. */

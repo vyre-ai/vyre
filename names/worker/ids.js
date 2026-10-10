@@ -68,13 +68,19 @@ export function aliasDomain(raw) {
   return d;
 }
 
+/** The answers of one type at a name over DNS-over-HTTPS (the shared reader for TXT and CNAME). @param {any} env @param {string} name @param {"TXT" | "CNAME"} type @returns {Promise<string[]>} */
+export async function dohAnswers(env, name, type) {
+  const f = env.DOH_FETCH || globalThis.fetch.bind(globalThis);
+  const res = await f(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=${type}`, { headers: { accept: "application/dns-json" } });
+  const j = await res.json();
+  const code = type === "TXT" ? 16 : 5;
+  return (j.Answer || []).filter((/** @type {any} */ a) => a.type === code).map((/** @type {any} */ a) => String(a.data));
+}
+
 /** The TXT strings at a name, over DNS-over-HTTPS unless the environment gives a resolver. @param {any} env @param {string} name @returns {Promise<string[]>} */
 async function txtOf(env, name) {
   if (typeof env.RESOLVE_TXT === "function") return (await env.RESOLVE_TXT(name)).map(String);
-  const f = env.DOH_FETCH || globalThis.fetch.bind(globalThis);
-  const res = await f(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(name)}&type=TXT`, { headers: { accept: "application/dns-json" } });
-  const j = await res.json();
-  return (j.Answer || []).filter(a => a.type === 16).map(a => String(a.data).replace(/^"|"$/g, "").replace(/" "/g, ""));
+  return (await dohAnswers(env, name, "TXT")).map(d => d.replace(/^"|"$/g, "").replace(/" "/g, ""));
 }
 
 /** The chain's owner lookup: a person's whole chain by id (the verifier checks it itself). @this {any} @param {string} id */
