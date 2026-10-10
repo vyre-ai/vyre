@@ -37,7 +37,7 @@ test("a run that shrank to one line says so in its own words; a run with its det
 });
 
 test("a row in the Flows list says how the Flow is doing in the kernel's words, and marks only a red one", () => {
-  assert.deepEqual(healthRow({ trigger: "When a contact is added", level: "green", line: "Last run 3 minutes ago. 4 of 4 ok this week" }), { sub: "When a contact is added · Last run 3 minutes ago. 4 of 4 ok this week", chip: null });
+  assert.deepEqual(healthRow({ trigger: "When a contact is added", level: "green", line: "Last run 3 minutes ago. 4 of 4 ok this week" }), { sub: "Last run 3 minutes ago. 4 of 4 ok this week · When a contact is added", chip: null });
   assert.equal(healthRow({ trigger: "Every weekday at 9", level: "red", line: "Red: google is down. Last run 2 days ago, failed" }).chip, "Needs a look");
   assert.equal(healthRow({ trigger: "Every day", level: "amber", line: "Paused" }).chip, null, "a pause is said in the line, not shouted");
   assert.deepEqual(healthRow({}), { sub: undefined, chip: null });

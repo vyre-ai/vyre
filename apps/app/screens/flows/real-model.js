@@ -30,6 +30,7 @@ export const shrunkNote = (run) => (run && run.pruned ? String(run.summary || "T
  * @param {{ trigger?: string, level?: string, line?: string }} f @returns {{ sub: string | undefined, chip: string | null }}
  */
 export const healthRow = (f) => {
-  const sub = [f.trigger, f.line].filter(Boolean).join(" · ");
+  // the health first: on a phone the line is cut at one line, and "Red: google is down" must not be the part that is cut
+  const sub = [f.line, f.trigger].filter(Boolean).join(" · ");
   return { sub: sub || undefined, chip: f.level === "red" ? "Needs a look" : null };
 };
