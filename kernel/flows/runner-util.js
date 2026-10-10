@@ -13,6 +13,8 @@ export function outputs(run) {
     if (v.status !== "done" && v.status !== "started" && v.status !== "skipped" && v.status !== "failed_handled") continue;
     if (k.includes("!")) continue;                          // a failure path's own steps are read by the failure path, not by steps.<id> of the main line
     const id = k.replace(/@.*$/, "");
+    // a parallel step's lanes made steps of their own: they read as `steps.<id>` after the join, like any step before it
+    if (v.output && typeof v.output === "object" && v.output.branches) for (const b of Object.values(/** @type {Record<string, any>} */ (v.output.branches))) Object.assign(o, b.steps);
     if (v.output !== undefined) o[id] = v.output;
   }
   return o;

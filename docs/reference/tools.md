@@ -3598,7 +3598,7 @@ Answer a run that needs attention: { run, action: retry | skip | stop | advance 
 
 ### `flows.simulate`
 
-Replay recent events through a Flow without doing anything.
+Replay recent events through a Flow without doing anything. With a Flow id and since, also compares with what it really did.
 
 - Input:
   - `space` string

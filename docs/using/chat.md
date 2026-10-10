@@ -124,6 +124,10 @@ Open the chat's tools and choose Files. The panel lists what the chat made and w
 
 Select a file to see it: text and images show right there, anything else says so. Share to project opens that one file to the project's members and nothing else in the chat. Unshare takes it back at once. File names are encrypted to the people in the chat, so only they see this list. See [Private chats](private-chats.md).
 
+## Records you name
+
+When your message names a client, matter or other record exactly, such as "What case type is Dana Whitfield's matter?", the session is shown a short card of that record beside your words, so it need not stop to look it up. The card has the key fields and nothing sealed: a sealed field appears only as a placeholder the session can use in an action but never read. It only appears when the name is the record's whole title and no other record has it, and it is not repeated for the same record for twenty messages. The session can still look up anything the card leaves out. You can turn cards off in Settings (Cards for records you name).
+
 ## Sessions from your Mac
 
 With a Mac paired, the server's Chat lists the Mac's sessions and projects beside its own, newest

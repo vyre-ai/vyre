@@ -24,25 +24,28 @@ A Flow has up to 200 steps, nested up to 6 deep, and a repeat runs at most 1000 
 
 | Step | What it does |
 | --- | --- |
-| `find` | read records of a type with a filter |
-| `pick` | choose one record from what was found |
-| `filter` | keep the items that match a condition |
+| `find` | read records |
+| `pick` | take one found record |
+| `filter` | keep matching items |
 | `create` | make a record |
 | `update` | change a record |
-| `upsert` | update a record if it exists, else make it |
+| `upsert` | update if it exists, else make |
 | `remove` | delete a record (may be held) |
-| `decide` | branch: then one list of steps, else another |
+| `decide` | branch: then steps, else steps |
 | `repeat` | do steps for each item (bounded) |
+| `parallel` | run lanes at once; waits for all |
+| `branch` | one lane of a parallel step |
+| `subflow` | run another Flow, get its result |
 | `wait` | pause until a time or an event |
-| `ask` | ask a person a question and wait for the answer |
-| `assign` | give work to a person or agent as a task |
+| `ask` | ask a person, wait for the answer |
+| `assign` | give a person or agent a task |
 | `call` | run a tool of the Space |
 | `stage` | move a record to a stage |
 | `agent` | give one job to an agent |
-| `classify` | label text with a fixed set of choices |
-| `extract` | pull named fields out of text |
+| `classify` | label text from choices |
+| `extract` | pull fields out of text |
 | `service` | run a connection's operation |
-| `fn` | run a short piece of code in a sandbox (no network) |
+| `fn` | run short code in a sandbox (no network) |
 
 <!-- agent:flows:end -->
 
