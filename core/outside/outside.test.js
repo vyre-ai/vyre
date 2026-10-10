@@ -209,7 +209,8 @@ test("a change the person approves later applies only to the record as it was as
   const asked = await use(reg.token, "records_update", { urn: jane.urn, fields: { age: 41 } });
   assert.ok(asked.json && asked.json.held, JSON.stringify(asked));
   // the person edits the same record while the request waits
-  await ok("records.update", { urn: jane.urn, patch: { age: 52 } });
+  const cur = (await ok("records.get", { urn: jane.urn })).record;
+  await ok("records.update", { urn: jane.urn, patch: { age: 52 }, base_version: cur.version });
   const item = (await heldList()).find(x => /Muse wants to change a contact/.test(x.summary || ""));
   await ok("gate.approve", { id: item.id }).catch(() => {});
   assert.equal((await ok("records.get", { urn: jane.urn })).record.data.age, 52, "the newer edit was not overwritten");
