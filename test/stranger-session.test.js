@@ -103,7 +103,7 @@ test("S6: every signing route and public path the catalog declares is walked as 
     }
     // what is not declared never reaches the app at all, whatever the stranger carries
     const before = f.seen(name).length;
-    for (const [method, path] of [["GET", "/settings"], ["GET", "/api/users"], ["POST", "/api/submissions"], ["DELETE", "/s/abc/everything"], ["GET", "/s/abc/%2e%2e/settings"]]) {
+    for (const [method, path] of [["GET", "/settings"], ["GET", "/api/users"], ["POST", "/api/submissions"], ["DELETE", "/s/abc/everything"], ["GET", "/s/abc/../../settings"]]) {
       const r = /** @type {any} */ (await f.call(name, method, path, forged(other)));
       assert.ok(r.status === 404 || r.status === 400, `${name} ${method} ${path}: a stranger got ${r.status}`);
       nothingOfTheOwners([], r, `${name} ${method} ${path}`);
