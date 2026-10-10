@@ -237,7 +237,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.signing.flow", {
-    description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, signed_field? (a yes/no field set to yes when it is signed, for a type whose rules ask for it), wait_days? }. Creates nothing.",
+    description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, wait_days? }. Creates nothing.",
     input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, contact_field: str, name_field: str, submission_field: str, signed_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),

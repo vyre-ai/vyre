@@ -16,6 +16,9 @@ const cat = () => {
     "esign.request": { risk: "outward.send", label: "Send for signature", tool: true, covers: ["esign.copy"] },
     "esign.copy": { risk: "outward.send", label: "Email the signed copy", tool: true },
     "esign.other": { risk: "outward.send", label: "Email something else", tool: true },
+    "docs.send": { risk: "outward.send", label: "Send a document", tool: true, covers: ["comms.send", "mail.send"] },
+    "docs.send-signed": { risk: "outward.send", label: "Email the signed copy", tool: true, covers: ["comms.send"] },
+    "docs.send-other": { risk: "outward.send", label: "Email another way", tool: true, covers: ["sms.send"] },
     "esign.peek": { risk: "read", label: "Look up a document", tool: true },
   });
   return c;
@@ -25,6 +28,13 @@ const request = { id: "request", kind: "call", action: "esign.request", resource
 const copy = (extra = {}) => ({ id: "copy", kind: "call", action: "esign.copy", resource: RES, label: "email Dana the signed copy", input: { to: "dana@example.com" }, with: "request", ...extra });
 const flowOf = steps => ({ format: 1, name: "signing", label: "Signing", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps });
 const errorsOf = steps => { const out = []; checkRides(steps, cat(), out); return out.map(e => e.message); };
+
+test("with: a later send rides when it files only sends the earlier one files too, even if the earlier list does not name the later tool", () => {
+  const docs = { id: "docs", kind: "call", action: "docs.send", resource: RES, input: {} };
+  const back = (action) => ({ id: "back", kind: "call", action, resource: RES, input: {}, with: "docs" });
+  assert.deepEqual(errorsOf([docs, back("docs.send-signed")]), []);
+  assert.match(errorsOf([docs, back("docs.send-other")])[0], /does not name docs.send-other/, "a send that goes out another way is not covered");
+});
 
 test("with: the rule is checked when the Flow is saved, with words that say what to change", () => {
   assert.deepEqual(errorsOf([request, { id: "w", kind: "wait", for_ms: DAY }, copy()]), []);

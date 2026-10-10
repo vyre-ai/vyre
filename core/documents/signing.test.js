@@ -18,7 +18,7 @@ function cat() {
   const c = catalog();
   const matter = { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "signature_submission", kind: "text", label: "Signature" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] };
   return { ...c, types: { ...c.types, matter },
-    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["documents.send-signed"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
+    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["comms.send"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true, covers: ["comms.send"] } } };
 }
 
 test("the builder refuses what it cannot make a Flow from", () => {
@@ -121,7 +121,7 @@ test("a record whose person is a linked Contact is sent by the link: no e-mail f
 function catalogWithActions() {
   const c = catalog();
   return { ...c, types: { ...c.types, matter: { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] } },
-    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["documents.send-signed"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
+    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["comms.send"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true, covers: ["comms.send"] } } };
 }
 
 test("the Estate Kit's own matter: entering Engagement sends the engagement letter to the linked Contact, one yes, signing moves it to Drafting, and the signed copy rides that yes", async () => {
