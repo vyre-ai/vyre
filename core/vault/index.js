@@ -49,6 +49,7 @@ import { listenMcp } from "./passmcp-listener.js";
 import * as vaultsTools from "./tools/vaults.js";
 import { register as registerCli } from "./tools/cli.js";
 import { register as registerSurfaces } from "./tools/surfaces.js";
+import * as linkTools from "./tools/links.js";
 import * as deckTools from "./tools/deck.js";
 import { reprompt } from "./session.js";
 import { httpFetch } from "../../lib/http.js";
@@ -515,6 +516,7 @@ export default {
     }
     const kits = shareTools.register({ ctx, vault, tool });
     vaultsTools.register({ vault, tool });
+    linkTools.register({ vault, tool });
     // Pull from homes on start, after each local write, on a poke, and every ten minutes at most.
     if (!vault.guarded) vault.devices.start();
 

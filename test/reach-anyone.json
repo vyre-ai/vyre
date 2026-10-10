@@ -1885,6 +1885,14 @@
    "module": "vault",
    "reason": "callers list in code (cli, local): no model caller; presence proof required"
   },
+  "vault.link": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; a link is a pair of names that grants nothing"
+  },
+  "vault.links": {
+   "module": "vault",
+   "reason": "read-only: item names and record addresses, never a value"
+  },
   "vault.list": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
@@ -2061,9 +2069,17 @@
    "module": "vault",
    "reason": "callers list in code (cli, deck, local): no model caller; presence proof required"
   },
+  "vault.unlink": {
+   "module": "vault",
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
+  },
   "vault.uses": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
+  },
+  "vault.uses.for": {
+   "module": "vault",
+   "reason": "read-only: when and by whom the items linked to one record were used, in words; person surfaces and modules only; never a value"
   },
   "vault.vaults.create": {
    "module": "vault",
