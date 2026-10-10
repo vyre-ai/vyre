@@ -64,7 +64,7 @@ test("C. one grant model: who may act is a kernel grant; every other table with 
     "previews_grants": "what a preview page may use for one person (camera, location and so on): a capability switch the person sets in the preview; owner chat; moves onto kernel grants with the tag grants (BACKLOG 0.3.4)",
   };
   const made = new Set();
-  for (const f of sources(["core", "lib", "kernel", "records"])) for (const { l } of code(f)) { const m = l.match(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z_]*grant[a-z_]*)/i); if (m) made.add(m[1]); }
+  for (const f of sources(["core", "lib", "kernel", "records"])) for (const { l } of code(f)) { const m = l.match(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z0-9_]*grant[a-z0-9_]*)/i); if (m) made.add(m[1]); }
   assert.deepEqual([...made].filter((t) => !(t in NAMED)), [], "a table that keeps grants of its own: make the thing a kernel grant (kernel `mint` handle or the Vault's hooks), or name the table in NAMED with the reason");
   assert.deepEqual(Object.keys(NAMED).filter((t) => !made.has(t)), [], "listed here but no longer created anywhere: delete its line from NAMED");
   // Publish's old bookkeeping: a deployment's secret is a kernel grant, and its record carries no list
