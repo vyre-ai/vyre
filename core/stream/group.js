@@ -142,7 +142,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const TOKEN_MS = 24 * 3600_000;
   /** What a call's own chain gave mirror(): the person's chain (exactly one person) and who it is. @type {WeakMap<object, { chain: any, person: string }>} */
   const kcalls = new WeakMap();
-  const sendContext = createSendContext({ kernel: ctx.kernel, call: (tool, input) => ctx.call(tool, input) });
+  const sendContext = createSendContext({ kernel: ctx.kernel, call: ctx.call });
   /** @type {Map<string, { token: string, exp: number }>} one open session per (chat, person, assistant) */ const sessions = new Map();
   /**
    * A session token with the chat in it, opened by the kernel for the person acting (the chain of a call that carried their own token). `agent` makes it an
