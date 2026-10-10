@@ -12,7 +12,7 @@ import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule, present, kernelCaller } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller, putOnTask } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
@@ -163,6 +163,7 @@ test("graph: the main graph is only for the user and the assistant; an agent see
   // The real agents module: the assistant, and an agent with one project.
   assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  await putOnTask(d, root, "kit", "northwind");   // an agent reaches a project as its teammate with a task (G22)
   // memory's guard now also checks projects.access (Vyre Drive step 3, one source of truth):
   // an agent's agents.projects entry alone is not enough. migrate seeds it from what agents.create
   // just set, the way an upgrade would, so kit's existing grant keeps working here.
@@ -226,6 +227,7 @@ test("graph: a projects: \"*\" agent is not the assistant — every mapped proje
   // assistant): projects.access still has to grant it each mapped project by name.
   assert.ok(!(await kcall("projects.access.grant", { project: "northwind", agent: "wilma" }, opts)).error);
   assert.ok(!(await kcall("projects.access.grant", { project: "harlow", agent: "wilma" }, opts)).error);
+  for (const p of ["northwind", "harlow"]) await putOnTask(d, root, "wilma", p);   // a teammate with a task in each (G22)
   await call("memory.curate", {}, opts);
 
   // Every mapped project, one room at a time: granted.
