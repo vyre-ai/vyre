@@ -1364,7 +1364,11 @@ export class FlowRunner {
     const alwaysAsk = obl.find((/** @type {any} */ o) => o && o.type === "ask" && o.waivable === false);
     // The person's one yes at turn-on covers a send of a turned-on Flow (kernel/flows/standing.js): the kernel grant behind it gives the receipt, and nobody is asked per run.
     const wouldAsk = effect === "ask" || (effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
-    const standingReceipt = !approvedTask && !alwaysAsk && wouldAsk && !ctx.dry ? await standingFor({ ports: this.ports, chain, ctx, s, need, info, risk, cat: ctx.cat }) : null;
+    const standingReceipt = !approvedTask && !alwaysAsk && wouldAsk && !ctx.dry ? await standingFor({ ports: this.ports, chain, ctx, s, need, info, risk, cat: ctx.cat }).catch(async (/** @type {any} */ e) => {
+      // a limit the person set at turn-on was reached: the run stops, and a card tells the approver in words (the "Needs you" list)
+      if (e && e.code === "bound") await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name}: stopped at the limit you set`, { kind: "standing_bound", flow: run.flow, run: run.id, step: s.id, message: String(e.message) }, `${run.id}:${key}:bound`).catch(() => {});
+      throw e;
+    }) : null;
     const forced = !standingReceipt && !approvedTask && effect === "allow" && ((run.tainted && (OUTWARD.has(risk) || risk === "grant")) || (ctx.flow.authorship === "model" && ctx.view && (flowUsesComputedOutward(ctx) && OUTWARD.has(risk))));
     if (forced) effect = "ask";
     if (standingReceipt) effect = "allow";

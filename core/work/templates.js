@@ -118,6 +118,7 @@ export function createTemplates({ kernel, hub, flows, log = () => {} }) {
       }
       lines.push((s.tasks || []).length ? `  moves on when the ${(s.tasks || []).some((/** @type {any} */ t) => t.required !== false) ? "required " : ""}tasks are done${stages[n + 1] && stages[n + 1].enter_if ? ` and ${stages[n + 1].enter_if}` : ""}.` : n === stages.length - 1 ? "  the last stage: the project ends here." : "  no tasks: a person moves it on.");
     });
+    for (const a of body.automations || []) lines.push(`Automation: the Flow ${a.flow} runs ${a.when === "start" ? "when a project starts" : `when a project enters ${a.when}`}${a.note ? ` (${a.note})` : ""}. Nothing is run in test mode.`);
     const totals = `${counts.stages} stages, ${counts.tasks} tasks, ${counts.checks} checklist items, ${counts.roles} roles`;
     lines.push(totals);
     return { ok: true, template: rec.data.template, version: rec.data.version, lines, totals, counts };

@@ -1,7 +1,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { blank, setName, setOpensOn, addStage, renameStage, moveStage, removeStage, setStageOwner, setMovesOn, addTask, setTask, moveTask, removeTask, addRole, setRoleAgent, setRoleLead, removeRole, doerChoices, ownerChoices, missing } from "./edit.ts";
+import { blank, setName, setOpensOn, addStage, renameStage, moveStage, removeStage, setStageOwner, setMovesOn, addTask, setTask, moveTask, removeTask, addRole, setRoleAgent, setRoleLead, removeRole, doerChoices, ownerChoices, missing, whenChoices, addAutomation, setAutomationWhen, removeAutomation } from "./edit.ts";
 
 const base = () => {
   let b = setName(blank(), "Estate plan");
@@ -66,4 +66,22 @@ test("roles: one lead at most, an agent can fill one, and removing a role takes 
   assert.match(missing(b).join(" "), /needs someone to do it/);
   assert.deepEqual(doerChoices(b).map(([v]) => v), ["role:attorney", "person:owner"]);
   assert.deepEqual(ownerChoices(b).map(([v]) => v), ["", "role:attorney"]);
+});
+
+test("automations: attach a Flow at the start or at a stage, once per point; renaming a stage moves them, removing it takes them", () => {
+  let b = base();
+  b = addAutomation(b, "fl_welcome");
+  b = addAutomation(b, "fl_welcome");
+  assert.deepEqual(b.automations, [{ when: "start", flow: "fl_welcome" }], "the same Flow at the same point once");
+  b = addAutomation(b, "fl_file", "Done");
+  assert.deepEqual(whenChoices(b).map(([v]) => v), ["start", "Start", "Done"]);
+  b = renameStage(b, 1, "Finished");
+  assert.deepEqual(b.automations.map((a) => a.when), ["start", "Finished"]);
+  b = setAutomationWhen(b, 0, "Start");
+  assert.equal(b.automations[0].when, "Start");
+  b = addStage(b);
+  b = removeStage(b, 1);
+  assert.deepEqual(b.automations.map((a) => a.flow), ["fl_welcome"], "the automation on the removed stage went with it");
+  b = removeAutomation(b, 0);
+  assert.equal("automations" in b, false);
 });
