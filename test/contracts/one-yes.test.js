@@ -72,7 +72,8 @@ test("one-yes v1: a tool marked outward holds a model's call as a card, a retry 
   const entry = (/** @type {string} */ name) => d.registry.tools.get(name);
   assert.deepEqual(entry("comms.send").covers, manifestEntry.covers);
   assert.equal(entry("comms.send").outward, true);
-  assert.ok(entry("documents.send").covers.includes("comms.send"));
+  const docs = JSON.parse(fs.readFileSync(new URL("../../core/documents/module.json", import.meta.url), "utf8")).does.tools;
+  assert.ok(docs.find((/** @type {any} */ x) => x.name === "documents.send").covers.includes("comms.send"), "Documents files its sends through Comms in the same act");
   const tools = d.registry.tools;
   const cur = { [COVERED]: { ...coveredMark, via: [] } };
   const ride = coveredRide(tools, cur, "mail.send", "module:comms");
