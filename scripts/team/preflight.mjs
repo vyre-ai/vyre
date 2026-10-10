@@ -51,10 +51,15 @@ for (const f of existing) {
 const bodies = git(["log", `${mergeBase}..HEAD`, "--format=%H %B%x00"]);
 if (/Co-Authored-By:\s*Claude|Generated with \[Claude|Claude-Session:/i.test(bodies)) fail("G3", "a commit message carries Claude attribution; Vyre credits the repository owner only. Reword the commit (git commit --amend, or a new commit for older ones before queueing).");
 
+// The trusted base as kernel/size.test.js measures it (its BASE_DIRS and BASE_FILES), read from that test so the two never drift.
+const KBASE = (() => { try { const t = fs.readFileSync("kernel/size.test.js", "utf8"); const arr = (/** @type {string} */ n) => [...((new RegExp(`${n}\\s*=\\s*\\[([\\s\\S]*?)\\]`).exec(t) || [])[1] || "").matchAll(/"([^"]+)"/g)].map(m => m[1]); return { dirs: arr("BASE_DIRS"), files: arr("BASE_FILES") }; } catch { return { dirs: [], files: [] }; } })();
+/** @param {string} f */
+const inBase = f => { if (!f.startsWith("kernel/")) return false; const r = f.slice(7); return KBASE.dirs.length ? (KBASE.dirs.some(d => r.startsWith(d + "/")) || KBASE.files.includes(r)) : true; };
+
 // ---- K1: kernel lines need a ruling. Net lines added under kernel/ (outside tests) must be named in a commit message as [kernel +N: <reason>]; the lead rules on them first (FOUNDATION A8).
 {
   const stat = git(["diff", "--numstat", `${mergeBase}...HEAD`, "--", "kernel/"]).split("\n").filter(Boolean)
-    .map(l => l.split("\t")).filter(([, , f]) => f && /\.m?js$/.test(f) && !/\.test\.|\/testing\//.test(f));
+    .map(l => l.split("\t")).filter(([, , f]) => f && /\.m?js$/.test(f) && !/\.test\.|\/testing\//.test(f) && inBase(f));
   const net = stat.reduce((n, [a, d]) => n + (Number(a) || 0) - (Number(d) || 0), 0);
   if (net > 0 && !/\[kernel \+\d+:/i.test(bodies)) fail("K1", `this branch adds about ${net} net kernel lines with no ruling: ask the lead first, then name it in a commit message as [kernel +${net}: why]. Report the kernel/size.test.js number in your landing.`);
   else if (net > 0) warns.push(`kernel: about +${net} net lines (ruled in a commit message); report the size number in your landing`);
