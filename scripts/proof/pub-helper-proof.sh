@@ -12,7 +12,7 @@ FAILS=0
 ok() { printf 'PASS  %s\n' "$*"; }
 bad() { printf 'FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
-inside() { docker exec -u vyre vyre-vyre-1 node /opt/vyre/scripts/proof/pub-helper-inside.mjs "$@"; }
+inside() { docker exec -u vyre vyre-vyre-1 node /tmp/pub-helper-inside.mjs "$@"; }
 tally() { while IFS= read -r l; do printf '%s\n' "$l"; case "$l" in FAIL*) FAILS=$((FAILS + 1)) ;; esac; done; }
 pid() { docker inspect -f '{{.State.Pid}}' vyre-vyre-1; }
 rules() { sudo nsenter -t "$(pid)" -n iptables -w -S "$1" 2>/dev/null | grep -- "vyre-app:proofsite" || true; }
@@ -34,7 +34,8 @@ n=0; until [ "$(docker inspect -f '{{.State.Health.Status}}' vyre-vyre-1 2>/dev/
 check "the box is healthy" '[ "$(docker inspect -f "{{.State.Health.Status}}" vyre-vyre-1)" = healthy ]'
 sudo vyre space-helper install >/tmp/pub-proof-helper.log 2>&1 || true
 check "the Space helper is installed (its spool is the daemon's)" '[ -d /var/lib/vyre-spaces/spool ] && systemctl is-active vyre-spaces.path >/dev/null'
-check "the box carries this build's proof script" 'docker exec vyre-vyre-1 test -f /opt/vyre/scripts/proof/pub-helper-inside.mjs'
+docker cp "$REPO/scripts/proof/pub-helper-inside.mjs" vyre-vyre-1:/tmp/pub-helper-inside.mjs
+check "the box carries this build's host-pub judge" 'docker exec vyre-vyre-1 test -f /opt/vyre/core/appmods/host-pub.js'
 
 echo "== a base that is not allowed is refused by root itself"
 inside refuse | tally

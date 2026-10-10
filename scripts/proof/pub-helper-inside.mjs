@@ -2,18 +2,18 @@
 // Run INSIDE the vyre container of a real installer box, as the daemon's user, to walk the daemon's side of a site's server against the REAL root helper: the build context is handed over as the module does
 // (core/builder `buildByHelper`), the server is started and replaced through the helper driver as appmods does, and what a visitor and the app can reach is looked at from where each stands.
 // Driven by scripts/proof/pub-helper-proof.sh, which does the root-side looking. One line per check: PASS or FAIL.
-//   docker exec -u vyre vyre-vyre-1 node /opt/vyre/scripts/proof/pub-helper-inside.mjs <step> [args]
+//   docker exec -u vyre vyre-vyre-1 node /tmp/pub-helper-inside.mjs <step> [args]
 // Steps: build (prints the image id), up <name> <secret>, get <name>, ws <name>, stop, down, refuse (a Dockerfile root must refuse).
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
-import { buildByHelper } from "../../core/builder/index.js";
-import { checkDockerfile } from "../../lib/publish/dockerfile.js";
-import { askHelper } from "../../stores/twenty/helper.js";
-import { createHelperDriver } from "../../core/appmods/helper-driver.js";
-import { publishedManifest } from "../../core/appmods/published.js";
+import { buildByHelper } from "/opt/vyre/core/builder/index.js";
+import { checkDockerfile } from "/opt/vyre/lib/publish/dockerfile.js";
+import { askHelper } from "/opt/vyre/stores/twenty/helper.js";
+import { createHelperDriver } from "/opt/vyre/core/appmods/helper-driver.js";
+import { publishedManifest } from "/opt/vyre/core/appmods/published.js";
 
 const HOME = process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
 const SPC = "spc_proofproof1", DEP = "dep_00000000000000a1";
