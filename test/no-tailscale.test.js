@@ -23,7 +23,7 @@ const PERMANENT = [
   /^lib\/sanitize\.js$/, /^lib\/credential-shapes\.js$/, /^test\/allowed-dependencies\.json$/, /^local\/hands-chrome-mac\/extension\/shared\/sk\/credential-shapes\.js$/, /^apps\/app\/src\/store-core\/credential-shapes\.js$/,
   /^lib\/api-endpoint\.js$/, /^core\/mcp\/hub\.js$/, /^core\/vault\/api-request\.js$/, /^core\/spawner\/wall\.js$/, /^packages\/module-sdk\//,
   /^core\/names\/rules\.js$/, /^core\/memory\/lexicon\.js$/, /^core\/network\/other-vpn\.js$/, /^test\/no-tailscale\.test\.js$/, /^NOTICE$/,
-  /^scripts\/lib\/hygiene\.js$/,
+  /^scripts\/lib\/hygiene\.js$/, /^scripts\/team\/ratchets\.mjs$/,
 ];
 
 /** @param {string} dir @param {string[]} out */
