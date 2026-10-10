@@ -450,9 +450,9 @@ test("results by reference: a list is narrowed by where, sort and fields before 
   assert.deepEqual(open.data.items.map((/** @type {any} */ x) => x["data.name"]), ["bravo", "alpha"]);
 });
 
-test("results by reference is off in a real session and on only when VYRE_MCP_FEATURES asks for it", async () => {
+test("results by reference is on in a real session (0.3.3 G12); VYRE_MCP_FEATURES narrows it for measuring", async () => {
   const { featuresOf, listing, catalogOf } = await import("../harness/mcp/core-tools.js");
-  assert.deepEqual(featuresOf(undefined), { run: true, ref: false }, "unset: tools_run, no references");
+  assert.deepEqual(featuresOf(undefined), { run: true, ref: true }, "unset: tools_run and references");
   assert.deepEqual(featuresOf(""), { run: true, ref: true });
   assert.deepEqual(featuresOf("ref"), { run: false, ref: true });
   assert.deepEqual(featuresOf("none"), { run: false, ref: false });
