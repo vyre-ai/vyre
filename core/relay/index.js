@@ -1101,7 +1101,7 @@ export default {
       description: "The paired computers and phones, for a module: id, name, kind and whether each is connected now.",
       input: obj(),
       run: async (_, meta = {}) => {
-        if (!String((meta && meta.caller) || "").startsWith("module:")) throw Object.assign(new Error("for modules"), { code: "denied" });
+        if (!String((meta && meta.caller) || "").startsWith("module:")) throw Object.assign(new Error("for modules; relay.status shows the relay and how many devices are paired"), { code: "denied" });
         return { devices: active().filter((/** @type {any} */ d) => d.kind !== "web").map((/** @type {any} */ d) => { const v = view(d, null, false); return { id: v.id, name: v.name, kind: d.kind, online: Boolean(v.online) }; }) };
       },
     });

@@ -64,13 +64,13 @@ export function projectStore(db) {
  * @param {any[]} all @param {string} [name]
  */
 export function forOne(all, name) {
-  if (!all.length) throw Object.assign(new Error("no GitHub account is connected · connect one with github.connect"), { code: "no_account" });
+  if (!all.length) throw Object.assign(new Error("no GitHub account is connected: ask the person to connect one first"), { code: "no_account" });
   if (name === undefined) {
     if (all.length > 1) throw Object.assign(new Error(`say which account: ${all.map(a => a.name).join(", ")}`), { code: "ambiguous" });
     return all[0];
   }
   const one = all.find(a => a.name === name);
-  if (!one) throw Object.assign(new Error(`no GitHub account named ${name}; the accounts are ${all.map(a => a.name).join(", ")}`), { code: "no_account" });
+  if (!one) throw Object.assign(new Error(`no GitHub account named ${name}; say which one: ${all.map(a => a.name).join(", ")}`), { code: "no_account" });
   return one;
 }
 

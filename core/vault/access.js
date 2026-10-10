@@ -27,7 +27,7 @@ export class Access {
 
   /** The kernel's side of the vault, or null in a build with no kernel (then no login is lent to an agent). */
   get K() { const k = this.ctx && this.ctx.kernel; return k && k.grants && k.vault ? k : null; }
-  need() { const k = this.K; if (!k) throw Object.assign(new Error("lending a login to an agent is a kernel grant, and this build has no kernel"), { code: "unavailable" }); return k; }
+  need() { const k = this.K; if (!k) throw Object.assign(new Error("lending a login to an agent is a kernel grant, and this build has no kernel: ask the owner to update Vyre to a build that has one"), { code: "unavailable" }); return k; }
 
   /** The address of an item: under the owner's personal vault, whichever of the vault's two stores holds it now. */
   async urn(/** @type {string} */ name) {
@@ -39,7 +39,7 @@ export class Access {
   /** An agent's stable id (the kernel's grants name it, never the name), or null for an agent that does not exist. @param {string} name */
   async uidOf(name) {
     const r = await this.ctx.call("agents.uid", { name: String(name).toLowerCase() });
-    if (r && r.error && r.error.code !== "not_found") throw Object.assign(new Error(`agents cannot be asked yet: ${r.error.message}`), { code: "unavailable" });
+    if (r && r.error && r.error.code !== "not_found") throw Object.assign(new Error(`agents cannot be asked yet: ${r.error.message} (wait a minute and call again)`), { code: "unavailable" });
     return r && r.data ? String(r.data.uid) : null;
   }
   /** @param {string} uid */
@@ -188,11 +188,11 @@ export class Access {
     if (!uid) throw new Error(`no agent named ${agent}`);
     const k = await this.ctx.call("flows.kit.credentials", { task: String(task) });
     const kit = k && k.data;
-    if (!kit || kit.approved !== true || typeof kit.kit !== "string" || !kit.version || !Array.isArray(kit.credentials)) throw Object.assign(new Error("no approved Kit version names credentials for that task"), { code: "denied" });
+    if (!kit || kit.approved !== true || typeof kit.kit !== "string" || !kit.version || !Array.isArray(kit.credentials)) throw Object.assign(new Error("no approved Kit version names credentials for that task (flows.kit.list shows the Kits; a person approves a version that names them)"), { code: "denied" });
     for (const c of connections) {
-      if (!kit.credentials.includes(c)) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not named by the task's Kit, so it cannot be lent`), { code: "denied" });
+      if (!kit.credentials.includes(c)) throw Object.assign(new Error(`${String(c).slice(0, 60)} is not named by the task's Kit, so it cannot be lent: name it in the Kit and have a person approve that version (flows.kit.propose)`), { code: "denied" });
       const got = await this.ctx.call("connectors.connection.get", { id: String(c) });
-      if (got.error) throw Object.assign(new Error(`no Connection ${String(c).slice(0, 60)}`), { code: "not_found" });
+      if (got.error) throw Object.assign(new Error(`no Connection ${String(c).slice(0, 60)} (connectors.connection.list shows them)`), { code: "not_found" });
     }
     const tag = `${String(kit.kit).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 40)}@${String(kit.version).replace(/[^A-Za-z0-9_.-]/g, "").slice(0, 20)}`;
     const made = await K.vault.carryOver(connections.map(c => ({ id: `lease:${task}:${uid}:${c}:${tag}`, kind: "lease", task: String(task), who: uid, item: String(c), expires: Number(until) })));

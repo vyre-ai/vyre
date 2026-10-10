@@ -140,5 +140,5 @@ export function createSupervisor(o = {}) {
 /** The first free port in the pool that no preview row holds. @param {Set<number>} taken @param {[number, number]} [range] */
 export async function lease(taken, range = [5100, 5999]) {
   for (let p = range[0]; p <= range[1]; p++) if (!taken.has(p) && (await free(p))) return p;
-  throw Object.assign(new Error("no port is free for another preview"), { code: "unavailable" });
+  throw Object.assign(new Error("no port is free for another preview: stop one you no longer need, then open this again"), { code: "unavailable" });
 }

@@ -1711,7 +1711,7 @@ export class Switchboard {
    */
   switchProvider(id, o) {
     if (this.switches.has(id)) {
-      if ((o.reason || "asked") === "asked") return Promise.reject(Object.assign(new Error("this thread is already switching provider"), { code: "busy" }));
+      if ((o.reason || "asked") === "asked") return Promise.reject(Object.assign(new Error("this thread is already switching provider: wait for it to finish, then call again"), { code: "busy" }));
       return Promise.resolve({ thread: id, provider: String(o.provider || ""), account: null, resumed: false, already: true });
     }
     this.switches.add(id);
@@ -1933,7 +1933,7 @@ export class Switchboard {
     const st = this.live.get(id);
     if (!st) throw Object.assign(new Error("this session is not running: send it a message, and it rolls over when its window fills"), { code: "bad_input" });
     if (st.turn || ["working", "waiting"].includes(String(rec.status))) throw Object.assign(new Error("a turn is running: wait for it to end, then roll the window over"), { code: "busy" });
-    if (this.rolling.has(id) || this.switches.has(id)) throw Object.assign(new Error("this thread is already moving to a fresh session"), { code: "busy" });
+    if (this.rolling.has(id) || this.switches.has(id)) throw Object.assign(new Error("this thread is already moving to a fresh session: wait for it to finish, then call again"), { code: "busy" });
     const ctx = contextOf({ used: st.used || 0, window: st.window || 0, chars: st.used ? 0 : this.rollChars(id), model: rec.model, provider: rec.provider });
     return this.startRoll(id, { reason: "asked", why: "asked", ctx });
   }
@@ -2045,7 +2045,7 @@ export class Switchboard {
     const folder = cwd || process.cwd();
     const of = await this.deps.call("projects.of", { cwd: folder }).catch(() => null);
     const seed = await this.seedFor({ chain, rec: { cwd: folder, project: of && of.data && of.data.slug ? String(of.data.slug) : null }, roll: chain.length });
-    if (!seed.held) throw Object.assign(new Error(`no session ${String(session).slice(0, 36)} that Recall holds: it indexes a session when its turn ends, or on vyre index`), { code: "not_found" });
+    if (!seed.held) throw Object.assign(new Error(`no session ${String(session).slice(0, 36)} that Recall holds (recall.sessions lists them): wait for its turn to end, or run vyre index, then try again`), { code: "not_found" });
     const to = crypto.randomUUID();
     this.db.prepare("INSERT INTO threads_terminal_rolls (at, cwd, native_from, native_to, seed_chars) VALUES (?,?,?,?,?)").run(Date.now(), folder, String(session), to, seed.chars);
     return { seed: seed.text, session: to, from: String(session), windows: chain.length, seed_chars: seed.chars, tail: seed.tail, ...(of && of.data && of.data.slug ? { project: String(of.data.slug) } : {}) };
@@ -3057,7 +3057,7 @@ export class Switchboard {
     const drv = this.deps.providers && this.deps.providers.get(provider);
     const caps = normalizeCaps(drv && drv.capabilities);
     const ok = what === "rewind" ? caps.rewind.conversation : caps.fork;
-    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed`), { code: "unsupported", provider, capability: what });
+    if (!ok) throw Object.assign(new Error(`${providerName(provider)} can't ${words} yet: nothing was changed (threads.switch moves the thread to a provider that can)`), { code: "unsupported", provider, capability: what });
   }
 
   /** Who wrote this message, from the event that sent or queued it (null when it was not recorded). @param {string} id @param {string} uuid */
@@ -3144,7 +3144,7 @@ export class Switchboard {
     if (restore === "code" || restore === "both") {
       if (!this.live.has(id)) await this.launch({ resume: id });
       const live = this.live.get(id);
-      if (!live || !live.proc.control) throw Object.assign(new Error("this session cannot put files back"), { code: "unavailable" });
+      if (!live || !live.proc.control) throw Object.assign(new Error("this session cannot put files back: rewind the conversation only (threads.rewind)"), { code: "unavailable" });
       const r = await live.proc.control("rewind_files", { user_message_id: uuid });
       files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
       if (restore === "code") {
@@ -3231,7 +3231,7 @@ export class Switchboard {
       this.starting.add(next);
     }
     try {
-      const r = /** @type {any} */ (await withinOrThrow(answer, timeoutMs, () => { st.answered = null; return Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" }); }));
+      const r = /** @type {any} */ (await withinOrThrow(answer, timeoutMs, () => { st.answered = null; return Object.assign(new Error(`no answer within ${timeoutMs} ms: wait a minute and call again`), { code: "timeout" }); }));
       return { ...r, warm, ms: Date.now() - t0, thread: id };
     } finally {
       st.done = true; st.stopping = true;
@@ -3281,7 +3281,7 @@ export class Switchboard {
     const rec = this.must(id);
     let v = null;
     try { v = floorRules({ tool: "Bash", input: { command }, cwd: rec.cwd, home: this.deps.root || undefined }); } catch {}
-    if (v && v.decision === "deny") throw Object.assign(new Error(`Vyre's security floor refused this: ${v.reason || "not allowed"}`), { code: "denied" });
+    if (v && v.decision === "deny") throw Object.assign(new Error(`Vyre's security floor refused this: ${v.reason || "not allowed"} (use a different command)`), { code: "denied" });
     const { execFile } = await import("node:child_process");
     const r = await new Promise(resolve => execFile("/bin/sh", ["-c", String(command)], { cwd: rec.cwd, timeout: 120_000, maxBuffer: 4 << 20, env: { ...process.env, VYRE_THREAD: id } },
       (e, stdout, stderr) => resolve({ code: e ? (typeof /** @type {any} */ (e).code === "number" ? /** @type {any} */ (e).code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || "") })));
@@ -3800,7 +3800,7 @@ export default {
       const launcherProvider = a.vault_item === "claude-setup-token" ? "claude" : a.vault_item === "anthropic-api-key" ? "anthropic" : null;
       let v = launcherProvider && ctx.credentials ? await ctx.credentials(launcherProvider).catch(() => null) : undefined;
       if (v === undefined) v = ctx.vault ? await ctx.vault.fetch(a.vault_item).catch(() => null) : null;
-      if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads (vyre vault grant ${a.vault_item} threads)`), { code: "no_credential" });
+      if (!v) throw Object.assign(new Error(`the vault has no ${a.vault_item} for ${a.label}, or it is not granted to threads: add it to the vault, or run vyre vault grant ${a.vault_item} threads`), { code: "no_credential" });
       // An account that names its own endpoint (a key for an OpenAI-compatible or Anthropic-compatible service) sends the key there and nowhere else: the address was
       // checked when the account was made (https, or this machine), and it is the account's, not the thread's.
       const own = {};
@@ -3874,7 +3874,7 @@ export default {
         const chain = await personChain(m);
         const chatOk = (/** @type {string | null} */ chat) => { if (!chat) return true; if (!chain) return false; try { ctx.kernel.chats.read(chain, chat); return true; } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") return false; throw e; } };
         const threadOk = (/** @type {any} */ t) => chatOk(sb.chatOf(String(t)));
-        for (const t of targets(i)) if (!threadOk(t)) throw Object.assign(new Error(`no such thread ${t}`), { code: "not_found" });
+        for (const t of targets(i)) if (!threadOk(t)) throw Object.assign(new Error(`no such thread ${t} (threads.list shows them)`), { code: "not_found" });
         const out = await run(i, m, ...rest);
         if (name === "threads.list" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || chatOk(r.chat || null));
         if (name === "threads.asks" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
@@ -3999,7 +3999,7 @@ export default {
     const SESSION_READS = new Set(["threads.fork", "threads.branch", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
       ? async (i, meta, ...rest) => {
-        if (!(await sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's"), { code: "denied" });
+        if (!(await sessionMay(meta, i && i.thread, SESSION_MUTATING.has(name), name))) throw Object.assign(new Error("a session reaches its own thread and the threads it started, and reads its own project's: ask the person to do this from their own surface"), { code: "denied" });
         return run(i, meta, ...rest);
       }
       : run;
@@ -4013,7 +4013,7 @@ export default {
       if (!i || typeof i.thread !== "string" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
       const chat = sb.chatOf(i.thread);
       if (!chat) return;
-      const refuse = () => Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" });
+      const refuse = () => Object.assign(new Error(`no such thread ${i.thread} (threads.list shows them)`), { code: "not_found" });
       if (!kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person") throw refuse();
       try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw refuse(); throw e; }
     };
@@ -4054,7 +4054,7 @@ export default {
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
         // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
         // (the agent the daemon bound, from its own record of the session), and a first-party module acts for its own purpose.
-        if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
+        if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under; ask the person, or a named agent, to start it"), { code: "denied" });
         // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
         // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
         // A model does not pick a session's PURPOSE beyond the ordinary three: capsule, job, teammate, memory, planner, learn and helper pick other models, plugins and permission profiles.
@@ -4108,7 +4108,7 @@ export default {
       const away = r.data.find(a => a.error && a.error.code === "mac_offline");
       if (away) throw Object.assign(new Error(`${away.name} is offline; your message was not sent`), { code: "mac_offline" });
       const slow = r.data.find(a => a.error && a.error.code === "timeout");
-      if (slow) throw Object.assign(new Error(`${slow.name} did not answer in time; your message may not have been sent`), { code: "timeout" });
+      if (slow) throw Object.assign(new Error(`${slow.name} did not answer in time; your message may not have been sent; check the chat, then send it again if it is missing`), { code: "timeout" });
       return null;
     };
 
@@ -4181,7 +4181,7 @@ export default {
       const a = r.data[0];
       const e = a.error || { code: "failed", message: "the Mac could not answer" };
       if (e.code === "mac_offline") throw Object.assign(new Error(`${a.name} is offline; your answer was not sent`), { code: "mac_offline" });
-      if (e.code === "timeout") throw Object.assign(new Error(`${a.name} did not answer in time; your answer may not have reached it`), { code: "timeout" });
+      if (e.code === "timeout") throw Object.assign(new Error(`${a.name} did not answer in time; your answer may not have reached it; check the card, then answer again if it is still open`), { code: "timeout" });
       throw Object.assign(new Error(e.message), { code: e.code });
     };
 
@@ -4223,7 +4223,7 @@ export default {
       input: { type: "object", required: ["id", "to", "content"], properties: { id: str, to: { type: "array", items: str }, content: { type: "object" } } },
       callers: ["module"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (meta.caller !== "module:gate") throw Object.assign(new Error("the Gate alone releases a held key message"), { code: "denied" });
+        if (meta.caller !== "module:gate") throw Object.assign(new Error("the Gate alone releases a held key message: ask the person to approve it at the Gate"), { code: "denied" });
         const ref = String(i.content && i.content.ref || "");
         const h = heldKeys.get(ref);
         if (!h || h.until < Date.now()) { heldKeys.delete(ref); throw Object.assign(new Error("this message was held too long, or the box restarted since: paste the key and send it again"), { code: "expired" }); }
@@ -4560,7 +4560,7 @@ export default {
     tool("threads.remember", "/remember (Claude Code's # mode; # is a tag now): add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
       async (i, { caller, thread }) => {
-        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions"), { code: "denied" });
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions: the person edits them, or another session does"), { code: "denied" });
         return sb.remember(i.thread, i.text, i.scope || "project");
       }, ["cli", "local", "deck", "capsule"]);
 
@@ -4590,7 +4590,7 @@ export default {
         const m = /** @type {any} */ (meta);
         if (m.agent && m.agentKind !== "assistant") {
           const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
-          if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted"), { code: "denied" });
+          if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted: ask the person to delete this one"), { code: "denied" });
         }
         return sb.delete(i.thread);
       });
@@ -4600,7 +4600,7 @@ export default {
       const m = /** @type {any} */ (meta);
       if (m.agent && m.agentKind !== "assistant") {
         const own = rec.agent === m.agent, granted = m.granted === "*" || (Array.isArray(m.granted) && rec.project && m.granted.includes(rec.project));
-        if (!own && !granted) throw Object.assign(new Error("an agent acts on its own threads, or threads of a project it is granted"), { code: "denied" });
+        if (!own && !granted) throw Object.assign(new Error("an agent acts on its own threads, or threads of a project it is granted: ask the person to do this one"), { code: "denied" });
       }
     };
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
@@ -4615,7 +4615,7 @@ export default {
       const hit = runs.filter(r => r.slot === slot).pop();
       const v = /** @type {any} */ (calls.getStore());
       await chatGate({ thread: hit ? hit.thread : "" }, meta, v && v.kchain);
-      if (!hit) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+      if (!hit) throw Object.assign(new Error("no such chat (work.chat.list shows the ones you may see)"), { code: "not_found" });
       return hit;
     };
     tool("threads.chat-switch", "Switch one slot of a chat to another provider or model, between turns: the same chat, the new one given a brief of what was said. slot: agent:<id> or model:<provider>/<model>#<n>, as the chat lists them.",
@@ -4701,7 +4701,7 @@ export default {
     });
     // A chat's runs and their events, to leave this device with the chat (Personal to My Cloud: core/work/chat-upgrade.js) and to be put back on the other. Modules only; the caller (the work module) has
     // already checked that the person is in the chat. What is not carried: the provider's own session file (a resumed run starts from the brief, not from native context).
-    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone`), { code: "denied" }); };
+    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone: the person moves chats with work.chat.upgrade-plan`), { code: "denied" }); };
     ctx.tool("threads.export-chat", {
       description: "A chat's run rows and their events, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
       input: { type: "object", required: ["chat"], properties: { chat: str } },

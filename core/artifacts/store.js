@@ -130,7 +130,7 @@ export function openStore(root) {
     move: (from, to, id) => {
       const a = repo(from, id), b = repo(to, id);
       return serial(a, async () => {
-        if (fs.existsSync(b)) throw Object.assign(new Error(`${id} is already in ${to}`), { code: "exists" });
+        if (fs.existsSync(b)) throw Object.assign(new Error(`${id} is already in ${to}: pick another project to move it to`), { code: "exists" });
         fs.mkdirSync(path.dirname(b), { recursive: true, mode: 0o700 });
         fs.renameSync(a, b);
       });

@@ -31,7 +31,7 @@ export function counter(max) {
   const t = new Transform({
     transform(chunk, _enc, done) {
       t.bytes += chunk.length;
-      if (t.bytes > max) done(Object.assign(new Error(`the upload is larger than the ${max} bytes it announced`), { code: "too_large" }));
+      if (t.bytes > max) done(Object.assign(new Error(`the upload is larger than the ${max} bytes it announced; use the file's real size when you announce it, then upload again`), { code: "too_large" }));
       else done(null, chunk);
     },
   });
@@ -50,7 +50,7 @@ export function keySniff() {
   let size = 0, cleared = false;
   const check = () => {
     const head = Buffer.concat(held);
-    if (isKeyBytes(head)) return Object.assign(new Error("that file is a private key; Glass does not move keys"), { code: "denied" });
+    if (isKeyBytes(head)) return Object.assign(new Error("that file is a private key; Glass does not move keys, so the person moves it by hand outside Glass"), { code: "denied" });
     cleared = true;
     return head;
   };

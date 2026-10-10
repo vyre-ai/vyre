@@ -300,7 +300,7 @@ export default {
     /** @param {string} key */
     const declOf = key => {
       const d = decls().find(x => x.key === key);
-      if (!d) throw Object.assign(new Error(`no setting ${key}; vyre config list shows them all`), { code: "not_found" });
+      if (!d) throw Object.assign(new Error(`no setting ${key}; settings.schema or vyre config list shows them all`), { code: "not_found" });
       return d;
     };
     /** @param {any} project */
@@ -564,7 +564,7 @@ export default {
       callers: PEOPLE,
       run: async (i, meta) => {
         const row = /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM settings_changes WHERE id = ?").get(String(i.change)));
-        if (!row) throw Object.assign(new Error(`no change ${i.change}`), { code: "not_found" });
+        if (!row) throw Object.assign(new Error(`no change ${i.change}; settings.changes lists them`), { code: "not_found" });
         if (row.undone) throw Object.assign(new Error("that change is already undone"), { code: "bad_input" });
         const d = declOf(row.key);
         if (d.secret) throw Object.assign(new Error(`${d.key} is secret; set it again in Settings`), { code: "bad_input" });

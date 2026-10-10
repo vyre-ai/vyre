@@ -32,7 +32,7 @@ export function openKeys(dataDir) {
   };
   const need = () => {
     const k = read();
-    if (!k) throw Object.assign(new Error("core has no relay keys yet: call keys.ensure first"), { code: "no_keys" });
+    if (!k) throw Object.assign(new Error("core has no relay keys yet: call keys ensure first (the relay makes them when it starts)"), { code: "no_keys" });
     return k;
   };
   // The device key: this Mac as a device of ANOTHER box (relay.join's Noise initiator identity), a
@@ -52,7 +52,7 @@ export function openKeys(dataDir) {
   };
   const dneed = () => {
     const k = dread();
-    if (!k) throw Object.assign(new Error("core has no device key yet: call keys.device.ensure first"), { code: "no_keys" });
+    if (!k) throw Object.assign(new Error("core has no device key yet: call keys device ensure first"), { code: "no_keys" });
     return k;
   };
   return {

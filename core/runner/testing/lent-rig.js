@@ -27,7 +27,7 @@ function fakeSealer() {
     renew: async i => { one(i.chain); if (!i.allowed) return { revoked: true }; return { ttlMs: 3600000 }; },
     revoke: async i => { one(i.chain); st.revoked.add(`${i.member}|${i.device}`); return { revoked: true }; },
     reinstate: async () => ({ reinstated: true }),
-    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
+    check: async i => { if (!st.live.has(i.id)) throw Object.assign(new Error("no_lease: ask the home to lend this computer again"), { code: "no_lease" }); const [member, device] = st.live.get(i.id).split("|"); return { space: SPACE, member, device }; },
   } };
 }
 

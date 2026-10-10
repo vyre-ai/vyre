@@ -229,7 +229,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /** A kernel that holds chats but cannot stream or gate a reply: refuse, never fall back to the mirror (the mirror is for a daemon with no kernel at all). */
   const unavailablePort = {
     follow: false,
-    open: async () => { throw Object.assign(new Error("this kernel's chats cannot stream or gate a reply (appendOpen and mayReceive are missing)"), { code: "unavailable" }); },
+    open: async () => { throw Object.assign(new Error("this kernel's chats cannot stream or gate a reply (appendOpen and mayReceive are missing): ask the owner to update Vyre"), { code: "unavailable" }); },
     mayReceive: () => false,
   };
   /**
@@ -239,7 +239,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    */
   const ksPort = {
     open: async ({ thread, asker }) => {
-      if (!ks || !thread) throw Object.assign(new Error("this reply has no session of its own"), { code: "no_session" });
+      if (!ks || !thread) throw Object.assign(new Error("this reply has no session of its own: send it from the person's own session"), { code: "no_session" });
       // the reply is written under the session of the person whose turn it is, never the thread's newest (a later asker's turn may have opened already): the seam finds that person's own
       const h = await ks.forThread(thread).appendOpen({ kind: "text", ...(asker ? { asker } : {}) });
       return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
@@ -614,7 +614,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       closeStep(m);
       if (!b.h && !(await begin(m, b, message))) return;
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
-      if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
+      if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat: a person in the chat adds it again (work.chat.change)"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
       const text = String(s.data.text);
       if (!(await put(m, b, s, { ...s.data, message }, message))) return;
       b.reply += text;
