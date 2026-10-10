@@ -22,6 +22,7 @@
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\" \"ui/**/*.test.js\" \"screens/**/*.test.js\" \"modules/**/*.test.js\" \"vendor/**/*.test.js\"",
     "export:web:mock": "EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web",
     "lint:ui": "node scripts/check-ui-imports.mjs",
+    "lint:design": "node scripts/check-design.mjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "render:check": "node scripts/render-check.mjs --dist dist-mock"

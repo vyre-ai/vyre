@@ -1,0 +1,208 @@
+{
+  "app/_layout.tsx": {
+    "sheet": 1
+  },
+  "app/devices.tsx": {
+    "sheet": 1
+  },
+  "app/gallery.tsx": {
+    "space": 4
+  },
+  "app/need/[id].tsx": {
+    "sheet": 1
+  },
+  "app/pair.tsx": {
+    "sheet": 1
+  },
+  "app/session/[id].tsx": {
+    "sheet": 1
+  },
+  "app/settings.tsx": {
+    "sheet": 1
+  },
+  "app/settings/autofill.tsx": {
+    "sheet": 1
+  },
+  "app/shots-approval.tsx": {
+    "space": 2
+  },
+  "app/shots-previews.tsx": {
+    "space": 1
+  },
+  "app/shots-questions.tsx": {
+    "space": 1
+  },
+  "app/shots-vault.tsx": {
+    "space": 1
+  },
+  "app/vault/index.tsx": {
+    "sheet": 1
+  },
+  "screens/chat-tools/ArtifactFrame.web.tsx": {
+    "space": 3
+  },
+  "screens/chat-tools/ChatFiles.tsx": {
+    "space": 1
+  },
+  "screens/chat-tools/FilesPane.tsx": {
+    "colour": 1
+  },
+  "screens/glass/GlassScreen.tsx": {
+    "space": 2
+  },
+  "screens/places/badge.tsx": {
+    "space": 1
+  },
+  "screens/shell/GroupApprovals.tsx": {
+    "type": 1
+  },
+  "screens/vault/RealVaultMore.tsx": {
+    "space": 2
+  },
+  "screens/vault/TwoFactorCard.tsx": {
+    "space": 1
+  },
+  "src/chat/AboutSheet.tsx": {
+    "space": 7
+  },
+  "src/chat/Blocks.tsx": {
+    "sheet": 1,
+    "space": 31,
+    "type": 4
+  },
+  "src/chat/ChatComposer.tsx": {
+    "space": 12,
+    "type": 1
+  },
+  "src/chat/ChatExtras.tsx": {
+    "space": 1
+  },
+  "src/chat/ChatHeader.tsx": {
+    "sheet": 1,
+    "space": 4
+  },
+  "src/chat/ChatRows.tsx": {
+    "sheet": 1,
+    "space": 25
+  },
+  "src/chat/ChatScreen.tsx": {
+    "space": 12,
+    "type": 1
+  },
+  "src/chat/FanoutSet.tsx": {
+    "sheet": 1,
+    "space": 7
+  },
+  "src/chat/GroupParts.tsx": {
+    "sheet": 1,
+    "space": 7
+  },
+  "src/chat/LiveScreen.web.tsx": {
+    "space": 5
+  },
+  "src/chat/OperatorCard.tsx": {
+    "colour": 1,
+    "space": 13,
+    "type": 1
+  },
+  "src/chat/PreviewCard.tsx": {
+    "space": 5
+  },
+  "src/chat/PreviewFrame.tsx": {
+    "colour": 1
+  },
+  "src/chat/PreviewFrame.web.tsx": {
+    "colour": 1
+  },
+  "src/chat/PreviewPane.tsx": {
+    "colour": 1,
+    "space": 3
+  },
+  "src/chat/QuestionsCard.tsx": {
+    "space": 8,
+    "type": 1
+  },
+  "src/chat/SelectionAsk.web.tsx": {
+    "space": 1
+  },
+  "src/chat/SigninCard.tsx": {
+    "space": 3
+  },
+  "src/chat/StatusLine.tsx": {
+    "sheet": 1,
+    "space": 1
+  },
+  "src/chat/mock-stream.ts": {
+    "space": 1
+  },
+  "src/chat/placement.tsx": {
+    "space": 1
+  },
+  "src/chat/usePreviewThumb.ts": {
+    "colour": 1
+  },
+  "src/perf/PerfBadge.web.tsx": {
+    "space": 1
+  },
+  "src/session/Frame.native.tsx": {
+    "sheet": 1
+  },
+  "src/store-core/theme.js": {
+    "colour": 1
+  },
+  "src/store-core/tokens-v3.js": {
+    "colour": 12
+  },
+  "src/terminal/frame.js": {
+    "type": 1
+  },
+  "src/terminal/xterm/xterm.js": {
+    "colour": 2,
+    "type": 1
+  },
+  "src/ui/Avatar.tsx": {
+    "sheet": 1
+  },
+  "src/ui/BackButton.tsx": {
+    "sheet": 1
+  },
+  "src/ui/Banner.tsx": {
+    "sheet": 1
+  },
+  "src/ui/Button.tsx": {
+    "sheet": 1
+  },
+  "src/ui/Card.tsx": {
+    "sheet": 1
+  },
+  "src/ui/GlassMini.tsx": {
+    "sheet": 1
+  },
+  "src/ui/IconButton.tsx": {
+    "sheet": 1
+  },
+  "src/ui/Row.tsx": {
+    "sheet": 1
+  },
+  "src/ui/Screen.tsx": {
+    "sheet": 1
+  },
+  "src/ui/StatusMark.tsx": {
+    "sheet": 1
+  },
+  "src/ui/SwipeRow.native.tsx": {
+    "sheet": 1
+  },
+  "src/ui/SwipeRow.web.tsx": {
+    "space": 1
+  },
+  "src/ui/Tag.tsx": {
+    "sheet": 1
+  },
+  "src/ui/UndoToast.tsx": {
+    "sheet": 1
+  },
+  "src/vault/views.tsx": {
+    "sheet": 1
+  }
+}
