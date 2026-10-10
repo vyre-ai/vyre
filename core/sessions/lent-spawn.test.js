@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox, lentSpawnFor } from "./lent-spawn.js";
 import { spawnSession } from "./spawn.js";
+import { Switchboard } from "../switchboard/index.js";
 import { rig, BOB } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
 
@@ -131,4 +132,16 @@ test("on the real home: with no computer of the person's ready the process start
   const got = await new Promise(res => there.stdout.once("data", res));
   assert.equal(String(got), "{\"type\":\"system\"}\n", "the lender's output reached the SDK");
   there.kill();
+});
+
+test("the switchboard asks for a lent spawn for a claude session only, and a failing lookup is the box's", async () => {
+  const fn = () => ({});
+  const sb = (/** @type {any} */ lentFor) => ({ deps: { lentFor }, chatOf: () => "chat_1", nativeOf: () => "ses_native" });
+  const ask = (/** @type {any} */ self, /** @type {any} */ rec) => /** @type {any} */ (Switchboard.prototype).lentFor.call(self, "thr_1", rec);
+  assert.equal(await ask(sb(async () => fn), { provider: "claude" }), fn);
+  assert.equal(await ask(sb(async () => fn), {}), fn, "claude is the default");
+  assert.equal(await ask(sb(async () => fn), { provider: "codex" }), undefined, "another provider's process is not lent");
+  assert.equal(await ask(sb(async () => null), { provider: "claude" }), undefined);
+  assert.equal(await ask(sb(async () => { throw new Error("no host"); }), { provider: "claude" }), undefined);
+  assert.equal(await ask({ deps: {}, chatOf: () => null, nativeOf: () => "x" }, {}), undefined);
 });
