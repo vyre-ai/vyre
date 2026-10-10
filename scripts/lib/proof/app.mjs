@@ -85,7 +85,10 @@ export function createApp(o) {
   async function reserve(text) {
     const name = nameOf(text);
     if (!looksLikeName(name)) throw new Error(`"${text}" is not a name`);
-    const res = await fetch(`${o.directory}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) });
+    // One try more on a refused or reset connection, on a fresh connection: the walk before this one (a whole server install and teardown) can leave the pooled keep-alive socket to the stand-in directory dead,
+    // and the CI run that read "fetch failed" here had a directory that answered every other request.
+    const post = () => fetch(`${o.directory}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json", connection: "close" }, body: JSON.stringify({ name }) });
+    const res = await post().catch(async (/** @type {any} */ e) => { await new Promise(r => setTimeout(r, 1500)); return post().catch(() => { throw new Error(`fetch ${o.directory}: ${e.message} (${e.cause && (e.cause.code || e.cause.message)})`); }); });
     const body = await res.json().catch(() => null);
     if (!(res.status === 200 && body && body.data && typeof body.data.code === "string")) throw Object.assign(new Error(`the directory answered ${res.status} ${JSON.stringify(body).slice(0, 160)}`), { code: "reserve" });
     // what the setup page does with that answer; kept apart so a page that rejects a code the directory made is its own finding and the walk can go on with the code
