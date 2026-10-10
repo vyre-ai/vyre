@@ -11,6 +11,7 @@ import { requestText, writeServerFolder, removeServerFolder } from "../../lib/pu
 export const seam = /** @type {{ buildImage: null | typeof buildImage, helper: null | { present: () => boolean, ask: typeof askHelper } }} */ ({ buildImage: null, helper: null });
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+export const SERVERS_OFF = "Publishing apps with their own server is turned off in this test release. A folder of ready files and a React page still publish.";
 const NEEDS_CONTAINER = "this server builds a folder of ready files; a repo, a Drive folder or a build command needs the container builder, which is not installed here yet";
 
 /** What a deployment asks of a build, and the plain refusal when it is more than this builder does. @param {any} d @returns {{ dir: string, outputDir: string, dockerfile: boolean }} */
@@ -18,6 +19,8 @@ export function planOf(d) {
   const src = (d && d.source) || {}, b = (d && d.build) || {};
   if (src.kind !== "folder") throw refuse(NEEDS_CONTAINER, "refused");
   if (b.command) throw refuse(`a build command (${String(b.command).slice(0, 40)}) needs the container builder, which is not installed here yet; publish a folder of ready files instead`, "refused");
+  // Publishing an app with its own server is switched off in this test release until its build network and its Space-plus-name keying are reviewed (trust, rows 37 and 38); static and React sites are not touched.
+  if (b.image === "dockerfile" && process.env.VYRE_PUBLISH_SERVERS !== "1") throw refuse(SERVERS_OFF, "refused");
   if (b.image && b.image !== "static" && b.image !== "dockerfile") throw refuse(`the ${b.image} image needs the container builder, which is not installed here yet`, "refused");
   return { dir: String(src.ref || ""), outputDir: String(b.output_dir || "."), dockerfile: b.image === "dockerfile" };
 }
