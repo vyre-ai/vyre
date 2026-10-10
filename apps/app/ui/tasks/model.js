@@ -137,6 +137,15 @@ export function taskFacts(w, task, o = {}) {
   };
 }
 
+/**
+ * What the doer is asked to do, in the task's own words: the brief a template or a person wrote (Goal, context, what counts as done), or "". A line that is only a tag ("Flow: ...", "is working on ...") is not a brief.
+ * @param {any} task @returns {string}
+ */
+export function briefOf(task) {
+  for (const x of [task && task.note, task && task.ext && task.ext.note]) if (typeof x === "string" && x.trim() && !/^(Flow:|is )/.test(x.trim())) return x.trim();
+  return "";
+}
+
 /** The draft of a task and the one sentence under it, or null. @param {World} w @param {any} task */
 export function draftOf(w, task) {
   const d = task.ext?.result?.draft;
