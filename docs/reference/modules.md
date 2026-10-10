@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 7 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 23 | 8 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -62,7 +62,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
-| [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
+| [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
@@ -109,7 +109,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 67 | 35 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
 ## about
@@ -154,8 +154,8 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [20](tools.md#appmods)
-- Emits: [7 events](events.md#appmods)
+- Tools: [23](tools.md#appmods)
+- Emits: [8 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
 - Needs daemon: `flowsHost`
@@ -636,7 +636,7 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [8](tools.md#names), 3 of them only for other modules
+- Tools: [10](tools.md#names), 5 of them only for other modules
 - Emits: [3 events](events.md#names)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`
@@ -1183,7 +1183,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [67](tools.md#wink), 13 of them only for other modules
+- Tools: [68](tools.md#wink), 14 of them only for other modules
 - Emits: [35 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

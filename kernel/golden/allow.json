@@ -20,6 +20,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.connection opened to a model or a module in ce0e2bacf (4 Oct 2026); the body decides: read-only: the Connection an installed app declares (label, how it signs in, operations) with the NAME of the Vault item that holds its key, never the key"
  },
  {
+  "tool": "appmods.domain.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (opens an app's public pages to the outside at the person's own domain)"
+ },
+ {
+  "tool": "appmods.domain.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (takes the person's own domain from an app, so its public pages stop answering at that address)"
+ },
+ {
   "tool": "appmods.hosts",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; appmods.hosts opened to a model or a module in aaf71dbd9 (4 Oct 2026); the body decides: read-only: the host names of the installed running apps, which the public gate needs; they are public names under the box's own"
  },
@@ -646,10 +654,6 @@
  {
   "tool": "mentions.search",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): names matching what was typed in the # picker, grouped by kind"
- },
- {
-  "tool": "names.domain.check",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): a live DNS check of the records for an own domain, a read"
  },
  {
   "tool": "onboard.pair",
