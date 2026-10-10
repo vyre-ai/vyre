@@ -100,8 +100,8 @@ test("only a chat the home's book places on a computer gets a lent spawn; a new 
   assert.ok(fn, "a chat placed on a computer");
   const ac = new AbortController();
   fn?.("claude", ["--output-format", "stream-json"], { SECRET: "no" }, "/box/work", { signal: ac.signal });
-  assert.deepEqual(Object.keys(calls[0]).sort(), ["args", "chat", "command", "person", "session", "signal", "space", "title"]);
-  assert.deepEqual([calls[0].session, calls[0].chat, calls[0].person, calls[0].space], ["ses_native", "chat_1", "per_bob", "spc_a"], "the row's own person; the box's env and folder are not sent");
+  assert.deepEqual(Object.keys(calls[0]).sort(), ["args", "chat", "command", "person", "session", "signal", "space", "thread", "title"]);
+  assert.deepEqual([calls[0].session, calls[0].thread, calls[0].chat, calls[0].person, calls[0].space], ["ses_native", "thr_1", "chat_1", "per_bob", "spc_a"], "an older row keeps its own session; the thread id rides beside it, for the route to Vyre's tools; the row's own person; the box's env and folder are not sent");
 });
 
 test("on the real home: with no computer of the person's ready the process starts here and answers; with one ready the bytes ride lent.pipe and the box starts nothing", { timeout: 60_000 }, async t => {
