@@ -24,8 +24,8 @@ import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
-import { signalTree } from "./proctree.js";
-import { endOrphans } from "./orphans.js";
+import { signalTree, pidsUnder } from "./proctree.js";
+import { endOrphans, startedOf } from "./orphans.js";
 export { endOrphans };
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
@@ -84,6 +84,7 @@ export function createRunner(o) {
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
   const usage = o.usage || createUsage({ platform });
+  /** Sessions being started now: a second start of the same session while the first is under way is refused, so no child is ever left untracked. @type {Set<string>} */ const starting = new Set();
   /** Why every session here is frozen right now ("pause": the person's Pause all; "offline": this computer cannot reach the Space's server and must not run ahead of it). Empty: they run. @type {Set<string>} */
   const frozen = new Set();
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
@@ -187,6 +188,11 @@ export function createRunner(o) {
    * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
+    if (starting.has(s.session)) throw new Error("that session is already being started here");
+    starting.add(s.session);
+    try { return await startInner(s); } finally { starting.delete(s.session); }
+  }
+  async function startInner(s) {
     const g = o.grants();
     if (!g.spaceAllows || !g.memberAccepts) throw new Error("both grants are needed: the space allows it and this computer accepts it");
     if (live.has(s.session)) throw new Error("that session is already running here");
@@ -225,7 +231,7 @@ export function createRunner(o) {
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
     const child = launch(p, { detached: true });
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
-    try { const stat = fs.readFileSync(`/proc/${child.pid}/stat`, "utf8"); fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19], session: s.session }), { mode: 0o600 }); } catch { try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, session: s.session }), { mode: 0o600 }); } catch {} }
+    try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: startedOf(Number(child.pid)) || undefined, session: s.session }), { mode: 0o600 }); } catch { /* the sweep at the next start has nothing to read */ }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
     const h = { session: s.session, chat: s.chat || null, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
@@ -275,57 +281,67 @@ export function createRunner(o) {
     try { await h.eg.close(); } catch {}
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
-    emit({ type: "stopped", session: h.session });
+    // why it ended, for the Space's home: the person stopped it, the program finished by itself, the program died, or it was handed over / fenced (the home already knows)
+    emit({ type: "stopped", session: h.session, why: h.released ? "released" : h.stopped ? "stopped" : h.exit && h.exit.code === 0 ? "finished" : "crashed" });
   }
 
-  /** Send a signal to a session's whole process group. */
+  /** Send a signal to a session: the process group Vyre started, and, to freeze or thaw it, everything under it (the sandbox gives the agent a session of its own). */
   function signal(h, sig) {
-    // the sandbox gives the agent a session of its own, so the group of the process Vyre started is not enough to freeze or thaw it: walk the tree under it too
-    if (sig === "SIGSTOP" || sig === "SIGCONT") { signalTree(Number(h.child.pid), sig); return; }
-    try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } }
+    const pid = Number(h.child.pid);
+    if (sig === "SIGSTOP" || sig === "SIGCONT") {
+      // nothing found under it (the system would not list its processes) is not a freeze that worked: fall back to the group and the child itself
+      if (signalTree(pid, sig) === 0) { try { process.kill(-pid, sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } } }
+      return;
+    }
+    try { process.kill(-pid, sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } }
   }
 
-  /** Stop one session: ask nicely, then end it. */
+  /** Stop one session: ask nicely, then end it. Everything under the process Vyre started is asked first (a frozen session wakes to hear it), and whatever is still there when the first has gone is ended. */
   async function stop(session, _o = {}) {
     const h = live.get(session);
     if (!h) return;
     h.stopped = true;
     const pid = h.child.pid;
+    const under = pidsUnder(Number(pid));   // seen before the first dies: afterwards nothing says whose they were
     const killed = new Promise(r => h.child.once("close", () => r(undefined)));
-    const sig = s => { try { process.kill(-Number(pid), s); } catch { try { h.child.kill(s); } catch {} } };
+    const sig = s => { try { process.kill(-Number(pid), s); } catch { try { h.child.kill(s); } catch {} } signalTree(Number(pid), s); };
     sig("SIGCONT"); sig("SIGTERM");
-    const t = setTimeout(() => { sig("SIGKILL"); signalTree(Number(pid), "SIGKILL"); }, 3000);   // the whole tree: the sandbox's second process is in a session of its own
+    const t = setTimeout(() => sig("SIGKILL"), 3000);
     if (h.child.exitCode === null && h.child.signalCode === null) await killed;
     clearTimeout(t);
+    for (const u of under) { try { process.kill(u, 0); process.kill(u, "SIGKILL"); } catch { /* gone */ } }
     await finish(h);
   }
 
-    /**
-     * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
-     * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
-     * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
-     */
   const freeze = (/** @type {string} */ why) => { frozen.add(why); for (const h of live.values()) signal(h, "SIGSTOP"); };
-  const thawAll = (/** @type {string} */ why) => { frozen.delete(why); if (!frozen.size) for (const h of live.values()) signal(h, "SIGCONT"); };
+  const thawAll = (/** @type {string} */ why) => { frozen.delete(why); if (!frozen.size) for (const h of live.values()) if (!h.moving) signal(h, "SIGCONT"); };
 
   /**
    * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
    * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
+   * One hand-over per session at a time: a second ask while the first is under way gets the first's answer, and nothing else wakes a session that is being handed over.
    * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
    */
-  async function moveToServer(session, reason = "you") {
+  function moveToServer(session, reason = "you") {
     const h = live.get(session);
-    if (h) {
-      signal(h, "SIGSTOP");
-      try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
-    }
-    const thaw = () => { if (h && !frozen.size) signal(h, "SIGCONT"); };
-    let r;
-    try { r = await o.requestServer?.(session, reason); } catch (e) { thaw(); throw e; }
-    if (r && r.moved === false) { thaw(); return { moved: false, why: /** @type {any} */ (r).why }; }
-    if (h) { h.released = true; await stop(session); }
-    emit({ type: "moved", session, to: "server", reason });
-    return { moved: true };
+    if (h && h.handing) return h.handing;
+    const run = async () => {
+      if (h) {
+        h.moving = true;
+        signal(h, "SIGSTOP");
+        try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
+      }
+      const thaw = () => { if (h) { h.moving = false; if (!frozen.size) signal(h, "SIGCONT"); } };
+      let r;
+      try { r = await o.requestServer?.(session, reason); } catch (e) { thaw(); throw e; }
+      if (r && r.moved === false) { thaw(); return { moved: false, why: /** @type {any} */ (r).why }; }
+      if (h) { h.released = true; await stop(session); }
+      emit({ type: "moved", session, to: "server", reason });
+      return { moved: true };
+    };
+    if (!h) return run();
+    h.handing = run().finally(() => { h.handing = null; });
+    return h.handing;
   }
 
   async function stopAll() { for (const s of [...live.keys()]) await stop(s); }

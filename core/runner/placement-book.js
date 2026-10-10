@@ -27,19 +27,26 @@ const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * @typedef {{ session: string, chat: string | null, person: string, device: string, key?: string | null, where: "mac" | "server", state: "here" | "moving" | "server" | "locked" | "updating" | "paused",
- *   reason: string | null, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
+ *   reason: string | null, resume?: boolean, since: number, epoch: number, offer: "mac" | null, pin: "server" | "mac" | null, beat: number, movedAt: number | null, allowMac: boolean, ask?: { do: "release" | "start", reason: string | null, at: number } | null,
  *   facts?: { cpuPercent?: number, memoryMb?: number, turn?: number } }} Row
- * @typedef {{ load(): Row[], save(rows: Row[]): void }} Store
+ * @typedef {{ load(): { rows: Row[], owners: Record<string, string> }, save(state: { rows: Row[], owners: Record<string, string> }): void }} Store
  */
 
 /** A store in one JSON file beside the home's lent folder; the file is rewritten whole and renamed in, so a crash leaves the old or the new one. @param {string} file @returns {Store} */
 export function fileStore(file) {
   return {
-    load() { try { const j = JSON.parse(fs.readFileSync(file, "utf8")); return Array.isArray(j) ? j : []; } catch { return []; } },
-    save(rows) {
+    load() {
+      try {
+        const j = JSON.parse(fs.readFileSync(file, "utf8"));
+        if (Array.isArray(j)) return { rows: j, owners: {} };   // the first format: the rows alone
+        return { rows: Array.isArray(j && j.rows) ? j.rows : [], owners: j && j.owners && typeof j.owners === "object" ? j.owners : {} };
+      } catch { return { rows: [], owners: {} }; }
+    },
+    save(state) {
       fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
       const tmp = `${file}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(rows), { mode: 0o600 });
+      const fd = fs.openSync(tmp, "w", 0o600);
+      try { fs.writeSync(fd, JSON.stringify(state)); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
       fs.renameSync(tmp, file);
     },
   };
@@ -52,8 +59,19 @@ export function createPlacementBook(o = {}) {
   const now = o.now || Date.now;
   const cooldown = o.cooldownMs ?? COOLDOWN_MS, lapse = o.lapseMs ?? LAPSE_MS;
   /** @type {Map<string, Row>} */ const rows = new Map();
-  for (const r of o.store ? o.store.load() : []) if (r && SESSION.test(String(r.session))) rows.set(r.session, r);
-  const save = () => { try { o.store?.save([...rows.values()]); } catch { /* a book that cannot be written still answers; the next change tries again */ } };
+  /** Who a session id belongs to, for ever: a row may be forgotten when its session ends, but nobody else may then take the id and read what the first left in the store. @type {Map<string, string>} */ const owners = new Map();
+  { const loaded = o.store ? o.store.load() : { rows: [], owners: {} };
+    for (const r of loaded.rows) if (r && SESSION.test(String(r.session))) { rows.set(r.session, r); if (typeof r.person === "string") owners.set(r.session, r.person); }
+    for (const [k, v] of Object.entries(loaded.owners)) if (SESSION.test(k) && typeof v === "string" && !owners.has(k)) owners.set(k, v); }
+  const save = () => { try { o.store?.save({ rows: [...rows.values()], owners: Object.fromEntries(owners) }); } catch { /* a book that cannot be written still answers; the next change tries again */ } };
+  /** The one place a session's owner is decided: the first person to use an id keeps it. A session is never named like a chat (a chat id is a thing the book answers to). */
+  const claim = (/** @type {string} */ session, /** @type {string} */ person) => {
+    if (!SESSION.test(session)) throw bad("name the session", "bad_input");
+    if (/^chat_/.test(session)) throw bad("a session is not named like a chat", "bad_input");
+    const had = owners.get(session);
+    if (had !== undefined && had !== person) throw bad("not found", "not_found");
+    owners.set(session, person);
+  };
   const copy = (/** @type {Row} */ r) => ({ ...r, ...(r.facts ? { facts: { ...r.facts } } : {}) });
   /** What a move says to the world: the chat (or the session when no chat is named), from, to, why. */
   const moved = (/** @type {Row} */ r, /** @type {string} */ from, /** @type {string} */ to, /** @type {string | null} */ reason) => {
@@ -61,10 +79,16 @@ export function createPlacementBook(o = {}) {
   };
 
   return {
+    /** Who a session id belongs to, or null when nobody has used it. @param {string} session */
+    ownerOf(session) { return owners.get(String(session)) ?? null; },
     /** The row for a session, or null. @param {string} session */
     get(session) { const r = rows.get(String(session)); return r ? copy(r) : null; },
-    /** The row for a chat or a session id. @param {string} id */
-    find(id) { const r = rows.get(String(id)) || [...rows.values()].find(x => x.chat === id); return r ? copy(r) : null; },
+    /** The row for a chat or a session id, only this person's when `person` is named (a chat id proves nothing). @param {string} id @param {string} [person] */
+    find(id, person) {
+      const mineOnly = (/** @type {Row | undefined} */ r) => (r && (person === undefined || r.person === person) ? r : undefined);
+      const r = mineOnly(rows.get(String(id))) || [...rows.values()].find(x => x.chat === id && (person === undefined || x.person === person));
+      return r ? copy(r) : null;
+    },
     all() { return [...rows.values()].map(copy); },
 
     /**
@@ -74,9 +98,11 @@ export function createPlacementBook(o = {}) {
      */
     lend(i) {
       const session = String(i.session);
-      if (!SESSION.test(session)) throw bad("name the session", "bad_input");
+      claim(session, i.person);
       const had = rows.get(session);
       if (had && had.person !== i.person) throw bad("not found", "not_found");
+      // another of the person's computers cannot take a session that is running on this one: it goes through the server (hand it over, then bring it back)
+      if (had && had.where === "mac" && had.device !== i.device && now() - had.beat <= lapse) throw bad("this session is running on another of your computers: hand it to the server first", "conflict");
       if (had && had.pin === "server") throw bad("this session is pinned to the server: unpin it before it runs on a computer", "conflict");
       if (had && had.where === "server" && !had.allowMac) throw bad("this session runs on the server now: bring it back to the computer from its chat first", "conflict");
       const t = now();
@@ -94,7 +120,7 @@ export function createPlacementBook(o = {}) {
      */
     skew(i) {
       const session = String(i.session);
-      if (!SESSION.test(session)) throw bad("name the session", "bad_input");
+      claim(session, i.person);
       const had = rows.get(session);
       if (had && had.person !== i.person) throw bad("not found", "not_found");
       if (had && had.where === "mac") return copy(had);
@@ -152,7 +178,7 @@ export function createPlacementBook(o = {}) {
       if (r.where === "server") return { changed: false, why: "there", row: copy(r) };
       const t = now();
       if (opt.auto && r.movedAt !== null && t - r.movedAt < cooldown) return { changed: false, why: "cooldown", row: copy(r) };
-      r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.ask = null; r.facts = undefined;
+      r.where = "server"; r.state = "server"; r.reason = reason; r.since = t; r.epoch += 1; r.movedAt = t; r.allowMac = false; r.offer = null; r.ask = null; r.facts = undefined; r.resume = true;
       save(); moved(r, "mac", "server", reason);
       return { changed: true, row: copy(r) };
     },
@@ -194,7 +220,12 @@ export function createPlacementBook(o = {}) {
     /** The state the lender's own state machine reports for a session that is moving or locked. @param {string} session @param {Row["state"]} state */
     mark(session, state) { const r = rows.get(String(session)); if (r && STATES.includes(state)) { r.state = state; save(); } },
 
-    /** The session is over for good (stopped by the person, deleted). @param {string} session */
+    /** The server has taken the session on (or it has none to take): nothing is owed for it any more. @param {string} session */
+    resumed(session) { const r = rows.get(String(session)); if (r && r.resume) { r.resume = false; save(); } },
+    /** The sessions the server took and has not yet carried on: a restart of the home picks these up again. */
+    pendingResume() { return [...rows.values()].filter(r => r.resume === true && r.where === "server").map(copy); },
+
+    /** The session is over for good (stopped by the person, finished, deleted). Its id stays the person's. @param {string} session */
     forget(session) { if (rows.delete(String(session))) save(); },
   };
 }

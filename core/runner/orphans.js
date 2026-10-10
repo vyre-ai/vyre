@@ -3,6 +3,13 @@
 // and these two callers end the ones that outlived the runner: the next runner at start-up (all of them), and the watchdog the moment it sees its runner gone (that Space's only).
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
+
+/** When a process started, as the system tells it (a value to compare, not to read): a pid that has been reused is a different process with a different start. Empty when it cannot be told. @param {number} pid */
+export function startedOf(pid) {
+  if (process.platform === "linux") { try { const t = fs.readFileSync(`/proc/${pid}/stat`, "utf8"); return t.slice(t.lastIndexOf(")") + 2).split(" ")[19] || ""; } catch { return ""; } }
+  try { return execFileSync("/bin/ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim(); } catch { return ""; }
+}
 
 /**
  * Sessions a runner that died left running: each session's process group is recorded (run/<space>.<session>.pid) when it starts and forgotten when it ends, so a restarted runner finds the ones that
@@ -19,12 +26,9 @@ export function endOrphans(base, only = "") {
     try {
       const rec = JSON.parse(fs.readFileSync(file, "utf8"));
       const pid = Number(rec.pid); if (!Number.isInteger(pid) || pid < 2) throw new Error("bad");
-      let cmd = ""; try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { cmd = ""; }
-      const stat = (() => { try { return fs.readFileSync(`/proc/${pid}/stat`, "utf8"); } catch { return ""; } })();
-      const started = stat ? stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] : "";
-      // still the process we recorded: alive, and (where /proc says) the same start time
-      const same = process.platform === "linux" ? Boolean(stat) && (!rec.started || String(rec.started) === started) : (() => { try { process.kill(pid, 0); return true; } catch { return false; } })();
-      void cmd;
+      // still the process we recorded: alive, and the same start (a pid is reused; a process that merely has the number now is somebody else's)
+      const started = startedOf(pid);
+      const same = Boolean(started) && (!rec.started || String(rec.started) === started);
       if (same) { for (const sig of ["SIGTERM", "SIGKILL"]) { try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch {} } } n++; }
     } catch { /* not a record we can read */ }
     try { fs.rmSync(file, { force: true }); } catch {}

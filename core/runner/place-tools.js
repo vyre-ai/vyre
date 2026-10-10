@@ -23,17 +23,20 @@ export const SETTING_DEFAULTS = Object.freeze({ enabled: false, pluggedInOnly: t
  * @param {(key: string) => Promise<any>} get the settings module's read of one key (the caller names the tool with a literal)
  */
 export function settingsReader(get) {
+  /** The last good value of each key: a read that fails changes nothing, so a hiccup of the settings module can never read as "switched off". @type {Partial<typeof SETTING_DEFAULTS>} */
+  const last = {};
   let known = false;
   const read = async () => {
-    const out = { ...SETTING_DEFAULTS };
-    let any = false;
     for (const [name, key] of Object.entries(SETTING_KEYS)) {
-      try { const r = await get(key); const v = r && r.data && r.data.value; if (r && r.data) any = true; if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (out)[name] = v; } catch { /* the default */ }
+      try {
+        const r = await get(key); const v = r && r.data && r.data.value;
+        if (r && r.data) known = true;
+        if (v !== undefined && v !== null && typeof v === typeof /** @type {any} */ (SETTING_DEFAULTS)[name]) /** @type {any} */ (last)[name] = v;
+      } catch { /* the last good value stands */ }
     }
-    known = any;
-    return out;
+    return { ...SETTING_DEFAULTS, ...last };
   };
-  /** Whether the settings module has ever answered: a daemon without it has no master switch to honour. */
+  /** Whether the settings module has ever answered: a daemon without it has no master switch to honour, and nothing moves for want of one. */
   return Object.assign(read, { known: () => known });
 }
 

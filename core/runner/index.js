@@ -101,7 +101,17 @@ export default {
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
     const runners = new Map();
-    const emit = (space, e) => { try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {} };
+    const emit = (space, e) => {
+      try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {}
+      if (e.type === "stopped") endOnHome(space, e.session, e.why);
+    };
+    // A session that ends tells the Space's home, or the home would count its silence and take it back to life on the server twenty seconds later. The person stopped it, or the program finished: the home forgets
+    // it. The program died: the home takes it at once from the last whole turn (reason crash). Handed over or fenced: the home already knows.
+    const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
+      const p = lenders.get(space)?.ports; if (!p) return;
+      if (why === "stopped" || why === "finished") Promise.resolve(p.stop?.(session)).catch(() => {});
+      else if (why === "crashed") Promise.resolve(p.requestServer?.(space, session, "crash")).catch(() => {});
+    };
     const forSpace = async space => {
       const p = await portsFor(space);
       if (p && (typeof p.device !== "string" || !p.device)) throw Object.assign(new Error("the runner needs this computer's device key identity"), { code: "unavailable" });
@@ -135,11 +145,13 @@ export default {
     const limits = { ...SETTING_DEFAULTS };
     const readSettings = settingsReader(key => ctx.call("settings.get", { key }));
     const refreshSettings = async () => { Object.assign(limits, await readSettings()); return limits; };
+    /** Is running here switched on? A settings module that has never answered gives no switch to honour (nothing moves for want of one); one that answers is believed. */
+    const enabledNow = () => !readSettings.known() || limits.enabled;
     /** Titles of the chats the sessions here belong to, as the home told this computer when it lent them. @type {Map<string, string>} */ const titles = new Map();
     /** Start (or resume) a session here: the Space's own definition says what runs. Both the person's tool and the home's "start it" (the person brought a session back) come here. */
     const startSession = async (space, { session, resume, chat }) => {
       await refreshSettings();
-      if (readSettings.known() && !limits.enabled) throw Object.assign(new Error("Running sessions on this computer is switched off. Turn it on in Settings, This computer."), { code: "refused" });
+      if (!enabledNow()) throw Object.assign(new Error("Running sessions on this computer is switched off. Turn it on in Settings, This computer."), { code: "refused" });
       for (const r0 of runners.values()) if (r0.paused) throw Object.assign(new Error("Sessions on this computer are paused: resume them first."), { code: "conflict" });
       const p = await portsFor(space); const r = await forSpace(space);
       // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
@@ -148,8 +160,15 @@ export default {
       if (spec && spec.skew) throw Object.assign(new Error("This Mac runs an older Vyre than this Space needs, so the session runs on the server. Update Vyre on this Mac, then bring it back."), { code: "unavailable" });
       if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
       if (typeof spec.title === "string" && spec.title) titles.set(session, spec.title);
-      const run = resolveAgent(spec);
-      const h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
+      let h;
+      try {
+        const run = resolveAgent(spec);
+        h = await r.start({ session, resume: Boolean(resume), ...(chat ? { chat } : {}), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
+      } catch (e) {
+        // the home lent the session on the strength of this start: a start that failed here must not leave it believing the session runs on this computer (it would be taken, as "offline", twenty seconds later)
+        if (!r.info().some((/** @type {any} */ x) => x.session === session)) Promise.resolve(p.stop?.(session)).catch(() => {});
+        throw e;
+      }
       return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
     };
     ctx.tool("runner.start", {
@@ -200,7 +219,18 @@ export default {
       input: obj({ thread: str, to: { type: "string", enum: ["server", "mac"] }, space: str, session: str }, []),
       run: async (i, meta) => {
         // the chat's own words: the home asks the computer to hand the session over, or lets it come back (place-tools.js)
-        if (i.thread !== undefined) return placeDeps.moveThread(i, meta);
+        if (i.thread !== undefined) {
+          // this daemon keeps the place of the sessions lent to it (it is the Space's home): ask it. A computer that only lends hands its own session over, whichever chat it belongs to.
+          const h = hostOf();
+          if (h && h.placements) return placeDeps.moveThread(i, meta);
+          await person(ctx, meta, "moving a session");
+          if (i.to !== "server") throw Object.assign(new Error("Coming in this release: bringing a session back to a computer is done from the Space's server"), { code: "unavailable" });
+          for (const [, r] of runners) for (const x of r.info()) if (x.chat === i.thread || x.session === i.thread) {
+            const out = await r.moveToServer(x.session, "you");
+            return out.moved === false ? { where: "mac", computer: null, state: "here", reason: null, since: null, offer: null, pinned: false, pin: null } : { where: "server", computer: null, state: "server", reason: "you", since: Date.now(), offer: null, pinned: false, pin: null };
+          }
+          throw Object.assign(new Error("no such session on this computer"), { code: "not_found" });
+        }
         // the computer's own: a last checkpoint here, then the server takes it
         if (typeof i.space !== "string" || typeof i.session !== "string") throw Object.assign(new Error("name the chat to move, or the space and session on this computer"), { code: "bad_input" });
         await person(ctx, meta, "moving a session"); const r = await (await forSpace(i.space)).moveToServer(i.session, "you"); return r.moved === false ? r : { moved: true }; } });
@@ -283,6 +313,8 @@ export default {
     // move the server held back (its cooldown) or that could not be made waits before it is tried again.
     const mover = createMover();
     /** @type {"lid-closed" | "asleep" | null} */ let sleeping = null;
+    let sleepingAt = 0;
+    const SLEEP_LIMIT_MS = 10 * 60_000, BEAT_TIMEOUT_MS = seam.beatTimeoutMs || 6000;
     const handing = new Set();
     const holdOff = new Map();
     const handOver = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ reason) => {
@@ -295,59 +327,78 @@ export default {
         finally { handing.delete(key); }
       })();
     };
-    const moveTick = () => {
-      /** @type {any[]} */ const rows = [];
-      for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x });
+    /** What runs here now, asked once per beat: each ask samples every process of every session. @returns {any[]} */
+    const snapshot = () => { /** @type {any[]} */ const rows = []; for (const [space, r] of runners) for (const x of r.info()) rows.push({ space, ...x }); return rows; };
+    const moveTick = (/** @type {any[]} */ rows = snapshot()) => {
       if (!rows.length) { mover.reset(); return; }   // nothing runs here: nothing to ask the machine about
-      for (const d of mover.tick({ settings: limits, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
+      // a settings module that has never answered gives no switch to honour: nothing moves for want of one
+      for (const d of mover.tick({ settings: { ...limits, enabled: enabledNow() }, sleeping, onPower: (seam.state || deviceState)().onPower, sessions: rows })) { const x = rows.find(y => y.session === d.session); if (x) handOver(x.space, d.session, d.reason); }
     };
-    // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts; when it wakes, check in at once.
-    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); moveTick(); });
-    const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatOnce().catch(() => {}); });
-    /** Consecutive beats a Space's home did not answer. @type {Map<string, number>} */ const missed = new Map();
-    let beating = false, beatTimer = null;
+    // The Mac says it is about to sleep (the Capsule calls link.sleep): hand everything over now, before the lid shuts. What is not handed over waits, frozen, until this computer has been heard by its home again
+    // (a woken computer must not run ahead of a server that may have taken its sessions); when it wakes, it checks in at once.
+    const offSleep = ctx.events.on("link.sleeping", () => { sleeping = sleepReason(); sleepingAt = Date.now(); moveTick(); for (const r of runners.values()) r.freeze("sleep"); });
+    const offWake = ctx.events.on("link.woke", () => { sleeping = null; beatAgain = true; beatOnce().catch(() => {}); });
+    /** Consecutive beats a Space's home did not answer, and the beat to each that is still out. @type {Map<string, number>} */ const missed = new Map();
+    /** @type {Map<string, Promise<any>>} */ const inflight = new Map();
+    let beating = false, beatTimer = null, beatAgain = false;
+    /** One Space's heartbeat: its sessions (in as many calls as it takes), then what the home answered. */
+    const beatSpace = async (/** @type {string} */ space, /** @type {any} */ l, /** @type {any[]} */ rows, /** @type {boolean} */ well) => {
+      const p = l.ports, r = runners.get(space);
+      const mine = rows.filter(x => x.space === space && Number.isInteger(p.epochOf(x.session))).map(x => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true }));
+      // a heartbeat names a bounded number of sessions: more than that go in several calls, so none looks dead
+      const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
+      /** @type {{ fenced: string[], directives: any[] }} */ const got = { fenced: [], directives: [] };
+      for (let at = 0; at === 0 || at < mine.length; at += per) {
+        const ans = await p.beat({ sessions: mine.slice(at, at + per), well });
+        if (ans && Array.isArray(ans.fenced)) got.fenced.push(...ans.fenced);
+        if (ans && Array.isArray(ans.directives)) got.directives.push(...ans.directives);
+      }
+      return got;
+    };
     const beatOnce = async () => {
       if (beating) return;
-      beating = true;
+      beating = true; beatAgain = false;
       try {
         // an idle computer (no Space lent to, no session) does nothing at all: no settings read, no power query, every few seconds for ever
         if (!lenders.size && !runners.size) return;
+        if (sleeping && Date.now() - sleepingAt > SLEEP_LIMIT_MS) sleeping = null;   // a wake that never came is not a reason to hand everything over for ever
         await refreshSettings().catch(() => {});
-        moveTick();
-        const well = limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: (seam.state || deviceState)(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
-        for (const [space, l] of lenders) {
-          const p = l.ports; if (typeof p.beat !== "function") continue;
+        const rows = snapshot();
+        moveTick(rows);
+        const well = readSettings.known() && limits.enabled && !sleeping && hereBlock({ spaceAllows: true, memberAccepts: true, state: (seam.state || deviceState)(), limits: { onlyOnPower: limits.pluggedInOnly } }) === "";
+        await Promise.all([...lenders].map(async ([space, l]) => {
+          if (typeof l.ports.beat !== "function") return;
           const r = runners.get(space);
-          const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true })) : [];
-          let ans;
-          try {
-            // a heartbeat names a bounded number of sessions: more than that go in several calls, so none looks dead
-            const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
-            ans = await p.beat({ sessions: sessions.slice(0, per), well });
-            for (let at = per; at < sessions.length; at += per) { const more = await p.beat({ sessions: sessions.slice(at, at + per), well }); ans = { ...ans, fenced: [...(ans.fenced || []), ...(more.fenced || [])], directives: [...(ans.directives || []), ...(more.directives || [])] }; }
-          }
-          catch {
-            // two beats unanswered: the sessions wait where they are, so they never run ahead of a server that will take them after a lapse; the next answer settles what happens to them
-            const n = (missed.get(space) || 0) + 1; missed.set(space, n);
-            if (n >= 2 && r) r.freeze("offline");
-            continue;
-          }
+          const missOne = () => { const n = (missed.get(space) || 0) + 1; missed.set(space, n); if (n >= 2 && r) r.freeze("offline"); };
+          // the last beat to this home is still out (the call hangs): that is a miss too, and no second call piles on it
+          if (inflight.has(space)) { missOne(); return; }
+          const call = beatSpace(space, l, rows, well);
+          inflight.set(space, call);
+          call.catch(() => {}).finally(() => { if (inflight.get(space) === call) inflight.delete(space); });
+          /** @type {{ fenced: string[], directives: any[] }} */ let ans;
+          try { ans = await Promise.race([call, new Promise((_, no) => { const t = setTimeout(() => no(new Error("the home did not answer")), BEAT_TIMEOUT_MS); t.unref?.(); })]); }
+          catch { missOne(); return; }
+          // two beats unanswered froze the sessions so they never ran ahead of a server that takes them after a lapse; this answer settles what happens to them
           missed.set(space, 0);
-          if (r && ans && Array.isArray(ans.fenced)) for (const sid of ans.fenced) await r.fence(sid).catch(() => {});
-          if (r) r.thaw("offline");
-          for (const d of ans && Array.isArray(ans.directives) ? ans.directives : []) {
+          if (r) for (const sid of ans.fenced) await r.fence(sid).catch(() => {});
+          if (r) { r.thaw("offline"); r.thaw("sleep"); }
+          for (const d of ans.directives) {
             const key = `${space}/${d.do}/${d.session}`;
             if (asked.has(key)) continue;
             asked.add(key);
             (async () => {
               try {
                 if (d.do === "release" && r) await r.moveToServer(d.session, d.reason || "you");
-                else if (d.do === "start" && limits.enabled) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
+                else if (d.do === "start" && enabledNow()) await startSession(space, { session: d.session, resume: true, ...(d.chat ? { chat: d.chat } : {}) });
               } catch { /* asked again at a later beat */ } finally { asked.delete(key); }
             })();
           }
-        }
-      } finally { beating = false; }
+        }));
+      } finally {
+        beating = false;
+        // a wake that arrived while a beat was out asks for its own, at once
+        if (beatAgain) { beatAgain = false; beatOnce().catch(() => {}); }
+      }
     };
     if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, seam.heartbeatMs || HEARTBEAT_MS); beatTimer.unref?.(); }
     return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };

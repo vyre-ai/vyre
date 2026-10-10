@@ -30,6 +30,8 @@ export const CHUNK_BYTES = 96 * 1024;
 const RESUME_MS = 30_000;
 /** The most sessions one heartbeat names; a lender with more sends them in several, so none is ever missed (a missed one looks dead). */
 export const BEAT_MAX = 100;
+/** A file is at most 100 MB (the checkpoint's own cap) in chunks of CHUNK_BYTES: an upload that says it has more chunks than that is refused before anything is written. */
+const MAX_CHUNKS = Math.ceil(100 * 1024 * 1024 / CHUNK_BYTES) + 2;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -53,7 +55,10 @@ export function createLentHome(o) {
   // A restart of the home keeps the sessions that were on lenders' computers: they are lent again as they were, and each lender gets a whole lapse to show itself.
   for (const r of book.all()) if (r.where === "mac" && r.key !== undefined) lent.set(r.session, { person: r.person, device: r.device, key: r.key || undefined, ...(r.chat ? { chat: r.chat } : {}) });
   book.grace();
-  /** Sessions the server took and has not yet resumed. @type {Set<string>} */ const owed = new Set();
+  /** Sessions the server took and has not yet carried on, including those a restart of this home found still owed. @type {Set<string>} */ const owed = new Set(book.pendingResume().map(r => r.session));
+  /** Continuations running now, one per session: a slow one is not started a second time. @type {Map<string, Promise<void>>} */ const resuming = new Map();
+  // partial uploads of a lender that vanished are not kept across a restart
+  try { if (o.root) fs.rmSync(path.join(o.root, ".uploads"), { recursive: true, force: true }); } catch { /* nothing there */ }
   const uploads = new Map();
   const downloads = new Map();
   const who = chain => {
@@ -85,17 +90,25 @@ export function createLentHome(o) {
     if (!r.changed) return r;
     lent.delete(String(session)); owed.add(String(session));
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
-    await resumeOwed(String(session));
+    kickResume(String(session));
     return r;
   };
-  const resumeOwed = async (session) => {
+  /** Start the server's continuation of a session, once at a time; the caller does not wait for it (a slow continuation must not hold a lender's release or the sweep of the others). */
+  const kickResume = (/** @type {string} */ session) => {
+    if (resuming.has(session)) return;
+    const p = resumeOwed(session).finally(() => { resuming.delete(session); });
+    resuming.set(session, p);
+  };
+  const resumeOwed = async (/** @type {string} */ session) => {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
-    if (!o.resume) { owed.delete(session); return; }
-    // a continuation that hangs must not stall the sweep for every other lender: it is given half a minute and told again at the next sweep
+    if (!o.resume) { owed.delete(session); book.resumed(session); return; }
+    // writes that passed their checks before the take-over finish first, so the server carries on from what the store really holds
+    try { await store.drain(session); } catch { /* the store answers for itself */ }
+    // a continuation that hangs is given half a minute and told again at the next sweep
     try {
       await Promise.race([Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), new Promise((_, no) => { const t = setTimeout(() => no(new Error("the continuation did not answer")), RESUME_MS); t.unref?.(); })]);
-      owed.delete(session);
+      owed.delete(session); book.resumed(session);
     } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
@@ -115,7 +128,7 @@ export function createLentHome(o) {
   const sweepAll = async () => {
     for (const r of book.lapsed()) await takeOver(r.session, "offline");
     for (const r of book.overdue()) await takeOver(r.session, r.ask && r.ask.reason ? r.ask.reason : "you");
-    for (const s of [...owed]) await resumeOwed(s);
+    for (const s of [...owed]) kickResume(s);
   };
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
   // The home's own chain: it reads a session the lender gave up from the same store, to resume it on the server. A private object, never on the wire, so nothing a peer sends can be it.
@@ -153,6 +166,8 @@ export function createLentHome(o) {
       const w = who(chain);
       if (!i || !SESSION.test(String(i.session))) throw err("bad_input", "name the session");
       if (!stands(w, i.device_key)) throw err("not_allowed", "this computer is not allowed to run this Space's work");
+      // a session id belongs to the first person who used it, for good: nobody else reads what it left in the store
+      { const owner = book.ownerOf(String(i.session)); if (owner !== null && owner !== w.person) throw err("not_found", "not found"); }
       { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
       const spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
@@ -172,8 +187,10 @@ export function createLentHome(o) {
       // protocol is needed. Where no hello was signed (a test, a home that does not require it) there is nothing to compare.
       const hello = o.leases && i.lease && typeof o.leases.helloOf === "function" ? o.leases.helloOf(String(i.lease)) : null;
       if (hello && Number.isInteger(hello.protocol) && hello.protocol < RUNNER_PROTOCOL_MIN) {
+        const live = book.get(String(i.session));
         book.skew({ session: String(i.session), chat, person: w.person, device: w.device, key: i.device_key || null });
-        if (o.leases) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } }
+        // an old runner on a second computer must not take the credentials of a session that is running well on the first
+        if (o.leases && !(live && live.where === "mac")) { try { o.leases.unbind(String(i.session)); } catch { /* not bound */ } }
         return { skew: { need: RUNNER_PROTOCOL_MIN, have: hello.protocol } };
       }
       // The book decides whether this computer may run it (a session the server took comes back only when the person asked) and gives the epoch every later write names.
@@ -198,6 +215,8 @@ export function createLentHome(o) {
       /** @type {string[]} */ const fencedList = [];
       for (const x of list) {
         const sid = String(x && x.session), l = lent.get(sid);
+        // an Offer that no longer stands ends the lending: the server takes the session instead of counting a healthy beat
+        if (l && l.person === w.person && l.device === w.device && !stands(w, l.key)) { await takeOver(sid, "switched-off"); fencedList.push(sid); continue; }
         if (!SESSION.test(sid) || !l || l.person !== w.person || l.device !== w.device || !Number.isInteger(x.epoch) || !book.beat({ session: sid, epoch: x.epoch, device: w.device, cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, turn: x.turn, paused: x.paused === true }).ok) fencedList.push(sid);
       }
       if (i && i.well === true) book.clear(w.device);
@@ -228,7 +247,7 @@ export function createLentHome(o) {
     async putFile(chain, s, rel, c = {}) {
       writer(chain, s, c && c.epoch);
       if (c.deleted) return store.putFile(chain, String(s), String(rel), null);
-      if (!Number.isInteger(c.index) || !Number.isInteger(c.total) || c.total < 1 || c.index < 0 || c.index >= c.total || typeof c.b64 !== "string" || typeof c.upload !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(c.upload)) throw err("bad_input", "a file chunk is numbered and carries its bytes");
+      if (!Number.isInteger(c.index) || !Number.isInteger(c.total) || c.total < 1 || c.total > MAX_CHUNKS || c.index < 0 || c.index >= c.total || typeof c.b64 !== "string" || typeof c.upload !== "string" || !/^[A-Za-z0-9_-]{8,64}$/.test(c.upload)) throw err("bad_input", "a file chunk is numbered and carries its bytes");
       const bytes = Buffer.from(c.b64, "base64");
       if (bytes.length > CHUNK_BYTES) throw err("too_large", "that chunk is too large");
       const key = `${w2(chain)}|${s}|${c.upload}`;
