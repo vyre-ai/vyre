@@ -183,5 +183,16 @@ export function createJoins(h) {
   /** @param {any} child */
   const settled = child => (child && child.parent && SETTLED.has(child.state) ? sweep(child.parent.run, child.parent.step) : Promise.resolve());
 
-  return { parallel, subflow, settled, sweep };
+  /**
+   * A lane or a sub-flow that failed is retried by retrying the run that started it (which sends the failed lane round again and keeps the rest), so the parent finishes and there is one thing to retry.
+   * @param {string} runId @returns {Promise<string | null>} the parent's id when it is failed too
+   */
+  async function retryTarget(runId) {
+    const own = await h.store.getRun(runId);
+    if (!own || !own.parent || own.state !== "failed") return null;
+    const up = await h.store.getRun(own.parent.run);
+    return up && up.state === "failed" ? up.id : null;
+  }
+
+  return { parallel, subflow, settled, sweep, retryTarget };
 }
