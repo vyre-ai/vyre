@@ -23,7 +23,7 @@ const { present, asOwner } = await import("../test/helpers.js");
 fs.mkdirSync(home, { recursive: true });
 const work = fs.realpathSync(fs.mkdtempSync(`${home}-work-`));
 fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "live-providers", role: "box", sessions: { max_live: 0 }, vault: { keystore: "file", mcp: { port: 0 } }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects") }));
-const d = await start({ root: home, presence: present, log: () => {}, kernel: true });
+const d = await start({ root: home, presence: present, log: process.env.LP_LOG ? (/** @type {any} */ m) => console.error("DLOG", String(m).slice(0, 300)) : () => {}, kernel: true });
 asOwner(d, home);
 const call = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {string} */ caller = "cli") => d.registry.call(tool, input, caller);
 const must = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await call(tool, input); if (r.error) throw new Error(`${tool}: ${r.error.code} ${r.error.message}`); return r.data; };
