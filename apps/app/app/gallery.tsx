@@ -21,6 +21,7 @@ import { InstalledKits, AvailableKits } from "../screens/flows/KitsLists";
 import { AccessList } from "../screens/devices/AccessList";
 import { loadAccess } from "../screens/devices/data";
 import { leaseRows } from "../screens/runner/lease-model.js";
+import { PublishView } from "../src/chat/PreviewPublish";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -136,6 +137,10 @@ function Sample({ name }: { name: string }) {
       { type: "lease.refused", seq: 1, time: now - 3_600_000, data: { device: "d2", why: "no_lend" } },
     ], (id) => ({ d1: "Dana's MacBook", d2: "Studio Mac" }[id] ?? ""), now);
     return <BlockScreen screen={{ v: 2, id: "cl", layout: { block: "l" }, blocks: { l: { type: "list", content: { rows } } } } as never} handlers={{}} />;
+  if (name === "publish-sheet") {
+    const held = { held: true, task: "t", plan: { action: "publish", goes_public: true, deployment: { id: "d", name: "intake-form", version: 1 }, urls: ["https://intake-form.juniper.example"], replaces: null, secrets: [], ungranted_env: [], hash: "h" } } as never;
+    const noop = () => {};
+    return <View style={{ gap: 24 }}><PublishView step={{ kind: "asking", held, later: "Public once the public door is on. Until then the address works on your own devices only." }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /><PublishView step={{ kind: "done", address: "intake-form.juniper.example", later: "" }} onApprove={noop} onDecline={noop} onOpen={noop} onClose={noop} /></View>;
   }
   if (name === "runner-chip") {
     return (
