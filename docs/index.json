@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1609,"event":530,"config":297,"env":276,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1610,"event":530,"config":297,"env":276,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1245,6 +1245,7 @@
     {"kind":"tool","name":"previews.signin","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssignin","module":"previews","mentions":[{"page":"using/previews.md","line":37,"anchor":"a-computers-live-screen"}]},
     {"kind":"tool","name":"previews.signin-done","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssignin-done","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.signin-get","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssignin-get","module":"previews","mentions":[]},
+    {"kind":"tool","name":"previews.site","definedIn":"core/previews/index.js","page":"reference/tools.md#previewssite","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.step","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsstep","module":"previews","mentions":[{"page":"using/previews.md","line":37,"anchor":"a-computers-live-screen"}]},
     {"kind":"tool","name":"previews.stop","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsstop","module":"previews","mentions":[]},
     {"kind":"tool","name":"previews.thumb","definedIn":"core/previews/index.js","page":"reference/tools.md#previewsthumb","module":"previews","mentions":[]},
@@ -1301,7 +1302,7 @@
     {"kind":"tool","name":"publish.plan","definedIn":"core/publish/index.js","page":"reference/tools.md#publishplan","module":"publish","mentions":[]},
     {"kind":"tool","name":"publish.preview","definedIn":"core/publish/index.js","page":"reference/tools.md#publishpreview","module":"publish","mentions":[{"page":"using/publish.md","line":21,"anchor":"a-folder-of-ready-files-one-yes"}]},
     {"kind":"tool","name":"publish.publish","definedIn":"core/publish/index.js","page":"reference/tools.md#publishpublish","module":"publish","mentions":[{"page":"using/publish.md","line":21,"anchor":"a-folder-of-ready-files-one-yes"}]},
-    {"kind":"tool","name":"publish.quick","definedIn":"core/publish/index.js","page":"reference/tools.md#publishquick","module":"publish","mentions":[{"page":"using/publish.md","line":17,"anchor":"a-folder-of-ready-files-one-yes"}]},
+    {"kind":"tool","name":"publish.quick","definedIn":"core/publish/index.js","page":"reference/tools.md#publishquick","module":"publish","mentions":[{"page":"using/publish.md","line":17,"anchor":"a-folder-of-ready-files-one-yes"},{"page":"using/publish.md","line":37,"anchor":"not-here-yet"}]},
     {"kind":"tool","name":"publish.retire","definedIn":"core/publish/index.js","page":"reference/tools.md#publishretire","module":"publish","mentions":[]},
     {"kind":"tool","name":"publish.rollback","definedIn":"core/publish/index.js","page":"reference/tools.md#publishrollback","module":"publish","mentions":[{"page":"using/publish.md","line":17,"anchor":"a-folder-of-ready-files-one-yes"}]},
     {"kind":"tool","name":"publish.secret.grant","definedIn":"core/publish/index.js","page":"reference/tools.md#publishsecretgrant","module":"publish","mentions":[]},
