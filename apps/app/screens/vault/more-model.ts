@@ -321,6 +321,37 @@ export function pickPeople(d: unknown): Person[] {
   return arr(list).filter((p) => str(p.name)).map((p) => ({ name: str(p.name), fingerprint: str(p.fingerprint), verified: Boolean(p.verified), blocked: Boolean(p.blocked || p.changed) }));
 }
 
+/** The roles a person may give in a shared vault (the owner is made when the vault is). */
+export const INVITE_ROLES: [string, string][] = [["member", "Member"], ["admin", "Admin"], ["read-only", "Read only"]];
+/** What each role can do, in one line. */
+export const ROLE_HELP: Record<string, string> = { admin: "Can add people and change roles.", member: "Can see what is in it and add items.", "read-only": "Can see what is in it." };
+
+/** The input of vault.vaults.create, or what is wrong with the name in words. */
+export function newVaultInput(typed: string): { input: { name: string } } | { error: string } {
+  const name = typed.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
+  if (!typed.trim()) return { error: "Give the vault a name." };
+  if (!name) return { error: "Start the name with a letter or a number." };
+  return { input: { name } };
+}
+
+/** The input of vault.members.invite, or what is missing. The person's Vyre card must be known to this one: the box says so in words when it is not. */
+export function inviteInput(vault: string, person: string, role: string): { input: { vault: string; person: string; role: string } } | { error: string } {
+  if (!person.trim()) return { error: "Say who to invite." };
+  return { input: { vault, person: person.trim(), role } };
+}
+
+/** What a pasted share is: a vault invite or a pass ticket, by how it starts, or why it is neither. */
+export function acceptKind(pasted: string): { kind: "invite" | "ticket"; value: string } | { error: string } {
+  const v = pasted.trim();
+  if (v.startsWith("vyre-invite:")) return { kind: "invite", value: v };
+  if (v.startsWith("vyre-pass:")) return { kind: "ticket", value: v };
+  return { error: v ? "That is not something Vyre made. Paste the whole thing they sent you." : "Paste what they sent you." };
+}
+
+/** What taking someone out of a shared vault tells the person: what they could read must be replaced. */
+export const removedLine = (person: string, vault: string, rotate: string[]): string =>
+  rotate.length ? `${person} is out of ${vault}. Replace ${rotate.length === 1 ? rotate[0] : `${rotate.length} items`}: they could read ${rotate.length === 1 ? "it" : "them"}.` : `${person} is out of ${vault}.`;
+
 const ROLE_WORD: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", "read-only": "Read only" };
 export const roleWord = (r: string): string => ROLE_WORD[r] ?? r;
 
