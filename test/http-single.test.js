@@ -21,7 +21,7 @@ const ALLOWED = new Map([
   ["core/relay/bridge.js", LOCAL + " (the relay channel's own connection)"], ["core/daemon/app-sw.js", BROWSER], ["core/switchboard/index.js", "functions named fetch that read a credential, not HTTP"],
   ["kernel/storage/pool.js", "`fetch(id)` reads a blob from the pool, not HTTP"], ["core/names/directory.js", PARAM], ["lib/identity/directory.js", PARAM], ["lib/acme/acme.js", PARAM], ["lib/connectors/", PARAM],
   ["core/vault/health.js", PARAM], ["core/sessions/drivers/openrouter.js", PARAM + " (the pinned API client in lib/api-endpoint.js)"],
-  ["core/runner/egress.js", "this IS the sandbox's egress proxy, which decides with lib/netguard.js"], ["lib/http.js", "the one client"],
+  ["core/runner/egress.js", "this IS the sandbox's egress proxy, which decides with lib/netguard.js"], ["core/runner/runner.js", LOCAL + " (a preview request to the dev server inside this computer's own sandbox: its unix socket or loopback)"], ["lib/http.js", "the one client"],
   ["core/resilience/node.js", "dials the person's own vyred (a unix socket, or the LAN, tailnet or relay address they paired), never a public service"],
   ["core/link/transport.js", "dials the paired box (a tailnet or LAN address the person set up) and pins its certificate itself"], ["core/glass/providers/computer.js", LOCAL + " (the computer helper)"],
   ["local/voice/ws.js", "the voice provider's WebSocket handshake needs the raw upgraded socket, which the client cannot give; it checks the address through lib/http.js pin() and dials the checked address"],
