@@ -713,7 +713,7 @@ mbx_send() {
 # cannot be read are said so, with the one command that shows them: the page asks for them either way.
 show_words() {
   [ -n "$CODE" ] && [ "$DRY" = 0 ] || return 0
-  n=0
+  n=0; told=
   # A first start (the record store, the relay link) can take a few minutes: wait up to three, saying so once, before giving the fallback (the 0.2.12 live walk saw both).
   while [ "$n" -lt "${VYRE_WORDS_TRIES:-180}" ]; do
     [ "$n" != 10 ] || say "  Waiting for the four words while Vyre starts (this can take a few minutes the first time)..."
@@ -727,6 +727,11 @@ show_words() {
     # the box says why it did not use the code (a code older than an hour, the relay refusing it): say it now, not after three minutes of waiting
     why=$(printf '%s' "$out" | sed -n 's/.*"failed": *true.*"why": *"\([^"]*\)".*/\1/p')
     if [ -n "$why" ]; then say "  Vyre could not start the pairing: $why"; say "  Make a new install line in the Vyre app and run it again."; return 0; fi
+    # a busy relay is waited out by the box itself; say so once, and keep waiting
+    if [ -z "$told" ]; then
+      busy=$(printf '%s' "$out" | sed -n 's/.*"retrying": *true.*"why": *"\([^"]*\)".*/\1/p')
+      if [ -n "$busy" ]; then told=1; say "  The relay is busy right now: Vyre keeps trying on its own ($busy)."; fi
+    fi
     n=$((n + 1)); sleep 1
   done
   say "  The four words did not show yet. To see them, run: ${BOLD}${SUDO:+sudo }vyre words${RESET}"
