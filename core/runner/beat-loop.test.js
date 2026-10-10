@@ -67,7 +67,7 @@ test("a session started on this computer is beaten for, and a hand-over the pers
   w.book.askRelease("s1", "you");
   await waitFor(() => w.book.get("s1").where === "server", 15_000);
   assert.deepEqual([w.book.get("s1").reason, w.book.get("s1").epoch], ["you", 2]);
-  assert.deepEqual((await w.run("runner.here", {})).sessions, [], "it is gone from this computer");
+  await waitFor(async () => (await w.run("runner.here", {})).sessions.length === 0, 10_000);   // gone from this computer once the hand-over has ended it
 });
 
 test("a home that cannot be reached freezes the sessions after two missed beats; a short outage thaws them and they are still this computer's", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
