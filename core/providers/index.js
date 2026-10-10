@@ -9,7 +9,7 @@ export default {
       description: "Every session provider on this machine with its accounts and the models it offers; pickers build themselves from it.",
       input: { type: "object", properties: {} },
       run: async () => {
-        const r = await ctx.call("sessions.providers.snapshot", {});
+        const r = await ctx.call("sessions.providers.snapshot", {}, { relay: true });
         return r.error ? [] : r.data;
       },
     });

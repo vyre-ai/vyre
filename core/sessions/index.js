@@ -306,36 +306,36 @@ export default {
     ctx.tool("sessions.providers.snapshot", {
       description: "Every session provider this module speaks for (claude, codex, grok), each with its own accounts and the models it offers. For providers.list (core/providers) to assemble; not a public name itself.", internal: true,
       input: { type: "object", properties: {} },
-      run: async () => Promise.all(PROVIDERS.map(async p => ({ ...p,
-        accounts: await Promise.all(accounts.list(p.id).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
+      run: async (_i, meta) => { const who = await personOf(meta); return Promise.all(PROVIDERS.map(async p => ({ ...p,
+        accounts: await Promise.all(accounts.list(p.id, who).map(async a => ({ id: a.id, label: a.label, kind: a.kind, plan: accountPlan(p.id, a.id), ...(p.id === "grok" ? { privacy: a.privacy } : {}), signed_in: a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false, default: a.is_default }))),
         models: p.id === "claude" ? MODEL_ALIASES : providerModels(p.id),
-        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))),
+        capabilities: p.id === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true } : /** @type {any} */ (drivers)[p.id].capabilities }))); },
     });
 
     // ---- the "@" picker's Accounts kind: the AI accounts that are signed in, so "@codex" picks who answers one turn
     /** Is this account one a turn could run on now: not waiting on a person, and signed in or holding its key. @param {any} a */
     const signedIn = async a => !a.pending && (a.kind === "login" ? (a.synthetic ? true : a.signed_in_at != null) : !a.vault_item ? true : (await vaultHas(a.vault_item)) !== false);
     /** One row per signed-in account: the provider's own name when it has one, "Name (label)" when it has several. */
-    const accountChoices = async () => {
+    const accountChoices = async (/** @type {string | null} */ who) => {
       const out = [];
       for (const p of PROVIDERS) {
         const ok = [];
-        for (const a of accounts.list(p.id)) if (await signedIn(a)) ok.push(a);
+        for (const a of accounts.list(p.id, who)) if (await signedIn(a)) ok.push(a);
         for (const a of ok) out.push({ kind: "account", id: ok.length === 1 ? p.id : `${p.id}:${a.id}`, name: ok.length === 1 ? p.label : `${p.label} (${a.label})`, hint: `${p.label} account, ${a.kind === "login" ? "signed in" : a.kind}`, provider: p.id, account: ok.length === 1 ? null : a.id });
       }
       return out;
     };
     tool("sessions.mention.search", "The @ picker's Accounts results: the AI accounts that are signed in (Claude, Codex, Grok, OpenRouter), by provider name. Names and a short hint only.",
       { type: "object", properties: { q: str, limit: { type: "integer", minimum: 1, maximum: 50 } } },
-      async i => {
+      async (i, meta) => {
         const q = String(i.q || "").trim().toLowerCase();
-        const rows = (await accountChoices()).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
+        const rows = (await accountChoices(await personOf(meta))).filter(r => !q || r.name.toLowerCase().includes(q) || r.provider.includes(q));
         return rows.slice(0, i.limit || 12).map(({ provider: _p, account: _a, ...r }) => r);
       });
     tool("sessions.mention.resolve", "What an account tagged with @ means for a thread: the person asked this one turn to run on it. No grant; threads.send reads the tag. Called by the mentions core.",
       { type: "object", required: ["id"], properties: { id: str, thread: str, said: str } },
-      async i => {
-        const hit = (await accountChoices()).find(r => r.id === String(i.id));
+      async (i, meta) => {
+        const hit = (await accountChoices(await personOf(meta))).find(r => r.id === String(i.id));
         if (!hit) throw Object.assign(new Error("that account is not signed in (sessions.accounts.list shows the accounts; sessions.accounts.signin signs one in)"), { code: "not_found" });
         return { name: hit.name, hint: hit.hint, outside: false, note: `The person asked ${hit.name} to answer this one turn. The session keeps its own provider.` };
       });

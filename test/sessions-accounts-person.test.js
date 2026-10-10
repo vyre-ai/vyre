@@ -37,6 +37,13 @@ test("a member's AI account is theirs: listed, bound and removed by them only; t
   assert.equal((await resolve({ person: BOB })).id, b.data.id);
   assert.equal((await resolve({ person: owner })).id, o.data.id);
   assert.equal(await resolve({ person: "per_" + "e".repeat(26) }), null, "a person with no account of their own gets none, not the owner's");
+  // what a person sees of the providers is their own (the @ picker reads the same list through the same person)
+  const labelsOf = (/** @type {any} */ r) => JSON.stringify(r.data || r.error);
+  const owner1 = labelsOf(await as(owner, "providers.list")), bob1 = labelsOf(await as(BOB, "providers.list"));
+  assert.ok(owner1.includes("Owner login") && !owner1.includes("Bob login"), "the owner's provider list has the owner's account only");
+  assert.ok(bob1.includes("Bob login") && !bob1.includes("Owner login"), "Bob's has Bob's only");
+  const EVE = "per_" + "e".repeat(26);
+  assert.ok(!labelsOf(await as(EVE, "providers.list")).includes("Owner login"), "nor does the providers list show them the owner's account");
   assert.ok(!(await as(BOB, "sessions.accounts.remove", { id: b.data.id })).error, "Bob removes his own");
   assert.deepEqual(await mine(BOB), []);
   assert.deepEqual(await mine(owner), ["Owner login"]);
