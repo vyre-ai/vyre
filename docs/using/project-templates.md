@@ -32,6 +32,8 @@ Kits can ship templates. `work.template.library` lists them and `work.template.i
 
 In the app, open the template (Projects, Templates) and use **Start a project**: type the project's name, press **Start project**, and the new project opens with its team, its stages and the first stage's tasks in Now. The same thing for an assistant or a Flow is `work.start-project { template, name }`: it makes the project, adds the roles' agents as its teammates, pins the template's stages on the project, and makes the first stage's tasks. It is also a Flow step, "Start a project from a template", so a record reaching a stage can start one.
 
+If a task cannot be made because its assistant is not in the space yet, the project still starts and the app says which tasks were skipped and why ("research is not in this space yet"); `work.start-project` answers `tasks_made` (how many) and `tasks_skipped` (each task and its reason). Add the assistant to the space and start again. The project's timeline begins with "Started from the Estate plan template", and its Team tab lists who is on the team and the role each fills.
+
 A running project keeps the version it started with. Putting a newer version live, or retiring one, changes no project that is already running. `work.template.from-project` makes a draft template from a project that ran one.
 
 ## An agent's change to itself
