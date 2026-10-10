@@ -17,7 +17,7 @@ export async function generate() {
   const esbuild = await import("esbuild-wasm");
   await esbuild.initialize({});
   const built = await esbuild.build({
-    entryPoints: [path.join(SRC, "frame.js")], bundle: true, format: "esm", write: false, target: "es2022", legalComments: "none", logLevel: "silent",
+    entryPoints: [path.join(SRC, "frame.js")], absWorkingDir: ROOT, bundle: true, format: "esm", write: false, target: "es2022", legalComments: "none", logLevel: "silent",
     // frame.js imports ./novnc/... and ./input.js, which the web build copies beside it from the vendored folder
     plugins: [{ name: "glass-vendor", setup(b) { b.onResolve({ filter: /^\.\/(novnc\/|input\.js)/ }, a => ({ path: path.join(VENDOR, a.path.replace(/^\.\//, "")) })); } }],
   });
