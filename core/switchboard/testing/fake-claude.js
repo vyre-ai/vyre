@@ -493,7 +493,7 @@ async function turn(prompt, uuid = null) {
   // "shot": the browser tool took a screenshot: a tool call and its result as an image content block (a 1x1 picture), then a reply.
   if (p === "shot") {
     const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
-    out({ type: "assistant", message: { id: "m-shot", role: "assistant", content: [{ type: "tool_use", id: "tu-shot", name: "mcp__vyre-chrome__chrome_screenshot", input: {} }] } });
+    out({ type: "assistant", message: { id: "m-shot", role: "assistant", content: [{ type: "tool_use", id: "tu-shot", name: "mcp__vyre-chrome__chrome_screenshot", input: { url: "https://example.com/pricing" } }] } });
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-shot", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }] }] } });
     await say("here is the page"); return result(true, "here is the page");
   }
