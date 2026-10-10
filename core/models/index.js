@@ -77,7 +77,8 @@ export default {
         for (const f of fetched) {
           if (!f || !PROVIDERS.hasOwnProperty(String(f.provider))) continue;
           if (f.error) { errors.push(`${f.provider}: ${String(f.error).slice(0, 100)}`); continue; }
-          const rows = normalizeApi(String(f.provider), f.body);
+          // the door answers names only (a provider's id strings): a row is its id, and OpenRouter's public list joins the price and context beside it
+          const rows = (Array.isArray(f.models) ? f.models : []).filter((/** @type {any} */ x) => typeof x === "string" && x).map((/** @type {string} */ x) => ({ id: x.slice(0, 120), label: x.slice(0, 120), context: null, price: null, capabilities: null }));
           if (rows.length) { merge(String(f.provider), "api", rows); n += rows.length; }
         }
         noteSource("api", errors.length === 0, errors.join("; ") || null, n, undefined);

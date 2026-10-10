@@ -148,7 +148,7 @@
       "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
-        "daemon": { "type": "array", "uniqueItems": true, "items": { "enum": ["kernelSession", "chatFor", "agentActor", "kernelThreads", "sandbox", "flowsHost", "credentials", "dataStores", "devStandIn", "tunnelEnd", "modulesListReset", "modulesListResetPayload", "cliSigninPayload", "cliSigninCheck", "cliSessions"] }, "description": "What only the daemon can hand a module, by declaration: a first-party module names it here and the loader gives it exactly that on ctx, and nothing else." },
+        "daemon": { "type": "array", "uniqueItems": true, "items": { "enum": ["kernelSession", "chatFor", "agentActor", "listModels", "kernelThreads", "sandbox", "flowsHost", "credentials", "dataStores", "devStandIn", "tunnelEnd", "modulesListReset", "modulesListResetPayload", "cliSigninPayload", "cliSigninCheck", "cliSessions"] }, "description": "What only the daemon can hand a module, by declaration: a first-party module names it here and the loader gives it exactly that on ctx, and nothing else." },
         "vault": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "x-message": "must be a vault item name, or per-<thing>" }, "uniqueItems": true, "description": "Raw vault item names. Built in only in 0.2; an added module uses needs.credentials and ctx.vault.request." },
         "connections": {
           "type": "array", "uniqueItems": true, "description": "Vendor-hosted MCP connections it reads through ctx.connections.call (P5, P20).",

@@ -4,6 +4,6 @@
   "sdks": ["openai", "@anthropic-ai/sdk", "@google/generative-ai", "@google/genai", "cohere-ai", "groq-sdk", "@mistralai/mistralai", "@aws-sdk/client-bedrock-runtime", "replicate", "@huggingface/inference", "together-ai", "ai"],
   "control": "The control is the egress firewall (K6 and the host): the box lets only the gateway reach provider hosts. This list is a smoke test that catches the honest mistake in review.",
   "door_clients": ["core/daemon/model-lists.js"],
-  "retrofit_pending": ["lib/model-endpoints.js", "core/sessions/index.js", "core/sessions/drivers/openrouter.js", "local/voice/providers.js", "core/daemon/lent-service.js"],
+  "retrofit_pending": ["core/sessions/index.js", "core/sessions/drivers/openrouter.js", "local/voice/providers.js", "core/daemon/lent-service.js"],
   "not_inference": { "core/models/index.js": "reads openrouter.ai's public model list (price, context, capabilities) with a plain keyless GET through lib/http.js; it sends no prompt, no key and no person's data, so it is not a model call and has no use for the door", "core/vault/rotate.js": "rotates a provider API key; sends no prompt", "lib/agent-sandbox.js": "names each provider's sign-in and API hosts for the sandbox's egress allow-list and the self-test; it sends nothing itself" }
 }

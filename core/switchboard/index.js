@@ -3793,6 +3793,7 @@ export default {
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       return dir;
     };
+    ctx.provide("accountKey", keyOfAccount(accountEnv)); // one API-key account's key, for the inference door's model list (one request, never returned)
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
@@ -4755,25 +4756,9 @@ export default {
     // R031-84: each API-key account's own model list, for the model registry (core/models). The key is taken the way a launch takes it, used for one request to the provider's own list and never
     // returned; the answer is the provider's JSON. Internal: only a module may ask.
     ctx.tool("threads.models-fetch", {
-      description: "Each API-key account's own provider model list, as { provider, account, ok, body | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
+      description: "Each API-key account's model names from the inference door, as { provider, account, ok, models | error }. For the model registry (core/models); never returns a key.", internal: true, callers: ["module"],
       input: { type: "object", properties: {} },
-      run: async () => {
-        const { fetchModels, MODEL_LISTING_PROVIDERS } = await import("../../lib/model-endpoints.js");
-        const { httpFetch } = await import("../../lib/http.js");
-        /** @type {any[]} */ const out = [];
-        for (const provider of MODEL_LISTING_PROVIDERS) {
-          const l = /** @type {any} */ (await ctx.call("sessions.accounts.list", { provider }).catch(() => null));
-          const rows = l && !l.error && Array.isArray(l.data) ? l.data : [];
-          for (const a of rows.filter((/** @type {any} */ x) => x && x.kind === "api-key")) {
-            try {
-              const c = await accountEnv(a);
-              const key = Object.values(c.env || {}).find((v) => typeof v === "string" && v);
-              out.push(key ? await fetchModels(a, String(key), { fetch: httpFetch, hostSafe }) : { provider, account: String(a.id), ok: false, error: "no key" });
-            } catch (e) { out.push({ provider, account: String(a.id), ok: false, error: e instanceof Error ? e.message.slice(0, 100) : "no key" }); }
-          }
-        }
-        return out;
-      },
+      run: async () => modelNames(ctx, MODEL_LISTING_PROVIDERS),
     });
     ctx.tool("threads.interrupt-in", {
       description: "Interrupt every turn streaming in a folder (a session's worktree) and wait for them to end; the threads stay. github calls it before Undo resets a worktree. Answers who stopped and who still runs.", internal: true, callers: ["module"],
