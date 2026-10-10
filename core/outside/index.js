@@ -101,7 +101,7 @@ export function registerOutside(ctx, seam = {}) {
       const p = await projectFor(chain, what.project);
       if (what.kind === "memory") {
         await mayGive(chain, "memory.read", u("memory/*")); await mayGive(chain, "project.reach", u(`project/${p.id}`));
-        grants.push(await mint(agent, ["memory.read"], u("memory/*"), until, `outside agent ${agent.name}: memory`));
+        grants.push(await mint(agent, ["memory.read"], u("memory"), until, `outside agent ${agent.name}: memory`));
         grants.push(await mint(agent, ["project.reach"], u(`project/${p.id}`), until, `outside agent ${agent.name}: ${p.name}`));
       } else {
         if (!p.drive_path) throw fail(`${p.name} has no files folder`, "bad_input");
