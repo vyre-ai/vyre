@@ -63,6 +63,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {Record<string, string|undefined>} [env]
  * @property {string[]} [readOnly]  extra folders the tools need to read (the node install, the agent's own folder)
  * @property {{ port?: number, socket?: string }} proxy  where the egress proxy is: a loopback port (macOS) or a unix socket (Linux)
+ * @property {string} [folder]  a folder of this computer the person approved for chats (core/runner/folders.js): the session works IN it, writing to it directly, and the workspace is not its folder
  * @property {number} [innerPort]  Linux: the loopback port the in-sandbox shim listens on (default 18443)
  * @property {string} [space]  Windows: the space the container is named for
  * @property {string} [launcher]  Windows: path of vyre-sandbox.exe
@@ -80,7 +81,8 @@ export function seatbeltProfile(o) {
   const ws = real(o.workspace);
   const ro = [...new Set((o.readOnly || []).map(d => checkBind(d, o.home)))];
   needTool(o.command, ro, ["/usr/bin", "/bin", "/usr/sbin", "/sbin"]);
-  const meta = new Set(["/", ...ancestors(ws), ...ro.flatMap(ancestors)]);
+  const folder = o.folder ? checkBind(o.folder, o.home) : null;
+  const meta = new Set(["/", ...ancestors(ws), ...ro.flatMap(ancestors), ...(folder ? [...ancestors(folder), folder] : [])]);
   const lines = [
     "(version 1)",
     "(deny default)",
@@ -99,6 +101,7 @@ export function seatbeltProfile(o) {
     '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
+    ...(folder ? [`(allow file-read* file-write* (subpath ${q(folder)}))`, `(allow process-exec (subpath ${q(folder)}))`] : []),
     ...(o.internet ? [`(allow file-read* (literal ${q(PROXYCMD)}))`] : []),
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
@@ -132,7 +135,7 @@ function planDarwin(o) {
   const base = proxyUrl(o.proxy.port);
   const dd = developerDir();
   const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet), ...(o.vyre ? { VYRE_SOCKET: real(o.vyre.socket) } : {}) };
-  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
+  return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), "/bin/sh", "-c", 'umask 077; exec "$0" "$@"', o.command, ...(o.args || [])], env, cwd: o.folder ? checkBind(o.folder, o.home) : path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
 /**
@@ -159,7 +162,7 @@ function planLinux(o) {
     "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/run", "--unshare-user", "--cap-drop", "ALL", "--disable-userns",
     ...ro.flatMap(d => ["--ro-bind", d, d]),
     "--ro-bind", SHIM, "/opt/vyre-shim.js", "--ro-bind", PROXYCMD, "/opt/vyre-proxycmd.js", "--ro-bind", fakePasswd(home), "/etc/passwd",
-    "--bind", ws, "/work", "--chdir", "/work/files",
+    "--bind", ws, "/work", ...(o.folder ? ["--bind", checkBind(o.folder, o.home), "/work/files"] : []), "--chdir", "/work/files",
     ...(sock ? ["--ro-bind", sock, "/run/egress.sock"] : []),
     ...(o.vyre ? ["--ro-bind", o.vyre.socket, "/run/vyre.sock"] : []),
     ...Object.entries(env).flatMap(([k, v]) => ["--setenv", k, v]),
