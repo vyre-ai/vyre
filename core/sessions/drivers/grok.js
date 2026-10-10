@@ -68,6 +68,9 @@ export function grokProvider(o = {}) {
       if (has("xai.api_key") && (env.XAI_API_KEY || o.custom)) return "xai.api_key";
       return has("grok.com") ? "grok.com" : null;
     },
+    // Grok Build 1.0.50 says promptCapabilities.image is false in initialize, yet answers an ACP image block (and a resource blob) correctly: a 4729 picture read back as 4729 (10 Oct, live,
+    // team/0.3.1/LIVE-PROVIDERS.md). Without this, the driver withheld every picture from it.
+    takesImages: true,
     capabilities: { steering: false, usage: "coarse", rewind: false },
     ...(o.floor ? { floor: o.floor } : {}),
     ...(o.sessions ? { sessions: o.sessions } : {}),
