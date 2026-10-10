@@ -2288,6 +2288,12 @@ export default {
       const p = String(i.person);
       const mineList = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === p || await membershipRow(r.id, p))) mineList.push({ space: r.id, name: r.name, color: null, link: `https://${r.name}` });
+      // The kernel's own list too: a server that holds no identity of its own keeps the owner's Spaces in its kernel (the home Space, and each one it hosts for the owner), which have no module row made by this person.
+      for (const id of await kernelSpacesOf(p)) {
+        if (mineList.some(x => x.space === id)) continue;
+        const row = spaces.all().find(r => r.id === id);
+        mineList.push({ space: id, name: row ? row.name : K && id === K.space ? "home" : id, color: null, link: row ? `https://${row.name}` : null });
+      }
       return { spaces: mineList };
     }, { internal: true });
 
