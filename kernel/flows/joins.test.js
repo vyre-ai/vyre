@@ -44,6 +44,27 @@ test("parallel: both lanes start at once and the step after waits for all of the
   assert.ok(done.steps.p.output.branches.right.steps.m.record, "what a lane made is in the step's output");
 });
 
+test("parallel: lanes and sub-flows work the same when runs are records in the kernel", async () => {
+  const w = await world({ store: "records" });
+  await install(w, { format: 1, name: "inner", authorship: "human", trigger: { on: "manual" }, returns: { n: { expr: "steps.c.record.data.amount" } }, steps: [{ id: "c", kind: "create", type: "payment", set: { client: "Inner", amount: 5 } }] });
+  const { id } = await install(w, flowOf([
+    { id: "p", kind: "parallel", steps: [
+      lane("left", [{ id: "a1", kind: "assign", to: "role:manager", title: "Left lane work", output: { kind: "note" }, how: "person", await: true }]),
+      lane("right", [{ id: "s", kind: "subflow", flow: "inner" }]),
+    ] },
+    { id: "after", kind: "create", type: "payment", set: { client: "After", amount: { expr: "steps.s.result.n" } } },
+  ]));
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [parent] = await roots(w, id);
+  assert.equal(parent.state, "waiting");
+  w.kernel.completeTask(taskOf(w, "Left lane work").id, { outcome: "approved" });
+  await settle(w);
+  const done = await w.runner.getRun(parent.id);
+  assert.equal(done.state, "done", JSON.stringify(done.error));
+  assert.deepEqual(mine(w, "payment").map(p => [p.data.client, p.data.amount]).sort(), [["After", 5], ["Inner", 5]]);
+});
+
 test("parallel: a step after the join reads any lane's step as steps.<id>, and a lane reads what ran before the split", async () => {
   const w = await world();
   const { id } = await install(w, flowOf([
