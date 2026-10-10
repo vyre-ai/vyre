@@ -364,6 +364,8 @@ export function createRunner(o) {
     pause() { freeze("pause"); },
     resume() { thawAll("pause"); },
     get paused() { return frozen.has("pause"); },
+    /** Is every session here held still (the person's pause, no link to the home, asleep)? A frozen session says and hears nothing. */
+    get frozenNow() { return frozen.size > 0; },
     /** This computer cannot reach the Space's server: its sessions wait where they are rather than run ahead of the server, which takes them after a lapse. @param {string} why */
     freeze(why) { freeze(why); },
     thaw(why) { thawAll(why); },
