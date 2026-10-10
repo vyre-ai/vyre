@@ -39,7 +39,7 @@ import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
 import { cardsFor, ownerChain } from "../../lib/record-cards.js";
-import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, takeBackFor } from "../../lib/lent-placement.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
@@ -2428,7 +2428,7 @@ export class Switchboard {
       // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
-      if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+      if (this.live.has(id) && !(st && st.turn)) { if (await lentYield(this, id, st, kernelTurn.asker)) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn }); await this.renewKernelSession(id, this.record(id), kernelTurn); }
     }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
@@ -3813,7 +3813,7 @@ export default {
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
-      lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
+      lentTakeBack: (/** @type {any} */ q) => takeBackFor(ctx.kernel, q), lentFor: (/** @type {any} */ q) => lentSpawnFor(ctx.kernel, q), // a chat the home's book places on the person's computer runs its process there (contracts/lent-spawn.md)
       threadSocket: cfg.thread_socket === "off" ? null
         // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
         // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".

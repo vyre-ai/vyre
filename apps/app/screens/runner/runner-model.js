@@ -8,7 +8,7 @@ import { spaceTitle } from "../devices/device-model.js";
 export const REASON_WORDS = /** @type {Record<string, string>} */ ({
   "lid-closed": "lid closed", asleep: "this Mac went to sleep", unplugged: "this Mac is on battery", "cpu-cap": "it used more processor than you allow", "mem-cap": "it used more memory than you allow",
   "switched-off": "running on this Mac is switched off", offline: "this Mac is offline", crash: "it stopped unexpectedly, and was resumed from its last step", you: "you moved it",
-  "lease-expired": "this Mac stopped checking in", "version-skew": "this Mac runs an older Vyre", folder: "this chat works in a folder on your Mac",
+  "lease-expired": "this Mac stopped checking in", "version-skew": "this Mac runs an older Vyre", "another-person": "someone else wrote in this chat, and a chat only ever runs on the computer of the person who writes in it", folder: "this chat works in a folder on your Mac",
 });
 /** The reason in words; a code this app does not know says nothing (the line stays "Moved to the server."), never the code. */
 const why = (/** @type {string | null | undefined} */ r) => (r ? REASON_WORDS[r] || "" : "");

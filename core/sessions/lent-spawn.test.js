@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
-import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
+import { lentSpawnFor, lentOf, carryOn, lentYield, takeBackFor } from "../../lib/lent-placement.js";
 import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, CAROL, OWNER, SPACE } from "../runner/testing/lent-rig.js";
@@ -288,4 +288,28 @@ test("on the real home: a member's computer runs only that member's own turns: C
   const carol = await lentSpawnFor(kernel, { thread: "ses_00000000000000000000000000000002", chat: "chat_carol", native: "ses_00000000000000000000000000000002", fresh: true, asker: CAROL });
   assert.equal(carol, null, "Carol's new chat is not placed on Bob's computer");
   assert.equal(r.home.book.get("ses_00000000000000000000000000000002"), null, "no row for it anywhere");
+});
+
+test("on the real home: another person's turn that reaches a chat whose live process is on Bob's computer takes the chat back to the server first and waits: it never runs there; Bob's own turn is left alone", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const kernel = { owner: OWNER, id: { space: SPACE, owner: OWNER }, runnerHost: () => ({ space: SPACE,
+    lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => r.home.spawn(i), placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => r.home.placeNew(i),
+    placements: { spaces: () => [SPACE], find: (/** @type {string} */ _s, /** @type {string} */ id) => r.home.book.get(id) || null, takeBack: (/** @type {string} */ _s, /** @type {string} */ session, /** @type {string} */ reason) => r.home.takeOver(session, reason) } }) };
+  const q = { thread: SESSION, chat: "chat_bob", native: SESSION, fresh: true, asker: BOB };
+  assert.ok(await lentSpawnFor(kernel, q), "the chat is lent to Bob's computer");
+  assert.equal(r.home.book.get(SESSION)?.where, "mac");
+  // the switchboard side: a live process that is on a computer, and a turn by someone else
+  const sb = (/** @type {any} */ asker) => ({ deps: { lentTakeBack: (/** @type {any} */ x) => takeBackFor(kernel, { ...x, asker }) }, chatOf: () => "chat_bob", nativeOf: () => SESSION });
+  const live = { proc: { where: "lent" } };
+  assert.equal(await lentYield(sb(BOB), SESSION, live, BOB), false, "Bob's own turn runs on his computer as before");
+  assert.equal(r.home.book.get(SESSION)?.where, "mac");
+  assert.equal(await lentYield(sb(CAROL), SESSION, live, CAROL), true, "Carol's turn waits");
+  assert.equal(r.home.book.get(SESSION)?.where, "server", "and the server took the chat back from Bob's computer: nothing of Carol's reaches it");
+  assert.equal(await lentYield(sb(CAROL), SESSION, { proc: { where: "box" } }, CAROL), false, "a process on the box has nothing to yield");
+  // if the server cannot take the chat back now, the message still waits
+  const stuck = { deps: { lentTakeBack: () => Promise.resolve("held") }, chatOf: () => null, nativeOf: () => SESSION };
+  assert.equal(await lentYield(stuck, SESSION, live, CAROL), true, "a held take-back still does not run the turn on the computer");
 });

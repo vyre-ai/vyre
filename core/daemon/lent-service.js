@@ -91,6 +91,8 @@ export function lentPlacements(registry, extra = {}) {
     },
     /** The folders the person's ready computers offer to chats. */
     foldersOf: (/** @type {string} */ space, /** @type {string} */ person) => { const h = homeOf(space); return h && typeof h.foldersOf === "function" ? h.foldersOf(person) : []; },
+    /** The server takes a chat back from a computer now (the book moves it, the lender is fenced, the pipe ends as a move to the server, the server carries on). @param {string} space @param {string} session @param {string} reason */
+    takeBack: async (space, session, reason) => { const h = homeOf(space); return h && typeof h.takeOver === "function" ? h.takeOver(session, reason) : { changed: false, why: "unavailable" }; },
     resumable: (/** @type {string} */ space) => { const h = homeOf(space); return !h || typeof h.canResume !== "function" || h.canResume() === true; },
   });
 }

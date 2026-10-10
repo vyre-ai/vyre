@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Why a session is where it is, as the chat says it (design's words). `you` is the person's own move. */
-export const REASONS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off", "offline", "lease-expired", "crash", "version-skew", "you"]);
+export const REASONS = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off", "offline", "lease-expired", "crash", "version-skew", "another-person", "you"]);
 /** The reasons of a move the computer chose by its own condition: at most one per cooldown for a session. A crash, a lapse, the person's move and a version skew are never held back. */
 export const AUTO = Object.freeze(["lid-closed", "asleep", "unplugged", "cpu-cap", "mem-cap", "switched-off"]);
 /** The reasons that clear by themselves: when the computer is well again the session is offered back (never moved back). */
