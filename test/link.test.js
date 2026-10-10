@@ -212,48 +212,6 @@ test("link: a listener's tailnet peer reaches the tool through vyred's router, n
   assert.deepEqual(body.data.peer, { node: "test-mac", stableId: "nMAC", login: "owner@example.com" });
 });
 
-test("link: pairing through the real names listener binds to the Mac's node and needs another device to approve", async t => {
-  const { names } = await import("../core/names/service.js");
-  const config = await import("../core/config/index.js");
-  const { Readable } = await import("node:stream");
-  const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
-    network: { tailscale: true, owner: "alex@example.com", port: 0 }, modules: { disable: ["names", "onboard"] } }));
-  const box = await start({ presence: present, root, log: () => {} });
-  t.after(() => box.stop());
-  // The names service, built on this vyred's real router, with whois simulated. Only the
-  // WireGuard source address says who is calling; the headers below are ignored.
-  const whois = { "100.101.1.2": { login: "alex@example.com", tagged: false, node: "mac", stableId: "nMAC" },
-    "100.101.1.4": { login: "alex@example.com", tagged: false, node: "phone", stableId: "nPHONE" } };
-  const ctx = box.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
-  const svc = names({ ctx, ts: { whois: async ip => whois[ip] || null, status: async () => ({}) }, save: p => config.save(p, root, box.config),
-    certs: { load: () => null, save: () => {} }, dns: async () => ({}), issue: async () => ({}) });
-  t.after(() => svc.close());
-  const send = async (ip, tool, input) => {
-    const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(input))]), { method: "POST", url: `/v1/tools/${tool}`,
-      headers: { host: "alex.vyre.run:0", "content-type": "application/json", "x-vyre-caller": "cli", "tailscale-user-login": "alex@example.com" }, socket: { remoteAddress: ip } });
-    let raw = "", status = 0;
-    const res = { setHeader() {}, writeHead(s) { status = s; }, end(b = "") { raw += b; }, headersSent: false };
-    await svc.onRequest(req, res);
-    return { status, ...JSON.parse(raw) };
-  };
-  const MAC_IP = "100.101.1.2", PHONE_IP = "100.101.1.4";
-  // Headers claiming the owner from an address that is not on the tailnet change nothing.
-  assert.equal((await send("127.0.0.1", "link.pair.request", { name: "mac" })).status, 403);
-  const p = (await send(MAC_IP, "link.pair.request", { name: "mac" })).data;
-  assert.deepEqual((await box.registry.call("link.pending", {}, "cli")).data.map(x => x.node), ["mac"]);
-  assert.match((await send(MAC_IP, "link.pair.approve", { code: p.code })).error.message, /cannot approve its own/);
-  assert.ok(!(await send(PHONE_IP, "link.pair.approve", { code: p.code })).error);
-  // Only the Mac's node collects the key.
-  assert.equal((await send(PHONE_IP, "link.pair.poll", { id: p.id, secret: p.secret })).data.state, "gone");
-  const got = (await send(MAC_IP, "link.pair.poll", { id: p.id, secret: p.secret })).data;
-  assert.equal(got.state, "approved");
-  // The key works from the Mac's node and not from another device.
-  assert.equal((await send(MAC_IP, "link.hello", { key: got.key })).data.paired, true);
-  assert.equal((await send(PHONE_IP, "link.hello", { key: got.key })).data.paired, false);
-  assert.equal((await box.registry.call("link.peers", {}, "cli")).data[0].node, "mac");
-});
-
 test("link: approving a pairing needs the owner's presence, whoever calls, and the prompt names the Mac, not the code", async t => {
   const boxRoot = tempHome(t);
   fs.writeFileSync(path.join(boxRoot, "config.json"), JSON.stringify({ role: "box", transcripts: [] }));
@@ -306,57 +264,6 @@ function winkStub(s, peers) {
   return () => { def.run = was; };
 }
 
-test("link: link.health on the Mac is the box's node, and on the box the calling device or a paired Mac", async t => {
-  const s = await pair(t);
-  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
-    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
-  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const ts = fakeTailscale(t, dir, {
-    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
-      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }),
-      b: node("nMAC", "100.64.0.2"),
-      c: node("nPHONE", "100.64.0.3", { LastHandshake: "0001-01-01T00:00:00Z" }) } },
-    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms",
-      "100.64.0.2": "pong from alex-mac (100.64.0.2) via DERP(fra) in 80ms",
-      "100.64.0.3": "pong from phone (100.64.0.3) via DERP(fra) in 95ms" },
-  });
-
-  // The Mac: its paired box, direct.
-  const mac = await s.macCall("link.health");
-  assert.ok(!mac.error, JSON.stringify(mac.error));
-  assert.deepEqual({ path: mac.data.path, relay: mac.data.relay, latencyMs: mac.data.latencyMs, online: mac.data.online, cached: mac.data.cached },
-    { path: "direct", relay: null, latencyMs: 12, online: true, cached: false });
-  assert.equal(mac.data.lastHandshake, Date.parse("2026-09-27T10:00:00Z"));
-  assert.equal((await s.macCall("link.health")).data.cached, true, "a second ask inside the minute is the cached answer");
-  assert.equal(ts.calls().filter(c => c.startsWith("ping")).length, 1);
-  assert.ok(ts.calls().includes("ping --c 1 --until-direct=false --timeout 3s 100.64.0.5"));
-
-  // The box: the calling device by default (the Mac over the tailnet), relayed, as the Wink node reports its peers.
-  winkStub(s, [{ eid: "nMAC", via: "relay", since: 5 }, { eid: "nPHONE", via: "relay", since: null }]);
-  const self = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC });
-  assert.equal(self.data.path, "relay");
-  assert.equal(self.data.lastHandshake, 5);
-  // A paired Mac by node id, from the box's terminal; its id is in link.peers.
-  const peers = (await s.boxCall("link.peers")).data;
-  assert.equal(peers[0].stable_id, "nMAC");
-  assert.equal((await s.boxCall("link.health", { node: "nMAC" })).data.cached, true);
-  // Another node is not a paired Mac, unless it is the caller itself or a module asks.
-  assert.match((await s.boxCall("link.health", { node: "nPHONE" })).error.message, /not a paired Mac/);
-  const phone = await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: PHONE });
-  assert.equal(phone.data.path, "relay");
-  assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
-  assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
-  // Modules and the owner only: a guest, an agent's node, an agent at the box and another login are refused.
-  for (const caller of ["tailnet-guest:sam@harlow.example", "tailnet:agent:kit", "mcp agent:kit", "mcp", "anonymous", "tailnet:owner@example.com agent:kit"]) {
-    assert.match((await s.boxCall("link.health", { node: "nMAC" }, caller, { peer: MAC })).error.message, /owner and its modules only/, caller);
-  }
-  // Nothing named and no calling node: unknown, with the reason.
-  const bare = await s.boxCall("link.health");
-  assert.equal(bare.data.path, "unknown");
-  assert.match(bare.data.why, /say which node/);
-});
-
 test("link: link.health on an unpaired Mac is unknown with a reason, and the seam can stand in", async t => {
   const s = await pair(t, { approve: false });
   const r = await s.macCall("link.health");
@@ -369,50 +276,6 @@ test("link: link.health on an unpaired Mac is unknown with a reason, and the sea
   const p = await pair(t, { health: stub });
   assert.equal((await p.macCall("link.health")).data.path, "peer-relay");
   assert.deepEqual(asked, [{ stableId: "nBOX" }]);
-});
-
-test("link: link.health in the one reach shape, on the Mac, for a device over the relay and for the tailnet listener", async t => {
-  const s = await pair(t);
-  const dir = fs.mkdtempSync(path.join(s.macRoot, "..", "vyre-ts-"));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const node = (id, ip, extra = {}) => ({ ID: id, HostName: id, DNSName: `${id}.tail0000.ts.net.`, TailscaleIPs: [ip], Online: true,
-    CurAddr: "", Relay: "fra", PeerRelay: "", LastHandshake: "2026-09-27T10:00:00Z", RxBytes: 10, TxBytes: 20, ...extra });
-  const world = {
-    status: { BackendState: "Running", Self: { ID: "nSELF" }, Peer: {
-      a: node("nBOX", "100.64.0.5", { CurAddr: "203.0.113.7:41641" }), b: node("nMAC", "100.64.0.2") } },
-    ping: { "100.64.0.5": "pong from box (100.64.0.5) via 203.0.113.7:41641 in 12ms" },   // the Mac has no answer
-  };
-  fakeTailscale(t, dir, world);
-
-  // (1) The Mac: direct with its tailnet detail, and the old fields beside.
-  const mac = (await s.macCall("link.health")).data;
-  assert.equal(mac.reach, "direct");
-  assert.match(mac.why, /direct/);
-  assert.deepEqual(mac.tailnet, { path: "direct", latencyMs: 12 });
-  assert.equal(typeof mac.since, "number");
-  assert.equal(mac.path, "direct");
-  assert.equal(mac.fix, undefined);
-
-  winkStub(s, [{ eid: "nMAC", via: "relay", since: 5 }]);
-  // (2) The box. A device over the relay channel is "relay", whatever the tailnet says.
-  const dev = (await s.boxCall("link.health", {}, "device:d1")).data;
-  assert.equal(dev.reach, "relay");
-  assert.match(dev.why, /relay/);
-  assert.equal(typeof dev.since, "number");
-  assert.equal(dev.tailnet, undefined);
-  assert.equal((await s.boxCall("link.health", {}, "device:d1")).data.since, dev.since, "since holds while the path does");
-  const pinned = (await s.boxCall("link.health", {}, "device:d1", { since: 1234 })).data;
-  assert.equal(pinned.since, 1234, "the channel's own start wins when the bridge says");
-  // An agent acting as a device is still an agent.
-  assert.match((await s.boxCall("link.health", {}, "device:d1 agent:kit")).error.message, /owner and its modules only/);
-
-  // The tailnet listener is "direct" even when the box's own ping of the caller goes unanswered.
-  const tn = (await s.boxCall("link.health", {}, `tailnet:${OWNER}`, { peer: MAC })).data;
-  assert.equal(tn.reach, "direct");
-  assert.equal(tn.fix, undefined);
-  assert.equal(typeof tn.since, "number");
-  assert.equal(tn.path, "relay", "the old fields stay what the Wink node said for that peer");
-  assert.equal((await s.boxCall("link.health")).data.reach, "none", "nothing named: none, with why");
 });
 
 test("link.macs.call: a write for the person (threads.send, threads.answer) is refused when the call really came from a model, an agent or a module acting alone, whatever `as` and `by` claim", async t => {

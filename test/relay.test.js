@@ -208,7 +208,8 @@ test("relay: removing a device closes its connection at once with 4401 'device r
   const p = await phone(url);
   const r = await d.registry.call("relay.devices.remove", { id: p.reply.device }, "cli", PROOF);
   assert.ok(r.data, JSON.stringify(r.error));
-  await new Promise(res => setTimeout(res, 100));
+  // the channel is closed as the removal commits, on the event loop's next turns (a fixed 100 ms was a race on a loaded machine): wait for it, bounded
+  for (let i = 0; i < 100 && !p.channel.closed; i++) await new Promise(res => setTimeout(res, 50));
   assert.equal(p.channel.closed, true);
   assert.deepEqual(p.closed(), { code: 4401, reason: "device removed" }, "the open channel hears it");
   await assert.rejects(phone(url, { keys: p.keys, pair: false }), /device removed/, "a reconnect is refused with the same words");
@@ -395,35 +396,21 @@ test("relay: the web app's loader asks the box which build to load, and the owne
   assert.deepEqual([pinned.release, pinned.pinned], ["0.4.2", true]);
 });
 
-test("relay: a device reports its path; the box measures the relay round trip and learns its tailnet node", async t => {
+test("relay: a device reports its path; the box measures the relay round trip", async t => {
   const { d } = await world(t);
   const moves = [];
   d.events.on("device.moved", e => moves.push(e.payload));
   const p = await phone(await firstPairing(d));
-  const id = p.reply.device;
 
   const r = await p.call("relay.devices.path", { path: "relay", rtt: 42 });
   assert.equal(r.status, 200, JSON.stringify(r));
   assert.match(r.data.link, /^[A-Za-z0-9_-]{22}$/);
   await p.signIn(d);
-  let me = (await p.call("relay.devices.list")).data.devices[0];
+  const me = (await p.call("relay.devices.list")).data.devices[0];
   assert.equal(me.path, "relay");
   assert.equal(typeof me.rtt, "number", "the box pinged the device over the channel");
-
-  // The same phone over the tailnet: its node, from whois, is linked by the code, once.
-  const node = { stableId: "nABC123", node: "alex-iphone", login: "alex@example.com", tags: [], caps: {} };
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", rtt: 18 }, "tailnet:alex@example.com", { peer: node })).error.code, "bad_input", "an unlinked node is nobody");
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: "wrong" }, "tailnet:alex@example.com", { peer: node })).error.code, "denied");
-  const linked = await d.registry.call("relay.devices.path", { path: "direct", rtt: 18, id, code: r.data.link }, "tailnet:alex@example.com", { peer: node });
-  assert.deepEqual(linked.data, { path: "direct", device: id });
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: r.data.link }, "tailnet:alex@example.com", { peer: node })).error.code, "denied", "the code works once");
-
-  p.ws.close();
-  await new Promise(res => setTimeout(res, 50));
-  me = (await d.registry.call("relay.devices.list", {}, "cli")).data.devices[0];
-  assert.deepEqual([me.path, me.rtt, me.node, me.online], ["direct", 18, "alex-iphone", true]);
-  assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
-  assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
+  assert.deepEqual(moves.map(m => m.path), ["relay"]);
+  // The tailnet half of this test (a node linked by its code, a "direct" path from a tailnet caller) went with Tailscale: the registry no longer has a tailnet caller, a device's direct path is Wink's.
 });
 
 test("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
@@ -901,9 +888,6 @@ test("relay: on a Mac with vyre-core holding the keys, the box pairs a phone end
   assert.equal(fs.existsSync(path.join(root, "relay", "keys.json")), false, "no key file at the login uid");
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   assert.equal(status.connected, true);
-  const ts = (await d.registry.call("relay.tailnet.status", {}, "cli", PROOF)).data;
-  assert.equal(ts.available, true, "a Mac server can hand paired desktops a tailnet key once core holds its keys");
-  assert.equal(ts.why, null);
   // relay.join is offered too: its device key is core's as well, so a garbage code is refused as garbage, not as "not on a Mac"
   const j = await d.registry.call("relay.join", { url: "vyre://x" }, "cli", PROOF);
   assert.equal(j.error.code, "bad_input");
