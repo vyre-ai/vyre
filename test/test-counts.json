@@ -11,6 +11,7 @@
  "apps/app/screens/settings/my-cloud.test.js": 8,
  "apps/app/screens/shell/spaces.test.js": 5,
  "apps/app/screens/sites/logic.test.js": 5,
+ "apps/app/screens/spaces/add-space.test.js": 1,
  "apps/app/screens/spaces/roles.test.js": 9,
  "apps/app/screens/vault/logic.test.js": 4,
  "apps/app/scripts/check-android-permissions.test.js": 2,
