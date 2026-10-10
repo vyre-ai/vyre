@@ -30,7 +30,7 @@ const statesOf = (/** @type {string} */ needle) => {
 };
 
 /** The runner module as a Mac runs it, reaching a home through a call we can cut. */
-async function world(/** @type {import("node:test").TestContext} */ t, over = {}) {
+async function world(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ over = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "bl-agent-"));
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
   const root = fs.mkdtempSync(path.join(SCRATCH, "bl-root-"));
@@ -49,7 +49,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, over = {}
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }) }) },
   };
   // the machine's own load is not what is being tested (a busy test box would never be "well")
-  seams.set(root, { heartbeatMs: 200, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
+  seams.set(root, { heartbeatMs: 200, ...(over.beatMax ? { beatMax: over.beatMax } : {}), state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); fs.rmSync(agentDir, { recursive: true, force: true }); });
   const person = { caller: "cli" };
@@ -117,4 +117,12 @@ test("switching running here off in Settings hands the sessions over with its re
   w.ctx.call = async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" && input.key === "runner.enabled" ? { data: { value: false } } : flip(name, input));
   await waitFor(() => w.book.get("s1").where === "server", 20_000);
   assert.equal(w.book.get("s1").reason, "switched-off");
+});
+
+test("more sessions than one heartbeat names go in several calls, so none looks dead and is taken", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const w = await world(t, { beatMax: 1, lapseMs: 1500 });
+  for (const s of ["a1", "a2", "a3"]) await w.run("runner.start", { space: SPACE, session: s });
+  await sleep(4000);   // well past the lapse: a session the heartbeat missed would have been taken
+  await w.r.home.sweep();
+  assert.deepEqual(["a1", "a2", "a3"].map(s => w.book.get(s).where), ["mac", "mac", "mac"]);
 });

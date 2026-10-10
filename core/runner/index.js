@@ -13,6 +13,7 @@ import { createLenderHost } from "./lender-host.js";
 import { registerPlaceTools, settingsReader, SETTING_DEFAULTS } from "./place-tools.js";
 import { hereBlock, deviceState } from "./placement.js";
 import { HEARTBEAT_MS } from "./placement-book.js";
+import { BEAT_MAX } from "./lent-home.js";
 import { createMover, sleepReason } from "./mover.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
@@ -319,7 +320,12 @@ export default {
           const r = runners.get(space);
           const sessions = r ? r.info().filter((/** @type {any} */ x) => Number.isInteger(p.epochOf(x.session))).map((/** @type {any} */ x) => ({ session: x.session, epoch: p.epochOf(x.session), cpuPercent: x.cpuPercent, memoryMb: x.memoryMb, paused: x.paused === true })) : [];
           let ans;
-          try { ans = await p.beat({ sessions, well }); }
+          try {
+            // a heartbeat names a bounded number of sessions: more than that go in several calls, so none looks dead
+            const per = Math.max(1, Math.min(BEAT_MAX, seam.beatMax || BEAT_MAX));
+            ans = await p.beat({ sessions: sessions.slice(0, per), well });
+            for (let at = per; at < sessions.length; at += per) { const more = await p.beat({ sessions: sessions.slice(at, at + per), well }); ans = { ...ans, fenced: [...(ans.fenced || []), ...(more.fenced || [])], directives: [...(ans.directives || []), ...(more.directives || [])] }; }
+          }
           catch {
             // two beats unanswered: the sessions wait where they are, so they never run ahead of a server that will take them after a lapse; the next answer settles what happens to them
             const n = (missed.get(space) || 0) + 1; missed.set(space, n);

@@ -28,6 +28,8 @@ const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
 /** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
 const RESUME_MS = 30_000;
+/** The most sessions one heartbeat names; a lender with more sends them in several, so none is ever missed (a missed one looks dead). */
+export const BEAT_MAX = 100;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -192,7 +194,7 @@ export function createLentHome(o) {
      */
     async beat(chain, i = {}) {
       const w = who(chain);
-      const list = i && Array.isArray(i.sessions) ? i.sessions.slice(0, 50) : [];
+      const list = i && Array.isArray(i.sessions) ? i.sessions.slice(0, BEAT_MAX) : [];
       /** @type {string[]} */ const fencedList = [];
       for (const x of list) {
         const sid = String(x && x.session), l = lent.get(sid);
