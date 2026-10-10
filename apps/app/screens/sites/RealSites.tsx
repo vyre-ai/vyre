@@ -5,10 +5,11 @@ import { useCallback, useEffect, useState } from "react";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
+import { SitesList } from "./SitesList";
 import { BLANK, PIPE, SOURCES, build, challengeText, decision, domainLine, heldOf, nextStep, planLines, publishRefusal, sites, stepOf, type Dep, type Draft, type Held, type Site, type Status } from "./real-model";
 
 const say = (e: unknown) => publishRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
@@ -35,17 +36,7 @@ export function RealSites() {
       {err ? <Card flush><ErrorState title="Publish did not load" reason={err} retry={load} /></Card> : null}
       {deps === null && !err ? <LoadingState rows={3} /> : null}
       {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Drive folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
-      {rows.length ? (
-        <Card flush>
-          {rows.map((s, i) => (
-            <View key={s.name}>{i ? <Divider inset={60} /> : null}
-              <Row dense chevron onPress={() => router.push(`/u/sites/${s.name}` as never)} lead={<IconTile name="sites" />} title={s.name}
-                sub={`${s.live ? `live version ${s.live.version}${s.live.domains[0] ? ` at ${s.live.domains[0].host}` : ""}` : "not live"}${s.current.stage === "Preview" || s.current.stage === "Approved" ? `, version ${s.current.version} in ${s.current.stage.toLowerCase()}` : ""}`}
-                end={<Chip tone={s.status.tone}>{s.status.label}</Chip>} />
-            </View>
-          ))}
-        </Card>
-      ) : null}
+      {rows.length ? <SitesList rows={rows} onOpen={(name) => router.push(`/u/sites/${name}` as never)} /> : null}
       <Sheet open={!!draft} onClose={() => setDraft(null)} title="Publish">
         {draft ? (
           <View className="gap-s3">

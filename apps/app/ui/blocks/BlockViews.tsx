@@ -16,6 +16,7 @@ import { Table } from "../components/Table";
 import { Text } from "../components/Text";
 import { TimelineItem } from "../components/TimelineItem";
 import { iconFor } from "./symbols.js";
+import { accessoryAsChip } from "./list-rules.js";
 import { TypedTable } from "./TypedTable";
 import type { Action, Block, Handlers } from "./types";
 
@@ -53,7 +54,7 @@ export function ListBlock({ k, b, h }: P) {
         <View key={x.id ?? i}>
           {i > 0 ? <Divider inset={iconFor(x.icon, ICON_NAMES) ? 60 : 0} /> : null}
           <Row dense={tight} chevron={tight && !!h.open} lead={iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined} title={x.title} sub={x.subtitle}
-            end={x.accessory && !tight ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined} state={x.accessory && tight ? String(x.accessory) : undefined}
+            end={x.accessory && accessoryAsChip(tight, x.tone) ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined} state={x.accessory && !accessoryAsChip(tight, x.tone) ? String(x.accessory) : undefined}
             onPress={h.open ? () => h.open!(k, x) : undefined} />
         </View>
       ))}
