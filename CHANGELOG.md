@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(gate): a held item's approver is the caller, not a `by` the caller sends (S3). fix(names): names.domain.check answers the person's surfaces and modules only; it had no caller list, so anyone could start the server's DNS lookups.
 - fix(statusline): a box no longer recomputes the status line every minute. The tick exists for the reachability of the box a local vyred reports; on a box it woke waiting.count and agents.list once a minute for nothing, about 140 ms of CPU, the idle burst that put scripts/perf-check's sustained CPU at 2.1 to 2.4% against 1.8%.
 - test: two flakes Node 22 showed. kernel/seal/seal.test.js looked for the bare digits 321 in a saved answer that holds random ids; it now looks for the value. core/cli/commands/phone.test.js subscribed once before the command listened and waited 20 s for a notification that never came; it subscribes again until one arrives, as its later steps already did.
 - test(ci): work branches run the Node the box ships. node.yml's matrix is Node 22 for work branches and 22 and 24 for main and pull requests; test/node-runtime.test.js fails when a matrix list leaves out the major of box/Dockerfile's FROM node.

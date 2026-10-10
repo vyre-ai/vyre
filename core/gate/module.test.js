@@ -160,3 +160,25 @@ test("gate: a module offers a sender, and the user's edited approval reaches its
   assert.match((await local("courier.spoof", { name: "courier:x", tool: "vault.release" })).data.error.message, /one of its own tools/);
   assert.match((await local("courier.spoof", { name: "mail", tool: "courier.release" })).data.error.message, /may offer only a sender named courier/);
 });
+
+test("gate: who approved, rejected, revised or settled an item is the caller, never a name the caller sends (S3)", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, gate: { senders: { mail: { type: "gmail", vault: "work-mail-token", from: "alex@example.com", base: "http://127.0.0.1:9" } } } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
+  const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno", { thread: "t-1", agent: "juno" });
+  const hold = async () => (await juno("gate.request", { kind: "send", via: "mail", to: "dana@example.com", content: { subject: "Hi", body: "Call Thursday?" }, thread: "t-1" })).data.id;
+
+  const a = await hold();
+  assert.ok(!(await cli("gate.revise", { id: a, edited: { body: "Call Friday?" }, by: "per_forged" })).error);
+  const rejected = await cli("gate.reject", { id: a, reason: "no", by: "per_forged" });
+  assert.ok(!rejected.error, JSON.stringify(rejected.error));
+  const row = (await cli("gate.get", { id: a })).data;
+  assert.equal(row.by, "cli", "the row names the caller, not the name it was sent");
+  const lines = d.registry.deps.events.since(0, { type: "gate.rejected", limit: 10 });
+  assert.ok(lines.length && lines.every((/** @type {any} */ e) => (e.payload || e).by === "cli"), "the event names the caller");
+  const revised = d.registry.deps.events.since(0, { type: "gate.revised", limit: 10 });
+  assert.ok(revised.length && revised.every((/** @type {any} */ e) => (e.payload || e).by === "cli"));
+});
+
