@@ -5,7 +5,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { connections } from "./source-real";
 import { words } from "./model";
-import { emptyForm, formProblem, lightWords, SEND_HOWS, type FormInput, type MadeConnection, type Proposal } from "./any-app";
+import { emptyForm, formProblem, lightWords, PRESETS, withPreset, SEND_HOWS, type FormInput, type MadeConnection, type Proposal } from "./any-app";
 import { ItemPick } from "./shared";
 
 const dot = (light: MadeConnection["light"]) => (light === "green" ? "Green" : light === "red" ? "Red" : light === "out_of_step" ? "Amber" : "Grey");
@@ -80,9 +80,10 @@ function AddApp({ open, onClose, onDone }: { open: boolean; onClose: () => void;
   const [problem, setProblem] = useState("");
   const [result, setResult] = useState<{ light: string; words: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hint, setHint] = useState("");
   useEffect(() => {
     if (!open) return;
-    setF(emptyForm()); setProblem(""); setResult(null); setItems(null);
+    setF(emptyForm()); setHint(""); setProblem(""); setResult(null); setItems(null);
     connections.vaultItems().then((l) => setItems(l.filter((i) => i.kind !== "api-credential"))).catch(() => setItems([]));
   }, [open]);
   const set = <K extends keyof FormInput>(k: K, v: FormInput[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -104,6 +105,9 @@ function AddApp({ open, onClose, onDone }: { open: boolean; onClose: () => void;
         </View>
       ) : (
         <View className="gap-s3">
+          <Text size="caption" strong tone="label">Start from</Text>
+          <View className="flex-row gap-s2">{PRESETS.map((p) => <Button key={p.id} size="sm" kind="ghost" label={p.label} onPress={() => { setF(withPreset(p)); setHint(p.hint); }} />)}</View>
+          {hint ? <Text size="secondary" tone="muted">{hint}</Text> : null}
           <Field label="Name" value={f.label} onChangeText={(v) => set("label", v)} placeholder="GoHighLevel Sales" />
           <Field label="App address" value={f.baseUrl} onChangeText={(v) => set("baseUrl", v)} placeholder="https://services.leadconnectorhq.com" help="The API's own address, no path." />
           <Text size="caption" strong tone="label">How the app wants the key</Text>
