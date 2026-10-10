@@ -6,6 +6,7 @@ import { createDoor } from "../../lib/gateway-door.js";
 import { segments } from "../../kernel/core/urn.js";
 import { registerDevSeed } from "./dev-seed.js";
 import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
+import { isSystemType } from "../../lib/record-types.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -59,12 +60,9 @@ export default {
       const list = await d.gateway.grants.members.list(d.chain);
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
-    // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, installed Kits and the proposals waiting for a yes, Kit roles and views, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
-    const SYSTEM_TYPES = new Set(["goal", "memory_fact", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run", "kit-install", "kit-proposal", "preview_doc"]);
-    const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-") || n.startsWith("kit-");
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
-      const withFlag = all.map((/** @type {any} */ t) => (isSystem(String(t.name)) ? { ...t, system: true } : t));
+      const withFlag = all.map((/** @type {any} */ t) => (isSystemType(String(t.name)) ? { ...t, system: true } : t));
       return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
     });
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may.", obj({ space: str, diff: { type: "object" } }, ["diff"]), (i, d) => d.gateway.records.define(d.chain, i.diff));

@@ -26,9 +26,10 @@ import { newPrefixedId } from "../../lib/id.js";
  *   attention?: { kind: 'failed'|'stuck'|'stale'|'verify'|'paused'|'device', step?: string, code?: string, message: string, since: number },
  *   failing?: { step: string, code: string, message: string }, failing_done?: boolean, failing_error?: { code: string, message: string }, cancelled?: { by: string|null, at: number, reason?: string },
  *   gate?: { key: string, urn: string, type: string, record: string, stage: string, next: string | null, owner: string | null, tasks: { id: string, title: string, required: boolean }[] },  a stage gate (s1): a run with no stored Flow
- *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
+ *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate'|'children', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
  *   error?: { step: string, code: string, message: string },
  *   approver: ActorRef, dry?: boolean,
+ *   parent?: { run: string, step: string, lane?: string }, branch?: { step: string, id: string }, inherit?: { trigger: any, event: any, steps: Record<string, any>, locals: Record<string, any> }, result?: any,
  *   record?: string, label?: string,    the record the trigger names (flow-runs contract), and the Flow's words for the timeline
  * }} Run
  */

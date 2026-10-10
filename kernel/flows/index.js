@@ -16,6 +16,7 @@ import { connectorsOf } from "./health.js";
 import { cheatsheet } from "./cheatsheet.js";
 import { applyPatch, PatchError } from "./patch.js";
 import { normalizeFlow } from "./text.js";
+import { compareHistory } from "./replay.js";
 import { checkCase, runCases, expectFrom, simulateCase, CASE_LIMITS } from "./cases.js";
 import { describeFlow, describeRun, explainRun } from "./describe.js";
 import { FlowRunner } from "./runner.js";
@@ -231,7 +232,11 @@ export function createFlows(o) {
       const c = await cat();
       const flow = i.flow || (await view(i.id, [i.version])).flow;
       const approver = personOf({ hops: [chain.hops[0]] });
-      return runner.simulate(flow, { approver, since: i.since, until: i.until, samples: i.samples, limit: i.limit });
+      const sim = await runner.simulate(flow, { approver, since: i.since, until: i.until, samples: i.samples, limit: i.limit });
+      // "Try it on last week": with a Flow id (or `against`), set the practice run beside what that Flow really did in the same window
+      const against = i.against || i.id;
+      if (sim.ok && against && i.since !== undefined) return { ...sim, history: compareHistory(sim, await runner.listRuns({ flow: String(against), limit: 1000 }), { since: i.since, until: i.until }) };
+      return sim;
     },
     "flows.start": async (chain, i) => runner.start(need(i, "id", "the Flow's id (flows.list shows each Flow with its id and how it is doing)"), i.input, chain, i.key),
     // pause: one Flow (id), or everything (all: true), or drain (drain: true: finish what is running, start nothing). What arrives while paused is held and runs on resume (backlog: "run", the default) or is
@@ -248,8 +253,17 @@ export function createFlows(o) {
       const r = await runner.resumeFlow(i.id, o); return { ...r, control: await runner.controlState() };
     },
     "flows.control": async () => runner.controlState(),
-    "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
-    "flows.run": async (chain, i) => { const r = await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)")); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
+    "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), ...(r.parent ? { parent: r.parent.run } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
+    "flows.run": async (chain, i) => {
+      const r = await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)"));
+      if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" });
+      const v = await store.getVersion(r.flow, r.version);
+      // the lanes of a parallel step are runs of their own: their steps are painted on this run's picture, and each lane is listed with its state
+      const lanes = [];
+      for (const l of Object.values(r.steps || {})) for (const id of (/** @type {any} */ (l).children || [])) { const k = await runner.getRun(id); if (k && k.parent && k.parent.lane) lanes.push({ lane: k.parent.lane, run: k.id, state: k.state, steps: k.steps }); }
+      const shown = lanes.length ? { ...r, steps: Object.assign({}, ...lanes.map(k => k.steps), r.steps) } : r;
+      return { run: r, painted: v ? paintRun(v.flow, shown, await cat()) : null, ...(lanes.length ? { lanes: lanes.map(({ lane, run, state }) => ({ lane, run, state })) } : {}) };
+    },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.
     "flows.budget": async (chain, i) => {
       if (i && (i.tokens_per_day !== undefined || i.context_tokens !== undefined)) {
@@ -340,7 +354,10 @@ export function createFlows(o) {
       if (tested && !tested.ok) return { ok: false, errors: tested.results.filter(r => !r.ok).map(r => ({ path: "tests", message: r.line })), message: "not proposed: a saved test case fails" };
       const now = runner.now();
       const sim = await runner.simulate(v.flow, { approver, since: now - 7 * 86_400_000, until: now, limit: 200 }).catch(() => null);
-      const bits = ["compiles", tested ? `${tested.passed} test case${tested.passed === 1 ? "" : "s"} pass` : "no saved test cases", sim && sim.ok ? sim.summary.replace(/^This Flow would have run/, "last week it would have run") : "not replayed (its trigger has nothing to replay)"];
+      // when this Flow has really run in that week, say how much of it the new version would have done the same
+      const hist = sim && sim.ok ? compareHistory(sim, await runner.listRuns({ flow: v.id, limit: 1000 }), { since: now - 7 * 86_400_000, until: now }) : null;
+      const bits = ["compiles", tested ? `${tested.passed} test case${tested.passed === 1 ? "" : "s"} pass` : "no saved test cases", sim && sim.ok ? sim.summary.replace(/^This Flow would have run/, "last week it would have run") : "not replayed (its trigger has nothing to replay)",
+        ...(hist && hist.ran ? [`${hist.same} of its ${hist.ran} real runs would have gone the same way`] : [])];
       const line = `Checked: ${bits.join("; ")}.`;
       const r = await proposals.propose(chain, { ...i, note: `${line} ${i.note || ""}`.trim().slice(0, 500) });
       return { ...r, checked: line };
