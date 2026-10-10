@@ -152,7 +152,7 @@ export async function walk(w) {
       await run.step(S("add a device: the computer shows a code"), async () => {
         try { code = await mac.showDeviceCode(); } catch (e) {
           // A release server takes presence only from a hardware key (Touch ID, Face ID, a phone's chip); this headless app has a software key, so it cannot answer the server's request. Not a product fault.
-          if (/** @type {any} */ (e).code === "presence_required" && /software/.test(String(/** @type {Error} */ (e).message))) throw Object.assign(new Error("a release server wants a hardware presence key (Touch ID, Face ID); this headless app has a software key, so Add a device is walked only on the daemon server"), { skip: true });
+          if (/** @type {any} */ (e).code === "presence_required" && /software|needs your yes/.test(String(/** @type {Error} */ (e).message))) throw Object.assign(new Error("a release server wants a hardware presence key (Touch ID, Face ID); this headless app has a software key, so Add a device is walked only on the daemon server"), { skip: true });
           throw e;
         }
         assert.match(code.qr, /^vyre:\/\/wink\/2\?/);

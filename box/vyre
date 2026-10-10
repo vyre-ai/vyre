@@ -1152,6 +1152,16 @@ uninstall() {
   if [ "$choice" = delete ]; then
     # shellcheck disable=SC2086 # one volume name per word
     [ -z "$vols" ] || docker volume rm $vols >/dev/null
+    # The Spaces' own record stores (vyre-spc-*) and the root-owned state Vyre wrote (the updater's, the Space helper's) go too: a purge leaves nothing a later install would read as its own
+    # (a stale signed release folder once made a development build look packaged, and a kept home kept its owner). Only the two folders this wrapper names, never a path from anywhere else.
+    svols=$(docker volume ls -q 2>/dev/null | grep '^vyre-spc-' || true)
+    # shellcheck disable=SC2086 # one volume name per word
+    [ -z "$svols" ] || docker volume rm $svols >/dev/null 2>&1 || true
+    for d in "$UPD_ROOT" "$SPACES_ROOT"; do
+      case "$d" in ""|/|/var|/var/lib|/home|/root|/usr) continue ;; /*) ;; *) continue ;; esac
+      [ -e "$d" ] || continue
+      if [ "$(id -u)" = 0 ]; then rm -rf -- "$d"; else sudo rm -rf -- "$d" 2>/dev/null || say "note: $d is still on this server; remove it with: sudo rm -rf $d"; fi
+    done
     say "your data is deleted"
   else
     say "your data is kept: a fresh install picks up where this left off"
