@@ -70,7 +70,7 @@ async function containerBuild(ctx, d, dir, secretArgs, synth) {
   if (synth) {
     if (df) throw refuse("the folder has its own Dockerfile: remove the build command, or remove the Dockerfile and let Vyre write it", "refused");
     df = { path: "Dockerfile", content: Buffer.from(synthDockerfile(synth)) };
-    site = { ...site, files: [...site.files, df] };
+    site = { ...site, files: [...site.files, df].sort((/** @type {any} */ a, /** @type {any} */ b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)) };
   } else if (!df) throw refuse("the folder has no Dockerfile at its top; add one, or publish a folder of ready files", "refused");
   const allow = (ctx.config && ctx.config.builder && Array.isArray(ctx.config.builder.from) ? ctx.config.builder.from : []).filter((/** @type {any} */ x) => typeof x === "string");
   const digest = synth ? digestOf(site.files) : site.digest;
