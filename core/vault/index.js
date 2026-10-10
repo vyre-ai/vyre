@@ -308,8 +308,8 @@ export default {
 
     ctx.tool("vault.release", {
       internal: true,
-      description: "One value, to a module holding a grant for it. `project`, when the grant names one, must match.",
-      input: obj({ name: str, field: str, watcher: str, project: str }, ["name"]),
+      description: "One value, to a module holding a grant for it, or to Publish for a deployment holding its own grant. `project`, when the grant names one, must match.",
+      input: obj({ name: str, field: str, watcher: str, project: str, deployment: str }, ["name"]),
       run: (input, { caller }) => vault.release(input, caller),
     });
 
