@@ -205,4 +205,13 @@ test("fromSignIn: a Connection whose key was refused is 'The key for <host> stop
   assert.equal(rows[0].title, "The key for api.acme-crm.invalid stopped working");
   assert.equal(rows[0].kind, "signin");
   assert.deepEqual(rows[0].answer, { tool: "connectors.connection.check", input: { id: "acme-crm" }, fill: [] });
+
+test("fromJobs: a live job whose last run failed is one card that names it and runs it again", async () => {
+  const { fromJobs, OWNERS } = await import("./items.js");
+  const rows = fromJobs([{ deployment: "dep_0123456789abcdef", name: "nightly-report", at: 5, message: "the job ended with exit 3 in 4 seconds" }, { deployment: "../x", name: "bad" }]);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].title, "The job nightly-report failed");
+  assert.equal(rows[0].kind, "run");
+  assert.deepEqual(rows[0].answer, { tool: "publish.job.run", input: { deployment: "dep_0123456789abcdef" }, fill: [] });
+  assert.ok(OWNERS.some(o => o.name === "publish-jobs" && o.tool === "publish.job.attention"));
 });
