@@ -23,6 +23,7 @@ import { paths } from "../core/config/index.js";
 import { tempHome, present, writeModule } from "./helpers.js";
 import { groupsFrom, approveGroup, closingLine } from "../apps/app/src/real/group-approve.js";
 import { boot as _unused } from "../core/team/team-fixture.js";
+import { startFakeMail } from "../core/mail/testing/fake-imap.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -367,5 +368,26 @@ test("a text goes out on one yes through the person's own Twilio item: connected
   assert.equal(posted[0].url, `https://api.twilio.com/2010-04-01/Accounts/AC${"a".repeat(32)}/Messages.json`);
   assert.equal(posted[0].auth, `Basic ${Buffer.from(`AC${"a".repeat(32)}:0123456789abcdef0123456789abcdef`).toString("base64")}`);
   assert.deepEqual(Object.fromEntries(new URLSearchParams(posted[0].body)), { To: "+15555550199", Body: "Your hearing moved to Tuesday.", From: "+15555550123" });
+  assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+});
+
+test("an e-mail from comms.send reaches a real mail account on one yes: the account connected from the Vault's catalog, the held message released to SMTP, nothing held twice", { timeout: 300_000 }, async t => {
+  const w = await world(t);
+  const fake = await startFakeMail(t, { user: "alex@harlow.example", password: "hunter2-hunter2" });
+  const connected = await w.asPerson("vault.connect", { module: "mail", need: "imap", label: "alex", fields: { imap_host: "127.0.0.1", imap_port: String(fake.imap.port), smtp_host: "127.0.0.1", smtp_port: String(fake.smtp.port),
+    username: "alex@harlow.example", password: "hunter2-hunter2", from: "alex@harlow.example", security: "tls" } });
+  assert.ok(connected.item, JSON.stringify(connected).slice(0, 300));
+  // the catalog takes only tls or starttls; the stand-in mail server speaks plain, so the one field is set to that after the connection is made
+  await w.asPerson("vault.put", { name: connected.item, kind: "env-set", fields: { imap_host: "127.0.0.1", imap_port: String(fake.imap.port), smtp_host: "127.0.0.1", smtp_port: String(fake.smtp.port), username: "alex@harlow.example", password: "hunter2-hunter2", from: "alex@harlow.example", security: "none" } });
+  const accounts = await w.asPerson("mail.accounts", {});
+  assert.ok((accounts.accounts || accounts).length >= 1, `the account is there: ${JSON.stringify(accounts).slice(0, 300)}`);
+  const input = { via: "email", to: "dana@harlow.test", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/1/abc" };
+  const card = await approved(w, "comms.send", input);
+  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  await until(() => fake.sent.length === 1, "the mail server received the message");
+  assert.deepEqual(fake.sent[0].rcpt, ["dana@harlow.test"]);
+  const encoded = fake.sent[0].data.split("\r\n\r\n").slice(1).join("").replace(/\s+/g, "");
+  assert.equal(Buffer.from(encoded, "base64").toString(), input.body, "the words the person approved are the words that went out");
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
 });
