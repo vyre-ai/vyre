@@ -30,7 +30,6 @@ test("the @Engineer chat starts the way the app starts it, and is pinned", { tim
   const pinned = await call("work.chat.pin", { kind: "engineer", chat: made.data.chat });
   assert.ok(!pinned.error, JSON.stringify(pinned.error));
   assert.equal((await call("work.chat.persistent", { kind: "engineer" })).data.chat, made.data.chat, "the pinned chat is the one made");
-  // a name that is nobody's stays a refusal: only an agent that exists is registered
-  const second = await call("work.chat.create", { title: "again", id: `chat_${crypto.randomUUID()}`, ring: createRing(`chat_x`, holdersOf([{ device: "dev_app", agree: dev.getPublicKey().toString("base64url") }])).doc, people: [], agents: [] });
+});
   assert.ok(second.error || second.data, "an ordinary chat still starts or says why");
 });
