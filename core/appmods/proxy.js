@@ -225,8 +225,8 @@ export function createHostProxy(o) {
     // A server Publish made, once live, answers everyone on every route with its own cookies and nothing of Vyre's: the owner's ticket cookie is removed below (passCookies) and the app has no sign-in here
     const wide = app.open === true;
     const open = exact || signing || wide;
-    // Anyone without a ticket on a SIGNING route is a signer, not the owner: the app sees them as it sees a stranger, never as the install's admin. (The few static paths in `public` are served as before.)
-    const stranger = signing && !exact && !ticketed;
+    // Anyone without a ticket on a SIGNING route or a public path is a stranger, not the owner: the app sees them as it sees a stranger, never as the install's admin (test/stranger-session.test.js, S6).
+    const stranger = (signing || exact) && !ticketed;
     if (!open && !ticketed) return plain(404, "not found");
     if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(String(req.method))) return plain(405, "method not allowed");
     try {
