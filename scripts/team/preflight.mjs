@@ -51,6 +51,7 @@ for (const f of existing) {
 const bodies = git(["log", `${mergeBase}..HEAD`, "--format=%H %B%x00"]);
 if (/Co-Authored-By:\s*Claude|Generated with \[Claude|Claude-Session:/i.test(bodies)) fail("G3", "a commit message carries Claude attribution; Vyre credits the repository owner only. Reword the commit (git commit --amend, or a new commit for older ones before queueing).");
 
+/** @type {string[]} */ const warns = [];
 // ---- K1: kernel lines need a ruling. Net lines added under kernel/ (outside tests) must be named in a commit message as [kernel +N: <reason>]; the lead rules on them first (FOUNDATION A8).
 {
   const stat = git(["diff", "--numstat", `${mergeBase}...HEAD`, "--", "kernel/"]).split("\n").filter(Boolean)
@@ -84,7 +85,6 @@ for (const { file: f, line } of added) {
 }
 
 // ---- W1: edits in another team's paths (a warning, not a failure): the two ends of a seam talk first
-/** @type {string[]} */ const warns = [];
 try {
   const own = JSON.parse(fs.readFileSync("scripts/team/owners.json", "utf8"));
   const me = process.env.VYRE_TEAM || "";
