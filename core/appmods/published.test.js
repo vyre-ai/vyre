@@ -5,6 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import net from "node:net";
 import { publishedManifest, checkPublished, IMAGE_ID, CEILING } from "./published.js";
 import { checkAppModule } from "./manifest.js";
 import { createHostProxy, createTickets } from "./proxy.js";
@@ -72,20 +73,33 @@ async function front(/** @type {import("node:test").TestContext} */ t, /** @type
       res.end("hello from northwind");
     });
   });
+  upstream.on("upgrade", (req, sock) => {
+    seen.push({ method: req.method, url: req.url, headers: req.headers, upgrade: true });
+    sock.write("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n"); sock.on("data", d => sock.write(Buffer.concat([Buffer.from("echo:"), d]))); sock.on("error", () => {});
+  });
   await new Promise(r => upstream.listen(0, "127.0.0.1", () => r(undefined)));
   const origin = `http://127.0.0.1:${/** @type {any} */ (upstream.address()).port}`;
   const tickets = createTickets();
   const proxy = createHostProxy({ tickets, app: async name => (name === "northwind" ? { origin, origins: [origin], login: null, public: [], passCookies: true, ...appOver, credentials: async () => ({}) } : null) });
   const server = http.createServer((req, res) => { proxy(req, res, { url: new URL(req.url || "/", "http://x") }).then(done => { if (!done) { res.writeHead(404); res.end(); } }); });
+  server.on("upgrade", (req, sock, head) => { proxy.upgrade(req, sock, head).then(done => { if (!done) sock.destroy(); }); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
-  t.after(() => { server.closeAllConnections(); server.close(); upstream.closeAllConnections(); upstream.close(); });
+  // an upgraded socket belongs to neither server's connection list any more: they are closed here
+  const socks = /** @type {Set<net.Socket>} */ (new Set());
+  for (const sv of [server, upstream]) sv.on("connection", c => { socks.add(c); c.on("close", () => socks.delete(c)); });
+  t.after(() => { for (const c of socks) c.destroy(); server.closeAllConnections(); server.close(); upstream.closeAllConnections(); upstream.close(); });
   const port = /** @type {any} */ (server.address()).port;
   const call = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}, body = "") => new Promise((resolve, reject) => {
     const r = http.request({ host: "127.0.0.1", port, method, path: p, headers: { host: HOST, ...headers, ...(body ? { "content-length": String(Buffer.byteLength(body)) } : {}) } }, res => { const c = /** @type {Buffer[]} */ ([]); res.on("data", d => c.push(d)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(c).toString() })); });
     r.on("error", reject); r.end(body);
   });
+  const ws = (/** @type {Record<string, string>} */ headers = {}) => new Promise(resolve => {
+    const c = net.connect(port, "127.0.0.1", () => c.write(`GET /live HTTP/1.1\r\nHost: ${HOST}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n${Object.entries(headers).map(([k, v]) => `${k}: ${v}\r\n`).join("")}\r\n`));
+    let got = ""; c.on("data", d => { got += d; if (got.includes("\r\n\r\n") && !got.includes("echo:")) c.write("ping"); if (got.includes("echo:ping")) { c.destroy(); resolve(got); } });
+    c.on("error", () => resolve(got)); c.on("close", () => resolve(got)); setTimeout(() => { c.destroy(); resolve(got); }, 1500).unref();
+  });
   const ticket = () => { const tk = tickets.issue("northwind", HOST, "/"); return `vyre_app=${tickets.trade(tk, HOST)?.sid}`; };
-  return { seen, call, ticket };
+  return { seen, call, ticket, ws };
 }
 
 test("an open server answers a stranger on every route and method, keeps its own cookies and never sees Vyre's, and its cookies stay on its own host", async t => {
@@ -117,4 +131,22 @@ test("a server that is not open is the owner's alone: a stranger gets the plain 
   assert.equal(r.status, 404);
   assert.equal(f.seen.length, 0);
   assert.equal(/** @type {any} */ (await f.call("GET", "/", { cookie: f.ticket() })).status, 200, "with the owner's ticket it answers");
+});
+
+test("an open server takes a stranger's WebSocket with the visitor's own cookies and credentials and none of Vyre's; one that is not open is the owner's alone", async t => {
+  const f = await front(t, { open: true });
+  const got = await f.ws({ cookie: "vyre_app=FORGED; theme=dark", "x-vyre-viewer": "owner", authorization: "Bearer visitors-own" });
+  assert.match(got, /^HTTP\/1\.1 101 /);
+  assert.match(got, /echo:ping/);
+  const h = f.seen.find(x => x.upgrade).headers;
+  assert.equal(h.cookie, "theme=dark", "Vyre's cookie is removed, the visitor's own stays");
+  assert.equal(h.authorization, "Bearer visitors-own");
+  assert.equal(h["x-vyre-viewer"], undefined);
+  const owner = await f.ws({ cookie: `${f.ticket()}; theme=dark` });
+  assert.match(owner, /^HTTP\/1\.1 101 /, "the owner with a ticket opens the same socket");
+  const closed = await front(t, {});
+  const no = await closed.ws({ cookie: "vyre_app=FORGED" });
+  assert.doesNotMatch(no, /101/);
+  assert.equal(closed.seen.filter(x => x.upgrade).length, 0, "a stranger's socket never reached a site that is not open");
+  assert.match(await closed.ws({ cookie: closed.ticket() }), /^HTTP\/1\.1 101 /, "and the owner's ticket opens it");
 });

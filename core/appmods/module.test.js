@@ -69,7 +69,7 @@ async function world(t, opt = {}) {
   const helperDriver = {
     kind: "helper",
     hookPortFor: m => m.app.hookPort,
-    up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, hookHost: "127.0.0.1", outputs: opt.handoff === false ? null : { hook_token: "h".repeat(64), api_token: "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", login_password: "pw_1234567890abcdef" } }; },
+    up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets), p.publishSpace]); return { origin: `http://127.0.0.1:${app.address().port}`, hookHost: "127.0.0.1", outputs: opt.handoff === false ? null : { hook_token: "h".repeat(64), api_token: "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", login_password: "pw_1234567890abcdef" } }; },
     exec: async () => { throw new Error("the daemon must not run a command in the app"); },
     status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
   };
@@ -513,6 +513,19 @@ test("a published server: only Publish runs it, from the secrets Publish wrote, 
   assert.equal((await w.cli("appmods.list")).data.apps.some((/** @type {any} */ a) => a.name === "northwind"), false);
   assert.ok(!(await w.cli("appmods.hosts")).data.hosts.includes("northwind.localhost"));
   assert.equal((await asPublish("appmods.publish.remove", { deployment: "dep_fedcba9876543210" })).data.removed, false, "twice is nothing");
+});
+
+test("a published server on a server that runs apps through its host helper: installed with the Space it belongs to and its secrets by name, no webhook door, and the helper driver stops and removes it by its deployment", async t => {
+  const w = await world(t, { helper: true });
+  const SP = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  fs.mkdirSync(path.join(w.root, "publish", SP, "secrets", DEP), { recursive: true }); fs.writeFileSync(path.join(w.root, "publish", SP, "secrets", DEP, "GREETING_PHRASE"), "hello", { mode: 0o600 });
+  const r = await w.d.registry.call("appmods.publish.install", { deployment: { id: DEP, space: SP, name: "northwind", version: 1, runtime: { kind: "image", image: "sha256:" + "a".repeat(64), port: 8080 }, secrets: ["GREETING_PHRASE"] } }, "module:publish");
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  const up = w.log.filter(l => l[0] === "up").at(-1);
+  assert.deepEqual([up[2], up[3], up[4], up[5]], ["northwind", undefined, ["GREETING_PHRASE"], SP], "the helper driver is given the Space and the secrets by name, and no hook port");
+  assert.equal((await w.cli("appmods.status", { name: "northwind" })).data.state, "running");
+  assert.equal((await w.d.registry.call("appmods.publish.stop", { deployment: DEP }, "module:publish")).data.state, "stopped");
+  assert.equal((await w.d.registry.call("appmods.publish.remove", { deployment: DEP }, "module:publish")).data.removed, true);
 });
 
 test("a published server survives a restart of the daemon: the manifest is kept and the site is still known", async t => {

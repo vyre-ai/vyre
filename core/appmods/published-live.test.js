@@ -7,6 +7,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import http from "node:http";
 import net from "node:net";
@@ -38,6 +39,13 @@ http.createServer((q, r) => {
   const k = process.env.GREETING_PHRASE;
   r.setHeader("set-cookie", "s=1; Path=/; Domain=.localhost");
   r.end(JSON.stringify({ root, data, key: k ? crypto.createHash("sha256").update(k).digest("hex").slice(0, 8) : null, cookie: q.headers.cookie || null, host: q.headers.host || null, xff: q.headers["x-forwarded-for"] || null, method: q.method, url: q.url, vyre: Object.keys(q.headers).filter(h => h.startsWith("x-vyre")) }));
+}).on("upgrade", (q, sock) => {
+  // a WebSocket by hand: the handshake, then one text frame that says which cookie the page was opened with
+  const accept = crypto.createHash("sha1").update(q.headers["sec-websocket-key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").digest("base64");
+  sock.write("HTTP/1.1 101 Switching Protocols\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nSec-WebSocket-Accept: " + accept + "\\r\\n\\r\\n");
+  const msg = Buffer.from(JSON.stringify({ ws: true, cookie: q.headers.cookie || null }));
+  sock.write(Buffer.concat([Buffer.from([0x81, msg.length]), msg]));
+  sock.on("error", () => {});
 }).listen(8080);
 `;
 
@@ -71,9 +79,13 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
 
   const dep = (await call("publish.create", { name: "northwind", source: { kind: "folder", ref: src }, build: { image: "dockerfile" } })).deployment;
   assert.equal(dep.stage, "Draft");
-  // BLOCKED (owner: trust): a deployment's runtime secret is a kernel grant minted by Publish, and on a real daemon the mint is refused for the address of a created Space (`publish may not make that
-  // grant`: the primary kernel's mint, a hosted Space's credential address). Until that is fixed the secret steps of this journey cannot run here; appmods reading the files Publish writes is tested in
-  // core/appmods/module.test.js, and the missing-secret refusal and the revoke restart in lib/publish and core/publish tests.
+  // the secret: a real one is held for the person; their yes makes the kernel grant the Vault answers on
+  const put = await as("vault.put", { name: "greeting-key", kind: "secret", description: "test", value: "live-secret-xyz" });
+  assert.ok(!put.error, JSON.stringify(put.error));
+  const grant = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key", name: "GREETING_PHRASE", use: ["runtime"] });
+  assert.equal(grant.held, true, JSON.stringify(grant));
+  await decide(grant.task);
+  assert.ok(!fs.existsSync(path.join(root, "publish", spaceId, "secrets", dep.id, "GREETING_PHRASE")), "no secret file is written before the yes to go live");
   // preview builds the image with the real rootless BuildKit; nothing runs yet
   const t0 = Date.now();
   const pv = await call("publish.preview", { deployment: dep.id });
@@ -100,12 +112,23 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   const got = JSON.parse(hit.body);
   assert.equal(got.root, "root-read-only", "the root cannot be written");
   assert.equal(got.data, "data-writable", "and the data volume can");
-  assert.equal(got.key, null, "no secret was granted, so none is in the process");
+  assert.equal(got.key, crypto.createHash("sha256").update("live-secret-xyz").digest("hex").slice(0, 8), "the granted secret reached the process as GREETING_PHRASE");
   assert.equal(got.cookie, "theme=dark", "the visitor's cookie, never Vyre's");
   assert.deepEqual(got.vyre, []);
   assert.deepEqual([got.method, got.url], ["GET", "/hello?a=1"]);
   assert.deepEqual(hit.headers["set-cookie"], ["s=1; Path=/"], "its cookie stays on its own host");
   assert.equal(/** @type {any} */ (await visit("POST", "/orders")).status, 200, "every method");
+
+  // a stranger's WebSocket, through the front: the page keeps its own cookie, never Vyre's
+  const frame = await new Promise(resolve => {
+    const c = net.connect(frontPort, "127.0.0.1", () => c.write(`GET /live HTTP/1.1\r\nHost: ${H}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\nCookie: vyre_app=FORGED; theme=dark\r\n\r\n`));
+    let buf = Buffer.alloc(0);
+    c.on("data", dd => { buf = Buffer.concat([buf, dd]); const i = buf.indexOf("\r\n\r\n"); if (i >= 0 && buf.length > i + 6) { const n = buf[i + 5]; if (buf.length >= i + 6 + n) { c.destroy(); resolve({ head: buf.subarray(0, i).toString(), payload: buf.subarray(i + 6, i + 6 + n).toString() }); } } });
+    c.on("error", () => resolve(null)); setTimeout(() => { c.destroy(); resolve(null); }, 5000).unref();
+  });
+  assert.ok(frame, "the WebSocket opened");
+  assert.match(/** @type {any} */ (frame).head, /^HTTP\/1\.1 101 /);
+  assert.deepEqual(JSON.parse(/** @type {any} */ (frame).payload), { ws: true, cookie: "theme=dark" });
 
   // the container, as inspected
   const ins = JSON.parse(docker(["inspect", names.container]).stdout)[0];
@@ -119,8 +142,16 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.equal(ins.Config.User, "node");
   assert.deepEqual(ins.HostConfig.Binds || [], [`${names.volume("data")}:/data`].filter(() => false).concat(ins.HostConfig.Binds || []));
   assert.ok(!(ins.Mounts || []).some((/** @type {any} */ m) => m.Type === "bind"), "nothing of the server is mounted");
-  // the env file the container started from is gone
+  // the secret's file in Publish's folder is private; the env file the container started from is gone
+  const secretFile = path.join(root, "publish", spaceId, "secrets", dep.id, "GREETING_PHRASE");
+  assert.equal(fs.statSync(secretFile).mode & 0o777, 0o600);
   assert.ok(!fs.existsSync(path.join(root, "appmods", d.kernel.id.space, "northwind", "env")), "the env file is deleted after the start");
+
+  // taking the secret away starts the server again without it
+  await call("publish.secret.revoke", { deployment: dep.id, name: "GREETING_PHRASE" });
+  const after = JSON.parse(/** @type {any} */ (await visit("GET", "/")).body);
+  assert.equal(after.key, null, "the revoked secret is not in the new process");
+  assert.ok(!fs.existsSync(secretFile));
 
   // retire takes the server down; the host stops answering and the data stays
   await call("publish.retire", { deployment: dep.id });

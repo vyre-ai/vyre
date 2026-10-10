@@ -29,7 +29,7 @@
 //   app hosts          with `ingress.apps` and `ingress.appsSuffix` (".<name>.vyre.run") a request whose Host is exactly one label under the box's name (and, over TLS, whose SNI is that same host) is an app
 //                      module's own origin. The Host is matched against the list of installed RUNNING apps BEFORE anything of the request is read: an unknown label gets the same 404 bytes and its body is
 //                      never read. A known one is carried to the apps' loopback front (core/appmods, which answers by Host) with the Host kept, any method and path, a body streamed up to 64 MB, under its own
-//                      per-address budget. A WebSocket upgrade on an app host is refused like every upgrade that is not Headscale's.
+//                      per-address budget. A WebSocket upgrade on an app host (GET, Upgrade: websocket) is carried the same way as bytes both ways to the front, under its own per-address budgets, counted apart from Headscale's; the front decides who may open one.
 //
 // It holds no secret except its own TLS key, runs under its own uid (gate-main.js drops privileges
 // after binding), and talks to Headscale on a loopback port.
@@ -137,6 +137,7 @@ export function createGate(o) {
     maxHeaderBytes: 8192, headersMs: 10_000, requestMs: 15_000, idleMs: 30_000, upgradedIdleMs: 10 * 60_000,
     handshakeMs: 10_000, maxBodyBytes: 0, windowMs: 60_000, upgradesPerWindow: 30, maxConcurrentUpgrades: 8,
     maxConcurrentDerp: 16, maxConnsPerAddr: 128, maxConns: 4096, failThreshold: 5, failWindowMs: 60_000, blockMs: 10 * 60_000,
+    appsUpgradesPerWindow: 60, appsConcurrentUpgrades: 16,
     appsPerWindow: APPS_PER_WINDOW, appsBodyBytes: APPS_BODY_LIMIT, appsRequestMs: 10 * 60_000, appsIdleMs: 120_000,
     ...(o.limits || {}),
   };
@@ -456,10 +457,49 @@ export function createGate(o) {
   });
 
   // Upgrades: /ts2021 and /derp pass as bytes.
+  /**
+   * A WebSocket on an app host (a published server's live dashboard, a chat widget): the same checks as a request, the same budgets per address (counted apart from Headscale's own upgrades, so a busy app
+   * cannot starve the control channel), and then bytes both ways to the apps' loopback front, which does the rest (its own cookies only, never Vyre's session). The head is the visitor's minus every
+   * spoofable header, plus the real address.
+   * @param {import("node:http").IncomingMessage} req @param {import("node:stream").Duplex} socket @param {Buffer} head @param {string} host @param {string} addr
+   */
+  async function appsUpgrade(req, socket, head, host, addr) {
+    const k = addrKey(addr), wk = "w:" + k, t = now();
+    const no = () => { stats.notFound++; emit({ type: "notfound", addr: k }); refuse(/** @type {any} */ (socket), NOT_FOUND); };
+    if (!host || req.method !== "GET" || String(req.headers.upgrade || "").toLowerCase() !== "websocket") return no();
+    const w = (windows.get(wk) || []).filter(x => x > t - L.windowMs);
+    const live = bump(ups, wk, 1);
+    if (w.length >= L.appsUpgradesPerWindow || live > L.appsConcurrentUpgrades) { bump(ups, wk, -1); stats.limited++; emit({ type: "limit", addr: k, what: "apps-upgrade" }); refuse(/** @type {any} */ (socket), TOO_MANY); return; }
+    w.push(t); windows.set(wk, w);
+    /** @type {{ port: number, hosts: string[] } | null} */ let cur = null;
+    try { cur = o.ingress && o.ingress.apps ? await o.ingress.apps() : null; } catch { cur = null; }
+    if (!cur || !Number.isInteger(cur.port) || cur.port < 1 || !Array.isArray(cur.hosts) || !cur.hosts.includes(host)) { bump(ups, wk, -1); return no(); }
+    let done = false;
+    const upc = net.connect({ host: "127.0.0.1", port: cur.port });
+    const finish = () => { if (done) return; done = true; bump(ups, wk, -1); try { socket.destroy(); } catch { /* gone */ } upc.destroy(); };
+    upc.on("error", () => { if (!done && !socket.destroyed) { try { socket.write(UNAVAILABLE); } catch { /* gone */ } } finish(); });
+    upc.on("close", finish); socket.on("close", finish);
+    upc.on("connect", () => {
+      if (done) return;
+      /** @type {string[]} */ const lines = [`${req.method} ${req.url} HTTP/1.1`];
+      const raw = req.rawHeaders;
+      for (let i = 0; i + 1 < raw.length; i += 2) { const low = raw[i].toLowerCase(); if (SPOOF.test(low) || (fwd && low === fwd.header)) continue; lines.push(`${raw[i]}: ${raw[i + 1]}`); }
+      lines.push(`X-Forwarded-For: ${addr}`, `X-Real-IP: ${addr}`, "X-Forwarded-Proto: https");
+      upc.write(lines.join("\r\n") + "\r\n\r\n");
+      if (head && head.length) upc.write(head);
+      socket.setTimeout(L.upgradedIdleMs, () => { stats.timeouts++; finish(); });
+      upc.setTimeout(L.upgradedIdleMs, () => finish());
+      socket.pipe(upc); upc.pipe(/** @type {any} */ (socket));
+      stats.forwarded++;
+    });
+  }
+
   server.on("upgrade", (req, socket, head) => {
     const addr = realAddr(req), k = addrKey(addr);
     socket.on("error", () => { /* a reset is not news */ });
     if (isBlocked(addr)) { stats.blocked++; socket.destroy(); return; }
+    const ah = appsHost(req);
+    if (ah !== null) { appsUpgrade(req, socket, head, ah, addr).catch(() => { try { socket.destroy(); } catch { /* gone */ } }); return; }
     const kind = classify(req, true);
     if (!kind) { stats.notFound++; emit({ type: "notfound", addr: k }); refuse(/** @type {any} */ (socket), NOT_FOUND); return; }
     const isDerp = kind === "derp";
