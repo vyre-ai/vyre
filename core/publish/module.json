@@ -67,7 +67,8 @@
         "asks": true,
         "outward": true,
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "projectArg": "project"
       },
       {
         "name": "publish.rollback",
