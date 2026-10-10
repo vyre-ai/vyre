@@ -48,14 +48,17 @@ test("the edge container carries a signer to a box, refuses what is not declared
   const override = path.join(dir, "override.yml");
   fs.writeFileSync(override, "services:\n  relay:\n    extra_hosts: [ \"host.docker.internal:host-gateway\" ]\n");
   const project = `vyre-edge-live-${process.pid}`;
-  const env = { ...process.env, VYRE_RELAY_SECRET: SECRET, VYRE_TUNNEL_DIRECTORY: `http://host.docker.internal:${dirPort}`, EDGE_TLS_BIND: "127.0.0.1:", EDGE_HTTP_BIND: "127.0.0.1:", EDGE_CONTROL_BIND: "127.0.0.1:" };
+  // fixed ports (found free now) so the edge can be restarted below and the box's link finds it where it was, as at a real address
+  const free = () => new Promise(resolve => { const s = http.createServer(); s.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s.address()).port; s.close(() => resolve(p)); }); });
+  const [tlsP, httpP, ctlP] = [await free(), await free(), await free()];
+  const env = { ...process.env, VYRE_RELAY_SECRET: SECRET, VYRE_TUNNEL_DIRECTORY: `http://host.docker.internal:${dirPort}`, EDGE_TLS_BIND: `127.0.0.1:${tlsP}`, EDGE_HTTP_BIND: `127.0.0.1:${httpP}`, EDGE_CONTROL_BIND: `127.0.0.1:${ctlP}` };
   const compose = (/** @type {string[]} */ ...a) => sh(["compose", "-p", project, "-f", path.join(HERE, "compose.yml"), "-f", override, ...a], { env });
   t.after(() => { compose("down", "-v", "--timeout", "3"); fs.rmSync(dir, { recursive: true, force: true }); });
   const up = compose("up", "-d", "--build", "relay");
   assert.equal(up.status, 0, up.stderr);
-  const port = (/** @type {string} */ inner) => Number(/:(\d+)\s*$/m.exec(compose("port", "relay", inner).stdout)?.[1]);
-  const [control, tlsPort, httpPort] = [port("8080"), port("9443"), port("9080")];
-  assert.ok(control && tlsPort && httpPort, "the compose file publishes the control link, the passthrough and the redirect");
+  const [control, tlsPort, httpPort] = [ctlP, tlsP, httpP];
+  const published = ["8080", "9443", "9080"].map(inner => Number(/:(\d+)\s*$/m.exec(compose("port", "relay", inner).stdout)?.[1]));
+  assert.deepEqual(published, [ctlP, tlsP, httpP], "the compose file publishes the control link, the passthrough and the redirect where it was told to");
 
   let healthy = false;
   for (let i = 0; i < 60 && !healthy; i++) { try { healthy = (await fetch(`http://127.0.0.1:${control}/health`)).ok; } catch { await new Promise(r => setTimeout(r, 500)); } }
@@ -98,6 +101,15 @@ test("the edge container carries a signer to a box, refuses what is not declared
   // port 80 is the fixed redirect, never the box
   const plain = await new Promise((resolve, reject) => http.get({ host: "127.0.0.1", port: httpPort, path: "/x", headers: { host: APP_HOST }, timeout: 5000 }, res => { res.resume(); resolve({ status: res.statusCode, location: String(res.headers.location || "") }); }).on("error", reject));
   assert.ok([301, 308].includes(/** @type {any} */ (plain).status) && /^https:\/\//.test(/** @type {any} */ (plain).location), `port 80 redirects to https (${JSON.stringify(plain)})`);
+
+  // the edge restarts (an update, a crash): the box's outbound link comes back by itself and a signer is served again, with nobody touching the box
+  assert.equal(compose("restart", "-t", "2", "relay").status, 0);
+  let served = null;
+  for (let i = 0; i < 60 && !(served && /** @type {any} */ (served).status === 200); i++) {
+    served = await new Promise(resolve => { const req = https.request({ host: "127.0.0.1", port: tlsP, ca: cert, servername: APP_HOST, method: "GET", path: "/sign/abc", headers: { host: APP_HOST }, timeout: 3000 }, res => { res.resume(); resolve({ status: res.statusCode }); }); req.on("error", () => resolve(null)); req.on("timeout", () => req.destroy()); req.end(); });
+    if (!(served && /** @type {any} */ (served).status === 200)) await new Promise(r => setTimeout(r, 1000));
+  }
+  assert.equal(/** @type {any} */ (served) && /** @type {any} */ (served).status, 200, "after the edge restarted, the box reconnected and the signer is served");
 
   // a name suspended before its first visit is refused (the container keeps an answer for 60 s, so an already-visited name closes within a minute)
   suspended = true;
