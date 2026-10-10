@@ -559,7 +559,7 @@ test("publish: a folder of ready files builds with the real builder, is checked,
   fs.writeFileSync(path.join(dir, "index.html"), "<h1>Northwind Bakery</h1>");
   fs.writeFileSync(path.join(dir, ".env"), "KEY=left-out");
   const { deployment } = await b.ok("publish.create", { name: "bakery", source: { kind: "folder", ref: dir }, build: { image: "static" }, project: "bakery" });
-  assert.equal(deployment.source.kind, "folder");
+  assert.equal(deployment.stage, "Draft");
   const pv = await b.ok("publish.preview", { deployment: deployment.id });
   assert.equal(pv.deployment.stage, "Preview");
   assert.match(pv.logs, /^Read 1 file \(1 KB\) from site-src-[A-Za-z0-9]+; left out: \.env\.$/);
