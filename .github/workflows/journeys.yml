@@ -38,3 +38,31 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: journeys, path: journeys-out, retention-days: 14 }
+
+  # projects-flows' screen walk (scripts/app-walk-plain.mjs): about 40 screens of the app on a seeded daemon in a real browser; a blank page, a page error, or ids, roles or "undefined" in the words fail the run.
+  # Together with the journeys it is what the release PR to main needs (T8).
+  plain-walk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      VYRE_NO_DIALOGS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24 }
+      - run: npm ci --no-audit --no-fund
+      - run: (cd apps/app && npm ci --no-audit --no-fund)
+      - name: Export the web app
+        run: (cd apps/app && npm run export:web)
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PW_FROM=$RUNNER_TEMP/pw/" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: The screens
+        run: node scripts/app-walk-plain.mjs --dist apps/app/dist --out plain-walk-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: plain-walk, path: plain-walk-out, retention-days: 14 }
