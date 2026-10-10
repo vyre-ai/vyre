@@ -1014,5 +1014,6 @@
  "apps/app/screens/runner/runner-contract.test.js": 5,
  "core/vault/links.test.js": 2,
  "core/github/scan.test.js": 3,
- "apps/app/screens/runner/run-switch.test.js": 7
+ "apps/app/screens/runner/run-switch.test.js": 7,
+ "test/a5-no-copies.test.js": 2
 }
