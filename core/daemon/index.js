@@ -27,6 +27,7 @@ import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
+import { canonical } from "../../lib/tool-names.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, personOnly, fingerprint, parse as parsePresence, core as coreHolder } from "../presence/index.js";
 import { readCoreConfig, coreLink } from "../../lib/vyre-core-client.js";
 import { peerPid, peerHosting, insideClaude, processTable, ancestry, peerIdentity, loginOf, tmuxClients, controllingTty, canReadPeers, verifiedCapsule, signatureOf } from "./peer.js";
@@ -1190,7 +1191,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   if (policy.path && !policy.path(req.method || "GET", url.pathname)) return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
-  if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(decodeURIComponent(url.pathname.slice("/v1/tools/".length)))) {
+  if (policy.tool && url.pathname.startsWith("/v1/tools/") && !policy.tool(canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length))))) {
     return send(res, 404, { error: { code: "no_such_tool", message: "no such tool here" } });
   }
   // Naming an agent ("mcp:agent:<name>", "harness:agent:<name>") is a claim Memory, the Gate and
@@ -1389,7 +1390,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, r.error ? (r.error.code === "denied" ? 403 : r.error.code === "bad_input" ? 400 : 409) : 200, r);
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
-    const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
+    const name = canonical(decodeURIComponent(url.pathname.slice("/v1/tools/".length)));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
     const input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
@@ -1403,7 +1404,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
     // link.call carries another tool to the box: what it carries is what counts.
-    const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
+    const inner = name === "link.call" && input && typeof input.tool === "string" ? canonical(input.tool) : null;
     const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"]) || Boolean(req.headers["x-vyre-yes"]) || Boolean(req.headers["x-vyre-approval"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));

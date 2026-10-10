@@ -14,6 +14,7 @@
 
 import { request } from "../daemon/client.js";
 import { PERSON_ONLY, HUMAN_ONLY } from "../presence/index.js";
+import { canonical } from "../../lib/tool-names.js";
 import { catalogOf, indexOf, find, shapeFind } from "../../harness/mcp/core-tools.js";
 
 const MAX_INPUT = 64 * 1024;
@@ -88,7 +89,7 @@ export async function run(argv, d = {}) {
       return 0;
     }
     if (a === "call") {
-      const name = b;
+      const name = b && TOOL.test(b) ? canonical(b) : b;
       if (!name || !TOOL.test(name) || rest.length > 1) return usage();
       const text = rest[0] === undefined ? "{}" : rest[0];
       if (Buffer.byteLength(text) > MAX_INPUT) { err(`vyre: the input is longer than ${MAX_INPUT / 1024} KB.`); return 2; }
