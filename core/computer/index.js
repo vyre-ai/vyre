@@ -139,13 +139,13 @@ export default {
     const lineFor = (/** @type {string} */ action, /** @type {any} */ input) => { const h = hostOf(input.url || input.site); return action === "open" && h ? `Opening ${h}` : action === "signin" && h ? `Signing in to ${h} from your Vault` : LINES[action] || "Working"; };
 
     ctx.tool("computer.targets", {
-      description: "The computers you can work on by name: the cloud computer and each paired Mac (or this Mac), and whether each is online. Left unnamed, work goes to the cloud computer.",
+      description: "The computers you can work on by name, the cloud one and each paired Mac, and whether each is online.",
       input: obj({}), effect: "read", callers: CALLERS,
       run: async () => ({ computers: (await targets()).map(t => ({ name: t.name, kind: t.kind, ...(t.online !== undefined ? { online: t.online } : {}) })) }),
     });
 
     ctx.tool("computer.use", {
-      description: "Work on a computer: the cloud computer by default, or one you name in `on` (\"my Mac\", \"office computer\"). `do`: look (read the page or app), shot, tabs, open {url}, click, type, fill, act, find/get (files), signin {login} (a login lent to you; you never see it), route {goal, site} (what already covers this without the screen). Connections and learned operations come first: if one covers the site you are told once, and `screen: true` keeps the screen. `args` are the engine's own inputs (a selector, a ref, text).",
+      description: "Work on a computer: the cloud one by default, or one named in `on`. `do` picks the action: look, open, click, type, fill, signin, route.",
       input: obj({ do: { type: "string", enum: ["look", "shot", "tabs", "open", "click", "type", "fill", "act", "press", "find", "get", "signin", "route"] }, on: str, url: str, app: str, goal: str, site: str, login: str, screen: { type: "boolean" }, args: { type: "object" }, agent: str }, ["do"]),
       effect: "write", callers: CALLERS,
       run: async (/** @type {any} */ input, /** @type {any} */ meta = {}) => {

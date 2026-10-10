@@ -339,6 +339,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
+  ["threads.undo-edit", "puts a file back from what the person's own surface saw the session do: the person's own act, and the session is told"],
   ["outside.register", "gives an outside agent a way into the Space: it widens what reaches the person's data, the person's own act with their approval"],
   ["outside.token", "makes a new token for an outside agent: the person's own act with their approval"],
   ["outside.grant", "gives an outside agent reach to records, memory or files: it widens authority, the person's own act with their approval"],
