@@ -8,7 +8,7 @@ import { Row } from "../components/Row";
 import { PHONE_MAX, useUiTheme } from "../theme";
 import { useWindowDimensions } from "react-native";
 import { useMemo } from "react";
-import { arrange, edgePath, edgeWords, extent, listOrder, metrics, place } from "./layout.js";
+import { arrange, build, edgeWords, listOrder, metrics } from "./layout.js";
 
 export type NodeState = "pending" | "running" | "waiting" | "done" | "failed" | "paused";
 /** One step, as the kernel's canvas API hands it over (graph and paintRun): a lane and a row, what it says, and what to flag. */
@@ -18,7 +18,7 @@ export type CanvasNode = {
 };
 export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" | "join" };
 
-const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "board", branch: "list", subflow: "flows", ask: "face", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
+const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "board", branch: "list", subflow: "flows", join: "check", ask: "face", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
 const STATE: Record<NodeState, { label: string; tone: "plain" | "accent" | "ok" | "err" | "warn" } | null> = {
   pending: null, running: { label: "Running", tone: "accent" }, waiting: { label: "Waiting on you", tone: "accent" }, done: { label: "Done", tone: "ok" }, failed: { label: "Failed", tone: "err" }, paused: { label: "Paused", tone: "warn" },
 };
@@ -52,13 +52,15 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
   if (list) {
     return (
       <View accessibilityRole="list" className="overflow-hidden">
-        {listOrder(nodes).map((n, i) => {
+        {listOrder(laid.nodes).map((n, i, all) => {
+          // steps are numbered, the way in and the join are not
+          const num = all.slice(0, i + 1).filter((x) => x.kind !== "trigger" && x.kind !== "join").length;
           const words = edgeWords(into.get(n.id) ?? "next");
           return (
             <View key={n.id} className={cn(i && "border-t border-edge", n.lane > 0 && "pl-s6")}>
               <Row selected={selected === n.id} onPress={onSelect ? () => onSelect(n.id) : undefined}
                 lead={<View className="h-control w-control items-center justify-center rounded-row bg-surface-3"><Icon name={ICON[n.kind] ?? "todo"} size={20} tone={n.state === "done" ? "ok" : n.state === "waiting" || n.state === "running" ? "accent" : n.state === "failed" ? "err" : "text-2"} /></View>}
-                title={<View className="gap-s1">{words ? <Text size="caption" tone="label">{words}</Text> : null}<Text strong>{n.kind === "trigger" ? n.label : `${i}. ${n.label}`}</Text>{n.who ? <Text size="caption" tone="label">{n.who}</Text> : null}{n.note ? <Text size="caption" tone="muted">{n.note}</Text> : null}<Flags n={n} /></View>} />
+                title={<View className="gap-s1">{words ? <Text size="caption" tone="label">{words}</Text> : null}<Text strong>{n.kind === "trigger" || n.kind === "join" ? n.label : `${num}. ${n.label}`}</Text>{n.who ? <Text size="caption" tone="label">{n.who}</Text> : null}{n.note ? <Text size="caption" tone="muted">{n.note}</Text> : null}<Flags n={n} /></View>} />
             </View>
           );
         })}
@@ -67,26 +69,30 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
   }
 
   const m = metrics(px(map["--s-12"], 48));
-  const placed = place(laid.nodes, m);
-  const at = new Map(placed.map((p) => [p.id, p]));
-  const box = extent(laid.nodes, m);
+  const g = build(laid.nodes, laid.edges, m);
   const stroke = parseFloat(String(map["--s-1"])) / 2 || 2;
+  const state = new Map(laid.nodes.map((n) => [n.id, n.state]));
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerClassName="min-w-full justify-center p-s2">
-      <View style={{ width: box.width, height: box.height }}>
-        <Svg width={box.width} height={box.height} style={{ position: "absolute", left: 0, top: 0 }}>
-          {laid.edges.map((e) => {
-            const a = at.get(e.from), b = at.get(e.to);
-            if (!a || !b) return null;
-            const done = nodes.find((n) => n.id === e.to)?.state === "done" || nodes.find((n) => n.id === e.to)?.state === "waiting";
-            return <Path key={e.from + e.to + e.kind} d={edgePath(a, b, m)} fill="none" stroke={done ? color.ok : color["edge-strong"]} strokeWidth={stroke} strokeDasharray={e.kind === "join" ? `${stroke * 3} ${stroke * 2}` : undefined} />;
+      <View style={{ width: g.width, height: g.height }}>
+        <Svg width={g.width} height={g.height} style={{ position: "absolute", left: 0, top: 0 }}>
+          {g.edges.map((e) => {
+            const done = state.get(e.to) === "done" || state.get(e.to) === "waiting";
+            return <Path key={e.from + e.to + e.kind} d={e.d} fill="none" stroke={done ? color.ok : color["edge-strong"]} strokeWidth={stroke} strokeLinecap="round" />;
           })}
         </Svg>
-        {placed.map((n) => {
-          const words = edgeWords(into.get(n.id) ?? "next");
+        {g.nodes.map((n) => {
+          const words = n.kind === "join" ? "" : edgeWords(into.get(n.id) ?? "next");
+          if (n.kind === "join") {
+            return (
+              <View key={n.id} style={{ position: "absolute", left: n.left, top: n.top, width: n.w, height: n.h }} className="flex-row items-center justify-center gap-s2 rounded-full border border-edge-strong bg-surface-3 px-s3">
+                <Icon name="check" size={16} tone="label" /><Text size="caption" tone="label" numberOfLines={1}>{n.label}</Text>
+              </View>
+            );
+          }
           return (
             <Pressable key={n.id} accessibilityRole="button" accessibilityLabel={n.label} accessibilityState={{ selected: selected === n.id }} onPress={() => onSelect?.(n.id)}
-              style={{ position: "absolute", left: n.left, top: n.top, width: m.w, height: m.h }}
+              style={{ position: "absolute", left: n.left, top: n.top, width: n.w, height: n.h }}
               className={cn("flex-row items-start gap-s2 overflow-hidden rounded-card border p-s2", selected === n.id ? "border-accent" : n.state === "failed" ? "border-err" : "border-edge", n.state === "waiting" ? "bg-accent-wash" : "bg-surface-2")}>
               <View className="h-control-sm w-control-sm flex-none items-center justify-center rounded-row bg-surface-3"><Icon name={ICON[n.kind] ?? "todo"} size={16} tone={n.state === "done" ? "ok" : n.state === "waiting" || n.state === "running" ? "accent" : n.state === "failed" ? "err" : "text-2"} /></View>
               <View className="min-w-0 flex-1 gap-s1">

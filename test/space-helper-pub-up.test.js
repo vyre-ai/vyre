@@ -1,0 +1,107 @@
+// The root side of a site's server, second half: pub-up, pub-stop, pub-down and reattach (team/contracts/builder.md). The rig is test/space-helper-pub-rig.js.
+// @ts-check
+import "../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { opts } from "./space-helper-rig.js";
+import { DEP, DEP2, REQUEST, read, ready } from "./space-helper-pub-rig.js";
+
+test("pub-up: root's compose file from root's record, linted, the secrets written by root into root's env file, the server walled with no door in and proved", opts, async t => {
+  const r = await ready(t);
+  const built = await r.build(DEP, { request: REQUEST({ secrets: "-" }) });
+  assert.equal(built.state, "ok");
+  const st = await r.up(DEP, { request: REQUEST({ secrets: "GREETING_PHRASE+STRIPE_KEY" }), secrets: { GREETING_PHRASE: "hello there", STRIPE_KEY: "sk_live_abc123" } });
+  assert.equal(st.state, "ok", JSON.stringify(st));
+  assert.equal(st.message, "the server is up and walled off");
+  const d = path.join(r.priv, "apps", "northwind");
+  const compose = read(path.join(d, "compose.yml"));
+  assert.match(compose, new RegExp(`^    image: vyre-pub/northwind:${DEP.slice(4)}$`, "m"));
+  for (const want of ["    read_only: true", "      - /tmp:rw,size=64m,mode=1777", "      GREETING_PHRASE: ${GREETING_PHRASE}", "      STRIPE_KEY: ${STRIPE_KEY}", "    internal: true", '    restart: "no"', "      - data:/data"]) assert.ok(compose.includes(want), want);
+  assert.ok(!/ports:|privileged|cap_add|network_mode|env_file/.test(compose));
+  assert.equal(fs.statSync(path.join(d, "secrets.env")).mode & 0o777, 0o600);
+  assert.equal(read(path.join(d, "secrets.env")), "GREETING_PHRASE='hello there'\nSTRIPE_KEY='sk_live_abc123'\n");
+  assert.equal(read(path.join(d, "pubdep")).trim(), DEP);
+  assert.ok(!fs.existsSync(path.join(r.servers, DEP)), "the daemon's folder with the secrets was taken and removed");
+  assert.ok(!fs.existsSync(path.join(r.priv, "pub", DEP, "up")));
+  // the walls: the answers to what the daemon asked, then drop everything else on that interface; no hook port is open
+  const inp = r.appFw().filter((/** @type {any} */ x) => x.ch === "INPUT").map((/** @type {any} */ x) => x.r);
+  assert.deepEqual(inp, [{ i: "eth1", ct: "ESTABLISHED,RELATED", c: "vyre-app:northwind", j: "ACCEPT" }, { i: "eth1", c: "vyre-app:northwind", j: "DROP" }]);
+  const out = r.appFw().filter((/** @type {any} */ x) => x.ch === "OUTPUT").map((/** @type {any} */ x) => x.r);
+  assert.ok(out.length === 2 && out.every((/** @type {any} */ x) => x.c === "vyre-app:northwind" && x.j === "REJECT"));
+  // proved: every port tried timed out, and no hook port was expected open
+  const tries = read(path.join(r.F, "tries")).trim().split("\n").map(l => l.split(" "));
+  assert.ok(tries.length >= 3 && tries.every(x => x[0] === "vyre-app-northwind_net"));
+  assert.ok(read(path.join(r.F, "waits")).includes("http://vyre-app-northwind:8080/ 200+404 60"));
+  assert.match(read(path.join(r.priv, "..", "status", "subnets")), /^app:northwind /m);
+  // order: create, join, OUTPUT, INPUT, start, health
+  const calls = r.calls();
+  const at = (/** @type {RegExp} */ re) => { const m = re.exec(calls); assert.ok(m, `${re}`); return m.index; };
+  const pos = [/compose .*vyre-app-northwind.* create/, /network connect --alias vyre-daemon vyre-app-northwind_net/, /-I OUTPUT 1 .*vyre-app:northwind/, /-I INPUT 1 .*-j DROP/, /compose .*vyre-app-northwind.* up -d/, /fetch\(/].map(at);
+  assert.deepEqual([...pos].sort((x, y) => x - y), pos);
+});
+
+test("pub-up refuses a secret that cannot be written safely, a settings file that is not the build's, a missing image and a name that became a catalog app", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP, { request: REQUEST({ secrets: "-" }) })).state, "ok");
+  const one = async (/** @type {any} */ o) => r.up(DEP, o);
+  const fails = (/** @type {any} */ st, /** @type {RegExp} */ words) => { assert.equal(st.state, "failed", JSON.stringify(st)); assert.match(st.message, words); };
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: {} }), /secret A_KEY was not given/);
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: { A_KEY: "it's" } }), /quote or a line break/);
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: { A_KEY: "line\nbreak" } }), /quote or a line break/);
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: { A_KEY: "café" } }), /outside printable ASCII/);
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: { A_KEY: "x".repeat(5000) } }), /longer than 4096/);
+  fails(await one({ request: REQUEST({ secrets: "A_KEY" }), secrets: { A_KEY: "" } }), /empty/);
+  fails(await one({ request: REQUEST({ port: "9000" }) }), /not those of the build/);
+  fails(await one({ request: REQUEST({ mem: "1024" }) }), /not those of the build/);
+  fails(await one({ request: REQUEST({ name: "other" }) }), /not those of the build/);
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")), "nothing started for a refusal");
+  r.flag("pub-image-gone");
+  fails(await one({}), /image that was built is not here any more/);
+  fs.rmSync(path.join(r.F, "pub-image-gone"));
+  fails(await r.ask("pub-up dep_ffffffffffffffff"), /never built here/);
+  // the health wait fails: the server is stopped again, never left running
+  r.flag("wait", "no");
+  fails(await one({}), /did not become healthy/);
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")));
+});
+
+test("pub-stop and pub-down take the rules away and keep the data; a deployment that is not the one running under the name cannot take it down", opts, async t => {
+  const r = await ready(t);
+  await r.build(DEP, {}); await r.up(DEP, {});
+  assert.ok(fs.existsSync(path.join(r.F, "app-running-northwind")));
+  assert.equal((await r.ask(`pub-stop ${DEP}`)).state, "ok");
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")));
+  assert.equal(r.appFw().length, 4, "a stopped server keeps its walls");
+  // the next version: built under another deployment, the same name; the old one cannot be taken down by the new one's id
+  await r.build(DEP2, { request: REQUEST({ version: "4" }) });
+  const mism = await r.ask(`pub-down ${DEP2}`);
+  assert.equal(mism.state, "failed");
+  assert.match(mism.message, /not the server running under that name/);
+  const dn = await r.ask(`pub-down ${DEP}`);
+  assert.equal(dn.state, "ok", JSON.stringify(dn));
+  assert.deepEqual(r.appFw(), [], "every rule with the server's comment is gone");
+  assert.match(dn.message, /data is kept/);
+  assert.ok(!/ -v\b|volume rm/.test(r.calls().split("\n").filter(l => /compose .* down/.test(l)).join("\n")), "the data volume is kept");
+  const up2 = await r.up(DEP2, { request: REQUEST({ version: "4" }) });
+  assert.equal(up2.state, "ok", JSON.stringify(up2));
+  assert.equal(read(path.join(r.priv, "apps", "northwind", "pubdep")).trim(), DEP2);
+});
+
+test("reattach walls a running published server again in a new vyre container, with no door in, or stops it", opts, async t => {
+  const r = await ready(t);
+  await r.build(); await r.up();
+  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); fs.writeFileSync(path.join(r.F, "app-running-northwind"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"], { SP_REWALL_WAIT: "0" })); };
+  const ok = await again();
+  assert.equal(ok.code, 0, ok.out);
+  const inp = r.appFw(read(path.join(r.F, "ctr-pid"))).filter((/** @type {any} */ x) => x.ch === "INPUT").map((/** @type {any} */ x) => x.r);
+  assert.equal(inp.length, 2, "answers and drop, nothing else");
+  assert.ok(!inp.some((/** @type {any} */ x) => x.dp), "no hook port");
+  assert.match(read(path.join(r.F, "joined")), /vyre-app-northwind_net/);
+  r.flag("fw-ineffective");
+  const bad = await again();
+  assert.match(bad.out, /the app northwind was stopped/);
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")), "an app that cannot be proved is stopped, never left running unwalled");
+});
+

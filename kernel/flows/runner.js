@@ -1321,7 +1321,11 @@ export class FlowRunner {
   // ------------------------------------------------------------------ authority
 
   /** The approved task of the earlier send a step rides (`with`), or nothing when that step asked nobody: then this step asks for itself. @param {any} ctx @param {any} s @returns {string | undefined} */
-  #rideOf(ctx, s) { const e = ctx.run.steps[`${s.with}?ask`]; return e && e.status === "done" && typeof e.task === "string" ? e.task : undefined; }
+  #rideOf(ctx, s) {
+    // A run that has read content from outside, or a Flow a model drafted, is asked about every send: what the later send says or goes to may come from that content, which the earlier yes never saw.
+    if (ctx.run.tainted || ctx.flow.authorship === "model") return undefined;
+    const e = ctx.run.steps[`${s.with}?ask`]; return e && e.status === "done" && typeof e.task === "string" ? e.task : undefined;
+  }
 
   /**
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
