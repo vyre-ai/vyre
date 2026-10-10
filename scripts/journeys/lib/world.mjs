@@ -17,7 +17,7 @@ import { startInstallerServer } from "../../lib/proof/server-installer.mjs";
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
- * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain", devBuild?: boolean }} o
+ * @param {{ run: ReturnType<typeof import("../../lib/proof/run.mjs").createRun>, out: string, kind: "box" | "daemon", store: "records" | "plain", devBuild?: boolean, person?: string }} o
  */
 export async function bringUp(o) {
   const { run } = o;
@@ -28,7 +28,7 @@ export async function bringUp(o) {
   const bridge = () => { try { return String(spawnSync("docker", ["network", "inspect", "bridge", "-f", "{{(index .IPAM.Config 0).Gateway}}"], { encoding: "utf8" }).stdout || "").trim(); } catch { return ""; } };
   const hostIp = process.env.PROOF_HOST_IP || (o.kind === "box" ? bridge() : "");
   const ins = await startStandins({ out: dir, ...(o.kind === "box" ? { host: "0.0.0.0", ...(hostIp ? { publicHost: hostIp } : {}) } : {}) });
-  const person = `journey${Math.random().toString(36).slice(2, 7)}`;
+  const person = o.person || `journey${Math.random().toString(36).slice(2, 7)}`;
   const mac = createApp({ label: "Journey Mac", dir: path.join(dir, "mac"), directory: ins.names, relay: ins.relay });
   /** @type {any} */ let reservation = null, flow = null, srv = null;
   const first = run.results.length;
