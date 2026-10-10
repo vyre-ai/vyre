@@ -273,14 +273,14 @@ export function registerOutside(ctx, seam = {}) {
     },
   });
 
-  ctx.tool("outside.status", {
+  ctx.tool("outside.mcp.status", {
     internal: true, description: "Whether /agents-mcp is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.", input: obj(),
     run: async (/** @type {any} */ _i, /** @type {any} */ { caller: who }) => {
       if (who !== "module:wink") throw fail("only the public gate asks where /agents-mcp listens", "denied");
       return { listening: Boolean(listener), port: listener ? listener.port : null };
     },
   });
-  ctx.tool("outside.base", {
+  ctx.tool("outside.mcp.base", {
     internal: true, description: "The public address the gate serves this box on, or null: { base }. Only the wink module sets it; tokens made afterwards name it.", input: obj({ base: { type: ["string", "null"] } }),
     run: async (/** @type {any} */ { base }, /** @type {any} */ { caller: who }) => {
       if (who !== "module:wink") throw fail("only the public gate sets the public address", "denied");

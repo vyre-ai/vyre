@@ -14,8 +14,8 @@
       { "name": "outside.list", "effect": "read", "reach": "person" },
       { "name": "outside.revoke", "effect": "write", "reach": "person" },
       { "name": "outside.release", "reach": "modules" },
-      { "name": "outside.status", "reach": "modules" },
-      { "name": "outside.base", "reach": "modules" }
+      { "name": "outside.mcp.status", "reach": "modules" },
+      { "name": "outside.mcp.base", "reach": "modules" }
     ]
   },
   "watches": {
