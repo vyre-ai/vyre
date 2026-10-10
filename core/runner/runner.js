@@ -11,6 +11,7 @@
 //     this process dies, and the wall clock, not a timer, decides when the lease is over.
 
 import { HARNESS_MARK } from "./pipe-home.js";
+import { withinOrThrow } from "../../lib/within.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -43,7 +44,7 @@ const spaceDir = (base, space) => path.join(base, "spaces", crypto.createHash("s
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /** How long a hand-over's flush, or the server's answer, may take: past it the hand-over fails and the session runs on. */
 const HANDOVER_MS = 20_000;
-const within = (p, ms) => new Promise((resolve, reject) => { const t = setTimeout(() => reject(new Error("the server did not answer in time")), ms); t.unref?.(); p.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); }); });
+const within = (p, ms) => withinOrThrow(p, ms, () => new Error("the server did not answer in time"));   // lib/within.js: its timer is held until the answer or the limit (an unref'd one let the loop drain on a call that never answers)
 
 /** A stream-json line that ends a turn. Claude Code prints { type: "result" }; other agents use turn.end. */
 const endsTurn = line => { try { const j = JSON.parse(line); return j && (j.type === "result" || j.type === "turn.end"); } catch { return false; } };
