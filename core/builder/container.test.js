@@ -126,7 +126,7 @@ test("what a Dockerfile build cannot do is refused in words: no Dockerfile, no p
   fs.writeFileSync(path.join(d, "Dockerfile"), "FROM ghcr.io/vyre-ai/base:1\nEXPOSE 80\n");
   assert.equal((await build(dep(d))).runtime.port, 80, "the owner's allowed registry");
   assert.equal(built, 1, "nothing was built for a refused Dockerfile");
-  await assert.rejects(build({ ...dep(d), source: { kind: "repo", ref: "https://x.test/r.git" } }), /container builder, which is not installed/);
+  await assert.rejects(build({ ...dep(d), source: { kind: "repo", ref: "https://x.test/r.git" } }), /only GitHub repos are cloned/);
 });
 
 test("on a server that builds through its host helper: the context and the settings go into the deployment's folder, `pub-build <deployment>` is asked, and the answer is the image id; a build secret is refused; the folder is removed", async t => {
