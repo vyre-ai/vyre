@@ -26,8 +26,9 @@ async function handle(line) {
   const arg = rest.join(" ");
   if (cmd === "turn") {
     fs.appendFileSync(path.join(process.cwd(), "notes.txt"), arg + "\n");
-    fs.mkdirSync(path.join(home, ".claude", "projects"), { recursive: true });
-    fs.appendFileSync(path.join(home, ".claude", "projects", "s.jsonl"), JSON.stringify({ said: arg }) + "\n");
+    // the provider's own layout (projects/<folder>/<session>.jsonl): the only shape another computer takes back (trust row 17)
+    fs.mkdirSync(path.join(home, ".claude", "projects", "-work"), { recursive: true });
+    fs.appendFileSync(path.join(home, ".claude", "projects", "-work", "s.jsonl"), JSON.stringify({ said: arg }) + "\n");
     out({ type: "assistant", text: "did " + arg });
     out({ type: "result" });
   } else if (cmd === "slowturn") {

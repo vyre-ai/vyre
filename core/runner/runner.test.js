@@ -424,7 +424,7 @@ test("runner: a stopped machine's session resumes on another machine from the la
   assert.ok(!resumed.files.includes("half.txt"), "the unfinished turn's change did not carry over");
   assert.ok(resumed.files.includes("notes.txt"));
   // The agent's own session files came along too.
-  assert.match(fs.readFileSync(path.join(other.mnt, "work", "home", ".claude", "projects", "s.jsonl"), "utf8"), /"said":"two"/);
+  assert.match(fs.readFileSync(path.join(other.mnt, "work", "home", ".claude", "projects", "-work", "s.jsonl"), "utf8"), /"said":"two"/);
   h2.send("turn three");
   await waitFor(() => r.sp.state.checkpoints.get("s1")?.turn === 3);
   await h2.stop();
