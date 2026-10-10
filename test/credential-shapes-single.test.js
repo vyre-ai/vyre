@@ -16,6 +16,7 @@ import { startsLikeCredential, mentionsCredentialPrefix, credentialAtTokenStart 
 const ALLOWED = new Map([
   ["lib/credential-shapes.js", "the one table"],
   ["local/hands-chrome-mac/extension/shared/sk/", "generated from lib/credential-shapes.js (scripts/sync-copies.mjs, test/generated-copies.test.js)"],
+  ["apps/app/src/store-core/credential-shapes.js", "generated from lib/credential-shapes.js for the phone app (scripts/sync-copies.mjs, test/generated-copies.test.js)"],
   ["core/onboard/index.js", "names Anthropic's two sign-in token KINDS (setup token and API key) for the picker; the table has one Anthropic row and does not distinguish them"],
   ["modules/vault-extension/keyfind.js", "runs in a web page and cannot import lib/; keyfind.test.js holds every row to classify()"],
   ["modules/vault-extension/testing/", "browser checks that mint fake keys"],
