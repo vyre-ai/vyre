@@ -9,7 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 
 const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync("sh", ["-c", cmd], { encoding: "utf8", ...opt });
 
-/** @param {{ devBuild?: boolean, ownerId?: string, dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
+/** @param {{ devBuild?: boolean, recreate?: boolean, ownerId?: string, dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
  * `release` (the update proof): the server is the OLD release, installed by that release's own installer from a local release site, and its update unit is pointed at the candidate's site (signed by the same throwaway key). */
 export async function startInstallerServer(o) {
   if (!process.env.CI && process.env.VYRE_JOURNEY_BOX !== "1") throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds (a test box that holds nothing there says so with VYRE_JOURNEY_BOX=1)");
@@ -59,7 +59,8 @@ export async function startInstallerServer(o) {
     const d = sh(`sudo mkdir -p /etc/systemd/system/vyre-update.service.d && printf '${conf}' | sudo tee /etc/systemd/system/vyre-update.service.d/proof.conf >/dev/null && sudo systemctl daemon-reload && systemctl is-active vyre-update.path`);
     fs.appendFileSync(logFile, `\nupdate unit drop-in: ${d.status} ${String(d.stdout || d.stderr).trim()}\n`);
   }
-  if (o.devBuild && exit === 0) {
+  // (a walk that only needs the person's yes leaves the box as the installer started it: VYRE_SEAL_DEV and VYRE_SEAL_SOFTWARE pass through a root run, and a second start would be a second server on the same setup code)
+  if (o.devBuild && o.recreate !== false && exit === 0) {
     // A root run of compose passes on only the few settings it checks, so the developer switches in vyre.env (the path rule, the sealer's) never reached the container the installer started. This is a
     // throwaway development box: its stack is started again as the person who owns the folder, which reads vyre.env whole. The setup code is still in vyre.env and still within its hour.
     const again = sh(`cd ${dir} && docker compose -p vyre up -d --force-recreate vyre 2>&1`);
@@ -82,8 +83,8 @@ export async function startInstallerServer(o) {
   return {
     kind: "installer", store: o.store, logs: /** @type {string[]} */ ([]), ownerSigner,
     /** The owner's yes for a call the box answered presence_required to: a development key signs the exact act (only on a development build box that enrolled this key). @param {string} personId */
-    yesFor: ownerSigner ? (/** @type {string} */ personId) => async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
-      const proof = ownerSigner.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: personId, space: sign.space } }] }, sign.op, sign.fields);
+    yesFor: ownerSigner ? (/** @type {string} */ personId, /** @type {any} */ signer = ownerSigner) => async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
+      const proof = signer.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: personId, space: sign.space } }] }, sign.op, sign.fields);
       return Buffer.from(JSON.stringify(proof)).toString("base64url");
     } : undefined,
     /** The four words the installer printed on its terminal. */
