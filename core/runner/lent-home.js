@@ -39,6 +39,8 @@ const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 /** A computer that beat this lately, and said it was well, is one a chat may be started on (three heartbeats). */
 const LENDER_FRESH_MS = 15_000;
+/** A place kept for a chat moved from the server waits for its next turn this long. */
+const ADOPT_MS = 6 * 3600_000;
 /** A place written for a new chat is taken back when no spawn follows this soon. */
 const RESERVE_MS = 30_000;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -87,6 +89,7 @@ export function createLentHome(o) {
     if (!got.r) throw err("unavailable", "this session has no socket open on this home");
     return { status: got.r.status, body: got.r.body };
   };
+  /** A chat that began on the server and is moving to a computer: its transcript is already in the store; the lender writes it into its own agent home before the program starts (spec.seed). session -> { native, count }. @type {Map<string, { native: string, count: number }>} */ const seeds = new Map();
   /** Sessions placed for a new chat that no lender has started yet. @type {Set<string>} */ const reserved = new Set();
   /** The ready computers waiting on the home for something to do (`wait`), one each. @type {Map<string, { t: any, res: (a: any) => void }>} */ const waiters = new Map();
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
@@ -265,7 +268,8 @@ export function createLentHome(o) {
       if (o.leases && typeof o.leases.borrowed === "function") { try { o.leases.borrowed({ thread: chat || (asked && asked.chat) || String(i.session), session: String(i.session), member: w.person, device: w.device, limit: cap || null, epoch: row.epoch }); } catch { /* a record, never a gate */ } }
       const title = (asked && asked.title) || (chat && o.titleOf ? await Promise.resolve(o.titleOf(chat)).catch(() => null) : null);
       const { credentialRoutes, ...visible } = spec;
-      return { ...visible, network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
+      const seed = seeds.get(String(i.session)); if (seed) seeds.delete(String(i.session));
+      return { ...visible, ...(seed ? { seed } : {}), network, lenderCap: cap || null, epoch: row.epoch, ...(typeof title === "string" && title ? { title: title.slice(0, 120) } : {}) };
     },
     /**
      * The lender is alive. Each session it still runs is checked against the book: one whose epoch is not current (it moved, or the home restarted without it) is listed in `fenced`, and the lender stops it
