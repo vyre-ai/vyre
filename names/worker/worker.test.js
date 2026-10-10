@@ -401,7 +401,7 @@ test("tunnel resolve: the relay learns the route for a declared name only; undec
   assert.equal((await resolve(w, "documents.doc.vyre.run", null)).status, 401);
   assert.equal((await resolve(world(t), "documents.doc.vyre.run")).status, 404);
   // a route key cannot ask (this is the relay's door, not a box's)
-  assert.ok((await a.get("/v1/tunnel/resolve?host=documents.doc.vyre.run")).status >= 400 || true);
+  assert.equal((await a.get("/v1/tunnel/resolve?host=documents.doc.vyre.run")).status, 401, "a box's signed request, with no relay secret, is refused like a wrong secret");
   // takedown without a redeploy
   assert.equal((await suspend(w, { name: "doc" })).status, 200);
   assert.deepEqual((await resolve(w, "documents.doc.vyre.run")).json.data, none, "suspended: not served");

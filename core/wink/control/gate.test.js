@@ -8,6 +8,7 @@ import tls from "node:tls";
 import https from "node:https";
 import { createGate, NOT_FOUND, certPin, parseHeadscaleLog, addrKey, INGRESS_BODY_LIMIT as INGRESS_LIMIT } from "./gate.js";
 import { selfSigned } from "./testing/selfsigned.js";
+import { encodeProxyV2 } from "../../../lib/publish/proxy.js";
 
 /** A fake Headscale: records every request, answers /key, upgrades /ts2021 and /derp into an echo. */
 async function backend() {
@@ -617,4 +618,91 @@ test("gate ingress, agents MCP: every other shape is the same 404, off unless se
   for (let i = 0; i < 62; i++) { const r = (await raw(lim.port, at("{}"))).toString(); if (/^HTTP\/1\.1 429 /.test(r)) limited++; }
   assert.ok(limited >= 1 && limited <= 3, `the 61st request from one source is refused (${limited})`);
   assert.match((await raw(lim.port, mcpPost("{}"))).toString(), /^HTTP\/1\.1 200 /, "the vault's route has its own window");
+});
+
+// ---- the tunnel end's PROXY v2 header: the visitor's address, not loopback's (REVIEW-LEDGER row 8)
+const UPGRADE = "POST /ts2021 HTTP/1.1\r\nHost: x\r\nUpgrade: tailscale-control-protocol\r\nConnection: Upgrade\r\n\r\n";
+const via = (/** @type {string} */ ip, /** @type {string} */ http1) => Buffer.concat([/** @type {Buffer} */ (encodeProxyV2(ip, 40000)), Buffer.from(http1)]);
+const head = (/** @type {Buffer} */ b) => b.toString().slice(0, 12);
+
+test("gate tunnel address: a loopback peer's PROXY v2 header names the visitor; the budget, the block and the forwarded address are that visitor's, not 127.0.0.1's", async t => {
+  const ls = await listeners(); t.after(() => ls.close());
+  const { gate, port } = await setup(t, { limits: { upgradesPerWindow: 3 }, ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  const A = "203.0.113.7", B = "198.51.100.9";
+  // one stranger spends its own three upgrades and is limited; another stranger, through the same loopback hop, is not
+  const a = [], b = [];
+  for (let i = 0; i < 5; i++) a.push(head(await raw(port, via(A, UPGRADE), { wait: 150 })));
+  assert.deepEqual(a, ["HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 429", "HTTP/1.1 429"]);
+  for (let i = 0; i < 3; i++) b.push(head(await raw(port, via(B, UPGRADE), { wait: 150 })));
+  assert.deepEqual(b, ["HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 101"], "the other visitor has its own budget");
+  // a plain connection from loopback with no header is loopback, and has its own budget as well
+  assert.equal(head(await raw(port, UPGRADE, { wait: 150 })), "HTTP/1.1 101");
+  // a block is the visitor's: theirs is closed before a byte, the other is served
+  gate.block(A);
+  assert.equal((await raw(port, via(A, get("/key", "Connection: close\r\n")))).length, 0, "the blocked visitor gets nothing");
+  assert.match((await raw(port, via(B, get("/key", "Connection: close\r\n")))).toString(), /^HTTP\/1\.1 200 /);
+  assert.equal(gate.isBlocked("127.0.0.1"), false, "loopback was never blocked");
+  // the address the listeners behind the gate see is the visitor's (core/outside/listener.js keys its own limit on it)
+  const h = (await raw(port, via(B, post("/hooks/northwind-orders", "{}", "X-Forwarded-For: 6.6.6.6\r\n")))).toString();
+  assert.match(h, /^HTTP\/1\.1 202 /);
+  assert.equal(ls.seen.at(-1).headers["x-forwarded-for"], B);
+  // IPv6 is budgeted per /64 like any other
+  const six = [];
+  for (let i = 0; i < 5; i++) six.push(head(await raw(port, via(`2001:db8:1:2::${i + 1}`, UPGRADE), { wait: 150 })));
+  assert.deepEqual(six, ["HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 429", "HTTP/1.1 429"], "five hosts of one /64 share three upgrades");
+});
+
+test("gate tunnel address: a header that arrives in pieces is read, a bad one closes the connection, and a peer that is not trusted is never read as a header", async t => {
+  const { be, port } = await setup(t, { limits: { handshakeMs: 400 } });
+  const piece = (/** @type {Buffer} */ bytes, /** @type {number[]} */ cuts) => new Promise(resolve => {
+    const chunks = []; const c = net.connect(port, "127.0.0.1"); c.on("data", d => chunks.push(d)); c.on("close", () => resolve(Buffer.concat(chunks))); c.on("error", () => {});
+    let at = 0;
+    const step = async () => { for (const n of [...cuts, bytes.length]) { c.write(bytes.subarray(at, n)); at = n; await new Promise(r => setTimeout(r, 40)); } };
+    void step(); setTimeout(() => c.destroy(), 1500).unref();
+  });
+  const whole = via("192.0.2.44", get("/key", "Connection: close\r\n"));
+  assert.match((await piece(whole, [5, 14, 20, 40])).toString(), /^HTTP\/1\.1 200 /);
+  assert.equal(be.seen.at(-1).headers["x-forwarded-for"], "192.0.2.44");
+  // starts as a header but is not one: closed, nothing reaches Headscale
+  const bad = Buffer.from(whole); bad[12] = 0x11;
+  const seen = be.seen.length;
+  assert.equal((await raw(port, bad)).length, 0);
+  assert.equal(be.seen.length, seen);
+  // a loopback peer that starts a header and never finishes it is dropped at the handshake deadline
+  const t0 = Date.now();
+  await piece(whole.subarray(0, 10), []);
+  assert.ok(Date.now() - t0 < 1400, "an unfinished header does not hold the connection");
+
+  // when the peer is not on the trust list the same bytes are only bytes: the request is garbage and the address stays the socket's
+  const u = await setup(t, { proxy: { trust: ["10.0.0.0/8"] } });
+  assert.deepEqual(await raw(u.port, whole), NOT_FOUND);
+  assert.equal(u.be.seen.length, 0);
+  assert.match((await raw(u.port, get("/key", "Connection: close\r\n"))).toString(), /^HTTP\/1\.1 200 /);
+  assert.equal(u.be.seen.at(-1).headers["x-forwarded-for"], "127.0.0.1");
+});
+
+test("gate tunnel address: over TLS the header comes first, the handshake and the request follow, and the limits are the visitor's", async t => {
+  const { cert, key } = selfSigned({ ips: ["127.0.0.1"], names: ["x"] });
+  const ls = await listeners(); t.after(() => ls.close());
+  const { gate, port } = await setup(t, { tls: { cert, key }, limits: { upgradesPerWindow: 3 }, ingress: { hooks: () => ls.hooksPort, share: () => ls.sharePort } });
+  const visit = (/** @type {string} */ ip, /** @type {string} */ http1) => new Promise(resolve => {
+    const sock = net.connect(port, "127.0.0.1", () => {
+      sock.write(/** @type {Buffer} */ (encodeProxyV2(ip, 4242)));
+      const c = tls.connect({ socket: sock, ca: cert, servername: "x" }, () => c.write(http1));
+      const chunks = []; c.on("data", d => chunks.push(d)); c.on("close", () => resolve(Buffer.concat(chunks))); c.on("error", () => resolve(Buffer.concat(chunks)));
+      setTimeout(() => c.destroy(), 1500).unref();
+    });
+    sock.on("error", () => resolve(Buffer.alloc(0)));
+  });
+  const A = "203.0.113.7", B = "198.51.100.9";
+  const h = await visit(B, post("/hooks/northwind-orders", "{}"));
+  assert.match(h.toString(), /^HTTP\/1\.1 202 /);
+  assert.equal(ls.seen.at(-1).headers["x-forwarded-for"], B, "the address survives the TLS socket");
+  const a = [];
+  for (let i = 0; i < 5; i++) a.push(head(await visit(A, UPGRADE)));
+  assert.deepEqual(a, ["HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 101", "HTTP/1.1 429", "HTTP/1.1 429"]);
+  assert.equal(head(await visit(B, UPGRADE)), "HTTP/1.1 101", "the other visitor still has a budget");
+  gate.block(A);
+  assert.equal((await visit(A, get("/key"))).length, 0);
+  assert.match((await visit(B, get("/key", "Connection: close\r\n"))).toString(), /^HTTP\/1\.1 200 /);
 });
