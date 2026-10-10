@@ -19,7 +19,7 @@ const int = { type: "integer" };
 export function register({ vault, tool }) {
   const people = ["cli", "local", "deck", "capsule"];
 
-  tool("vault.agent.grant", [...people, "mcp"], "Let one agent sign in to one site with one login, through vyred's fill of its computer. The agent never reads the login. It is a grant in the Space (the one grant model); from Claude it waits for a person to approve it.",
+  tool("vault.agent.grant", [...people, "mcp"], "Let one agent sign in to one site with one login through vyred. It never reads the login. From Claude it waits for a person.",
     obj({ agent: str, item: str, origin: str, expires: str }, ["agent", "item", "origin"]),
     ({ agent, item, origin, expires }, meta) => {
       if (callerKind(meta.caller) === "module") throw new Error("modules cannot lend logins to agents");

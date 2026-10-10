@@ -128,8 +128,8 @@ export default {
 
     ctx.tool("models.list", {
       effect: "read", callers: WHO,
-      description: "Every model Vyre knows, each { id, provider, label, available, context, price (USD per million tokens, null when unknown), capabilities (null when unknown), evals (scores), sources }. provider narrows it; available: true leaves out the ones no source lists any more.",
-      input: { type: "object", properties: { provider: str, available: { type: "boolean" }, limit: { type: "integer" } } },
+      description: "Every model Vyre knows: id, provider, label, available, context, price (USD per million tokens), capabilities, evals, sources. Filter with provider or available.",
+      input: { type: "object", properties: { provider: str, available: { type: "boolean", description: "true leaves out models no source lists any more." }, limit: { type: "integer" } } },
       run: async (/** @type {any} */ i) => {
         const rows = all().filter((e) => (!i || !i.provider || e.provider === String(i.provider)) && (!i || i.available !== true || e.available)).sort((a, b) => (a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : (b.first_seen - a.first_seen)));
         return { models: rows.slice(0, Math.min(500, Math.max(1, (i && i.limit) || 200))).map(shape), count: rows.length, refreshed_at: Number(meta("refreshed_at")) || null };
@@ -149,7 +149,7 @@ export default {
     });
     ctx.tool("models.status", {
       effect: "read", callers: WHO,
-      description: "When each source was last read and what failed, in plain words: api (each provider's own list), cli (what logins reported), openrouter (public price and capability data), fallback.",
+      description: "When each source was last read and what failed: api, cli, openrouter, fallback.",
       input: { type: "object", properties: {} },
       run: async () => ({ refreshed_at: Number(meta("refreshed_at")) || null, count: all().length,
         sources: /** @type {any[]} */ (db.prepare("SELECT name, at, ok, error, rows FROM models_sources ORDER BY name").all()).map((r) => ({ name: r.name, at: r.at, ok: Boolean(r.ok), ...(r.error ? { error: r.error } : {}), rows: r.rows })) }),
@@ -170,7 +170,7 @@ export default {
     const proposalRow = (/** @type {any} */ r) => ({ model: r.model, state: r.state, ...JSON.parse(String(r.proposal)), ...(r.types ? { approved: JSON.parse(String(r.types)) } : {}), at: r.at, ...(r.decided_at ? { decided_at: r.decided_at } : {}) });
     ctx.tool("models.evals", {
       effect: "read", callers: WHO,
-      description: "The evals proposed for new models: { model, label, types: [{ id, label, what, usd }], total_usd, price_known, state: pending | approved | declined | done }. The Needs you card for a pending one is answered by models.eval-approve or models.eval-decline.",
+      description: "The evals proposed for new models, with types, cost and state. Answer a pending one with models.eval-approve or models.eval-decline.",
       input: { type: "object", properties: { state: { type: "string", enum: ["pending", "approved", "declined", "done"] } } },
       run: async (/** @type {any} */ i) => ({ evals: /** @type {any[]} */ (db.prepare(i && i.state ? "SELECT * FROM models_evals WHERE state = ? ORDER BY at DESC" : "SELECT * FROM models_evals ORDER BY at DESC").all(...(i && i.state ? [String(i.state)] : []))).map(proposalRow) }),
     });
@@ -212,7 +212,7 @@ export default {
     });
     ctx.tool("models.eval-queue", {
       effect: "read", callers: WHO,
-      description: "The approved evals waiting for a runner: [{ model, types }]. A runner takes one, runs it with the owner's own key, and reports the score with models.eval-record.",
+      description: "The approved evals waiting for a runner: [{ model, types }]. A runner reports scores with models.eval-record.",
       input: { type: "object", properties: {} },
       run: async () => ({ queue: /** @type {any[]} */ (db.prepare("SELECT model, types, cap_usd, decided_at FROM models_evals WHERE state = 'approved' ORDER BY decided_at").all()).map((r) => ({ model: r.model, types: JSON.parse(String(r.types)), ...(r.cap_usd != null ? { cap_usd: r.cap_usd } : {}), approved_at: r.decided_at, runners: Object.fromEntries(EVAL_TYPES.filter((t) => JSON.parse(String(r.types)).includes(t.id)).map((t) => [t.id, t.runner])) })) }),
     });

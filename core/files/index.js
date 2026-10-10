@@ -221,7 +221,7 @@ export default {
     }
 
     ctx.tool("files.search", {
-      description: "Find files by name or content on this machine and, from the Mac, on the box too. Only the folders the user chose are searched; secrets and dotfiles never appear.",
+      description: "Find files by name or content on this machine and, from the Mac, on the box. Searches only folders the user chose.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } },
@@ -386,9 +386,9 @@ export default {
     }
 
     ctx.tool("files.fetch", {
-      description: "Bring a file from the box to this Mac (source box), saved under Vyre's folder. Called on the machine holding the file, returns one chunk of it.",
+      description: "Bring a file from the box to this Mac (source box). Called on the box itself, returns one chunk at offset and length.",
       input: { type: "object", required: ["path"], properties: { path: { type: "string" }, source: { type: "string", enum: ["mac", "box"] },
-        offset: { type: "integer" }, length: { type: "integer" } } },
+        offset: { type: "integer", description: "start byte of the chunk" }, length: { type: "integer", description: "chunk size in bytes" } } },
       callers: FILES_CALLERS,
       run: async ({ path: p, source, offset, length }, meta = {}) => {
         const caller = meta.caller;
