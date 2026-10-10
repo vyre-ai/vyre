@@ -39,6 +39,8 @@
       { "name": "vault.connections.lend", "effect": "write", "reach": "modules" },
       { "name": "vault.connections.end", "effect": "write", "reach": "modules" },
       { "name": "vault.mcp.base", "effect": "write", "reach": "modules" },
+      { "name": "vault.mcp.agent.tools", "reach": "modules" },
+      { "name": "vault.mcp.agent.call", "effect": "write", "reach": "modules" },
       { "name": "vault.mcp.pass.create", "outward": true, "effect": "write", "reach": "person" },
       { "name": "vault.mcp.pass.list", "reach": "anyone" },
       { "name": "vault.mcp.items", "reach": "person" },
