@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../src/store-core/mock-store.js";
 import { runClientPays } from "../../src/store-core/scenario.js";
-import { isRawId, plainLine, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, briefOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
+import { isRawId, plainLine, cardModel, cardFor, nowModel, stageGroups, teamOf, liveLine, createdLine, draftOf, briefOf, taskFacts, progressText, stateWord, whenLabel } from "./model.js";
 import { loadWorld } from "./world.js";
 
 const NOW = Date.parse("2026-10-01T13:00:00");
@@ -141,4 +141,13 @@ test("a task's brief is shown as what to do; a tag line is not a brief", () => {
   assert.equal(briefOf({ note: "Flow: On payment", ext: { note: "is working on it" } }), "", "tags are not briefs");
   assert.equal(briefOf({}), "");
   assert.equal(briefOf(null), "");
+});
+
+test("a to-do a Flow gave you says a Flow is waiting; one with no maker and no stage just waits", () => {
+  const base = { id: "t1", title: "Look it over", state: "ready", doer: { kind: "person", id: "per_me" }, output: { kind: "decision" }, assigned_by: { kind: "person", id: "per_me" } };
+  const actors = [{ id: "per_me", name: "Me", family: "person" }];
+  const card = (task) => cardModel({ task, actors, me: "per_me", recordTitle: "" });
+  assert.equal(card({ ...base, source: "flow_step" }).why, "A Flow is waiting for you.");
+  assert.equal(card({ ...base, source: "manual" }).why, "It is waiting for you.");
+  assert.equal(card({ ...base, source: "flow_step", stage: "Intake" }).why, "Due with Intake.");
 });
