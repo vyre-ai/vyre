@@ -4,7 +4,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, Text } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
-import { dayKey, dayLabel } from "./days.js";
+import { TimelineEntries, type Entry } from "./TimelineList";
 import { spaceList } from "../drive/real";
 import { treeOf, type Body } from "../templates/model";
 
@@ -74,34 +74,11 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
   );
 }
 
-type Entry = { type: string; kind: string; id: string; urn: string; title: string; line: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
-const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records", person: "person" };
-/** The project's story, newest first and grouped by day (work.timeline): stages it moved through, tasks done, messages sent, files shared, chats and Flow runs, each a type mark and one plain line. A chat shows when it is the viewer's or its people shared it, by title only. */
+/** The project's story, newest first and grouped by day (work.timeline): stages it moved through, tasks done, messages sent, files shared, chats and Flow runs, each a type mark and one plain line. */
 export function TimelinePane({ slug }: { slug: string }) {
-  const router = useRouter();
   const [rows, setRows] = useState<Entry[] | null>(null);
   useEffect(() => { void callT<{ entries?: Entry[] }>("work.timeline", { project: slug, limit: 200 }).then((r) => setRows(r.error ? [] : r.data?.entries ?? [])); }, [slug]);
   if (rows === null) return <LoadingState rows={3} />;
   if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Stages, tasks, messages, files and shared chats linked to this project show here, newest first." />;
-  const days: { key: string; at: number; items: Entry[] }[] = [];
-  for (const e of rows) { const k = e.at ? dayKey(e.at) : "none"; const g = days[days.length - 1]; if (g && g.key === k) g.items.push(e); else days.push({ key: k, at: e.at, items: [e] }); }
-  const open = (e: Entry) => router.push((e.type === "chat" && e.chat ? `/u/chats/${e.chat}` : e.type === "stage" || e.type === "project-start" || e.type === "file-share" || e.type === "flow-run" ? undefined : `/u/record/${e.id}`) as never);
-  return (
-    <View className="gap-s3">
-      {days.map((g) => (
-        <View key={g.key}>
-          <SectionLabel>{dayLabel(g.at)}</SectionLabel>
-          <Card flush>
-            {g.items.map((e, i) => (
-              <View key={`${e.type}:${e.id}`}>
-                {i ? <Divider /> : null}
-                <Row dense lead={<View className="pr-s3"><Icon name={ICON[e.kind] ?? "records"} /></View>} title={<Text medium size="body">{e.line}</Text>} end={e.type === "chat" ? <Chip>{e.mine ? "Yours" : "Shared"}</Chip> : undefined}
-                  onPress={e.type === "stage" || e.type === "project-start" || e.type === "file-share" ? undefined : () => open(e)} />
-              </View>
-            ))}
-          </Card>
-        </View>
-      ))}
-    </View>
-  );
+  return <TimelineEntries rows={rows} />;
 }
