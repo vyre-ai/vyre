@@ -166,3 +166,19 @@ test("a free-flow project becomes a draft template: its tasks are the working st
   assert.equal(stages[0].tasks.find((/** @type {any} */ x) => x.title.startsWith("Collect")).brief, "Ask the family for a certified copy");
   assert.equal(got.body.name, "Estate intake");
 });
+
+test("a Flow attached to a template runs for each project it starts, as its own approver (G21 Automations)", { timeout: 180_000 }, async t => {
+  const { d, call, ownerChain, host } = await boot(t);
+  const flow = { format: 1, name: "welcome_contact", label: "Welcome the client", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "c", kind: "create", type: "contact", set: { name: { expr: "\"Welcome \" + trigger.stage" } } }] };
+  const def = await call("flows.define", { flow });
+  assert.ok(def.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.id, version: def.version, hash: def.hash });
+  await call("work.template.define", { body: { ...TEMPLATE, name: "With automation", automations: [{ when: "start", flow: def.id, note: "greets the client" }] } });
+  await call("work.template.golive", { template: "tpl_with-automation", version: 1 });
+  await call("work.start-project", { template: "tpl_with-automation", name: "Okafor" });
+  const names = async () => ((await d.kernel.gateway.records.query(ownerChain, "contact", { page: { limit: 50 } })).rows || []).map((/** @type {any} */ r) => r.data.name);
+  await until(async () => (await names()).includes("Welcome Intake"), "the attached Flow to run when the project started (its first stage is Intake)");
+  await call("work.start-project", { template: "tpl_with-automation", name: "Rivera" });
+  await until(async () => (await names()).filter((/** @type {string} */ n) => n === "Welcome Intake").length === 2, "and once for each project");
+  await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad auto", automations: [{ when: "Nowhere", flow: def.id }] } }), /when is "start" or the name/);
+});
