@@ -130,6 +130,7 @@ test("ending an agent takes everything back at once, even a request it is still 
   const item = (await heldList()).find(x => /Late Arrival/.test(x.summary || ""));
   assert.equal((await ok("outside.revoke", { id: reg.id })).revoked, true);
   assert.equal((await rpc(reg.token, "tools/list")).status, 401, "the token opens nothing");
+  assert.ok(!(await heldList()).some(x => x.id === item.id), "the card left the person's list: nobody can act on it");
   const done = await call("gate.approve", { id: item.id });
   assert.notEqual(done.data && done.data.state, "sent", "an item approved after the end does nothing: " + JSON.stringify(done));
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Late Arrival").length, 0);
@@ -170,6 +171,9 @@ test("memory and files of a project it was given are asked and read through the 
   await ok("files.drive.upload", { path: `${made.drive_path}/notes.txt`, base64: Buffer.from("Dana pays on the 15th").toString("base64") });
   await ok("files.drive.upload", { path: `${other.drive_path}/menu.txt`, base64: Buffer.from("not for Muse").toString("base64") });
   await d.kernel.gateway.memory.file(owner, { text: "Harlow settles on the 15th", source: jane.urn, kind: "decision", scope: `project:${id}` });
+  // a fact for the whole Space, and one of another project: neither is the memory of Harlow Matter
+  await d.kernel.gateway.memory.file(owner, { text: "Everyone settles on the 1st: the firm's own rule", source: jane.urn, kind: "decision" });
+  await d.kernel.gateway.memory.file(owner, { text: "Northwind settles on the 9th", source: jane.urn, kind: "decision", scope: `project:${String(other.project).split("/").pop()}` });
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "files", project: made.slug } });
   await ok("outside.grant", { id: reg.id, what: { kind: "memory", project: made.slug } });
@@ -196,4 +200,33 @@ test("an outside agent cannot flood the Gate: a few changes waiting at a time, e
   for (let i = 0; i < 20; i++) assert.ok((await use(reg.token, "records_create", { type: "contact", fields: { name: `Person ${i}` } })).json, `request ${i}`);
   assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "one too many" } })).text, /20 of your requests are already waiting/);
   assert.equal((await heldList()).filter(x => /Muse wants to add/.test(x.summary || "")).length, 20);
+});
+
+test("a change the person approves later applies only to the record as it was asked about", { timeout: 120_000 }, async t => {
+  const { ok, use, jane, heldList } = await rig(t);
+  const reg = await ok("outside.register", { name: "Muse" });
+  await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
+  const asked = await use(reg.token, "records_update", { urn: jane.urn, fields: { age: 41 } });
+  assert.ok(asked.json && asked.json.held, JSON.stringify(asked));
+  // the person edits the same record while the request waits
+  const cur = (await ok("records.get", { urn: jane.urn })).record;
+  await ok("records.update", { urn: jane.urn, patch: { age: 52 }, base_version: cur.version });
+  const item = (await heldList()).find(x => /Muse wants to change a contact/.test(x.summary || ""));
+  await ok("gate.approve", { id: item.id }).catch(() => {});
+  assert.equal((await ok("records.get", { urn: jane.urn })).record.data.age, 52, "the newer edit was not overwritten");
+  const state = (await use(reg.token, "held_get", { held: asked.json.held })).json;
+  assert.equal(state.state, "failed", JSON.stringify(state));
+});
+
+test("a new token with days keeps an agent and what it was given for that long", { timeout: 120_000 }, async t => {
+  const { ok, use, tools } = await rig(t);
+  const reg = await ok("outside.register", { name: "Muse", days: 1 });
+  await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"] } });
+  const before = (await ok("outside.list", {})).agents[0];
+  const again = await ok("outside.token", { id: reg.id, days: 30 });
+  const after = (await ok("outside.list", {})).agents[0];
+  assert.ok(after.expires > before.expires + 20 * 86400_000, "the agent lasts the longer time");
+  assert.equal(after.gives.length, 1, "what it was given is one line still");
+  assert.deepEqual(await tools(again.token), ["whoami", "records_types", "records_list", "records_get"]);
+  assert.ok((await use(again.token, "records_list", { type: "contact" })).json, "and it still reads");
 });
