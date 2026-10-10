@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test: the mobile test world removes its sessions folder (the `.sessions` folder beside its home) when it exits, so the tmp guard finds nothing left.
 - test(golden): the stored golden set follows 0.3.0's tools. 58 tools it did not know are recorded, 14 of them (appmods.* reads and connectors.*) run for a model and are named in kernel/golden/allow.json with the 4 Oct ruling's reason; the 30 cells that moved are flows.kit.propose for modules and views.get, views.list for agent sessions (from denied to would run), recorded as the code decides them today.
 - test: no known-red files are left. The golden recorder runs as fourteen files (a role and a run each, the generated callers in six parts), sessions as eight and switchboard as four, so no file nears the 300 s limit; federation-answer and journey follow the product; the installer test waits four tries for the check words, not a hundred and eighty.
 - test: the ten files that were red on v0.3.0 follow the product. The Tailscale cases that need the names listener this release no longer has are gone (link, person, relay); the switchboard, sessions, federation-send, hands-chrome, lent-wire and login-server cases carry the person's chain the chat gate needs, open the local page as the person, and take the runner's own uid; the node job installs gocryptfs and fuse3 so the lent-computer tests run for real.
