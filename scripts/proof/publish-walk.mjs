@@ -104,7 +104,7 @@ try {
   console.error(String(/** @type {Error} */ (e).stack || e));
   code = run.finish();
 } finally {
-  if (w) await w.stop().catch(() => {});
+  if (w && process.env.WALK_KEEP !== "1") await w.stop().catch(() => {});
 }
 process.exit(code);
 
