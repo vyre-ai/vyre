@@ -356,7 +356,7 @@ export function createGrantsStore(cfg) {
   }
 
   /** Grants the vault module made and may take back: its own sources, never the maker's `manage`. */
-  const vaultMade = (/** @type {string} */ src) => (src.startsWith("vault:") ? src !== "vault:create" : /^install:[a-z0-9-]+:vault$/.test(src));
+  const vaultMade = (/** @type {string} */ src) => (src.startsWith("vault:") ? src !== "vault:create" : /^install:[a-z0-9-]+:vault$/.test(src) || src.startsWith("publish:secret:"));
   /** Revoke a grant and everything handed on from it, noting each; the revoked grants, the first being `x`. */
   const killTree = async (/** @type {any} */ chain, /** @type {any} */ x, /** @type {any} */ reason, /** @type {any} */ decision) => {
     const out = [], why = String(reason || "").slice(0, 200);

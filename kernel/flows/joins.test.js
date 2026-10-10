@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { world, install, settle, ALEX, BOB } from "./testing/world.js";
 import { SPACE } from "./testing/fixtures.js";
 import { checkFlow } from "./schema.js";
+import { compileFlow, deriveCaps } from "./compile.js";
 import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
 import { explainRun } from "./describe.js";
@@ -216,6 +217,25 @@ test("parallel: what a lane read from outside taints the run, so the step after 
   assert.equal(outside.sends.length, 1, "and goes once a person says yes");
 });
 
+test("parallel: a Flow that allows one run at a time still finishes: the lanes take turns and nothing waits for a place that never frees", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([
+    { id: "p", kind: "parallel", steps: [
+      lane("a", [{ id: "ma", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+      lane("b", [{ id: "mb", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+      lane("c", [{ id: "mc", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+    ] },
+    { id: "after", kind: "create", type: "payment", set: { client: { expr: "trigger.n" }, amount: 1 } },
+  ], { concurrency: 1 }));
+  for (let n = 0; n < 5; n++) w.kernel.inbound("payment.received", { n: `run${n}` });
+  for (let i = 0; i < 10; i++) await settle(w);
+  const parents = await roots(w, id);
+  assert.equal(parents.length, 5);
+  assert.deepEqual([...new Set(parents.map(r => r.state))], ["done"], JSON.stringify(parents.map(r => [r.state, r.queued && r.queued.reason])));
+  assert.equal(mine(w, "matter").length, 15, "every lane of every run did its work once");
+  assert.equal(mine(w, "payment").length, 5, "and every run went on after its join, once");
+});
+
 test("parallel: a practice run counts what every lane would do", async () => {
   const w = await world();
   const flow = flowOf([{ id: "p", kind: "parallel", steps: [
@@ -302,4 +322,22 @@ test("edit by patch: a step goes into a lane, a lane can be removed with its ste
   f = applyPatch(f, [{ op: "remove", step: "c" }]);
   assert.deepEqual(f.steps[0].steps.map(s => s.id), ["a", "b"]);
   assert.deepEqual(checkFlow(f), []);
+});
+
+test("the compiler sees inside lanes: an outward step in a lane is listed on the approval card and its power is derived", async () => {
+  const w = await world();
+  w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
+  const flow = flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("a", [{ id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com" } }]),
+    lane("b", [{ id: "m", kind: "create", type: "matter", set: { client: "B" } }]),
+  ] }, { id: "again", kind: "subflow", flow: "other" }]);
+  const c = compileFlow(flow, w.cat);
+  assert.equal(c.ok, true, JSON.stringify(c.errors));
+  assert.deepEqual(c.effects.outward.map(o => o.step), ["mail"]);
+  assert.deepEqual(c.effects.writes, ["matter"]);
+  const caps = deriveCaps(flow, w.cat).map(x => x.action).sort();
+  assert.deepEqual(caps, ["email.send", "flows.run", "records.create"]);
+  const bad = compileFlow(flowOf([{ id: "p", kind: "parallel", steps: [lane("a", [{ id: "x", kind: "create", type: "matter", set: { client: "A" } }]), lane("b", [{ id: "y", kind: "create", type: "matter", set: { client: { expr: "steps.x.record.id" } } }])] }]), w.cat);
+  assert.equal(bad.ok, false, "a lane cannot read what a sibling lane makes");
+  assert.match(JSON.stringify(bad.errors), /steps\.x is not a step that has already run/);
 });

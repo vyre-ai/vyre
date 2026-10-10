@@ -1178,10 +1178,10 @@ export class Registry {
       ...doors,
       vault: {
         request: vaultRequest,
-        fetch: async (name, { field, watcher } = {}) => {
+        fetch: async (name, { field, watcher, deployment } = {}) => {
           const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
           if (!declared.includes(name) && !declared.some(d => d.startsWith("per-")) && !multipleItem(m, name)) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
-          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`, { door: true });
+          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}), ...(deployment ? { deployment } : {}) }, `module:${m.name}`, { door: true });
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
         },
