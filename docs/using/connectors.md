@@ -290,7 +290,11 @@ Connection's, and anything that is not a read is held for your yes. Where a call
 cheapest way that works, and the trace says which: a plain fetch for public data, your Chrome on
 this Mac, an assistant's own Chrome on your box (so it works with the Mac off; sign in once through
 its screen view), or your Chrome on a paired Mac that you allowed with `link.ops.allow`. If the
-browser says the login ran out, the Connection's light says to sign in again.
+browser says the login ran out, the Connection's light says to sign in again, and Needs you shows
+one quiet card: "Sign in to <site> again". On a box its first button opens the assistant's computer
+screen so you can sign in once; "Check it now" looks again, and the card closes by itself when the
+site answers. A site that stopped a watched account at a security check shows "<site> is checking
+the browser" with "I cleared it" to resume after you have cleared it yourself.
 
 **LinkedIn.** A kit for it exists (`chrome_op kit`), but automating LinkedIn is against LinkedIn's
 terms and can get an account restricted or closed. Use it only on an account you can afford to
