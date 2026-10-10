@@ -240,7 +240,9 @@ try {
   // ---- 4k. Vyre Computer's front door: the agent drives a page through `computer.use` (the cloud computer by default), interface first -------------
   // Nothing is named in `on`, so the answer is the agent's own computer; every act below is the engine's own tool (chrome.*) behind the one door, with the engine's own floor.
   const use = async input => { const x = await agent("computer.use", input); if (x.error) throw new Error(`computer.use ${input.do}: ${x.error.message}`); return x.data; };
-  const door = "data:text/html,<title>door start</title><label>Name box<input id=q aria-label=\"Name box\"></label>";
+  // chrome.open takes http(s) only: the page is served on the computer's own loopback by the agent's uid
+  inC("1000:1000", "mkdir -p /tmp/door && printf '%s' '<title>door start</title><label>Name box<input id=q aria-label=\"Name box\"></label>' > /tmp/door/index.html && (setsid python3 -m http.server 8099 --bind 127.0.0.1 --directory /tmp/door >/dev/null 2>&1 < /dev/null &) ; sleep 1; echo served");
+  const door = "http://127.0.0.1:8099/index.html";
   const routed = await use({ do: "route", goal: "type a name", site: "door.csproof.invalid" });
   check(routed && /screen/.test(JSON.stringify(routed)) && /Cloud computer/.test(JSON.stringify(routed)), "4k computer.use route: no Connection or learned operation covers the site, so the screen, on the cloud computer by default", JSON.stringify(routed).slice(0, 160));
   const opened = await use({ do: "open", url: door });
