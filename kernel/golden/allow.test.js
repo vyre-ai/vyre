@@ -70,7 +70,8 @@ test("the committed presence file is exactly the generator's output, and every e
   assert.equal(fs.readFileSync(PRESENCE_FILE, "utf8"), render(generatePresence()), "run: npm run golden:allow");
   for (const e of JSON.parse(fs.readFileSync(PRESENCE_FILE, "utf8"))) {
     assert.match(e.ruling, /(CHAT|ROADMAP)\.md/);
-    assert.ok(e.tool in SURFACE_RULINGS ? e.was === "denied" : ["presence_required", "person_session_required"].includes(e.was), `${e.tool}: ${e.was}`);
+    assert.ok(["denied", "presence_required", "person_session_required"].includes(e.was), `${e.tool}: ${e.was}`);
+    if (e.was === "denied") assert.ok(e.tool in SURFACE_RULINGS, `${e.tool}: a denied cell is excused only by a surface ruling`);
     assert.ok(e.callers.length > 0 && !e.callers.some(risky), `${e.tool}: no model, guest, MCP or harness caller`);
   }
 });
