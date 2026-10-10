@@ -484,6 +484,43 @@ test("gate apps over TLS: the SNI must be the Host; one label under the name is 
   assert.equal(f.seen.length, 1);
 });
 
+test("gate apps over TLS: an own host is served with its own certificate by SNI, only while the gate holds that certificate, and the Space's certificate stays for every other name", async t => {
+  const f = await appsFront(); t.after(() => f.close());
+  const space = selfSigned({ ips: ["127.0.0.1"], names: ["localhost", "alex.vyre.run"] });
+  const own = selfSigned({ ips: ["127.0.0.1"], names: ["sign.firm.example"] });
+  const { port, gate } = await setup(t, { tls: space, ingress: { hooks: () => null, share: () => null, ...appsOf(f, ["docuseal.alex.vyre.run", "sign.firm.example"]) } });
+  /** @returns {Promise<{ pin: string, text: string }>} */
+  const via = (servername, host) => new Promise(resolve => {
+    const chunks = []; let pin = "";
+    const c = tls.connect({ host: "127.0.0.1", port, servername, rejectUnauthorized: false }, () => { pin = certPin(/** @type {any} */ (c.getPeerCertificate(true)).raw); c.write(req("GET", host, "/sign/1/abc")); });
+    c.on("data", d => chunks.push(d)); c.on("close", () => resolve({ pin, text: Buffer.concat(chunks).toString() })); c.on("error", () => resolve({ pin, text: Buffer.concat(chunks).toString() }));
+    setTimeout(() => c.destroy(), 2000).unref();
+  });
+  // before the certificate is held: not an app host, the Space's certificate answers, and nothing reaches the front
+  const before = await via("sign.firm.example", "sign.firm.example");
+  assert.equal(before.pin, certPin(space.cert));
+  assert.doesNotMatch(before.text, /^HTTP\/1\.1 200 /);
+  assert.equal(f.seen.length, 0);
+  gate.setHostTls("Sign.Firm.Example", own);
+  assert.deepEqual(gate.hosts(), ["sign.firm.example"]);
+  const ok = await via("sign.firm.example", "sign.firm.example");
+  assert.equal(ok.pin, certPin(own.cert), "its own certificate by SNI");
+  assert.match(ok.text, /^HTTP\/1\.1 200 /);
+  assert.equal(f.seen[0].headers.host, "sign.firm.example");
+  assert.equal(f.seen[0].url, "/sign/1/abc");
+  assert.match((await via("sign.firm.example", "docuseal.alex.vyre.run")).text, /^HTTP\/1\.1 404 /, "the own host's certificate does not carry another host");
+  assert.match((await via("docuseal.alex.vyre.run", "sign.firm.example")).text, /^HTTP\/1\.1 404 /, "nor does another SNI carry the own host");
+  assert.equal((await via("docuseal.alex.vyre.run", "docuseal.alex.vyre.run")).pin, certPin(space.cert), "the Space's names keep the Space's certificate");
+  // a renewed certificate replaces it for the next handshake; dropping the host ends it
+  const next = selfSigned({ ips: ["127.0.0.1"], names: ["sign.firm.example"] });
+  gate.setHostTls("sign.firm.example", next);
+  assert.equal((await via("sign.firm.example", "sign.firm.example")).pin, certPin(next.cert));
+  gate.dropHostTls("sign.firm.example");
+  assert.equal((await via("sign.firm.example", "sign.firm.example")).pin, certPin(space.cert));
+  assert.doesNotMatch((await via("sign.firm.example", "sign.firm.example")).text, /^HTTP\/1\.1 200 /);
+  assert.equal(f.seen.length, 3);
+});
+
 // ---- the Vault MCP route: exactly POST /vault-mcp, the Authorization header through, nothing else opened ----
 
 /** A fake Vault MCP listener on loopback that records what reaches it. */

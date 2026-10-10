@@ -111,6 +111,8 @@ const GUARDS = [
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
 ].filter(f => fs.existsSync(f));
+// Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.
+if (fs.existsSync("test/contracts")) for (const t of fs.readdirSync("test/contracts")) if (/\.test\.m?js$/.test(t)) GUARDS.push(`test/contracts/${t}`);
 
 /** @type {Set<string>} */ const tests = new Set(GUARDS);
 for (const f of existing) {

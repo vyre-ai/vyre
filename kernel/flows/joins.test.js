@@ -113,6 +113,26 @@ test("parallel: a lane that does not finish fails the step after the others sett
   assert.equal(mine(w2, "payment").length, 1, "its failure path let the run go on");
 });
 
+test("parallel: a failed lane is one row in Needs attention, the parent's, and it says which lane and why", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([{ id: "p", kind: "parallel", label: "Both checks", steps: [
+    lane("good", [{ id: "m", kind: "create", type: "matter", set: { client: "Fine" } }]),
+    lane("bad", [{ id: "q", kind: "ask", to: "role:member", title: "Anyone?" }]),
+  ] }]));
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [parent] = await roots(w, id);
+  assert.equal(parent.state, "failed");
+  const lanes = await kids(w, id);
+  assert.ok(lanes.some(r => r.state === "failed" && r.attention), "the lane itself is failed and flagged");
+  const rows = await w.runner.attention();
+  assert.equal(rows.length, 1, JSON.stringify(rows));
+  assert.equal(rows[0].run, parent.id);
+  assert.match(rows[0].message, /the lane bad of Both checks did not finish/);
+  const h = await w.runner.health(id);
+  assert.deepEqual([h.week.total, h.week.failed, h.week.ok], [1, 1, 0], "the Flow ran once and failed once, not three times");
+});
+
 test("parallel: retrying the parent sends the failed lane round again and keeps the one that finished", async () => {
   const holders = {};
   const w = await world({ ports: { roles: (_s, role) => holders[role] || (role === "manager" ? [BOB] : role === "attorney" ? [ALEX, BOB] : []) } });
@@ -234,6 +254,21 @@ test("parallel: a Flow that allows one run at a time still finishes: the lanes t
   assert.deepEqual([...new Set(parents.map(r => r.state))], ["done"], JSON.stringify(parents.map(r => [r.state, r.queued && r.queued.reason])));
   assert.equal(mine(w, "matter").length, 15, "every lane of every run did its work once");
   assert.equal(mine(w, "payment").length, 5, "and every run went on after its join, once");
+});
+
+test("a run held at the switch can be stopped before it starts, and then nothing of it runs when the switch is released", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([{ id: "m", kind: "create", type: "matter", set: { client: "Held" } }]));
+  await w.runner.pauseAll({ reason: "test" });
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [held] = await roots(w, id);
+  assert.equal(held.state, "queued");
+  assert.deepEqual(await w.runner.cancel(held.id, { by: "per_alex" }), { ok: true, state: "cancelled" });
+  await w.runner.resumeAll({});
+  await settle(w);
+  assert.equal((await w.runner.getRun(held.id)).state, "cancelled");
+  assert.equal(mine(w, "matter").length, 0, "it never ran");
 });
 
 test("parallel: a practice run counts what every lane would do", async () => {

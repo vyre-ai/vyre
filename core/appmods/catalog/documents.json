@@ -71,6 +71,7 @@
   },
   "events": [
     { "webhook": "submission.completed", "event": "documents.signed", "flow": "documents-signed", "data": { "submission": "data.id", "at": "timestamp", "email": "data.submitters[0].email", "template": "data.template.name" }, "files": { "list": "data.documents", "url": "url", "name": "name", "saveTo": "Signed/{submission}-{name}.pdf" } },
+    { "webhook": "form.declined", "event": "documents.declined", "data": { "submission": "data.submission.id", "at": "timestamp", "email": "data.email", "template": "data.template.name", "reason": "data.decline_reason" } },
     { "webhook": "form.completed", "event": "documents.form-completed", "data": { "submission": "data.submission.id", "email": "data.email" } }
   ],
   "screens": [

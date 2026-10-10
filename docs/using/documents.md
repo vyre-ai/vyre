@@ -24,6 +24,8 @@ The result is filed in the Drive under `Documents/<project>/` and, when your Spa
 
 In the Documents screen, Send for signature shows the signer, the template and your note; confirm it and the signer gets their link by e-mail. From an agent, the approval card for `documents.send` carries the whole act. From a Flow, your answer to the Flow's own question is the yes: nothing waits at the Gate afterwards. Either way, what you read before saying yes is the signer, the template and any note; the link line is fixed.
 
+If the signer declines instead, Documents says so at once: the Document is filed as Declined on the signer's Contact (their timeline shows it), and the event `documents.declined` carries the reason they gave for a Flow of your own to use.
+
 ## Sign from a stage
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
@@ -33,6 +35,15 @@ In the Documents screen, Send for signature shows the signer, the template and y
 A signer outside your network needs a way in. Set the public address of an edge in Settings (Devices, Public address for signing pages and shared links) and their browser reaches your server through it; the edge sees only encrypted traffic and cannot read the page or the signed contract. With none set, only your own devices open these pages.
 
 When you send a document for signature, the signer opens a link on the Documents app's own address (`documents.<your name>.vyre.run/sign/<document>/<signer>`), with no account and no one-time code. The link stays valid until the document is signed. The page wears your logo and colours from Brand, and carries a small credit to its open-source engine in the footer. Nothing else in Documents is reachable from outside: the signer sees their own page and nothing of yours. The finished, signed PDF is not behind that link: `documents.signed-link` makes a separate link to it that stops working after 30 days (the signing flow emails it to the signer for your yes), and a new one is one call away.
+
+### Your own address for signing pages
+
+To send signers to `sign.yourfirm.com` instead of the Space's address, ask for it: `appmods.domain.add { host: "sign.yourfirm.com" }` (the owner or an admin; Documents must be running and the public address above set). Vyre answers the two records to add at your domain's DNS:
+
+- `sign.yourfirm.com` as a CNAME to `<your name>.vyre.run`, so visitors come to your server;
+- `_acme-challenge.sign.yourfirm.com` as a CNAME to the address Vyre shows, which lets your server get the certificate for the domain (only the owner of the domain can add it).
+
+`appmods.domain.list` says where each domain stands: waiting for a record, getting its certificate, or live. Vyre looks again every few minutes. Once it is live, new signing links and links to signed copies use your address; until then they keep the Space's, so nothing breaks while you wait. `appmods.domain.remove` takes it back. Up to five domains.
 
 ## Send an email or a text
 
