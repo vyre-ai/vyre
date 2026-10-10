@@ -451,7 +451,6 @@ export const OPEN = new Set([
   "link.rename",
   "mentions.kinds",
   "mentions.search",
-  "names.domain.check",
   "planner.settings",
   "presence.person.status",
   "projects.add-threads",
