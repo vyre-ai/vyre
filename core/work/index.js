@@ -25,6 +25,7 @@ import { createTemplates, registerTemplateTools } from "./templates.js";
 import { createPersistent } from "./persistent.js";
 import { parseStored } from "../../lib/attachments.js";
 import { retryWhileAway, storeAway } from "./retry-away.js";
+import { createChatService } from "./chat-service.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet; try again in a minute, or ask the owner or an admin"), { code: "unavailable" });
@@ -42,7 +43,8 @@ export default {
 
     /** The kernel and the chain for this call. Both come from platform; a refusal to build a chain is the caller's, not ours. */
     const kernelOf = () => { const k = ctx.kernel; if (!k || typeof k.chainFor !== "function") throw unavailable(); return k; };
-    const chainOf = (/** @type {any} */ extra) => kernelOf().chainFor(extra || {});
+    // `in_space_chain` is set only by the registry's callInSpace (the member door: a team member's own chain in that Space, after the Space's authorize allowed the tool); nothing a caller sends can make it.
+    const chainOf = (/** @type {any} */ extra) => (extra && extra.in_space_chain ? Promise.resolve(extra.in_space_chain) : kernelOf().chainFor(extra || {}));
     /**
      * The room this call is running in, from the running session and never from the tool's input (a model that can name the chat can leave it out). `null` means
      * the kernel says it is a chat of one person; otherwise it is the kernel's room handle (no chain of another person ever reaches this module). If the kernel cannot say which, or says group and gives no audience, the
@@ -895,6 +897,10 @@ export default {
       },
     });
 
-    return { async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); } };
+    return {
+      async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); },
+      /** The peer door asks for the member's chat service by name from this handle (the daemon imports nothing of work). */
+      peerService: (/** @type {{ space: string, kernel: any, registry: any }} */ o) => createChatService(o),
+    };
   },
 };

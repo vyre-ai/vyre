@@ -110,13 +110,15 @@
         "reach": "anyone",
         "effect": "read",
         "projectArg": "project",
-        "projectIsRecord": true
+        "projectIsRecord": true,
+        "crossSpace": "records.read"
       },
       {
         "name": "work.chat.get",
         "summary": "one chat you are in: its record, its slots (assistants and models running in it) and its transcript address",
         "reach": "anyone",
-        "effect": "read"
+        "effect": "read",
+        "crossSpace": "records.read"
       },
       {
         "name": "work.chat.span",
@@ -148,7 +150,8 @@
         "reach": "anyone",
         "effect": "write",
         "projectArg": "project",
-        "projectIsRecord": true
+        "projectIsRecord": true,
+        "crossSpace": "records.create"
       },
       {
         "name": "work.chat.change",
@@ -336,7 +339,8 @@
         "name": "work.chat.persistent",
         "summary": "your pinned assistant or Engineer chat",
         "reach": "anyone",
-        "effect": "read"
+        "effect": "read",
+        "crossSpace": "records.read"
       },
       {
         "name": "work.timeline",
@@ -393,7 +397,8 @@
         "name": "work.chat.pin",
         "summary": "make a chat your pinned assistant or Engineer chat",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "crossSpace": "records.create"
       }
     ]
   },
