@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { GENERATED, GENERATORS } from "./regen.mjs";
 import { RATCHETS, growth, ruled } from "./ratchets.mjs";
+import { cdnHit, s2Exempt } from "./cdn-hosts.mjs";
 
 const args = process.argv.slice(2);
 const flag = (/** @type {string} */ n) => args.includes(n);
@@ -96,8 +97,9 @@ for (const { file: f, line } of added) {
   if (!isTest(f) && !/kernel\/devbuild\.js$|appattest\.js$/.test(f) && /process\.env\.VYRE_[A-Z0-9_]*(OFF|DEV|SKIP|DISABLE|INSECURE|ALLOW|NO_[A-Z]+|UNSAFE|LEASES|SANDBOX)[A-Z0-9_]*\s*(!==|===|!=|==)\s*["'`][01]["'`]/.test(line))
     fail("S1", `${f}: a switch read raw from process.env; use devSwitch() from kernel/devbuild.js so a release build ignores it:\n    ${line.trim().slice(0, 160)}`);
   // S2: shipped code never loads from a third-party CDN (vendor it, pinned and hashed)
-  if (!isTest(f) && !isDoc(f) && /https?:\/\/(unpkg\.com|cdn\.jsdelivr\.net|esm\.sh|cdnjs\.cloudflare\.com|cdn\.tailwindcss\.com|cdn\.skypack\.dev|ga\.jspm\.io|cdn\.sheetjs\.com)/.test(line))
-    fail("S2", `${f}: shipped code points at a public CDN; vendor the file, pinned and hashed:\n    ${line.trim().slice(0, 160)}`);
+  // (the host list is scripts/team/cdn-hosts.mjs, shared with test/no-cdn.test.js, and scripts/ is no longer exempt: only tests, docs and packaging are)
+  if (!s2Exempt(f) && cdnHit(line))
+    fail("S2", `${f}: shipped code points at a public CDN, font or analytics host (${cdnHit(line)}); vendor the file, pinned and hashed:\n    ${line.trim().slice(0, 160)}`);
   // T1: never hide a red: no new todo/skip in tests
   if (isTest(f) && /\.test\./.test(f) && /(\btest\.(todo|skip)\(|\bit\.(todo|skip)\(|\bdescribe\.skip\(|[{,]\s*(todo|skip)\s*:\s*(true|["'`]))/.test(line))
     fail("T1", `${f}: a new todo or skip hides a red; fix the cause, or ask the lead for a written ruling first:\n    ${line.trim().slice(0, 160)}`);
