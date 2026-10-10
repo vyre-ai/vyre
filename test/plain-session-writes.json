@@ -652,10 +652,6 @@
   "previews.signin": {
    "class": "own",
    "why": "a card in its own chat asking the person to sign in; the keyboard is theirs, private, and the agent never sees the password"
-  },
-  "threads.undo-edit": {
-   "class": "refused",
-   "why": "refused in the body for anything but a person's own surface: putting a file back is the person's"
   }
  }
 }
