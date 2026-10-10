@@ -28,10 +28,10 @@ test("my cloud: setup names the paired server and nothing is typed", () => {
 test("my cloud: the report says what moved, what did not by name, and what Personal is now", () => {
   const done = reportLines({ upgraded: true, to: "spc_cloud", moved: { records: { note: 3 }, chats: { chats: 1 } }, notMoved: [], frozen: true });
   assert.deepEqual(done.moved, ["3 notes", "Your chats, with their history"]);
-  assert.equal(done.after, "Personal now points to My Cloud and is read-only. Nothing was deleted.");
+  assert.equal(done.after, "My Home now points to My Cloud and is read-only. Nothing was deleted.");
   const part = reportLines({ upgraded: true, moved: { records: { note: 2 } }, notMoved: [{ what: "chats: history", why: "no paired server to bring it back on" }], frozen: false, not_frozen_because: "something moved only in part" });
   assert.deepEqual(part.notMoved, ["chats: history: no paired server to bring it back on"]);
-  assert.match(part.after, /Personal is unchanged/);
+  assert.match(part.after, /My Home is unchanged/);
   assert.match(reportLines({ moved: {}, frozen: false, not_frozen_because: "My Cloud gave no receipt" }).after, /My Cloud gave no receipt/);
   assert.match(refusalLine({ code: "plan_changed" }), /Look at it again/);
   assert.equal(refusalLine({ code: "blocked", message: "This cannot start yet: x" }), "This cannot start yet: x");
