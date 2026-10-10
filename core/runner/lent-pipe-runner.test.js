@@ -15,19 +15,22 @@ import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import mod, { seams } from "./index.js";
 import { rig, SPACE, BOB } from "./testing/lent-rig.js";
+import { start } from "../daemon/index.js";
+import { openThreadSocket, lentRequest } from "../daemon/threadsock.js";
+import { tempHome } from "../../test/helpers.js";
 
 const SKIP = unavailable() || workspaceUnavailable() || "";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
 const lines = (/** @type {any} */ stream) => { /** @type {string[]} */ const got = []; let buf = ""; stream.on("data", (/** @type {any} */ d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { got.push(buf.slice(0, i)); buf = buf.slice(i + 1); } }); return got; };
 
-async function world(/** @type {import("node:test").TestContext} */ t) {
+async function world(/** @type {import("node:test").TestContext} */ t, /** @type {{ enrolled?: boolean, heartbeatMs?: number, http?: any }} */ o = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "lp-agent-"));
   const agent = path.join(agentDir, "agent.js");
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), agent);
   const was = process.env.VYRE_CLAUDE_BIN; process.env.VYRE_CLAUDE_BIN = agent;
   const root = fs.mkdtempSync(path.join(SCRATCH, "lp-root-"));
-  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();
@@ -36,9 +39,9 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
     events: { emit: (/** @type {string} */ type) => { for (const f of handlers.get(type) || []) f({ type }); }, on: (/** @type {string} */ type, /** @type {any} */ f) => { handlers.set(type, [...(handlers.get(type) || []), f]); return () => handlers.set(type, (handlers.get(type) || []).filter((/** @type {any} */ x) => x !== f)); } },
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d),
     call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: { devices: [] } }),
-    kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call: (/** @type {string} */ name, /** @type {any[]} */ args) => remote.call(name, args) }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }) }) },
+    kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call: (/** @type {string} */ name, /** @type {any[]} */ args) => remote.call(name, args) }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }), ...(o.enrolled ? { lentTo: async () => [SPACE] } : {}) }) },
   };
-  seams.set(root, { heartbeatMs: 150, beatTimeoutMs: 400, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
+  seams.set(root, { heartbeatMs: o.heartbeatMs || 150, beatTimeoutMs: 400, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; fs.rmSync(agentDir, { recursive: true, force: true }); });
   const run = (/** @type {string} */ tool, /** @type {any} */ input) => tools.get(tool).run(input, { caller: "cli" });
@@ -53,7 +56,7 @@ test("a chat spawned for a lender runs in the lender's sandbox with the SDK's fl
   await sleep(600);
   const proc = w.r.home.spawn({ session: "s_chat", person: BOB, args: ["/box/cli.js", "--output-format", "stream-json", "--mcp-config", "/box/mcp.json"] });
   const out = lines(proc.stdout);
-  await waitFor(() => proc.lent, 15_000);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
   assert.equal(w.book.get("s_chat").where, "mac");
   proc.stdin.write("turn hello\n");
   await waitFor(() => out.some(l => l.includes("\"result\"")), 15_000);
@@ -72,9 +75,99 @@ test("a kill from the SDK ends the sandboxed process tree on the lender", { skip
   await sleep(600);
   const proc = w.r.home.spawn({ session: "s_kill", person: BOB, args: ["--output-format", "stream-json"] });
   const closed = new Promise(res => proc.on("close", (/** @type {any} */ c, /** @type {any} */ s) => res([c, s])));
-  await waitFor(() => proc.lent, 15_000);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
   assert.ok(proc.kill());
   const [, signal] = /** @type {any[]} */ (await closed);
   assert.ok(signal === "SIGTERM" || signal === "SIGKILL" || signal === null, "ended: " + signal);
   await waitFor(async () => (await w.run("runner.here", {})).sessions.every((/** @type {any} */ x) => x.title !== "A session" || true) , 5000);
+});
+
+test("the first chat on a Mac that never ran a session for the Space runs there, and is started in a second or two, not at the next heartbeat", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  // the heartbeat is every four seconds here: only the nudge can start a chat sooner
+  const w = await world(t, { enrolled: true, heartbeatMs: 4000 });
+  // an enrolled lender has said it is well to this Space's home without ever having run a session there
+  const placed = await waitFor(() => { const p = w.r.home.placeNew({ session: "s_first", person: BOB }); return p.where === "mac" ? p : null; }, 20_000);
+  assert.equal(placed.device, "dev_laptop");
+  const t0 = Date.now();
+  const proc = w.r.home.spawn({ session: "s_first", person: BOB, title: "First chat", args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  assert.equal(proc.lent.state, "starting");
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  assert.ok(Date.now() - t0 < 3500, `started at once, not at the next heartbeat (${Date.now() - t0} ms)`);
+  proc.stdin.write("turn hi\n");
+  await waitFor(() => out.some(l => l.includes("did hi")), 15_000);
+  proc.kill();
+});
+
+test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks to the runner's door, the door asks the home, and the home answers as that session", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  /** @type {any[]} */ const asked = [];
+  const w = await world(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { asked.push([thread, p, headers, body]); if (method === "GET") return { status: 200, body: JSON.stringify({ data: [{ name: "records.list", description: "List records.", input: { type: "object" }, effect: "read" }, { name: "tools.find", description: "Find a tool.", input: { type: "object" }, effect: "read" }] }) }; return { status: 200, body: JSON.stringify({ data: { tool: p.split("/").pop(), you: `mcp:thread:${thread}` } }) }; } });
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const proc = w.r.home.spawn({ session: "s_tools", person: BOB, args: ["--output-format", "stream-json", "--mcp-config", JSON.stringify({ mcpServers: { canvas: { type: "sdk", name: "canvas" }, vyre: { command: "node", args: ["/box/mcp.js"] } } })] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  // the process is told where Vyre is: a socket, and an MCP config with the SDK's own server and the lender's Vyre server (not the box's)
+  proc.stdin.write("argv\n");
+  const argvLine = await waitFor(() => out.find(l => l.includes("\"argv\"")), 15_000);
+  const seen = JSON.parse(argvLine);
+  assert.match(seen.socket, /vyre/);
+  const cfg = JSON.parse(seen.argv[seen.argv.indexOf("--mcp-config", 3) + 1]);
+  assert.ok(!seen.argv.join(" ").includes("/box/mcp.js"), "nothing of the box's reaches the lender");
+  const all = seen.argv.flatMap((x, i) => (x === "--mcp-config" ? [JSON.parse(seen.argv[i + 1])] : []));
+  assert.ok(all.some(c => c.mcpServers.canvas && c.mcpServers.canvas.type === "sdk"), "the SDK's in-process server is kept");
+  const vyre = all.map(c => c.mcpServers.vyre).find(Boolean);
+  assert.ok(vyre && /harness[\\/]mcp[\\/]run\.js$/.test(vyre.args[0]) && vyre.env.VYRE_SOCKET, "the lender's own Vyre MCP server speaks to the runner's door");
+  void cfg;
+  // a call through the door is the session's own call at the home
+  proc.stdin.write("vyre records.list {\"type\":\"contact\"}\n");
+  const reply = JSON.parse(await waitFor(() => out.find(l => l.includes("\"vyre\"")), 15_000)).reply;
+  assert.equal(reply.status, 200);
+  assert.deepEqual(JSON.parse(reply.body).data, { tool: "records.list", you: "mcp:thread:s_tools" });
+  assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"], asked.at(-1)[3]], ["s_tools", "/v1/tools/records.list", "mcp", "{\"type\":\"contact\"}"]);
+  // and Vyre's real MCP server, run inside the sandbox from that config, lists the tools the home says this session has
+  proc.stdin.write("mcp\n");
+  const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  assert.equal(mcp.init, "ok", JSON.stringify(mcp));
+  assert.ok(Array.isArray(mcp.tools) && mcp.tools.includes("tools_find"), "the server answered from the home's list: " + JSON.stringify(mcp.tools));
+  proc.kill();
+});
+
+test("a lent session calls tools.find and a module tool and gets the same answers as the same session on the box", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  // the box: a real daemon, and the session's own socket opened the way the switchboard opens it (its route, its caller binding)
+  process.env.VYRE_SEAL_DEV = "1";
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const manifest = JSON.parse(fs.readFileSync(new URL("../switchboard/module.json", import.meta.url), "utf8"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "lp-ts-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const sock = await openThreadSocket({ handler: d.registry.context(manifest).handler, thread: "s_real", agent: "kit", dir, pids: async () => ({ pids: [] }) });
+  t.after(() => sock.close());
+  // the lender
+  const w = await world(t, { http: lentRequest });
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  const proc = w.r.home.spawn({ session: "s_real", person: BOB, args: ["--output-format", "stream-json"] });
+  const out = lines(proc.stdout);
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  const viaLender = async (/** @type {string} */ tool, /** @type {any} */ input) => { const n = out.length; proc.stdin.write(`vyre ${tool} ${JSON.stringify(input)}\n`); const line = await waitFor(() => out.slice(n).find(l => l.includes("\"vyre\"")), 20_000); return JSON.parse(JSON.parse(line).reply.body); };
+  const onBox = async (/** @type {string} */ tool, /** @type {any} */ input) => JSON.parse(/** @type {any} */ (await lentRequest("s_real", "POST", `/v1/tools/${tool}`, { "x-vyre-caller": "mcp" }, JSON.stringify(input))).body);
+  const boxCatalog = JSON.parse(/** @type {any} */ (await lentRequest("s_real", "GET", "/v1/tools", { "x-vyre-caller": "mcp" }, "")).body);
+  assert.ok(Array.isArray(boxCatalog.data) && boxCatalog.data.length > 10, "the box lists its tools");
+  const echo = await viaLender("system.echo", { text: "same" });
+  assert.deepEqual(echo, await onBox("system.echo", { text: "same" }), "a module tool answers the same");
+  // Vyre's own MCP server, run in the sandbox, finds tools in the box's catalog and calls one of them
+  const n0 = out.length; proc.stdin.write("mcp tools_find {\"query\":\"echo\"}\n");
+  const mcp = JSON.parse(await waitFor(() => out.slice(n0).find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
+  assert.equal(mcp.init, "ok", JSON.stringify(mcp));
+  assert.ok(mcp.tools.includes("tools_find") && mcp.tools.includes("tools_call"), JSON.stringify(mcp.tools));
+  assert.ok(JSON.stringify(mcp.called).includes("system_echo") || JSON.stringify(mcp.called).includes("system.echo"), "tools_find found the box's echo tool: " + JSON.stringify(mcp.called).slice(0, 300));
+  // and what the session may not do on the box, it may not do from the Mac
+  const reveal = await viaLender("vault.reveal", { name: "x" });
+  assert.equal(reveal.error && reveal.error.code, "denied");
+  proc.kill();
 });

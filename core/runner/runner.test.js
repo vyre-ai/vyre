@@ -629,6 +629,34 @@ test("runner: a hand-over the home holds back, or that fails, does not wake a se
   await waitFor(() => procState(h.pid) !== "T");
 });
 
+test("runner: a chat's session gets a door to Vyre (VYRE_SOCKET) that asks the home, and a Vyre folder the sandbox will not bind leaves the session running without it, said in an event", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
+  /** @type {any[]} */ const events = [];
+  const r = await rig(t, { onEvent: e => events.push(e) });
+  const root = fs.mkdtempSync(path.join(SCRATCH, "vyre-root-")); t.after(() => rm(root));
+  fs.mkdirSync(path.join(root, "harness", "mcp"), { recursive: true }); fs.writeFileSync(path.join(root, "harness", "mcp", "run.js"), "");
+  /** @type {any[]} */ const asked = [];
+  const door = { call: async (/** @type {any} */ q) => { asked.push(q); return { status: 200, body: JSON.stringify({ data: "from the home" }) }; }, entry: path.join(root, "harness", "mcp", "run.js"), root };
+  const h = await r.launch(r.runner, "sd", { vyre: door });
+  const lines = []; h.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) lines.push(JSON.parse(l)); });
+  h.send("vyre records.list {\"a\":1}");
+  const said = await waitFor(() => lines.find(e => e.type === "vyre"));
+  assert.deepEqual([said.reply.status, JSON.parse(said.reply.body).data], [200, "from the home"]);
+  assert.deepEqual([asked[0].method, asked[0].path, asked[0].body, asked[0].caller], ["POST", "/v1/tools/records.list", "{\"a\":1}", "mcp"]);
+  h.send("argv");
+  const argv = await waitFor(() => lines.find(e => e.type === "argv"));
+  assert.equal(argv.socket, "/run/vyre.sock");
+  assert.ok(argv.argv.includes("--mcp-config"));
+  // a folder that holds a person's secret folder is never bound: no door, the session still runs
+  const bad = fs.mkdtempSync(path.join(SCRATCH, "vyre-bad-")); t.after(() => rm(bad));
+  fs.mkdirSync(path.join(bad, ".ssh")); fs.mkdirSync(path.join(bad, "harness", "mcp"), { recursive: true }); fs.writeFileSync(path.join(bad, "harness", "mcp", "run.js"), "");
+  const h2 = await r.launch(r.runner, "se", { vyre: { ...door, entry: path.join(bad, "harness", "mcp", "run.js"), root: bad } });
+  const lines2 = []; h2.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) lines2.push(JSON.parse(l)); });
+  h2.send("argv");
+  const argv2 = await waitFor(() => lines2.find(e => e.type === "argv"));
+  assert.equal(argv2.socket, null, "no door");
+  assert.ok(events.some(e => e.type === "vyre-unavailable" && e.session === "se"), "and the person's side is told");
+});
+
 test("runner: thawing a reason nobody froze for sends no signal; a session stopped by the machine's teardown says so, not that the person stopped it", { skip: SKIP || !LINUX || false, timeout: 90_000 }, async t => {
   /** @type {any[]} */ const ended = [];
   const r = await rig(t, { onEvent: e => { if (e.type === "stopped") ended.push(e.why); } });

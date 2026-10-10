@@ -448,6 +448,7 @@ test("a session the server took but has not yet carried on is still owed after t
   fail = false;
   const home2 = createLentHome({ space: SPACE, root: path.join(r.dir, "home"), offers: r.g.offers, leases: r.k.gateway.leases, now: () => r.c.t, resume: async i => { calls.push(i.session); }, specFor: async () => ({ command: "x", routes: [] }) });
   await home2.sweep(); await home2.sweep();
+  for (let i = 0; i < 50 && home2.book.pendingResume().length; i++) await new Promise(res => setImmediate(res));   // the continuation runs behind the sweep
   assert.equal(calls.length, 2, "carried on once more, not twice");
   assert.deepEqual(home2.book.pendingResume(), []);
   assert.equal(home2.book.ownerOf("s1"), BOB);

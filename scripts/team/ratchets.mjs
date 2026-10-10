@@ -15,6 +15,7 @@ export const RATCHETS = Object.freeze([
   { file: "test/one-person-surfaces.json", kind: "json", what: "files that name person surfaces" },
   { file: "test/model-is-never-person.json", kind: "json", what: "files that test a model label as the person" },
   { file: "test/plain-session-writes.json", kind: "json", what: "tools a bare session may reach" },
+  { file: "test/file-size.json", kind: "json", what: "source files over 2,000 lines, by size" },
   { file: "kernel/golden/allow.json", kind: "json", what: "tools the golden set lets run for a model" },
   { file: "kernel/size.test.js", kind: "cap", pattern: /\bconst CAP = (\d+)/, what: "the kernel's size cap" },
 ]);
