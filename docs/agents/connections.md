@@ -27,7 +27,7 @@ Connections that ship as declarations, with their operations:
 
 1. List what is connected: `tools_call connectors.list`. A connection the person did not make or approve is not there to use.
 2. Look at its operations: `tools_call connectors.declared` shows them with their marks.
-3. Run one: `vault.request` with the connection's credential, a method and a full address on its host (`tools_call connectors.connection.get` shows it as `use`: the credential is `conn-<id>`, not the key item the connection is made from). A view of an app runs an operation with `connectors.operation.run`. Reads and drafts run. An operation marked outward (see the kinds above) is held for a person (read `outward-acts.md`).
+3. Run one: `vault.request` with the connection's credential, a method and a full address on its host (`connectors.connection.get` shows it as `use`: the credential is `conn-<id>`, not the key item the connection is made from). A view of an app runs an operation with `connectors.operation.run`. Reads and drafts run. An operation marked outward (see the kinds above) is held for a person (read `outward-acts.md`).
 
 You never see or pass the key. The system attaches it outside you when the call is made.
 
