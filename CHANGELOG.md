@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(projects): on a wide window the page a template chose to open on leads the project's panes, as it already led the tabs on a phone (found by the G21 walk: a project that chose Files opened on Stages). Adds scripts/app-walk-g21.mjs, the G21 walk of the template studio.
 - feat(templates): the Automations part of the template studio (G21, part 4). A template attaches existing Flows of the Space to run for each project: when it starts (its first stage is entered) or when it enters a stage. The attachment is pinned in the project's snapshot; the stages module starts each Flow once per entry, as the person who approved the Flow, with the project and the stage as its input (a Flow that is not running says so and never stops the stage). The studio edits the list with a Flow picker; test mode lists them and runs none; renaming or removing a stage takes its automations along.
 - feat(templates): a template from any project (G21, part 3). A project page has Make a template: a project that ran a template gives back its stages as before; a free-flow project (chats and files) gives a draft with its team as roles and its tasks (title, and the note as the brief) as the tasks of one working stage, then Done, opened in the studio to refine, try and put live.
 - chore(team): preflight rule R2 also accepts [reviewed: lead], so the lead can review security-path changes when trust is the bottleneck.
