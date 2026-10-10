@@ -108,7 +108,7 @@ test("public when asked, under an organisation the account belongs to; one it do
 
 test("a secret in the folder stops it before anything is made on GitHub", async t => {
   const w = await world(t), made = fakeGitHub(t, w.remotes);
-  const dir = w.folder({ "index.html": "<p>hi</p>", "config.js": 'const key = "' + ["sk", "live", "FAKEFAKEFAKE1234567890abcd"].join("_") + '";' });
+  const dir = w.folder({ "index.html": "<p>hi</p>", "config.js": 'const key = "' + ["gh", "p_", "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"].join("") + '";' });
   const r = await w.as("cli")("github.repo.create", { name: "leaky", dir });
   assert.equal(r.error.code, "secret_found");
   assert.match(r.error.message, /nothing was made on GitHub/);
