@@ -123,3 +123,15 @@ test("the Kit the app ships is the compiled form of its source, defines a Docume
   assert.ok(documents().events.some(e => e.event === "documents.signed"), "the event the Flow waits for is one the app emits");
   assert.ok(documents().events.find(e => e.event === "documents.signed").data.at, "and it carries when it was signed");
 });
+
+test("a signer who declines is an event the app emits and a Flow the Kit ships: the Document is filed as Declined on the signer's Contact, and never as Signed", async () => {
+  const stored = JSON.parse(fs.readFileSync(new URL("./catalog/documents.kit.json", import.meta.url), "utf8"));
+  const flow = stored.flows.find((/** @type {any} */ f) => f.name === "document_declined");
+  assert.deepEqual(flow.trigger, { on: "event", event: "documents.declined" });
+  const sets = JSON.stringify(flow.steps).match(/"status":"[A-Za-z]+"/g) || [];
+  assert.deepEqual([...new Set(sets)], ['"status":"Declined"']);
+  const ev = documents().events.find((/** @type {any} */ e) => e.webhook === "form.declined");
+  assert.equal(ev.event, "documents.declined");
+  assert.deepEqual(Object.keys(ev.data).sort(), ["at", "email", "reason", "submission", "template"]);
+  assert.ok(stored.version >= 2, "an installed Kit of the first version is upgraded to get the new Flow");
+});

@@ -157,6 +157,14 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   assert.equal(res.status, 202);
   assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2);
   assert.equal((await fetch(url, { method: "POST", headers: { "x-vyre-token": "no", "content-type": "application/json" }, body: "{}" })).status, 403);
+  // a signer who declines: the event carries who, which document and why, and the files of a signed copy are not fetched
+  const declined = { event_type: "form.declined", timestamp: "2026-10-08T01:00:00Z", data: { id: 9, email: "b@example.com", decline_reason: "The fee is wrong", template: { name: "NDA" }, submission: { id: 11 } } };
+  const dec = await w.d.registry.call("appmods.hook", { name: "documents", token, body: declined }, "hook");
+  assert.equal(dec.data && dec.data.event, "documents.declined", JSON.stringify(dec));
+  const dev = w.d.registry.deps.events.since(0, { type: "documents.declined" });
+  assert.equal(dev.length, 1);
+  assert.deepEqual([dev[0].payload.submission, dev[0].payload.email, dev[0].payload.template, dev[0].payload.reason], [11, "b@example.com", "NDA", "The fee is wrong"]);
+  assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2, "a refusal is not a signature");
   // an event the manifest does not map is ignored, not an error
   assert.deepEqual((await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "template.created" } }, "hook")).data, { ignored: "template.created" });
 });
