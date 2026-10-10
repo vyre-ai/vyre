@@ -1,0 +1,14 @@
+# The edge's two front doors that are not passthrough. Port 443 belongs to the relay (it routes by server name and never decrypts), so Caddy gets its certificate by HTTP-01 on port 80.
+{
+	admin off
+}
+
+# Port 80: everything goes to the relay's own answer (a fixed redirect to https for a host name, 400 for anything else). Caddy answers the certificate challenge itself before this.
+http:// {
+	reverse_proxy 127.0.0.1:9080
+}
+
+# The boxes' outbound control link. It carries open frames and ciphertext only; the relay behind it is plain HTTP and WebSocket on loopback.
+edge.vyre.run:8443 {
+	reverse_proxy 127.0.0.1:8080
+}

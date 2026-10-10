@@ -31,6 +31,11 @@
    "owner": "site-ops",
    "note": "reviewed (10 Oct): the one forwarding wrapper (use) over literal names: mail.send, gate.request, gate.get"
   },
+  "core/documents/index.js": {
+   "count": 1,
+   "owner": "operations",
+   "note": "reviewed (10 Oct): the one forwarding wrapper (use) over literal names: appmods.signing.request, appmods.signed.link, comms.send (all modules or anyone)"
+  },
   "core/computer/index.js": {
    "count": 2,
    "owner": "site-ops",

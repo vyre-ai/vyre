@@ -15,6 +15,8 @@
       { "name": "appmods.open", "effect": "write", "reach": "person" },
       { "name": "appmods.hosts", "effect": "read", "reach": "anyone" },
       { "name": "appmods.front", "effect": "read", "reach": "modules" },
+      { "name": "appmods.signed.link", "effect": "write", "reach": "modules" },
+      { "name": "appmods.signing.request", "effect": "write", "reach": "modules" },
       { "name": "appmods.logs", "effect": "read", "reach": "person" },
       { "name": "appmods.install", "effect": "write", "reach": "person" },
       { "name": "appmods.start", "effect": "write", "reach": "person" },
