@@ -149,7 +149,7 @@ test("with no address set, a PDF is made by the PDF converter app when it is ins
   await none.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
   const e = await code(none.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" }));
   assert.equal(e.code, "no_pdf_engine");
-  assert.match(e.message, /install "PDF converter" from Apps/);
+  assert.match(e.message, /install the PDF converter app from Apps/);
 });
 
 test("the signing Flow comes back ready to define, and a bad ask is said", async () => {

@@ -22,7 +22,7 @@ export function multipart(field, filename, bytes, type) {
 export async function toPdf(docx, o) {
   let base;
   try { base = o.url ? new URL(o.url) : null; } catch { base = null; }
-  if (!base || !/^https?:$/.test(base.protocol)) throw fail("no_pdf_engine", "PDF needs a converter: install "PDF converter" from Apps, or use a Records server, which runs one. The Word file works anywhere: ask for that instead");
+  if (!base || !/^https?:$/.test(base.protocol)) throw fail("no_pdf_engine", "PDF needs a converter: install the PDF converter app from Apps, or use a Records server, which runs one. The Word file works anywhere: ask for that instead");
   const { boundary, body } = multipart("files", "document.docx", docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const doFetch = o.fetch || userHostFetch;
   let res;
