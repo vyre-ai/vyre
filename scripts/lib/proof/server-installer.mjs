@@ -68,6 +68,10 @@ export async function startInstallerServer(o) {
     const up = sh(`cd ${dir} && VYRE_DIR=${dir} ${wrapper} up 2>&1`, { timeout: 900_000 });
     fs.appendFileSync(logFile, `\nvyre up for the developer switches: ${up.status} ${String(up.stdout || up.stderr).slice(-200)}\n`);
     if (up.status !== 0) throw new Error(`could not start the development box with its switches: ${String(up.stdout || up.stderr).slice(-300)}`);
+    // the installer puts the root Space helper in once the container runs (install-box.sh verify_up); with the installer's own start skipped, that step is this one
+    const helper = sh(`sudo env VYRE_DIR=${dir} ${wrapper} space-helper install 2>&1`, { timeout: 900_000 });
+    fs.appendFileSync(logFile, `\nspace helper: ${helper.status} ${String(helper.stdout || helper.stderr).slice(-200)}\n`);
+    if (helper.status !== 0) throw new Error(`the Space helper could not be set up: ${String(helper.stdout || helper.stderr).slice(-300)}`);
   }
   if (exit === 0) {
     // the forwarder: the container's 127.0.0.1:<port> to the stand-in directory on the runner (node is in the image; it stops with the container)
