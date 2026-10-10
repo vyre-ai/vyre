@@ -64,5 +64,22 @@
         "docs": "using/computer.md#logging-in"
       }
     ]
-  }
+  },
+  "settings": [
+    {
+      "key": "computer.default-browser",
+      "group": "computer",
+      "label": "Vyre Computer as my default browser",
+      "help": "On tells every assistant and agent to use Vyre Computer (the cloud computer, or the Mac you name) first for anything that needs a browser, whichever AI runs it. The AI's own browsing tool stays available when Vyre Computer cannot do the job.",
+      "type": "bool",
+      "default": false,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "computer.defaultBrowser"
+      }
+    }
+  ]
 }

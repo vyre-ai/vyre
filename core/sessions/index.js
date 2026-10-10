@@ -719,8 +719,8 @@ export default {
       try { names = (ctx.modules.tools(label) || []).map((/** @type {any} */ t) => String(t.name)); } catch { names = []; }
       // An assistant does what its person can: the person-reach tools the agent rules leave open are its too.
       if (i.agent_kind === "assistant") { try { const all = new Set((ctx.modules.tools("cli") || []).map((/** @type {any} */ t) => String(t.name))); for (const t of AGENT_OPEN) if (all.has(t) && !names.includes(t)) names.push(t); } catch { /* none */ } }
-      const [agent, sp, ty, mcp, team] = await Promise.all([i.agent ? ctx.call("agents.list", {}).then(ok, () => null) : null, ctx.call("spaces.brief", {}).then(ok, () => null), ctx.call("work.space-brief", {}).then(ok, () => null),
-        ctx.call("mcp.servers", {}).then(ok, () => null), ctx.call("team.list", {}).then(ok, () => null)]);
+      const [agent, sp, ty, mcp, team, cdef] = await Promise.all([i.agent ? ctx.call("agents.list", {}).then(ok, () => null) : null, ctx.call("spaces.brief", {}).then(ok, () => null), ctx.call("work.space-brief", {}).then(ok, () => null),
+        ctx.call("mcp.servers", {}).then(ok, () => null), ctx.call("team.list", {}).then(ok, () => null), ctx.call("settings.get", { key: "computer.default-browser" }).then(ok, () => null)]);
       // The brief is cut to the asking agent (ENV-1): only the identity-level assistant, or the person's own session, is told of every Space, connector and teammate. Any other agent hears of the current Space,
       // the connectors it holds a tool of, and the teammates only if it may list them; a read that cannot be cut to the agent is dropped.
       const scoped = Boolean(i.agent) && i.agent_kind !== "assistant";
@@ -739,6 +739,7 @@ export default {
         connectors: (Array.isArray(mcp) ? mcp : []).filter((/** @type {any} */ c) => !scoped || names.some(n => n.startsWith(`${c.name}.`) || n.startsWith(`${c.name}_`) || n.startsWith(`mcp__${c.name}__`))).map((/** @type {any} */ c) => ({ name: c.name, state: c.state })),
         team: scoped && !names.includes("team.list") ? [] : (Array.isArray(team) ? team : team && Array.isArray(team.teammates) ? team.teammates : []).map((/** @type {any} */ x) => ({ name: x.name, role: x.role })),
         artifactsDir: i.artifacts_dir ? String(i.artifacts_dir) : null,
+        computerDefault: Boolean(cdef && cdef.value === true),
       });
     };
     ctx.tool("sessions.environment", {
