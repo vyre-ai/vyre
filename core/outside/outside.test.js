@@ -161,6 +161,9 @@ test("memory and files of a project it was given are asked and read through the 
   await ok("files.drive.upload", { path: `${made.drive_path}/notes.txt`, base64: Buffer.from("Dana pays on the 15th").toString("base64") });
   await ok("files.drive.upload", { path: `${other.drive_path}/menu.txt`, base64: Buffer.from("not for Muse").toString("base64") });
   await d.kernel.gateway.memory.file(owner, { text: "Harlow settles on the 15th", source: jane.urn, kind: "decision", scope: `project:${id}` });
+  // a fact for the whole Space, and one of another project: neither is the memory of Harlow Matter
+  await d.kernel.gateway.memory.file(owner, { text: "Everyone settles on the 1st: the firm's own rule", source: jane.urn, kind: "decision" });
+  await d.kernel.gateway.memory.file(owner, { text: "Northwind settles on the 9th", source: jane.urn, kind: "decision", scope: `project:${String(other.project).split("/").pop()}` });
   const reg = await ok("outside.register", { name: "Muse" });
   await ok("outside.grant", { id: reg.id, what: { kind: "files", project: made.slug } });
   await ok("outside.grant", { id: reg.id, what: { kind: "memory", project: made.slug } });
