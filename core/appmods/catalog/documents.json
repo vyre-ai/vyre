@@ -25,8 +25,6 @@
       { "methods": ["GET", "HEAD", "PUT", "PATCH"], "path": "/s/:slug" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/completed" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/values" },
-      { "methods": ["GET", "HEAD"], "path": "/s/:slug/download" },
-      { "methods": ["GET", "HEAD"], "path": "/s/:slug/documents" },
       { "methods": ["GET", "HEAD"], "path": "/s/:slug/metadata" },
       { "methods": ["POST"], "path": "/s/:slug/decline" },
       { "methods": ["POST"], "path": "/s/:slug/click_email" },
@@ -52,7 +50,8 @@
       { "methods": ["GET", "HEAD"], "path": "/apple-icon-180x180.png" },
       { "methods": ["GET", "HEAD"], "path": "/logo.svg" }
       ],
-      "redirects": [{ "from": "/sign/:submission/:slug", "to": "/s/:slug" }]
+      "redirects": [{ "from": "/sign/:submission/:slug", "to": "/s/:slug" }],
+      "signed": { "list": "/s/:slug/documents" }
     },
     "login": { "path": "/sign_in", "token": "authenticity_token", "fields": { "user[email]": "{login_email}", "user[password]": "{login_password}" }, "ok": [302, 303] },
     "bootstrap": { "exec": ["bin/rails", "runner"], "script": "docuseal-bootstrap.rb", "outputs": [{ "name": "api_token" }, { "name": "login_password" }] }

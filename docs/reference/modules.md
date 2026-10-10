@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 18 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 6 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 13 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -39,7 +39,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
-| [`documents`](#documents) | `core/documents` | `box` | 5 | 0 | none |
+| [`documents`](#documents) | `core/documents` | `box` | 8 | 3 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
@@ -64,6 +64,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
+| [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
@@ -74,7 +75,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 23 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 25 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
@@ -107,7 +108,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 67 | 37 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
 ## about
@@ -152,7 +153,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [18](tools.md#appmods)
+- Tools: [20](tools.md#appmods)
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`
@@ -372,8 +373,8 @@ Make documents from Word templates and your records, deterministic, and file the
 - Folder: `core/documents`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#documents)
-- Emits: no events
+- Tools: [8](tools.md#documents)
+- Emits: [3 events](events.md#documents)
 - Shows on: no surface
 
 ## events
@@ -644,6 +645,18 @@ The built-in network as the person sees it: whether this machine is signed in, p
 - Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 
+## outside
+
+Outside agents: Dots, Muse, Hermes, ChatGPT or your own Claude Code elsewhere reach the records, memory and files you choose through one address, hold only what you give, ask before they change anything, and stop the moment you end them.
+
+- Folder: `core/outside`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [9](tools.md#outside), 3 of them only for other modules
+- Emits: [6 events](events.md#outside)
+- Shows on: no surface
+- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory/*","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
+
 ## planner
 
 Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut. Its data is the Space's records: Reminder and Note records, to-dos as Tasks, the calendar as Event records.
@@ -767,9 +780,8 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [40](tools.md#relay), 14 of them only for other modules
-- Emits: [23 events](events.md#relay)
+- Emits: [25 events](events.md#relay)
 - Shows on: capsule, cli, deck
-- Needs daemon: `tunnelEnd`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## releases
@@ -1155,7 +1167,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [66](tools.md#wink), 12 of them only for other modules
+- Tools: [67](tools.md#wink), 13 of them only for other modules
 - Emits: [37 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

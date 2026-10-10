@@ -12,6 +12,7 @@
 
 import { sandboxDoor } from "./sandbox-ctx.js";
 import { setupToolAllowed } from "../../lib/setup-gate.js";
+import { idOfCaller } from "../../lib/outside.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
@@ -454,6 +455,20 @@ export function checkInput(schema, value, where = "input") {
 const PLACEHOLDER = /\{\{field:[^}]+\}\}/;
 const callStore = new AsyncLocalStorage();
 /** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
+/**
+ * The mark a nested call rides, when the card that covers the running call names this tool in `covers` and the caller is the module that owns the covered tool (or one it already passed the mark to).
+ * The mark gains the module the nested tool belongs to, so the Gate lets that module present it; the card is still used once, by the Gate, for the one send.
+ * @param {Map<string, any>} tools @param {any} cur @param {string} tool @param {string} caller @returns {any}
+ */
+export function coveredRide(tools, cur, tool, caller) {
+  const mark = cur && cur[COVERED];
+  if (!mark) return null;
+  const root = tools.get(String(mark.tool));
+  const who = String(caller).slice(7), at = new Set([String(mark.tool).split(".")[0], ...(mark.via || [])]);
+  if (!root || !Array.isArray(root.covers) || !root.covers.includes(tool) || !at.has(who)) return null;
+  const mod = tool.split(".")[0];
+  return { ...mark, via: [...new Set([...(mark.via || []), mod])] };
+}
 export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
 /** The caller class the running call came from, past module hops, or undefined when nothing is running (a timer, a start). A module that stores work to do later stores this beside it. */
 export const captureOrigin = () => { const m = currentCall(); if (!m) return undefined; return m.origin || (m.caller && !String(m.caller).startsWith("module:") ? m.caller : undefined); };
@@ -475,7 +490,7 @@ export const SURFACE_LABELS = PERSON_SURFACES;
 const LEGACY_PHONE = "mobile";
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
-export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "server", "home", "unknown", "core", "vault"]);
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "ext", "assistant", "runner", "link", "relay", "server", "home", "unknown", "core", "vault"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "tailnet", "device", "space", "agent"]);
@@ -499,8 +514,8 @@ const readsOf = (m) => new Set(m && m.does && Array.isArray(m.does.reads) ? m.do
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them
-  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them; so is an outside agent `ext:<id>` (core/outside)
+  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : idOfCaller(c) ? "ext" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -556,6 +571,8 @@ export const classReach = (caller, tool, setupExtra) => {
   if (!KNOWN_LABELS.has(c.split(/[\s:]/)[0])) return false;
   // an invitee's channel (core/relay) reaches no tool at all: its one door is the invitee peer stream
   if (c.split(/[\s:]/)[0] === "invitee") return false;
+  // an outside agent (`ext:<id>`, core/outside), or anything that starts like one, reaches no registry tool: it speaks MCP at /agents-mcp, where the kernel decides under its own grants. Fail closed.
+  if (c.split(/[\s:]/)[0] === "ext") return false;
   const k = callerKind(c);
   if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
   if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || setupToolAllowed(tool, setupExtra === undefined ? [] : setupExtra()));
@@ -1376,7 +1393,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), covers: e && Array.isArray(e.covers) && this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) ? e.covers.filter((/** @type {any} */ x) => typeof x === "string" && /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/.test(x)).slice(0, 4) : [], target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
@@ -1712,7 +1729,9 @@ export class Registry {
     // One yes: any other caller of a tool marked `outward: true` (an agent, a model, the harness, a module acting for one, a guest) is HELD as a card in the one approvals queue and the tool runs only when
     // that caller retries with the card the person's phone answered (bound to this exact call by a digest of its input). A tool that already holds non-person callers through its own ask flow says
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
-    if (def.outward === true && !def.asks && !door && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
+    // A first-party module's tool that the person's card already covers files a nested outward tool it names in `covers` (comms.send files mail.send): that is the same act, so it rides the same yes.
+    const rideMark = String(caller).startsWith("module:") ? coveredRide(this.tools, currentCall(), tool, caller) : null;
+    if (def.outward === true && !def.asks && !door && !rideMark && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
       let fields = holdFields(input);
       if (approval) {
@@ -1774,7 +1793,7 @@ export class Registry {
       }
       // a card the running turn spent covers one send a module files for it; the nested call is handed that, by reference, so it can be used once
       const cur = currentCall();
-      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: coveredRide(this.tools, cur, tool, caller) || cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();

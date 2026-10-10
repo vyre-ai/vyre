@@ -28,6 +28,11 @@ async function world(t, opt = {}) {
     let body = ""; q.on("data", d => { body += d; });
     q.on("end", () => {
       if (q.url === "/file/abc/nda.pdf") return void r.writeHead(200, { "content-type": "application/pdf" }).end(PDF);
+      if (q.url === "/api/submissions" && q.method === "POST") {
+        seen.api = seen.api || []; seen.api.push({ token: q.headers["x-auth-token"] || "", body });
+        if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
+        return void r.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify([{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }]));
+      }
       if (q.url === "/sign_in" && q.method === "GET") return void r.writeHead(200, { "content-type": "text/html", "set-cookie": "sess=anon; path=/; HttpOnly" }).end('<html><head><meta name="csrf-token" content="tok123"></head><body><form action="/sign_in" method="post"><input type="hidden" name="authenticity_token" value="tok123"><input name="user[email]"><input name="user[password]"></form></body></html>');
       if (q.url === "/sign_in" && q.method === "POST") {
         const f = new URLSearchParams(body); seen.sign.push(Object.fromEntries(f));
@@ -352,4 +357,24 @@ test("DocuSeal's views are listed only while DocuSeal is connected: absent, then
   assert.ok(frame && typeof frame.kind === "string", JSON.stringify(frame).slice(0, 200));
   assert.ok(!(await w.cli("connectors.connection.delete", { id: made.data.id })).error);
   assert.deepEqual(await ids(), [], "removed: the views go with it");
+});
+
+test("appmods.signing.request: only the app's own module asks, the app is asked with its key and told to send nothing, and the answer is the signer's link", async t => {
+  const w = await world(t);
+  assert.equal((await w.d.registry.call("appmods.signing.request", { name: "documents", template_id: 12, email: "dana@harlow.test" }, "module:documents")).error.code, "not_found", "not running yet");
+  await w.cli("appmods.install", { name: "documents" });
+  const ask = (input, caller = "module:documents") => w.d.registry.call("appmods.signing.request", { name: "documents", template_id: 12, email: "dana@harlow.test", ...input }, caller);
+  const r = await ask({ signer: "Dana Harlow" });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.deepEqual([r.data.submission, r.data.slug], [4411, "abc123"]);
+  assert.match(r.data.url, /^https?:\/\/documents\..*\/sign\/4411\/abc123$/);
+  assert.equal(w.seen.api.length, 1);
+  assert.equal(w.seen.api[0].token, "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "the app's own key, kept in the Vault");
+  assert.deepEqual(JSON.parse(w.seen.api[0].body), { template_id: 12, send_email: false, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow" }] });
+  assert.ok(!JSON.stringify(r).includes("tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ"), "the key is not in the answer");
+  assert.equal((await ask({}, "module:comms")).error.code, "denied", "another module cannot ask");
+  assert.ok((await w.cli("appmods.signing.request", { name: "documents", template_id: 12, email: "dana@harlow.test" })).error, "nor a person at the terminal");
+  assert.equal((await ask({ email: "not an address" })).error.code, "bad_input");
+  assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
+  assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
 });

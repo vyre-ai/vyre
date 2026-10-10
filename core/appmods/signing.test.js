@@ -5,7 +5,8 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
+import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
 import manifest from "./catalog/documents.json" with { type: "json" };
@@ -80,6 +81,8 @@ async function app(t) {
       const set = ["_ds=signer1; Path=/; Domain=127.0.0.1; HttpOnly"];
       if (req.url === "/sign_in" && req.method === "GET") { res.writeHead(200, { "content-type": "text/html" }); return res.end('<input name="authenticity_token" value="tok1">'); }
       if (req.url === "/sign_in" && req.method === "POST") { res.writeHead(302, { location: "/", "set-cookie": ["_admin=ADMIN-SESSION; Path=/"] }); return res.end(); }
+      if (/^\/s\/[A-Za-z0-9_-]+\/documents$/.test(req.url || "")) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify([{ name: "proof.pdf", url: "/file/WyJ1dWlkIl0--abc/proof.pdf" }, { url: "/file/WyJ1dWlkMiJd--def/second.pdf" }])); }
+      if ((req.url || "").startsWith("/file/")) { res.writeHead(200, { "content-type": "application/pdf" }); return res.end("%PDF-1.7 signed " + req.url); }
       if ((req.url || "").startsWith("/s/")) { res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": set, "content-security-policy": "style-src 'self'" }); return res.end("<html><head><title>Sign</title></head><body><h1>Sign here</h1></body></html>"); }
       res.writeHead(200, { "content-type": "text/html" }); res.end("<html><head></head><body>admin page</body></html>");
     });
@@ -90,10 +93,11 @@ async function app(t) {
   return { origin, seen };
 }
 
-async function front(t, { brand = async () => "" } = {}) {
+const KEY = Buffer.alloc(32, 7);
+async function front(t, { brand = async () => "", now = () => Date.now() } = {}) {
   const a = await app(t);
   const tickets = createTickets();
-  const proxy = createHostProxy({ tickets, brand, app: async name => (name === "documents" ? { origin: a.origin, origins: [a.origin], login: { path: "/sign_in", token: "authenticity_token", fields: { "user[email]": "{login_email}" }, ok: [302] }, public: ["/manifest.json"], signing: manifest.app.signing, credentials: async () => ({ login_email: "owner@example.test" }) } : null) });
+  const proxy = createHostProxy({ tickets, brand, now, linkKey: name => (name === "documents" ? KEY : null), app: async name => (name === "documents" ? { origin: a.origin, origins: [a.origin], login: { path: "/sign_in", token: "authenticity_token", fields: { "user[email]": "{login_email}" }, ok: [302] }, public: ["/manifest.json"], signing: manifest.app.signing, credentials: async () => ({ login_email: "owner@example.test" }) } : null) });
   const server = http.createServer((req, res) => { proxy(req, res, { url: new URL(req.url || "/", "http://x") }).then(done => { if (!done) { res.writeHead(404); res.end(); } }); });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => { server.closeAllConnections(); server.close(); });
@@ -167,4 +171,53 @@ test("the owner keeps everything: with a ticket the admin pages open, signed in 
   assert.match(hit.cookie, /_admin=ADMIN-SESSION/);
   assert.ok(!hit.cookie.includes("_ds=signer1"), "the signer's cookie is not in the admin session");
   assert.ok(!admin.body.includes("Signatures by"), "the owner's pages are not dressed");
+});
+
+test("a link to the signed copy is made under a key, ends on its day, and is checked in constant time", () => {
+  const exp = Date.UTC(2026, 10, 10);
+  const token = mintLink(KEY, "abc123", exp);
+  assert.deepEqual(checkLink(KEY, token, exp - 1000), { ok: true, slug: "abc123" });
+  assert.deepEqual(checkLink(KEY, token, exp + 1000), { ok: false, expired: true });
+  assert.deepEqual(checkLink(Buffer.alloc(32, 8), token, exp - 1000), { ok: false, expired: false }, "another key");
+  const [e, , m] = token.split(".");
+  for (const bad of [`${e}.other.${m}`, `${Number(e) + 99999}.abc123.${m}`, "", "x.y.z", `${e}.abc123.${m}x`]) assert.equal(checkLink(KEY, bad, exp - 1000).ok, false, bad);
+  assert.throws(() => mintLink(KEY, "../x", exp), /slug/);
+  assert.deepEqual(filePaths([{ url: "/file/AA==--b/proof.pdf" }, { url: "/s/x/documents" }, { nested: { u: "/blobs_proxy/id/c/d.pdf" } }, { u: "/file/x/../etc" }, "javascript:1"]), ["/file/AA==--b/proof.pdf", "/blobs_proxy/id/c/d.pdf"]);
+});
+
+test("the signed copy opens only by its link: the slug no longer lists or downloads it, an expired link says so, a bad one is a 404", async t => {
+  let now = Date.UTC(2026, 9, 10);
+  const f = await front(t, { now: () => now });
+  const token = mintLink(KEY, "abc123", now + 30 * 86_400_000);
+  // the signer's slug alone does not reach the finished file
+  for (const p of ["/s/abc123/documents", "/s/abc123/download"]) assert.equal((await f.call("GET", p)).status, 404, p);
+  const ok = await f.call("GET", `/signed/${token}`);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.headers["content-type"], "application/pdf");
+  assert.match(ok.headers["content-disposition"], /attachment; filename="proof\.pdf"/);
+  assert.equal(ok.headers["cache-control"], "no-store");
+  assert.match(ok.body, /^%PDF-1\.7 signed \/file\/WyJ1dWlkIl0--abc\/proof\.pdf/);
+  assert.match((await f.call("GET", `/signed/${token}/1`)).body, /second\.pdf/, "the second file of the document");
+  assert.equal((await f.call("GET", `/signed/${token}/5`)).status, 404);
+  // no ticket, no admin: the app saw the listing and the file as a stranger
+  assert.ok(f.a.seen.filter(s => s.url.startsWith("/s/abc123/documents") || s.url.startsWith("/file/")).every(s => !/_admin/.test(s.cookie)));
+  assert.ok(!f.a.seen.some(s => s.url === "/sign_in"), "the proxy did not sign in for it");
+  const [e, , m] = token.split(".");
+  assert.equal((await f.call("GET", `/signed/${e}.other.${m}`)).status, 404, "a link made for one signer opens nothing of another's");
+  assert.equal((await f.call("GET", "/signed/nonsense")).status, 404);
+  now += 31 * 86_400_000;
+  const gone = await f.call("GET", `/signed/${token}`);
+  assert.equal(gone.status, 410);
+  assert.equal(gone.body, EXPIRED_HTML);
+  assert.ok(!gone.body.includes("abc123"), "the expired page does not repeat the slug");
+  void crypto;
+});
+
+test("a signing request tells the app to send nothing, and the answer is read for the signer's number and slug only", () => {
+  assert.deepEqual(requestBody(12, "dana@harlow.test", "Dana Harlow"), { template_id: 12, send_email: false, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow" }] });
+  assert.deepEqual(requestBody(12, "dana@harlow.test").submitters, [{ email: "dana@harlow.test" }]);
+  for (const bad of [[0, "a@b.test"], [1.5, "a@b.test"], [12, "nope"], [12, "a@b.test, c@d.test"], [12, "a b@c.test"]]) assert.throws(() => requestBody(/** @type {any} */ (bad[0]), /** @type {any} */ (bad[1])));
+  assert.deepEqual(readRequest([{ id: 7, submission_id: 4411, slug: "abc123" }]), { submission: 4411, slug: "abc123" });
+  assert.deepEqual(readRequest({ submitters: [{ submission_id: 5, slug: "x_y-z" }] }), { submission: 5, slug: "x_y-z" });
+  for (const junk of [null, [], [{}], [{ submission_id: 0, slug: "a" }], [{ submission_id: 4, slug: "../x" }], "text"]) assert.equal(readRequest(junk), null);
 });

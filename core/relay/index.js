@@ -22,6 +22,7 @@ import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { routeId, base32, TICKET_BYTES, TICKET_TTL, ticketDerive, ticketMac, ticketSeal, SETUP_TTL } from "./wire.js";
 import { SetupSession, setupGate } from "./setup.js";
 import { relayLink } from "./link.js";
+import { createTunnelEnd } from "../../lib/publish/tunnel.js";
 import { bridge } from "./bridge.js";
 import { peersFor, inviteesFor, serversFor, homesFor } from "./peers.js";
 import { pairUrl, parsePairUrl } from "./pairing.js";
@@ -125,7 +126,7 @@ export default {
     const db = ctx.store.db;
     const now = seam.now || Date.now;
     const platform = seam.platform || process.platform;
-    const settings = () => ({ enabled: false, url: DEFAULT_RELAY, web_expiry_days: 30, ...(ctx.config.relay || {}) });
+    const settings = () => /** @type {any} */ ({ enabled: false, url: DEFAULT_RELAY, web_expiry_days: 30, tunnel_url: "", ...(ctx.config.relay || {}) });
     const save = patch => config.save({ relay: patch }, ctx.paths.root, ctx.config);
     // The box's keys, through a handle that never shows private bytes (./keys.js): vyre-core's when
     // `seam.coreKeys` is given, else the 0600 file. Public keys are plain values once `keys.ready()`
@@ -229,6 +230,39 @@ export default {
       });
     };
     const stopLink = () => { link?.stop(); link = null; };
+
+    // ---- the public tunnel (R032-02: an outside signer reaches this box with no inbound port) ----
+    // A second, control-only link to the TUNNEL relay (relay.tunnel_url, a Node relay with public 443). The relay reads one SNI name from a visitor's TLS hello, asks the name directory which box serves it
+    // (only boxes that declared an app or a share, only the box's own name and one label under it), and sends the bytes down this box's own outbound connection. The bytes are ciphertext: the box's public
+    // gate (core/wink/control/gate.js) holds the certificate, made here by DNS-01, so the relay can read neither the page nor mint a certificate. This end connects each stream to that gate on loopback and
+    // nothing else (lib/publish/tunnel.js): it never dials an address the relay names, and refuses a name that is not this box's. No device ever comes in on this link.
+    /** @type {ReturnType<typeof relayLink> | null} */
+    let tlink = null;
+    let gatePort = /** @type {number | null} */ (null);
+    const tunnelUrl = () => { const u = (settings()).tunnel_url; return typeof u === "string" && /^wss?:\/\/[^\s/]+(?::\d+)?\/?$/.test(u) ? u : ""; };
+    const zone = () => String((ctx.config.names && ctx.config.names.zone) || "vyre.run");
+    const tunnelEnd = createTunnelEnd({
+      name: () => (boxHandle() && ctx.config.network && ctx.config.network.via === "vyre.run" ? `${boxHandle()}.${zone()}` : null),
+      port: () => gatePort,
+      log: (what, x) => ctx.log(`relay: tunnel: ${what}${x && /** @type {any} */ (x).why ? " " + /** @type {any} */ (x).why : ""}`),
+    });
+    const refreshGate = async () => {
+      try { const r = /** @type {any} */ (await ctx.call("wink.gate.port", {})); const p = r && r.data && r.data.port; gatePort = Number.isInteger(p) ? p : null; } catch { gatePort = null; }
+    };
+    const startTunnel = async () => {
+      if (tlink || !tunnelUrl() || !boxHandle()) return;
+      try { await keys.ready(); } catch { return; }
+      await refreshGate();
+      if (tlink) return;
+      tlink = relayLink({
+        url: tunnelUrl(), route: route(), routeKey: k().route, boxKey: k().box,
+        admit: async () => { throw new Error("this link carries public visitors only"); }, onchannel: () => {},
+        WebSocket: seam.WebSocket, log: m => ctx.log(m),
+        ontunnel: (stream, visitor) => { void refreshGate(); tunnelEnd.accept(stream, visitor); },
+        onstate: (st, why) => { try { ctx.events.emit(st === "connected" ? "relay.tunnel-connected" : "relay.tunnel-disconnected", st === "connected" ? {} : { why: why || "" }); } catch {} },
+      });
+    };
+    const stopTunnel = () => { tlink?.stop(); tlink = null; tunnelEnd.closeAll(); };
 
     /** Who may come in: a paired device, or a device holding the live pairing secret. */
     /** @type {Map<string, { at: number, n: number }>} one line per reason per minute, with a count of the repeats (an outsider opening channels cannot flood the log) */
@@ -636,6 +670,10 @@ export default {
       try { await keys.ready(); startLink(); } catch (e) { ctx.log(`relay: the box keys are not available: ${/** @type {Error} */ (e).message}`); }
     }
 
+    startTunnel().catch(e => ctx.log(`relay: the tunnel link did not start: ${/** @type {Error} */ (e).message}`));
+    const offNameA = ctx.events.on("name.claimed", () => { stopTunnel(); startTunnel().catch(() => {}); });
+    const offNameB = ctx.events.on("name.released", () => stopTunnel());
+
     // ---- tools ----
 
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
@@ -669,7 +707,9 @@ export default {
         const s = settings();
         if (s.enabled || await keys.exists()) await keys.ready();
         return { enabled: Boolean(s.enabled), url: s.url, connected: Boolean(link && link.connected), route: s.enabled || keys.loaded ? route() : null,
-          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null };
+          devices: active().length, open: link ? link.open : 0, pairing: pairing && pairing.exp > now() ? { expiresAt: pairing.exp } : null,
+          // the public door (relay.tunnel_url): off, connecting or live, for the Settings row that says whether people outside can reach signing pages and shared links
+          tunnel: { url: tunnelUrl() || null, connected: Boolean(tlink && tlink.connected) } };
       },
     });
 
@@ -1391,6 +1431,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { try { offNameA(); offNameB(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };
