@@ -2,7 +2,7 @@
 // PLAN.md section 5, minimum 11: every setting shown has a reader. A setting a module declares in module.json appears in
 // Settings; if nothing in the code ever reads it, a person changes it and nothing happens. This looks for each declared key
 // in the code outside tests. A reader is: the full key as a quoted string anywhere; the key with one dotted part written as a template
-// (`spend.${provider}.daily_usd`); or the key's last word (or its camelCase) in the module's OWN code, as a property, a quoted name or
+// (`spend.${provider}.daily_usd`); a property chain off the config anywhere (`config.publish.servers`); or the key's last word (or its camelCase) in the module's OWN code, as a property, a quoted name or
 // an object key (a word with an underscore, or a long one, may also stand bare). A common word that merely appears somewhere in the
 // code (model, mode, theme) is not a reader: that is how a key with a common tail used to pass for ever.
 // A key with no reader is on DEAD below, with the team that owns it; the list only shrinks: wire the reader, or remove the
@@ -26,7 +26,7 @@ const DEAD = {
   "sessions.fallback_model": "sessions", "sessions.send_while_busy": "sessions", "sessions.tool_detail": "sessions", "sessions.max_turns": "sessions",
   "sessions.output_style": "sessions", "sessions.box_teammates": "sessions", "sessions.box_subagents": "sessions",
   // found by the stricter check (2026-10-10, issue 117): shown in Settings, read nowhere in the module's own code
-  "presence.confirm_pairing": "presence", "publish.servers": "publish", "sessions.fast": "sessions", "sessions.folders": "sessions", "sessions.checkpoints": "sessions",
+  "presence.confirm_pairing": "presence", "sessions.fast": "sessions", "sessions.folders": "sessions", "sessions.checkpoints": "sessions",
   "vault.lock_idle": "vault", "vault.lock_max": "vault", "vault.lock_on_sleep": "vault", "vault.lock_on_screen_lock": "vault",
 };
 
@@ -39,6 +39,8 @@ export function isRead(all, own, key) {
   const segs = key.split("."), last = segs[segs.length - 1] || key;
   if (new RegExp(`["'\`]${esc(key)}["'\`]`).test(all)) return true;
   if (segs.length >= 3) for (let i = 0; i < segs.length; i++) if (new RegExp(segs.map((x, j) => (j === i ? "\\$\\{[^}]+\\}" : esc(x))).join("\\.")).test(all)) return true;
+  // a property chain off the loaded config, from any module's code: `config.publish.servers`, `ctx.config?.publish.servers`
+  if (segs.length >= 2 && new RegExp(`\\b${esc(segs.slice(0, -1).join("."))}\\??\\.${esc(last)}\\b|\\b${esc(segs[0] || "")}\\??\\.${esc(segs.slice(1).join("."))}\\b`).test(all)) return true;
   const unique = last.includes("_") || last.length > 12;
   for (const n of [last, camel(last)]) {
     if (unique && new RegExp(`\\b${esc(n)}\\b`).test(own)) return true;
@@ -86,6 +88,8 @@ test("a key is not read just because its last word, or a function with its name,
   assert.equal(isRead(all, "", "ui.theme"), false);
   assert.equal(isRead(all, "", "ui.real_one"), true, "the full key quoted is");
   assert.equal(isRead(all, "", "spend.claude.daily_usd"), true, "one dotted part written as a template is");
+  assert.equal(isRead("const on = ctx.config.publish.servers === true;", "", "publish.servers"), true, "a property chain off the config, from another module's code, is a read");
+  assert.equal(isRead("const on = ctx.config.other.servers === true;", "", "publish.servers"), false, "the same last word under another module is not");
   assert.equal(isRead(all, own, "planner.escalate_after"), true, "a distinctive name in the module's own code is");
   assert.equal(isRead(all, own, "chat.model"), true, "a property read in the module's own code is");
   assert.equal(isRead(all, "const model = 1;", "chat.model"), false, "the bare common word in its own code is still not a read");
