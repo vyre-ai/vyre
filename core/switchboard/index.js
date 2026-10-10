@@ -782,7 +782,7 @@ export class Switchboard {
         }
         if (!data || !mime) continue;
         const privacy = await this.privacyOf(rec);
-        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(privacy ? { privacy } : {}) });
+        const r = await this.deps.call("artifacts.media.register", { thread: id, data_b64: data, mime, source: m.source, provider: rec.provider || "claude", ...(rec.model ? { model: rec.model } : {}), ...(m.prompt ? { prompt: m.prompt } : {}), ...(m.title ? { title: String(m.title).slice(0, 120) } : {}), ...(privacy ? { privacy } : {}) });
         if (r.error && r.error.code === "no_such_tool") return;
         if (r.error) throw new Error(r.error.message || r.error.code);
       } catch (e) {

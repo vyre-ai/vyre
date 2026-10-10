@@ -105,7 +105,20 @@ export default {
       }, { needs: [P], owner: "projects-flows" });
 
       // the pieces that are not built: each fails by name until its owner lands it, then must be filled in with the real calls
-      await J.step("each member has their own session on the server and sees their own Chats", missing("a member session door: a member who joined through the member door has no session to ask work.chat.persistent with", "chat"), { needs: [SIGN], owner: "chat" });
+      await J.step("each member has their own session on the server and sees their own Chats", async () => {
+        const made = [];
+        for (const p of people) {
+          const c = await p.joined.call("chat.create", [{ title: `${p.name}'s notes` }]);
+          assert.match(String(c.chat), /^chat_/, `${p.name} starts their own chat on the server`);
+          made.push(c.chat);
+        }
+        for (const [n, p] of people.entries()) {
+          const list = (await p.joined.call("chat.list", [{}])).chats || [];
+          assert.ok(list.some((/** @type {any} */ x) => x.chat === made[n] && x.open === true), `${p.name} sees their own chat`);
+          assert.ok(!list.some((/** @type {any} */ x) => x.chat === made[1 - n] && x.open === true), `${p.name} is not in the other member's chat`);
+        }
+        return `${people.length} members, each in their own chat`;
+      }, { needs: [SIGN], owner: "chat" });
       await J.step("each person's chats run on their own Mac where the Space allows it, and the chat says so", missing("three lent computers (one per person) and a chat placed on each person's own", "link"), { needs: [SIGN], owner: "link" });
       await J.step("one shared chat: each person's message is answered with their own AI account", missing("per-person AI accounts on a shared chat (each message names whose account paid)", "agent-core"), { needs: [SIGN], owner: "agent-core" });
       await J.step("one person hands a session to the server and continues from the phone", missing("a session hand-off to the server and a phone (second device of the same person) that continues it", "chat"), { needs: [SIGN], owner: "chat" });

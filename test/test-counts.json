@@ -358,7 +358,7 @@
  "core/spaces/identity-ops.test.js": 11,
  "core/spaces/kernel-members-compat.test.js": 2,
  "core/spaces/kernel-members.test.js": 3,
- "core/spaces/spaces.test.js": 63,
+ "core/spaces/spaces.test.js": 64,
  "core/spawner/isolation.test.js": 1,
  "core/spawner/spawner.test.js": 9,
  "core/spawner/wall.test.js": 11,
@@ -367,7 +367,7 @@
  "core/store/open-lock.test.js": 1,
  "core/store/store.test.js": 5,
  "core/stream/access.test.js": 9,
- "core/stream/adapter.test.js": 14,
+ "core/stream/adapter.test.js": 15,
  "core/stream/chat-kernel.test.js": 12,
  "core/stream/client.test.js": 11,
  "core/stream/door-adapter.test.js": 5,
@@ -1041,5 +1041,6 @@
  "core/cli/session.test.js": 8,
  "test/journey-signin-again.test.js": 2,
  "lib/types-extend.test.js": 3,
- "core/previews/thumb-stop.test.js": 1
+ "core/previews/thumb-stop.test.js": 1,
+ "core/switchboard/screenshots.test.js": 2
 }
