@@ -23,7 +23,9 @@ test("e6: every example is a valid step, so the page never teaches a mistake", (
     const ex = structuredClone(EXAMPLES[kind]);
     assert.ok(ex, `an example for ${kind}`);
     if (kind === "fn") ex.hash = sourceHash(ex.source);
-    const problems = checkFlow({ format: 1, name: "t", authorship: "human", trigger: { on: "manual" }, steps: [ex] });
+    // a lane (branch) exists only inside a parallel step, so its example is checked inside one
+    const steps = kind === "branch" ? [{ id: "both_lanes", kind: "parallel", steps: [ex, { ...structuredClone(ex), id: "other", steps: [{ id: "other_make", kind: "create", type: "matter", set: { client: "B" } }] }] }] : [ex];
+    const problems = checkFlow({ format: 1, name: "t", authorship: "human", trigger: { on: "manual" }, steps });
     assert.deepEqual(problems, [], `${kind}: ${JSON.stringify(problems)}`);
   }
 });

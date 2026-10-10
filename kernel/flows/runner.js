@@ -17,11 +17,13 @@ import crypto from "node:crypto";
 import { parse, evaluate, truthy } from "./expr.js";
 import { outputs, resolveValue, recordId, urnOf, plain, coerce, describeSpan, toMs, toFilter } from "./runner-util.js";
 export { resolveValue, toFilter };
-import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, nextCron, STEP_ACTIONS } from "./compile.js";
-import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
+import { compileFlow, deriveCaps, needs as flowNeeds, urnCovers, STEP_ACTIONS } from "./compile.js";
+import { LIMITS as SCHEMA_LIMITS, RETRY_CODES, walkSteps, canonical as canonicalOf } from "./schema.js";
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { recordOfTrigger } from "./run-record.js";
+import { createJoins, laneOf } from "./joins.js";
+import { nextFire, dueTimes, holidaysFrom } from "./schedule.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
 import { requestBind, actBind } from "../seal/uses.js";
@@ -30,7 +32,7 @@ import { healthOf, connectorsOf } from "./health.js";
 import { timelineOf, stepDetail, stepIndex } from "./timeline.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, children_per_run: 100, concurrency: 8, box_concurrency: 32, stuck_ms: 300_000, stale_ms: 3 * 86_400_000, backlog: 200, retry_cap: 8, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /**
  * What a step does about time and failure when its Flow says nothing (R031 Flows reliability, f1). Per kind: how long one attempt may take, how many attempts there are (the first counts), and the waits between them
  * (the last repeats). Only a fault in RETRY_CODES is ever retried, whatever a Flow says: a refusal, a missing power, outside content and a write that may or may not have gone out (`outcome_unknown`) are not faults of the
@@ -45,6 +47,8 @@ export const POLICY = Object.freeze({
   call: { timeout_ms: 60_000, attempts: 1, backoff_ms: [2000, 5000] }, service: { timeout_ms: 30_000, attempts: 1, backoff_ms: [2000, 5000, 15_000], readAttempts: 3 },
   classify: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, extract: { timeout_ms: 60_000, attempts: 2, backoff_ms: [3000] }, fn: { timeout_ms: 10_000, attempts: 1, backoff_ms: [0] },
 });
+/** Steps whose nested steps this run walks itself: they take part in a replay. (A `parallel` step's lanes are runs of their own.) */
+const INLINE_KINDS = new Set(["decide", "repeat"]);
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -145,6 +149,13 @@ export class FlowRunner {
     this.settingsAt = -Infinity;
     /** @type {number} the most tries any step gets from the kind's default (a setting; an author's own `retry` is not capped) */ this.retryCap = LIMITS.retry_cap;
     /** @type {Map<string, { key: string, at: number, bad?: string }>} the last replay of a Flow's saved test cases, for the health line */ this.testMemo = new Map();
+    /** The Space's holidays (setting flows.holidays), for schedules that keep business hours. @type {string[]} */ this.holidays = [];
+    /** Parallel lanes and sub-flows: runs that start runs and wait for them (kernel/flows/joins.js). */
+    this.joins = createJoins({
+      store: this.store, now: () => this.now(), locked: (id, fn) => this.#locked(id, fn), detach: id => this.#detach(id), resumeLocked: (id, r) => this.#resumeLocked(id, r), retry: id => this.retry(id),
+      mark: (ctx, key, patch) => this.#mark(ctx, key, patch), suspendOn: (ctx, key, wait) => this.#suspendOn(ctx, key, wait), fail: (code, message) => new StepFail(code, message),
+      childLimit: this.limits.children_per_run, emit: (type, data, run, subject) => this.#emit(type, data, run, subject), scope: (ctx, locals) => this.#scope(ctx, locals), walk: (ctx, steps, suffix, locals) => this.#walk(ctx, steps, suffix, locals), depthLimit: this.limits.depth,
+    });
   }
 
   // ------------------------------------------------------------------ definitions
@@ -329,7 +340,8 @@ export class FlowRunner {
       const t = flow && flow.trigger;
       if (t && t.on === "time" && r.status === "active") {
         const last = await this.#lastFire(r.id, now);
-        nextAt = t.cron !== undefined ? nextCron(t.cron, Math.max(last, now), this.#zone(t, cat)) : t.every_ms !== undefined ? Math.max(last + t.every_ms, now) : t.at !== undefined && t.at > now ? t.at : null;
+        const nf = t.cron !== undefined || t.every_ms !== undefined ? nextFire(t, t.cron !== undefined ? Math.max(last, now) : last, this.#zone(t, cat), this.holidays) : null;
+        nextAt = nf !== null ? (t.every_ms !== undefined ? Math.max(nf, now) : nf) : t.at !== undefined && t.at > now ? t.at : null;
       }
       out.push(healthOf({ id: r.id, label: (flow && (flow.label || flow.name)) || r.name || r.id, status: r.status, paused: r.paused || null, runs, now, nextAt, tz: cat.tz || "UTC",
         lights: cat.lights || {}, connectors: connectorsOf(flow), control: ctl, testFailing: ver && r.status === "active" ? await this.#testFailing(r.id, ver) : undefined, held: runs.filter((/** @type {any} */ x) => x.state === "queued").length }));
@@ -376,6 +388,7 @@ export class FlowRunner {
     set("backlog", await pick("flows.backlog_cap", 1, 1, 5000));
     const cap = await pick("flows.retry_attempts", 1, 1, 8);
     if (cap !== undefined) this.retryCap = cap;
+    try { this.holidays = holidaysFrom(await /** @type {any} */ (this.settingsFn)("flows.holidays")); } catch { /* keep the list it had */ }
   }
 
   /** The Space's switch. @returns {Promise<{ mode: string, reason?: string, since?: number, by?: string|null, dropped?: Record<string, number> }>} */
@@ -616,19 +629,22 @@ export class FlowRunner {
       if (t.on !== "time") continue;
       const tz = this.#zone(t, cat);
       const last = await this.#lastFire(f.id, now);
-      let due = null, missed = 0;
-      if (t.cron !== undefined) {
-        due = nextCron(t.cron, last, tz);
-        if (due !== null && due > now) due = null;
-        else if (due !== null) { let n = due, count = 1; for (let i = 0; i < 1000; i++) { n = nextCron(t.cron, n, tz) ?? Infinity; if (n > now) break; count++; } missed = count - 1; }
-      } else if (t.every_ms !== undefined) {
-        if (last + t.every_ms <= now) { due = last + t.every_ms; missed = Math.floor((now - last) / t.every_ms) - 1; }
-      } else if (t.at !== undefined) { if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) due = t.at; }
-      if (due === null) continue;
-      const late = now - due >= 120_000 || missed > 0;
-      const fires = t.cron !== undefined || t.every_ms !== undefined;
-      if (fires) { this.lastFire.set(f.id, now); if (this.store.putSchedule) await this.store.putSchedule(f.id, now); }
-      work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due, ...(t.cron !== undefined ? { tz } : {}), ...(fires && late ? { caught_up: true, missed } : {}) }, null));
+      if (t.at !== undefined) {
+        if (t.at <= now && !(await this.store.getRun(runIdFor(f.id, `${f.id}@${t.at}`)))) work.push(this.#start(f, { kind: "time", key: `${f.id}@${t.at}`, at: t.at }, null));
+        continue;
+      }
+      // A schedule (cron line or interval, in its zone, inside its hours, off holidays) that fell due: once for everything missed (default), once for each time missed, or not for what was missed.
+      const { times, more } = dueTimes(t, last, now, tz, this.holidays);
+      if (!times.length) continue;
+      const rule = t.catch_up || "once";
+      const fire = rule === "all" ? times : rule === "skip" ? times.filter(x => now - x < 120_000) : [times[0]];
+      const missed = rule === "once" ? times.length - 1 + more : 0;
+      const kept = rule === "all" && more > 0 ? times[times.length - 1] : now;   // past the cap, the rest are looked at on the next tick
+      this.lastFire.set(f.id, kept); if (this.store.putSchedule) await this.store.putSchedule(f.id, kept);
+      for (const due of fire) {
+        const late = now - due >= 120_000 || missed > 0;
+        work.push(this.#start(f, { kind: "time", key: `${f.id}@${due}`, at: due, ...(t.cron !== undefined || t.hours !== undefined ? { tz } : {}), ...(late ? { caught_up: true, missed } : {}) }, null));
+      }
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) {
       const w = r.waiting;
@@ -652,8 +668,7 @@ export class FlowRunner {
       const t = f.flow.trigger;
       if (t.on !== "time") continue;
       const last = await this.#lastFire(f.id, now);
-      if (t.cron !== undefined) take(nextCron(t.cron, last, this.#zone(t, cat)));
-      else if (t.every_ms !== undefined) take(last + t.every_ms);
+      if (t.cron !== undefined || t.every_ms !== undefined) take(nextFire(t, last, this.#zone(t, cat), this.holidays));
       else if (t.at !== undefined && t.at > now) take(t.at);
     }
     for (const r of await this.store.listRuns({ state: "waiting", limit: 1000 })) if (r.waiting) { take(r.waiting.kind === "time" ? r.waiting.wake_at : r.waiting.deadline); if (r.waiting.kind === "task" && !r.attention) take(r.updated_at + this.limits.stale_ms); }
@@ -718,6 +733,7 @@ export class FlowRunner {
     for (const r of await this.store.listRuns({ state: "running", limit: 1000 })) await this.#exec(r.id);
     await this.#drainQueue();                                  // what was held when the server stopped goes on, if the switch is off
     const waiting = await this.store.listRuns({ state: "waiting", limit: 1000 });
+    for (const r of waiting) if (r.waiting && r.waiting.kind === "children") await this.joins.sweep(r.id, r.waiting.step);   // a lane that settled while the server was down
     if (waiting.some(r => r.waiting && r.waiting.kind === "task")) {
       const chain = this.chains.forFlow({ flow: "system", space: waiting[0].space, approver: waiting[0].approver, tainted: false, run: "recover", source_spaces: [waiting[0].space] });
       const evs = await this.k.events.read(chain, { type: "task.*", limit: 5000 });
@@ -818,18 +834,19 @@ export class FlowRunner {
   }
 
   /** @param {string} runId @param {{ task?: any, event?: any, timeout?: boolean }} result */
-  async #resume(runId, result) {
-    return this.#locked(runId, async () => {
-      const run = await this.store.getRun(runId);
-      if (!run || run.state !== "waiting" || !run.waiting) return;
-      const led = run.steps[run.waiting.step];
-      if (!led || led.status !== "waiting") return;
-      led.wait = { ...(led.wait || {}), result };
-      run.state = "running"; run.waiting = undefined; run.updated_at = this.now();
-      if (run.attention && run.attention.kind === "device") run.attention = undefined;
-      await this.store.putRun(run);
-      await this.#execLocked(runId);
-    });
+  async #resume(runId, result) { return this.#locked(runId, () => this.#resumeLocked(runId, result)); }
+
+  /** The resume itself, for a caller that already holds the run's lock. @param {string} runId @param {{ task?: any, event?: any, timeout?: boolean, children?: any[] }} result */
+  async #resumeLocked(runId, result) {
+    const run = await this.store.getRun(runId);
+    if (!run || run.state !== "waiting" || !run.waiting) return;
+    const led = run.steps[run.waiting.step];
+    if (!led || led.status !== "waiting") return;
+    led.wait = { ...(led.wait || {}), result };
+    run.state = "running"; run.waiting = undefined; run.updated_at = this.now();
+    if (run.attention && run.attention.kind === "device") run.attention = undefined;
+    await this.store.putRun(run);
+    await this.#execLocked(runId);
   }
 
   /**
@@ -903,7 +920,10 @@ export class FlowRunner {
       run.cancelled = { by: o.by || null, at: run.finished_at, ...(o.reason ? { reason: String(o.reason).slice(0, 200) } : {}) };
       await this.store.putRun(run);
       if (w && w.task && this.k.ask && typeof this.k.ask.cancel === "function") { try { await this.k.ask.cancel(this.#chain({ run, cat: null, flow: null }), w.task); } catch { /* the card stays; the run is stopped anyway */ } }
+      // what it was waiting on goes with it: its lanes and sub-flows that can be stopped are, and a parent waiting on this one is told
+      if (w && w.kind === "children") { const led = run.steps[w.step]; for (const id of (led && led.children) || []) void this.cancel(id, { by: o.by, reason: "its run was stopped" }).catch(() => {}); }
       this.#emit("flow.cancelled", { run: run.id, flow: run.flow, by: o.by || null }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      if (run.parent) this.#settled(run);
       return { ok: true, state: "cancelled" };
     });
   }
@@ -934,6 +954,7 @@ export class FlowRunner {
           const f = failOf(e);
           r.state = "failed"; r.error = { step: r.error ? r.error.step : "", code: f.code, message: f.message }; r.finished_at = this.now(); r.updated_at = r.finished_at; this.#attend(r, { kind: "failed", step: r.error.step, code: f.code, message: f.message });
           await this.store.putRun(r);
+          if (r.parent) this.#settled(r);
         }
       } catch { /* the store is the fault; the next recover() finds the run */ }
       try { this.emitFn("flow.error", { run: id, message: String(e && /** @type {any} */ (e).message || e).slice(0, 200) }, { chain: null, subject: "", corr: id }); } catch { /* said if it can be */ }
@@ -956,7 +977,10 @@ export class FlowRunner {
     try {
       // A Flow-level failure path was started before a restart: carry on with it, not with the steps that failed.
       if (run.failing) throw new StepFail(run.failing.code, run.failing.message);
-      await this.#walk(ctx, view.flow.steps, "", {});
+      const lane = run.branch ? laneOf(view.flow, run.branch) : null;
+      if (run.branch && !lane) throw new StepFail("gone", "the lane this run was started for is no longer in the Flow version it started on");
+      await this.#walk(ctx, lane || view.flow.steps, "", {});
+      if (!run.branch && view.flow.returns !== undefined) run.result = resolveValue(view.flow.returns, this.#scope(ctx, {}));
       run.state = "done"; run.error = undefined;
       if (run.attention && run.attention.kind !== "verify") run.attention = undefined;
       await this.#finish(run);
@@ -975,7 +999,7 @@ export class FlowRunner {
       run.error = { step: run.failing ? run.failing.step : (run.error && run.error.step || ""), code: f.code, message: f.message };
       // The Flow's own failure path runs once, before the run is called failed. A person's answer in it resumes it here, not at the step that failed.
       const failedAt = run.error.step;
-      if (Array.isArray(view.flow.on_failure) && view.flow.on_failure.length && !run.failing_done) {
+      if (Array.isArray(view.flow.on_failure) && view.flow.on_failure.length && !run.failing_done && !run.branch) {
         run.failing = { step: run.error.step, code: f.code, message: f.message };
         await this.store.putRun(run);
         try { await this.#walk(ctx, view.flow.on_failure, "!onfail", { error: { code: f.code, message: f.message, step: run.error.step } }); }
@@ -1002,6 +1026,19 @@ export class FlowRunner {
     run.finished_at = this.now(); run.updated_at = run.finished_at; run.waiting = undefined;
     await this.store.putRun(run);
     this.#emit("flow.finished", { run: run.id, flow: run.flow, state: run.state, ...(run.error ? { error: run.error } : {}) }, run, `vyre://${run.space}/flow-run/${run.id}`);
+    if (run.parent) this.#settled(run);
+  }
+
+  /** A lane or a sub-flow settled: its parent may go on. Not waited for here, so this run's lock is not held while the parent runs. @param {Run} run */
+  #settled(run) { void this.joins.settled(run).catch(() => { /* the next recover() finds the parent */ }); }
+
+  /** A Flow called by name from a step: the active one, run only with the Flow's own `flows.run` check as for a manual start. @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val */
+  async #subflow(ctx, s, key, val) {
+    const led = this.#led(ctx, key);
+    if (ctx.dry || (led && led.children)) return this.joins.subflow(ctx, s, key, val, null);
+    const target = (await this.#activeFlows()).find((/** @type {any} */ x) => x.flow.name === s.flow) || null;
+    if (!target) return this.joins.subflow(ctx, s, key, val, null);
+    return this.#effect(ctx, s, key, { action: "flows.run", resource: `vyre://${ctx.cat.space}/flow/${target.id}` }, () => this.joins.subflow(ctx, s, key, val, target), { input: s.input === undefined ? undefined : val(s.input) });
   }
 
   /** @param {string} type @param {any} data @param {Run} run @param {string} subject */
@@ -1028,8 +1065,9 @@ export class FlowRunner {
   /** @param {any} ctx */
   #scope(ctx, locals) {
     const run = ctx.run, t = run.trigger;
-    const trigger = t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
-    return { trigger, event: t.event || null, steps: outputs(run), run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), ...locals };
+    const inh = run.inherit;                                 // a lane of a parallel step reads what its parent had read when it split
+    const trigger = inh ? inh.trigger : t.kind === "watcher" ? { watcher: String(t.source || "").replace(/^watcher:/, ""), item: t.input ?? {}, at: t.at } : t.event ? (t.event.data ?? {}) : t.input !== undefined ? t.input : t.at !== undefined ? { at: t.at } : {};
+    return { trigger, event: inh ? inh.event : t.event || null, steps: { ...(inh ? inh.steps : {}), ...outputs(run) }, run: { id: run.id, depth: run.depth, tainted: run.tainted, flow: run.flow }, now: this.now(), ...(inh ? inh.locals : {}), ...locals };
   }
 
   /** @param {any} ctx @param {string} key @param {Partial<import('./store.js').Run['steps'][string]>} patch */
@@ -1045,8 +1083,8 @@ export class FlowRunner {
   async #step(ctx, s, key, suffix, locals) {
     const run = ctx.run;
     const led = this.#led(ctx, key);
-    if (led && (led.status === "done" || led.status === "skipped") && !(s.kind in BLOCK_KINDS)) return;
-    if (led && led.status === "failed_handled" && s.kind in BLOCK_KINDS) return;
+    if (led && (led.status === "done" || led.status === "skipped") && !INLINE_KINDS.has(s.kind)) return;
+    if (led && led.status === "failed_handled" && INLINE_KINDS.has(s.kind)) return;
     run.error = { step: s.id, code: "", message: "" }; // names the step in flight; cleared by a clean finish
     const scope = () => this.#scope(ctx, locals);
     const ev = (/** @type {string} */ src) => evaluate(parse(src), scope());
@@ -1098,6 +1136,8 @@ export class FlowRunner {
         case "extract": out = await this.#extract(ctx, s, key, val); break;
         case "service": out = await this.#service(ctx, s, key, val); break;
         case "fn": out = await this.#fn(ctx, s, key, val); break;
+        case "parallel": out = await this.joins.parallel(ctx, s, key, suffix, locals); break;
+        case "subflow": out = await this.#subflow(ctx, s, key, val); break;
         default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
       }
       return out;
@@ -1611,7 +1651,7 @@ export class FlowRunner {
 
   /** @param {any} ctx @param {string} key @param {any} wait */
   #suspendOn(ctx, key, wait) {
-    ctx.run.waiting = wait.kind === "time" ? { step: key, kind: "time", wake_at: wait.until } : wait.kind === "task" ? { step: key, kind: "task", task: wait.task, ...(wait.deadline ? { deadline: wait.deadline } : {}) } : { step: key, kind: "event", event: wait.event, where: wait.where, deadline: wait.deadline };
+    ctx.run.waiting = wait.kind === "time" ? { step: key, kind: "time", wake_at: wait.until } : wait.kind === "task" ? { step: key, kind: "task", task: wait.task, ...(wait.deadline ? { deadline: wait.deadline } : {}) } : wait.kind === "children" ? { step: key, kind: "children" } : { step: key, kind: "event", event: wait.event, where: wait.where, deadline: wait.deadline };
     return new Suspend();
   }
 
@@ -1812,10 +1852,10 @@ export class FlowRunner {
         const scope = triggerScope(t, env);
         if (scope && hits.length < limit) hits.push({ trigger: t.on, key: String(env.id), scope, env, at: env.received_at ?? env.time });
       }
-    } else if (t.on === "time" && t.cron !== undefined && o.since !== undefined && o.until !== undefined) {
-      for (let at = nextCron(t.cron, o.since - 1); at !== null && at <= o.until && hits.length < limit; at = nextCron(t.cron, at)) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
-    } else if (t.on === "time" && t.every_ms !== undefined && o.since !== undefined && o.until !== undefined) {
-      for (let at = o.since + t.every_ms; at <= o.until && hits.length < limit; at += t.every_ms) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
+    } else if (t.on === "time" && (t.cron !== undefined || t.every_ms !== undefined) && o.since !== undefined && o.until !== undefined) {
+      // the schedule's real times: in its zone, inside its hours, off holidays (an interval counts from the window that opens, as it does live)
+      const first = t.cron !== undefined ? o.since - 1 : o.since;
+      for (const at of dueTimes(t, first, o.until, this.#zone(t, cat), this.holidays, Math.min(limit, 1000)).times) hits.push({ trigger: "time", key: `sim@${at}`, scope: { trigger: { at } }, env: null, at });
     } else for (const [i, sample] of (o.samples || []).entries()) hits.push({ trigger: t.on, key: `sample${i}`, scope: { trigger: sample }, env: null, at: this.now() });
 
     const runs = [];
