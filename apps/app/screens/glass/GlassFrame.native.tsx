@@ -24,11 +24,11 @@ const isSocketMessage = (m: any) => m && typeof m === "object" && Number.isInteg
  * Away from the server (`relay`) there is no origin to load it from: the page is bundled into the app (assets/glass/frame.html), its WebSocket is replaced by a shim, and the app carries the stream's bytes on the relay
  * channel (relay/client/wsbridge.js, contracts/glass-relay.md).
  */
-export function GlassFrame({ src, onMessage, frameRef, label, relay }: GlassFrameProps) {
+export function GlassFrame({ src, onMessage, frameRef, label, relay, openSocket }: GlassFrameProps) {
   const web = useRef<WebView | null>(null);
   const send = (m: unknown) => web.current?.injectJavaScript(`window.__vyreWs(${JSON.stringify(m)});true;`);
   const bridge = useRef<ReturnType<typeof createWsBridge> | null>(null);
-  if (relay && !bridge.current) bridge.current = createWsBridge({ open: (path: string) => lazySocket((p) => socket(p), path), post: send });
+  if (relay && !bridge.current) bridge.current = createWsBridge({ open: (path: string) => lazySocket((p) => Promise.resolve(openSocket ? openSocket(p) : socket(p)), path), post: send });
   useEffect(() => () => { bridge.current?.closeAll(); bridge.current = null; }, []);
   useImperativeHandle(frameRef, () => ({ post: (m) => web.current?.injectJavaScript(toPage(m)) }), []);
   const [page, setPage] = useState<string | null>(null);
