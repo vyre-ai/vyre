@@ -51,7 +51,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
   }
 
   ctx.tool("files.drive.candidates", {
-    description: "The folders this box could share over VyreDrive: your projects first, then the folders inside the box's file roots, each marked with the share it already is. Feed one to files.drive.measure or files.drive.offer.",
+    description: "Folders this box could share over VyreDrive, projects first, then folders in its file roots, each marked with its share. Feed one to files.drive.measure.",
     input: { type: "object", properties: {} },
     run: async (input, meta = {}) => {
       const scope = await scopeOf(meta);
@@ -123,7 +123,7 @@ export function picker(ctx, { g, roots, folder, scan, specs, shares, owner, shar
   };
 
   ctx.tool("files.drive.measure", {
-    description: "How big a folder is (files, folders, bytes) and whether it may be shared over VyreDrive: the same guard and secret check sharing runs, so a folder with a .env or a key inside says what it found and is not shareable. Generated folders such as node_modules are named and not counted. A count that reached the size limit says partial.",
+    description: "How big a folder is (files, folders, bytes) and whether VyreDrive may share it; a folder with a .env or key is not shareable.",
     input: { type: "object", required: ["path"], properties: { path: { type: "string" } } },
     run: async ({ path: p }, meta = {}) => {
       p = String(p || "");

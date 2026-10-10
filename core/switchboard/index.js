@@ -4024,7 +4024,7 @@ export default {
     const isAdminCall = (/** @type {any} */ peer) => !peer || !(peer.login || peer.stableId || peer.node) || String(peer.login || "") === String(((ctx.config && ctx.config.network) || {}).owner || "\u0000");
 
     const START_FIELDS = new Set(["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean", "chat", "asker", "parent"]);
-    tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
+    tool("threads.start", "Start a headless Claude Code session in a folder or project home, owned by vyred. Returns the thread; its id is the session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
@@ -4238,8 +4238,8 @@ export default {
       },
     });
 
-    tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
-      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
+    tool("threads.send", "Type into a thread, resuming it if stopped. Only the surface holding its lease may type; a free thread is taken on the first keystroke.",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: { type: "string", description: "On a box, the name of the paired Mac to send to, to pick one; otherwise a paired Mac that has the thread gets the words." },
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
         tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
@@ -4293,8 +4293,8 @@ export default {
         return sb.continueHere({ thread: i.thread, machine: i.machine ? String(i.machine) : null, surface: surfaceOf(i, caller), claudeReady: chosen || cfg.auth === "login" });
       });
 
-    tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
-      { type: "object", properties: { agent: str, all: { type: "boolean" }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
+    tool("threads.list", "Headless threads, newest first: who holds each, open questions, and whether a terminal has it open. Running or last-day threads by default.",
+      { type: "object", properties: { agent: str, all: { type: "boolean", description: "Every thread, not only running ones and those active in the last day." }, archived: { type: "boolean", description: "Only the threads put away (threads.archive)." }, machines: { type: "string", enum: ["all", "local"] } } },
       async (i, meta) => {
         const { caller } = meta;
         guard(caller, "list sessions");
@@ -4334,8 +4334,8 @@ export default {
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); },
       ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
 
-    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
-      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first, each with its card, asking agent, session anchor and always-allow offers.",
+      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"], description: "Only questions or only permissions." }, machines: { type: "string", enum: ["all", "local"], description: "On a box, for the person, paired Macs' open asks are included; local: the box's own only." } } },
       async (i, meta = {}) => { const { caller, peer } = meta;
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
@@ -4385,20 +4385,20 @@ export default {
       // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
       ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
 
-    tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
-      { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
+    tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched, then clears itself.",
+      { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"], description: "finished, asks or either (the default)." }, notify: str, note: str } },
       async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); });
 
     tool("threads.unwatch", "Stop waiting on a watch.",
       { type: "object", required: ["watch"], properties: { watch: str } },
       async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch); });
 
-    tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
+    tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
 
-    tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
-      { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
+    tool("threads.switch", "Continue a thread on another provider (and account) between turns, keeping its folder and files; the new provider gets a brief of what was said.",
+      { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: { type: "string", description: "claude, codex or grok." }, account: { type: "string", description: "One granted to this project or agent; never a guess between two." }, model: str, text: { type: "string", description: "The next message to send there." } } },
       async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
 
     tool("threads.roll", "Roll a session's window over now, between turns: its agent starts a fresh session in the same folder and the next message goes to it with a seed Vyre builds (your decisions, the plan, an index of what came before, the last turns word for word). The thread and its history do not change, and every earlier turn stays one memory_turn away. Vyre does this by itself when the window passes sessions.rollover_at; this is the same thing asked for. A person's surface only.",
@@ -4436,7 +4436,7 @@ export default {
         return r;
       });
 
-    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at, request (a teammate's own request id, when its reply carries one).",
+    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (row id), uuid, text, surface, at, request.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => {
         guard(caller, "read queued words");
@@ -4465,7 +4465,7 @@ export default {
         return sb.edit(i.thread, i.queued, i.text, surfaceOf(i, caller), { note });
       });
 
-    tool("threads.send-now", "Send queued words now: they join the running turn at Claude's next step instead of waiting for it to end. Not for a session busy in a terminal.",
+    tool("threads.send-now", "Send queued words now: they join the running turn at Claude's next step. Not for a session busy in a terminal.",
       { type: "object", required: ["thread", "queued"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
       async (i, { caller }) => {
         guard(caller, "send queued words");
@@ -4473,8 +4473,8 @@ export default {
         return sb.sendNow(i.thread, i.queued);
       });
 
-    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid). restore: conversation (the default), code (put back the files its tools changed since, keep the conversation) or both.",
-      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str, restore: { type: "string", enum: ["conversation", "code", "both"] } } },
+    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it; its text comes back.",
+      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: { type: "string", description: "The message's uuid (thread.turn's)." }, restore: { type: "string", enum: ["conversation", "code", "both"], description: "conversation (the default), code (put back the files its tools changed since, keep the conversation) or both." } } },
       async (i, { caller }) => {
         guard(caller, "rewind sessions");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can rewind a session"), { code: "denied" });
@@ -4510,23 +4510,23 @@ export default {
         return sb.branch(i.thread, i.at || null, { prompt: i.prompt, surface: surfaceOf(i, caller) });
       });
 
-    tool("threads.model", "Switch a thread's model, as /model does in Claude Code: an alias (opus, sonnet, haiku) or a model id. A running thread switches at once; a stopped one when it next runs.",
-      { type: "object", required: ["thread", "model"], properties: { thread: str, model: str } },
+    tool("threads.model", "Switch a thread's model, as /model does in Claude Code. A running thread switches at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread", "model"], properties: { thread: str, model: { type: "string", description: "An alias (opus, sonnet, haiku) or a model id." } } },
       async (i, { caller }) => {
         guard(caller, "switch models");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model"), { code: "denied" });
         return sb.switchModel(i.thread, i.model);
       });
 
-    tool("threads.effort", "Set a thread's reasoning effort, as /effort does in Claude Code: low, medium, high, xhigh or max (the model's own limits apply); none goes back to the model's default. A running thread changes at once; a stopped one when it next runs.",
-      { type: "object", required: ["thread"], properties: { thread: str, effort: { type: "string", enum: EFFORTS } } },
+    tool("threads.effort", "Set a thread's reasoning effort, as /effort does in Claude Code. A running thread changes at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread"], properties: { thread: str, effort: { type: "string", enum: EFFORTS, description: "low, medium, high, xhigh or max (the model's own limits apply); left out returns to the model's default." } } },
       async (i, { caller }) => {
         guard(caller, "set effort");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface sets a session's effort"), { code: "denied" });
         return sb.switchEffort(i.thread, i.effort ?? null);
       });
 
-    tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
+    tool("threads.commands", "The slash commands a running thread offers, for a composer's / menu. Send one as a message, e.g. \"/compact\".",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
 
@@ -4564,8 +4564,8 @@ export default {
         return sb.remember(i.thread, i.text, i.scope || "project");
       }, ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript. at: a message's uuid (thread.turn's) - fork from just before that turn instead of from the live end, the other item in the rewind menu ('Fork from here' beside 'Restore').",
-      { type: "object", required: ["thread"], properties: { thread: str, at: str, prompt: str, name: str, surface: str } },
+    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation and folder that the original never sees. For terminal-busy sessions.",
+      { type: "object", required: ["thread"], properties: { thread: str, at: { type: "string", description: "A message's uuid (thread.turn's): fork from just before that turn instead of from the live end." }, prompt: str, name: str, surface: str } },
       async (i, { caller }) => {
         guard(caller, "fork sessions");
         if (i.at) return sb.forkAt(i.thread, i.at, { prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
@@ -4582,7 +4582,7 @@ export default {
       },
       ["cli", "local", "deck", "capsule"]);
 
-    tool("threads.delete", "Delete a thread for good: it stops, and its record, questions, queued words and events go, and thread.deleted is said so anything else that kept a copy (OpenRouter's stored conversation) lets go too. A provider's own transcript file is not touched. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+    tool("threads.delete", "Delete a thread for good: it stops, and its record, questions, queued words and events go. A provider's own transcript file is not touched.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => {
         guard(meta.caller, "delete sessions");
@@ -4603,7 +4603,7 @@ export default {
         if (!own && !granted) throw Object.assign(new Error("an agent acts on its own threads, or threads of a project it is granted: ask the person to do this one"), { code: "denied" });
       }
     };
-    tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
+    tool("threads.archive", "Put a thread away: it stops, its worktree is cleaned up (branch and commits stay), and it leaves the default list. threads.unarchive brings it back.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
     tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
@@ -4641,7 +4641,7 @@ export default {
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "read a run's chat"); const t = sb.record(String(i.thread)); const term = /** @type {any} */ (sb.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(i.thread))); return { chat: (t && t.chat) || (term && term.chat) || null }; }, ["module"]);
-    tool("threads.rename", "Give a thread a new name. The name is the session's title everywhere (the project's session list, its record in Records); thread.renamed is said, and a rename made in Records comes back here the same way.",
+    tool("threads.rename", "Give a thread a new name: the session's title everywhere, Records included.",
       { type: "object", required: ["thread", "name"], properties: { thread: str, name: str } },
       async (i, meta) => { guard(meta.caller, "rename sessions"); mayReach(meta, sb.must(i.thread)); return sb.rename(i.thread, i.name); });
     tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
@@ -4761,8 +4761,8 @@ export default {
       run: async i => sb.replied(i.session, i.text || ""),
     });
     // For agents.history: conversations with agents, from the event log.
-    tool("threads.items", "A thread as the items a card list draws, oldest first, from its stored events: what was said to it, what it said, each tool call with its last state (kind, path, command, query), its plan as it changed, and notices. since: an event id; next: the last item's id, or null when nothing is left.",
-      { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
+    tool("threads.items", "A thread as the items a card list draws, oldest first: what was said, tool calls with last state, plan changes, notices. Page with since.",
+      { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer", description: "An event id: items after it. The reply's next is the last item's id, or null when nothing is left." }, limit: { type: "integer" } } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.items(String(i.thread), { since: i.since, limit: i.limit }); });
     ctx.tool("threads.history", {
       description: "Exchanges with agents (a send and its replies), newest last.", internal: true,

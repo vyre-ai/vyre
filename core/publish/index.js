@@ -332,8 +332,8 @@ export default {
     // ---- tools ----
     ctx.tool("publish.create", {
       callers: WITH_MODELS,
-      description: "Start a new site or app as a draft: a name, where its source is, and how it builds. Env entries are secret references, never values.",
-      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object" }, project: str, approver: str }, ["name", "source"]),
+      description: "Start a new site or app as a draft from a name, a source and how it builds.",
+      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object", description: "secret references, never values" }, project: str, approver: str }, ["name", "source"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
@@ -345,7 +345,7 @@ export default {
 
     ctx.tool("publish.preview", {
       callers: WITH_MODELS,
-      description: "Build a draft and put it at a private preview address. Refused if a sealed value or one of its own secrets is in the build output.",
+      description: "Build a draft and put it at a private preview address. Refused if the build output holds a sealed value or secret.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);

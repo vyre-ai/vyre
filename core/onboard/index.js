@@ -617,8 +617,8 @@ export default {
     ctx.tool("onboard.setup", {
       // Reading the step list is open to a model session (the name stays out of it); skip, unskip and pass check personOnly in the body.
       effect: "write", callers: [...ONBOARD_CALLERS, "mcp", "harness"],
-      description: "The setup step list the box holds: the ten steps in order, each done, current, skipped or todo, with the current step and whether setup is finished. skip puts one of ai, phone, computers or history aside to finish later (it stays listed as skipped), unskip takes it back, pass says the person has been through history. It never completes a step the box can see for itself.",
-      input: obj({ skip: { type: "string", enum: [...SKIPPABLE] }, unskip: { type: "string", enum: [...SKIPPABLE] }, pass: { type: "string", enum: [...PASSABLE] } }),
+      description: "The setup step list: ten steps, each done, current, skipped or todo, with the current step and whether setup is finished.",
+      input: obj({ skip: { type: "string", enum: [...SKIPPABLE], description: "put this step aside to finish later; it stays listed as skipped" }, unskip: { type: "string", enum: [...SKIPPABLE], description: "take a skipped step back" }, pass: { type: "string", enum: [...PASSABLE], description: "say the person has been through this step" } }),
       run: async (input, { caller }) => {
         boxOnly();
         const i = input || {};

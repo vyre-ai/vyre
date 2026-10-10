@@ -39,7 +39,7 @@ export default {
   async start(ctx) {
     ctx.tool("system.info", {
       effect: "read",
-      description: "What this machine is running: Vyre version and the commit it was built from, role, host and platform, the owner's name as onboarding saved it and their fingerprint8 (a short, stable, non-secret fingerprint of owner.id, base64url, for a surface's avatar), the assistant's name (which every surface uses to label replies; null: surfaces say \"Vyre\") and its own fingerprint8 (same formula, kind \"assistant\", also base64url), and network.origins: the other sites (Vyre's hosted app) that may call this box from the owner's browser ([] when off).",
+      description: "What this machine is running: Vyre version and commit, role, host, platform, owner and assistant names with avatar fingerprint8, and network.origins.",
       input: { type: "object", properties: {} },
       run: async () => {
         // owner.id itself never leaves this machine -- only its fingerprint, and only

@@ -237,7 +237,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.propose", {
     effect: "write", callers: [...people, "module", "mcp", "harness"],
-    description: "Propose a website Connection from what Vyre has learned on the site: { site, label, id?, operations?, polls?, why? } -> { proposal, card }. Nothing is made and nothing is run; the person sees the card in plain words and approves it from their own screen (connectors.connection.approve).",
+    description: "Propose a website Connection from what Vyre learned on the site: { site, label } -> { proposal, card }. Nothing runs until approved.",
     input: obj({ site: str, label: str, id: str, operations: { type: "array", items: str }, polls: { type: "array" }, why: str }, ["site", "label"]),
     run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
       const origin = originOf(input.site);
@@ -262,7 +262,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.operations", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "The operations of a website Connection with their versions and health: { id } -> { site, light, reason, operations: [{ name, kind, inputs, version, health, history: [{ version, replacedAt }] }] }. What the Connection page shows; rollback and the sign-in card hang off it.",
+    description: "A website Connection's operations with version, health and version history: { id } -> { site, light, reason, operations }.",
     input: obj({ id: str }, ["id"]),
     run: async (/** @type {any} */ input) => {
       const r = made.row(String(input.id));
@@ -288,7 +288,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.list", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "The website Connections, one row each: { sites: [{ id, title, subtitle (what the light says, or the host), light, site, operations }] }. What the Websites view lists.",
+    description: "The website Connections, one row each: { sites: [{ id, title, subtitle, light, site, operations }] }.",
     input: obj({}, []),
     run: async () => ({ sites: siteRows().map(({ r, d }) => siteRow(r, d)) }),
   });
@@ -311,7 +311,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.rows", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "Every operation of every website Connection, one row each: { rows: [{ id (<connection>:<name>), title (the name), subtitle (connection, kind, version), accessory (health), site, version, kept (versions held for a rollback) }] }. What the Website operations view lists.",
+    description: "Every operation of every website Connection, one row each: { rows: [{ id, title, subtitle, accessory, site, version, kept }] }.",
     input: obj({}, []),
     run: async () => {
       const rows = [];
@@ -330,7 +330,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
 
   ctx.tool("connectors.site.limits", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "How a website account is used and what has been used today: { id } -> { settings (pace, daily caps, quiet hours, time zone: the profile's, then the person's own), usage: { reads, writes, stopped, stopped_reason, cooldown_until } }. Null settings: nothing governs it.",
+    description: "A website account's limits and today's use: { id } -> { settings, usage }. Null settings means nothing governs it.",
     input: obj({ id: str }, ["id"]),
     run: async (/** @type {any} */ input) => {
       const r = made.row(String(input.id));
