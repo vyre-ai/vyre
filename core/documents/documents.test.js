@@ -234,3 +234,35 @@ test("an agent sees lean tool descriptions, and documents.generate is held to th
   const entry = manifest.does.tools.find((/** @type {any} */ t) => t && t.name === "documents.generate");
   assert.equal(entry.projectArg, "project");
 });
+
+test("documents.signing.waiting lists what nobody has signed without the link or code; documents.signing.remind sends that signer their link again, once, and only for a request that is waiting", async () => {
+  /** @type {{ tool: string, input: any }[]} */ const seen = [];
+  const pending = [{ submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123", email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: 5 }];
+  const r = rig({ call: async (tool, input) => {
+    if (tool === "spaces.self") return {};
+    seen.push({ tool, input });
+    return tool === "appmods.signing.waiting" ? { data: { requests: pending } } : { data: { held: "gi_9" } };
+  } });
+  const listed = await r.run("documents.signing.waiting", {});
+  assert.deepEqual(listed.requests, [{ submission: 4411, email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: 5 }]);
+  assert.ok(!JSON.stringify(listed).includes("abc123") && !JSON.stringify(listed).includes("/sign/"));
+  // the approvals queue (a module) reads it with no person's chain; a surface with no signed-in person does not
+  const asQueue = rig({ chain: null, call: async tool => (tool === "appmods.signing.waiting" ? { data: { requests: pending } } : {}) });
+  assert.equal((await asQueue.run("documents.signing.waiting", {}, { caller: "module:approvals" })).requests.length, 1);
+  assert.equal((await code(asQueue.run("documents.signing.waiting", {}, { caller: "module:comms" }))).code, "denied");
+  assert.equal((await code(asQueue.run("documents.signing.waiting", {}))).code, "denied");
+  // no Documents app here: nothing waits, nothing fails
+  for (const error of [{ code: "not_found", message: "x" }, { code: "no_such_tool", message: "x" }]) assert.deepEqual((await rig({ call: async tool => (tool === "spaces.self" ? {} : { error }) }).run("documents.signing.waiting", {})).requests, []);
+  seen.length = 0;
+  const out = await r.run("documents.signing.remind", { submission: 4411, note: "Thanks, Dana." });
+  assert.deepEqual(seen.map(s => s.tool), ["appmods.signing.waiting", "comms.send"]);
+  assert.equal(seen[1].input.to, "dana@harlow.test");
+  assert.equal(seen[1].input.body, "Thanks, Dana.\n\nYour document is still waiting for your signature: https://documents.harlow.vyre.run/sign/4411/abc123");
+  assert.equal(out.sent.held, "gi_9");
+  assert.deepEqual(r.emitted, [{ type: "documents.reminded", payload: { submission: 4411 } }]);
+  seen.length = 0;
+  assert.equal((await code(r.run("documents.signing.remind", { submission: 9999 }))).code, "not_found", "a request that is not waiting is not reminded");
+  assert.equal((await code(r.run("documents.signing.remind", { submission: 4411, note: "x".repeat(1001) }))).code, "bad_input");
+  assert.ok(!seen.some(s => s.tool === "comms.send"), "nothing was sent for either");
+  assert.equal((await code(rig({ chain: null }).run("documents.signing.remind", { submission: 4411 }))).code, "denied");
+});

@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest, readWaiting } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
@@ -246,4 +246,15 @@ test("the stylesheet every signer page carries hides what the signer's link cann
   assert.match(CREDIT_CSS, /a\[href\*="docuseal\.com"\][^}]*display:none/, "the engine's logo and powered-by links are not shown");
   assert.ok(!/#vyre-credit[^{]*\{[^}]*display:none/.test(CREDIT_CSS), "the licence credit stays");
   assert.ok(CREDIT_HTML.includes("github.com/docusealco/docuseal") && !CREDIT_HTML.includes("docuseal.com"), "and its link is not one the stylesheet hides");
+});
+
+test("readWaiting: the requests nobody has signed, from the app's own list, newest first; signed, declined, archived and malformed ones are left out", () => {
+  const row = (id, extra = {}, sub = {}) => ({ id, status: "pending", created_at: `2026-10-0${id}T10:00:00.000Z`, template: { name: `Letter ${id}` }, submitters: [{ email: `s${id}@x.test`, name: `Signer ${id}`, slug: `slug${id}`, completed_at: null, ...sub }], ...extra });
+  const got = readWaiting({ data: [row(1), row(3), row(2, { archived_at: "2026-10-05T00:00:00Z" }), row(4, { status: "completed" }), row(5, {}, { completed_at: "2026-10-06T00:00:00Z" }), row(6, {}, { declined_at: "2026-10-06T00:00:00Z" }),
+    row(7, {}, { slug: "../etc" }), { id: "x", submitters: [] }, null, "junk", row(8, { submitters: [{ email: "a@x.test", completed_at: "t", slug: "d1" }, { email: "b@x.test", name: "B", slug: "waiting8" }] })] });
+  assert.deepEqual(got.map(r => r.submission), [8, 3, 1], "newest first; only the open ones");
+  assert.deepEqual(got[0], { submission: 8, slug: "waiting8", email: "b@x.test", signer: "B", template: "Letter 8", at: Date.parse("2026-10-08T10:00:00.000Z") }, "the first signer who has not signed");
+  assert.deepEqual(readWaiting([row(1)]).map(r => r.submission), [1], "a bare array too");
+  for (const bad of [null, undefined, 5, "x", {}, { data: "no" }]) assert.deepEqual(readWaiting(bad), []);
+  assert.equal(readWaiting({ data: Array.from({ length: 80 }, (_, i) => row(i + 1, { created_at: `2026-10-01T10:${String(i % 60).padStart(2, "0")}:00Z` })) }).length, 50, "at most 50");
 });

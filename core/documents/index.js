@@ -157,6 +157,41 @@ export function registerDocuments(ctx) {
     },
   });
 
+  /** The signature requests nobody has signed yet, newest first. The link and the signer's code stay on the box. */
+  const waitingRequests = async () => {
+    const r = await ctx.call("appmods.signing.waiting", { name: "documents" });
+    if (r && r.error) { if (r.error.code === "not_found" || r.error.code === "no_such_tool") return []; throw Object.assign(new Error(r.error.message), { code: r.error.code || "failed" }); }
+    return /** @type {any[]} */ (r && r.data && Array.isArray(r.data.requests) ? r.data.requests : []);
+  };
+
+  ctx.tool("documents.signing.waiting", {
+    description: "The documents sent for signature that nobody has signed yet: { requests: [{ submission, signer, email, template, at }] }, newest first.",
+    input: obj({ space: str }),
+    callers: CALLERS, effect: "read",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      if (!(meta && meta.caller === "module:approvals")) await door.open(i || {}, meta);
+      return { requests: (await waitingRequests()).map(({ slug: _s, url: _u, ...open }) => open) };
+    },
+  });
+
+  ctx.tool("documents.signing.remind", {
+    description: "Email the signer their signing link again: { submission }. One yes, like any send.",
+    input: obj({ space: str, submission: { type: "integer" }, note: str }, ["submission"]),
+    callers: CALLERS, effect: "write",
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await door.open(i || {}, meta);
+      const want = Number(i.submission);
+      const q = (await waitingRequests()).find(x => x.submission === want);
+      if (!q) throw refuse("that document is not waiting for a signature (it may be signed or have lapsed)", "not_found");
+      if (!q.email) throw refuse("that request has no email address to send to", "bad_input");
+      const text = String(i.note || "").trim();
+      if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");
+      const sent = await use("comms.send", { via: "email", to: q.email, subject: "A reminder to sign", body: `${text ? `${text}\n\n` : ""}Your document is still waiting for your signature: ${q.url}`, why: "signing reminder" });
+      ctx.events.emit("documents.reminded", { submission: want });
+      return { submission: want, sent };
+    },
+  });
+
   ctx.tool("documents.send-signed", {
     description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes. Lasts until revoked unless days.",
     input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),

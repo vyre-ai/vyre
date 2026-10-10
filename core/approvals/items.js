@@ -7,7 +7,7 @@
 // A card is rebuilt from the owner's list on start and after the owner's own events, so a restart or a missed event never leaves one behind. Nothing here sends, grants or answers.
 import { clean, at, opt, cap, one, DETAIL_MAX } from "../../lib/waiting-text.js";
 
-export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health"]);
+export const ITEM_KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "health", "signing"]);
 const DEBOUNCE_MS = 200;
 /** How long a settled card stays readable (its outcome), and how many. */
 const RECENT_MS = 10 * 60_000, RECENT_MAX = 50;
@@ -121,6 +121,17 @@ export const fromEvals = rows => rows.filter(r => r && r.state === "pending").ma
   at: at(r.at), source: "models", answer: { tool: "models.eval-approve", input: { model: r.model }, fill: ["evals"] }, decline: { tool: "models.eval-decline", input: { model: r.model } } }));
 
 /**
+ * documents.signing.waiting: a document sent for signature that nobody has signed yet. One `signing` card each, quiet (the signer has not answered; nothing to push for), naming who it waits on and
+ * since when. The answer sends the signer their link again (one yes, like any send); the card closes when the signature arrives, the signer declines or the request lapses. No link and no slug ride on it.
+ */
+export const fromSigning = rows => rows.filter(r => r && Number.isInteger(r.submission)).map(r => {
+  const who = clean(r.signer, 80) || clean(r.email, 120) || "The signer", doc = clean(r.template, 80) || "the document";
+  return { id: `documents:${r.submission}`, kind: "signing", title: `${who} has not signed ${doc}`, ...opt("detail", r.email && r.signer ? cap(`Sent to ${clean(r.email, 120)}`, DETAIL_MAX) : ""),
+    at: at(r.at), source: "documents", quiet: true,
+    answer: { tool: "documents.signing.remind", input: { submission: r.submission }, fill: [] } };
+});
+
+/**
  * The owners' queues, one row each: the tool that lists what is held, how to read it, and which of the owner's events change it (and what each says happened to which item).
  * @type {{ name: string, tool: string, map: (data: any) => any[], watch: [string, (type: string, payload: any) => ([string, string] | null) | null][] }[]}
  */
@@ -133,6 +144,8 @@ export const OWNERS = [
     ["flow.*", (t, p) => (p && p.run && (t === "flow.finished" || t === "flow.cancelled" || t === "flow.retried") ? [`flows:${p.run}`, t === "flow.cancelled" ? "stopped" : t === "flow.retried" ? "retried" : (p.state === "done" ? "done" : "failed")] : null)],
     ["task.*", (t, p) => (p && p.task ? [`tasks:${p.task}`, t === "task.skipped" ? "skipped" : t === "task.stuck" ? "stuck" : "unblocked"] : null)],
     ["stage.*", (t, p) => (p && p.run && t === "stage.gate-closed" ? [`flows:${p.run}`, "moved on"] : null)]] },
+  { name: "documents", tool: "documents.signing.waiting", map: d => fromSigning(d && Array.isArray(d.requests) ? d.requests : []), quiet: true, watch: [
+    ["documents.*", (t, p) => (p && p.submission && (t === "documents.signed" || t === "documents.declined" || t === "documents.expired") ? [`documents:${p.submission}`, t === "documents.signed" ? "signed" : t === "documents.declined" ? "declined" : "expired"] : null)]] },
   { name: "vault-health", tool: "vault.health.summary", map: fromHealth, quiet: true, watch: [["vault.item-changed", null], ["vault.item-added", null]] },
   { name: "models", tool: "models.evals", map: d => fromEvals(d && Array.isArray(d.evals) ? d.evals : []), watch: [
     ["models.*", (t, p) => (t === "models.evals-changed" && p && p.model ? [`models:${p.model}`, p.state === "approved" ? "approved" : p.state === "declined" ? "declined" : p.state || "settled"] : null)]] },

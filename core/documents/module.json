@@ -47,6 +47,18 @@
         "reach": "anyone"
       },
       {
+        "name": "documents.signing.waiting",
+        "effect": "read",
+        "reach": "anyone"
+      },
+      {
+        "name": "documents.signing.remind",
+        "outward": true,
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
+        "effect": "write",
+        "reach": "anyone"
+      },
+      {
         "name": "documents.send",
         "outward": true,
         "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
@@ -66,7 +78,8 @@
     "emits": [
       "documents.generated",
       "documents.sent",
-      "documents.copy-sent"
+      "documents.copy-sent",
+      "documents.reminded"
     ]
   },
   "shows": {},

@@ -19,7 +19,7 @@ const LIMIT_MAX = 500;
 /** How long a pairing request lives on the box (core/link/box.js TTL): link.pending gives only its expiry. */
 const PAIR_TTL_MS = 10 * 60_000;
 
-export const KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "reminder", "pairing"]);
+export const KINDS = /** @type {const} */ (["approval", "ask", "draft", "access", "run", "task", "eval", "signing", "reminder", "pairing"]);
 
 // Owners' events that can change what waits. planner.* is narrowed: added, removed and schedule
 // never ring or stop a ring by themselves.

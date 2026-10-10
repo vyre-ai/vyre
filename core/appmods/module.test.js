@@ -33,6 +33,11 @@ async function world(t, opt = {}) {
         if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
         return void r.writeHead(201, { "content-type": "application/json" }).end(JSON.stringify([{ id: 7, submission_id: 4411, slug: "abc123", email: "dana@harlow.test" }]));
       }
+      if (q.url.startsWith("/api/submissions?") && q.method === "GET") {
+        seen.listed = seen.listed || []; seen.listed.push({ token: q.headers["x-auth-token"] || "", url: q.url });
+        if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
+        return void r.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ data: seen.pending || [], pagination: { count: (seen.pending || []).length } }));
+      }
       if (q.url === "/sign_in" && q.method === "GET") return void r.writeHead(200, { "content-type": "text/html", "set-cookie": "sess=anon; path=/; HttpOnly" }).end('<html><head><meta name="csrf-token" content="tok123"></head><body><form action="/sign_in" method="post"><input type="hidden" name="authenticity_token" value="tok123"><input name="user[email]"><input name="user[password]"></form></body></html>');
       if (q.url === "/sign_in" && q.method === "POST") {
         const f = new URLSearchParams(body); seen.sign.push(Object.fromEntries(f));
@@ -409,6 +414,26 @@ test("appmods.signed.link: no days is a link with no end, days gives one, only t
   assert.notEqual(c.data.url, a.data.url, "a link made after the revoke is under a new key, so the earlier one no longer matches");
   assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: true });
   assert.deepEqual((await w.d.registry.call("appmods.signed.revoke", { name: "documents" }, "module:documents")).data, { revoked: false }, "nothing left to end");
+});
+
+test("appmods.signing.waiting: only the app's own module asks, a stopped app has none, and a running one answers from its own list with the signer's link", async t => {
+  const w = await world(t);
+  const ask = (caller = "module:documents") => w.d.registry.call("appmods.signing.waiting", { name: "documents" }, caller);
+  assert.deepEqual((await ask()).data, { requests: [] }, "not installed: nothing waits");
+  await w.cli("appmods.install", { name: "documents" });
+  w.seen.pending = [{ id: 4411, status: "pending", created_at: "2026-10-09T10:00:00Z", template: { name: "Engagement letter" }, submitters: [{ email: "dana@harlow.test", name: "Dana Harlow", slug: "abc123", completed_at: null }] },
+    { id: 4400, status: "pending", created_at: "2026-10-01T10:00:00Z", template: { name: "NDA" }, submitters: [{ email: "sam@harlow.test", slug: "xyz789", completed_at: "2026-10-02T00:00:00Z" }] }];
+  const got = await ask();
+  assert.equal(got.error, undefined, JSON.stringify(got.error));
+  assert.equal(got.data.requests.length, 1, "the signed one is not waiting");
+  assert.deepEqual({ ...got.data.requests[0], url: "x" }, { submission: 4411, slug: "abc123", url: "x", email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: Date.parse("2026-10-09T10:00:00Z") });
+  assert.match(got.data.requests[0].url, /^https?:\/\/documents\..*\/sign\/4411\/abc123$/);
+  assert.equal(w.seen.listed[0].token, "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ", "asked with the app's own key");
+  assert.match(w.seen.listed[0].url, /status=pending/);
+  assert.equal((await ask("module:comms")).error.code, "denied", "another module cannot ask");
+  assert.ok((await w.cli("appmods.signing.waiting", { name: "documents" })).error, "nor a person at the terminal");
+  await w.cli("appmods.stop", { name: "documents" });
+  assert.deepEqual((await ask()).data, { requests: [] }, "a stopped app has none");
 });
 
 test("own domains: the owner points a domain at the signing app, the front answers it by alias and nothing else, and a model or a bad host is refused", async t => {

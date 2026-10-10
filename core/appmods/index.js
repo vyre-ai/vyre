@@ -16,7 +16,7 @@ import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
 import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
-import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest, readWaiting } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -504,6 +504,20 @@ export default {
         const got = readRequest(await res.json().catch(() => null));
         if (!got) throw refuse(`${name} answered, but not with a signing request`, "app_refused");
         return { ...got, url: `${await signerOrigin(name)}/sign/${got.submission}/${got.slug}` };
+      },
+    });
+    ctx.tool("appmods.signing.waiting", {
+      internal: true, callers: ["module"],
+      description: "The signature requests an app is still waiting on: { name } -> { requests: [{ submission, slug, url, email, signer, template, at }] }, newest first. Only the app's own module asks (documents for Documents). An app that is not running has none.",
+      input: obj({ name: str }, ["name"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks what is waiting for a signature", "denied");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin || !(known(name).app || {}).signing) return { requests: [] };
+        const res = await fetch(`${r.origin}/api/submissions?status=pending&limit=100`, { headers: { "x-auth-token": await secret(name, "api-token") }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+        if (!res || !res.ok) throw refuse(`${name} would not say what is waiting (${res ? res.status : "no answer"})`, "app_refused");
+        const origin = await signerOrigin(name);
+        return { requests: readWaiting(await res.json().catch(() => null)).map(q => ({ ...q, url: `${origin}/sign/${q.submission}/${q.slug}` })) };
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({

@@ -123,6 +123,25 @@ export function filePaths(v) {
   return [...new Set(out)];
 }
 
+/**
+ * The signature requests still waiting, from the app's own list (GET /api/submissions?status=pending): one row each, newest first, at most 50. A request counts as waiting while any signer on
+ * it has not completed; the row names the first such signer. `slug` is the signer's page code and never leaves the box (the reminder uses it, the card does not carry it).
+ * @param {unknown} json @returns {{ submission: number, slug: string, email: string, signer: string, template: string, at: number }[]}
+ */
+export function readWaiting(json) {
+  const list = Array.isArray(json) ? json : json && typeof json === "object" && Array.isArray(/** @type {any} */ (json).data) ? /** @type {any} */ (json).data : [];
+  /** @type {{ submission: number, slug: string, email: string, signer: string, template: string, at: number }[]} */ const out = [];
+  for (const s of list) {
+    if (!s || typeof s !== "object" || s.archived_at || (typeof s.status === "string" && s.status !== "pending")) continue;
+    const who = Array.isArray(s.submitters) ? s.submitters.find((/** @type {any} */ x) => x && !x.completed_at && !x.declined_at) : null;
+    const id = Number(s.id), slug = who && who.slug;
+    if (!who || !Number.isInteger(id) || id < 1 || typeof slug !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(slug)) continue;
+    const at = Date.parse(String(s.created_at || "")) || 0;
+    out.push({ submission: id, slug, email: String(who.email || "").slice(0, 254), signer: String(who.name || "").slice(0, 120), template: String((s.template && s.template.name) || "").slice(0, 120), at });
+  }
+  return out.sort((a, b) => b.at - a.at || b.submission - a.submission).slice(0, 50);
+}
+
 /** The body that asks the signing app for one signature and tells it to send nothing itself: the person's own words go out through Comms. @param {number} templateId @param {string} email @param {string} [name] */
 export function requestBody(templateId, email, name) {
   if (!Number.isInteger(templateId) || templateId < 1) throw new Error("template_id is the number of the signing template in Documents");

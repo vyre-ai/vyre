@@ -146,3 +146,27 @@ test("R031-80s: the vault's health is one calm row of counts, never a row per it
   assert.deepEqual(fromHealth({ total: 1, rotate: 1, fix: 0 })[0].answers.map((/** @type {any} */ a) => a.label), ["Rotate", "Dismiss"]);
   assert.ok(JSON.stringify(row).includes("password") === false && !JSON.stringify(row).includes("name"), "counts only");
 });
+
+test("a document waiting for a signature is one quiet `signing` card naming the signer, answered by a reminder, with no link or code on it, and it closes when the owner stops listing it", async () => {
+  const { fromSigning, OWNERS } = await import("./items.js");
+  const rows = fromSigning([
+    { submission: 4411, signer: "Dana Harlow", email: "dana@harlow.test", template: "Engagement letter", at: 5, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123" },
+    { submission: 4412, signer: "", email: "sam@harlow.test", template: "", at: 4 },
+    { signer: "no id" },
+  ]);
+  assert.deepEqual(rows.map(r => [r.id, r.kind, r.title, r.detail, r.quiet]), [
+    ["documents:4411", "signing", "Dana Harlow has not signed Engagement letter", "Sent to dana@harlow.test", true],
+    ["documents:4412", "signing", "sam@harlow.test has not signed the document", undefined, true],
+  ]);
+  assert.deepEqual(rows[0].answer, { tool: "documents.signing.remind", input: { submission: 4411 }, fill: [] });
+  assert.ok(!JSON.stringify(rows).includes("abc123") && !JSON.stringify(rows).includes("/sign/"), "no signer's code and no link on a card");
+  // it is one of the owners, quiet when Documents is not there, and the signature's own event says why it closed
+  const owner = OWNERS.find(o => o.name === "documents");
+  assert.ok(owner && /** @type {any} */ (owner).quiet && owner.tool === "documents.signing.waiting");
+  assert.deepEqual(owner.map({ requests: [{ submission: 9, signer: "A", email: "a@b.test", template: "T", at: 1 }] }).map((/** @type {any} */ r) => r.id), ["documents:9"]);
+  assert.deepEqual(owner.map(null), []);
+  const hint = owner.watch[0][1];
+  assert.deepEqual(hint && hint("documents.signed", { submission: 9 }), ["documents:9", "signed"]);
+  assert.deepEqual(hint && hint("documents.declined", { submission: 9 }), ["documents:9", "declined"]);
+  assert.equal(hint && hint("documents.sent", { submission: 9 }), null);
+});
