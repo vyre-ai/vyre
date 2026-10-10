@@ -16,6 +16,8 @@ const obj = (/** @type {any} */ properties = {}, /** @type {string[]} */ require
 const fail = (/** @type {string} */ message, /** @type {string} */ code = "failed") => Object.assign(new Error(message), { code });
 const PERSON = [...PERSON_SURFACES, "tailnet", "device"];
 export const SENDER = "outside";
+/** How many changes one outside agent may have waiting at the Gate. */
+export const MAX_WAITING = 20;
 const CONTENT = { summary: "string (what the outside agent asks for, in words)", agent: "string (its name)", held: "string (its request id)", type: "string", fields: "object (the field values)" };
 
 /** The one-line change a person reads on the card: "Muse wants to add a client: Dana Reyes". @param {string} agent @param {"records_create"|"records_update"} tool @param {{ type: string, fields: Record<string, any> }} c @param {string} label */
@@ -125,6 +127,9 @@ export function registerOutside(ctx, seam = {}) {
   };
   /** @param {any} agent @param {"records_create"|"records_update"} tool @param {{ type: string, urn?: string, fields: Record<string, any> }} change */
   async function hold(agent, tool, change) {
+    // an outsider cannot flood the person's Gate: a few at a time, each of a sane size
+    if (JSON.stringify(change).length > 20_000) throw fail("that change is too large: ask for fewer fields at a time", "bad_input");
+    if (store.heldOf(agent.id).length >= MAX_WAITING) throw fail(`${MAX_WAITING} of your requests are already waiting for the person: wait for their answer before asking for more`, "refused");
     await offer();
     const reach = store.reach(agent.id).filter(r => r.kind === "records");
     const label = (reach.flatMap(r => r.spec.defs || []).find((/** @type {any} */ t) => t.name === change.type) || {}).label || change.type;
