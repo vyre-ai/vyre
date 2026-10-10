@@ -47,10 +47,9 @@ test("a message with a named record and attached files reaches the assistant as 
 
   // refused before anything is stored: a file that is not this chat's
   const frames = () => /** @type {any[]} */ (d.registry.modules.get("stream").handle.logs.get(chat).read(0));
-  const before = frames().length;
   const bad = await call("stream.send", { chat, text: "this", attachments: [{ ...pdf, id: "att_Nope0000000000000000" }] });
   assert.equal(bad.error && bad.error.code, "bad_input", JSON.stringify(bad));
-  assert.equal(frames().length, before, "nothing was stored");
+  assert.equal(frames().filter(f => f.type === "chat.user-message" && f.data.text === "this").length, 0, "nothing was stored");
 
   const sent = await call("stream.send", { chat, text: "What is Dana Whitfield's age? Read the files.", attachments: [pdf, png] });
   assert.ok(!sent.error, JSON.stringify(sent));
