@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(vault): listing the api-credential names (the Flows connector catalog, read at start-up) makes no vault key when the vault has none; a home with no shared vaults stays keyless again (core/vault/stop.test.js)
 - fix(vault): an agent inside the person's own CLI (`cli:agent:kit`) is held to a credential's scope in vault.request like any model; the check stopped at the label mcp, so such an agent read through any credential.
 - test(ci): when scripts/perf-check is over budget on the first shard, the job runs it once more with a CPU profile of vyred (PERF_CPU_PROF_DIR) and uploads the profile, so the red names what ran at idle.
 - perf(kernel): a store hands out its type list as one deep-frozen list, the same until a type is defined, changed or removed (kernel/store/memory.js, stores/twenty/store.js). Every records query asks for the types three or four times and each ask cloned every type; that was most of the CPU in vyred's 60 s idle tick (flows and watchers), the sustained idle CPU red of scripts/perf-check. A caller that tries to change the list now fails loudly; copy what you need to change.

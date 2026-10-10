@@ -1112,6 +1112,7 @@ export class Vault {
 
   /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
   async apiCredentialNames() {
+    if (!this.vk && !(await this.keys.exists())) return [];   // a vault with no key holds no item: listing names (the Flows catalog does at start-up) must not make one
     await this.key();
     return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
   }
