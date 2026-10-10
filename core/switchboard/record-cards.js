@@ -63,12 +63,13 @@ export function createCards({ kernel }) {
     async note({ chain, thread, text, pasted = [] }) {
       if (!kernel || !kernel.records || typeof kernel.records.search !== "function" || typeof kernel.records.reference !== "function") return "";
       if (!chain || !Array.isArray(chain.hops) || chain.hops.length !== 1 || !chain.hops[0].actor || chain.hops[0].actor.kind !== "person") return "";
-      const names = namesIn(text, pasted);
-      if (!names.length) return "";
+      // every person turn counts, named record or not: "20 turns" is how far back the model's context reaches
       const st = threads.get(thread) || { turn: 0, told: new Map() };
       threads.set(thread, st);
       st.turn += 1;
       if (threads.size > 200) threads.delete(/** @type {string} */ (threads.keys().next().value));
+      const names = namesIn(text, pasted);
+      if (!names.length) return "";
       /** @type {{ name: string, type: string, ref: any }[]} */ const found = [];
       for (const name of names) {
         let rows = [];

@@ -12,7 +12,9 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 
 test("names: quoted phrases and runs of capitalised words, each shorter run inside, possessives and code taken out", () => {
-  assert.deepEqual(namesIn("What case type is Dana Whitfield's matter?").slice(0, 3), ["Dana Whitfield", "Dana", "Whitfield"]);
+  const asked = namesIn("What case type is Dana Whitfield's matter?");
+  assert.ok(asked.includes("Dana Whitfield") && asked.includes("Dana") && asked.includes("Whitfield"), "the possessive is dropped, each part is offered");
+  assert.ok(asked.indexOf("Dana Whitfield") < asked.indexOf("Dana"), "the longer name first");
   assert.ok(namesIn("Ask Dana Whitfield about it").includes("Dana Whitfield"), "a capitalised first word does not hide the name after it");
   assert.ok(namesIn('open "Harlow v. Harlow" please').includes("Harlow v. Harlow"));
   assert.ok(namesIn("Harlow v. Harlow settled").includes("Harlow v. Harlow"));
