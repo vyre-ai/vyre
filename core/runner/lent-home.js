@@ -335,14 +335,14 @@ export function createLentHome(o) {
     },
     /**
      * A loopback port of this box that leads to `port` on the computer running the chat's program, for the previews module to put behind the front. Only the chat's own person, and only while the chat runs on a computer.
-     * @param {{ session: string, port: number, person: string }} i
+     * @param {{ session: string, port: number, person: string, viewer?: (header: string) => Promise<boolean> }} i
      * @returns {Promise<{ port: number }>}
      */
     hasPreview(/** @type {string} */ session) { return previews.has(String(session)); },
     async openPreview(i) {
       const row = book.get(String(i.session));
       if (!row || row.where !== "mac" || row.person !== String(i.person)) throw err("not_found", "that chat does not run on one of your computers");
-      return previews.open(String(i.session), Number(i.port));
+      return previews.open(String(i.session), Number(i.port), typeof i.viewer === "function" ? i.viewer : undefined);
     },
     async pipe(chain, i) {
       const w = writer(chain, i && i.session, i && i.epoch);

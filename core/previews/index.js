@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import { isPerson, PERSON_SURFACES } from "../../lib/caller.js";
 import { createSupervisor, lease, answers } from "./supervisor.js";
 import { createStatic } from "./static.js";
-import { createBridge } from "./bridge.js";
+import { createBridge, readViewer } from "./bridge.js";
 import { findChrome, capture } from "./thumb.js";
 import { poster } from "./poster.js";
 import os from "node:os";
@@ -397,6 +397,15 @@ export default {
         emit("preview.state", { id: r.id, state: r.state, title: r.title, thread: r.thread || null, project: r.project || null, access: i.access });
         card(row(r.id));
         return { preview: view(row(r.id)) };
+      },
+    });
+
+    ctx.tool("previews.viewer-ok", {
+      description: "Is this the front's signed viewer header for a preview: { ok }. Internal: the runner module only, for the preview of a chat on a person's computer (a process on this box that finds that port cannot forge one).", internal: true,
+      input: obj({ header: str }, ["header"]), callers: ["module"],
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!meta || meta.caller !== "module:runner") throw refuse("only the runner module asks this", "denied");
+        return { ok: readViewer(viewerKey, String(i.header || "")) !== null };
       },
     });
 
