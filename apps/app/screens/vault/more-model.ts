@@ -110,11 +110,11 @@ export function pickHistory(d: unknown): { versions: Version[]; earlier: { count
   return { versions, earlier: pw.length ? { count: pw.length, last: Math.max(...pw) } : null };
 }
 
-/** "module:gate" is "gate"; "cli" is "You, in a terminal". Plain words for who did it. */
+/** "module:gate" is "gate"; "cli" is "You, on your computer". Plain words for who did it. */
 export function whoWord(who: string): string {
   if (who.startsWith("module:")) return who.slice(7).split("/")[0];
   if (who.startsWith("pass:")) return who.split(":")[2] || "a pass";
-  if (who === "cli") return "You, in a terminal";
+  if (who === "cli") return "You, on your computer";
   if (who === "deck" || who === "local" || who === "capsule") return "You";
   return who;
 }
