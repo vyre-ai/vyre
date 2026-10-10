@@ -17,3 +17,6 @@ export const listWaits = (row) => !row.active;
 
 /** The version flows.get shows (the one that runs, else the newest) waits for the person when nobody has approved it. @param {{ approver?: unknown }} meta */
 export const versionWaits = (meta) => !meta.approver;
+
+/** What the approval button says. Approving a Flow version is a person's own yes in their own session; it is not one of the moments (pairing, the vault, sending) that ask a device for its proof, so the button names no check. */
+export const APPROVE_LABEL = "Approve";
