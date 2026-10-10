@@ -1,6 +1,7 @@
 // @ts-check
 // Signing from a stage (R032-05), end to end in the Flows test world: a record entering the stage asks Documents for a signature and emails the link; the signed event moves the record on.
 import "../../scripts/mac-test-guard.mjs";
+import fs from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "../../kernel/flows/testing/world.js";
@@ -122,3 +123,42 @@ function catalogWithActions() {
   return { ...c, types: { ...c.types, matter: { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] } },
     actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["documents.send-signed"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
 }
+
+test("the Estate Kit's own matter: entering Engagement sends the engagement letter to the linked Contact, one yes, signing moves it to Drafting, and the signed copy rides that yes", async () => {
+  const kit = JSON.parse(fs.readFileSync(new URL("../../records/kits/estate-planning/kit.json", import.meta.url), "utf8"));
+  const matter = kit.types.find((/** @type {any} */ t) => t.name === "matter");
+  const c = catalogWithActions();
+  const f = signingFlow({ type: "matter", out_stage: "Engagement", signed_stage: "Drafting", template_id: 12, contact_field: "client" });
+  /** @type {any[]} */ const calls = [];
+  const w = await world({ cat: { ...c, types: { ...c.types, matter } }, ports: {
+    call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ _resource, /** @type {any} */ input) => {
+      calls.push({ action, input });
+      return action === "documents.send" ? { submission: 8101, slug: "est123", url: "https://documents.harlow.vyre.run/sign/8101/est123", sent: { held: "gi_1" } } : { url: "https://x/signed/2.a.s", expires: null, sent: { held: "gi_2" } };
+    },
+  } });
+  await install(w, f);
+  const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
+  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: "vyre://spc_x/contact/c-1", stage: "Intake" });
+  await w.kernel.records.update(alex, "matter", rec.id, { stage: "Engagement" }, rec.version);
+  await settle(w);
+  let asks = 0;
+  const answer = async () => {
+    for (let i = 0; i < 6; i++) {
+      const held = w.kernel.tasks.filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.state !== "done");
+      if (!held.length) break;
+      asks += held.length;
+      for (const t of held) w.kernel.completeTask(t.id, { outcome: "approved" });
+      await settle(w);
+    }
+  };
+  assert.equal(calls.length, 0, "nothing goes before the yes");
+  await answer();
+  assert.deepEqual(calls.map(x => x.action), ["documents.send"]);
+  assert.deepEqual(calls[0].input, { template_id: 12, contact: "vyre://spc_x/contact/c-1" });
+  w.kernel.inbound("documents.signed", ev({ submission: 8101, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
+  await settle(w);
+  await answer();
+  assert.equal(mine(w, "matter")[0].data.stage, "Drafting", "the Estate matter moved on to its Drafting stage");
+  assert.deepEqual(calls.map(x => x.action), ["documents.send", "documents.send-signed"]);
+  assert.equal(asks, 1, "one yes for both emails");
+});
