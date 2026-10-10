@@ -46,3 +46,4 @@ echo "a frame was drawn by the phone's Glass page in relay mode"
 # rerun on the build with the richer proof page
 # rerun with the cleartext flag read at prebuild
 # rerun with socket diagnostics
+# rerun with GlassFrame taking openSocket
