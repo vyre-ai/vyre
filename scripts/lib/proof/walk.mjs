@@ -115,14 +115,24 @@ export async function walk(w) {
         throw new Error(`the record store was not up after 4 minutes: ${last}`);
       }, { needs: [CALL] });
     }
+    // On a development-build server made by the installer the sealing process sits in the container, so the rig is built from the apps' own presence keys: each person signs with the key their app offered
+    // (the owner's at pairing, the joiner's at Join), over a person chain for the space; the member list is read through the owner's own call.
+    const boxTeam = () => {
+      const chainOf = (/** @type {string} */ space, /** @type {string} */ person) => ({ space, hops: [{ actor: { kind: "person", id: person, space } }] });
+      return {
+        ownerSigner: mac.presenceSigner, signerFor: (/** @type {string} */ id) => { const s = id === mac.identity.id ? mac.presenceSigner : bob.presenceSigner; return { proof: s.proof, enrolment: s.enrolment(id) }; },
+        ownerChain: chainOf, inviteeChain: chainOf,
+        memberOf: null,
+      };
+    };
     /** @type {any} */ let bob = null, bobName = "";
     await run.step(S("invite a second person to the team (the owner's app asks its own key)"), async () => {
-      if (server !== "daemon") throw noTeams();
+      if (server !== "daemon" && !srv.ownerSigner) throw noTeams();
       bob = createApp({ label: "Proof second Mac", dir: path.join(dir, "second"), directory: ins.names, relay: ins.relay });
       const r = await bob.reserve(`second${store === "records" ? "r" : "p"}${Math.random().toString(36).slice(2, 6)}`);
       await bob.becomeYourself({ name: r.name, code: r.code });
       bobName = r.name;
-      const t = srv.team;
+      const t = srv.team || boxTeam();
       const ownerChain = t.ownerChain(team.space, mac.identity.id);
       const asked = [];
       invite = await mac.makeTeamInvite({ space: team.space, name: team.label, to: bobName, signPresence: async card => { asked.push(card.op); return t.ownerSigner.proof(ownerChain, card.op, card.fields, { extra: { home: card.home, challenge: card.challenge } }); } });
@@ -133,15 +143,18 @@ export async function walk(w) {
       return "a member invite signed by the owner's app";
     }, { needs: [S("create a team space on the server (named in the app, signed with the identity)")] });
     await run.step(S("a second identity joins the team from its own app, with no server of its own"), async () => {
-      const t = srv.team;
+      const t = srv.team || boxTeam();
       const sg = t.signerFor(bob.identity.id);
       const chain = t.inviteeChain(team.space, bob.identity.id);
       const joined = await bob.joinTeam({ link: invite.link, signPresence: async req => sg.proof(chain, req.op, req.fields), presenceKey: async () => sg.enrolment });
       assert.equal(joined.joined.joined, true);
-      const member = await t.memberOf(team.space, invite.ownerChain, bob.identity.id);
-      assert.deepEqual([member.person, member.role], [bob.identity.id, "member"]);
+      // The daemon rig reads the member from the space's own gateway; a box has no identity of its own to ask with, so the member list the joiner reads through the member door is the record.
       const list = await joined.call("grants.members.list", []);
-      const people = (Array.isArray(list) ? list : list.members || []).map((/** @type {any} */ m) => m.person);
+      const rows = Array.isArray(list) ? list : list.members || [];
+      const member = t.memberOf ? await t.memberOf(team.space, invite.ownerChain, bob.identity.id) : rows.find((/** @type {any} */ m) => m.person === bob.identity.id);
+      assert.ok(member, "the box lists the second person");
+      assert.deepEqual([member.person, member.role], [bob.identity.id, "member"]);
+      const people = rows.map((/** @type {any} */ m) => m.person);
       assert.ok(people.includes(bob.identity.id), "the member reaches the space through the member door");
       return `${bobName} is a member`;
     }, { needs: [S("invite a second person to the team (the owner's app asks its own key)")] });
