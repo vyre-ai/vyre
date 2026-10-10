@@ -52,7 +52,7 @@ const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits", "
 const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
 
 /**
- * Settings home, in the prototype's groups. `space` names the group for the space showing. `role` is the person's role in it: a row their role cannot use
+ * Settings home, in the prototype's groups. Every place has its own icon from the family (logic.test.js keeps it so): a list of ten rows reads at a glance only when no two look alike. `space` names the group for the space showing. `role` is the person's role in it: a row their role cannot use
  * is not offered. No role (All spaces showing, or not known yet) shows every row, and the screen behind each row still decides.
  * @param {string} space @param {string} [role]
  */
@@ -64,29 +64,29 @@ export function settingsGroups(space, role) {
 function all(/** @type {string} */ space) {
   return [
     { title: "You", rows: [
-      ["Account and recovery", "Sign-in, recovery code", "/u/settings/account", "faceid"],
-      ["Appearance", "Theme, accent, density, font", "/u/appearance", "settings"],
-      ["Sidebar", "Arrange your places", "/u/sidebar", "list"],
+      ["Account and recovery", "Sign-in, recovery code", "/u/settings/account", "face"],
+      ["Appearance", "Theme, accent, density, font", "/u/appearance", "sun"],
+      ["Sidebar", "Arrange your places", "/u/sidebar", "menu"],
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
-      ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "key"],
+      ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "spark"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
-      ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "link"],
-      ["Spending limits", "A daily cap per provider", "/u/settings/spend", "download"],
+      ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "agents"],
+      ["Spending limits", "A daily cap per provider", "/u/settings/spend", "budget"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
     ] },
     { title: "Devices", rows: [
       ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
-      ["Backups", "Which Spaces are backed up", "/u/settings/backups", "download"],
-      ["Access", "People, assistants, Kits and Flows", "/u/access", "shield"],
+      ["Backups", "Which Spaces are backed up", "/u/settings/backups", "storage"],
+      ["Access", "People, assistants, Kits and Flows", "/u/access", "access"],
     ] },
     { title: space, rows: [
-      ["Customize", "Types, fields, stages", "/u/settings/customize", "file"],
+      ["Customize", "Types, fields, stages", "/u/settings/customize", "records"],
       ["Spaces and members", "Who is in them", "/u/spaces", "space"],
-      ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "shield"],
-      ["Privacy and sealing", "Admins only", "/u/settings/privacy", "vault"],
-      ["Kits", "Installed and available", "/u/kits", "box"],
-      ["Engineer", "Set up your Space by talking to it", "/u/settings/engineer", "assistants"],
+      ["Rules", "Never, drafts only, always ask", "/u/settings/rules", "hand"],
+      ["Privacy and sealing", "Admins only", "/u/settings/privacy", "sealed"],
+      ["Kits", "Installed and available", "/u/kits", "kits"],
+      ["Engineer", "Set up your Space by talking to it", "/u/settings/engineer", "bolt"],
     ] },
     { title: "More places", rows: [
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
@@ -97,7 +97,7 @@ function all(/** @type {string} */ space) {
     ] },
     { title: "Vyre", rows: [
       ["All settings", "Every setting, in one place", "/u/settings/all", "settings"],
-      ["This computer", "What runs here, history, shares", "/u/settings/system", "info"],
+      ["This computer", "What runs here, history, shares", "/u/settings/system", "laptop"],
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],
       ["About", "Version and open-source credits", "/u/about", "info"],
     ] },
