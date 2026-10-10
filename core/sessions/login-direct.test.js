@@ -32,8 +32,9 @@ const withAcp = (t, w) => {
   process.env.FAKE_ACP_STORE = path.join(w.root, "acp-store");
   fs.mkdirSync(process.env.FAKE_ACP_STORE, { recursive: true });
   // Codex starts in "agent" and Vyre moves it to "workspace-write" (drivers/codex.js).
+  process.env.FAKE_ACP_LOG = path.join(w.root, "acp.log");
   Object.assign(process.env, { FAKE_ACP_EXTRA_MODE: "workspace-write", FAKE_ACP_START_MODE: "agent" });
-  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  t.after(() => { for (const k of ["FAKE_ACP_EXTRA_MODE", "FAKE_ACP_START_MODE", "FAKE_ACP_LOG"]) delete process.env[k]; for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
 };
 
 for (const provider of ["grok", "codex"]) {
@@ -48,14 +49,15 @@ for (const provider of ["grok", "codex"]) {
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck" })).error, undefined);
     await w.finished(th.id, 2);
     assert.deepEqual(await w.said(th.id), ["echo: hello", "echo: and the prices"]);
-    // A send that carries a key is held by Vyre's Gate before the CLI hears it: the session is Vyre's, not the vendor's.
+    // A send that carries a key never reaches the CLI as written: Vyre's Gate holds it, or the scrub takes the key out. The session is Vyre's, not the vendor's.
     assert.equal((await w.tool("threads.send", { thread: th.id, text: `use this key ${KEY} for the build`, surface: "deck" })).error, undefined);
-    await until(async () => (await w.events(th.id)).some(e => e.type === "gate.held"), "the Gate to hold the send");
+    await until(async () => { const ev = await w.events(th.id); return ev.some(e => e.type === "gate.held") || ev.filter(e => e.type === "thread.finished").length >= 3; }, "the Gate to hold the send or the turn to finish");
     assert.ok(!(await w.said(th.id)).some(x => x.includes(KEY)), "the key never reached the CLI");
+    assert.ok(!w.acpPrompts().some(p => p.join("").includes(KEY)), "the CLI was never sent the key");
     // Vyre owns the session: the row, the provider and both turns are in its own record.
     const rec = (await w.tool("threads.get", { thread: th.id })).data;
     assert.equal(rec.thread.provider, provider);
-    assert.equal((await w.events(th.id)).filter(e => e.type === "thread.finished").length, 2);
+    assert.ok((await w.events(th.id)).filter(e => e.type === "thread.finished").length >= 2);
     await w.tool("recall.index", {});
     const found = await w.tool("recall.search", { q: "prices" });
     assert.equal(found.error, undefined, JSON.stringify(found.error));
