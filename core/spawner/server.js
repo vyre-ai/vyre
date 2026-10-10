@@ -45,7 +45,7 @@ const MAX_LIVE = 16;
  *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, seed?: (home: string, who: Who, files: Record<string, string>) => void, log?: (m: string) => void,
  *   seed?: (home: string, who: Who, files: Record<string, string>) => void,
  *   grantGroup?: (home: string, who: Who) => void,
- *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void } }} o
+ *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
  *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, reprobe?, heldCap?, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
@@ -54,6 +54,14 @@ const MAX_LIVE = 16;
  *   (the /work group).
  * @typedef {{ uid: number, gid: number, groups: number[], home?: string, account?: number }} Who
  */
+/** The most a placed transcript may be, decoded: a long chat's history. */
+export const PLACE_MAX = 64 * 1024 * 1024;
+/**
+ * What runs AS THE ACCOUNT to write one transcript (op `place`): its own folder, a temp file made there, the bytes whole from stdin, mode 0600, renamed over the target, and refused outright when the folder or the file
+ * is a link, when the folder is not the account's own, or when the target already exists as anything but a plain file. $1 = the file, $2 = the account's uid. Exported so a test runs the real logic.
+ */
+export const PLACE_SCRIPT = 'f="$1"; d=$(dirname -- "$f"); [ ! -L "$d" ] && [ ! -L "$f" ] || exit 11; q="$d"; while [ ! -e "$q" ]; do q=$(dirname -- "$q"); done; [ "$(readlink -f -- "$q")" = "$q" ] || exit 13; umask 077; mkdir -p -- "$d" || exit 12; [ "$(readlink -f -- "$d")" = "$d" ] && [ "$(stat -c %u -- "$d")" = "$2" ] || exit 13; { [ ! -e "$f" ] || { [ -f "$f" ] && [ "$(stat -c %u -- "$f")" = "$2" ]; }; } || exit 14; t=$(mktemp -p "$d" .place.XXXXXX) || exit 15; if cat > "$t" && chmod 0600 -- "$t" && mv -T -- "$t" "$f"; then exit 0; fi; rm -f -- "$t"; exit 16';
+
 export async function serve(o) {
   const log = o.log || (() => {});
   const work = path.resolve(o.work || "/work");
@@ -325,6 +333,33 @@ export async function serve(o) {
           'r=$(readlink -f -- "$1") && [ "$r" = "$1" ] && [ -f "$r" ] && [ ! -L "$1" ] && [ "$(stat -c %u -- "$r")" = "$2" ] && chmod g+rw -- "$r"', "sh", file, String(w.who.uid)], { stdio: "ignore" });
         sock.end(JSON.stringify({ shared: true }) + "\n");
       } catch (e) { sock.end(JSON.stringify({ error: `cannot share that transcript: ${/** @type {Error} */ (e).message}` }) + "\n"); }
+      return;
+    }
+    if (req.op === "place") {
+      // vyred carries a chat on from a person's computer (core/runner/resume-lent.js): the transcript has to be the chat's own file in the account's own HOME, owned by the account, which only this process can make for
+      // an account. Narrow on purpose: one plain .jsonl at <HOME>/.claude/projects/<folder>/<session>.jsonl of THAT account, written whole and renamed in as the account itself (so it can never touch what the account
+      // may not), mode 0600, never through a link, never over anything that is not a plain file of the account's. The bytes follow the request line, exactly `size` of them, checked against `sha256`.
+      const w = whoFor({ account: req.account });
+      if (!w.who || !acc) { sock.end(JSON.stringify({ error: w.why || "no accounts here" }) + "\n"); return; }
+      const home = /** @type {string} */ (w.who.home), file = typeof req.path === "string" && path.isAbsolute(req.path) ? path.resolve(req.path) : "";
+      const base = path.join(home, ".claude", "projects") + path.sep;
+      if (!file || file !== req.path || !file.startsWith(base) || !/^[A-Za-z0-9_.-]{1,200}\/[A-Za-z0-9_-]{1,100}\.jsonl$/.test(file.slice(base.length)) || file.slice(base.length).split("/")[0] === "." || file.slice(base.length).split("/")[0] === "..") { sock.end(JSON.stringify({ error: "only <HOME>/.claude/projects/<folder>/<session>.jsonl of the account itself can be placed" }) + "\n"); return; }
+      if (!Number.isInteger(req.size) || req.size < 1 || req.size > PLACE_MAX || typeof req.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(req.sha256)) { sock.end(JSON.stringify({ error: "a transcript is 1 byte to 64 MiB, with its sha256" }) + "\n"); return; }
+      /** @type {Buffer} */ let bytes;
+      try {
+        bytes = await new Promise((resolve, reject) => {
+          /** @type {Buffer[]} */ const parts = []; let n = 0;
+          const timer = setTimeout(() => { sock.off("data", onData); reject(new Error("the transcript did not arrive")); }, 30_000);
+          const onData = (/** @type {Buffer} */ d) => { n += d.length; if (n > req.size) { clearTimeout(timer); sock.off("data", onData); reject(new Error("more bytes than the request said")); return; } parts.push(d); if (n === req.size) { clearTimeout(timer); sock.off("data", onData); resolve(Buffer.concat(parts)); } };
+          sock.on("data", onData); sock.resume();
+        });
+      } catch (e) { sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
+      if (crypto.createHash("sha256").update(bytes).digest("hex") !== req.sha256) { sock.end(JSON.stringify({ error: "the transcript does not match its sha256" }) + "\n"); return; }
+      try {
+        if (acc.place) acc.place(home, w.who, file, bytes);
+        else execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c", PLACE_SCRIPT, "sh", file, String(w.who.uid)], { input: bytes, stdio: ["pipe", "ignore", "ignore"] });
+        sock.end(JSON.stringify({ placed: true }) + "\n");
+      } catch (e) { sock.end(JSON.stringify({ error: `cannot place that transcript (${/** @type {any} */ (e).status ?? /** @type {Error} */ (e).message})` }) + "\n"); }
       return;
     }
     sock.end(JSON.stringify({ error: "unknown op" }) + "\n");

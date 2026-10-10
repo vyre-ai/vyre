@@ -5,6 +5,7 @@
 // SDK as its spawnClaudeCodeProcess on the box (ADR 0030, ADR 0032 part 3).
 
 import fs from "node:fs";
+import crypto from "node:crypto";
 import net from "node:net";
 import { EventEmitter } from "node:events";
 
@@ -96,6 +97,27 @@ export const spawnAsWatcher = (argv, { ro, cwd, socket } = {}) => spawnAsAgent(a
  * Make one session transcript of an account group-readable for vyred (the spawner checks the path: a .jsonl under that account's own .claude/projects, no link).
  * @param {number} account @param {string} file @param {{ socket?: string }} [o]
  */
+/**
+ * Put one session transcript into an account's own HOME as that account (the spawner checks the path: a plain .jsonl at <HOME>/.claude/projects/<folder>/<session>.jsonl, no link; 0600; written whole).
+ * @param {number} account @param {string} file @param {Buffer | Uint8Array} bytes @param {{ socket?: string }} [o]
+ */
+export async function placeTranscript(account, file, bytes, { socket = SOCKET } = {}) {
+  const buf = Buffer.from(bytes);
+  const c = /** @type {net.Socket} */ (await connect(socket));
+  const answer = new Promise((resolve, reject) => {
+    let out = "";
+    c.setEncoding("utf8");
+    c.on("data", d => { out += d; });
+    c.on("end", () => { try { resolve(JSON.parse(out.split("\n")[0])); } catch { reject(new Error("spawner: no answer")); } });
+    c.on("error", reject);
+  });
+  c.write(JSON.stringify({ op: "place", account, path: file, size: buf.length, sha256: crypto.createHash("sha256").update(buf).digest("hex") }) + "\n");
+  c.write(buf);
+  const r = /** @type {any} */ (await answer);
+  if (r.error) throw new Error(`spawner: ${r.error}`);
+  return true;
+}
+
 export async function shareTranscript(account, file, { socket = SOCKET } = {}) {
   const c = /** @type {net.Socket} */ (await connect(socket));
   const answer = new Promise((resolve, reject) => {

@@ -9,7 +9,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { serve } from "./server.js";
-import { spawnAsAgent, wipeAccount, shareTranscript } from "./client.js";
+import { spawnAsAgent, wipeAccount, shareTranscript, placeTranscript } from "./client.js";
+import { PLACE_SCRIPT } from "./server.js";
+import { spawnSync } from "node:child_process";
+import net from "node:net";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 async function setup(t) {
@@ -167,4 +170,52 @@ test("spawner share: only one .jsonl under the account's own .claude/projects is
   await assert.rejects(shareTranscript(2000, path.join(acct, "2000", ".claude", "projects", "..", "..", "x.jsonl"), { socket }), /only a \.jsonl/);
   await assert.rejects(shareTranscript(2999, good, { socket }), /account must be a uid/);
   assert.equal(shared.length, 1, "nothing else was shared");
+});
+
+test("spawner place: one plain transcript of the account itself, whole, checked against its hash; another account, a path out of the projects folder, a wrong hash or size, and a bad shape are refused", async t => {
+  const placed = /** @type {any[]} */ ([]);
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true }); fs.mkdirSync(path.join(acct, "2001"), { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat, place: (home, who, file, bytes) => placed.push([who.uid, file, bytes.toString()]) } });
+  t.after(() => srv.close());
+  const good = path.join(acct, "2000", ".claude", "projects", "-work-acme", "s1.jsonl");
+  assert.equal(await placeTranscript(2000, good, Buffer.from('{"a":1}\n{"b":2}\n'), { socket }), true);
+  assert.deepEqual(placed, [[2000, good, '{"a":1}\n{"b":2}\n']]);
+  await assert.rejects(placeTranscript(2001, good, Buffer.from("x"), { socket }), /only <HOME>\/\.claude\/projects/);   // another account's file
+  for (const bad of [path.join(acct, "2000", ".claude", "settings.json"), path.join(acct, "2000", ".claude", "projects", "p", "s.txt"), path.join(acct, "2000", ".claude", "projects", "..", "x", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", "a", "b", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", "s.jsonl"), path.join(acct, "2000", ".claude", "projects", ".", "s.jsonl")]) await assert.rejects(placeTranscript(2000, bad, Buffer.from("x"), { socket }), /only <HOME>/, bad);
+  await assert.rejects(placeTranscript(2999, good, Buffer.from("x"), { socket }), /account must be a uid/);
+  // the hash and the size are the request's own
+  const c = await new Promise(res => { const s = net.connect(socket, () => res(s)); });
+  /** @type {any} */ const ans = await new Promise(res => { let o = ""; c.on("data", d => { o += d; }); c.on("end", () => res(JSON.parse(o.split("\n")[0]))); c.write(JSON.stringify({ op: "place", account: 2000, path: good, size: 3, sha256: "0".repeat(64) }) + "\n" + "abc"); });
+  assert.match(ans.error, /does not match its sha256/);
+  const big = await new Promise(res => { const s = net.connect(socket, () => res(s)); });
+  /** @type {any} */ const ans2 = await new Promise(res => { let o = ""; big.on("data", d => { o += d; }); big.on("end", () => res(JSON.parse(o.split("\n")[0]))); big.write(JSON.stringify({ op: "place", account: 2000, path: good, size: 64 * 1024 * 1024 + 1, sha256: "0".repeat(64) }) + "\n"); });
+  assert.match(ans2.error, /1 byte to 64 MiB/);
+  assert.equal(placed.length, 1, "nothing else was placed");
+});
+
+test("spawner place, the real script (run as the current user): 0600, whole, the account's own folder only; a link anywhere, another owner's folder or a non-file target is refused", { skip: process.platform !== "linux" }, t => {
+  const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-place-"))); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const uid = String(process.getuid());
+  const run = (/** @type {string} */ file, /** @type {string} */ body, /** @type {string} */ owner = uid) => spawnSync("/bin/sh", ["-c", PLACE_SCRIPT, "sh", file, owner], { input: body });
+  const f = path.join(dir, "projects", "-work-a", "s1.jsonl");
+  assert.equal(run(f, "one\ntwo\n").status, 0);
+  assert.equal(fs.readFileSync(f, "utf8"), "one\ntwo\n");
+  assert.equal((fs.statSync(f).mode & 0o777).toString(8), "600", "0600");
+  assert.deepEqual(fs.readdirSync(path.dirname(f)), ["s1.jsonl"], "no temp file is left");
+  assert.equal(run(f, "three\n").status, 0); assert.equal(fs.readFileSync(f, "utf8"), "three\n", "replaced whole");
+  // a link as the file, as the folder, or in the way
+  const other = path.join(dir, "elsewhere"); fs.mkdirSync(other);
+  fs.symlinkSync(path.join(other, "target.jsonl"), path.join(dir, "projects", "-work-a", "link.jsonl"));
+  assert.equal(run(path.join(dir, "projects", "-work-a", "link.jsonl"), "x").status, 11);
+  fs.symlinkSync(other, path.join(dir, "projects", "-work-b"));
+  assert.equal(run(path.join(dir, "projects", "-work-b", "s.jsonl"), "x").status, 11);
+  assert.deepEqual(fs.readdirSync(other), [], "nothing was written through a link");
+  fs.symlinkSync(other, path.join(dir, "up")); assert.notEqual(run(path.join(dir, "up", "-work-c", "s.jsonl"), "x").status, 0, "a linked parent");
+  assert.deepEqual(fs.readdirSync(other), [], "or through a linked parent");
+  // another account's folder, and a directory where the file should be
+  assert.equal(run(f, "x", String(process.getuid() + 1)).status, 13);
+  fs.mkdirSync(path.join(dir, "projects", "-work-a", "d.jsonl")); assert.equal(run(path.join(dir, "projects", "-work-a", "d.jsonl"), "x").status, 14);
 });
