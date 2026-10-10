@@ -70,7 +70,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 16 | 8 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`previews`](#previews) | `core/previews` | `box` | 21 | 6 | cli |
+| [`previews`](#previews) | `core/previews` | `box` | 22 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 21 | 7 | capsule, cli, deck |
@@ -728,7 +728,7 @@ Live previews: a server an agent started on a port becomes a card in its chat, o
 - Folder: `core/previews`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [21](tools.md#previews)
+- Tools: [22](tools.md#previews)
 - Emits: [6 events](events.md#previews)
 - Shows on: cli
 - Needs kernel: `{"actions":["records.read","records.create","records.update"],"prefixes":["preview_doc/*"],"types":[{"name":"preview_doc","label":"Preview data","fields":[{"name":"preview","kind":"text","label":"Preview","required":true},{"name":"path","kind":"text","label":"Path","required":true},{"name":"collection","kind":"text","label":"Collection"},{"name":"docid","kind":"text","label":"Document"},{"name":"data","kind":"text","label":"Data"},{"name":"owner","kind":"text","label":"Written by"},{"name":"updated","kind":"number","label":"Updated"},{"name":"gone","kind":"number","label":"Removed"}]}]}`
