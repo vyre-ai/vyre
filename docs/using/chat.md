@@ -124,6 +124,10 @@ Open the chat's tools and choose Files. The panel lists what the chat made and w
 
 Select a file to see it: text and images show right there, anything else says so. Share to project opens that one file to the project's members and nothing else in the chat. Unshare takes it back at once. File names are encrypted to the people in the chat, so only they see this list. See [Private chats](private-chats.md).
 
+## Put a file back
+
+After a turn that edited files, the line under it ("2 files, 1 min") opens the changes. Each file there has Undo: it puts that one file back as it was before the turn. Undo only works while the file still holds what the turn left, so your own later edits are never overwritten; if the file changed since, nothing is touched and it says so. A file the session created is removed again. The session is told on its next message, so it does not build on what you took out. Vyre keeps the earlier versions until it restarts, and only for files inside the session's folder.
+
 ## Records you name
 
 When your message names a client, matter or other record exactly, such as "What case type is Dana Whitfield's matter?", the session is shown a short card of that record beside your words, so it need not stop to look it up. The card has the key fields and nothing sealed: a sealed field appears only as a placeholder the session can use in an action but never read. It only appears when the name is the record's whole title and no other record has it, and it is not repeated for the same record for twenty messages. The session can still look up anything the card leaves out. You can turn cards off in Settings (Cards for records you name).

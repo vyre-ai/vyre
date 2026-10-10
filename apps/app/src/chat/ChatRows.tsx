@@ -5,7 +5,8 @@
 
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Button, Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { tool } from "../real/box";
 import { Face } from "./Face";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
@@ -263,16 +264,29 @@ function HandoffLine({ it, store }: { it: any; store: ChatStore }) {
 }
 
 /** "3 files, 4 commands, 1 min" under a turn: opens the changes panel, every file the turn touched with its diff. */
-function TurnChip({ it, ctx }: { it: any; ctx: BlockCtx }) {
+function TurnChip({ it, ctx, session }: { it: any; ctx: BlockCtx; session: string }) {
   const [open, setOpen] = useState(false);
+  const [said, setSaid] = useState<Record<string, string>>({});
   const diff = useMemo(() => { const n = normalizeBlock({ block: "files", files: it.diffs }); return n.block === "diff" ? n : { block: "diff" as const, files: [] }; }, [it.diffs]);
   const has = diff.files.length > 0;
+  /** Put one file back as it was before the turn; the box refuses, in words, when the file has changed since. */
+  const undo = (path: string) => tool<{ restored: string }>("threads.undo-edit", { thread: session, path })
+    .then((r) => setSaid((m) => ({ ...m, [path]: r.restored === "removed" ? "Removed again" : "Put back" })))
+    .catch((e) => setSaid((m) => ({ ...m, [path]: e instanceof Error && e.message ? e.message : "That did not go through." })));
   return (
     <View>
       <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
       {has ? (
         <Sheet open={open} onClose={() => setOpen(false)} title="Changes in this turn">
-          <View style={{ padding: 16 }}><BlockView block={diff} ctx={ctx} /></View>
+          <View style={{ padding: 16, gap: 12 }}>
+            <BlockView block={diff} ctx={ctx} />
+            {(it.files || []).map((f: { path: string }) => (
+              <View key={f.path} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Text size="caption" mono numberOfLines={1} style={{ flex: 1 }}>{f.path}</Text>
+                {said[f.path] ? <Text size="caption" tone="label">{said[f.path]}</Text> : <Button size="sm" kind="ghost" label="Undo" onPress={() => void undo(f.path)} />}
+              </View>
+            ))}
+          </View>
         </Sheet>
       ) : null}
     </View>
@@ -426,7 +440,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     case "handoffResult":
       return <Frame wide={wide} indent dense><HandoffResult it={it} /></Frame>;
     case "turnsummary":
-      return <Frame wide={wide} indent dense><TurnChip it={it} ctx={ctx} /></Frame>;
+      return <Frame wide={wide} indent dense><TurnChip it={it} ctx={ctx} session={store.session} /></Frame>;
     case "handoff":
       return <Frame wide={wide} indent dense><HandoffLine it={it} store={store} /></Frame>;
     case "tool":
