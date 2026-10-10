@@ -33,7 +33,7 @@ export async function startInstallerServer(o) {
   // A DEVELOPMENT build of the box (install-box.sh --from with VYRE_DEV_SIGN=0: no release signature), whose sealing process takes the three developer switches from vyre.env: a stand-in owner key can then
   // give the person's yes. A packaged build ignores all of them (kernel/devbuild.js). Only for a throwaway test box; this is how Publish's card and the signed yes are walked without a hardware key.
   if (o.devBuild) fs.writeFileSync(path.join(dir, "vyre.env"), "VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\nVYRE_SEAL_UNATTESTED=1\nVYRE_KERNEL_PATH_RULE=1\n", { mode: 0o600 });
-  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir, ...(o.devBuild ? { VYRE_DEV_SIGN: "unsigned" } : {}) };
+  const env = { ...process.env, ...(o.code ? { VYRE_CODE: o.code } : {}), VYRE_STORE: o.store === "plain" ? "sqlite" : "auto", VYRE_DIR: dir, ...(o.devBuild ? { VYRE_DEV_SIGN: "unsigned", VYRE_MODULES_TRIES: "0" } : {}) };
   // The line the app shows is `curl -fsSL vyre.run/i | VYRE_CODE=... VYRE_STORE=... sh`. Here the same script runs from this checkout with the same two variables. `--from` is the installer's own way to install a build that is
   // not a published release: it packs the checkout and signs it with a throwaway key for this server only (dev_sign), since a build that is not signed by Vyre's release key cannot run its modules.
   const child = o.release
@@ -55,6 +55,13 @@ export async function startInstallerServer(o) {
     const d = sh(`sudo mkdir -p /etc/systemd/system/vyre-update.service.d && printf '${conf}' | sudo tee /etc/systemd/system/vyre-update.service.d/proof.conf >/dev/null && sudo systemctl daemon-reload && systemctl is-active vyre-update.path`);
     fs.appendFileSync(logFile, `\nupdate unit drop-in: ${d.status} ${String(d.stdout || d.stderr).trim()}\n`);
   }
+  if (o.devBuild && exit === 0) {
+    // A root run of compose passes on only the few settings it checks, so the developer switches in vyre.env (the path rule, the sealer's) never reached the container the installer started. This is a
+    // throwaway development box: its stack is started again as the person who owns the folder, which reads vyre.env whole. The setup code is still in vyre.env and still within its hour.
+    const again = sh(`cd ${dir} && docker compose -p vyre up -d --force-recreate vyre 2>&1`);
+    fs.appendFileSync(logFile, `\nrecreated for the developer switches: ${again.status} ${String(again.stdout || again.stderr).slice(-200)}\n`);
+    if (again.status !== 0) throw new Error(`could not start the development box with its switches: ${String(again.stdout || again.stderr).slice(-300)}`);
+  }
   const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const printed = m ? m[1] : "";
   const exec = (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
@@ -70,7 +77,13 @@ export async function startInstallerServer(o) {
       return Buffer.from(JSON.stringify(proof)).toString("base64url");
     } : undefined,
     /** The four words the installer printed on its terminal. */
-    async words() { if (!printed) throw new Error("the installer printed no check words (IR-1: show_words)"); return printed; },
+    async words() {
+      if (printed) return printed;
+      if (!o.devBuild) throw new Error("the installer printed no check words (IR-1: show_words)");
+      // a development box starts its modules after the installer's last look: the words are read from the box once its relay module answers
+      for (let i = 0; i < 90; i++) { const r = exec("relay.setup.status"); const w = /"words":\s*"([a-z]+(?: [a-z]+){3})"/.exec(String(r.stdout || "")); if (w) return w[1]; await new Promise(res => setTimeout(res, 2000)); }
+      throw new Error("the development box showed no check words in three minutes");
+    },
     /** @param {string} tool @param {any} [input] */
     async operator(tool, input = {}) { const r = exec(tool, input); let j = null; try { j = JSON.parse(r.stdout); } catch { /* plain text */ } if (r.status !== 0) throw new Error(`${tool}: ${(r.stderr || r.stdout).slice(0, 200)}`); return j && j.data !== undefined ? j.data : j; },
     async stop() {
