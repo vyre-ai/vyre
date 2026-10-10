@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Button, Card, Chip, Divider, EmptyState, Icon, LoadingState, Row, SectionLabel, Text } from "@vyre/ui";
 import type { IconName } from "@vyre/ui";
 import { callT } from "../../src/real/call-tool";
+import { dayKey, dayLabel } from "./days.js";
 import { spaceList } from "../drive/real";
 import { treeOf, type Body } from "../templates/model";
 
@@ -75,13 +76,6 @@ export function StagesPane({ snapshot, stage, template }: { snapshot: string; st
 
 type Entry = { type: string; kind: string; id: string; urn: string; title: string; line: string; at: number; mine?: boolean; shared?: boolean; chat?: string };
 const ICON: Record<string, IconName> = { stage: "projects", task: "task", email: "mail", text: "chat", call: "phone", meeting: "cal", chat: "chat", file: "file", flow: "flows", document: "file", record: "records", person: "person" };
-const dayKey = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
-const dayLabel = (ms: number) => {
-  if (!ms) return "Earlier";
-  const now = new Date(), d = new Date(ms), days = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
-  return days === 0 ? "Today" : days === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
-};
-
 /** The project's story, newest first and grouped by day (work.timeline): stages it moved through, tasks done, messages sent, files shared, chats and Flow runs, each a type mark and one plain line. A chat shows when it is the viewer's or its people shared it, by title only. */
 export function TimelinePane({ slug }: { slug: string }) {
   const router = useRouter();

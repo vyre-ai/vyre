@@ -26,7 +26,7 @@ function span(ms) {
 }
 
 /** @param {string} who */
-function whoLabel(who) { const [k, ...r] = String(who).split(":"); const n = r.join(":"); return k === "role" ? `the ${n}` : k === "teammate" ? n.charAt(0).toUpperCase() + n.slice(1) : n; }
+function whoLabel(who, cat) { const [k, ...r] = String(who).split(":"); const n = r.join(":"); return k === "role" ? `the ${n}` : k === "teammate" ? n.charAt(0).toUpperCase() + n.slice(1) : k === "person" ? (cat && cat.people && cat.people[n]) || "a person" : n; }
 
 /**
  * One step in a sentence a person can read. No ids, no jargon.
@@ -45,12 +45,12 @@ export function describeStep(s, cat) {
     case "decide": return "Decide";
     case "repeat": return `Do this for each ${s.as}`;
     case "parallel": return `Do ${(s.steps || []).length} things at the same time, then carry on`;
-    case "branch": return s.label || "One of them";
+    case "branch": return s.label || s.id;
     case "subflow": return `Run the Flow ${s.flow}`;
     case "wait": return s.for_ms !== undefined ? `Wait ${span(s.for_ms)}` : s.event ? `Wait for ${s.event}` : "Wait until a time";
-    case "ask": return `Ask ${whoLabel(s.to)}`;
-    case "assign": return `Give a task to ${whoLabel(s.to)}`;
-    case "agent": return `Have ${whoLabel(s.assistant)} work on it`;
+    case "ask": return `Ask ${whoLabel(s.to, cat)}`;
+    case "assign": return `Give a task to ${whoLabel(s.to, cat)}`;
+    case "agent": return `Have ${whoLabel(s.assistant, cat)} work on it`;
     case "call": return act.charAt(0).toUpperCase() + act.slice(1);
     case "stage": return `Move the ${typeLabel(cat, s.type)} to ${s.to}`;
     case "classify": return "Sort the text into a label";

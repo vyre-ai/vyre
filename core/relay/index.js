@@ -241,13 +241,17 @@ export default {
     let gatePort = /** @type {number | null} */ (null);
     const tunnelUrl = () => { const u = (settings()).tunnel_url; return typeof u === "string" && /^wss?:\/\/[^\s/]+(?::\d+)?\/?$/.test(u) ? u : ""; };
     const zone = () => String((ctx.config.names && ctx.config.names.zone) || "vyre.run");
+    /** The own domains the person named for their apps (sign.firm.com): a stream for one is this box's too, once the directory has listed it. Kept from the apps module, refreshed with the gate's port. @type {string[]} */
+    let ownHosts = [];
     const tunnelEnd = createTunnelEnd({
       name: () => (boxHandle() && ctx.config.network && ctx.config.network.via === "vyre.run" ? `${boxHandle()}.${zone()}` : null),
+      own: () => ownHosts,
       port: () => gatePort,
       log: (what, x) => ctx.log(`relay: tunnel: ${what}${x && /** @type {any} */ (x).why ? " " + /** @type {any} */ (x).why : ""}`),
     });
     const refreshGate = async () => {
       try { const r = /** @type {any} */ (await ctx.call("wink.gate.port", {})); const p = r && r.data && r.data.port; gatePort = Number.isInteger(p) ? p : null; } catch { gatePort = null; }
+      try { const r = /** @type {any} */ (await ctx.call("appmods.domain.list", {})); const d = r && r.data; ownHosts = d && Array.isArray(d.domains) ? d.domains.map((/** @type {any} */ x) => String(x.host)) : []; } catch { ownHosts = []; }
     };
     const startTunnel = async () => {
       if (tlink || !tunnelUrl() || !boxHandle()) return;
@@ -673,6 +677,9 @@ export default {
     startTunnel().catch(e => ctx.log(`relay: the tunnel link did not start: ${/** @type {Error} */ (e).message}`));
     const offNameA = ctx.events.on("name.claimed", () => { stopTunnel(); startTunnel().catch(() => {}); });
     const offNameB = ctx.events.on("name.released", () => stopTunnel());
+    const offDomains = ctx.events.on("appmods.domain-changed", () => { void refreshGate(); });
+    // the edge address is a setting a person (or their assistant) changes; the door opens or shuts at once, with no restart
+    const offTunnelUrl = ctx.settings.on("relay.tunnel_url", () => { stopTunnel(); startTunnel().catch(() => {}); });
 
     // ---- tools ----
 
@@ -1431,6 +1438,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offNameA(); offNameB(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

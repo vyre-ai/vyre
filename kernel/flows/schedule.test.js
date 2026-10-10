@@ -43,6 +43,17 @@ test("business hours: a cron time outside the window is skipped, an interval wai
   assert.equal(allowedAt(ny(14, 11), late, NY), false, "Wednesday is not a day it keeps");
 });
 
+test("business hours: a once-a-minute line is not walked through the night, and a line the window never allows ends in null", () => {
+  const minutely = { on: "time", cron: "* * * * *", tz: NY, hours: true };
+  const t0 = Date.now();
+  assert.equal(nextFire(minutely, ny(9, 16, 59), NY), ny(12, 9), "Friday after closing: Monday at the opening minute");
+  assert.equal(nextFire(minutely, ny(9, 10, 5), NY), ny(9, 10, 6), "inside the window it is the next minute");
+  assert.equal(nextFire({ ...minutely, cron: "0 18 * * *" }, ny(9, 10), NY), null, "6 pm is never inside the window");
+  assert.ok(Date.now() - t0 < 5000, `it took ${Date.now() - t0} ms (a minute-by-minute walk took 37 s)`);
+  const week = dueTimes(minutely, ny(5, 8), ny(9, 18), NY, [], 50);
+  assert.equal(week.times[0], ny(5, 9), "the first due time is the opening of Monday");
+});
+
 test("holidays: a date is skipped once, a month-day every year, and the Space's list applies with business hours", () => {
   const t = { on: "time", cron: "0 9 * * 1-5", tz: NY, holidays: ["2026-10-12", "12-25"] };
   assert.equal(nextFire(t, ny(9, 10), NY), ny(13, 9), "Monday 12 Oct is a holiday");

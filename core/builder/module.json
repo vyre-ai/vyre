@@ -1,0 +1,13 @@
+{
+  "name": "builder",
+  "version": "0.1.0",
+  "description": "Builds a site for Publish. For now it turns a folder of ready files into a build, with no command run; building from a repo or running a build command needs a container builder this server does not have yet.",
+  "roles": ["box"],
+  "requires": [],
+  "does": {
+    "tools": [
+      { "name": "builder.build", "reach": "modules", "effect": "read" }
+    ]
+  },
+  "watches": { "emits": [] }
+}

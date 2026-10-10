@@ -206,7 +206,7 @@ const ops = {
     try {
       learned = learnOperation({ name: String(args?.name || ""), kind, exchanges: first.exchanges, ...(second ? { exchanges2: second.exchanges } : {}), examples: /** @type {any} */ (ex), cookies: first.cookies, storage: first.storage,
         trigger, ...(args?.match ? { match: args.match } : {}), ...(Number.isInteger(args?.id) ? { id: args.id } : {}), ...(Array.isArray(args?.public) ? { public: args.public } : {}),
-        ...(args?.keepExamples === true ? { keepExamples: true } : {}), now: new Date().toISOString() });
+        ...(args?.keepExamples === true ? { keepExamples: true } : {}), ...(args?.page && typeof args.page === "object" && !Array.isArray(args.page) ? { page: Object.fromEntries(Object.entries(args.page).slice(0, 20).map(([k, v]) => [String(k), String(v).slice(0, 300)])) } : {}), now: new Date().toISOString() });
     } catch (e) { return { ok: false, class: "input", reason: String(/** @type {any} */ (e).message || e), next: "pick the request that carries the example (ops.scout, then pass its id) or change the example" }; }
     // The fields the person wants back ("name, headline, location"): found in the answer the learned request got, so nobody writes a path by hand.
     /** @type {string[]|undefined} */ let missing;

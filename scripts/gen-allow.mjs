@@ -110,7 +110,6 @@ export const OPEN_NOTES = Object.freeze({
   "link.rename": "renames a paired Mac or device, the person's own label",
   "mentions.kinds": "reads the kinds the # picker offers",
   "mentions.search": "names matching what was typed in the # picker, grouped by kind",
-  "names.domain.check": "a live DNS check of the records for an own domain, a read",
   "planner.settings": "reads and sets the planner's zone and escalation timing, the person's own preferences",
   "presence.person.status": "reads whether this request is signed in as the person and until when",
   "projects.add-threads": "picks threads into a project; a thread can be in several projects",

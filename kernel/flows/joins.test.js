@@ -5,10 +5,12 @@ import assert from "node:assert/strict";
 import { world, install, settle, ALEX, BOB } from "./testing/world.js";
 import { SPACE } from "./testing/fixtures.js";
 import { checkFlow } from "./schema.js";
+import { compileFlow, deriveCaps } from "./compile.js";
 import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
 import { explainRun } from "./describe.js";
 import { applyPatch } from "./patch.js";
+import { graph } from "./canvas.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 const flowOf = (steps, extra = {}) => ({ format: 1, name: "par", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
@@ -110,6 +112,26 @@ test("parallel: a lane that does not finish fails the step after the others sett
   const [r2] = await roots(w2, id2);
   assert.equal(r2.state, "done", JSON.stringify(r2.error));
   assert.equal(mine(w2, "payment").length, 1, "its failure path let the run go on");
+});
+
+test("parallel: a failed lane is one row in Needs attention, the parent's, and it says which lane and why", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([{ id: "p", kind: "parallel", label: "Both checks", steps: [
+    lane("good", [{ id: "m", kind: "create", type: "matter", set: { client: "Fine" } }]),
+    lane("bad", [{ id: "q", kind: "ask", to: "role:member", title: "Anyone?" }]),
+  ] }]));
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [parent] = await roots(w, id);
+  assert.equal(parent.state, "failed");
+  const lanes = await kids(w, id);
+  assert.ok(lanes.some(r => r.state === "failed" && r.attention), "the lane itself is failed and flagged");
+  const rows = await w.runner.attention();
+  assert.equal(rows.length, 1, JSON.stringify(rows));
+  assert.equal(rows[0].run, parent.id);
+  assert.match(rows[0].message, /the lane bad of Both checks did not finish/);
+  const h = await w.runner.health(id);
+  assert.deepEqual([h.week.total, h.week.failed, h.week.ok], [1, 1, 0], "the Flow ran once and failed once, not three times");
 });
 
 test("parallel: retrying the parent sends the failed lane round again and keeps the one that finished", async () => {
@@ -216,6 +238,40 @@ test("parallel: what a lane read from outside taints the run, so the step after 
   assert.equal(outside.sends.length, 1, "and goes once a person says yes");
 });
 
+test("parallel: a Flow that allows one run at a time still finishes: the lanes take turns and nothing waits for a place that never frees", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([
+    { id: "p", kind: "parallel", steps: [
+      lane("a", [{ id: "ma", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+      lane("b", [{ id: "mb", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+      lane("c", [{ id: "mc", kind: "create", type: "matter", set: { client: { expr: "trigger.n" } } }]),
+    ] },
+    { id: "after", kind: "create", type: "payment", set: { client: { expr: "trigger.n" }, amount: 1 } },
+  ], { concurrency: 1 }));
+  for (let n = 0; n < 5; n++) w.kernel.inbound("payment.received", { n: `run${n}` });
+  for (let i = 0; i < 10; i++) await settle(w);
+  const parents = await roots(w, id);
+  assert.equal(parents.length, 5);
+  assert.deepEqual([...new Set(parents.map(r => r.state))], ["done"], JSON.stringify(parents.map(r => [r.state, r.queued && r.queued.reason])));
+  assert.equal(mine(w, "matter").length, 15, "every lane of every run did its work once");
+  assert.equal(mine(w, "payment").length, 5, "and every run went on after its join, once");
+});
+
+test("a run held at the switch can be stopped before it starts, and then nothing of it runs when the switch is released", async () => {
+  const w = await world();
+  const { id } = await install(w, flowOf([{ id: "m", kind: "create", type: "matter", set: { client: "Held" } }]));
+  await w.runner.pauseAll({ reason: "test" });
+  w.kernel.inbound("payment.received", {});
+  await settle(w);
+  const [held] = await roots(w, id);
+  assert.equal(held.state, "queued");
+  assert.deepEqual(await w.runner.cancel(held.id, { by: "per_alex" }), { ok: true, state: "cancelled" });
+  await w.runner.resumeAll({});
+  await settle(w);
+  assert.equal((await w.runner.getRun(held.id)).state, "cancelled");
+  assert.equal(mine(w, "matter").length, 0, "it never ran");
+});
+
 test("parallel: a practice run counts what every lane would do", async () => {
   const w = await world();
   const flow = flowOf([{ id: "p", kind: "parallel", steps: [
@@ -302,4 +358,39 @@ test("edit by patch: a step goes into a lane, a lane can be removed with its ste
   f = applyPatch(f, [{ op: "remove", step: "c" }]);
   assert.deepEqual(f.steps[0].steps.map(s => s.id), ["a", "b"]);
   assert.deepEqual(checkFlow(f), []);
+});
+
+test("the compiler sees inside lanes: an outward step in a lane is listed on the approval card and its power is derived", async () => {
+  const w = await world();
+  w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
+  const flow = flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("a", [{ id: "mail", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com" } }]),
+    lane("b", [{ id: "m", kind: "create", type: "matter", set: { client: "B" } }]),
+  ] }, { id: "again", kind: "subflow", flow: "other" }]);
+  const c = compileFlow(flow, w.cat);
+  assert.equal(c.ok, true, JSON.stringify(c.errors));
+  assert.deepEqual(c.effects.outward.map(o => o.step), ["mail"]);
+  assert.deepEqual(c.effects.writes, ["matter"]);
+  const caps = deriveCaps(flow, w.cat).map(x => x.action).sort();
+  assert.deepEqual(caps, ["email.send", "flows.run", "records.create"]);
+  const bad = compileFlow(flowOf([{ id: "p", kind: "parallel", steps: [lane("a", [{ id: "x", kind: "create", type: "matter", set: { client: "A" } }]), lane("b", [{ id: "y", kind: "create", type: "matter", set: { client: { expr: "steps.x.record.id" } } }])] }]), w.cat);
+  assert.equal(bad.ok, false, "a lane cannot read what a sibling lane makes");
+  assert.match(JSON.stringify(bad.errors), /steps\.x is not a step that has already run/);
+});
+
+test("the canvas draws lanes side by side under the parallel step, each named, and a person is a person, never an id", async () => {
+  const w = await world();
+  const flow = flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("review", [{ id: "look", kind: "assign", to: "person:per_" + "a".repeat(26), title: "Look it over", output: { kind: "note" } }]),
+    lane("draft", [{ id: "s", kind: "subflow", flow: "inner_note" }]),
+  ] }]);
+  const g = graph(flow, w.cat);
+  const byId = Object.fromEntries(g.nodes.map(n => [n.id, n]));
+  assert.deepEqual([byId.review.label, byId.draft.label], ["review", "draft"], "a lane is named by the author's word for it");
+  assert.equal(byId.look.label, "Give a task to a person");
+  assert.equal(byId.s.label, "Run the Flow inner_note");
+  assert.deepEqual(g.edges.filter(e => e.from === "p").map(e => [e.to, e.kind]), [["review", "lane"], ["draft", "lane"]]);
+  assert.ok(byId.review.lane !== byId.draft.lane && byId.review.lane > byId.p.lane, "the lanes sit side by side to the right of the parallel step");
+  const named = graph(flow, { ...w.cat, people: { ["per_" + "a".repeat(26)]: "Alex Rivera" } });
+  assert.equal(named.nodes.find(n => n.id === "look").label, "Give a task to Alex Rivera");
 });

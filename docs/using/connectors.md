@@ -212,6 +212,12 @@ The token is stored as a [vault](vault.md) item named `github-<name>` and is nev
 Disconnecting removes that item and the account. It does not revoke the token at GitHub, so
 remove it at github.com/settings/applications if you want it gone entirely.
 
+**A new repo for a folder.** Ask for a repo for a site or a project folder and Vyre makes it under
+your account, or under an organisation you belong to, private unless you say public, and sends the
+folder there as its first commit. It asks for your yes first, because it creates something on
+GitHub. Files that look like secrets (an `.env`, a private key) are left out, and a folder with a
+token inside is stopped before anything is made on GitHub, with the file and line named.
+
 Commits a session makes carry your identity: your GitHub name, and your public GitHub email or,
 without one, GitHub's `<id>+<login>@users.noreply.github.com` address. Each commit also ends with a
 `Vyre-Session: <id>` line, so you can see which session wrote what. This is an audit aid, not a
@@ -264,6 +270,13 @@ driving the page each time. `chrome_op` in Claude Code (or your assistant) does 
    traffic. Then it proves the operation on an input that was not an example before it keeps it.
 3. A send (a message, a connection request) is taught with its request **blocked**, after your yes:
    nothing is sent while Vyre learns it. Every later call of it waits for your yes and is made once.
+
+A site that answers with a plain web page (a court's docket, a registry, a county record search) is
+taught the same way: tell `chrome_op learn` the text of the first row, one piece per field (`page:
+{ number: "24-CV-1001", caption: "Harlow v. Northwind" }`). Vyre finds the rows of the page by their
+structure, keeps that as the operation's recipe, and reads every later page the same way, so the same
+search runs from a Flow with no model. If the site says "no results", that is an empty answer; if the
+page's structure changed, that is a change to repair.
 
 Your login never leaves the browser. A call is signed inside the page, by the browser that is
 signed in; Vyre keeps names, shapes and the places a token comes from, never the token, a cookie or

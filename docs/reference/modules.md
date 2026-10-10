@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 23 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -29,6 +29,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`attachments`](#attachments) | `core/attachments` | `box` | 2 | 1 | none |
 | [`brand`](#brand) | `core/brand` | `box`, `local` | 4 | 1 | cli |
 | [`bridges`](#bridges) | `core/bridges` | `box`, `local` | 17 | 16 | capsule, cli, deck |
+| [`builder`](#builder) | `core/builder` | `box` | 1 | 0 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 6 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 41 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 6 | 1 | cli, deck |
@@ -45,7 +46,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 21 | 7 | capsule, cli, deck |
@@ -62,7 +63,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`models`](#models) | `core/models` | `box`, `local` | 9 | 3 | cli |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
-| [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
+| [`names`](#names) | `core/names` | `box` | 10 | 3 | cli |
 | [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`outside`](#outside) | `core/outside` | `box` | 9 | 6 | none |
@@ -72,7 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`previews`](#previews) | `core/previews` | `box` | 20 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 21 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
@@ -102,14 +103,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 56 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 154 | 58 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 67 | 35 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 68 | 35 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
 ## about
@@ -154,13 +155,15 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [20](tools.md#appmods)
-- Emits: [6 events](events.md#appmods)
+- Tools: [23](tools.md#appmods)
+- Emits: [9 events](events.md#appmods)
+- Listens for: `vault.item-changed`
 - Shows on: cli
 - Needs daemon: `flowsHost`
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
 - Needs tools: `documents.send`
 - Needs vault: `per-app`
+- Teaches tips: `[object Object]`
 
 ## approvals
 
@@ -254,6 +257,17 @@ Lets one Space share with another on purpose: a shared view, a reference, an eve
 - Emits: [16 events](events.md#bridges)
 - Shows on: capsule, cli, deck
 
+## builder
+
+Builds a site for Publish. For now it turns a folder of ready files into a build, with no command run; building from a repo or running a build command needs a container builder this server does not have yet.
+
+- Folder: `core/builder`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [1](tools.md#builder), 1 of them only for other modules
+- Emits: no events
+- Shows on: no surface
+
 ## capsule
 
 The Mac command bar: press Control twice and talk to the assistant, any agent or any session.
@@ -311,6 +325,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Shows on: no surface
 - Needs credentials: `[object Object]`
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`
 
 ## computer
 
@@ -389,6 +404,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Tools: [8](tools.md#documents)
 - Emits: [3 events](events.md#documents)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## events
 
@@ -443,8 +459,8 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [33](tools.md#github), 6 of them only for other modules
-- Emits: [8 events](events.md#github)
+- Tools: [35](tools.md#github), 6 of them only for other modules
+- Emits: [9 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -633,7 +649,7 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [8](tools.md#names), 3 of them only for other modules
+- Tools: [10](tools.md#names), 5 of them only for other modules
 - Emits: [3 events](events.md#names)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`
@@ -746,7 +762,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [19](tools.md#publish)
+- Tools: [21](tools.md#publish)
 - Emits: [6 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
@@ -1094,8 +1110,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [150](tools.md#vault), 21 of them only for other modules
-- Emits: [56 events](events.md#vault)
+- Tools: [154](tools.md#vault), 21 of them only for other modules
+- Emits: [58 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -1180,7 +1196,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [67](tools.md#wink), 13 of them only for other modules
+- Tools: [68](tools.md#wink), 14 of them only for other modules
 - Emits: [35 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

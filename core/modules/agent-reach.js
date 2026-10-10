@@ -200,6 +200,8 @@ export const PERSON_ONLY = new Map([
   ["connectors.connection.decline", "the person's no to a proposed Connection"],
   ["connectors.connection.rebuild", "rewrites the Connection's vault credential from its record: the person's own act"],
   ["connectors.connection.delete", "removes a Connection and its vault credential: the person's own act"],
+  ["github.owners", "lists the organisations the person's GitHub account belongs to: their own screen picks the owner of a new repo"],
+  ["github.repo.create", "creates a repo on the person's GitHub account and sends a folder there: their own act, with their yes"],
   ["gate.said.add", "would let an assistant widen its own authority: records the person's own words as approval"],
   ["github.connect", "needs the person's Face ID or presence: signs an account in or out"],
   ["github.connect.cancel", "needs the person's Face ID or presence: signs an account in or out"],
@@ -451,7 +453,6 @@ export const OPEN = new Set([
   "link.rename",
   "mentions.kinds",
   "mentions.search",
-  "names.domain.check",
   "planner.settings",
   "presence.person.status",
   "projects.add-threads",
@@ -532,6 +533,8 @@ export const ASK_FIRST = new Map([
   ["bridges.kit.install", "changes the Space's shape"],
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
+  ["appmods.domain.add", "opens an app's public pages to the outside at the person's own domain"],
+  ["appmods.domain.remove", "takes the person's own domain from an app, so its public pages stop answering at that address"],
 ]);
 
 // The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,

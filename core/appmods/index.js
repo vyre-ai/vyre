@@ -13,6 +13,8 @@ import { parseAppModule, cardOf, checkAppModule } from "./manifest.js";
 import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
+import { DOMAIN_MIGRATIONS, createDomains, ownOrigin } from "./domains.js";
+import { registerDomainTools } from "./domain-tools.js";
 import { signingBrand } from "../../lib/brand/profile.js";
 import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
 
@@ -32,6 +34,7 @@ export const MIGRATIONS = [
   `CREATE TABLE appmods_sessions (h TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, exp INTEGER NOT NULL, who_w TEXT, who_r TEXT);`,
   // the key an app's expiring links to a signed copy are made under; it never leaves the box
   `CREATE TABLE appmods_link_keys (name TEXT PRIMARY KEY, key BLOB NOT NULL);`,
+  ...DOMAIN_MIGRATIONS,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -108,7 +111,7 @@ export function pick(o, at) {
 }
 
 /** Tests put a fake driver here before the daemon starts; production leaves it null. */
-export const seam = /** @type {{ driver: any }} */ ({ driver: null });
+export const seam = /** @type {{ driver: any, rotateMs?: number }} */ ({ driver: null });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /** A preview's name on the front: pv- and eight hex digits. Never an installed app's name (those are catalog names). */
@@ -321,6 +324,31 @@ export default {
       },
     });
 
+    // A key rotated in the Vault reaches the app (R031-73): the container is made again with the new value and its data stays. A burst of changes (two keys rotated together) is one restart, and an app the host
+    // helper runs has its keys made by root, so those are not this module's to change.
+    /** @type {Map<string, NodeJS.Timeout>} */ const rotating = new Map();
+    const rotate = async (/** @type {any} */ r) => {
+      const m = known(r.name), p = { space: r.space, manifest: m, hookPort: r.hook_port };
+      await driver.down(p, { data: false });
+      const up = await driver.up({ ...p, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: await secretsOf(m) });
+      db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
+      listen(m, up.hookHost, r.hook_port);
+      ctx.events.emit("appmods.restarted", { name: m.name, why: "a key changed in the Vault" });
+    };
+    const offRotate = ctx.events.on("vault.item-changed", (/** @type {any} */ e) => {
+      const changed = String((e.payload || e).name || "");
+      if (byHelper || !changed.startsWith("app-")) return;
+      for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all())) {
+        const m = catalog.get(String(r.name));
+        if (!m || !(m.app.secrets || []).some((/** @type {any} */ s) => item(r.name, s.env.toLowerCase()) === changed) || rotating.has(r.name)) continue;
+        rotating.set(r.name, setTimeout(() => {
+          rotating.delete(r.name);
+          // The container is gone before the new one starts: if it does not start, the app is stopped, not "running" in the list, and the person can start it again.
+          rotate(r).catch(err => { db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(r.name); tickets.drop(r.name); ctx.events.emit("appmods.stopped", { name: r.name }); ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`); });
+        }, seam.rotateMs ?? 300));
+      }
+    });
+
     // The daemon's hook door (POST /v1/appmods/<name>/hook) for apps that share the daemon's network; the token rides in x-vyre-token.
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
 
@@ -343,7 +371,9 @@ export default {
       db.prepare("INSERT OR IGNORE INTO appmods_link_keys (name, key) VALUES (?, ?)").run(name, key);
       return Buffer.from(/** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name)).key);
     };
+    const domains = createDomains(db);
     const hostProxy = createHostProxy({
+      alias: host => domains.appOf(host),
       brand: brandCss,
       linkKey,
       tickets,
@@ -445,7 +475,7 @@ export default {
         if (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days`, "bad_input");
         const expires = Date.now() + days * 86_400_000;
         let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
-        return { url: `${originFor(name, baseHost())}${SIGNED}${token}`, expires };
+        return { url: `${await signerOrigin(name)}${SIGNED}${token}`, expires };
       },
     });
     ctx.tool("appmods.signing.request", {
@@ -462,11 +492,24 @@ export default {
         if (!res.ok) throw refuse(`${name} would not make the signing request (${res.status}); check that template ${body.template_id} exists`, "app_refused");
         const got = readRequest(await res.json().catch(() => null));
         if (!got) throw refuse(`${name} answered, but not with a signing request`, "app_refused");
-        return { ...got, url: `${originFor(name, baseHost())}/sign/${got.submission}/${got.slug}` };
+        return { ...got, url: `${await signerOrigin(name)}/sign/${got.submission}/${got.slug}` };
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
-      hosts: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host) }) });
+      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
+        ...domains.list().filter(d => (row(d.app) || {}).state === "running").map(d => d.host)] }) });
+    registerDomainTools({ ctx, domains, running: app => (row(app) || {}).state === "running", ownerOrAdmin,
+      signingApp: () => { for (const m of catalog.values()) if (m.app && m.app.signing && (row(m.name) || {}).state === "running") return m.name; return null; } });
+    /** The address a signer opens: the person's own domain for this app when the public gate serves it, else the app's address under the Space's name. @param {string} name */
+    const signerOrigin = async name => {
+      if (ctx.config && ctx.config.relay && ctx.config.relay.tunnel_url && domains.list().some(d => d.app === name)) {
+        const r = /** @type {any} */ (await ctx.call("wink.public.hosts", {}).catch(() => null));
+        const live = ((r && r.data && r.data.hosts) || []).filter((/** @type {any} */ h) => h.state === "live").map((/** @type {any} */ h) => String(h.host));
+        const own = ownOrigin(domains.list(), name, live);
+        if (own) return own;
+      }
+      return originFor(name, baseHost());
+    };
 
     // Apps that were running when this daemon stopped come back with it.
     for (const r of db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all()) {
@@ -474,6 +517,6 @@ export default {
         .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
-    return { async stop() { for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
+    return { async stop() { offRotate(); for (const t of rotating.values()) clearTimeout(t); rotating.clear(); for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
   },
 };

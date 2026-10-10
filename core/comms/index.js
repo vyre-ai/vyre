@@ -4,6 +4,7 @@
 // module until the Gate releases it. Once sent, the message is logged on the client it went to by the daemon's sent-mail log (core/daemon/sent-mail-log.js), email and text alike.
 import { normalizePhone } from "../../records/comms/log.js";
 import { agentClaim } from "../modules/index.js";
+import { httpFetch } from "../../lib/http.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -14,6 +15,8 @@ export const SMS_MAX = 1600;
 /** The most numbers one yes covers. */
 export const SMS_BATCH = 20;
 export const SENDER = "comms:sms";
+/** The Vault item the Twilio need is kept in (needs.credentials id twilio, as the Vault names a module's single need). */
+const TWILIO_ITEM = "comms-twilio";
 const CONTENT = { body: "string (the text)" };
 
 /** E.164 numbers from what was given, each once; a number that is not one is refused by name. @param {unknown} to */
@@ -30,8 +33,9 @@ export function numbers(to) {
   return out;
 }
 
-/** @param {any} ctx */
-export function registerComms(ctx) {
+/** @param {any} ctx @param {{ http?: typeof httpFetch }} [o] `http`: the guarded client (lib/http.js); a test hands in its own */
+export function registerComms(ctx, o = {}) {
+  const http = o.http || httpFetch;
   const cfg = () => (ctx.config && ctx.config.comms) || {};
   const use = async (/** @type {string} */ tool, /** @type {any} */ input) => {
     const r = await ctx.call(tool, input);
@@ -93,13 +97,21 @@ export function registerComms(ctx) {
       if (!body.trim() || body.length > SMS_MAX) throw fail("the approved text is empty or too long", "bad_input");
       const c = cfg().sms || {};
       if (!/^AC[0-9a-f]{32}$/i.test(String(c.account || ""))) throw fail("texts need comms.sms.account in config.json", "needs_setup");
+      // The Twilio key is the person's own item in the Vault, named twilio and handed to Comms: its `value` is the auth token (or an API key's secret, with that key's id in `sid`). It is held for this send only.
+      /** @type {string} */ let auth;
+      try {
+        const secret = String(await ctx.vault.fetch(TWILIO_ITEM, { field: "value" }));
+        let user = String(c.account);
+        try { const sid = String(await ctx.vault.fetch(TWILIO_ITEM, { field: "sid" })); if (/^SK[0-9a-f]{32}$/i.test(sid)) user = sid; } catch { /* an auth token: the account is the user */ }
+        auth = `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}`;
+      } catch { throw fail("texts need your Twilio auth token in the Vault: open Vault, Connections, connect Twilio for Comms and paste the token", "needs_setup"); }
       /** @type {{ to: string, sid?: string, error?: string }[]} */ const results = [];
       for (const n of dest) {
         const form = new URLSearchParams({ To: n, Body: body, ...(c.service ? { MessagingServiceSid: String(c.service) } : { From: String(c.from) }) }).toString();
         try {
-          const r = await ctx.vault.request("twilio", { method: "POST", url: `https://api.twilio.com/2010-04-01/Accounts/${String(c.account)}/Messages.json`, headers: { "content-type": "application/x-www-form-urlencoded" }, body: form });
-          const data = r && typeof r === "object" ? (/** @type {any} */ (r).body ?? r) : {};
-          if (r && /** @type {any} */ (r).ok === false) throw fail(String(data && data.message || `Twilio answered ${/** @type {any} */ (r).status}`), "failed");
+          const r = await http(`https://api.twilio.com/2010-04-01/Accounts/${String(c.account)}/Messages.json`, { method: "POST", headers: { authorization: auth, "content-type": "application/x-www-form-urlencoded", accept: "application/json" }, body: form, timeoutMs: 20_000, maxBytes: 256 * 1024 });
+          const data = /** @type {any} */ (await r.json().catch(() => ({})));
+          if (!r.ok) throw fail(String(data && data.message || `Twilio answered ${r.status}`), "failed");
           results.push({ to: n, sid: String(data && data.sid || "") });
         } catch (e) { results.push({ to: n, error: String(/** @type {Error} */ (e).message || e).slice(0, 160) }); }
       }

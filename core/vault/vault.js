@@ -45,6 +45,7 @@ import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT
 import { ACCESS_REQUESTS_MIGRATION, CONVERSIONS_MIGRATION } from "./access.js";
 import { Release, RELEASE_BODY_MIGRATION } from "./release.js";
 import { MCP_PASSES_MIGRATION } from "./passmcp.js";
+import { Links, LINKS_MIGRATION } from "./links.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 import { SAID_MIGRATION, SAID_MACED } from "./said.js";
 import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED, DEFAULT_SUGGEST_MIGRATION } from "./connections.js";
@@ -150,6 +151,8 @@ export const MIGRATIONS = [
   MCP_PASSES_MIGRATION,
   // What was converted once to kernel grants (a credential's scope): so it is made, and logged, once (access.js).
   CONVERSIONS_MIGRATION,
+  // A credential linked to a record or a project: names and addresses, grants nothing (links.js).
+  LINKS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -379,6 +382,7 @@ export class Vault {
     /** The Vault MCP for outside agents (passmcp.js), set by index.js. @type {import("./passmcp.js").PassMcp | null} */ this.mcp = null;
     /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */
     this.releases = new Release(this);
+    this.links = new Links(this);
     /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
     this.emergency = new Emergency(this);
@@ -1354,9 +1358,11 @@ export class Vault {
     history.dropHistory(this.dir, r.id);
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
+    this.links.drop(name);
     const gone = this.releases.dropItem(name).catch(e => this.log(`vault: what was granted of ${name} was not taken back: ${e.message}`));
     this.revoking.add(gone);
     gone.finally(() => this.revoking.delete(gone));
+    if (this.access) { const q = this.access.revokeDeployments(name).catch(e => this.log(`vault: what deployments held of ${name} was not taken back: ${e.message}`)); this.revoking.add(q); q.finally(() => this.revoking.delete(q)); }
     if (this.access) { const p = this.access.revokeItem(name, String(who)).catch(e => this.log(`vault: what was lent of ${name} was not taken back: ${e.message}`)); this.revoking.add(p); p.finally(() => this.revoking.delete(p)); }
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
@@ -1447,15 +1453,16 @@ export class Vault {
    *   session-credentials.md). Nothing passes this yet - modules run process-wide, not scoped to
    *   one project - so today it is always absent and this filters nothing.
    */
-  async release({ name, field, watcher = "", project }, caller) {
+  async release({ name, field, watcher = "", project, deployment }, caller) {
     const mod = moduleOf(caller);
-    const who = watcher ? `${caller}/${watcher}` : String(caller);
+    const who = watcher ? `${caller}/${watcher}` : deployment ? `${caller}/${deployment}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.granted({ name, module: mod, watcher, project });
+    // Publish asks for a deployment, and a deployment holds its secret as its own kernel grant: that grant, and not a grant to the module, is what lets the value out (R032-11).
+    const g = mod === "publish" ? Boolean(deployment && this.access && this.access.deploymentMay(String(name), String(deployment))) : this.granted({ name, module: mod, watcher, project });
     if (!g) {
       this.audit("release", name, who, false, "no grant");
-      throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
+      throw new Error(mod === "publish" ? `${name} is not granted to this deployment · give it from the deployment's secrets` : `${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
     }
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }

@@ -1,0 +1,276 @@
+{
+ "vault.list": {
+  "data": {
+   "locked": false,
+   "keystore": "file",
+   "personal": "none",
+   "items": [
+    {
+     "name": "Airline-account",
+     "kind": "login",
+     "description": "",
+     "fields": [
+      "username",
+      "password",
+      "totp"
+     ],
+     "url": "https://airline.example.com",
+     "hosts": [
+      "https://airline.example.com"
+     ],
+     "rotate": false,
+     "updated": 1791585637185,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Clio",
+     "kind": "login",
+     "description": "",
+     "fields": [
+      "username",
+      "password"
+     ],
+     "url": "https://app.clio.com",
+     "hosts": [
+      "https://app.clio.com"
+     ],
+     "rotate": false,
+     "updated": 1791585636880,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Corporate-card",
+     "kind": "card",
+     "description": "Firm Visa",
+     "fields": [
+      "number",
+      "expiry",
+      "cvc"
+     ],
+     "hosts": [],
+     "rotate": false,
+     "updated": 1791585637563,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Deploy-token",
+     "kind": "secret",
+     "description": "",
+     "fields": [
+      "value"
+     ],
+     "hosts": [],
+     "rotate": false,
+     "updated": 1791585637621,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Gmail",
+     "kind": "login",
+     "description": "Intake inbox",
+     "fields": [
+      "username",
+      "password"
+     ],
+     "url": "https://mail.google.com/login",
+     "hosts": [
+      "https://mail.google.com"
+     ],
+     "rotate": false,
+     "updated": 1791585636727,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "OpenAI-key",
+     "kind": "api-key",
+     "description": "Drafting",
+     "fields": [
+      "value"
+     ],
+     "hosts": [
+      "https://api.openai.com"
+     ],
+     "rotate": false,
+     "updated": 1791585637508,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Passport-portal",
+     "kind": "login",
+     "description": "",
+     "fields": [
+      "username",
+      "password"
+     ],
+     "url": "https://travel.state.gov",
+     "hosts": [
+      "https://travel.state.gov"
+     ],
+     "rotate": false,
+     "updated": 1791585637032,
+     "vault": "agents",
+     "grants": []
+    },
+    {
+     "name": "Stripe-key",
+     "kind": "api-key",
+     "description": "Billing",
+     "fields": [
+      "value"
+     ],
+     "hosts": [
+      "https://api.stripe.com"
+     ],
+     "rotate": false,
+     "updated": 1791585637447,
+     "vault": "agents",
+     "grants": []
+    }
+   ]
+  }
+ },
+ "vault.state": {
+  "data": {
+   "locked": false,
+   "keystore": "file",
+   "unlock": "none",
+   "items": 8
+  }
+ },
+ "vault.caps": {
+  "data": {
+   "reveal": true,
+   "breach": "off",
+   "host": "fixture-box"
+  }
+ },
+ "vault.health": {
+  "data": {
+   "items": [
+    {
+     "name": "Clio",
+     "kind": "login",
+     "reasons": [
+      "weak",
+      "reused"
+     ],
+     "group": "g1"
+    },
+    {
+     "name": "Gmail",
+     "kind": "login",
+     "reasons": [
+      "2fa-available",
+      "passkey-available"
+     ]
+    },
+    {
+     "name": "Passport-portal",
+     "kind": "login",
+     "reasons": [
+      "weak",
+      "reused"
+     ],
+     "group": "g1"
+    }
+   ],
+   "counts": {
+    "weak": 2,
+    "reused": 2,
+    "old": 0,
+    "rotate": 0,
+    "2fa-available": 1,
+    "passkey-available": 1,
+    "unprotected": 0,
+    "expired": 0,
+    "expiring": 0
+   },
+   "checked": 8,
+   "touchid": {
+    "enrolled": false,
+    "available": false
+   },
+   "at": 1791585637783
+  }
+ },
+ "vault.pass.list": {
+  "data": {
+   "passes": [],
+   "held": []
+  }
+ },
+ "vault.pending": {
+  "data": {
+   "grants": [],
+   "passes": [],
+   "agentGrants": [],
+   "mcpReveals": [],
+   "people": [],
+   "accepts": []
+  }
+ },
+ "vault.devices": {
+  "data": {
+   "devices": []
+  }
+ },
+ "vault.vaults.list": {
+  "data": {
+   "vaults": []
+  }
+ },
+ "vault.people": {
+  "data": {
+   "people": []
+  }
+ },
+ "vault.emergency.list": {
+  "data": {
+   "contacts": []
+  }
+ },
+ "vault.codes": {
+  "data": {
+   "codes": [
+    {
+     "name": "Airline-account",
+     "kind": "login",
+     "code": "856969",
+     "next": "179446",
+     "period": 30,
+     "remaining": 23,
+     "digits": 6
+    }
+   ],
+   "at": 1791585637966
+  }
+ },
+ "vault.account.status": {
+  "data": {
+   "account": false,
+   "unlocked": false,
+   "touchid": false
+  }
+ },
+ "vault.uses": {
+  "data": {
+   "uses": []
+  }
+ },
+ "vault.history": {
+  "data": {
+   "versions": []
+  }
+ },
+ "vault.audit": {
+  "data": {
+   "events": []
+  }
+ }
+}
