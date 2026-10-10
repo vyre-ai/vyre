@@ -19,7 +19,11 @@ export async function startInstallerServer(o) {
   sh(`sudo mkdir -p ${dir} && sudo chown "$(id -u):$(id -g)" ${dir}`);
   // the box's home volume with its config, made before the first start so it never talks to a production service
   sh("docker volume create --label run.vyre=1 --label com.docker.compose.project=vyre --label com.docker.compose.volume=vyre-home vyre_vyre-home >/dev/null");
-  const cfg = JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: o.namesForServer }, names: { directory: o.namesForServer } });
+  // The box reaches the names directory through lib/http.js, which refuses plain http and any address that is not public, except the box's OWN loopback (the way a person points a box at their own
+  // directory). The stand-in listens on the runner, so the box is told 127.0.0.1:<port> and a forwarder inside its container (below) carries that port to the runner.
+  const dirPort = new URL(o.namesForServer).port, dirHost = new URL(o.namesForServer).hostname;
+  const namesLoop = `http://127.0.0.1:${dirPort}`;
+  const cfg = JSON.stringify({ relay: { enabled: true, url: o.relayForServer }, network: { directory: namesLoop }, names: { directory: namesLoop } });
   const seeded = sh(`docker run --rm -v vyre_vyre-home:/home/vyre -e C='${cfg}' busybox sh -c 'mkdir -p /home/vyre/.vyre && printf "%s\\n" "$C" >/home/vyre/.vyre/config.json && chown -R 1000:1000 /home/vyre && chmod 700 /home/vyre/.vyre && chmod 600 /home/vyre/.vyre/config.json'`);
   if (seeded.status !== 0) throw new Error(`could not seed the box's home: ${seeded.stderr}`);
   if (o.release) {
@@ -61,6 +65,12 @@ export async function startInstallerServer(o) {
     const again = sh(`cd ${dir} && docker compose -p vyre up -d --force-recreate vyre 2>&1`);
     fs.appendFileSync(logFile, `\nrecreated for the developer switches: ${again.status} ${String(again.stdout || again.stderr).slice(-200)}\n`);
     if (again.status !== 0) throw new Error(`could not start the development box with its switches: ${String(again.stdout || again.stderr).slice(-300)}`);
+  }
+  if (exit === 0) {
+    // the forwarder: the container's 127.0.0.1:<port> to the stand-in directory on the runner (node is in the image; it stops with the container)
+    const fwd = `const net=require("net");net.createServer(c=>{const u=net.connect(${Number(dirPort)},${JSON.stringify(dirHost)});c.on("error",()=>u.destroy());u.on("error",()=>c.destroy());c.pipe(u);u.pipe(c);}).listen(${Number(dirPort)},"127.0.0.1");`;
+    const f = sh(`docker exec -d -u vyre vyre-vyre-1 node -e '${fwd}'`);
+    fs.appendFileSync(logFile, `\ndirectory forwarder: ${f.status} ${String(f.stdout || f.stderr).trim()}\n`);
   }
   const m = all.match(/Your four words:\s*(?:\x1b\[[0-9;]*m)*([a-z]+(?: [a-z]+){3})/);
   const printed = m ? m[1] : "";
