@@ -378,6 +378,12 @@
         "effect": "write"
       },
       {
+        "name": "work.chat.title",
+        "summary": "a chat's name (the daemon's question when a lender lists the chats it runs)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.pinned",
         "summary": "which pinned chat a chat is for a person (the daemon's question when it opens a session)",
         "reach": "modules",
