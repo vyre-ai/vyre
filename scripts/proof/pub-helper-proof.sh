@@ -69,6 +69,7 @@ inside get proofsite second-secret | tally
 echo "== an update: the vyre container is made again, and the helper walls the server again"
 ( cd "$DIR" && docker compose up -d --force-recreate vyre >/dev/null 2>&1 )
 n=0; until [ "$(docker inspect -f '{{.State.Health.Status}}' vyre-vyre-1 2>/dev/null)" = healthy ] || [ $n -ge 60 ]; do sleep 5; n=$((n + 1)); done
+docker cp "$REPO/scripts/proof/pub-helper-inside.mjs" vyre-vyre-1:/tmp/pub-helper-inside.mjs
 sudo vyre space-helper reattach >/tmp/pub-proof-reattach.log 2>&1 || true
 n=0; until [ -n "$(rules INPUT)" ] || [ $n -ge 12 ]; do sleep 5; n=$((n + 1)); done
 check "the server is walled again in the new container (answers, then drop)" '[ "$(rules INPUT | grep -c ACCEPT)" = 1 ] && [ "$(rules INPUT | grep -c DROP)" = 1 ]'
@@ -78,7 +79,7 @@ echo "== retire"
 inside stop | tally
 inside down | tally
 check "the server and its rules are gone, the data stays" '[ -z "$(docker ps -aq --filter name=^vyre-app-proofsite$)" ] && [ -z "$(rules INPUT)" ] && docker volume inspect vyre-app-proofsite_data >/dev/null'
-check "the daemon's folder for it is empty" '[ -z "$(docker exec vyre-vyre-1 sh -c "ls /home/vyre/.vyre/publish/spc_proofproof1/servers 2>/dev/null")" ]'
+check "the daemon's folder for it is empty" '[ -z "$(docker exec vyre-vyre-1 sh -c "ls /home/vyre/.vyre/publish/spc_proofproof12/servers 2>/dev/null")" ]'
 
 echo "== clean up"
 docker volume rm vyre-app-proofsite_data >/dev/null 2>&1 || true

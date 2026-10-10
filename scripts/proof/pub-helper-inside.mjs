@@ -16,7 +16,7 @@ import { createHelperDriver } from "/opt/vyre/core/appmods/helper-driver.js";
 import { publishedManifest } from "/opt/vyre/core/appmods/published.js";
 
 const HOME = process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
-const SPC = "spc_proofproof1", DEP = "dep_00000000000000a1";
+const SPC = "spc_proofproof12", DEP = "dep_00000000000000a1";
 const NAME = "proofsite";
 const SERVER = `const http = require("http"), fs = require("fs"), crypto = require("crypto");
 http.createServer((q, r) => {
