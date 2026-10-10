@@ -20,7 +20,12 @@ const GROUPS = {
   // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-3's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
   // SX-1 (platform, 0.2.9; signed off by the lead acting as reviewer, 6 Oct 2026): 960, raised from 900 for moving a sealed value to a Space on another server without its plaintext leaving a sealing process (wrapKey, export, exportApprove, import: the Personal to
   // My Cloud upgrade). That is 61 lines of the 60 asked for; the group sat at 861 before it.
-  sealing: { cap: 960, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
+  // R031-83 (lead, 10 Oct 2026): 1005, raised from 960 for a Space's backup bundle and the move of its sealed values between servers, each inside the sealing process because the values never leave it in plaintext:
+  //   spaceDump (process.js, 'space.dump': every sealed value of one Space, re-sealed under a bundle key the owner's code derives; refuses a model-originated call),
+  //   spaceRestore ('space.restore': opens a bundle and seals each value under THIS box's own keys, so a restore never reuses a key of the old box),
+  //   'pool.key' widened to the hosted Space's id (spc_) beside a person's (per_): the pool key a hosted Space's values are sealed under, and
+  //   client.js: the three request methods the daemon calls those with. link's removal of 10 dead lease lines brings the group to about 994; 1005 leaves no room to grow and is not a target.
+  sealing: { cap: 1005, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
   // The host CLI's wipe (`sudo vyre admin wipe`): destroys the sealing master key and folder with the daemon stopped. Never imported by the daemon.
