@@ -88,8 +88,10 @@ export default {
     };
 
     const off = ctx.events.on("*", e => { if (e.source !== "statusline" && !IGNORE.has(e.type)) schedule(); });
-    const tick = setInterval(schedule, TICK_MS);
-    tick.unref();
+    // The tick is only for the box's reachability, which a local vyred reports and can change with no event; a box has no box to reach, and its minute tick was a recompute of the line (waiting,
+    // agents: about 100 ms of CPU) for nothing, the idle burst scripts/perf-check measured.
+    const tick = ctx.config.role === "local" ? setInterval(schedule, TICK_MS) : null;
+    if (tick) tick.unref();
 
     ctx.tool("statusline.line", {
       effect: "write",
@@ -106,7 +108,7 @@ export default {
     return {
       async stop() {
         stopped = true;
-        off(); clearInterval(tick); if (timer) clearTimeout(timer);
+        off(); if (tick) clearInterval(tick); if (timer) clearTimeout(timer);
         try { if (running) await running; } catch {}
         try { fs.rmSync(file, { force: true }); } catch {}
       },

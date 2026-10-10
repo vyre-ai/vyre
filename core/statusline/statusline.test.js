@@ -102,3 +102,18 @@ test("statusline: a failing tool drops only its own part", async t => {
   const { reg } = await world(t, broken, "box");
   assert.equal((await reg.call("statusline.line", {}, "cli")).data.line, "vyre · juno working");
 });
+
+test("statusline: only a local vyred ticks every minute (reachability of its box is all the tick is for); a box registers no interval", async t => {
+  /** @type {number[]} */ const periods = [];
+  const real = globalThis.setInterval;
+  globalThis.setInterval = /** @type {any} */ ((fn, ms, ...a) => { periods.push(Number(ms)); return real(fn, ms, ...a); });
+  t.after(() => { globalThis.setInterval = real; });
+  const box = await world(t, [], "box");
+  await box.reg.call("statusline.line", {}, "cli");
+  const onBox = periods.filter(p => p === 60_000).length;
+  periods.length = 0;
+  await world(t, [], "local");
+  const onLocal = periods.filter(p => p === 60_000).length;
+  assert.equal(onBox, 0, "a box has no box to reach: the minute tick recomputed the line (about 100 ms of CPU) for nothing");
+  assert.ok(onLocal >= 1, "a local vyred keeps the tick for the reachability of its box");
+});
