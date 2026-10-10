@@ -123,11 +123,11 @@ export function createStoreFor(cfg) {
     if (!chosen && mode === "sqlite") return undefined;
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
-      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")} (fix what it lists, then start the Space again)`), { code: "unavailable", reasons: pf.reasons });
       // Only a box too SMALL for Twenty may use the built-in store (the person was told at install, and a new Space asks first). A box that should run Twenty and cannot
       // (no Docker, the helper missing, another platform) is broken, and a broken box never falls back to SQLite quietly: the Space does not start and says why.
       const broken = pf.reasons.filter((/** @type {string} */ r) => !/^not enough (free memory|disk)/.test(r));
-      if (broken.length) throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${broken.join("; ")}`), { code: "unavailable", reasons: broken });
+      if (broken.length) throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${broken.join("; ")} (fix what it lists, then start the Space again)`), { code: "unavailable", reasons: broken });
       // a new Space the person has not agreed to put on the built-in store is not created: the answer comes first, never after
       if (opts.requireConfirm) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "sqlite", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });

@@ -196,7 +196,7 @@ export default {
       run: async ({ name }, { caller }) => {
         owner(caller, "closing a webhook route");
         const routes = { ...cfg().routes };
-        if (!routeOf(name)) throw refuse(`no open route ${name}`, "not_found");
+        if (!routeOf(name)) throw refuse(`no open route ${name} (hooks.list shows the open ones)`, "not_found");
         delete routes[name];
         // Replacing the whole routes object: save() merges one level deep, so a patch of
         // { routes: {...} } replaces routes.
@@ -245,7 +245,7 @@ export default {
         if (isAgent(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw refuse(`"${caller}" is a model's call; a webhook's body is read by the owner's watchers`);
         reader(caller);
         const d = store.get(id);
-        if (!d) throw refuse(`no delivery ${id}; deliveries are kept for 7 days, the newest 500`, "not_found");
+        if (!d) throw refuse(`no delivery ${id}; deliveries are kept for 7 days, the newest 500; hooks.list shows the recent ones`, "not_found");
         return d;
       },
     });

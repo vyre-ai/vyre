@@ -108,7 +108,7 @@ export function fixes({ db, now = () => Date.now() }) {
     forgotten() { const out = new Set(); for (const r of /** @type {any[]} */ (q.forgotten.all())) for (const t of JSON.parse(String(r.turns || "[]"))) out.add(String(t)); return out; },
     undo(id) {
       const had = row(q.get.get(Number(id)));
-      if (!had) throw Object.assign(new Error(`no answer correction ${id}`), { code: "not_found" });
+      if (!had) throw Object.assign(new Error(`no answer correction ${id} (say which correction by its id)`), { code: "not_found" });
       q.undo.run(now(), Number(id));
       q.undeny.run(Number(id));
       return row(q.get.get(Number(id)));

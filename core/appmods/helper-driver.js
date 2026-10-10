@@ -51,7 +51,7 @@ export function createHelperDriver(o = {}) {
     /** The hook port is fixed in the catalog (root checks it is unique and free). @param {any} manifest */
     hookPortFor(manifest) {
       const p = manifest && manifest.app && manifest.app.hookPort;
-      if (!Number.isInteger(p)) throw refuse(`${manifest && manifest.name} does not run on a server with a host helper: its manifest has no hook port`, "unsupported");
+      if (!Number.isInteger(p)) throw refuse(`${manifest && manifest.name} does not run on a server with a host helper: its manifest has no hook port; ask the owner of this server`, "unsupported");
       return /** @type {number} */ (p);
     },
 
@@ -72,7 +72,7 @@ export function createHelperDriver(o = {}) {
     },
 
     /** The setup runs on the host, inside the first `up`. */
-    async exec() { throw refuse("on this server the host runs the app's setup itself", "unsupported"); },
+    async exec() { throw refuse("on this server the host runs the app's setup itself: use appmods.install, which sets it up", "unsupported"); },
 
     /** Healthy when its health path answers one of the manifest's codes; there is no host call for it. @param {{ manifest: any }} p @param {string} [origin] */
     async status(p, origin) {

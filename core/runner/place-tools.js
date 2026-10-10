@@ -79,10 +79,10 @@ export function registerPlaceTools(ctx, d) {
       const hit = find(thread, i.space);
       if (!hit) {
         // a session the server runs itself has no row: it is the server's, and only the chat's own people are told so
-        if (!(await mineChat(chain, thread))) throw refuse("no such chat", "not_found");
+        if (!(await mineChat(chain, thread))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
         return answer(null);
       }
-      if (hit.row.person !== person) throw refuse("no such chat", "not_found");
+      if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
       return answer(hit.row);
     },
   });
@@ -107,9 +107,9 @@ export function registerPlaceTools(ctx, d) {
     const hit = find(thread, i.space);
     if (!hit) {
       if (i.to === "server") return answer(null);
-      throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet", "unavailable");
+      throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
     }
-    if (hit.row.person !== person) throw refuse("no such chat", "not_found");
+    if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
     const p = placements();
     const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you") : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);

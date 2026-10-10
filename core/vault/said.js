@@ -185,7 +185,7 @@ export class SaidIntents {
   /** The person takes one back. It stops covering anything at once. @param {{ id: string }} input @param {string} caller */
   revoke({ id }, caller) {
     const r = /** @type {any} */ (this.vault.db.prepare("SELECT * FROM vault_said_intents WHERE id = ?").get(String(id)));
-    if (!r || !this.vault.rowOk("vault_said_intents", r)) throw Object.assign(new Error(`no intent ${String(id).slice(0, 40)}`), { code: "not_found" });
+    if (!r || !this.vault.rowOk("vault_said_intents", r)) throw Object.assign(new Error(`no intent ${String(id).slice(0, 40)}: give the id of one the person's own words made`), { code: "not_found" });
     if (r.revoked) return { id: r.id, revoked: Number(r.revoked) };
     const t = Date.now();
     this.vault.db.prepare("UPDATE vault_said_intents SET revoked = ? WHERE id = ? AND revoked IS NULL").run(t, r.id);
@@ -293,7 +293,7 @@ export function register({ vault, internal, tool, emit }) {
     async ({ id, thread, said: ref }, { caller }) => {
       if (!RESOLVERS.includes(String(caller))) { vault.audit("mention-resolve", String(id || "") || null, caller, false, "not sessions or the assistant"); throw new Error("only sessions and the assistant resolve a # tag"); }
       const it = pickable().find(x => x.name === String(id));
-      if (!it) throw Object.assign(new Error(`no vault item ${String(id).slice(0, 60)}`), { code: "not_found" });
+      if (!it) throw Object.assign(new Error(`no vault item ${String(id).slice(0, 60)} (vault.list shows them)`), { code: "not_found" });
       const r = await said.record({ thread, said: ref || `mention:${id}`, kind: "use", to: [it.name], what: `use ${it.name}`, standing: false, limits: { hosts: it.hosts } },
         RESOLVERS.includes(String(caller)) && String(caller) !== "module:mentions" ? String(caller) : "module:sessions");
       return { name: it.name, hint: `${it.kind}${it.hosts.length ? " · " + it.hosts.join(", ") : ""}`, hosts: it.hosts, note: "You may use this credential through vault.request and connectors. You never see its value.", grant: { use: true, hosts: it.hosts }, intent: r.id };

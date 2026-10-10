@@ -63,7 +63,7 @@ export class Watches {
       return { watch: had.id, session: had.session, from: null, busy: e ? e.busy : false, renewed: true };
     }
     const found = this.resolve(session);
-    if (!found) throw Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+    if (!found) throw Object.assign(new Error(`no session ${session} (recall.sessions lists them)`), { code: "not_found" });
     let entry = this.files.get(found.file);
     /** @type {import("../transcripts/index.js").LiveTurn[]} */
     let before = [];
@@ -97,7 +97,7 @@ export class Watches {
   /** @param {{ watch: string }} input */
   unwatch({ watch }) {
     const w = this.watches.get(watch);
-    if (!w) throw Object.assign(new Error(`no watch ${watch}`), { code: "not_found" });
+    if (!w) throw Object.assign(new Error(`no watch ${watch} (it may have ended already; start a new watch)`), { code: "not_found" });
     this.end(w, "unwatched");
     return { watch, ended: true };
   }

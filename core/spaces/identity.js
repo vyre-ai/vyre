@@ -79,7 +79,7 @@ export function fileIdentityStore(dir) {
     kind: "file",
     status: () => view(read()),
     async generate(/** @type {{ code?: { eid: string, pub: string }, label?: string, ts?: number }} */ o = {}) {
-      if (read()) throw Object.assign(new Error("this device already has a Vyre identity"), { code: "exists" });
+      if (read()) throw Object.assign(new Error("this device already has a Vyre identity; spaces.identity.status shows it"), { code: "exists" });
       const kp = { ...newKeyPair(), ...newAgreeKey() };
       const priv = privateKeyOf(kp.privateKey);
       const eid = keyId(Buffer.from(kp.publicKey, "base64url"));
@@ -93,19 +93,19 @@ export function fileIdentityStore(dir) {
     /** A key for a device that another entry will add to an existing identity. Nothing is on the list until that entry signs. */
     newDeviceKey() { const kp = { ...newKeyPair(), ...newAgreeKey() }; return { publicKey: kp.publicKey, eid: keyId(Buffer.from(kp.publicKey, "base64url")), privateKey: kp.privateKey, agree: kp.agree, agreePrivate: kp.agreePrivate }; },
     join(/** @type {{ privateKey: string, publicKey: string, agreePrivate?: string }} */ key, /** @type {any[]} */ ops, /** @type {string} */ name) {
-      if (read()) throw Object.assign(new Error("this device already has a Vyre identity"), { code: "exists" });
+      if (read()) throw Object.assign(new Error("this device already has a Vyre identity; spaces.identity.status shows it"), { code: "exists" });
       write({ v: 2, name, id: ops[0].id, publicKey: key.publicKey, privateKey: key.privateKey, ...(key.agreePrivate ? { agreePrivate: key.agreePrivate } : {}), ops, pin: null, createdAt: Date.now() });
       return view(read());
     },
     setName(/** @type {string} */ name) {
       const r = read();
-      if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" });
+      if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
       write({ ...r, name });
       return view(read());
     },
     async sign(/** @type {Buffer} */ message) {
       const r = read();
-      if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" });
+      if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
       return crypto.sign(null, message, privateKeyOf(r.privateKey));
     },
     /** The key-agreement point this device keeps (its own `agree`), or null for an identity made before the key existed. */
@@ -113,7 +113,7 @@ export function fileIdentityStore(dir) {
     /** Make this device's key-agreement key if it has none (the migration of an identity made before it); returns the point. The private scalar never leaves the store. */
     ensureAgree() {
       const r = read();
-      if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" });
+      if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" });
       if (r.agreePrivate) return agreePoint(r.agreePrivate);
       const k = newAgreeKey();
       write({ ...r, agreePrivate: k.agreePrivate });
@@ -122,14 +122,14 @@ export function fileIdentityStore(dir) {
     /** ECDH with this device's agreement key: the raw 32-byte shared secret for a peer's ephemeral public point (65-byte uncompressed P-256). Only the secret leaves, never the private scalar. */
     ecdh(/** @type {Buffer|Uint8Array} */ epk) {
       const r = read();
-      if (!r || !r.agreePrivate) throw Object.assign(new Error("this device has no agreement key"), { code: "no_agree_key" });
+      if (!r || !r.agreePrivate) throw Object.assign(new Error("this device has no agreement key yet: ask the person to finish setting this device up"), { code: "no_agree_key" });
       const e = crypto.createECDH("prime256v1");
       e.setPrivateKey(Buffer.from(r.agreePrivate, "base64url"));
       try { return e.computeSecret(Buffer.from(epk)); } catch { throw Object.assign(new Error("not a P-256 point"), { code: "bad_point" }); }
     },
     ops() { const r = read(); return r && Array.isArray(r.ops) ? r.ops : []; },
     pin() { const r = read(); return r ? r.pin || null : null; },
-    setChain(/** @type {any[]} */ ops, /** @type {any} */ pin) { const r = read(); if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" }); write({ ...r, ops, pin }); },
+    setChain(/** @type {any[]} */ ops, /** @type {any} */ pin) { const r = read(); if (!r) throw Object.assign(new Error("no identity on this device; make one first with spaces.identity.create"), { code: "no_identity" }); write({ ...r, ops, pin }); },
     /** The names this device gave to entries on the list (its own and the devices it added), by entry id. They live here and never in the public chain (0.2.9). */
     labels() { const r = read(); return r && r.labels && typeof r.labels === "object" ? r.labels : {}; },
     setLabel(/** @type {string} */ eid, /** @type {string | undefined} */ label) { const r = read(); if (!r || !label) return; write({ ...r, labels: { ...(r.labels || {}), [eid]: String(label).replace(/[\u0000-\u001f]/g, " ").slice(0, 60) } }); },

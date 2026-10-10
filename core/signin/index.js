@@ -34,7 +34,7 @@ export default {
     /** The one open ask: the terminal it is for and where it stands. `token` is held until the same terminal reads it, once. @type {{ id: string, key: string, at: number, state: "waiting" | "approved" | "refused", from?: string|null, token?: string, expires?: number } | null} */
     let ask = null, lastAskAt = -Infinity;
     const live = () => { if (ask && ask.state === "waiting" && now() - ask.at > ASK_MS) ask = null; return ask; };
-    const need = () => { if (typeof ctx.cliSigninPayload !== "function" || typeof ctx.cliSessions !== "object" || !ctx.kernel) throw refuse("this build has no command-line sign-in", "unavailable"); };
+    const need = () => { if (typeof ctx.cliSigninPayload !== "function" || typeof ctx.cliSessions !== "object" || !ctx.kernel) throw refuse("this build has no command-line sign-in; sign in from the Vyre app instead", "unavailable"); };
     const card = (/** @type {any} */ a) => {
       const p = ctx.cliSigninPayload(a.id, a.key);
       // SG-2: the phone says where the login came from, so `ssh localhost` from a model's shell reads as this machine and a login from another computer names its address (the copy is ui-ux's).
@@ -77,7 +77,7 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         need();
         const a = live();
-        if (!a || a.state !== "waiting" || a.id !== String(input.id)) throw refuse("there is no sign-in waiting for you", "not_found");
+        if (!a || a.state !== "waiting" || a.id !== String(input.id)) throw refuse("there is no sign-in waiting for you; ask again from the terminal you want signed in", "not_found");
         // A no ends the ask only from the person's own session: a label alone cannot cancel the owner's sign-in.
         if (input.approve !== true) { if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" }; a.state = "refused"; return { answered: "refused" }; }
         const chain = await ctx.kernel.chain(meta);
@@ -129,10 +129,10 @@ export default {
         if (typeof ctx.devStandIn !== "function" || ctx.devStandIn() !== true || typeof ctx.cliSessions.startStandIn !== "function") throw refuse("this build takes no sign-in stand-in", "dev_only");
         let c = null; try { c = await ctx.kernel.chain(meta); } catch { c = null; }
         const hops = c && Array.isArray(c.hops) ? c.hops : [];
-        if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw refuse("this call is not from a signed-in person", "denied");
+        if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw refuse("this call is not from a signed-in person; sign in as the person first", "denied");
         const node = String(input.node || "");
         if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
-        if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session", "denied");
+        if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session; sign that one out first, or use another device", "denied");
         const s = ctx.cliSessions.startStandIn(node);
         // presence.signed-in is presence's event: the daemon says it when it starts the stand-in session (core/daemon cliSessions.startStandIn), not this module.
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };

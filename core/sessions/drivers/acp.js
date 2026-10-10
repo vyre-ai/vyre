@@ -275,7 +275,7 @@ function runAcp(entry, known, o) {
     const id = ++rpcId;
     calls.set(id, { resolve, reject });
     send({ id, method, params });
-    if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s`), { code: "timeout" })); }, timeoutMs).unref?.();
+    if (timeoutMs > 0) setTimeout(() => { if (calls.delete(id)) reject(Object.assign(new Error(`${method} did not answer in ${Math.round(timeoutMs / 1000)} s: wait a minute and call again`), { code: "timeout" })); }, timeoutMs).unref?.();
   }).then(r => { if (method === "authenticate") planFrom(r); return r; });
   const respond = (id, result) => send({ id, result });
   const fail = (id, code, message) => send({ id, error: { code, message } });
@@ -697,7 +697,7 @@ function runAcp(entry, known, o) {
     /** Change the agent's mode. A bypass-shaped or unknown one is refused, whatever asked. */
     async setMode(id) {
       const want = String(id || "");
-      if (!modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here`), { code: "denied" });
+      if (!modes.some(x => x.id === want)) throw Object.assign(new Error(`mode ${want} is not available here: pick one of the modes this agent lists`), { code: "denied" });
       await request("session/set_mode", { sessionId: sid, modeId: want });
       mode = want;
       return { mode };

@@ -60,7 +60,7 @@ export function resolve(db, session) {
     if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
     row = like[0];
   }
-  if (!row) throw Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+  if (!row) throw Object.assign(new Error(`no session ${session} (recall.sessions lists them)`), { code: "not_found" });
   return row;
 }
 

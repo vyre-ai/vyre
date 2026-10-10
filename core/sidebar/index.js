@@ -97,12 +97,12 @@ export default {
       if (!target && i.entry) target = cleanList([i.entry])[0] || null;
       if (!target && typeof i.what === "string") {
         const f = find(i.what, cat, /** @type {any} */ (views));
-        if (!f) throw refuse(`I could not tell which one "${i.what}" is: nothing has that name, or more than one does.`, "not_found");
+        if (!f) throw refuse(`I could not tell which one "${i.what}" is: nothing has that name, or more than one does. Give the exact name, or its key.`, "not_found");
         target = f.entry;
       }
       if (!target) throw refuse("Say which entry: its name, or its key.", "bad_input");
       const key = keyOf(target);
-      if (i.op === "add" && target.kind === "module" && !cat.modules.some(m => m.module === target.module && m.screens.some((/** @type {any} */ s) => s.id === target.screen))) throw refuse("That screen is not installed here.", "not_found");
+      if (i.op === "add" && target.kind === "module" && !cat.modules.some(m => m.module === target.module && m.screens.some((/** @type {any} */ s) => s.id === target.screen))) throw refuse("That screen is not installed here. Pick another place or screen.", "not_found");
       let next;
       switch (i.op) {
         case "add": next = add(cur, target, i.group ? { group: String(i.group) } : {}); break;

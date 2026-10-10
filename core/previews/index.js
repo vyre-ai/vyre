@@ -62,7 +62,7 @@ export default {
       ...(detail ? { command: r.command || null, cwd: r.cwd || null, port: r.upstream || r.port || null } : {}),
     });
     const row = (/** @type {string} */ id) => db.prepare("SELECT * FROM previews_items WHERE id = ?").get(String(id));
-    const mustRow = (/** @type {string} */ id) => { const r = row(id); if (!r) throw refuse("no such preview", "not_found"); return r; };
+    const mustRow = (/** @type {string} */ id) => { const r = row(id); if (!r) throw refuse("no such preview: give the id of one you may open", "not_found"); return r; };
     const setState = (/** @type {string} */ id, /** @type {string} */ state, error = "") => {
       const r = row(id); if (!r) return;
       const was = r.state;
@@ -193,7 +193,7 @@ export default {
       if (meta && meta.thread) { const t = await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null); const th = t && t.data && (t.data.thread || t.data); own = th && th.project ? String(th.project) : null; }
       if (i.project && String(i.project) !== own) throw refuse("a preview can be open to the project this chat belongs to and no other: ask the person to share it", "denied");
       const project = i.project ? own : null;
-      if (wanted === "team" || (wanted === "project" && !project)) throw refuse("a model opens a preview for its person only, or for its own chat's project: the person shares it wider with previews.share", "denied");
+      if (wanted === "team" || (wanted === "project" && !project)) throw refuse("a model opens a preview for its person only, or for its own chat's project: ask the person to share it wider", "denied");
       return { access: wanted || (project ? "project" : "me"), project };
     };
 
@@ -281,7 +281,7 @@ export default {
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await whoIs(meta); const r = mustRow(i.id);
-        if (who && !mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
+        if (who && !mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
         return { preview: view(r, Boolean(who)) };
       },
     });
@@ -291,7 +291,7 @@ export default {
       input: obj({ id: str, origin: str, embed: { type: "boolean" } }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
+        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
         if (r.state === "stopped" || r.state === "crashed") throw refuse(r.state === "stopped" ? "it is stopped: restart it first" : "it is not running: restart it, or look at its log", "unavailable");
         const t = await ctx.call("appmods.ticket", { name: nameOf_(r.id), who: who.id, role: who.role || "", ...(i.embed === true ? { embed: true } : {}), ...(i.origin ? { origin: i.origin } : {}) });
         if (t.error) throw refuse(t.error.message || "the front door did not answer", t.error.code || "unavailable");
@@ -305,7 +305,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
         if (r.mode === "supervised") return { preview: view(r) };
-        if (!r.command || !r.cwd || !path.isAbsolute(r.cwd) || !fs.existsSync(r.cwd)) throw refuse("Vyre does not know how this was started, so it cannot keep it running", "unavailable");
+        if (!r.command || !r.cwd || !path.isAbsolute(r.cwd) || !fs.existsSync(r.cwd)) throw refuse("Vyre does not know how this was started, so it cannot keep it running: open it again with its command and folder so Vyre starts it", "unavailable");
         db.prepare("UPDATE previews_items SET upstream = NULL WHERE id = ?").run(r.id);
         await runSupervised(row(r.id));
         return { preview: view(row(r.id)) };
@@ -316,7 +316,7 @@ export default {
       description: "Restart a preview Vyre keeps running.", input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const { r } = await manage(i.id, meta);
-        if (r.source === "files") { if (!r.root || !fs.existsSync(r.root)) throw refuse("its folder is gone", "unavailable"); setState(r.id, "live"); return { preview: view(row(r.id)) }; }
+        if (r.source === "files") { if (!r.root || !fs.existsSync(r.root)) throw refuse("its folder is gone: put the folder back, or open a new preview", "unavailable"); setState(r.id, "live"); return { preview: view(row(r.id)) }; }
         if (r.mode !== "supervised") throw refuse("this server is the agent's own: ask it to restart it, or keep it running here first", "unavailable");
         db.prepare("UPDATE previews_items SET wanted = 1 WHERE id = ?").run(r.id);
         if (!sup.has(r.id)) await runSupervised(row(r.id)); else sup.restart(r.id);
@@ -357,7 +357,7 @@ export default {
       description: "The last lines of a preview's output (what its server printed), for the person looking at why it does not work.", input: obj({ id: str, lines: { type: "integer" } }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const w = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, w) && !mayManage(r, w)) throw refuse("no such preview", "not_found");
+        if (!mayOpen(r, w) && !mayManage(r, w)) throw refuse("no such preview: give the id of one you may open", "not_found");
         return { log: sup.tail(r.id, Math.min(Number(i.lines) || 200, 1000)), supervised: r.mode === "supervised" };
       },
     });
@@ -367,7 +367,7 @@ export default {
       input: obj({ id: str }, ["id"]), callers: PERSON_ONLY,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const who = await needPerson(meta); const r = mustRow(i.id);
-        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview", "not_found");
+        if (!mayOpen(r, who) && !mayManage(r, who)) throw refuse("no such preview: give the id of one you may open", "not_found");
         try { return { image: fs.readFileSync(thumbFile(r.id)).toString("base64"), at: r.thumb || 0 }; } catch { /* no screenshot: the drawn poster, if there is one */ }
         try { return { image: null, svg: fs.readFileSync(posterFile(r.id), "utf8"), at: r.thumb || 0 }; } catch { return { image: null }; }
       },
@@ -391,7 +391,7 @@ export default {
       description: "Where a preview's host leads, for the front: { origin }. Internal: the appmods module only.", internal: true,
       input: obj({ name: str }, ["name"]), callers: ["module"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (!meta || meta.caller !== "module:appmods") throw refuse("the front alone asks where a preview leads", "denied");
+        if (!meta || meta.caller !== "module:appmods") throw refuse("the front alone asks where a preview leads: open the preview from its own page", "denied");
         const m = /^pv-([0-9a-f]{8})$/.exec(String(i.name));
         const r = m && ID.test(m[1]) ? row(m[1]) : null;
         if (!r || r.state === "stopped" || r.state === "crashed") return { origin: null };
@@ -438,9 +438,9 @@ export default {
       input: obj({ run: str, line: str, state: { type: "string", enum: STEP_STATES }, ask: str }, ["run", "line"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
-        if (!o) throw refuse("no such run: start it with previews.operator", "not_found");
+        if (!o) throw refuse("no such run: start one first", "not_found");
         // A model may only move a card of its own chat.
-        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run", "not_found");
+        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run: give the id the run was started with", "not_found");
         const line = String(i.line || "").replace(/\s+/g, " ").trim().slice(0, 160);
         if (!line) throw refuse("say what it is doing", "bad_input");
         const state = STEP_STATES.includes(i.state) ? i.state : "working";
@@ -461,7 +461,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!isPerson(meta)) throw refuse("only a person at their own surface answers", "denied");
         const o = operators.get(String(i.run));
-        if (!o) throw refuse("no such run", "not_found");
+        if (!o) throw refuse("no such run: give the id the run was started with", "not_found");
         const text = String(i.text || "").trim().slice(0, 500);
         if (!text) throw refuse("type the answer", "bad_input");
         o.reply = text; o.state = "working"; o.line = "Got your answer"; o.ask = ""; o.at = now();
@@ -475,8 +475,8 @@ export default {
       input: obj({ run: str, wait_ms: { type: "integer" } }, ["run"]), callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const o = operators.get(String(i.run));
-        if (!o) throw refuse("no such run", "not_found");
-        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run", "not_found");
+        if (!o) throw refuse("no such run: give the id the run was started with", "not_found");
+        if (!isPerson(meta) && !String((meta && meta.caller) || "").startsWith("module:") && o.thread !== ((meta && meta.thread) || null)) throw refuse("no such run: give the id the run was started with", "not_found");
         const ms = Math.min(Math.max(Number(i.wait_ms) || 0, 0), 55_000);
         if (ms && !o.reply && o.state === "stuck") await new Promise(resolve => { const done = () => { clearTimeout(t); o.waiters.delete(done); resolve(undefined); }; const t = setTimeout(done, ms); o.waiters.add(done); });
         return { run: o.id, state: o.state, ...(o.reply ? { reply: o.reply } : {}) };
@@ -488,7 +488,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         await needPerson(meta);
         const o = operators.get(String(i.run));
-        if (!o) throw refuse("no such run", "not_found");
+        if (!o) throw refuse("no such run: give the id the run was started with", "not_found");
         const r = await ctx.call("sight.frame", { target: `agent:${o.computer}`, maxWidth: Math.min(Math.max(Number(i.maxWidth) || 640, 160), 1280) });
         if (r.error) return { image: null, why: r.error.code === "local_only" ? "mac" : r.error.code === "no_such_tool" ? "none" : "later" };
         return { image: r.data.image || null, mime: r.data.mime || "image/jpeg", at: r.data.at || now(), ...(r.data.image ? {} : { why: r.data.why || "none" }) };
@@ -502,7 +502,7 @@ export default {
         if (!COMPUTER.test(String(i.computer || ""))) throw refuse("name the computer, as Glass lists it", "bad_input");
         const site = String(i.site || "").replace(/\s+/g, " ").trim().slice(0, 80);
         if (!site) throw refuse("name the site to sign in to", "bad_input");
-        if ([...signins.values()].filter(x => x.state === "waiting").length >= 10) throw refuse("too many sign-ins are waiting", "rate_limited");
+        if ([...signins.values()].filter(x => x.state === "waiting").length >= 10) throw refuse("too many sign-ins are waiting: wait for one to be answered, then ask again", "rate_limited");
         const a = asker(meta);
         const s = { id: crypto.randomBytes(6).toString("hex"), computer: String(i.computer), thread: threadOf(i, meta, a.person || a.module), site, why: String(i.why || "").replace(/\s+/g, " ").trim().slice(0, 200), state: /** @type {"waiting"} */ ("waiting"), at: now(), waiters: new Set() };
         signins.set(s.id, s);
@@ -523,7 +523,7 @@ export default {
       callers: [...PERSON_ONLY, "module", "mcp", "harness", "agent"],
       run: async (/** @type {any} */ i) => {
         const s = signins.get(String(i.id));
-        if (!s) throw refuse("no such sign-in", "not_found");
+        if (!s) throw refuse("no such sign-in: give the id the sign-in request returned", "not_found");
         if (s.state === "waiting" && now() - s.at > 30 * 60_000) { s.state = "expired"; signinCard(s); }
         await waitFor(s, Number(i.wait_ms) || 0);
         return { id: s.id, state: s.state };
@@ -534,7 +534,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!isPerson(meta)) throw refuse("only a person at their own surface does this", "denied");
         const s = signins.get(String(i.id));
-        if (!s) throw refuse("no such sign-in", "not_found");
+        if (!s) throw refuse("no such sign-in: give the id the sign-in request returned", "not_found");
         if (s.state === "waiting") { s.state = i.done === false ? "cancelled" : "done"; signinCard(s); s.waiters.forEach(w => w()); }
         return { id: s.id, state: s.state };
       },

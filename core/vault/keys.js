@@ -98,7 +98,7 @@ async function securityRetry(argv, stdin) {
 function legacyStore(account, keychain, decode) {
   const tail = keychain ? [keychain] : [];
   // The login keychain can ask for the user's password; a test keychain file (keychain set) cannot.
-  const noDialog = () => { if (!keychain && !dialogsAllowed()) throw Object.assign(new Error("the login keychain is off under tests"), { code: "no_dialog" }); };
+  const noDialog = () => { if (!keychain && !dialogsAllowed()) throw Object.assign(new Error("the login keychain is off under tests: use a test keychain file"), { code: "no_dialog" }); };
   const read = async () => {
     noDialog();
     const r = await securityRetry(["find-generic-password", "-s", SERVICE, "-a", account, "-w", ...tail]);
@@ -148,7 +148,7 @@ function legacyStore(account, keychain, decode) {
 function keychainStore(dir, keychain, suffix = "", decode = hexKey("the keychain entry for this vault is not a vault key"), helper = null, login = false) {
   // The login keychain (no keychain file) only when the caller says this home may use it.
   if (!keychain && !login) {
-    const off = async () => { throw Object.assign(new Error("the login keychain is off for this home"), { code: "no_dialog" }); };
+    const off = async () => { throw Object.assign(new Error("the login keychain is off for this home: ask the owner to allow it"), { code: "no_dialog" }); };
     return { exists: off, put: off, read: off, remove: off, migrate: off };
   }
   const account = accountFor(dir) + suffix;

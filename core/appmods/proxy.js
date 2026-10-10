@@ -108,7 +108,7 @@ function upstream(origin, method, path, headers, o = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(origin);
     const req = http.request({ host: u.hostname, port: u.port, method, path, headers, timeout: o.timeoutMs ?? 120_000 }, resolve);
-    req.on("timeout", () => req.destroy(Object.assign(new Error("the app did not answer"), { code: "timeout" })));
+    req.on("timeout", () => req.destroy(Object.assign(new Error("the app did not answer: wait a minute and call again, or look at appmods.status"), { code: "timeout" })));
     req.on("error", reject);
     const b = o.body;
     if (b && typeof /** @type {any} */ (b).pipe === "function") /** @type {NodeJS.ReadableStream} */ (b).pipe(req); else req.end(b || undefined);

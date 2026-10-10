@@ -74,7 +74,7 @@ export default {
       if (!h) throw refuse("Flows run only where the kernel is on", "unavailable");
       const space = typeof input.space === "string" && input.space ? input.space : ctx.kernel && ctx.kernel.space;
       const f = space && h.get(space);
-      if (!f) throw refuse("no such Space here", "not_found");
+      if (!f) throw refuse("no such Space here (spaces.list shows yours)", "not_found");
       return f;
     };
     /**
@@ -86,8 +86,8 @@ export default {
       if (!ctx.kernel || typeof ctx.kernel.chain !== "function") throw refuse("Flows run only where the kernel is on", "unavailable");
       let chain;
       // A session token is checked by the door of the Space the call is for (a hosted firm Space has its own); anything else is the kernel's own answer for this call.
-      if (meta && typeof meta.token === "string") { chain = await f.chainForToken(meta.token); if (!chain) throw refuse("this session is not valid", "denied"); }
-      else { try { chain = await ctx.kernel.chain(meta); } catch { throw refuse("this call has no chain", "denied"); } }
+      if (meta && typeof meta.token === "string") { chain = await f.chainForToken(meta.token); if (!chain) throw refuse("this session is not valid: sign in again", "denied"); }
+      else { try { chain = await ctx.kernel.chain(meta); } catch { throw refuse("this call has no chain: call it from a signed-in session", "denied"); } }
       const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
       if (!first || !first.actor || first.actor.kind !== "person") throw refuse("a Flow is changed or run under a person's own chain or an assistant's session; this call carries neither", "denied");
       return chain;
