@@ -348,7 +348,7 @@ export default {
     ctx.tool("publish.create", {
       callers: WITH_MODELS,
       description: "Start a new site or app as a draft from a name, a source and how it builds.",
-      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object", description: "secret references, never values" }, project: str, approver: str }, ["name", "source"]),
+      input: obj({ name: str, source: { type: "object" }, build: { type: "object" }, env: { type: "object", description: "secret references, never values" }, job: { type: "object", description: "a job runs to completion on a schedule instead of serving: { every_minutes: 5 to 10080, timeout_s: 60 to 3600 }; needs a Dockerfile build and has no address" }, project: str, approver: str }, ["name", "source"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
