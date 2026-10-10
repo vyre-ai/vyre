@@ -9,7 +9,10 @@ export default {
   async steps(w, J) {
     await J.step("explore: the record types and tools this server has", async () => {
       const types = await w.call("records.types", {});
-      return JSON.stringify(types).slice(0, 600);
+      const names = (types.types || []).map(/** @param {any} t */ t => t.name);
+      const lib = await w.call("work.template.library", {});
+      const tools = await w.call("system.tools", {}).catch(/** @param {any} e */ e => ({ error: String(e && e.message) }));
+      return JSON.stringify({ names, lib: JSON.stringify(lib).slice(0, 400), tools: JSON.stringify(tools).slice(0, 300) });
     });
   },
 };
