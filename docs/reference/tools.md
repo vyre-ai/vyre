@@ -7793,7 +7793,7 @@ Approve a preview. The first call asks and holds; a person's decision (publish.d
   - `deployment` string, required
   - `space` string
   - `task` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.create`
 
@@ -7807,7 +7807,7 @@ Start a new site or app as a draft: a name, where its source is, and how it buil
   - `env` object
   - `project` string
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.decide`
 
@@ -7831,7 +7831,7 @@ Start connecting a domain to a site. Returns the DNS record to add; nothing serv
   - `canonical` "apex" or "www"
   - `space` string
   - `www` boolean
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.domain.remove`
 
@@ -7849,7 +7849,7 @@ Check the DNS record (or the name you own) for a connected domain.
 - Input:
   - `host` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.edge`
 
@@ -7857,7 +7857,7 @@ Write the edge for what is live now: a compose project, a Caddyfile and the Dock
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.edge.down`
 
@@ -7865,7 +7865,7 @@ Stop the edge. Sites stop answering; their files and certificates stay.
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.edge.up`
 
@@ -7873,7 +7873,7 @@ Start the edge: build its Caddy image, copy each live site into its volume and b
 
 - Input:
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.flow`
 
@@ -7911,7 +7911,7 @@ Build a draft and put it at a private preview address. Refused if a sealed value
 - Input:
   - `deployment` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.publish`
 
@@ -7921,7 +7921,7 @@ Put an approved version on the internet. Held for a person every time: the first
   - `deployment` string, required
   - `space` string
   - `task` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.retire`
 
@@ -7940,7 +7940,7 @@ Put the previous version back. Give the live deployment. Held for a person every
   - `deployment` string, required
   - `space` string
   - `task` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.secret.grant`
 
@@ -7953,7 +7953,7 @@ Let one deployment use one vault secret, as an environment name. A real secret i
   - `space` string
   - `task` string
   - `use` list of "build" or "runtime"
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `module`, `tailnet`
 
 ### `publish.secret.revoke`
 
@@ -7963,7 +7963,7 @@ Take a secret away from a deployment and delete its file.
   - `deployment` string, required
   - `name` string, required
   - `space` string
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `publish.status`
 
@@ -13336,7 +13336,7 @@ Whether each pass holder is covered for what they hold, as last seen at the rela
 Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.health.dismiss`
 
