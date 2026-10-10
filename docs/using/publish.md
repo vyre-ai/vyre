@@ -56,6 +56,15 @@ An app with a server is also how a site gets an API: anything the server answers
 
 Granting a new secret to a live server (for running) starts the server again with it, so you see it work at once; a secret granted only for building changes nothing running.
 
+## A job that runs on a schedule
+
+A folder with a Dockerfile can be a job instead of a server: create it with `"build": { "image": "dockerfile" }` and `"job": { "every_minutes": 60, "timeout_s": 900 }` (every 5 minutes to a week; one run may take 60 seconds to an hour, 15 minutes when you leave it out). A job has no port, no address and no domain. Going live asks once, and the plan you say yes to names the image, how often it runs, how long a run may take, and that it has no network at all. After that it runs by itself.
+
+- Runs: the server's host helper runs exactly the image you approved, one run at a time, at most once every five minutes, and removes the container afterwards. `publish.job.run` runs it now (the five-minute wait still holds); `publish.job.runs` shows the last runs with what the job printed (the last 4 KB, with your keys and anything shaped like a secret cut out).
+- A run that fails (a non-zero exit, or past its time) is a card in Needs you: "The job <name> failed", and answering it runs the job again.
+- What it gets: the same as a server, a read-only root with `/tmp`, a `/data` folder that stays between runs, the secrets you granted for running, 512 MB, half a CPU and 256 processes. It cannot reach the internet or anything else of yours.
+- The host helper does one thing at a time, so a long job holds up other requests to it until it ends; keep jobs short.
+
 ## Not here yet
 
-This server builds a folder of ready files, and an app from a folder with a Dockerfile. A build from a Drive folder, from a private repo, and scheduled jobs are not here yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.
+This server builds a folder of ready files, and an app from a folder with a Dockerfile. A build from a Drive folder and from a private repo are not here yet, and a job cannot reach the internet yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.
