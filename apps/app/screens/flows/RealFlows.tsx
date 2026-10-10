@@ -6,6 +6,7 @@ import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, showToa
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
+import { listWaits } from "./real-model.js";
 
 export function RealFlows() {
   const router = useRouter();
@@ -23,7 +24,7 @@ export function RealFlows() {
         {!err && flows === null ? <LoadingState rows={3} /> : null}
         {!err && flows && !flows.length ? <EmptyState title="No Flows yet" body="Flows live in a space. Ask @Engineer to write one, or install a Kit." /> : null}
         {(flows ?? []).map((f, i) => {
-          const waiting = f.status !== "approved";
+          const waiting = listWaits(f);
           return (
             <View key={f.id}>{i ? <Divider inset={68} /> : null}
               <Row dense onPress={() => router.push(`/u/flows/${f.id}` as never)} lead={<IconTile size={40} name="flows" />} title={f.name} sub={f.trigger || undefined} chevron={waiting}

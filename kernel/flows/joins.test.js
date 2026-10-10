@@ -10,6 +10,7 @@ import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
 import { explainRun } from "./describe.js";
 import { applyPatch } from "./patch.js";
+import { graph } from "./canvas.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 const flowOf = (steps, extra = {}) => ({ format: 1, name: "par", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
@@ -375,4 +376,21 @@ test("the compiler sees inside lanes: an outward step in a lane is listed on the
   const bad = compileFlow(flowOf([{ id: "p", kind: "parallel", steps: [lane("a", [{ id: "x", kind: "create", type: "matter", set: { client: "A" } }]), lane("b", [{ id: "y", kind: "create", type: "matter", set: { client: { expr: "steps.x.record.id" } } }])] }]), w.cat);
   assert.equal(bad.ok, false, "a lane cannot read what a sibling lane makes");
   assert.match(JSON.stringify(bad.errors), /steps\.x is not a step that has already run/);
+});
+
+test("the canvas draws lanes side by side under the parallel step, each named, and a person is a person, never an id", async () => {
+  const w = await world();
+  const flow = flowOf([{ id: "p", kind: "parallel", steps: [
+    lane("review", [{ id: "look", kind: "assign", to: "person:per_" + "a".repeat(26), title: "Look it over", output: { kind: "note" } }]),
+    lane("draft", [{ id: "s", kind: "subflow", flow: "inner_note" }]),
+  ] }]);
+  const g = graph(flow, w.cat);
+  const byId = Object.fromEntries(g.nodes.map(n => [n.id, n]));
+  assert.deepEqual([byId.review.label, byId.draft.label], ["review", "draft"], "a lane is named by the author's word for it");
+  assert.equal(byId.look.label, "Give a task to a person");
+  assert.equal(byId.s.label, "Run the Flow inner_note");
+  assert.deepEqual(g.edges.filter(e => e.from === "p").map(e => [e.to, e.kind]), [["review", "lane"], ["draft", "lane"]]);
+  assert.ok(byId.review.lane !== byId.draft.lane && byId.review.lane > byId.p.lane, "the lanes sit side by side to the right of the parallel step");
+  const named = graph(flow, { ...w.cat, people: { ["per_" + "a".repeat(26)]: "Alex Rivera" } });
+  assert.equal(named.nodes.find(n => n.id === "look").label, "Give a task to Alex Rivera");
 });
