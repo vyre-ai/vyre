@@ -21,13 +21,15 @@ class FakeSocket {
 function world(over = {}) {
   /** @type {FakeSocket[]} */ const opened = [];
   /** @type {any} */ const page = { ReactNativeWebView: { postMessage: m => bridge.fromPage(m) } };
-  const bridge = createWsBridge({ open: path => { const s = new FakeSocket(path); opened.push(s); return s; }, post: m => ctx.window.__vyreWs(m), ...over });
+  // a WebView's messages to the page arrive later, never inside the call that caused them: the world queues them and the test delivers them
+  /** @type {any[]} */ const inbox = [];
+  const bridge = createWsBridge({ open: path => { const s = new FakeSocket(path); opened.push(s); return s; }, post: m => { inbox.push(m); }, ...over });
   /** @type {any} */ const ctx = { window: page };
   ctx.window.window = ctx.window; ctx.window.WebSocket = class NativeWS {};
   ctx.btoa = s => Buffer.from(s, "binary").toString("base64"); ctx.atob = s => Buffer.from(s, "base64").toString("binary");
   vm.createContext({ ...ctx, window: page, btoa: ctx.btoa, atob: ctx.atob, Uint8Array, ArrayBuffer, String, JSON, Error });
   vm.runInContext(webviewShim(), vm.createContext(Object.assign(page, { window: page, btoa: ctx.btoa, atob: ctx.atob, Uint8Array, ArrayBuffer, String, JSON, Error })));
-  return { page, bridge, opened, WS: page.WebSocket };
+  return { page, bridge, opened, WS: page.WebSocket, flush() { while (inbox.length) page.__vyreWs(inbox.shift()); } };
 }
 
 test("the page's WebSocket opens a stream on the box, sends and hears text and bytes, and closes cleanly", () => {
@@ -39,15 +41,15 @@ test("the page's WebSocket opens a stream on the box, sends and hears text and b
   const heard = [];
   ws.onopen = () => heard.push("open"); ws.onmessage = e => heard.push(e.data instanceof ArrayBuffer ? Array.from(new Uint8Array(e.data)) : e.data); ws.onclose = e => heard.push(["close", e.code, e.wasClean]);
   const extra = []; ws.addEventListener("message", () => extra.push(1));
-  w.opened[0].open();
+  w.opened[0].open(); w.flush();
   assert.equal(ws.readyState, 1); assert.deepEqual(heard, ["open"]);
   ws.send("RFB 003.008\n"); ws.send(new Uint8Array([1, 2, 255]).buffer); ws.send(new Uint8Array([9, 8, 7, 6]).subarray(1, 3));
   assert.deepEqual(w.opened[0].sent.map(d => (typeof d === "string" ? d : Array.from(d))), ["RFB 003.008\n", [1, 2, 255], [8, 7]]);
-  w.opened[0].push("hello"); w.opened[0].push(new Uint8Array([0, 128, 255]).buffer);
+  w.opened[0].push("hello"); w.opened[0].push(new Uint8Array([0, 128, 255]).buffer); w.flush();
   assert.deepEqual(heard.slice(1), ["hello", [0, 128, 255]]);
   assert.equal(extra.length, 2, "listeners added with addEventListener hear it too");
-  ws.close(1000, "done");
-  assert.deepEqual(w.opened[0].closedWith, [1000, ""]);
+  ws.close(1000, "done"); assert.equal(ws.readyState, 2); w.flush();
+  assert.deepEqual(w.opened[0].closedWith, [1000, "done"]);
   assert.equal(ws.readyState, 3);
   assert.deepEqual(heard[heard.length - 1], ["close", 1000, true]);
   assert.throws(() => ws.send("x"), /not open/);
@@ -58,6 +60,7 @@ test("a stream the page may not open is closed at once with a code the page sees
   const w = world();
   for (const url of ["ws://host/v1/streams/term/shell", "ws://host/v1/tools/glass.open", "ws://host/v1/streams/computers/glass/../../x", "ws://host/v1/streams/computers/glass#frag", "garbage:::"]) {
     const ws = new w.WS(url); let code = null; ws.onclose = e => { code = e.code; };
+    w.flush();
     assert.equal(code, 1008, url);
   }
   assert.equal(w.opened.length, 0, "nothing reached the channel");
@@ -69,19 +72,20 @@ test("a page holds at most two streams; the third is refused, and one that is cl
   const w = world();
   const a = new w.WS("ws://h/v1/streams/computers/glass?ticket=1"), b = new w.WS("ws://h/v1/streams/computers/glass?ticket=2");
   let code = null; const c = new w.WS("ws://h/v1/streams/computers/glass?ticket=3"); c.onclose = e => { code = e.code; };
-  assert.equal(c.readyState, 3); assert.equal(w.opened.length, 2); void a;
-  w.opened[0].open(); b.close();
-  const d = new w.WS("ws://h/v1/streams/computers/glass?ticket=4"); assert.equal(w.opened.length, 3, "a place was freed"); void code; void d;
+  w.flush();
+  assert.deepEqual([c.readyState, code, w.opened.length], [3, 1013, 2], "the third is refused and never reaches the channel");
+  w.opened[0].open(); b.close(); w.flush(); void a;
+  const d = new w.WS("ws://h/v1/streams/computers/glass?ticket=4"); assert.equal(w.opened.length, 3, "a place was freed"); void d;
 });
 
 test("a channel that drops tells the page it was not a clean close; a message too big for one relay frame closes the stream instead of being sent", () => {
   const w = world();
   const ws = new w.WS("ws://h/v1/streams/computers/glass?ticket=1"); const closes = []; ws.onclose = e => closes.push([e.code, e.wasClean]);
-  w.opened[0].open(); w.opened[0].drop(1006, "connection lost");
+  w.opened[0].open(); w.opened[0].drop(1006, "connection lost"); w.flush();
   assert.deepEqual(closes, [[1006, false]]);
   const big = new w.WS("ws://h/v1/streams/computers/glass?ticket=2"); const bigCloses = []; big.onclose = e => bigCloses.push(e.code);
   w.opened[1].open();
-  big.send(new Uint8Array(MAX_MESSAGE + 1).buffer);
+  w.flush(); big.send(new Uint8Array(MAX_MESSAGE + 1).buffer); w.flush();
   assert.deepEqual(bigCloses, [1009]); assert.equal(w.opened[1].sent.length, 0); assert.deepEqual(w.opened[1].closedWith, [1009, "message too big"]);
 });
 
