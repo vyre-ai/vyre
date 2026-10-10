@@ -15,6 +15,8 @@ export const SMS_MAX = 1600;
 /** The most numbers one yes covers. */
 export const SMS_BATCH = 20;
 export const SENDER = "comms:sms";
+/** The Vault item the Twilio need is kept in (needs.credentials id twilio, as the Vault names a module's single need). */
+const TWILIO_ITEM = "comms-twilio";
 const CONTENT = { body: "string (the text)" };
 
 /** E.164 numbers from what was given, each once; a number that is not one is refused by name. @param {unknown} to */
@@ -98,11 +100,11 @@ export function registerComms(ctx, o = {}) {
       // The Twilio key is the person's own item in the Vault, named twilio and handed to Comms: its `value` is the auth token (or an API key's secret, with that key's id in `sid`). It is held for this send only.
       /** @type {string} */ let auth;
       try {
-        const secret = String(await ctx.vault.fetch("twilio", { field: "value" }));
+        const secret = String(await ctx.vault.fetch(TWILIO_ITEM, { field: "value" }));
         let user = String(c.account);
-        try { const sid = String(await ctx.vault.fetch("twilio", { field: "sid" })); if (/^SK[0-9a-f]{32}$/i.test(sid)) user = sid; } catch { /* an auth token: the account is the user */ }
+        try { const sid = String(await ctx.vault.fetch(TWILIO_ITEM, { field: "sid" })); if (/^SK[0-9a-f]{32}$/i.test(sid)) user = sid; } catch { /* an auth token: the account is the user */ }
         auth = `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}`;
-      } catch { throw fail("texts need your Twilio auth token in the Vault: add an API key named twilio, paste the token, and let Comms use it", "needs_setup"); }
+      } catch { throw fail("texts need your Twilio auth token in the Vault: open Vault, Connections, connect Twilio for Comms and paste the token", "needs_setup"); }
       /** @type {{ to: string, sid?: string, error?: string }[]} */ const results = [];
       for (const n of dest) {
         const form = new URLSearchParams({ To: n, Body: body, ...(c.service ? { MessagingServiceSid: String(c.service) } : { From: String(c.from) }) }).toString();
