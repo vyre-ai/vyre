@@ -340,7 +340,7 @@ export default {
         }
       } finally { beating = false; }
     };
-    if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, HEARTBEAT_MS); beatTimer.unref?.(); }
+    if (!(ctx.config && ctx.config.role === "box")) { beatTimer = setInterval(() => { beatOnce().catch(() => {}); }, seam.heartbeatMs || HEARTBEAT_MS); beatTimer.unref?.(); }
     return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); if (beatTimer) clearInterval(beatTimer); try { offSleep?.(); offWake?.(); } catch { /* gone */ } try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

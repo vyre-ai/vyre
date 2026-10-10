@@ -38,12 +38,13 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
+ *   lapseMs?: number,
  *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
 export function createLentHome(o) {
   const now = o.now || Date.now;
-  const book = o.book || createPlacementBook({ now, ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
+  const book = o.book || createPlacementBook({ now, ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
   const lent = new Map();
   // A restart of the home keeps the sessions that were on lenders' computers: they are lent again as they were, and each lender gets a whole lapse to show itself.
   for (const r of book.all()) if (r.where === "mac" && r.key !== undefined) lent.set(r.session, { person: r.person, device: r.device, key: r.key || undefined, ...(r.chat ? { chat: r.chat } : {}) });
