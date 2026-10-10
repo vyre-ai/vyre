@@ -92,7 +92,9 @@ async function world(t) {
       if (/** @type {any} */ (q).probe) { await g.chats.read(person, /** @type {string} */ (chat)); return { token: () => "", end: async () => {} }; }
       asked.push({ thread: q.thread, chat: chat || null, asker: q.asker || null });
       if (process.env.E2E_DEBUG) console.error("KSOPEN", JSON.stringify({ chat, asker: q.asker, agent: q.agent }));
-      const s = await ks.open({ chain: person, ...(chat ? { chat } : {}), ...(q.agent ? { agent: q.agent } : {}), thread: q.thread });
+      // as the daemon does (core/daemon/index.js kernelSession): a run with no agent in a chat is a model slot, and its token's agent hop is the slot id
+      const agent = q.agent || (chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:") ? q.rec.slot : undefined);
+      const s = await ks.open({ chain: person, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
       return { token: ks.tokenFor(s.id), end: () => ks.end(s.id) };
     };
     await reg.start(discover([CORE]).filter(f => f.manifest && (["stream", "threads", "sessions"].includes(f.manifest.name))), { role: "box" });
