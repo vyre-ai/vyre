@@ -7,7 +7,8 @@ import { Icon, type IconName } from "../components/Icon";
 import { Row } from "../components/Row";
 import { PHONE_MAX, useUiTheme } from "../theme";
 import { useWindowDimensions } from "react-native";
-import { edgePath, edgeWords, extent, listOrder, metrics, place } from "./layout.js";
+import { useMemo } from "react";
+import { arrange, edgePath, edgeWords, extent, listOrder, metrics, place } from "./layout.js";
 
 export type NodeState = "pending" | "running" | "waiting" | "done" | "failed" | "paused";
 /** One step, as the kernel's canvas API hands it over (graph and paintRun): a lane and a row, what it says, and what to flag. */
@@ -15,9 +16,9 @@ export type CanvasNode = {
   id: string; kind: string; label: string; lane: number; y: number; state?: NodeState; note?: string; who?: string;
   outward?: boolean; sealed?: boolean; code?: boolean; waits?: boolean;
 };
-export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" };
+export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" | "join" };
 
-const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "list", branch: "link", subflow: "flows", ask: "faceid", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
+const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "board", branch: "list", subflow: "flows", ask: "face", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
 const STATE: Record<NodeState, { label: string; tone: "plain" | "accent" | "ok" | "err" | "warn" } | null> = {
   pending: null, running: { label: "Running", tone: "accent" }, waiting: { label: "Waiting on you", tone: "accent" }, done: { label: "Done", tone: "ok" }, failed: { label: "Failed", tone: "err" }, paused: { label: "Paused", tone: "warn" },
 };
@@ -44,7 +45,9 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
   const { width } = useWindowDimensions();
   const { map, color } = useUiTheme();
   const list = (mode ?? (width < PHONE_MAX ? "list" : "graph")) === "list";
-  const into = new Map(edges.map((e) => [e.to, e.kind]));
+  // A parallel's lanes go side by side and the step after it waits for all of them (layout.js arrange); the phone's list keeps the kernel's order and the same words.
+  const laid = useMemo(() => arrange(nodes, edges), [nodes, edges]);
+  const into = new Map(laid.edges.map((e) => [e.to, e.kind]));
 
   if (list) {
     return (
@@ -64,19 +67,19 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
   }
 
   const m = metrics(px(map["--s-12"], 48));
-  const placed = place(nodes, m);
+  const placed = place(laid.nodes, m);
   const at = new Map(placed.map((p) => [p.id, p]));
-  const box = extent(nodes, m);
+  const box = extent(laid.nodes, m);
   const stroke = parseFloat(String(map["--s-1"])) / 2 || 2;
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator contentContainerClassName="min-w-full justify-center p-s2">
       <View style={{ width: box.width, height: box.height }}>
         <Svg width={box.width} height={box.height} style={{ position: "absolute", left: 0, top: 0 }}>
-          {edges.map((e) => {
+          {laid.edges.map((e) => {
             const a = at.get(e.from), b = at.get(e.to);
             if (!a || !b) return null;
             const done = nodes.find((n) => n.id === e.to)?.state === "done" || nodes.find((n) => n.id === e.to)?.state === "waiting";
-            return <Path key={e.from + e.to} d={edgePath(a, b, m)} fill="none" stroke={done ? color.ok : color["edge-strong"]} strokeWidth={stroke} />;
+            return <Path key={e.from + e.to + e.kind} d={edgePath(a, b, m)} fill="none" stroke={done ? color.ok : color["edge-strong"]} strokeWidth={stroke} strokeDasharray={e.kind === "join" ? `${stroke * 3} ${stroke * 2}` : undefined} />;
           })}
         </Svg>
         {placed.map((n) => {
