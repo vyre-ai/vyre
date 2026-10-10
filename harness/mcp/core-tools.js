@@ -6,7 +6,7 @@
 // The listing is kept small on purpose, because every listed tool costs the model its description on every turn: test/tools-budget.test.js
 // fails above 30 tools or about 6,000 tokens (lib/tokens.js). To add a tool here, say which one leaves or why the budget grows.
 import { ALIASES, REPLACED } from "./memory-tools.js";
-import { buildToolIndex, findTools } from "../../lib/tools-index.js";
+import { buildToolIndex, findTools, confident } from "../../lib/tools-index.js";
 import { ASKS } from "./asks.js";
 
 /** MCP names allow letters, digits, "_" and "-", so "recall.search" is offered as "recall_search". @param {string} t */
@@ -100,16 +100,17 @@ export function find(index, query, limit = 3, boost = undefined) {
   return findTools(index, query, { limit, boost });
 }
 
-/** A weak answer: nothing found, a low top score, or the top two nearly tied. The numbers come from the held-out sets (about half of such answers are wrong). @param {{ score: number }[]} found */
-export const weak = (found) => !found.length || found[0].score < 25 || (found.length > 1 && found[0].score / found[1].score < 1.1);
+/** A weak answer: nothing found, or a close call (the three views of lib/tools-index.js disagree and the first two are near). Half of the close calls are wrong at first place and three in four have the right tool in the first two. @param {{ score: number, agree?: number }[]} found */
+export const weak = (found) => !confident(found);
 
 /**
  * What tools_find sends back: the best three in full, with a ready call each, then the next ones compactly (name, a short description, the arguments they need), so a near miss is still on the
- * page. A weak answer also points at vyre_core, the map of modules, so the model can browse instead of guessing again.
+ * page. A close call says so and names the two, so the model reads both (and asks the person when their words do not settle it); an empty answer points at vyre_core, the map of modules.
  * @param {ReturnType<typeof find>} found @param {(name: string) => any} [inputOf] the input schema of a tool, for the compact entries
  */
 export function shapeFind(found, inputOf = () => null) {
   const full = found.slice(0, 3).map((f) => ({ name: f.name, description: f.description, call: { tool: "tools_call", arguments: { tool: f.call.tool, arguments: f.call.arguments } } }));
   const more = found.slice(3).map((f) => { const inp = inputOf(f.name); const need = inp && Array.isArray(inp.required) ? inp.required.slice(0, 6) : []; return { name: f.name, description: f.description.slice(0, 80), ...(need.length ? { needs: need } : {}) }; });
-  return { tools: full, ...(more.length ? { also: more } : {}), ...(weak(found) ? { browse: "Not sure these fit? Call vyre_core for the map of Vyre's modules, then tools_find again with a module's name." } : {}) };
+  const close = found.length > 1 && weak(found) ? `Close call between ${found[0].name} and ${found[1].name}. Read both, take the one that does what the person asked, and if their words do not settle it, ask them which they mean.` : "";
+  return { tools: full, ...(more.length ? { also: more } : {}), ...(close ? { unsure: close } : {}), ...(!found.length ? { browse: "Nothing fits? Call vyre_core for the map of Vyre's modules, then tools_find again with a module's name." } : {}) };
 }
