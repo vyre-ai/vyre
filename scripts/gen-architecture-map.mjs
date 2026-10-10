@@ -93,6 +93,8 @@ export const MODULES = {
   "core/appearance": ["ui", "The theme, the colour scheme and the design tokens as settings."],
   "core/comms": ["outside", "One way to send a text or an email: it asks the Gate once, uses the person's own mail account or Twilio from the Vault, and logs it on the client."],
   "core/documents": ["work", "Word templates filled from records, PDFs, documents sent for signature and their signed copies filed on the client."],
+  "core/builder": ["work", "Builds a site for Publish: a folder of ready files, a React page, or a folder with a Dockerfile built into an image in a rootless BuildKit."],
+  "core/models": ["sessions", "The model registry: one list every picker reads from each provider, CLI and OpenRouter, and a pending eval card for a new model; it never holds a key."],
   "core/appmods": ["outside", "Open-source apps (Documents first) run as containers on a server, from a pinned catalog."],
   "core/approvals": ["identity", "Approve on your phone: a paired phone signs a request's exact words."],
   "core/apps": ["system", "The Android app served from the server, signed with the owner's own key."],
