@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { allProcs, treeOf, signalTree } from "./proctree.js";
+import { allProcs, treeOf, signalTree, killTree } from "./proctree.js";
 
 /** A /proc stat line: pid (comm) state ppid pgrp ... utime stime ... rss. */
 const stat = (pid, comm, ppid, pgrp, utime, stime, rssPages) => {
@@ -37,4 +37,21 @@ test("a signal reaches the whole tree, a child forked while the first pass ran i
   const n = signalTree(10, "SIGSTOP", { procs, kill: (pid, sig) => { if (pid === 11) throw Object.assign(new Error("gone"), { code: "ESRCH" }); sent.push([pid, sig]); } });
   assert.deepEqual(sent, [[10, "SIGSTOP"], [12, "SIGSTOP"]]);
   assert.equal(n, 3);
+});
+
+test("a tree is ended without a leak: every process found is stopped before any is killed, a child that shows up in a later look is stopped too, and one whose parent is killed first is not lost (the reader's second process)", () => {
+  const P = (/** @type {number} */ pid, /** @type {number} */ ppid) => ({ pid, ppid, pgid: pid, ticks: 0, pages: 0, pcpu: 0, kb: 0 });
+  let looks = 0;
+  // the first look sees the wrapper and the namespace's init; by the second, init has forked the reader's program
+  const procs = () => (++looks === 1 ? [P(10, 1), P(11, 10)] : [P(10, 1), P(11, 10), P(12, 11)]);
+  const sent = /** @type {[number, string][]} */ ([]);
+  const n = killTree(10, { procs, kill: (pid, sig) => { sent.push([pid, sig]); } });
+  assert.equal(n, 3);
+  const firstKill = sent.findIndex(x => x[1] === "SIGKILL");
+  assert.ok(sent.slice(0, firstKill).every(x => x[1] === "SIGSTOP") && sent.slice(0, firstKill).length === 3, "all three are stopped before the first is killed");
+  assert.deepEqual(sent.slice(firstKill).map(x => x[0]).sort(), [10, 11, 12]);
+  assert.ok(sent.slice(firstKill).every(x => x[1] === "SIGKILL"));
+  // a process that is already gone does not stop the rest
+  const gone = killTree(10, { procs: () => [P(10, 1), P(11, 10)], kill: (pid) => { if (pid === 11) throw Object.assign(new Error("gone"), { code: "ESRCH" }); } });
+  assert.equal(gone, 2);
 });
