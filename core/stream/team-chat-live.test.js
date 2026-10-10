@@ -46,8 +46,8 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   await w.tool("recall.index", {}).catch(() => null);
   const db = w.d.registry.deps.db;
   const lines = (() => { try { return db.prepare("SELECT COUNT(*) n FROM memory_engine_lines WHERE text LIKE ?").get("%hello team, please answer%"); } catch { return { n: 0 }; } })();
-  const th = (await w.tool("threads.list", {})).data || [];
-  const orig = JSON.stringify(await Promise.all(th.map(async (/** @type {any} */ r) => (await w.internal("threads.origin", { session: r.id || r.thread })).data)));
+  const sess = (() => { try { return String(db.prepare("SELECT session FROM memory_engine_lines WHERE text LIKE ? LIMIT 1").get("%hello team, please answer%").session); } catch { return ""; } })();
+  const orig = sess ? JSON.stringify((await w.internal("threads.origin", { session: sess })).data) : "none";
   const which = (() => { try { return JSON.stringify(db.prepare("SELECT * FROM memory_engine_lines WHERE text LIKE ?").all("%hello team, please answer%")).slice(0, 700); } catch { return ""; } })();
   assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory (home ${homeSpace}, team ${firm.space}): ${which} :: origin ${orig}`);
 });
