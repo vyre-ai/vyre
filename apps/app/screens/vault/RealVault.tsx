@@ -253,7 +253,7 @@ export default function RealVault() {
             <Card flush>
               {items.length ? items.map((v, i) => (
                 <View key={v.id}>{i ? <Divider inset={60} /> : null}
-                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.title}
+                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.icon} />} title={v.title}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
               )) : <EmptyState title={query.trim() ? "Nothing matches" : "Nothing here yet"} body={query.trim() ? "Try a name, a site or a kind." : nothingHere(tab, rows!.length > 0, claimBlocked())} />}
