@@ -56,7 +56,7 @@ if (role === "home") {
       const cp = await i.view.checkpoint().catch(() => null), lines = cp ? await i.view.transcript(1, 10000).catch(() => []) : [];
       fs.appendFileSync(resumes, JSON.stringify({ session: i.session, epoch: i.epoch, reason: i.reason, turn: cp ? cp.turn : null, seq: cp ? cp.seq : null, lines: lines.length }) + "\n");
     },
-    specFor: async () => ({ command: process.execPath, args: [agentPath], env: { VYRE_AUTO_TURN_MS: "500" }, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }) });
+    specFor: async () => ({ command: process.execPath, args: [agentPath], env: { VYRE_AUTO_TURN_MS: "1200" }, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }) });
   home.watch(500);
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   const dispatch = withKernelCall(async () => { throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); }, { serverFor: s => (s === SPACE ? server : null), personOf: d => (d === DEVICE ? BOB : null), pathOf: () => "wink" });
@@ -239,9 +239,9 @@ else {
     async outageShort() {
       const l = await lend("outs");
       proxy.cut(); log("network cut");
-      await until("the sessions to freeze", () => { const a = sandboxOf(path.join(l.base, "agent")); return a.length > 0 && a.every(p => stateOf(p.pid) === "T"); }, 15_000).then(() => check(true, "the agent froze after two missed beats"), () => check(false, "the agent froze after two missed beats"));
+      await until("the sessions to freeze", () => { const a = sandboxOf(path.join(agentHome, "agent.js")); return a.length > 0 && a.every(p => stateOf(p.pid) === "T"); }, 15_000).then(() => check(true, "the agent froze after two missed beats"), () => check(false, "the agent froze after two missed beats"));
       await sleep(600); proxy.heal(); log("network back");
-      await until("the sessions to run again", () => { const a = sandboxOf(path.join(l.base, "agent")); return a.length > 0 && a.every(p => stateOf(p.pid) !== "T"); }, 15_000).then(() => check(true, "the agent ran again"), () => check(false, "the agent ran again"));
+      await until("the sessions to run again", () => { const a = sandboxOf(path.join(agentHome, "agent.js")); return a.length > 0 && a.every(p => stateOf(p.pid) !== "T"); }, 15_000).then(() => check(true, "the agent ran again"), () => check(false, "the agent ran again"));
       const row = await ctl({ cmd: "book", session: l.sess });
       check(row.where === "mac" && row.epoch === 1, `still this computer's, nothing moved (epoch ${row.epoch})`);
       const n1 = (await ctl({ cmd: "transcript", session: l.sess })).length; await sleep(2000);
