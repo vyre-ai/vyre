@@ -243,7 +243,7 @@ export default {
     // Every model call goes through the inference door (contract 8.4): ctx.model is the door, ctx.chainFor(o) the kernel chain of a session. With no door a
     // API-key provider refuses to run unless VYRE_LEGACY_DIRECT_MODEL=1 (one warning per provider); Codex and Grok run on the own login of the person, direct with the prompt scrubbed (loginDirect); see lib/door-bridge.js and team/archive/work-journals/door-retrofit.md.
     const doorCfg = { door: /** @type {any} */ (ctx).model, legacyDirect: process.env.VYRE_LEGACY_DIRECT_MODEL === "1", chainFor: /** @type {any} */ (ctx).chainFor, warn: m => { try { ctx.log ? ctx.log(m) : process.stderr.write(m + "\n"); } catch {} } };
-    const drivers = { codex: loginDirect(codexProvider({ sessions: acpSessions("codex") }), doorCfg), grok: loginDirect(grokProvider({ sessions: acpSessions("grok") }), doorCfg),
+    const drivers = { codex: loginDirect(codexProvider({ sessions: acpSessions("codex") }), doorCfg, ["OPENAI_API_KEY", "CODEX_API_KEY"]), grok: loginDirect(grokProvider({ sessions: acpSessions("grok") }), doorCfg, ["XAI_API_KEY"]),
       // The last rung: a plain API-key driver.
       openrouter: openrouterProvider({ ...doorCfg, ...(testBase(process.env.VYRE_OPENROUTER_URL) ? { baseUrl: process.env.VYRE_OPENROUTER_URL } : {}), store: chatStore }),
       "openai-compatible": openrouterProvider({ ...doorCfg, id: "openai-compatible", keyEnv: "OPENAI_COMPAT_API_KEY", baseUrl: "https://api.openai.com/v1", store: chatStore }) };
