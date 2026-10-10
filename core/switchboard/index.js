@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js";
 import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -1431,7 +1431,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), ...(o.lentSpawn ? { lentSpawn: o.lentSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, scrubOut(m)); }, onExit: (code, signal, stderr, moved) => this.onExit(id, state, code, signal, stderr, moved) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;

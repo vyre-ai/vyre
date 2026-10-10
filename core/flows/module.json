@@ -45,6 +45,8 @@
       { "name": "flows.kit.card", "effect": "read", "reach": "anyone" },
       { "name": "flows.kit.propose", "effect": "write", "reach": "anyone" },
       { "name": "flows.kit.credentials", "effect": "read", "reach": "modules" },
+      { "name": "flows.credential-uses", "effect": "read", "reach": "modules" },
+      { "name": "flows.definitions.scan", "effect": "read", "reach": "modules" },
       { "name": "flows.kit.remove", "effect": "write", "reach": "person" },
       { "name": "flows.kit.list", "effect": "read", "reach": "anyone" },
       { "name": "flows.kit.diff", "effect": "read", "reach": "anyone" },

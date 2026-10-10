@@ -3,7 +3,8 @@
 // person's own chain, and answers the reference a message carries: { id, name, mime, bytes }. The send path opens it by id (lib/attachments-store.js); this module only adds and lists.
 import { createDoor } from "../../lib/gateway-door.js";
 import { PERSON_SURFACES } from "../../lib/caller.js";
-import { put, list } from "../../lib/attachments-store.js";
+import { put, list, find, read } from "../../lib/attachments-store.js";
+import { thumbOf } from "../../lib/thumb.js";
 import { LIMITS } from "../../lib/attachments.js";
 
 const str = { type: "string" };
@@ -35,6 +36,20 @@ export function registerAttachments(ctx, seam = /** @type {any} */ ({})) {
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
       const d = await door.open({}, meta);
       return { attachments: (await list(d.gateway, d.chain, String(i.thread || ""))).map(({ path: _p, ...a }) => a) };
+    },
+  });
+  ctx.tool("attachments.get", {
+    description: "One file of a chat by id: { thread, id, thumb? }. Returns { attachment: { id, name, mime, bytes }, data, thumb }: data is the file in base64. With thumb true, an image comes back as a preview of at most 256 pixels (thumb true) or, where this build cannot make one, as the file itself (thumb false); any other file has no preview (data null).",
+    input: obj({ thread: str, id: str, thumb: { type: "boolean" } }, ["thread", "id"]), callers: PERSON,
+    run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      const d = await door.open({}, meta);
+      const thread = String(i.thread || ""), id = String(i.id || "");
+      const { path: _p, ...attachment } = await find(d.gateway, d.chain, thread, id);
+      if (!i.thumb) return { attachment, data: (await read(d.gateway, d.chain, thread, id)).toString("base64"), thumb: false };
+      if (!/^image\//.test(attachment.mime)) return { attachment, data: null, thumb: false };
+      const bytes = await read(d.gateway, d.chain, thread, id);
+      const t = thumbOf(bytes, attachment.mime);
+      return t ? { attachment, mime: t.mime, data: Buffer.from(t.bytes).toString("base64"), thumb: true } : { attachment, data: bytes.toString("base64"), thumb: false };
     },
   });
 }

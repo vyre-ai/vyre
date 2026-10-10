@@ -4075,6 +4075,20 @@
     }
    }
   },
+  "notice-answered": {
+   "title": "Answered from a notice",
+   "screens": {
+    "full": {
+     "component": "notice-answered"
+    },
+    "compact": {
+     "component": "notice-answered"
+    },
+    "glance": {
+     "component": "notice-answered"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {
