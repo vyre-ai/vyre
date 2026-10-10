@@ -76,8 +76,11 @@ async function localWorld(o) {
   const d = await start({ presence, root, log: () => {}, kernel: true, kernelSealer: sealer });
   const restore = () => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } };
   const owner = () => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-person", person: d.kernel.id.owner, path: "direct", session: "s" });
+  // A call that asks for the person's yes is answered with it: the daemon's development presence seam takes the proof the way the server's operator terminal gives it (the same seam as the daemon world).
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
-    const r = await d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(owner(), {})).token });
+    const token = (await d.kernel.surfaces.open(owner(), {})).token;
+    let r = await d.registry.call(tool, input, "cli", { token });
+    if (r.error && r.error.code === "presence_required") r = await d.registry.call(tool, input, "cli", { token, proof: { method: "passkey", id: "x" } });
     if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code });
     return r.data;
   };
