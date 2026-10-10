@@ -76,3 +76,13 @@ export function withQuotes(text, list) {
   const q = list.map((h) => `${h.quote.split("\n").map((l) => `> ${l}`).join("\n")}${h.from ? `\n> — ${h.from}` : ""}`).join("\n\n");
   return `${q}\n\n${text}`;
 }
+
+/**
+ * Whose words a selection is in: the message row it sits in names its author (`data-from`, set by the row). "" when it is in no row. @param {any} node a DOM node (text or element)
+ * @returns {string}
+ */
+export function fromOfNode(node) {
+  const e = node && (node.nodeType === 1 ? node : node.parentElement);
+  const row = e && typeof e.closest === "function" ? e.closest("[data-from]") : null;
+  return row ? String(row.getAttribute("data-from") || "").trim() : "";
+}
