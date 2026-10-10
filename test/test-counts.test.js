@@ -42,3 +42,18 @@ test("test/must-run.json names real test files", () => {
   assert.ok(Object.keys(list).length >= 5);
   for (const f of Object.keys(list)) assert.ok(fs.existsSync(path.join(path.dirname(MUST_RUN), "..", f)), `${f} is in must-run.json and is gone`);
 });
+
+test("a red file's first failing test and its error block are in the runner's summary, not only its name", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const os = await import("node:os");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tc-detail-"));
+  const f = path.join(dir, "red.test.js");
+  fs.writeFileSync(f, 'import test from "node:test"; import assert from "node:assert/strict";\ntest("passes", () => {});\ntest("the answer is wrong", () => { assert.equal(41, 42, "the answer was off by one"); });\n');
+  try {
+    const r = spawnSync(process.execPath, ["scripts/test-counts.mjs", "run", f], { encoding: "utf8", cwd: path.join(path.dirname(new URL(import.meta.url).pathname), ".."), env: Object.fromEntries(Object.entries({ ...process.env, VYRE_TEST_FILE_LIMIT_MS: "60000" }).filter(([k]) => k !== "NODE_TEST_CONTEXT")) });
+    const summary = r.stderr.slice(r.stderr.indexOf("the first failure of each red file"));
+    assert.ok(summary.startsWith("the first failure"), `no first-failure section in: ${r.stderr.slice(-400)}`);
+    assert.match(summary, /the answer is wrong/, "the failing test's name");
+    assert.match(summary, /the answer was off by one/, "its error message");
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
