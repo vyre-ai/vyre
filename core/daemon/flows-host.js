@@ -57,7 +57,7 @@ export function createFlowsHost(o) {
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
       // The model door is the kernel's own (gateway.model, present when the home was booted with the inference door): every classify step goes through its scan, so a sealed field reaches the
       // model only as a placeholder, and the step passes no tools. Without a door the step fails plainly and the owner is told.
-      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run"), { code: "unavailable" }); } },
+      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run: ask the owner to turn on model access for this home"), { code: "unavailable" }); } },
     };
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
@@ -87,7 +87,7 @@ export function createFlowsHost(o) {
       // One entry point for a Flow's call step: a module step (flow.steps) runs as below, and nothing else is a step.
       call: async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input, /** @type {{ idem?: string, approval?: string, bind?: string, ride?: { run: string, step: string, with: string } }} */ opts = {}) => {
         const tool = o.flowTools ? (o.flowTools() || []).find((/** @type {any} */ t) => t.name === action) : null;
-        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run`), { code: "denied" });
+        if (!tool) throw Object.assign(new Error(`${action} is not a step a Flow can run (flows.cheatsheet lists the steps)`), { code: "denied" });
         if (!o.callFlow) throw Object.assign(new Error("this home has no way to run a module's tool from a Flow"), { code: "unavailable" });
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });
@@ -133,7 +133,7 @@ export function createFlowsHost(o) {
       // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
       // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
-        if (!gw.leases) throw Object.assign(new Error("this home has no vault forward"), { code: "unavailable" });
+        if (!gw.leases) throw Object.assign(new Error("this home has no vault forward, so a Flow cannot call a service: ask the owner to set up the vault on this home"), { code: "unavailable" });
         const r = q.request || {};
         return gw.leases.forward(q.chain, { connector: q.connector, method: r.method || "GET", path: r.path || "/", ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) });
       },
@@ -184,7 +184,7 @@ export function createFlowsHost(o) {
     };
     // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
     const isAdminOf = async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id);
-    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules"), { code: "unavailable" }); });
+    const callModule = o.callModule || (async () => { throw Object.assign(new Error("this host cannot reach the modules: ask the owner to restart Vyre"), { code: "unavailable" }); });
     /** An agent's change to itself, by conversation (R031-09): the agents module keeps the draft and writes the version; the card goes to the agent's owner, else an owner or admin. */
     const agentKind = {
       draft: async (/** @type {any} */ chain, /** @type {any} */ spec, /** @type {any} */ proposer) => {

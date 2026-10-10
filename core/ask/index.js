@@ -58,7 +58,7 @@ export default {
       run: async (/** @type {any} */ i) => {
         sweep();
         const a = asks.get(String(i.id));
-        if (!a) throw refuse("no such question card", "not_found");
+        if (!a) throw refuse("no such question card (it may have expired: ask.many makes a new one)", "not_found");
         await settle(a, Number(i.wait_ms) || 0);
         return view(a);
       },
@@ -71,7 +71,7 @@ export default {
         if (!isPerson(meta)) throw refuse("only a person at their own surface answers", "denied");
         sweep();
         const a = asks.get(String(i.id));
-        if (!a) throw refuse("no such question card", "not_found");
+        if (!a) throw refuse("no such question card (it may have expired: ask.many makes a new one)", "not_found");
         if (a.state !== "waiting") throw refuse(a.state === "answered" ? "this was already answered" : `this card is ${a.state}`, "conflict");
         const r = checkAnswers(a.questions, i.answers);
         if (!r.ok) throw refuse(r.error, "bad_input");
@@ -88,7 +88,7 @@ export default {
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!isPerson(meta)) throw refuse("only a person at their own surface does this", "denied");
         const a = asks.get(String(i.id));
-        if (!a) throw refuse("no such question card", "not_found");
+        if (!a) throw refuse("no such question card (it may have expired: ask.many makes a new one)", "not_found");
         if (a.state === "waiting") { a.state = "cancelled"; card(a); a.waiters.forEach(w => w()); }
         return view(a);
       },

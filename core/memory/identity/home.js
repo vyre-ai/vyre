@@ -138,7 +138,7 @@ export class IdentityHome {
   /** @param {{ server: string, fp: string }} g */
   addGrant(g) {
     const m = this.manifest();
-    if (!m) throw Object.assign(new Error("no identity memory is kept here"), { code: "not_found" });
+    if (!m) throw Object.assign(new Error("no identity memory is kept here (memory.identity.status shows where it is kept)"), { code: "not_found" });
     const grants = this.grants().filter(x => x.fp !== g.fp).concat([{ server: String(g.server).slice(0, 80), fp: g.fp, at: this.now() }]);
     this.backend.put(`${dir(this.id)}/manifest.json`, JSON.stringify({ ...m, grants }, null, 1));
   }
@@ -157,7 +157,7 @@ export class IdentityHome {
    * @returns {Lease}
    */
   create({ devices, recoveryCode, recoveryPassword = "", snapshot = { v: 1, tables: {}, state: {} } }) {
-    if (this.manifest()) throw Object.assign(new Error("this identity already has a home here"), { code: "exists" });
+    if (this.manifest()) throw Object.assign(new Error("this identity already has a home here (memory.identity.status shows it)"), { code: "exists" });
     if (!devices || !devices.length) throw Object.assign(new Error("name at least one device that can unlock it"), { code: "bad_input" });
     const key = newKey();
     const wraps = devices.map(d => ({ kind: "device", label: d.label || null, fp: fingerprint(d.publicJwk), jwk: d.publicJwk, wrapped: wrapForDevice(key, d.publicJwk, aadOf(this.id, `wrap:${fingerprint(d.publicJwk)}`)) }));
@@ -183,7 +183,7 @@ export class IdentityHome {
    */
   beginUnlock(server = null) {
     const m = this.manifest();
-    if (!m || m.moved_to) throw Object.assign(new Error("no identity memory is kept here"), { code: "not_found" });
+    if (!m || m.moved_to) throw Object.assign(new Error("no identity memory is kept here (memory.identity.status shows where it is kept)"), { code: "not_found" });
     const k = newDeviceKey();
     const request = crypto.randomBytes(12).toString("base64url");
     /** @type {any} */
@@ -213,14 +213,14 @@ export class IdentityHome {
   unlockWithCode(code, password = "") {
     const m = this.manifest();
     const w = m && m.wraps.find((/** @type {any} */ x) => x.kind === "code");
-    if (!w) throw Object.assign(new Error("no recovery code was set for this memory"), { code: "not_found" });
+    if (!w) throw Object.assign(new Error("no recovery code was set for this memory; unlock it with a device that can (memory.identity.status counts them)"), { code: "not_found" });
     return new Lease(unwrapWithCode(w.wrapped, code, aadOf(this.id, "wrap:code"), password), this.id, this.now() + LEASE_MS, this.now);
   }
 
   /** @param {Lease} lease @returns {any} the identity memory */
   load(lease) {
     const m = this.manifest();
-    if (!m) throw Object.assign(new Error("no identity memory is kept here"), { code: "not_found" });
+    if (!m) throw Object.assign(new Error("no identity memory is kept here (memory.identity.status shows where it is kept)"), { code: "not_found" });
     const name = `snap-${m.rev}.json`;
     const raw = this.backend.get(`${dir(this.id)}/${name}`);
     if (!raw || sha256(raw) !== (m.objects[name] || {}).sha256) throw Object.assign(new Error("the stored identity memory does not match its manifest"), { code: "corrupt" });
@@ -230,7 +230,7 @@ export class IdentityHome {
   /** A new revision of the identity memory. @param {Lease} lease @param {any} snapshot @returns {number} the revision */
   save(lease, snapshot) {
     const m = this.manifest();
-    if (!m) throw Object.assign(new Error("no identity memory is kept here"), { code: "not_found" });
+    if (!m) throw Object.assign(new Error("no identity memory is kept here (memory.identity.status shows where it is kept)"), { code: "not_found" });
     this.load(lease);                                                                      // only the key that opens what is there may replace it
     this.#write(lease.key(), m.rev + 1, snapshot, m.wraps);
     return m.rev + 1;
@@ -239,7 +239,7 @@ export class IdentityHome {
   /** Let another of the person's devices unlock: wrap the key to it too. @param {Lease} lease @param {{ label?: string, publicJwk: import("node:crypto").JsonWebKey }} device */
   addDevice(lease, device) {
     const m = this.manifest();
-    if (!m) throw Object.assign(new Error("no identity memory is kept here"), { code: "not_found" });
+    if (!m) throw Object.assign(new Error("no identity memory is kept here (memory.identity.status shows where it is kept)"), { code: "not_found" });
     const fp = fingerprint(device.publicJwk);
     const wraps = m.wraps.filter((/** @type {any} */ w) => !(w.kind === "device" && w.fp === fp)).concat([{ kind: "device", label: device.label || null, fp, jwk: device.publicJwk, wrapped: wrapForDevice(lease.key(), device.publicJwk, aadOf(this.id, `wrap:${fp}`)) }]);
     this.backend.put(`${dir(this.id)}/manifest.json`, JSON.stringify({ ...m, wraps }, null, 1));

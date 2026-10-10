@@ -28,7 +28,7 @@ export default {
       const one = (/** @type {any} */ t) => (t && typeof t.due === "number" ? { ...t, due_shown: showTimes(t.due, { person, space: zone }).text, due_zone: zone } : t);
       return out.task ? { ...out, task: one(out.task) } : { ...out, tasks: out.tasks.map(one) };
     };
-    const asks = (/** @type {Opened} */ d) => { if (!d.gateway.ask) throw refuse("this Space keeps no tasks", "unavailable"); return d.gateway.ask; };
+    const asks = (/** @type {Opened} */ d) => { if (!d.gateway.ask) throw refuse("this Space keeps no tasks; use another Space (spaces.list shows yours)", "unavailable"); return d.gateway.ask; };
     /** A task's actor from an id: a person by their per_ id, else an assistant or teammate by name. @param {string} id @param {string} space */
     const actor = (id, space) => ({ kind: /^per_/.test(id) ? "person" : "agent", id, space });
 

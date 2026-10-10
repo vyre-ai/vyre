@@ -23,7 +23,7 @@ export function createSpaceSessions(cfg) {
   const urn = (/** @type {string} */ id) => `vyre://${cfg.space}/session/${id}`;
   const mine = (/** @type {any} */ chain) => chain && chain.space === cfg.space;
   const ok = async (/** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ id) => mine(chain) && (await cfg.authorize({ chain, action, resource: urn(id) })).effect === "allow";
-  const notFound = () => Object.assign(new Error("not found"), { code: "not_found" });
+  const notFound = () => Object.assign(new Error("not found (it may not exist, or you may not be allowed to see it: ask the owner or an admin)"), { code: "not_found" });
 
   return Object.freeze({
     /** @param {{ chain: any, person: any, title?: string, first_context?: string, from?: any, pinnedToServer?: boolean }} q */

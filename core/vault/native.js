@@ -72,11 +72,11 @@ export async function fillNative({ vault, helper, platform = process.platform, n
   const f = await vault.fields(r);
   const c = await helper.spawn([]);
   const answer = new Promise((resolve, reject) => {
-    const t = setTimeout(() => { c.kill("SIGKILL"); reject(Object.assign(new Error("the fill helper did not answer"), { code: "timeout" })); }, REPLY_MS);
+    const t = setTimeout(() => { c.kill("SIGKILL"); reject(Object.assign(new Error("the fill helper did not answer: wait a minute and call again"), { code: "timeout" })); }, REPLY_MS);
     let got = false;
     lines(c.stdout, msg => { if (!got) { got = true; clearTimeout(t); resolve(msg); } });
     c.stderr.resume();
-    c.on("error", () => { clearTimeout(t); reject(Object.assign(new Error("the fill helper could not start"), { code: "unsupported" })); });
+    c.on("error", () => { clearTimeout(t); reject(Object.assign(new Error("the fill helper could not start: update Vyre and try again"), { code: "unsupported" })); });
     c.on("exit", () => { if (!got) { clearTimeout(t); reject(Object.assign(new Error("the fill helper stopped"), { code: "internal" })); } });
   });
   c.stdin.on("error", () => {});

@@ -69,7 +69,7 @@ export default {
     const getK = async id => { try { const r = await K.records.get(kc(), "goal", id); return r ? fromRecV(r) : null; } catch { return null; } };
     const legacyGet = (/** @type {string} */ id) => shape(/** @type {any} */ (db.prepare("SELECT * FROM goals_items WHERE id = ?").get(id)));
     const get = async (/** @type {string} */ id) => (K ? (await getK(id)) || legacyGet(id) : legacyGet(id));
-    const must = async (/** @type {string} */ id) => { const g = await get(id); if (!g) throw refuse(`no goal ${id}`, "not_found"); return g; };
+    const must = async (/** @type {string} */ id) => { const g = await get(id); if (!g) throw refuse(`no goal ${id} (goals.list shows them)`, "not_found"); return g; };
     /** Update a goal where it lives. @param {any} g the goal as read @param {Record<string, any>} patch fields of the legacy row shape */
     const update = async (g, patch) => {
       if (K && g._version !== undefined) {
@@ -157,7 +157,7 @@ export default {
       run: async (i, meta) => {
         const g = await must(i.goal);
         if (g.state !== "active") throw refuse(`${i.goal} is ${g.state}, not active`, "bad_state");
-        if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}`, "denied");
+        if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}; call it from there or ask the person`, "denied");
         if (i.index >= g.milestones.length) throw refuse(`${i.goal} has no milestone ${i.index}`, "bad_input");
         if (g.milestones[i.index].done) return g; // already done: no event twice
         const milestones = g.milestones.map((m, idx) => idx === i.index ? { ...m, done: true, done_at: now() } : m);
@@ -176,7 +176,7 @@ export default {
       callers: [...PEOPLE, ...AGENTS],
       run: async (i, meta) => {
         const g = await must(i.goal);
-        if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}`, "denied");
+        if (!(await inScope(g, meta))) throw refuse(`${i.goal} belongs to another ${g.thread ? "session" : "project"}; call it from there or ask the person`, "denied");
         return g;
       },
     });

@@ -347,7 +347,7 @@ export default {
           // Only onboard's own onboard.join step, or relay's relay.join, ever sets this, each
           // after its own person-gated, presence-proved pairing (ADR 0039 section 5) -- never a
           // person or an agent choosing it directly.
-          if (!["module:onboard", "module:relay"].includes(raw)) throw Object.assign(new Error("device is set once a connection to another server is confirmed, not chosen directly"), { code: "denied" });
+          if (!["module:onboard", "module:relay"].includes(raw)) throw Object.assign(new Error("device is set once a connection to another server is confirmed, not chosen directly; pair this computer to a server to set it"), { code: "denied" });
         } else if (raw.startsWith("module:")) {
           // Any other module reaching this tool may only ever set device (above); solo and
           // server are the person's own choice, whoever is asking on their behalf.

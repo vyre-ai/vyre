@@ -34,7 +34,7 @@ export function createDomains(db, now = Date.now) {
     add(host, app) {
       const have = db.prepare("SELECT app FROM appmods_domains WHERE host = ?").get(host);
       if (have && have.app === app) return false;
-      if (!have && db.prepare("SELECT COUNT(*) AS n FROM appmods_domains").get().n >= MAX_DOMAINS) throw Object.assign(new Error(`at most ${MAX_DOMAINS} domains`), { code: "conflict" });
+      if (!have && db.prepare("SELECT COUNT(*) AS n FROM appmods_domains").get().n >= MAX_DOMAINS) throw Object.assign(new Error(`at most ${MAX_DOMAINS} domains: remove one first`), { code: "conflict" });
       db.prepare("INSERT INTO appmods_domains (host, app, created) VALUES (?, ?, ?) ON CONFLICT(host) DO UPDATE SET app = excluded.app").run(host, app, now());
       return true;
     },

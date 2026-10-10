@@ -19,7 +19,7 @@ export function registerSpaceDrive(ctx) {
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
   const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
-    if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+    if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
     return fn(i || {}, d, d.gateway.drive);
   } });
   const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
@@ -29,9 +29,9 @@ export function registerSpaceDrive(ctx) {
       const p = pathOf(i.path), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
       // Check the size before decoding: 4 base64 characters carry 3 bytes.
-      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow (flows.list shows them) or the VyreDrive mount`, "too_large");
       const bytes = new Uint8Array(Buffer.from(text, "base64"));
-      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow (flows.list shows them) or the VyreDrive mount`, "too_large");
       if (i.base !== undefined && (!Number.isInteger(i.base) || i.base < 1)) throw refuse("base is a version number", "bad_input");
       const r = await drive.put(d.chain, p, bytes, { base: i.base ?? null });
       return { path: p, version: r.version, conflict: Boolean(r.conflict), size: bytes.length };

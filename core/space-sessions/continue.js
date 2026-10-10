@@ -24,10 +24,10 @@ export function createContinue(p) {
     /** Build the summary and raise the task for a person. Nothing leaves the source Space yet. @param {{ chain: any, session: string, target_space: string, person: any, checker?: any }} q */
     async propose(q) {
       const s = await p.readSession(q.chain, q.session);
-      if (!s || s.space !== q.chain.space) throw Object.assign(new Error("no such session"), { code: "not_found" });
+      if (!s || s.space !== q.chain.space) throw Object.assign(new Error("no such session (give the id of a session in this space)"), { code: "not_found" });
       if (s.space === q.target_space) throw Object.assign(new Error("that is the same space"), { code: "bad_input" });
       const a = await p.authorize({ chain: q.chain, action: "sessions.continue", resource: `vyre://${s.space}/session/${s.id}` });
-      if (a.effect !== "allow") throw Object.assign(new Error("not allowed"), { code: "not_found" });
+      if (a.effect !== "allow") throw Object.assign(new Error("not allowed (ask the owner or an admin)"), { code: "not_found" });
       const raw = await p.summarize({ chain: q.chain, session: s, transcript: await p.readTranscript(q.chain, s.id) });
       const stripped = strip(raw, await p.sourceOnly({ chain: q.chain, session: s }));
       const clean = (await p.sanitize({ chain: q.chain, session: s.id, text: stripped })).slice(0, MAX_SUMMARY);
@@ -42,7 +42,7 @@ export function createContinue(p) {
     /** Deliver an approved summary as the first context of a new session. The text the checker saw is the text delivered. @param {{ chain: any, task: string }} q */
     async deliver(q) {
       const d = pending.get(q.task);
-      if (!d) throw Object.assign(new Error("no such continuation"), { code: "not_found" });
+      if (!d) throw Object.assign(new Error("no such continuation (give the task id the proposal returned, or propose the continuation again)"), { code: "not_found" });
       const t = await p.ask.get(q.chain, q.task);
       if (!t || t.state !== "done" || t.outcome !== "approved" || !p.ask.approved(q.task, d.hash)) throw Object.assign(new Error("a person has not approved this summary"), { code: "not_approved" });
       pending.delete(q.task);
@@ -50,7 +50,7 @@ export function createContinue(p) {
     },
     /** Change the text before approval: a new hash, so an earlier approval does not carry over. @param {{ chain: any, task: string, summary: string }} q */
     async edit(q) {
-      const d = pending.get(q.task); if (!d || !q.chain || q.chain.space !== d.from.space) throw Object.assign(new Error("no such continuation"), { code: "not_found" });
+      const d = pending.get(q.task); if (!d || !q.chain || q.chain.space !== d.from.space) throw Object.assign(new Error("no such continuation (give the task id the proposal returned, or propose the continuation again)"), { code: "not_found" });
       const summary = (await p.sanitize({ chain: q.chain, session: d.from.session, text: String(q.summary) })).slice(0, MAX_SUMMARY);
       d.summary = summary; d.hash = sha256(canonical({ summary, to: d.target, from: d.from.session }));
       return { hash: d.hash };

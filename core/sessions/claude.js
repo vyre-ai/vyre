@@ -172,7 +172,7 @@ export function run(sdk, o) {
     /** A permission mode a person chose (the Switchboard checks which). */
     /** Only the modes Claude Code has; anything else, a bypass-shaped name above all, is refused here (conform's fixed set). */
     async setMode(/** @type {string} */ mode) {
-      if (!CLAUDE_MODES.has(String(mode))) throw Object.assign(new Error(`${mode} is not a permission mode`), { code: "denied" });
+      if (!CLAUDE_MODES.has(String(mode))) throw Object.assign(new Error(`${mode} is not a permission mode: use one of default, acceptEdits, plan, dontAsk or auto`), { code: "denied" });
       if (!exited) await q.setPermissionMode(mode);
     },
     /** Stop the current turn; the session stays. */

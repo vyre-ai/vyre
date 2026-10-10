@@ -94,7 +94,7 @@ export default {
         const mine = await h.identity();   // this computer has claimed an identity (it may lend at all)
         // The Offers for this computer are made under the id the Space's home gives it, read from what the transport proved: the home answers it, this computer never chooses it.
         const me = await k.call("lent.whoami", []);
-        if (!me || typeof me.device !== "string" || !me.device) throw Object.assign(new Error("the Space's home did not say which computer this is"), { code: "unavailable" });
+        if (!me || typeof me.device !== "string" || !me.device) throw Object.assign(new Error("the Space's home did not say which computer this is: reconnect this computer to the home and try again"), { code: "unavailable" });
         l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(mine && typeof mine.deviceId === "string" && mine.deviceId ? { eid: mine.deviceId } : {}), ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
         await l.ready; lenders.set(space, l); nudgeLoop(space);
         l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} runners.delete(space); } });
@@ -124,7 +124,7 @@ export default {
     const forSpace = async space => {
       const p = await portsFor(space);
       if (p && (typeof p.device !== "string" || !p.device)) throw Object.assign(new Error("the runner needs this computer's device key identity"), { code: "unavailable" });
-      if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available"), { code: "unavailable" });
+      if (!p) throw Object.assign(new Error("running a space's work here is not connected yet: the space's vault and sync are not available; pair this computer with the space's home first"), { code: "unavailable" });
       let r = runners.get(space);
       if (!r) {
         r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
@@ -167,7 +167,7 @@ export default {
       await r.open();
       const spec = await p.spec({ space, session, ...(chat ? { chat } : {}), ...(p.lenderCap ? { cap: p.lenderCap } : {}) });
       if (spec && spec.skew) throw Object.assign(new Error("This Mac runs an older Vyre than this Space needs, so the session runs on the server. Update Vyre on this Mac, then bring it back."), { code: "unavailable" });
-      if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
+      if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session: check the session id, or ask the space's owner"), { code: "not_found" });
       if (typeof spec.title === "string" && spec.title) titles.set(session, spec.title);
       let h;
       try {
@@ -227,7 +227,7 @@ export default {
     // poll. Only the Wink module calls it, for a message that arrived down the connection this computer holds to that Space's home (core/wink/index.js).
     ctx.tool("runner.revoke", { description: "The home says this computer's grant for a space ended: stop its sessions and delete the local work and keys.", input: obj({ space: str }, ["space"]),
       run: async ({ space }, meta) => {
-        if (!meta || meta.caller !== "module:wink") throw Object.assign(new Error("the Wink module calls this"), { code: "denied" });
+        if (!meta || meta.caller !== "module:wink") throw Object.assign(new Error("the Wink module calls this: the home ends a computer's grant, so ask the space's owner to revoke it"), { code: "denied" });
         const r = runners.get(space); if (!r) return { revoked: false, why: "nothing here for that space" };
         await r.revoke(); runners.delete(space); return { revoked: true };
       } });
@@ -240,12 +240,12 @@ export default {
           const h = hostOf();
           if (h && h.placements) return placeDeps.moveThread(i, meta);
           await person(ctx, meta, "moving a session");
-          if (i.to !== "server") throw Object.assign(new Error("Coming in this release: bringing a session back to a computer is done from the Space's server"), { code: "unavailable" });
+          if (i.to !== "server") throw Object.assign(new Error("Coming in this release: bringing a session back to a computer is done from the Space's server: do it there"), { code: "unavailable" });
           for (const [, r] of runners) for (const x of r.info()) if (x.chat === i.thread || x.session === i.thread) {
             const out = await r.moveToServer(x.session, "you");
             return out.moved === false ? { where: "mac", computer: null, state: "here", reason: null, since: null, offer: null, pinned: false, pin: null } : { where: "server", computer: null, state: "server", reason: "you", since: Date.now(), offer: null, pinned: false, pin: null };
           }
-          throw Object.assign(new Error("no such session on this computer"), { code: "not_found" });
+          throw Object.assign(new Error("no such session on this computer (runner.places shows where each chat runs)"), { code: "not_found" });
         }
         // the computer's own: a last checkpoint here, then the server takes it
         if (typeof i.space !== "string" || typeof i.session !== "string") throw Object.assign(new Error("name the chat to move, or the space and session on this computer"), { code: "bad_input" });
@@ -282,9 +282,9 @@ export default {
       input: obj({ session: str }, ["session"]),
       run: async ({ session }) => {
         const o = ownServerOf();
-        if (!o) throw Object.assign(new Error("this computer does not seal its own sessions"), { code: "unavailable" });
+        if (!o) throw Object.assign(new Error("this computer does not seal its own sessions: run this on the server that holds them"), { code: "unavailable" });
         const r = await o.resolve({ payload: { session } });
-        if (!r) throw Object.assign(new Error("no such session here"), { code: "not_found" });
+        if (!r) throw Object.assign(new Error("no such session here (threads.list shows the sessions)"), { code: "not_found" });
         const { key, seal } = sealFor(o, r);
         try { return (await seal.recover()) || { sealed: false }; } catch (e) { seals.delete(key); throw e; }
       },
