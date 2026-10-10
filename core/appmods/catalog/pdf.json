@@ -1,0 +1,37 @@
+{
+  "name": "pdf",
+  "title": "PDF converter",
+  "version": "0.1.0",
+  "vyre": "1",
+  "description": "Turns a Word document into a PDF on your own server. Nothing leaves it.",
+  "license": "MIT",
+  "source": "https://github.com/gotenberg/gotenberg",
+  "notes": [
+    "Documents uses it to make a PDF of a filled template. Nothing is sent anywhere: it runs on your server with no way out and holds nothing.",
+    "It uses about 1 GB of memory while it converts."
+  ],
+  "app": {
+    "image": "gotenberg/gotenberg:8.37.0@sha256:f29984bd1e226bf1b93ba90af06000afa8b315853e99d27b9aaa41b93f15c769",
+    "port": 3000,
+    "hookPort": 43002,
+    "service": true,
+    "env": {
+      "CHROMIUM_DISABLE_ROUTES": "true",
+      "LIBREOFFICE_DENY_PUBLIC_IPS": "true",
+      "API_TIMEOUT": "120s",
+      "LOG_LEVEL": "warn"
+    },
+    "health": {
+      "path": "/health",
+      "ok": [
+        200
+      ],
+      "startS": 90
+    },
+    "limits": {
+      "memoryMb": 1024,
+      "cpus": 1,
+      "pids": 256
+    }
+  }
+}

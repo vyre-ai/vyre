@@ -387,7 +387,7 @@ export default {
         const r = row(String(name));
         if (!r || r.state !== "running" || !r.origin) return null;
         const m = catalog.get(r.name);
-        if (!m) return null;
+        if (!m || m.app.service) return null;
         return { origin: r.origin, origins: [r.origin, "http://localhost:3000"], login: m.app.login || null, public: m.app.public || [], ...(m.app.signing ? { signing: m.app.signing } : {}),
           credentials: async () => ({ login_email: r.login_email, login_password: await secret(r.name, "login-password") }) };
       },
@@ -430,6 +430,7 @@ export default {
         const r = row(String(i.name)); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
         if (!(await ownerOrAdmin(meta))) throw refuse("only the owner or an admin of this Space opens this app", "denied");
         const m = known(r.name);
+        if (m.app.service) throw refuse(`${r.name} is a service other modules use; it has no screen to open`, "unsupported");
         const screen = (m.screens || []).find((/** @type {any} */ s) => s.id === i.screen) || (m.screens || [])[0];
         let base = baseHost();
         if (typeof i.origin === "string" && i.origin) { try { const u = new URL(i.origin); if (/^[a-z0-9.-]+$/i.test(u.hostname)) base = u.host.toLowerCase(); } catch { /* the configured base */ } }
@@ -521,7 +522,7 @@ export default {
       },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
-      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
+      hosts: [...db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().filter((/** @type {any} */ r) => !(catalog.get(r.name) || { app: {} }).app.service).map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host),
         ...domains.list().filter(d => (row(d.app) || {}).state === "running").map(d => d.host)] }) });
     registerDomainTools({ ctx, domains, running: app => (row(app) || {}).state === "running", ownerOrAdmin,
       signingApp: () => { for (const m of catalog.values()) if (m.app && m.app.signing && (row(m.name) || {}).state === "running") return m.name; return null; } });

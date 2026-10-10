@@ -28,6 +28,7 @@ async function world(t, opt = {}) {
     let body = ""; q.on("data", d => { body += d; });
     q.on("end", () => {
       if (q.url === "/file/abc/nda.pdf") return void r.writeHead(200, { "content-type": "application/pdf" }).end(PDF);
+      if (q.url === "/health") return void r.writeHead(200, { "content-type": "application/json" }).end('{"status":"up"}');
       if (q.url === "/api/submissions" && q.method === "POST") {
         seen.api = seen.api || []; seen.api.push({ token: q.headers["x-auth-token"] || "", body });
         if (q.headers["x-auth-token"] !== "tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ") return void r.writeHead(401).end();
@@ -434,6 +435,28 @@ test("appmods.signing.waiting: only the app's own module asks, a stopped app has
   assert.ok((await w.cli("appmods.signing.waiting", { name: "documents" })).error, "nor a person at the terminal");
   await w.cli("appmods.stop", { name: "documents" });
   assert.deepEqual((await ask()).data, { requests: [] }, "a stopped app has none");
+});
+
+test("the PDF converter is a service: it installs like any app, modules reach it through appmods.origin, and it has no public host, no screens and nothing on the front", async t => {
+  const w = await world(t);
+  const card = await w.model("appmods.card", { name: "pdf" });
+  assert.equal(card.error, undefined, JSON.stringify(card.error));
+  assert.deepEqual(card.data.reaches, ["nothing outside this server"]);
+  const r = await w.cli("appmods.install", { name: "pdf" });
+  assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "pdf", state: "running", connection: null, kit: "object" }, JSON.stringify(r));
+  const env = w.log.find(l => l[0] === "up");
+  assert.equal(env[2], "pdf");
+  assert.deepEqual(env[4], [], "it needs no key of its own");
+  assert.match((await w.d.registry.call("appmods.origin", { name: "pdf" }, "module:documents")).data.origin, /^http:\/\/127\.0\.0\.1:\d+$/, "Documents finds it");
+  assert.ok((await w.cli("appmods.origin", { name: "pdf" })).error, "a person at the terminal does not");
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, [], "no public host: nothing to put in a certificate or in DNS");
+  assert.deepEqual((await w.cli("appmods.screens")).data.screens, []);
+  assert.equal((await w.web("GET", "/health", { headers: { host: "pdf.localhost:9999" } })).status, 404, "the apps' front does not serve it");
+  assert.equal((await w.web("GET", "/", { headers: { host: "pdf.localhost:9999" } })).status, 404);
+  assert.ok((await w.cli("appmods.open", { name: "pdf", origin: "http://localhost:9999" })).error, "there is no screen to open");
+  // installed next to the signing app, only the signing app has a host
+  await w.cli("appmods.install", { name: "documents" });
+  assert.deepEqual((await w.cli("appmods.hosts")).data.hosts, ["documents.localhost"]);
 });
 
 test("Needs you: a document nobody has signed is one quiet card from the real approvals queue, naming the signer with no link on it, and it closes when the app stops listing it", async t => {

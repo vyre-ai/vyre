@@ -23,7 +23,9 @@ const read = (/** @type {string} */ p) => fs.readFileSync(p, "utf8");
 
 test("app helper: the catalog is recorded at install, field by field, from the image: the real DocuSeal line, its image pulled by digest", opts, async t => {
   const r = await ready(t);
-  const line = r.catalogLine().trim();
+  const lines = r.catalogLine().trim().split("\n");
+  assert.deepEqual(lines.map(l => l.split(" ")[0]), ["documents", "pdf"], "the catalog is the daemon's: DocuSeal and the PDF converter");
+  const line = lines[0];
   const f = line.split(" ");
   assert.equal(f.length, 13, line);
   assert.deepEqual(f.slice(0, 1).concat(f.slice(2, 7)), ["documents", "3000", "1536", "1.5", "512", "43001"]);
