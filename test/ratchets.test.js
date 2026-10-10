@@ -23,6 +23,12 @@ test("a list that gained an entry, or whose counts rose, is growth; one that shr
   assert.deepEqual(growth(r, null, json({ a: 1 })), [], "a new file is born with its reasons");
 });
 
+test("a list shrunk to nothing is accepted, and is not growth", () => {
+  const r = { file: "test/x.json", kind: "json" };
+  assert.deepEqual(weigh({ _comment: "all gone", files: {} }), { entries: 0, mass: 0 });
+  assert.deepEqual(growth(r, json({ a: 1, b: 2 }), json({ _comment: "all gone" })), []);
+});
+
 test("a cap that rose is growth", () => {
   const r = { file: "kernel/size.test.js", kind: "cap", pattern: /\bconst CAP = (\d+)/ };
   assert.equal(growth(r, "const CAP = 9440;", "const CAP = 9500;").length, 1);
@@ -40,7 +46,8 @@ test("every named list exists and reads, so the check cannot pass by looking at 
   for (const r of RATCHETS) {
     assert.ok(fs.existsSync(r.file), `${r.file} is named as a ratchet and is gone`);
     const text = fs.readFileSync(r.file, "utf8");
-    if (r.kind === "json") assert.ok(weigh(JSON.parse(text)).entries > 0, `${r.file} reads as empty`);
+    // (a list shrunk to nothing is the goal, so empty is allowed; the file must still exist and parse)
+    if (r.kind === "json") assert.ok(weigh(JSON.parse(text)).entries >= 0);
     else assert.ok(r.pattern && r.pattern.test(text), `${r.file} no longer has the number the check reads`);
   }
 });

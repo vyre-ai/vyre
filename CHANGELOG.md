@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- test(guards): the ratchet check accepts a list shrunk to nothing (the goal), and scripts/team/ratchets.mjs no longer spells the other VPN product in the name of its ratchet file.
 - fix(switchboard): `core/switchboard/index.js` imports `carryOn`. A chat whose process ended because it moved to the server called it without the import, so the move threw a ReferenceError instead of carrying the chat on. The new test goes through the real `onExit`.
 - test: the data-hygiene checks reach further: a Flow's run page, canvas, approval card, explanation and practice run, and a template project's record, tasks and team records, hold no "[object Object]" or "undefined" (test/flows-data-hygiene.test.js, test/project-templates-daemon.test.js).
 - fix(app): a to-do a Flow step gave you says "A Flow is waiting for you." on its card, instead of the generic "It is waiting for you." (apps/app/ui/tasks/model.js).
