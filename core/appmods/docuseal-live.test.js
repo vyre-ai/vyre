@@ -171,7 +171,7 @@ test("DocuSeal signs a document, the signature starts a Flow, and the signed PDF
     assert.equal(signPage.status, 200, signPage.text.slice(0, 200));
     assert.match(signPage.text, /<link rel="stylesheet" href="\/__vyre\/brand\.css">/);
     assert.ok(signPage.text.includes("Signatures by"), "the app's credit is in the footer");
-    assert.equal(signPage.headers["referrer-policy"], "no-referrer");
+    assert.equal(signPage.headers["referrer-policy"], "same-origin");
     assert.ok(!/name="user\[password\]"/.test(signPage.text), "a signer is not shown the owner's login");
     const css = await web("/__vyre/brand.css");
     assert.equal(css.status, 200);

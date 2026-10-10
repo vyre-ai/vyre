@@ -66,9 +66,9 @@ export function dress(html, href) {
   return out;
 }
 
-/** Headers every public page carries: the signing link is in the address, so it never travels as a referrer, the page is not indexed, and a page is never cached. @param {boolean} html */
+/** Headers every public page carries: the signing link is in the address, so it is never sent to another site as a referrer (same-origin, not no-referrer: with no-referrer a browser posts the app's own forms with `Origin: null` and the app refuses them), the page is not indexed, and a page is never cached. @param {boolean} html */
 export function publicHeaders(html) {
-  return { "referrer-policy": "no-referrer", "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff", ...(html ? { "cache-control": "no-store" } : {}) };
+  return { "referrer-policy": "same-origin", "x-robots-tag": "noindex, nofollow", "x-content-type-options": "nosniff", ...(html ? { "cache-control": "no-store" } : {}) };
 }
 
 /** Cookies from the signer's own browser, with ours taken out: only the app's own (its CSRF and session for that signer) go to the app. @param {string | undefined} header */
