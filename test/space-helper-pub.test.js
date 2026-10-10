@@ -127,7 +127,7 @@ test("the build runs on a network of its own: the metadata address, the private 
 });
 
 test("a build whose network can reach the metadata address, or whose rules cannot be added, or whose network is not ours, is refused before any Dockerfile step runs", opts, async t => {
-  for (const [flag, value, words] of [["pubnet-leaky", "1", /the build's network can reach 169\.254\.169\.254/], ["hostfw-add-fails", "1", /the build's network rules could not be added/], ["pubnet-bridge", "docker0", /not the one this helper made/]]) {
+  for (const [flag, value, words] of [["pubnet-leaky", "1", /the build.s network can reach 169\.254\.169\.254/], ["hostfw-add-fails", "1", /the build.s network rules could not be added/], ["pubnet-bridge", "docker0", /not the one this helper made/]]) {
     const r = await ready(t);
     r.flag(flag, value);
     const st = await r.build(DEP);

@@ -38,7 +38,7 @@ test("pub-up: root's compose file from root's record, linted, the secrets writte
   // order: create, join, OUTPUT, INPUT, start, health
   const calls = r.calls();
   const at = (/** @type {RegExp} */ re) => { const m = re.exec(calls); assert.ok(m, `${re}`); return m.index; };
-  const pos = [/compose .*vyre-app-northwind.* create/, /network connect --alias vyre-daemon vyre-app-northwind_net/, /-I OUTPUT 1 .*vyre-app:northwind/, /-I INPUT 1 .*-j DROP/, /compose .*vyre-app-northwind.* up -d/, /fetch\(/].map(at);
+  const pos = [/compose .*vyre-app-northwind.* create/, /network connect --alias vyre-daemon vyre-app-northwind_net/, /-I OUTPUT 1 .*vyre-app:northwind/, /nsenter .*-I INPUT 1 .*-j DROP/, /compose .*vyre-app-northwind.* up -d/, /fetch\(/].map(at);
   assert.deepEqual([...pos].sort((x, y) => x - y), pos);
 });
 
