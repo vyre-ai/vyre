@@ -3,7 +3,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalNotices, doneNotices, isWorking } from "./notices-model.js";
+import { approvalNotices, doneNotices, isWorking, sharedLoop } from "./notices-model.js";
 
 const PENDING = { approvals: [{ id: "a1", group: "gp_1", line: "Send an email to Northwind" }, { id: "a2", group: "gp_1" }, { id: "s1", title: "Turn a rule off" }], groups: [{ id: "gp_1", size: 2, line: "An assistant (kit) wants to run 2 calls of mail.send: Northwind, Oakline" }] };
 
@@ -29,4 +29,17 @@ test("a session that was working and is not now is done, once, and not when the 
   assert.equal(failed.notices[0].title, "juno stopped");
   assert.equal(isWorking("Running"), true);
   assert.equal(isWorking("idle"), false);
+});
+
+test("the notice loop is one for any number of askers: the screen and the headless task of the Android service never run two (that would tell the person everything twice)", () => {
+  let started = 0, stopped = 0;
+  const loop = sharedLoop(() => { started++; return () => { stopped++; }; });
+  const screen = loop(undefined), headless = loop(undefined);
+  assert.deepEqual([started, stopped], [1, 0], "two askers, one loop");
+  screen(); screen();
+  assert.deepEqual([started, stopped], [1, 0], "one asker leaving (twice over) keeps it for the other");
+  headless();
+  assert.deepEqual([started, stopped], [1, 1], "the last one leaving stops it");
+  const again = loop(undefined); again();
+  assert.deepEqual([started, stopped], [2, 2], "and it can start again");
 });

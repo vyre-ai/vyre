@@ -54,3 +54,19 @@ export function doneNotices(was, threads, o = {}) {
   }
   return { notices, was: now };
 }
+
+
+/**
+ * One loop for any number of askers: the first ask starts it, the others join it, and it stops when the last asker stops (the screen and the headless task of the Android service both ask for the notice loop;
+ * two loops would tell the person everything twice).
+ * @template A @param {(arg: A) => () => void} make starts a loop and returns its stop @returns {(arg: A) => () => void}
+ */
+export function sharedLoop(make) {
+  /** @type {{ stop: () => void, refs: number } | null} */ let running = null;
+  return arg => {
+    if (!running) running = { stop: make(arg), refs: 0 };
+    const mine = running; mine.refs++;
+    let done = false;
+    return () => { if (done) return; done = true; if (--mine.refs <= 0) { mine.stop(); if (running === mine) running = null; } };
+  };
+}

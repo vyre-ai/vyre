@@ -91,3 +91,16 @@ test("keyStorage: what the pairing hello reports about the key", { skip: !strip 
   assert.equal(keyStorage("none"), undefined);
   assert.equal(keyStorage(undefined), undefined);
 });
+
+test("notices with the app closed: the connection is kept when notices are allowed and wanted, stopped when the person turns it off, and left alone otherwise; the row says what a tap does", { skip: !strip }, async () => {
+  const { keepPlan, keepState, keepTap, KEEP_SAY } = await import("./keepalive-model.ts");
+  const i = (/** @type {any} */ o) => ({ android: true, permission: "granted", wanted: true, ...o });
+  assert.equal(keepPlan(i({})), "start");
+  assert.equal(keepPlan(i({ wanted: false })), "stop");
+  for (const permission of ["ask", "denied", "unavailable"]) assert.equal(keepPlan(i({ permission })), "nothing", `not allowed (${permission}): nothing is started`);
+  assert.equal(keepPlan(i({ android: false })), "nothing", "no service off Android");
+  assert.deepEqual(["on", "off", "ask", "denied"].map(s => keepState(i(s === "on" ? {} : s === "off" ? { wanted: false } : { permission: s }))), ["on", "off", "ask", "denied"]);
+  assert.equal(keepState(i({ android: false })), "unavailable");
+  assert.deepEqual(["on", "off", "ask", "denied", "unavailable"].map(s => keepTap(/** @type {any} */ (s))), ["turn-off", "turn-on", "ask", "open-settings", "nothing"]);
+  for (const s of ["on", "off", "ask", "denied"]) assert.ok(KEEP_SAY[/** @type {"on"} */ (s)].line.length > 10 && !/push|token|Firebase|Google/i.test(KEEP_SAY[/** @type {"on"} */ (s)].line), `${s}: the line is plain and promises no push service`);
+});

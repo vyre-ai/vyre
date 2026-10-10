@@ -61,6 +61,28 @@ class VyreNotifyModule : Module() {
       }
     }
 
+    /**
+     * Notices with the app closed: a foreground service holds the app's connection to the home (KeepAliveService). Asked for by the person; remembered, so a restart of the service knows. Needs the notice
+     * permission first (the ongoing notice is one), and answers false without it.
+     */
+    AsyncFunction("startKeepAlive") {
+      val ctx = context
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return@AsyncFunction false
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEEP, true).apply()
+      ContextCompat.startForegroundService(ctx, Intent(ctx, KeepAliveService::class.java))
+      true
+    }
+
+    AsyncFunction("stopKeepAlive") {
+      val ctx = context
+      ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEEP, false).apply()
+      ctx.stopService(Intent(ctx, KeepAliveService::class.java))
+      true
+    }
+
+    /** Whether the person wants the connection kept: true until they turn it off. */
+    AsyncFunction("keepAliveWanted") { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEEP, true) }
+
     /** Show a notice now. `route` is an app path such as /u/now; a tap opens vyre://u/now?notice=1. */
     AsyncFunction("show") { id: String, title: String, body: String?, route: String? ->
       val ctx = context
@@ -87,5 +109,7 @@ class VyreNotifyModule : Module() {
 
   companion object {
     const val CHANNEL = "needs-you"
+    const val PREFS = "vyre.notify"
+    const val KEEP = "keep-connected"
   }
 }
