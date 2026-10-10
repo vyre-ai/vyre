@@ -139,7 +139,8 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   await install(w, f);
   const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
   const dana = await w.kernel.records.create(alex, "contact", { name: "Dana Harlow", email: "dana@harlow.test" });
-  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: dana.urn, stage: "Intake" });
+  const danaUrn = dana.urn || `vyre://${SPACE}/contact/${dana.id}`;
+  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: danaUrn, stage: "Intake" });
   await w.kernel.records.update(alex, "matter", rec.id, { stage: "Engagement" }, rec.version);
   await settle(w);
   let asks = 0;
@@ -155,7 +156,7 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   assert.equal(calls.length, 0, "nothing goes before the yes");
   await answer();
   assert.deepEqual(calls.map(x => x.action), ["documents.send"]);
-  assert.deepEqual(calls[0].input, { template_id: 12, contact: dana.urn });
+  assert.deepEqual(calls[0].input, { template_id: 12, contact: danaUrn });
   w.kernel.inbound("documents.signed", ev({ submission: 8101, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   await answer();
