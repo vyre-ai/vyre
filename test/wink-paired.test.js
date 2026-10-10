@@ -285,6 +285,19 @@ shardTest("paired session ends, on the real kernel: removing the owner key that 
   assert.equal(await a.live(), false, "the session bound to the removed key is gone at once");
 });
 
+shardTest("a paired phone's Space list, as the daemon makes the call for it: the device's row names the owner, so the facts carry the owner as the person on the chain and spaces.list answers the owner's Spaces; the bare device label alone is nobody (ledger row 54)", async t => {
+  const a = await pairedOnKernel(t);
+  const label = `device:${a.paired.device}`, via = { person: { id: a.sessionId } };
+  const info = await a.w.d.registry.call("relay.device.info", { id: a.paired.device }, "module:vyred");
+  const rec = await a.w.d.registry.call("wink.device.record", { id: a.paired.device }, "module:vyred");
+  const facts = callerFacts(label, { caller: label }, via, a.w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
+  assert.ok(facts && facts.kind === "device" && facts.person === a.w.d.kernel.id.owner, `the daemon builds a person chain for the paired device: ${JSON.stringify(facts)}`);
+  const listed = await a.w.d.registry.call("spaces.list", {}, label, { ...via, kernelFacts: facts });
+  assert.ok(!listed.error && listed.data.length > 0 && listed.data.some((/** @type {any} */ x) => x.id === a.w.d.kernel.space), `the paired phone lists the owner's Spaces: ${JSON.stringify(listed).slice(0, 300)}`);
+  const bare = await a.w.d.registry.call("spaces.list", {}, label, via);
+  assert.deepEqual(bare.error ? [] : bare.data, [], "the device label with no chain facts is nobody: the daemon always adds the facts for a paired device, so the app never makes this call");
+});
+
 shardTest("PS-4 and sessions scope, on the real kernel: a paired session lists only itself, a person's own surface lists every one", async t => {
   const a = await pairedOnKernel(t);
   const b = await pairedOnKernel(t, {}, a.w);

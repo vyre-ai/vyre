@@ -4,7 +4,7 @@
 // Pure, so Node tests it; src/shell/SetupGate.tsx reads the pairing and calls this.
 
 /** Routes that stay reachable with no server: the install flow itself, a pairing link and a join link, and the sample-world proof page for the Glass relay path (a mock build only: it draws nothing in a real one). */
-export const OPEN_ROUTES = /^\/(u\/install|pair|join|glass-relay-proof)(\/|$)/;
+export const OPEN_ROUTES = /^\/(u\/install|pair|join|glass-relay-proof|notices-proof)(\/|$)/;
 
 /** Where an unpaired phone goes. */
 export const SETUP_ROUTE = "/u/install";
