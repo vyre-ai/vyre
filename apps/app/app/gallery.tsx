@@ -82,12 +82,18 @@ function Sample({ name }: { name: string }) {
       <View style={{ gap: 12, alignItems: "flex-start" }}>
         <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
         <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
-        <View style={{ alignSelf: "stretch" }}><StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={false} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} /></View>
+        <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
         <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }]} />
       </View>
     );
   }
   return null;
+}
+
+/** The chat's status line while its process starts on a computer: the words, then Stop, and no chip yet (the chip comes when it is up). */
+function StartingSample() {
+  const { phone } = useUiTheme();
+  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
 export default function Gallery() {
