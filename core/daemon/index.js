@@ -343,6 +343,8 @@ async function startLocked(opts, root, p, release) {
       lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       // where each lent session runs, for the place tools (core/runner/place-tools.js): the book of every Space this home serves
       get placements() { return lentPlacements(registry); },
+      // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
+      lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; return h ? h.spawn(i) : null; },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
