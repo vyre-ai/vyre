@@ -61,7 +61,7 @@ test("a message with a named record and attached files reaches the assistant as 
   assert.ok(!said.includes("123-45-6789"), "the value is nowhere");
   assert.match(said, /The person attached 2 files; one is an image, shown to you\./);
   const file = path.join(work, ".vyre", "attachments", `${pdf.id}-${F.pdf.name}`);
-  assert.ok(said.includes(file) && fs.existsSync(file), "the pdf is a path in the assistant's folder");
+  assert.ok(said.includes(file) && fs.existsSync(file), "the pdf is a path in the assistant folder: " + said);
   assert.match(said, /\(\+1 images?\)/, "the image went with the words");
   // the chat shows the person's words and the names of the files, nothing the assistants were told besides
   const open = await ok("stream.open", { chat });
