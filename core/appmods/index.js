@@ -341,7 +341,11 @@ export default {
       for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all())) {
         const m = catalog.get(String(r.name));
         if (!m || !(m.app.secrets || []).some((/** @type {any} */ s) => item(r.name, s.env.toLowerCase()) === changed) || rotating.has(r.name)) continue;
-        rotating.set(r.name, setTimeout(() => { rotating.delete(r.name); rotate(r).catch(err => ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`)); }, seam.rotateMs ?? 300));
+        rotating.set(r.name, setTimeout(() => {
+          rotating.delete(r.name);
+          // The container is gone before the new one starts: if it does not start, the app is stopped, not "running" in the list, and the person can start it again.
+          rotate(r).catch(err => { db.prepare("UPDATE appmods_apps SET state = 'stopped' WHERE name = ?").run(r.name); tickets.drop(r.name); ctx.events.emit("appmods.stopped", { name: r.name }); ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`); });
+        }, seam.rotateMs ?? 300));
       }
     });
 
