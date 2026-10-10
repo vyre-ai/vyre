@@ -46,7 +46,10 @@ export function sandboxReader(o) {
         chain.catch(fail);
       }
     };
-    const finish = () => { if (done) return; done = true; clearTimeout(timer); chain.then(() => resolve({ truncated }), reject); };
+    // A reader that has said it is finished is not waited on for ever: the sandbox's shim sometimes outlives the command it ran (a listener that keeps it open), and a child left running keeps its pipes, and so
+    // the process that started it, alive. Given a moment to leave on its own, then ended; the end marker is all that was wanted from it.
+    const reap = () => { const k = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } }, 2000); k.unref?.(); child.once("close", () => clearTimeout(k)); };
+    const finish = () => { if (done) return; done = true; clearTimeout(timer); reap(); chain.then(() => resolve({ truncated }), reject); };
     child.stdout.on("data", d => {
       received += d.length;
       if (received > lim.maxTotal + lim.maxFiles * 512) return fail(new Error("the workspace reader sent more than its cap"));
