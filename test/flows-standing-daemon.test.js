@@ -200,7 +200,7 @@ test("when the person who approved is removed from the Space, the Flow's standin
   assert.equal(notified(calls).length, 1, "the Flow asks again instead of sending");
 });
 
-test("when the person who approved is demoted, the standing grant ends", { timeout: 120_000 }, async t => {
+test("when the person who approved is moved to a role that cannot run the Flow, the standing grant ends", { timeout: 120_000 }, async t => {
   const { d, host, admin, calls, space } = await boot(t, true);
   const grants = d.kernel.gateway.grants, BOB = "per_" + "c".repeat(26);
   await grants.setRole(admin, { person: BOB, role: "admin" }, { presence: { method: "stand-in" } });
@@ -209,9 +209,25 @@ test("when the person who approved is demoted, the standing grant ends", { timeo
   await host.flows.tools["flows.approve"](bob, { id: def.data.id, version: def.data.version, hash: def.data.hash });
   const live = async () => (await grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active").length;
   assert.equal(await live(), 1);
-  await grants.setRole(admin, { person: BOB, role: "member" }, { presence: { method: "stand-in" } });
-  await until(async () => (await live()) === 0, "the standing grant to end when its approver is demoted");
+  await grants.setRole(admin, { person: BOB, role: "temp", scope: [`vyre://${space}/contact/*`], expires: Date.now() + 600_000 }, { presence: { method: "stand-in" } });
+  await until(async () => (await live()) === 0, "the standing grant to end when its approver can no longer run the Flow");
   await run(host, def.data.id).catch(() => null);
   await new Promise(r => setTimeout(r, 2000));
   assert.equal(notified(calls).length, 0, "nothing goes out");
+});
+
+test("promoting the person who approved leaves the Flow's standing yes alone: it still sends", { timeout: 120_000 }, async t => {
+  const { d, host, admin, calls, space } = await boot(t, true);
+  const grants = d.kernel.gateway.grants, BOB = "per_" + "d".repeat(26);
+  await grants.setRole(admin, { person: BOB, role: "manager" }, { presence: { method: "stand-in" } });
+  const bob = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });
+  const def = await d.registry.call("flows.define", { flow: flowOf(space, { to: "sam@example.com", body: "hello" }) }, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token });
+  await host.flows.tools["flows.approve"](bob, { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  const live = async () => (await grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active").length;
+  assert.equal(await live(), 1);
+  await grants.setRole(admin, { person: BOB, role: "admin" }, { presence: { method: "stand-in" } });
+  await new Promise(r => setTimeout(r, 800));
+  assert.equal(await live(), 1, "promoted: the approval stands");
+  await run(host, def.data.id);
+  await until(async () => notified(calls).length === 1, "the send after the promotion");
 });

@@ -261,14 +261,21 @@ export function createFlowsHost(o) {
         conditions: { budget: { meter: `flow-act:${flow}@${live.hash}`, limit: b.max }, rate: { n: b.per_minute, per_seconds: 60 } }, reason: "the person turned this Flow on" });
       return want;
     };
-    /** A member removed or given another role: every standing grant made on their approval ends now. */
-    const endStandingOf = async (/** @type {string} */ person) => {
+    /** A member removed, or given a role that no longer lets them run that Flow: the standing grants made on their approval end now. A promotion, or any change that keeps the right, leaves them. */
+    const endStandingOf = async (/** @type {string} */ person, /** @type {boolean} */ removed) => {
       if (!sh.mint) return;
-      for (const g of (await sh.mint.list({ source: "flows:standing:" })) || []) if (g.subject && g.subject.actor && g.subject.actor.id === person) await sh.mint.end({ id: g.id, reason: "the person who approved it was removed or changed role" });
+      for (const g of (await sh.mint.list({ source: "flows:standing:" })) || []) {
+        if (!g.subject || !g.subject.actor || g.subject.actor.id !== person) continue;
+        const flow = String(g.source).slice("flows:standing:".length).split("@")[0];
+        let keeps = false;
+        if (!removed) { try { const d = await gw.authorizePeek({ chain: personChain(person), action: "flows.run", resource: `vyre://${space}/flow/${flow}` }); keeps = Boolean(d && d.effect === "allow"); } catch { keeps = false; } }
+        if (!keeps) await sh.mint.end({ id: g.id, reason: "the person who approved it was removed or can no longer run it" });
+      }
     };
     k.log.subscribe("flows-standing", {}, async (/** @type {any} */ e) => {
-      const who = e && e.data ? (e.type === "member.removed" ? e.data.person : e.type === "member.set" && e.data.membership ? e.data.membership.person : null) : null;
-      if (typeof who === "string") await endStandingOf(who).catch((/** @type {any} */ err) => log(`flows ${space}: standing grant ${err && err.message}`));
+      const removed = Boolean(e) && e.type === "member.removed";
+      const who = e && e.data ? (removed ? e.data.person : e.type === "member.set" && e.data.membership ? e.data.membership.person : null) : null;
+      if (typeof who === "string") await endStandingOf(who, removed).catch((/** @type {any} */ err) => log(`flows ${space}: standing grant ${err && err.message}`));
     });
     for (const name of ["flows.approve", "flows.pause", "flows.resume", "flows.disable", "flows.rollback", "flows.remove", "flows.delete"]) {
       const orig = flows.tools[name];
