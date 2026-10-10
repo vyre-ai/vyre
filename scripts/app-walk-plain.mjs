@@ -45,6 +45,9 @@ const outer = await install({ format: 1, name: "file_it", label: "File it", auth
   { id: "after", kind: "create", type: "filing-note", set: { body: { expr: "\"after: \" + steps.s.result.body" } } },
 ] });
 await host.flows.tools["flows.start"](host.personChain(), { id: outer.id, input: {} });
+// a draft nobody has approved yet: the page offers the approval
+const draftOf = async (name, label) => (await d.registry.call("flows.define", { flow: { format: 1, name, label, authorship: "human", trigger: { on: "manual" }, steps: [{ id: "n", kind: "create", type: "filing-note", set: { body: "told" } }] } }, "cli", { token: TOKEN })).data;
+const draft = await draftOf("tell_the_client", "Tell the client"), draft2 = await draftOf("tell_the_court", "Tell the court");   // one for each width: the first pass approves its own
 await call("agents.create", { name: "research", kind: "agent", projects: [], instructions: "Finds and reads the documents." });
 const lib = await call("work.template.install", { id: "law-firm/estate-plan" });
 await call("work.template.golive", { template: lib.template, version: lib.version });
@@ -57,7 +60,7 @@ const task = await d.kernel.gateway.ask.request(ownerChain, { title: "Approve th
 const chat = await d.kernel.gateway.grants.chats.create(ownerChain, {}).catch(() => null);
 await new Promise((r) => setTimeout(r, 4000));
 const ROUTES = [
-  ["now", "/u/now"], ["now-needs", "/u/now/needs"], ["flows", "/u/flows"], ["flow", `/u/flows/${outer.id}`], ["kits", "/u/kits"], ["engineer", "/u/engineer"],
+  ["now", "/u/now"], ["now-needs", "/u/now/needs"], ["flows", "/u/flows"], ["flow", `/u/flows/${outer.id}`], ["flow-draft", `/u/flows/${draft.id}`], ["flow-draft-2", `/u/flows/${draft2.id}`], ["kits", "/u/kits"], ["engineer", "/u/engineer"],
   ["projects", "/u/projects"], ["project", `/u/project/${PROJECT}`], ["project-free", `/u/project/${PLAIN}`], ["templates", "/u/templates"], ["template", `/u/templates/${lib.template}`],
   ["assistants", "/u/assistants"], ["settings-assistants", "/u/settings/assistants"], ["planner", "/u/planner"], ["calendar", "/u/calendar"], ["drive", "/u/drive"],
   ["chats", "/u/chats"], ["connections", "/u/connections"], ["spaces", "/u/spaces"], ["search", "/u/search"], ["records-contact", "/u/records/contact"],
@@ -115,6 +118,15 @@ for (const [wide, viewport, scheme] of [["wide", { width: 1440, height: 900 }, "
     await pg.waitForTimeout(3500);
     // one real action where a screen has its main one: run a Flow, open a project's timeline
     if (name === "flow") { await pg.getByText("Run now", { exact: true }).first().click().catch(() => {}); await pg.waitForTimeout(2500); }
+    if ((name === "flow-draft" && wide === "wide") || (name === "flow-draft-2" && wide === "phone")) {
+      // the person approves the draft: the button must say what it does, and afterwards the Flow can run
+      const before = (await pg.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+      if (/Face ID|fingerprint|Touch ID|passkey/i.test(before)) problems.push("the approve button names a biometric the box does not ask for");
+      await pg.screenshot({ path: path.join(OUT, `${name}-${wide}-before.png`), fullPage: true });
+      await pg.getByText(/^Approve$/).first().click().catch(() => problems.push("no Approve button on a draft Flow"));
+      await pg.waitForTimeout(3500);
+      if (!(await pg.getByText("Run now", { exact: true }).count())) problems.push("approving the draft did not make it runnable");
+    }
     if (name === "template") {
       // a person starts a project from the template: name it, press Start, land on its page
       await pg.screenshot({ path: path.join(OUT, `template-${wide}-start.png`), fullPage: true });
