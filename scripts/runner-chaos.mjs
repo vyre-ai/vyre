@@ -211,6 +211,7 @@ else {
     async kill9() {
       const l = await lend("kill9");
       const before = await ctl({ cmd: "checkpoint", session: l.sess });
+      check(mountedIn(l.base), "the workspace is open while the lender runs (the control: closing it later means something)");
       process.kill(l.pid, "SIGKILL"); killAll(l.base);
       log("lender killed at checkpoint", before.turn);
       await until("the server to take it", async () => (await ctl({ cmd: "book", session: l.sess }))?.where === "server", 30_000);
@@ -262,6 +263,7 @@ else {
     },
     async leaseExpiry() {
       const l = await lend("lease", { SHORT_LEASE_MS: "9000" });
+      check(mountedIn(l.base), "the workspace is open while the lease holds");
       l.send({ cmd: "renew", fail: true }); log("renewals fail");
       await until("the session to be handed over", async () => (await ctl({ cmd: "book", session: l.sess }))?.where === "server", 40_000);
       const row = await ctl({ cmd: "book", session: l.sess });
