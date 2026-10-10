@@ -1918,8 +1918,12 @@ export default {
     const out = (/** @type {any} */ r) => JSON.parse(JSON.stringify(r));
     const ownerGrant = (/** @type {any} */ i) => Boolean(i && i.role === "owner");
     tool("spaces.members.list", "Everyone in a space with their role, scope and end date, and any warnings (such as a single owner).", obj({ space: str }, ["space"]), async (i, meta) => {
-      const row = spaceOf(i.space);
-      await gate(row.id, undefined, meta);
+      // A team Space a box hosts has no row in this module's table (a box has no identity of its own to create one under): the kernel's own Space is named by its id.
+      const asId = String(i.space || "").trim().toLowerCase(), row = !spaces.get(asId) && SPACE_ID_RE.test(asId) && kernelHandle(asId) ? { id: asId } : spaceOf(i.space);
+      // The list is for the person on the call (a box has no identity of its own, so no `me()`): any member of the Space may see who is in it and in what role; the kernel decides what else each row shows.
+      const who = K && kernelHandle(row.id) ? await listCaller(K, meta) : null;
+      if (who) { await notRemoved(row.id, meta); if (!(await membershipOf(row.id, who, meta))) throw refuse("You are not a member of this space.", "not_a_member"); }
+      else await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
       const rows = [];
       for (const r of await m.list()) rows.push({ ...r, role_label: m.roleLabel(r.role), name: await nameOf(String(r.person)) });

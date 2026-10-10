@@ -39,8 +39,10 @@ test("kernel members: an owner sets roles with no proof below owner and a fresh 
   const temp = await m.setRole({ chain: ownerChain(), proof: sign("setRole", { person: JUNO, role: "temp", scope: [`vyre://${SPACE}/project/bakery`], expires: until }) }, { person: JUNO, role: "temp", scope: [`vyre://${SPACE}/project/bakery`], expires: until });
   assert.equal(temp.expires, until);
   assert.deepEqual((await m.list({ chain: ownerChain() })).map(x => x.role).sort(), ["member", "owner", "temp"]);
-  // a member sees only themselves
-  assert.deepEqual((await m.list({ chain: personChain(KIT) })).map(x => x.person), [KIT]);
+  // a member sees who is in and in what role, and nothing else of the others (the Team screen)
+  const seen = await m.list({ chain: personChain(KIT) });
+  assert.deepEqual(seen.map(x => x.role).sort(), ["member", "owner", "temp"]);
+  assert.ok(seen.filter(x => x.person !== KIT).every(x => x.partial === true && x.scope === null && x.expires === null), "another person's scope and end date stay with managers");
 });
 
 test("kernel members: extend a temp member, remove a member, the last owner stays, and the sweep needs no person", async () => {

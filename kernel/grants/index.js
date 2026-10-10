@@ -466,7 +466,9 @@ export function createGrantsStore(cfg) {
     async membersList(chain) {
       const me = reader(chain);
       const all = await bound.allowed(chain, "grants.list", urn("member", "*"));
-      return [...memberships.values()].filter(m => (all || m.person === me.id) && !(m.role === "temp" && !(m.expires > clock()))).sort((a, b) => (a.person < b.person ? -1 : 1)).map(m => structuredClone(m));
+      // Every member who is not a temp one sees who is in the Space and in what role (the Team screen); another person's scope and end date stay with managers and above.
+      const dir = !all && memberOk(me) && roleOf(me) !== "temp";
+      return [...memberships.values()].filter(m => (all || dir || m.person === me.id) && !(m.role === "temp" && !(m.expires > clock()))).sort((a, b) => (a.person < b.person ? -1 : 1)).map(m => (all || m.person === me.id ? structuredClone(m) : { space: m.space, person: m.person, role: m.role, partial: true }));
     },
     /** One member's Membership: your own, or anyone's if `authorize` lets you list members. A person you may not see is indistinguishable from one who does not exist. */
     async membersGet(chain, /** @type {string} */ id) {
