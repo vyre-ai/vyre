@@ -30,7 +30,8 @@ const MODIFIED = new Date().toISOString().slice(0, 10);
 // A hash of each asset goes in its URL, so a deploy never meets a stale copy in a browser cache (see site/_headers).
 const hash = (f) => createHash('sha256').update(readFileSync(join(site, f))).digest('hex').slice(0, 10);
 const CSS_V = `/v2.css?v=${hash('v2.css')}`, JS_V = `/v2.js?v=${hash('v2.js')}`;
-const FONTS = 'https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap';
+// The two faces are vyre.run's own files (site/fonts, the same as web/fonts): the first page someone opens does not call another company.
+const FONT_PRELOAD = '<link rel="preload" as="font" type="font/woff2" href="/fonts/instrument-sans-latin.woff2" crossorigin>';
 const ogDir = process.argv.includes('--og') ? resolve(process.argv[process.argv.indexOf('--og') + 1]) : null;
 
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -141,10 +142,7 @@ function page({ slug, path, title, desc, body, ld = [], ogTitle, ogSub, type = '
   <meta name="twitter:description" content="${esc(desc)}">
   <meta name="twitter:image" content="${og}">
   <script type="application/ld+json">${JSON.stringify(graph)}</script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'">
-  <noscript><link rel="stylesheet" href="${FONTS}"></noscript>
+  ${FONT_PRELOAD}
   <link rel="stylesheet" href="${CSS_V}">
   <script>document.documentElement.className='js'</script>
   <script src="${JS_V}" defer></script>
@@ -812,8 +810,8 @@ ${ul([
 ])}`)}
 ${part('07', 'site', 'This website, updates and downloads', `${ul([
   'vyre.run has <b>no analytics and no cookies</b>.',
-  'The marketing pages load their fonts from Google Fonts, so Google sees a font request with your IP address when you open them. The server behind <code>app.vyre.run</code> sets no cookies and keeps nothing about you or your server; the page keeps your device key, server address and pairing in your browser, as section 08 lists.',
-  '<b>Two optional lookups:</b> Vyre Lumen on a Mac fetches exchange rates from <code>open.er-api.com</code> when you type something that reads as money, at most every 12 hours, with none of your words sent. The weather action sends a city name (by default one derived from your time zone) to <code>open-meteo.com</code>. The device sign-in page that your own server serves loads its fonts from Google Fonts.',
+  'The marketing pages serve their fonts from vyre.run itself, so no font request goes to another company. The server behind <code>app.vyre.run</code> sets no cookies and keeps nothing about you or your server; the page keeps your device key, server address and pairing in your browser, as section 08 lists.',
+  '<b>Two optional lookups:</b> Vyre Lumen on a Mac fetches exchange rates from <code>open.er-api.com</code> when you type something that reads as money, at most every 12 hours, with none of your words sent. The weather action sends a city name (by default one derived from your time zone) to <code>open-meteo.com</code>. The device sign-in page that your own server serves loads its fonts from that server.',
   'The pages are served by Cloudflare, which keeps ordinary server logs under its own policy.',
   '<b>Updates:</b> your server checks GitHub\'s releases API for new versions and pulls signed images from <code>ghcr.io</code>; the Windows app checks GitHub\'s releases feed once a day and downloads its installer from GitHub; the install line fetches from <code>vyre.run</code>. Those services see the address your server or PC connects from, under their own policies. Vyre itself receives no report of which version you run.',
 ])}`)}
@@ -855,7 +853,7 @@ page({
 {
   const html404 = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
-<link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'"><link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
+${FONT_PRELOAD}<link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
 <body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/start/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
 `;
   writeFileSync(join(site, '404.html'), html404);
@@ -1027,7 +1025,7 @@ ${SM.map(([p, pr]) => `  <url>\n    <loc>${SITE}${p}</loc>\n    <lastmod>${MODIF
 if (ogDir) {
   mkdirSync(ogDir, { recursive: true });
   for (const p of pages) {
-    const html = `<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap"><style>
+    const html = `<!doctype html><meta charset="utf-8"><style>@font-face{font-family:'Instrument Sans';font-weight:400 600;src:url(${pathToFileURL(join(site, 'fonts', 'instrument-sans-latin.woff2')).href}) format('woff2')}@font-face{font-family:'JetBrains Mono';font-weight:400 500;src:url(${pathToFileURL(join(site, 'fonts', 'jetbrains-mono-latin.woff2')).href}) format('woff2')}
 *{box-sizing:border-box}body{margin:0;width:1200px;height:630px;background:#0E0D0C;color:#F1EEE6;font-family:'Instrument Sans','Helvetica Neue',Arial,sans-serif;position:relative;overflow:hidden}
 .l{position:absolute;left:72px;top:64px;right:520px;bottom:64px;display:flex;flex-direction:column}
 .brand{display:flex;align-items:center;gap:12px;color:#F1EEE6}
