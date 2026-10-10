@@ -123,7 +123,7 @@ export function createLentHome(o) {
   return {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
-    book, watch, sweep: sweepOnce, takeOver,
+    book, watch, sweep: sweepOnce, takeOver, view: viewOf,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */

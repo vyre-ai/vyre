@@ -108,7 +108,7 @@ export default {
       let r = runners.get(space);
       if (!r) {
         r = createRunner({ platform: seam.platform, base: ctx.paths.root + "/runner", space, device: p.device, vault: p.vault, sync: p.sync,
-          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), onEvent: e => emit(space, e) });
+          grants: () => p.grants(space), ...(p.lenderCap ? { lenderCap: p.lenderCap } : {}), server: () => p.server?.(space), requestServer: (s, reason) => p.requestServer?.(space, s, reason), limits: () => ({ onlyOnPower: limits.pluggedInOnly }), ...(seam.now ? { now: seam.now } : {}), onEvent: e => emit(space, e) });
         runners.set(space, r);
       }
       return r;
