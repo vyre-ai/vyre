@@ -56,7 +56,7 @@
  "core/settings/index.js": 4,
  "core/skills/index.js": 1,
  "core/spawner/server.js": 3,
- "core/switchboard/adopt.js": 4,
+ "core/switchboard/adopt.js": 8,
  "core/switchboard/asks.js": 3,
  "core/switchboard/index.js": 43,
  "core/switchboard/runner.js": 10,
