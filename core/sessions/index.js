@@ -440,8 +440,12 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
+        // A member's account is a sign-in of their own (a login, run as the account's own user). A key or token names an item in the home's vault, which is the owner's: a member could name the owner's
+        // item and have the owner's credential used for their turns. Until a member's keys live in a vault of their own, a member adds a login only.
+        const who = await ownerOfAccount(meta);
+        if (who && (i.kind || (i.vault_item ? "api-key" : "login")) !== "login") throw Object.assign(new Error("on this server you add your own sign-in (kind login); a key needs a Vault of your own, which is not here yet"), { code: "denied" });
         if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
-        const added = accounts.add({ ...i, person: await ownerOfAccount(meta) });
+        const added = accounts.add({ ...i, person: who });
         // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
         if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
         return added;

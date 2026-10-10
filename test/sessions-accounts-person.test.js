@@ -22,6 +22,8 @@ test("a member's AI account is theirs: listed, bound and removed by them only; t
   assert.ok(!o.error, JSON.stringify(o.error));
   const b = await as(BOB, "sessions.accounts.add", { provider: "codex", label: "Bob login", kind: "login" });
   assert.ok(!b.error, JSON.stringify(b.error));
+  const key = await as(BOB, "sessions.accounts.add", { provider: "codex", label: "Bob names the owner's item", vault_item: "owner-secret", kind: "api-key" });
+  assert.equal(key.error?.code, "denied", "a member cannot name a vault item (it would be the owner's): a key account is refused");
   assert.deepEqual(await mine(owner), ["Owner login"], "the owner lists the home's own");
   assert.deepEqual(await mine(BOB), ["Bob login"], "Bob lists his own and not the owner's");
 
