@@ -80,7 +80,7 @@ export function createLentClient(o) {
       return r;
     },
     /** Hand a session to the server after its final checkpoint. */
-    release: async ({ session, reason }) => { const r = await o.invoke("lent.release", [{ session, epoch: epochs.get(session), reason }]); if (r && r.moved) epochs.delete(session); return r; },
+    release: async ({ session, reason }) => { let r; try { r = await o.invoke("lent.release", [{ session, epoch: epochs.get(session), reason }]); } catch (e) { fence(session, e); throw e; } if (r && r.moved) epochs.delete(session); return r; },
     /** Told when the home fences a session of this computer. */
     onFenced: fn => { fencedFns.add(fn); return () => { fencedFns.delete(fn); }; },
   };

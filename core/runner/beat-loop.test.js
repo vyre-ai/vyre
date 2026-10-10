@@ -20,6 +20,12 @@ const SKIP = unavailable() || workspaceUnavailable() || "";
 const LINUX = process.platform === "linux";
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
+/** The pids of the processes on this box whose command line mentions `needle`. */
+const pidsOf = (/** @type {string} */ needle) => {
+  const out = [];
+  for (const pid of fs.readdirSync("/proc").filter(n => /^\d+$/.test(n))) { try { if (fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").includes(needle)) out.push(Number(pid)); } catch { /* gone */ } }
+  return out;
+};
 /** The scheduler state ("T" stopped, "S" and "R" running) of every process on this box whose command line mentions `needle`: the fake agent of one world. */
 const statesOf = (/** @type {string} */ needle) => {
   const out = [];
@@ -30,15 +36,15 @@ const statesOf = (/** @type {string} */ needle) => {
 };
 
 /** The runner module as a Mac runs it, reaching a home through a call we can cut. */
-async function world(/** @type {import("node:test").TestContext} */ t, over = {}) {
+async function world(/** @type {import("node:test").TestContext} */ t, /** @type {any} */ over = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "bl-agent-"));
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
   const root = fs.mkdtempSync(path.join(SCRATCH, "bl-root-"));
   const r = await rig(t, { keyIsDevice: true, lapseMs: 1500, specFor: async () => ({ command: process.execPath, args: [path.join(agentDir, "agent.js")], env: {}, routes: [], readOnly: [agentDir, path.dirname(process.execPath)], labels: {}, network: "provider", credentialRoutes: [] }), ...over });
   const chat = (await r.g.chats.create(r.bob, { people: [] })).id;
-  const net = { cut: false };
+  const net = { cut: false, hang: false };
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
-  const call = (/** @type {string} */ name, /** @type {any[]} */ args) => (net.cut ? Promise.reject(Object.assign(new Error("the network is down"), { code: "unavailable" })) : remote.call(name, args));
+  const call = (/** @type {string} */ name, /** @type {any[]} */ args) => (net.cut ? Promise.reject(Object.assign(new Error("the network is down"), { code: "unavailable" })) : net.hang && name === "lent.beat" ? new Promise(() => {}) : remote.call(name, args));
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();
   const ctx = {
@@ -49,7 +55,7 @@ async function world(/** @type {import("node:test").TestContext} */ t, over = {}
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }) }) },
   };
   // the machine's own load is not what is being tested (a busy test box would never be "well")
-  seams.set(root, { heartbeatMs: 200, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
+  seams.set(root, { heartbeatMs: 200, beatTimeoutMs: 300, ...(over.beatMax ? { beatMax: over.beatMax } : {}), state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); fs.rmSync(agentDir, { recursive: true, force: true }); });
   const person = { caller: "cli" };
@@ -117,4 +123,70 @@ test("switching running here off in Settings hands the sessions over with its re
   w.ctx.call = async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" && input.key === "runner.enabled" ? { data: { value: false } } : flip(name, input));
   await waitFor(() => w.book.get("s1").where === "server", 20_000);
   assert.equal(w.book.get("s1").reason, "switched-off");
+});
+
+test("more sessions than one heartbeat names go in several calls, so none looks dead and is taken", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const w = await world(t, { beatMax: 1, lapseMs: 1500 });
+  for (const s of ["a1", "a2", "a3"]) await w.run("runner.start", { space: SPACE, session: s });
+  await sleep(4000);   // well past the lapse: a session the heartbeat missed would have been taken
+  await w.r.home.sweep();
+  assert.deepEqual(["a1", "a2", "a3"].map(s => w.book.get(s).where), ["mac", "mac", "mac"]);
+});
+
+test("a session the person stops is not brought back to life by the server: the home forgets it and does not count its silence", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const resumed = [];
+  const w = await world(t, { resume: async i => { resumed.push(i.session); } });
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  await w.run("runner.stop", { space: SPACE, session: "s1" });
+  await waitFor(() => w.book.get("s1") === null, 10_000);
+  await sleep(2500);   // past the lapse (1.5 s)
+  await w.r.home.sweep();
+  assert.equal(w.book.get("s1"), null);
+  assert.deepEqual(resumed, [], "nothing was taken, nothing resumed");
+  assert.equal(w.book.ownerOf("s1"), BOB, "the id stays the person's");
+});
+
+test("a program that dies by itself is taken by the server at once, with the reason crash, from the last whole turn", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
+  const resumed = [];
+  const w = await world(t, { resume: async i => { resumed.push([i.session, i.reason]); } });
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  await waitFor(() => pidsOf(w.agent).length > 0, 10_000);
+  for (const pid of pidsOf(w.agent)) { try { process.kill(pid, "SIGKILL"); } catch { /* gone */ } }
+  await waitFor(() => w.book.get("s1").where === "server", 15_000);
+  assert.deepEqual([w.book.get("s1").reason, resumed], ["crash", [["s1", "crash"]]]);
+});
+
+test("a settings read that fails once moves nothing: the last good value stands; a settings module that never answers is no switch to honour", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  const good = w.ctx.call;
+  w.ctx.call = async (/** @type {string} */ name, /** @type {any} */ input) => { if (name === "settings.get") throw new Error("the settings module hiccuped"); return good(name, input); };
+  await sleep(1500);   // many beats
+  assert.equal(w.book.get("s1").where, "mac", "a hiccup is not \"switched off\"");
+  const w2 = await world(t);
+  w2.ctx.call = async (/** @type {string} */ name) => { if (name === "settings.get") throw new Error("no settings module"); return { data: { devices: [] } }; };
+  await w2.run("runner.start", { space: SPACE, session: "s2" });
+  await sleep(1500);
+  assert.equal(w2.book.get("s2").where, "mac", "with no settings module nothing is ever switched off");
+});
+
+test("a computer that only lends hands its own session over when the chat's Move to the server reaches it, whichever name the chat or the session goes by", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const w = await world(t);
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  const out = await w.run("runner.move", { thread: w.chat, to: "server" });
+  assert.deepEqual([out.where, out.reason], ["server", "you"]);
+  await waitFor(() => w.book.get("s1").where === "server", 15_000);
+  await assert.rejects(w.run("runner.move", { thread: "nothing-like-it", to: "server" }), e => e.code === "not_found");
+  await assert.rejects(w.run("runner.move", { thread: w.chat, to: "mac" }), e => e.code === "unavailable");
+});
+
+test("a home whose call hangs (no error, no answer) freezes the sessions like a home that is down, and each hung beat counts", { skip: SKIP || !LINUX || false, timeout: 120_000 }, async t => {
+  const w = await world(t, { lapseMs: 60_000 });
+  await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
+  await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x !== "T"), 10_000);
+  w.net.hang = true;
+  await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x === "T"), 15_000);
+  w.net.hang = false;
+  await waitFor(() => statesOf(w.agent).every(x => x !== "T"), 15_000);
+  assert.equal(w.book.get("s1").where, "mac");
 });

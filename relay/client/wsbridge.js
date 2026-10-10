@@ -50,7 +50,8 @@ export function createWsBridge(o) {
         s.onclose = (/** @type {{ code: number, reason: string }} */ e) => { if (socks.get(id) === s) shut(id, e.code || 1006, e.reason || ""); };
       } else if (m.t === "send") {
         const s = socks.get(id); if (!s) return;
-        const data = typeof m.text === "string" ? m.text : typeof m.b64 === "string" ? unb64(m.b64) : null;
+        /** @type {string | Uint8Array | null} */ let data = null;
+        try { data = typeof m.text === "string" ? m.text : typeof m.b64 === "string" ? unb64(m.b64) : null; } catch { data = null; }   // a page that sends bad base64 sends nothing
         if (data === null) return;
         if ((typeof data === "string" ? data.length * 3 : data.length) > MAX_MESSAGE) { try { s.close(1009, "message too big"); } catch { /* closed */ } shut(id, 1009, "message too big"); return; }
         try { s.send(data); } catch { shut(id, 1006, "connection lost"); }
