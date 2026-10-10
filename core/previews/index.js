@@ -185,6 +185,18 @@ export default {
       sup.start(r.id, { command: r.command, cwd: r.cwd, port, env: seam.env || {} });
     };
 
+    /** Who may open a new preview. A model's preview is private to its person, or open to the project its own chat belongs to; anything wider is the person's own act (previews.share). @param {any} i @param {any} meta @param {any} person */
+    const scopeOf = async (i, meta, person) => {
+      const wanted = ACCESS.includes(i.access) ? i.access : null;
+      if (person || String((meta && meta.caller) || "").startsWith("module:")) return { access: wanted || (i.project ? "project" : "me"), project: i.project ? String(i.project) : null };
+      let own = null;
+      if (meta && meta.thread) { const t = await ctx.call("threads.get", { thread: meta.thread, limit: 1 }).catch(() => null); const th = t && t.data && (t.data.thread || t.data); own = th && th.project ? String(th.project) : null; }
+      if (i.project && String(i.project) !== own) throw refuse("a preview can be open to the project this chat belongs to and no other: ask the person to share it", "denied");
+      const project = i.project ? own : null;
+      if (wanted === "team" || (wanted === "project" && !project)) throw refuse("a model opens a preview for its person only, or for its own chat's project: the person shares it wider with previews.share", "denied");
+      return { access: wanted || (project ? "project" : "me"), project };
+    };
+
     /** Open a file or folder as a preview of its own. An agent's path must be inside the folder its session works in (a person's own may be anywhere they can read). */
     const openFiles = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {any} */ person) => {
       let real;
@@ -206,11 +218,11 @@ export default {
       const id = crypto.randomBytes(4).toString("hex");
       const t = now();
       const creator = person ? person.id : (ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : "owner");
-      const access = ACCESS.includes(i.access) ? i.access : i.project ? "project" : "me";
+      const { access, project } = await scopeOf(i, meta, person);
       const title = String(i.title || "").trim().slice(0, 80) || path.basename(real);
       db.prepare(`INSERT INTO previews_items (id, space, project, thread, title, source, mode, port, upstream, state, access, created_by, created, updated, wanted, root, file, caps)
         VALUES (?,?,?,?,?, 'files', 'session', NULL, ?, 'live', ?, ?, ?, ?, 0, ?, ?, ?)`)
-        .run(id, ctx.space || null, i.project ? String(i.project) : null, thread, title, staticPort(), access, creator, t, t, root, file, caps ? JSON.stringify(caps).slice(0, 8000) : null);
+        .run(id, ctx.space || null, project, thread, title, staticPort(), access, creator, t, t, root, file, caps ? JSON.stringify(caps).slice(0, 8000) : null);
       emit("preview.opened", { id, title, thread, project: i.project || null });
       card(row(id));
       soon(id, 500);
@@ -238,10 +250,10 @@ export default {
         const t = now();
         // The creator: the person themself, or (a model or module) the thread's person is the box's one person until threads say otherwise. Previews made by an agent are private to that person by default.
         const creator = person ? person.id : (ctx.kernel && ctx.kernel.owner ? String(ctx.kernel.owner) : "owner");
-        const access = ACCESS.includes(i.access) ? i.access : i.project ? "project" : "me";
+        const { access, project } = await scopeOf(i, meta, person);
         db.prepare(`INSERT INTO previews_items (id, space, project, thread, title, source, mode, command, cwd, port, upstream, state, access, created_by, created, updated, wanted)
           VALUES (?,?,?,?,?, 'port', ?, ?, ?, ?, ?, 'starting', ?, ?, ?, ?, ?)`)
-          .run(id, ctx.space || null, i.project ? String(i.project) : null, (person && i.thread ? String(i.thread) : (meta && meta.thread) || null), title, wantsCommandRun ? "supervised" : "session", i.command ? String(i.command).slice(0, 2000) : null, cwd,
+          .run(id, ctx.space || null, project, (person && i.thread ? String(i.thread) : (meta && meta.thread) || null), title, wantsCommandRun ? "supervised" : "session", i.command ? String(i.command).slice(0, 2000) : null, cwd,
             Number.isInteger(i.port) ? i.port : null, Number.isInteger(i.port) ? i.port : null, access, creator, t, t, wantsCommandRun ? 1 : 0);
         emit("preview.opened", { id, title, thread: row(id).thread || null, project: i.project || null });
         card(row(id));

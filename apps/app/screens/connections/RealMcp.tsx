@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { connections } from "./source-real";
-import { MODE_WORDS, authWords, grantCommand, itemsFor, itemsNeeded, serverHow, serverInput, serverScopeLine, since, testedLine, toolModes, words, type Mode, type NewServer, type Server, type Tested, type VaultItem } from "./model";
+import { MODE_WORDS, authWords, itemsFor, itemsNeeded, serverHow, serverInput, serverScopeLine, since, testedLine, toolModes, words, type Mode, type NewServer, type Server, type Tested, type VaultItem } from "./model";
 import { ItemPick, WhoControl } from "./shared";
 
 const blank = (): NewServer => ({ name: "", transport: "stdio", command: "", args: "", url: "", auth: "none", item: "", env: [], who: { mode: "me", projects: [] } });
@@ -92,7 +92,7 @@ function AddServer({ value, onClose, onAdded }: { value: NewServer | null; onClo
     setBusy(true); setProblem("");
     try {
       const r = await connections.addServer(p.input);
-      // The server is made; its module must be able to read the vault items it names (the person's own act). What cannot be granted here is said as the command.
+      // The server is made; its module must be able to read the vault items it names (the person's own act). What cannot be granted yet is asked again with a button.
       const stillNeeded: string[] = [];
       for (const it of itemsNeeded(p.input)) {
         if (items.find((i) => i.name === it)?.grants.includes("mcp")) continue;
@@ -109,8 +109,9 @@ function AddServer({ value, onClose, onAdded }: { value: NewServer | null; onClo
     <Sheet open onClose={onClose} title="Add an MCP server">
       {left ? (
         <View className="gap-s3">
-          <Text>{`${left.name} is added, but mcp cannot use ${left.items.length === 1 ? "its vault item" : "its vault items"} yet. Run this on your server, then press Test:`}</Text>
-          {left.items.map((it) => <Text key={it} mono selectable size="secondary">{grantCommand(it, "mcp")}</Text>)}
+          <Text>{`${left.name} is added, but it cannot use ${left.items.length === 1 ? "its Vault item" : "its Vault items"} yet. Give it access, then test it.`}</Text>
+          {left.items.map((it) => <Row key={it} dense title={it} end={<Button size="sm" label="Give access" onPress={() => { connections.grantItem(it, "mcp").then(() => { const rest = left.items.filter((x) => x !== it); if (rest.length) setLeft({ ...left, items: rest }); else onClose(); }).catch((e) => setProblem(words(e as { code?: string; message?: string }))); }} />} />)}
+          {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           <Button kind="primary" label="Done" onPress={onClose} />
         </View>
       ) : (

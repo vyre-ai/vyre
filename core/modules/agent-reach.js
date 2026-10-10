@@ -200,6 +200,8 @@ export const PERSON_ONLY = new Map([
   ["connectors.connection.decline", "the person's no to a proposed Connection"],
   ["connectors.connection.rebuild", "rewrites the Connection's vault credential from its record: the person's own act"],
   ["connectors.connection.delete", "removes a Connection and its vault credential: the person's own act"],
+  ["github.owners", "lists the organisations the person's GitHub account belongs to: their own screen picks the owner of a new repo"],
+  ["github.repo.create", "creates a repo on the person's GitHub account and sends a folder there: their own act, with their yes"],
   ["gate.said.add", "would let an assistant widen its own authority: records the person's own words as approval"],
   ["github.connect", "needs the person's Face ID or presence: signs an account in or out"],
   ["github.connect.cancel", "needs the person's Face ID or presence: signs an account in or out"],
@@ -339,6 +341,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
+  ["threads.undo-edit", "puts a file back from what the person's own surface saw the session do: the person's own act, and the session is told"],
   ["outside.register", "gives an outside agent a way into the Space: it widens what reaches the person's data, the person's own act with their approval"],
   ["outside.token", "makes a new token for an outside agent: the person's own act with their approval"],
   ["outside.grant", "gives an outside agent reach to records, memory or files: it widens authority, the person's own act with their approval"],
@@ -360,16 +363,21 @@ export const PERSON_ONLY = new Map([
   ["previews.reply", "the person's typed answer to a stuck run: their own words"],
   ["previews.frame", "the person's own view of a computer's live screen"],
   ["previews.thumb", "the picture on a preview card, drawn for the person's own screen"],
+  ["approvals.local-yes", "needs the person's Face ID or presence: gives the yes for a card on this computer (Touch ID, or a code written to their own terminal)"],
+  ["flows.test.remove", "removes a saved test case, which loosens what approving a Flow requires: an assistant adds cases, only the person removes one"],
+  ["flows.rollback", "needs the person's Face ID or presence: going back to an earlier Flow version approves it again, and an approval is never inherited"],
+  ["models.eval-approve", "spends on the owner's own key: the person's yes to an eval, with a hard cap, never an assistant's on its own proposal"],
+  ["models.eval-decline", "the owner's own no to evaluating a model: its body refuses anything but a person"],
+  ["models.eval-record", "the owner's runner reports a score with the owner's own key: its body refuses anything but a person"],
+  ["link.sleep", "the Mac's own app says the lid is shutting: the person's own machine, callers are the Mac's cli, local and capsule only"],
+  ["link.wake", "the Mac's own app says it woke: the person's own machine, callers are the Mac's cli, local and capsule only"],
 ]);
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
-  "ask.many", "ask.get", // an agent asks the person several things as one card; the answers are only words, and any act after them still waits for the yes
-  "previews.operator", "previews.step", "previews.run-get", "previews.signin", "previews.signin-get", // a computer's live screen card, its status line, and a private sign-in the person finishes: words and ids only
-  "previews.open", "previews.list", "previews.get", // an agent shows the person its running server as a preview card (a port of its own; a command only on a person's own call); the reads name previews, never an address
-
-  "design.catalogue", "design.validate", "design.screens", "design.propose", "design.css.propose", "design.css", "brand.get", "brand.resolve", "brand.draft", // the design language: read the catalogue, check a screen, read the space's screens, propose one (pending until the owner says yes)
-  "views.list", "views.get", "views.show", // reads the screens a module declares; the data they show is fetched as the viewer
+  "update.whats-new", "update.whats-new-seen", // the release notes of the running version, once per person: the assistant says them in the notes' own words and marks them seen; nothing but a seen mark is written
+  "flows.settle", "flows.advance", // answer a run that needs attention, and move a record past its stage gate early: the kernel holds the call to the person's own chain (a stage gate to its owner or an admin, with a reason on the ledger); a value for a skipped step stays the person's
+  "views.list", "views.get", // reads the screens a module declares; the data they show is fetched as the viewer
   "spaces.servers", "spaces.storage.get", "spaces.storage.list", "spaces.storage.usage", // the person's own server list and reads of their own per-member storage: the kernel's grants and the call's own chain decide
   "pluginagent.pending",
   "presence.person.locked",
@@ -445,7 +453,6 @@ export const OPEN = new Set([
   "link.rename",
   "mentions.kinds",
   "mentions.search",
-  "names.domain.check",
   "planner.settings",
   "presence.person.status",
   "projects.add-threads",
@@ -526,6 +533,8 @@ export const ASK_FIRST = new Map([
   ["bridges.kit.install", "changes the Space's shape"],
   ["hooks.close", "changes what reaches the Space from outside"],
   ["hooks.open", "opens the Space to the outside"],
+  ["appmods.domain.add", "opens an app's public pages to the outside at the person's own domain"],
+  ["appmods.domain.remove", "takes the person's own domain from an app, so its public pages stop answering at that address"],
 ]);
 
 // The two caller classes the relay listener labels that are not the person's (BR-2). Each has a short, explicit list, one reason per tool; a tool on no list does not exist for the class,

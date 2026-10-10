@@ -13,6 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { fail } from "../../lib/publish/util.js";
+import { folderRefusal } from "../../lib/publish/folder-build.js";
+import { isPerson } from "../../lib/caller.js";
 import { withSecretGrants, moveSecretsToGrants } from "../../lib/publish/grants.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
@@ -59,7 +61,7 @@ const str = { type: "string" };
 const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties: { space: str, ...properties }, required });
 const MAX_CANDIDATES = 400_000;
 /** The person's own surfaces and Vyre's modules. A tool that builds, names a domain, hands out a secret or writes the edge is theirs: a model asks through the held acts below, or the person does it. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 /** The draft and the three held acts (approve, publish, rollback): a model may start a draft and ask, and the publisher holds every act for a person's decision (publish.decide), so a model alone puts nothing live. */
 const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 
@@ -171,8 +173,8 @@ export default {
       return {
         dir,
         classOf: (/** @type {string} */ ref) => (ref.startsWith("vault://config/") ? "config" : "secret"),
-        async read(/** @type {string} */ ref) {
-          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, "")); }
+        async read(/** @type {string} */ ref, /** @type {{ deployment?: string }} */ o = {}) {
+          try { return await ctx.vault.fetch(ref.replace(/^vault:\/\//, ""), { deployment: o.deployment }); }
           catch (/** @type {any} */ e) {
             if (/not running|not_available|no_such_tool/.test(String(e && (e.code || e.message)))) throw refuse("no vault secret store available", "no_vault");
             throw e;
@@ -309,6 +311,8 @@ export default {
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
+        // A folder on this server is read off its disk by the builder: whose folder it may be is judged here, once, with the caller known.
+        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta), home: ctx.paths.root }); if (no) throw refuse(no.message, no.code); }
         return { deployment: shown(await b.pub.create(b.chain, draft)) };
       },
     });
@@ -348,6 +352,26 @@ export default {
       description: "Put an approved version on the internet. Held for a person every time: the first call asks, a person decides with publish.decide.",
       input: obj({ deployment: str, task: str }, ["deployment"]),
       run: heldTool("publish"),
+    });
+    ctx.tool("publish.go", {
+      callers: WITH_MODELS,
+      description: "Approve a previewed version and put it live with one yes. The first call holds; a person's decision (publish.decide) completes it.",
+      input: obj({ deployment: str, task: str }, ["deployment"]),
+      run: heldTool("goLive"),
+    });
+    ctx.tool("publish.quick", {
+      callers: WITH_MODELS,
+      description: "Publish a folder of ready files as a site: build, preview, then hold for one yes that puts it live. Answers the task and plan.",
+      input: obj({ name: str, folder: str, project: str }, ["name", "folder"]),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta), home: ctx.paths.root });
+        if (no) throw refuse(no.message, no.code);
+        const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
+        const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
+        const held = await b.pub.goLive(b.chain, made.id, {});
+        return { deployment: shown(pv.deployment), logs: pv.logs, held: true, task: held.task, plan: held.plan };
+      },
     });
     ctx.tool("publish.rollback", {
       callers: WITH_MODELS,

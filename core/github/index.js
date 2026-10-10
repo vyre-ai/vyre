@@ -15,7 +15,8 @@ import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accounts.js";
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
-import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
+import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo, prepareFirstPush, pushFirst } from "./git.js";
+import { ownersOf, createRepo } from "./repo-create.js";
 import { httpFetch } from "../../lib/http.js";
 
 const str = { type: "string" };
@@ -55,6 +56,9 @@ const MODULE_CALLERS = {
 // that actually resolves a session's cwd through them (ADR 0041 section 5); kept alongside
 // `sessions` for the stage/0.1.1 fold (integrator's branch already carries both).
 const SESSION_ONLY = new Set(["module:sessions", "module:threads"]);
+
+/** Test seams: where pushes go, and (for a test with no https server) what sends the folder. Production leaves both alone. @type {{ gitBase: string, push: null | typeof pushFirst }} */
+export const seam = { gitBase: "https://github.com", push: null };
 
 const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), { code, ...(detail ? { detail } : {}) });
 const named = v => (typeof v === "string" && v ? v : undefined);
@@ -298,6 +302,38 @@ export default {
         }
         const start = (p - 1) * n;
         return { repos: matches.slice(start, start + n), page: p, limit: n, more: matches.length > start + n };
+      },
+    });
+
+    ctx.tool("github.owners", {
+      description: "Who a new repo can belong to: the account and its organisations. Answers { owners: [{ login, kind }] }, never a token.",
+      input: obj({ account: str }),
+      callers: PEOPLE,
+      run: async ({ account: a }) => {
+        const acct = forOne(accounts.all(), named(a));
+        const token = await ctx.vault.fetch(acct.item, { field: "token" });
+        return { owners: await ownersOf({ token, login: acct.login }) };
+      },
+    });
+
+    ctx.tool("github.repo.create", {
+      description: "Make a GitHub repo for a folder (private unless public is asked), under the account or an organisation, and send the folder there.",
+      input: obj({ account: str, owner: str, name: str, visibility: { type: "string", enum: ["private", "public"] }, dir: str, description: str }, ["name", "dir"]),
+      callers: PEOPLE,
+      presence: { summary: async (i) => `Make the ${i && i.visibility === "public" ? "public" : "private"} GitHub repo ${String((i && i.owner) ? i.owner + "/" : "")}${String((i && i.name) || "")} and send a folder there` },
+      run: async (input, meta = {}) => {
+        const dir = path.resolve(String(input.dir || ""));
+        const acct = forOne(accounts.all(), named(input.account));
+        const token = await ctx.vault.fetch(acct.item, { field: "token" });
+        // The folder is made ready and scanned first: nothing is made on GitHub for a folder that would be refused.
+        const ready = await prepareFirstPush({ dir });
+        if (ready.hit) throw fail(`a ${ready.hit.pattern} was found at ${ready.hit.file}:${ready.hit.line}; take it out of the folder first, nothing was made on GitHub`, "secret_found", ready.hit);
+        const visibility = input.visibility === "public" ? "public" : "private";
+        const repo = await createRepo({ token, login: acct.login, owner: named(input.owner), name: String(input.name || ""), visibility, description: named(input.description) });
+        const out = await (seam.push || pushFirst)({ dir, branch: ready.branch, fullName: repo.full_name, token, base: seam.gitBase });
+        if (!out.pushed) throw fail(`${repo.full_name} was made but the folder did not go to it (${out.blocked || "refused"}); say so again and Vyre will send it`, "push_failed", { full_name: repo.full_name });
+        ctx.events.emit("github.repo-created", { account: acct.name, full_name: repo.full_name, visibility });
+        return { full_name: repo.full_name, url: repo.html_url, clone_url: repo.clone_url, branch: out.branch, commit: out.commit, visibility, left_out: ready.left_out };
       },
     });
 

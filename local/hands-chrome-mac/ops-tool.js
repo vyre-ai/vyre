@@ -121,7 +121,7 @@ export function createOpsTool({ dispatch, call, originOf, isPerson, denied, urls
     if (action === "learn") {
       const origin = siteOf(i);
       const tab = await tabFor(i, origin, m);
-      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}), ...(Array.isArray(i.wants) ? { wants: i.wants } : {}) }, m);
+      const res = await dispatch("ops.learn", { tab, name: i.name, kind: i.kind || "read", trigger: i.trigger, examples: i.examples, ...(i.match ? { match: i.match } : {}), ...(Number.isInteger(i.id) ? { id: i.id } : {}), ...(Array.isArray(i.public) ? { public: i.public } : {}), ...(Array.isArray(i.wants) ? { wants: i.wants } : {}), ...(isObj(i.page) ? { page: i.page } : {}) }, m);
       if (!isObj(res) || res.held || !res.ok || !res.operation) return res;
       const id = "d" + crypto.randomBytes(5).toString("hex");
       drafts.set(id, { operation: res.operation, origin, examples: Array.isArray(i.examples) ? i.examples : [], at: now });

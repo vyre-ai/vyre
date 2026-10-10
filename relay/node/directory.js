@@ -10,8 +10,8 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import worker, * as W from "../../names/worker/index.js";
 
 /**
- * @param {{ port?: number, host?: string, zone?: string, stateFile?: string, appOrigins?: string, claimsPerIp?: string, publicOrigin?: string, relaySecret?: string, tunnelIpv4?: string, log?: (m: string) => void }} [o]
- * @returns {Promise<{ url: string, port: number, close(): Promise<void> }>}
+ * @param {{ port?: number, host?: string, zone?: string, stateFile?: string, appOrigins?: string, claimsPerIp?: string, publicOrigin?: string, relaySecret?: string, tunnelIpv4?: string, adminSecret?: string, log?: (m: string) => void }} [o]
+ * @returns {Promise<{ url: string, port: number, close(): Promise<void>, rt: any }>}
  */
 export async function createDirectoryServer(o = {}) {
   const log = o.log || (() => {});
@@ -21,7 +21,7 @@ export async function createDirectoryServer(o = {}) {
   const rt = createRuntime({
     worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
     env: { APP_ORIGINS: o.appOrigins || "https://app.vyre.run", CLAIMS_PER_IP_PER_DAY: o.claimsPerIp || "5", CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch,
-      ZONE: o.zone || "vyre.local", ORIGIN: origin, RESOLVE_TXT: async () => [], ...(o.relaySecret ? { RELAY_SECRET: o.relaySecret } : {}), ...(o.tunnelIpv4 ? { TUNNEL_IPV4: o.tunnelIpv4 } : {}) },
+      ZONE: o.zone || "vyre.local", ORIGIN: origin, RESOLVE_TXT: async () => [], ...(o.relaySecret ? { RELAY_SECRET: o.relaySecret } : {}), ...(o.tunnelIpv4 ? { TUNNEL_IPV4: o.tunnelIpv4 } : {}), ...(o.adminSecret ? { ADMIN_SECRET: o.adminSecret } : {}) },
   });
   if (o.stateFile) {
     const storage = rt.object("v1", "DIRECTORY").ctx.storage;
@@ -50,5 +50,5 @@ export async function createDirectoryServer(o = {}) {
     }
   });
   const port = await new Promise(resolve => server.listen(o.port ?? 0, host, () => resolve(/** @type {import("node:net").AddressInfo} */ (server.address()).port)));
-  return { url: `http://${host}:${port}`, port: /** @type {number} */ (port), close: () => new Promise(r => { server.close(() => r(undefined)); server.closeAllConnections?.(); }) };
+  return { url: `http://${host}:${port}`, port: /** @type {number} */ (port), close: () => new Promise(r => { server.close(() => r(undefined)); server.closeAllConnections?.(); }), rt };
 }

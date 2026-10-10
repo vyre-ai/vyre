@@ -411,3 +411,43 @@ test("tunnel resolve: the relay learns the route for a declared name only; undec
   data(await a.post("/v1/names/publish", { name: "doc", apps: true }, { ip: "93.184.216.34" }));
   assert.deepEqual((await resolve(w, "documents.doc.vyre.run")).json.data, none);
 });
+
+test("own hosts: a host resolves to the box only after the CNAME proof, for a box on the tunnel, and every other case is the same no", async t => {
+  const cn = new Map();
+  const w = world(t, { TUNNEL_IPV4: TUNNEL_IP, RELAY_SECRET: RELAY, ADMIN_SECRET: ADMIN, RESOLVE_CNAME: async n => cn.get(n) || [] }), a = boxOf(w), b = boxOf(w);
+  await sv(w, a, "firmbox");
+  await sv(w, b, "otherbox");
+  data(await a.post("/v1/names/publish", { name: "firmbox", via: "tunnel", apps: true }, { ip: "93.184.216.34" }));
+  const mine = `${await W.routeHash(a.route)}.acme.vyre.run`, none = { route: null };
+  // no record yet: not proven, nothing listed, the relay gets no
+  assert.equal(code(await a.post("/v1/names/hosts", { name: "firmbox", host: "sign.firm.example" })), "not_proven");
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, none);
+  // a record that points at someone else's challenge label is not proof
+  cn.set("_acme-challenge.sign.firm.example", [`${await W.routeHash(b.route)}.acme.vyre.run.`]);
+  assert.equal(code(await a.post("/v1/names/hosts", { name: "firmbox", host: "sign.firm.example" })), "not_proven");
+  // the box's own label, a trailing dot and capitals are fine
+  cn.set("_acme-challenge.sign.firm.example", [mine.toUpperCase() + "."]);
+  assert.deepEqual(data(await a.post("/v1/names/hosts", { name: "firmbox", host: "Sign.Firm.Example" })).hosts, ["sign.firm.example"]);
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, { route: a.route });
+  assert.deepEqual(data(await a.get("/v1/names/mine")).hosts, ["sign.firm.example"]);
+  // another box cannot list the same host, nor a name that is not its own
+  cn.set("_acme-challenge.sign.firm.example", [mine, `${await W.routeHash(b.route)}.acme.vyre.run`]);
+  assert.equal(code(await b.post("/v1/names/hosts", { name: "otherbox", host: "sign.firm.example" })), "taken");
+  assert.equal(code(await b.post("/v1/names/hosts", { name: "firmbox", host: "x.firm.example" })), "not_yours");
+  // hosts under the zone, IPs and other shapes are not own hosts
+  for (const h of ["x.vyre.run", "vyre.run", "10.0.0.1", "nodot", "xn--bad.example", "*.firm.example"]) assert.equal(code(await a.post("/v1/names/hosts", { name: "firmbox", host: h })), "bad_host", h);
+  // a suspended name is not served, and lifting it serves again
+  assert.equal((await suspend(w, { name: "firmbox" })).status, 200);
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, none);
+  assert.equal((await suspend(w, { name: "firmbox", on: false })).status, 200);
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, { route: a.route });
+  // a box that leaves the tunnel is not served at an own host either
+  data(await a.post("/v1/names/publish", { name: "firmbox", apps: true }, { ip: "93.184.216.34" }));
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, none);
+  data(await a.post("/v1/names/publish", { name: "firmbox", via: "tunnel", apps: true }, { ip: "93.184.216.34" }));
+  // unlisting stops it at once and frees the host for another box
+  assert.deepEqual(data(await a.del("/v1/names/hosts", { name: "firmbox", host: "sign.firm.example" })).hosts, []);
+  assert.deepEqual((await resolve(w, "sign.firm.example")).json.data, none);
+  cn.set("_acme-challenge.sign.firm.example", [`${await W.routeHash(b.route)}.acme.vyre.run`]);
+  assert.deepEqual(data(await b.post("/v1/names/hosts", { name: "otherbox", host: "sign.firm.example" })).hosts, ["sign.firm.example"]);
+});

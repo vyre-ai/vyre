@@ -55,7 +55,7 @@ async function world(t, opt = {}) {
   let boot = null;
   const driver = {
     kind: "fake",
-    up: async p => { log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, gateway: "127.0.0.1", subnet: "127.0.0.0/8", hookHost: "127.0.0.1", _secrets: p.secrets }; },
+    up: async p => { if (opt.upFailsAfter !== undefined && log.filter(l => l[0] === "up").length >= opt.upFailsAfter) throw new Error("the runtime would not start it"); log.push(["up", p.space, p.manifest.name, p.hookPort, Object.keys(p.secrets)]); return { origin: `http://127.0.0.1:${app.address().port}`, gateway: "127.0.0.1", subnet: "127.0.0.0/8", hookHost: "127.0.0.1", _secrets: p.secrets }; },
     exec: async (p, argv, o) => { boot = { argv, env: o.env, files: o.files.map(f => f.name) }; log.push(["exec", argv]); return { code: 0, stdout: "api_token=tok_ABCDEFGHIJKLMNOPQRSTUVWXYZ\nlogin_password=pw_1234567890abcdef\n", stderr: "" }; },
     status: async () => ({ state: "running" }), stop: async () => { log.push(["stop"]); }, down: async (p, o) => { log.push(["down", o]); }, logs: async () => "line",
   };
@@ -70,7 +70,7 @@ async function world(t, opt = {}) {
   seam.driver = opt.helper ? helperDriver : driver;
   t.after(() => { seam.driver = null; });
   const root = tempHome(t);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" }, ...(opt.config || {}) }));
   const lines = [];
   const d = await start({ root, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
@@ -157,6 +157,14 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   assert.equal(res.status, 202);
   assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2);
   assert.equal((await fetch(url, { method: "POST", headers: { "x-vyre-token": "no", "content-type": "application/json" }, body: "{}" })).status, 403);
+  // a signer who declines: the event carries who, which document and why, and the files of a signed copy are not fetched
+  const declined = { event_type: "form.declined", timestamp: "2026-10-08T01:00:00Z", data: { id: 9, email: "b@example.com", decline_reason: "The fee is wrong", template: { name: "NDA" }, submission: { id: 11 } } };
+  const dec = await w.d.registry.call("appmods.hook", { name: "documents", token, body: declined }, "hook");
+  assert.equal(dec.data && dec.data.event, "documents.declined", JSON.stringify(dec));
+  const dev = w.d.registry.deps.events.since(0, { type: "documents.declined" });
+  assert.equal(dev.length, 1);
+  assert.deepEqual([dev[0].payload.submission, dev[0].payload.email, dev[0].payload.template, dev[0].payload.reason], [11, "b@example.com", "NDA", "The fee is wrong"]);
+  assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2, "a refusal is not a signature");
   // an event the manifest does not map is ignored, not an error
   assert.deepEqual((await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "template.created" } }, "hook")).data, { ignored: "template.created" });
 });
@@ -332,15 +340,15 @@ test("DocuSeal's two Vyre views are valid in the view language, name only operat
   const declared = new Set(app.connection.operations.map(o => o.name));
   assert.deepEqual(Object.keys(mod.views), ["documents-waiting", "documents-send"]);
   for (const [id, v] of Object.entries(mod.views)) {
-    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(), firstParty: true }), [], id);
+    assert.deepEqual(checkView(`view:${id}`, v, { tools: new Set(), allowed: new Set(["documents.send"]), firstParty: true }), [], id);
     const ops = [];
     (function walk(x) { if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === "object") { if (typeof x.operation === "string") ops.push([x.connection, x.operation]); Object.values(x).forEach(walk); } })(v);
     assert.ok(ops.length, id);
     for (const [c, o] of ops) { assert.equal(c, "documents"); assert.ok(declared.has(o), `${id} uses ${o}, which the Connection declares`); }
   }
   assert.equal(app.connection.operations.find(o => o.name === "submissions.create").kind, "send", "a send is held for the person's yes by the Connection itself");
-  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "and the view shows the exact words first");
-  assert.equal(mod.views["documents-send"].forms.send.submit.input.body.send_email, false, "DocuSeal sends no e-mail from here: it has no way out");
+  assert.equal(mod.views["documents-send"].forms.send.submit.outward, true, "the view shows the exact words first");
+  assert.equal(mod.views["documents-send"].forms.send.submit.tool, "documents.send", "and sends through Documents: the signing request and the email with its link, one act, because DocuSeal itself has no way out to e-mail anyone");
   assert.equal(mod.views["documents-waiting"].list.input.query.status, "pending");
 });
 
@@ -377,4 +385,74 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal((await ask({ email: "not an address" })).error.code, "bad_input");
   assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
+});
+
+test("own domains: the owner points a domain at the signing app, the front answers it by alias and nothing else, and a model or a bad host is refused", async t => {
+  const w = await world(t, { config: { relay: { tunnel_url: "wss://edge.test:8443" } } });
+  const none = await world(t);
+  assert.equal((await none.cli("appmods.domain.add", { host: "sign.firm.example" })).error.code, "not_found", "no app running yet");
+  await none.cli("appmods.install", { name: "documents" });
+  assert.equal((await none.cli("appmods.domain.add", { host: "sign.firm.example" })).error.code, "unavailable", "no public door on this server");
+  await w.cli("appmods.install", { name: "documents" });
+  for (const host of ["vyre.run", "x.vyre.run", "10.0.0.1", "nodot", "http://", "xn--a.example"]) assert.equal((await w.cli("appmods.domain.add", { host })).error.code, "bad_input", host);
+  assert.ok((await w.model("appmods.domain.add", { host: "sign.firm.example" })).error, "a model cannot point a domain");
+  // before: the host is nobody's
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } })).status, 404);
+  const added = await w.cli("appmods.domain.add", { host: "https://Sign.Firm.Example/" });
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  assert.deepEqual([added.data.host, added.data.app, added.data.state], ["sign.firm.example", "documents", "waiting"]);
+  assert.deepEqual(added.data.records.map(r => [r.type, r.name, r.value]), [["CNAME", "sign.firm.example", "test-box.vyre.run"]], "the challenge record needs the directory's answer, which this box has no name for");
+  assert.deepEqual((await w.cli("appmods.domain.list")).data.domains.map(d => [d.host, d.app, d.state]), [["sign.firm.example", "documents", "waiting"]]);
+  assert.ok((await w.cli("appmods.hosts")).data.hosts.includes("sign.firm.example"), "the public gate may carry it to the front");
+  // after: the signer's pretty link goes to the page, any other host is still nobody's, and the app's own screens still need the person's ticket
+  const r = await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } });
+  assert.equal(r.status, 302);
+  assert.equal(r.headers.location, "/s/abc123");
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "other.firm.example" } })).status, 404);
+  assert.equal((await w.web("GET", "/", { headers: { host: "sign.firm.example" } })).status, 404, "the app's own screens are not public on it");
+  // a second listing of the same host is one domain; removing it ends it
+  assert.equal((await w.cli("appmods.domain.add", { host: "sign.firm.example" })).error, undefined);
+  assert.equal((await w.cli("appmods.domain.list")).data.domains.length, 1);
+  assert.equal((await w.model("appmods.domain.remove", { host: "sign.firm.example" })).error !== undefined, true);
+  assert.deepEqual((await w.cli("appmods.domain.remove", { host: "sign.firm.example" })).data, { host: "sign.firm.example", removed: true });
+  assert.equal((await w.web("GET", "/sign/4411/abc123", { headers: { host: "sign.firm.example" } })).status, 404);
+  assert.equal((await w.cli("appmods.domain.remove", { host: "sign.firm.example" })).error.code, "not_found");
+});
+
+test("a key rotated in the Vault reaches the running app: its container is made again with the new value, its data stays, once for a burst", async t => {
+  seam.rotateMs = 20;
+  t.after(() => { seam.rotateMs = undefined; });
+  const w = await world(t);
+  await w.cli("appmods.install", { name: "documents" });
+  const ups = () => w.log.filter(l => l[0] === "up").length, downs = () => w.log.filter(l => l[0] === "down");
+  const before = ups();
+  const names = w.log.find(l => l[0] === "up")[4];
+  const until = async (f, ms = 5000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); } };
+  assert.ok(names.length > 0, "the app has keys of its own");
+  const item = `app-documents-${names[0].toLowerCase()}`;
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-new-key-0123456789abcdef" }, "cli");
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-newer-key-0123456789abcdef" }, "cli");
+  await until(() => ups() === before + 1);
+  assert.deepEqual(downs().at(-1), ["down", { data: false }], "the container goes, its data stays");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1, "two changes in a burst are one restart");
+  assert.ok(w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'running'").get());
+  // a key that is not one of the app's, or an app that is stopped, is left alone
+  await w.d.registry.call("vault.put", { name: "app-documents-hook", kind: "secret", value: "x".repeat(40) }, "cli");
+  await w.cli("appmods.stop", { name: "documents" });
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-third-key-0123456789abcdef" }, "cli");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1);
+});
+
+test("a key rotated in the Vault whose app will not start again leaves the app stopped, not listed as running", async t => {
+  seam.rotateMs = 20;
+  t.after(() => { seam.rotateMs = undefined; });
+  const w = await world(t, { upFailsAfter: 1 });
+  await w.cli("appmods.install", { name: "documents" });
+  const names = w.log.find(l => l[0] === "up")[4];
+  await w.d.registry.call("vault.put", { name: `app-documents-${names[0].toLowerCase()}`, kind: "secret", value: "a-new-key-0123456789abcdef" }, "cli");
+  const t0 = Date.now();
+  while (!w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'stopped'").get()) { if (Date.now() - t0 > 5000) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); }
+  assert.ok(w.lines.some(l => /documents did not restart with its new key/.test(l)), "the reason is in the log");
 });

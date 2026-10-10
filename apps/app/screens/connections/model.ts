@@ -27,7 +27,6 @@ export const words = (e: { code?: string; message?: string } | null | undefined,
 export const httpsOnly = (u: unknown): string | null => (typeof u === "string" && /^https:\/\//i.test(u) ? u : null);
 /** Only https://github.com/... ever becomes a link; anything else falls back to GitHub's own device page. */
 export const safeGithubUrl = (u: unknown): string => (/^https:\/\/github\.com\//.test(String(u || "")) ? String(u) : "https://github.com/login/device");
-export const grantCommand = (item: string, module: string): string => `vyre vault grant ${item} ${module}`;
 
 // ---- who can use a connection ----
 
@@ -230,8 +229,6 @@ export function pickGoogleTest(d: unknown): GoogleTest {
 }
 export const scopeLines = (t: GoogleTest): { scope: string; ok: boolean }[] => Object.entries(t.scopes).map(([scope, ok]) => ({ scope, ok }));
 
-/** How the OAuth client gets into the vault; the values are typed at its prompts. */
-export const CLIENT_PUT = "vyre vault put google-oauth-client --kind env-set --field client_id --field client_secret";
 export type NewAccount = { name: string; email: string; type: "service-account" | "oauth"; item: string; subject: string };
 export function accountInput(n: NewAccount): { input: Record<string, unknown> } | { error: string } {
   if (!n.name.trim() || !n.email.trim()) return { error: "Give the account a name and its address." };

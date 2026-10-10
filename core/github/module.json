@@ -13,6 +13,8 @@
       {"name": "github.star.status", "reach": "person", "effect": "read"},
       {"name": "github.star", "reach": "person", "effect": "write"},
       {"name": "github.repos", "reach": "anyone", "effect": "read"},
+      {"name": "github.owners", "reach": "person", "effect": "read"},
+      {"name": "github.repo.create", "outward": true, "reach": "person", "effect": "write"},
       {"name": "github.project", "reach": "person", "effect": "write"},
       {"name": "github.project.add-repo", "reach": "person", "effect": "write"},
       {"name": "github.project.of", "reach": "anyone", "effect": "read"},
@@ -41,7 +43,7 @@
     ]
   },
   "mentions": [{"kind": "github", "label": "GitHub", "search": "github.mentions.search", "resolve": "github.mentions.resolve"}],
-  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.local-init", "github.undone", "github.token-invalid"] },
+  "watches": { "emits": ["github.added", "github.removed", "github.connected", "github.connect-failed", "github.cleanup-needed", "github.repo-created", "github.local-init", "github.undone", "github.token-invalid"] },
   "shows": {
     "deck": ["settings:connections"],
     "cli": ["connect"]

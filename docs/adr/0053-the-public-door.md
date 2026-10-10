@@ -27,7 +27,7 @@ One door for everything public: signing pages, previews and published pages, sha
 ## Consequences
 
 - The relay's operator can see that a name was visited, from which address and how many bytes, never what was said. A compromised relay can refuse service but cannot impersonate a server, because it has no certificate for the name and the server's gate requires the server name to equal the Host header.
-- Own domains (a firm's `sign.example.com`) need the directory to resolve a verified domain to a server and the server to get a certificate for it; they are not part of this decision.
+- Own domains (a firm's `sign.example.com`) were added in contract v2: the CNAME the certificate needs at `_acme-challenge.<host>` is also the proof of control, the directory lists the host for the name that owns that record, and the server gets and serves its own certificate for it by SNI. The relay is unchanged.
 - A new public shape is a line in the gate's table and a row in `team/contracts/ingress.md`, not a new port.
 
 ## Proof

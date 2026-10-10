@@ -62,7 +62,7 @@ test("waiting.list: the four sources in one list, newest first, with source-pref
   assert.deepEqual(r.by_kind, { approval: 0, ask: 2, draft: 1, access: 0, run: 0, task: 0, eval: 0, reminder: 1, pairing: 1 });
   assert.equal(r.partial, undefined);
   assert.deepEqual(r.rows.find(x => x.id === "gate:g1"), { id: "gate:g1", kind: "draft", title: "Re: the Harlow Legal retainer", detail: "mail to dana@harlowlegal.com",
-    project: "harlow-legal", thread: "t-harlow", at: T + 3000, source: "gate", answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] } });
+    project: "harlow-legal", thread: "t-harlow", at: T + 3000, source: "gate", answer: { tool: "gate.approve", input: { id: "g1" }, fill: [] }, presence: { required: true, covered: false, since: null } });
   assert.ok(!JSON.stringify(r).includes("the client asked"), "nothing from the draft beyond the summary");
   assert.deepEqual((await w.call("waiting.count")).data, { count: 5, by_kind: { approval: 0, ask: 2, draft: 1, access: 0, run: 0, task: 0, eval: 0, reminder: 1, pairing: 1 } });
   for (const who of ["deck", "capsule", "local", "module:push"]) assert.ok((await w.call("waiting.list", {}, who)).data, who);
@@ -191,7 +191,7 @@ test("approvals.items: a held draft is a card, the owner's settling closes it, a
   const open = (await w.call("approvals.items")).data;
   assert.deepEqual(open.items.map(x => x.id).sort(), ["gate:g1", "threads:a2", "vault:g_1"]);
   assert.deepEqual(open.items.find(x => x.id === "vault:g_1"), { id: "vault:g_1", kind: "access", title: 'Let mail use "billing-key"', detail: "asked by mcp", at: T + 5000, source: "vault",
-    state: "waiting", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] } });
+    state: "waiting", answer: { tool: "vault.approve", input: { id: "g_1" }, fill: [] }, presence: { required: true, covered: false, since: null } });
   assert.deepEqual(open.recent, []);
   w.data.held = [];
   w.events.emit("gate", "gate.rejected", { id: "g1", by: "cli" });

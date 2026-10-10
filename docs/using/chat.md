@@ -128,6 +128,10 @@ Select a file to see it: text and images show right there, anything else says so
 
 Tap the plus in the box and choose Attach a file or Attach a photo, or drop a file or paste a screenshot onto the chat in a browser. Each file is added to the chat's own folder at once, sealed like every chat file, and shows as a chip above the box; tap a chip to take it off. Send the message and the assistants get the files: an image comes with your words, and any other file (a PDF, a spreadsheet, a document) is put in the assistant's folder, where it reads it with its own tools. You can add up to five files a message: an image up to 5 MB, anything else up to 8 MB, 20 MB together. The chat keeps your words and the file names; the files are in the chat's Files panel.
 
+## Put a file back
+
+After a turn that edited files, the line under it ("2 files, 1 min") opens the changes. Each file there has Undo: it puts that one file back as it was before the turn. Undo only works while the file still holds what the turn left, so your own later edits are never overwritten; if the file changed since, nothing is touched and it says so. A file the session created is removed again. The session is told on its next message, so it does not build on what you took out. Vyre keeps the earlier versions until it restarts, and only for files inside the session's folder.
+
 ## Records you name
 
 When your message names a client, matter or other record exactly, such as "What case type is Dana Whitfield's matter?", the session is shown a short card of that record beside your words, so it need not stop to look it up. The card has the key fields and nothing sealed: a sealed field appears only as a placeholder the session can use in an action but never read. It only appears when the name is the record's whole title and no other record has it, and it is not repeated for the same record for twenty messages. The session can still look up anything the card leaves out. You can turn cards off in Settings (Cards for records you name).

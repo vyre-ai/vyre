@@ -8,6 +8,8 @@ import { SPACE } from "../../kernel/flows/testing/fixtures.js";
 import { catalog } from "../../kernel/flows/testing/fixtures.js";
 import { signingFlow } from "./signing.js";
 
+/** A module's event as the kernel log carries it to a wait: its facts under payload (kernel/bus.js). */
+const ev = (/** @type {any} */ payload) => ({ legacy: 1, source: "appmods", at: Date.now(), project: null, thread: null, payload });
 const mine = (/** @type {any} */ w, /** @type {string} */ type) => [.../** @type {Map<string, any>} */ (w.kernel.tables.get(type) || new Map()).values()];
 const OPTS = { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12, email_field: "email", name_field: "client" };
 
@@ -61,7 +63,7 @@ test("a matter entering the stage is sent for signature with one yes; the signed
   assert.deepEqual(calls[0].input, { template_id: 12, email: "dana@harlow.test", signer: "Dana Harlow" });
   assert.equal(mine(w, "matter")[0].data.signature_submission, "4411");
   // Documents says it was signed: the matter that asked for it moves to Signed
-  w.kernel.inbound("documents.signed", { submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" });
+  w.kernel.inbound("documents.signed", ev({ submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Signed");
   // the signed copy: a 30-day link made and emailed to the signer, one yes
@@ -71,7 +73,7 @@ test("a matter entering the stage is sent for signature with one yes; the signed
   // a different submission moves nothing
   const again = mine(w, "matter")[0];
   await w.kernel.records.update(alex, "matter", again.id, { stage: "Intake" }, again.version);
-  w.kernel.inbound("documents.signed", { submission: 9999, email: "x@y.test", template: "T", at: "2026-10-10T11:00:00Z" });
+  w.kernel.inbound("documents.signed", ev({ submission: 9999, email: "x@y.test", template: "T", at: "2026-10-10T11:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Intake");
 });

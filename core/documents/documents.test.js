@@ -163,7 +163,7 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
   const down = rig({ call: async tool => (tool === "spaces.self" ? {} : tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
   const e = await code(down.run("documents.send", { template_id: 12, email: "dana@harlow.test" }));
-  assert.equal(e.code, "not_found"); assert.match(e.message, /not running/);
+  assert.equal(e.code, "unavailable"); assert.match(e.message, /install or start it from Apps/, "and a missing app says what to do");
 });
 
 test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {
@@ -196,6 +196,13 @@ test("one yes: the card for documents.send rides down to the mail module's own s
   assert.ok(toComms && toComms.via.includes("comms"), "documents.send names comms.send, so the email rides the card");
   const toMail = coveredRide(tools, meta(toComms), "mail.send", "module:comms");
   assert.ok(toMail && toMail.via.includes("mail"), "and comms.send's own mail.send rides it too");
+  // a Gmail account is one hop further (mail.send files google.mail.send, which files the send at the Gate) and an MCP account goes through mcp.call: the card names them, so the Gate sees a mark its caller may present
+  const toGoogle = coveredRide(tools, meta(toMail), "google.mail.send", "module:mail");
+  assert.ok(toGoogle && toGoogle.via.includes("google"), "a Gmail account's send rides the same card");
+  const toMcp = coveredRide(tools, meta(toMail), "mcp.call", "module:mail");
+  assert.ok(toMcp && toMcp.via.includes("mcp"), "and so does a mail account reached through MCP");
+  const direct = { ...card, tool: "mail.send" };
+  assert.ok(coveredRide(tools, meta(direct), "google.mail.send", "module:mail"), "a card for mail.send itself carries its Gmail hop");
   assert.equal(coveredRide(tools, meta(card), "mail.send", "module:billing"), null, "another module's send is not the same act");
   assert.equal(coveredRide(tools, meta(card), "documents.signed-link", "module:documents"), null, "a tool the card does not name is held as its own card");
   const signed = { ...card, tool: "documents.send-signed" };

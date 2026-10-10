@@ -55,7 +55,7 @@ export default function Pair() {
   }, [offer]);
 
   const line = !offer
-    ? "This link has no pairing code. Make a new one on your home with vyre phone add."
+    ? "This link has no pairing code. Make a new one in Vyre on your computer: Settings, Devices, Add a device."
     : state.at === "pairing"
       ? "Pairing with your home"
       : state.at === "paired"

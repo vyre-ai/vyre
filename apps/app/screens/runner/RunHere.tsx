@@ -7,7 +7,7 @@ import { Sec } from "../places/Frame";
 import { runner } from "./runner";
 import { DEFAULT_SETTINGS, hereLine, parseLimit, switchNote, type MacSettings } from "./runner-model.js";
 
-export type Here = { thread: string; title: string; state: "running" | "waiting" | "paused"; cpuPercent: number; memoryMb: number };
+export type Here = { thread: string; title: string; state: "running" | "waiting" | "paused"; cpuPercent: number; memoryMb: number; line?: string; cpu?: string };
 
 export function RunHere() {
   const [s, setS] = useState<MacSettings | null>(null);

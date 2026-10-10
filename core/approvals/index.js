@@ -338,13 +338,13 @@ export default {
     });
     ctx.tool("approvals.receipt", {
       internal: true,
-      description: "The registry's own: a Flow's approved act, just spent by the Flows host, is kept like a redeemed card so the Gate can use it once for the send the act files. { card, tool, input_sha256, asker }.",
+      description: "The registry's own: a Flow's approved act or a person's confirmed preview is kept like a redeemed card so the Gate can use it once for the send the act files. { card, tool, input_sha256, asker }.",
       input: obj({ card: { type: "string" }, tool: { type: "string" }, input_sha256: { type: "string" }, asker: { type: "string" } }, ["card", "tool", "input_sha256", "asker"]),
       callers: ["module"],
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry records a Flow's approved act", "denied");
+        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry records an approved act", "denied");
         const id = String(input.card);
-        if (!/^flowtask:[A-Za-z0-9_-]{6,80}$/.test(id)) throw refuse("that is not a Flow task's receipt", "bad_input");
+        if (!/^(flowtask:[A-Za-z0-9_-]{6,80}|viewask:[A-Za-z0-9_-]{8,128})$/.test(id)) throw refuse("that is not a Flow task's or a confirmed preview's receipt", "bad_input");
         sweep();
         if (open.has(id)) throw refuse("that approval was already recorded", "replayed");
         open.set(id, { id, op: String(input.tool), space: "", fields: {}, payload_hash: "", from: String(input.asker), at: now(), state: "approved", moment: "outward", request: { op: String(input.tool), fields: { input_sha256: String(input.input_sha256) } }, verified: true, used: true, redeemedAt: now() });
@@ -390,7 +390,16 @@ export default {
       input: obj({}),
       effect: "read",
       callers: [...SURFACES, "module"],
-      run: async () => /** @type {NonNullable<typeof items>} */ (items).list(),
+      run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
+        const out = await /** @type {NonNullable<typeof items>} */ (items).list();
+        if (!out.items.length) return out;
+        // What answering each card takes from THIS caller's device: whether it needs a proof at all (a yes does, a draft that sends does, access to a secret does) and whether the device already has a live presence
+        // session, so a swipe on a covered device can answer at once and any other opens the card. Read once for the whole list.
+        const r = /** @type {any} */ (await ctx.call("presence.covered", meta && meta.peer ? { peer: meta.peer } : {}).catch(() => null));
+        const covered = Boolean(r && r.data && r.data.covered), since = r && r.data && r.data.since != null ? r.data.since : null;
+        const needs = (/** @type {any} */ c) => c.kind === "approval" || c.kind === "access" || (c.kind === "draft" && Boolean(c.facts && c.facts.presence && c.facts.presence.required));
+        return { ...out, items: out.items.map((/** @type {any} */ c) => ({ ...c, presence: { required: needs(c), covered, since } })) };
+      },
     });
     items.start();
 

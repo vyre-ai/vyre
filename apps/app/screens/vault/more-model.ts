@@ -39,7 +39,7 @@ export const whoAsked = (by: string): string => (by.includes("agent:") ? by.spli
 /** The line for one waiting ask. */
 export function waitingLine(x: Pending): string {
   const who = whoAsked(x.by);
-  return x.kind === "grant" ? `${who} asked to let ${x.module}${x.watcher ? `/${x.watcher}` : ""} use ${x.name}` : `${who} asked to share ${x.items.join(", ")} with ${x.holder}, ${x.mode}`;
+  return x.kind === "grant" ? `${who} asked to let ${x.module}${x.watcher ? `/${x.watcher}` : ""} use ${x.name}` : `${who} asked to share ${x.items.join(", ")} with ${x.holder}${x.mode === "sealed" ? ", as a copy" : ""}`;
 }
 
 /** vault.devices: browsers paired for autofill. */
@@ -80,11 +80,12 @@ export function healthGroups(h: Health): { code: string; title: string; why: str
 }
 
 /** The Vault home's one line about health: how many items need attention and the biggest reasons, or nothing when all is well. Counts only; no name and no value. */
-export function healthSummary(h: Health): { total: number; line: string } {
+export function healthSummary(h: Health): { total: number; line: string; title: string; detail: string } {
   const flagged = new Set(h.items.filter((i) => i.reasons.some((r) => REASON_ORDER.includes(r) && r !== "2fa-available")).map((i) => i.name));
   const parts = REASON_ORDER.filter((c) => c !== "2fa-available" && h.counts[c]).map((c) => `${h.counts[c]} ${REASON[c][0].toLowerCase()}`);
   const total = flagged.size;
-  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${parts.join(", ")}.` : "" };
+  const detail = parts.join(", ");
+  return { total, line: total ? `${total} ${total === 1 ? "item needs" : "items need"} attention: ${detail}.` : "", title: total ? `${total} ${total === 1 ? "item needs" : "items need"} a look` : "", detail };
 }
 
 /** What a breach check answers: the names that appear in known breaches, and how many were checked. */
@@ -148,10 +149,10 @@ export function deviceLines(d: Device, now = Date.now()): { sub: string; session
     : { sub: `Paired ${ago(d.created, now)}, last seen ${ago(d.lastSeen, now)}`, sessions: d.sessions ? `${d.sessions} open ${d.sessions === 1 ? "session" : "sessions"}` : "Locked" };
 }
 
-/** A pass's row: who, what, how and until when. */
+/** One share's row: who, what, how and until when. */
 export function passLine(p: Pass): { title: string; sub: string; state: string } {
   return { title: `${p.direction === "to" ? "To" : "From"} ${p.holder}${p.person ? `, ${p.person}` : ""}`, sub: [p.items.join(", "), p.scope].filter(Boolean).join(", "),
-    state: `${p.state === "waiting" ? "Waiting" : p.mode === "sealed" ? "Sealed" : "Relayed"}, ${expiryWord(p.expires).toLowerCase()}` };
+    state: `${p.state === "waiting" ? "Waiting" : p.mode === "sealed" ? "A copy was sent" : "Stays on your server"}, ${expiryWord(p.expires).replace(/^./, (c) => c.toLowerCase())}` };
 }
 
 /** Words for a refusal of one of these acts. A proof the person did not give is "Not done", never an error. */
@@ -214,7 +215,7 @@ export function pickReveals(d: unknown): Reveal[] {
 export const revealLine = (r: Reveal): string => `${r.pass}'s agent asks to see ${r.item}${r.why ? `: ${r.why}` : ""}`;
 
 /** What revoking a pass tells the person: sealed ones left a copy, so those items must be replaced. */
-export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a sealed copy.` : `Ended. ${holder} cannot use it any more.`);
+export const revokedLine = (holder: string, rotate: string[]): string => (rotate.length ? `Ended. Replace ${rotate.join(", ")}: they kept a copy.` : `Ended. ${holder} cannot use it any more.`);
 
 // ---- changing an item ----
 
@@ -319,6 +320,37 @@ export function pickPeople(d: unknown): Person[] {
   const list = Array.isArray(d) ? (d as unknown[]) : (d as { people?: unknown } | null)?.people;
   return arr(list).filter((p) => str(p.name)).map((p) => ({ name: str(p.name), fingerprint: str(p.fingerprint), verified: Boolean(p.verified), blocked: Boolean(p.blocked || p.changed) }));
 }
+
+/** The roles a person may give in a shared vault (the owner is made when the vault is). */
+export const INVITE_ROLES: [string, string][] = [["member", "Member"], ["admin", "Admin"], ["read-only", "Read only"]];
+/** What each role can do, in one line. */
+export const ROLE_HELP: Record<string, string> = { admin: "Can add people and change roles.", member: "Can see what is in it and add items.", "read-only": "Can see what is in it." };
+
+/** The input of vault.vaults.create, or what is wrong with the name in words. */
+export function newVaultInput(typed: string): { input: { name: string } } | { error: string } {
+  const name = typed.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").slice(0, 64);
+  if (!typed.trim()) return { error: "Give the vault a name." };
+  if (!name) return { error: "Start the name with a letter or a number." };
+  return { input: { name } };
+}
+
+/** The input of vault.members.invite, or what is missing. The person's Vyre card must be known to this one: the box says so in words when it is not. */
+export function inviteInput(vault: string, person: string, role: string): { input: { vault: string; person: string; role: string } } | { error: string } {
+  if (!person.trim()) return { error: "Say who to invite." };
+  return { input: { vault, person: person.trim(), role } };
+}
+
+/** What a pasted share is: a vault invite or a pass ticket, by how it starts, or why it is neither. */
+export function acceptKind(pasted: string): { kind: "invite" | "ticket"; value: string } | { error: string } {
+  const v = pasted.trim();
+  if (v.startsWith("vyre-invite:")) return { kind: "invite", value: v };
+  if (v.startsWith("vyre-pass:")) return { kind: "ticket", value: v };
+  return { error: v ? "That is not something Vyre made. Paste the whole thing they sent you." : "Paste what they sent you." };
+}
+
+/** What taking someone out of a shared vault tells the person: what they could read must be replaced. */
+export const removedLine = (person: string, vault: string, rotate: string[]): string =>
+  rotate.length ? `${person} is out of ${vault}. Replace ${rotate.length === 1 ? rotate[0] : `${rotate.length} items`}: they could read ${rotate.length === 1 ? "it" : "them"}.` : `${person} is out of ${vault}.`;
 
 const ROLE_WORD: Record<string, string> = { owner: "Owner", admin: "Admin", member: "Member", "read-only": "Read only" };
 export const roleWord = (r: string): string => ROLE_WORD[r] ?? r;

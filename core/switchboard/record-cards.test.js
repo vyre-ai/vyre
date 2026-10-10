@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { namesIn, cardText, createCards, LIMITS } from "../../lib/record-cards.js";
+import { namesIn, cardText, createCards, ownerChain, LIMITS } from "../../lib/record-cards.js";
 import { boot, until } from "../sessions/testing/boot.js";
 import { CONTACT } from "../../kernel/conformance/suite.js";
 
@@ -121,4 +121,23 @@ test("on a real daemon a named client reaches the model as a card with the seale
   await ok("threads.send", { thread: th2.id, text: "What is Dana Whitfield's age?", surface: "deck" });
   await w.finished(th2.id, 2);
   assert.doesNotMatch((await w.said(th2.id)).at(-1), /record card/, "off means the model fetches it itself");
+});
+
+test("one message cannot make the box search for every capitalised word: kernel calls per turn are capped", async () => {
+  let calls = 0;
+  const kernel = { records: { search: async () => { calls += 1; return { rows: [1, 2, 3, 4, 5].map(n => ({ type: "contact", id: `c${n}` })) }; }, reference: async () => { calls += 1; return null; } } };
+  const cards = createCards({ kernel });
+  const person = { hops: [{ actor: { kind: "person", id: "per_x" } }] };
+  const words = Array.from({ length: 60 }, (_, i) => `"Name Number${String.fromCharCode(97 + (i % 26))}${i}"`).join(" ");
+  await cards.note({ chain: person, thread: "t1", text: `Ask about ${words}` });
+  assert.ok(calls > 0 && calls <= LIMITS.calls, `${calls} kernel calls`);
+});
+
+test("a card is made in the box's own session only under the owner's chain, never a member's", () => {
+  const kernel = { owner: "per_owner" };
+  const person = (/** @type {string} */ id) => ({ hops: [{ actor: { kind: "person", id } }] });
+  assert.ok(ownerChain(kernel, person("per_owner")));
+  assert.equal(ownerChain(kernel, person("per_member")), null, "what a member may read is not for the owner's session");
+  assert.equal(ownerChain(kernel, { hops: [{ actor: { kind: "person", id: "per_owner" } }, { actor: { kind: "agent", id: "kit" } }] }), null);
+  assert.equal(ownerChain(kernel, null), null);
 });

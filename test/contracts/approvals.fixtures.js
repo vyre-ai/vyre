@@ -46,6 +46,9 @@ export const cards = {
   approval: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f", kind: "approval", title: 'A device wants to show "stripe" from your vault', at: 1760000000900, source: "approvals", answer: { tool: "approvals.answer", input: { id: "ap_01a12328-33b9-4708-8430-e35ce6a2454f" }, fill: ["yes"] } },
 };
 
+/** What `approvals.items` adds to every waiting card for the calling device: whether answering takes a proof (a yes, a draft that sends, access to a secret) and whether the device already has a live presence session (a covered device answers a swipe at once). `recent` cards carry none. */
+export const itemPresence = { required: true, covered: false, since: null };
+
 /** `approvals.items`, whole: the cards waiting, and the ones settled in the last ten minutes with what became of them. */
 export const itemsAnswer = { items: [cards.approval, cards.draft], recent: [{ ...cards.access, state: "settled", outcome: "settled", settled_at: 1760000001000 }] };
 

@@ -67,6 +67,17 @@ test("C. one grant model: who may act is a kernel grant; every other table with 
   for (const f of sources(["core", "lib", "kernel", "records"])) for (const { l } of code(f)) { const m = l.match(/CREATE TABLE(?: IF NOT EXISTS)? ([a-z0-9_]*grant[a-z0-9_]*)/i); if (m) made.add(m[1]); }
   assert.deepEqual([...made].filter((t) => !(t in NAMED)), [], "a table that keeps grants of its own: make the thing a kernel grant (kernel `mint` handle or the Vault's hooks), or name the table in NAMED with the reason");
   assert.deepEqual(Object.keys(NAMED).filter((t) => !made.has(t)), [], "listed here but no longer created anywhere: delete its line from NAMED");
+  // The other way to keep a second model is an engine, not a table: lib/spaces/authz.js `createRoleAuthorize` answers "may this role do this" from a member's role. Three modules still ask it instead of the
+  // kernel's authorize. They are named here, and the list may only shrink.
+  /** @type {Record<string, string>} */
+  const ROLE_ENGINE = {
+    "core/spaces/index.js": "who is in a Space and what a role may do there: the roles table the kernel's own roles (kernel/contracts) mirror; moves onto kernel authorize with the 0.3.4 grant work (BACKLOG)",
+    "core/bridges/index.js": "a bridge's two ends by role; the bridge's lifecycle is not a grant (DESIGN-one-grant section 10 F); the role check moves to kernel authorize (BACKLOG 0.3.4)",
+    "core/publish/index.js": "who may create, approve and publish a deployment by role; a deployment's secrets are already kernel grants; the role checks move to kernel authorize (BACKLOG 0.3.4)",
+  };
+  const engineUsers = sources(["core"]).filter((f) => code(f).some(({ l }) => /\bcreateRoleAuthorize\s*\(/.test(l)));
+  assert.deepEqual(engineUsers.filter((f) => !(f in ROLE_ENGINE)), [], "a new asker of createRoleAuthorize: ask the kernel's authorize instead, or name the file in ROLE_ENGINE with the reason");
+  assert.deepEqual(Object.keys(ROLE_ENGINE).filter((f) => !engineUsers.includes(f)), [], "listed here but no longer asks the role engine: delete its line from ROLE_ENGINE");
   // Publish's old bookkeeping: a deployment's secret is a kernel grant, and its record carries no list
   assert.ok(fs.existsSync(path.join(ROOT, "lib/publish/grants.js")), "Publish keeps deployment secrets as kernel grants (lib/publish/grants.js)");
 });

@@ -632,6 +632,8 @@ const inRepo = (dir, paths) => {
 const IN_SPACE = Symbol("vyre.in_space");
 /** The person whose click on a module view authorises the FIRST hop only: that person may run this module's own tool as the view declares it. It is not an origin: nothing the tool calls inherits it. */
 const VIEW_FOR = Symbol("vyre.view_for");
+/** Set only by the views and capsule modules, beside `asked`: the person's own confirmation of exactly these words (a fresh preview and its hash). A symbol key cannot come over the wire. */
+const VIEW_ASK = Symbol("vyre.view_ask");
 /** Set only by Registry.callFlow, after the Flows host has spent the task approval a person gave for exactly this act: the call then counts as the person's own yes, as a redeemed card does. A symbol key cannot come over the wire. */
 const FLOW_ACT = Symbol("vyre.flow_act");
 /** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
@@ -1176,10 +1178,10 @@ export class Registry {
       ...doors,
       vault: {
         request: vaultRequest,
-        fetch: async (name, { field, watcher } = {}) => {
+        fetch: async (name, { field, watcher, deployment } = {}) => {
           const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
           if (!declared.includes(name) && !declared.some(d => d.startsWith("per-")) && !multipleItem(m, name)) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
-          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`, { door: true });
+          const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}), ...(deployment ? { deployment } : {}) }, `module:${m.name}`, { door: true });
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
         },
@@ -1266,7 +1268,7 @@ export class Registry {
         const viewFor = (m.name === "capsule" || m.name === "views") && String(as).startsWith("module:") ? captureOrigin() : undefined;
         // the link on a Mac types or answers for the person at its paired box as `link:box` AFTER checking the box (the pinned key's assertion, the pinned channel): the Mac's own chat gate then judges that call as the Mac's owner
         const boxPerson = m.name === "link" && String(as) === "link:box" && typeof this.deps.linkBoxFacts === "function" ? { kernelFacts: this.deps.linkBoxFacts() } : {};
-        return this.call(tool, input, String(as), { ...boxPerson, ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
+        return this.call(tool, input, String(as), { ...boxPerson, ...((m.name === "capsule" || m.name === "views") && opts.asked && typeof opts.asked === "object" ? { asked: opts.asked, [VIEW_ASK]: opts.asked } : {}), ...(viewFor ? { [VIEW_FOR]: viewFor } : {}), ...relayed, ...asked });
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
@@ -1513,6 +1515,7 @@ export class Registry {
     delete meta.relayedBy; // set below, by the registry relay alone
     delete meta[COVERED]; // set below, only by a card this call just redeemed
     const flowAct = meta[FLOW_ACT]; delete meta[FLOW_ACT]; // set by callFlow alone (below it becomes the same mark a redeemed card makes)
+    const viewAsk = meta[VIEW_ASK]; delete meta[VIEW_ASK]; // set by the views and capsule modules alone: the person confirmed these exact words
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
@@ -1766,9 +1769,12 @@ export class Registry {
     }
     // A Flow's call step: the Flows host spent the person's approval for exactly this act (bound to this input) before it got here, so the act is the person's own yes, and a send the tool files at the Gate
     // can show it as a redeemed card does. The receipt is recorded with the approvals queue (one use, the card's life); without one the send is held at the Gate as before.
-    if (flowAct && String(caller) === "module:flows" && def.outward === true && typeof flowAct.task === "string" && /^[A-Za-z0-9_-]{6,80}$/.test(flowAct.task)) {
+    // The same holds for a person's own click in a view: the preview showed them these exact words and they confirmed (a fresh, hash-bound confirmation only the views and capsule modules can pass on).
+    const viewCard = viewAsk && isPerson(String(caller)) && Number.isFinite(viewAsk.at) && Date.now() - viewAsk.at >= -5_000 && Date.now() - viewAsk.at <= 60_000 && typeof viewAsk.hash === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(viewAsk.hash) ? `viewask:${viewAsk.hash}` : null;
+    const flowCard = flowAct && String(caller) === "module:flows" && typeof flowAct.task === "string" && /^[A-Za-z0-9_-]{6,80}$/.test(flowAct.task) ? `flowtask:${flowAct.task}` : null;
+    if ((flowCard || viewCard) && def.outward === true) {
       const receipt = this.tools.get("approvals.receipt");
-      const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`, card = `flowtask:${flowAct.task}`, sha = holdFields(input).input_sha256;
+      const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`, card = /** @type {string} */ (flowCard || viewCard), sha = holdFields(input).input_sha256;
       if (receipt) { try { await receipt.run({ card, tool, input_sha256: sha, asker }, { caller: "module:registry" }); meta = { ...meta, [COVERED]: { card, tool, input_sha256: sha, asker } }; } catch { /* held at the Gate as before */ } }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.

@@ -69,7 +69,7 @@ test("a schedule with business hours in a real daemon: the health line and the n
   const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   const token = (await d.kernel.surfaces.open(chain, {})).token;
   await d.kernel.gateway.records.define(chain, { add_types: [NOTE] });
-  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "weekday_note", label: "Weekday note", authorship: "human", trigger: { on: "time", cron: "0 9 * * 1-5", tz: "America/New_York", hours: true, holidays: ["12-25"], catch_up: "skip" },
+  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "weekday_note", label: "Weekday note", authorship: "human", trigger: { on: "time", cron: "0 9 * * 1-5", tz: "America/New_York", hours: true, catch_up: "skip" },
     steps: [{ id: "c", kind: "create", type: "filing-note", set: { body: "hi" } }] } }, "cli", { token });
   assert.ok(r.data && r.data.ok, JSON.stringify(r));
   await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
@@ -82,4 +82,40 @@ test("a schedule with business hours in a real daemon: the health line and the n
   assert.equal(Number(part("hour")) % 24, 9, "at 9:00 New York");
   const health = (await d.registry.call("flows.health", { id: r.data.id }, "cli", { token })).data;
   assert.ok(health, "the Flow has a health line");
+
+  // the Space's holiday list (Settings, Flows) keeps that day off: the next time moves on to the next open weekday
+  const day = (/** @type {number} */ ms) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(ms));
+  const set = await d.registry.call("settings.set", { key: "flows.holidays", value: day(wake) }, "cli", { token });
+  assert.ok(!set.error, JSON.stringify(set.error));
+  await host.flows.tick();
+  const moved = await host.flows.runner.nextWake();
+  assert.ok(moved && moved > wake, `the holiday moved the next time on (${day(wake)} -> ${moved && day(moved)})`);
+  assert.notEqual(day(moved), day(wake));
+});
+
+test("try it on last week in a real daemon: the window picks the real events, and the replay matches what the Flow really did", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const host = d.registry.deps.flowsHost.get(space);
+  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const token = (await d.kernel.surfaces.open(chain, {})).token;
+  const CONTACT = { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "status", kind: "text", label: "Status" }] };
+  await d.kernel.gateway.records.define(chain, { add_types: [CONTACT, NOTE] });
+  const r = await d.registry.call("flows.define", { flow: { format: 1, name: "mark_seen", label: "Mark seen", authorship: "human", trigger: { on: "event", event: "contact.created" },
+    steps: [{ id: "u", kind: "update", type: "contact", record: { expr: "event.subject" }, set: { status: "seen" } }] } }, "cli", { token });
+  assert.ok(r.data && r.data.ok, JSON.stringify(r));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
+  const before = Date.now() - 60_000;
+  for (const name of ["Jane", "Joe"]) await d.kernel.gateway.records.create(chain, "contact", { name });
+  await until(async () => { const runs = (await d.registry.call("flows.runs", { id: r.data.id }, "cli", { token })).data || []; return runs.length === 2 && runs.every((/** @type {any} */ x) => x.state === "done") ? runs : null; }, "both runs to finish");
+
+  const sim = (await d.registry.call("flows.simulate", { id: r.data.id, since: before, until: Date.now() + 60_000 }, "cli", { token })).data;
+  assert.equal(sim.ok, true, JSON.stringify(sim.errors));
+  assert.equal(sim.matched, 2, "the window held the two real events");
+  assert.equal(sim.history.matches, true, sim.history.line);
+  assert.deepEqual([sim.history.ran, sim.history.would, sim.history.same], [2, 2, 2]);
+  const later = (await d.registry.call("flows.simulate", { id: r.data.id, since: Date.now() + 3_600_000 }, "cli", { token })).data;
+  assert.equal(later.matched, 0, "a window in the future holds nothing");
 });

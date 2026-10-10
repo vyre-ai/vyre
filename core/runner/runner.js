@@ -24,6 +24,9 @@ import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
 import { createUsage } from "./usage.js";
+import { signalTree } from "./proctree.js";
+import { endOrphans } from "./orphans.js";
+export { endOrphans };
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
 /** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
@@ -50,33 +53,6 @@ const mergeLabels = (a, b) => ({ trust: weakest(a?.trust ?? "untrusted", b?.trus
  * @param {{ base: string, platform?: any, driver?: any }} o @returns {Promise<string[]>} the folders it closed
  */
 const spaceHash = (/** @type {string} */ space) => crypto.createHash("sha256").update(space).digest("hex").slice(0, 16);
-
-/**
- * Sessions a runner that died left running: each session's process group is recorded (run/<space>.<session>.pid) when it starts and forgotten when it ends, so a restarted runner finds the ones that
- * outlived it and ends them (only when the process is still the sandboxed agent that was recorded: a pid reused by something else is left alone). Returns how many it ended.
- * @param {string} base @returns {number}
- */
-export function endOrphans(base) {
-  let n = 0;
-  const run = path.join(base, "run");
-  let names = []; try { names = fs.readdirSync(run).filter(f => f.endsWith(".pid")); } catch { return 0; }
-  for (const f of names) {
-    const file = path.join(run, f);
-    try {
-      const rec = JSON.parse(fs.readFileSync(file, "utf8"));
-      const pid = Number(rec.pid); if (!Number.isInteger(pid) || pid < 2) throw new Error("bad");
-      let cmd = ""; try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { cmd = ""; }
-      const stat = (() => { try { return fs.readFileSync(`/proc/${pid}/stat`, "utf8"); } catch { return ""; } })();
-      const started = stat ? stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] : "";
-      // still the process we recorded: alive, and (where /proc says) the same start time
-      const same = process.platform === "linux" ? Boolean(stat) && (!rec.started || String(rec.started) === started) : (() => { try { process.kill(pid, 0); return true; } catch { return false; } })();
-      void cmd;
-      if (same) { for (const sig of ["SIGTERM", "SIGKILL"]) { try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch {} } } n++; }
-    } catch { /* not a record we can read */ }
-    try { fs.rmSync(file, { force: true }); } catch {}
-  }
-  return n;
-}
 
 export async function reconcile(o) {
   const platform = o.platform || process.platform;
@@ -303,7 +279,11 @@ export function createRunner(o) {
   }
 
   /** Send a signal to a session's whole process group. */
-  function signal(h, sig) { try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } } }
+  function signal(h, sig) {
+    // the sandbox gives the agent a session of its own, so the group of the process Vyre started is not enough to freeze or thaw it: walk the tree under it too
+    if (sig === "SIGSTOP" || sig === "SIGCONT") { signalTree(Number(h.child.pid), sig); return; }
+    try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } }
+  }
 
   /** Stop one session: ask nicely, then end it. */
   async function stop(session, _o = {}) {
@@ -314,7 +294,7 @@ export function createRunner(o) {
     const killed = new Promise(r => h.child.once("close", () => r(undefined)));
     const sig = s => { try { process.kill(-Number(pid), s); } catch { try { h.child.kill(s); } catch {} } };
     sig("SIGCONT"); sig("SIGTERM");
-    const t = setTimeout(() => sig("SIGKILL"), 3000);
+    const t = setTimeout(() => { sig("SIGKILL"); signalTree(Number(pid), "SIGKILL"); }, 3000);   // the whole tree: the sandbox's second process is in a session of its own
     if (h.child.exitCode === null && h.child.signalCode === null) await killed;
     clearTimeout(t);
     await finish(h);
@@ -370,7 +350,7 @@ export function createRunner(o) {
     thaw(why) { thawAll(why); },
     get held() { return frozen.size > 0; },
     /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
-    async fence(session) { const h = live.get(session); if (!h) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
+    async fence(session) { const h = live.get(session); if (!h || h.released) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },

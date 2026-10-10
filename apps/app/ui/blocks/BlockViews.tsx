@@ -7,12 +7,15 @@ import { Button } from "../components/Button";
 import { Card, Divider } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { Field } from "../components/Field";
+import { ICON_NAMES, type IconName } from "../components/Icon";
+import { IconTile } from "../components/IconTile";
 import { Row } from "../components/Row";
 import { SectionLabel } from "../components/SectionLabel";
 import { EmptyState } from "../components/States";
 import { Table } from "../components/Table";
 import { Text } from "../components/Text";
 import { TimelineItem } from "../components/TimelineItem";
+import { iconFor } from "./symbols.js";
 import { TypedTable } from "./TypedTable";
 import type { Action, Block, Handlers } from "./types";
 
@@ -34,17 +37,32 @@ export function ActionBar({ k, actions, primary, h, id }: { k: string; actions?:
 export function ListBlock({ k, b, h }: P) {
   const r = rows(c(b).rows);
   if (!r.length) return <EmptyState title={c(b).empty || b.props?.emptyTitle || "Nothing here."} />;
+  // The spec's own fields, all drawn: `icon` is a tile before the title, `group` makes one card per group in the order the groups first appear, and a tight list is the settings density
+  // (dense rows, a chevron where a row opens, the accessory as a plain state instead of a chip).
+  const tight = b.props?.density === "tight";
+  const groups: { name: string; rows: any[] }[] = [];
+  for (const x of r) {
+    const name = typeof x.group === "string" ? x.group : "";
+    let g = groups.find((y) => y.name === name);
+    if (!g) groups.push((g = { name, rows: [] }));
+    g.rows.push(x);
+  }
+  const card = (rs: any[]) => (
+    <Card flush>
+      {rs.map((x, i) => (
+        <View key={x.id ?? i}>
+          {i > 0 ? <Divider inset={iconFor(x.icon, ICON_NAMES) ? 60 : 0} /> : null}
+          <Row dense={tight} chevron={tight && !!h.open} lead={iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined} title={x.title} sub={x.subtitle}
+            end={x.accessory && !tight ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined} state={x.accessory && tight ? String(x.accessory) : undefined}
+            onPress={h.open ? () => h.open!(k, x) : undefined} />
+        </View>
+      ))}
+    </Card>
+  );
   return (
     <View className="gap-s2">
       {b.props?.title ? <SectionLabel>{b.props.title}</SectionLabel> : null}
-      <Card flush>
-        {r.map((x, i) => (
-          <View key={x.id ?? i}>
-            {i > 0 ? <Divider /> : null}
-            <Row title={x.title} sub={x.subtitle} end={x.accessory ? <Chip tone={x.tone}>{String(x.accessory)}</Chip> : undefined} onPress={h.open ? () => h.open!(k, x) : undefined} />
-          </View>
-        ))}
-      </Card>
+      {groups.length === 1 && !groups[0].name ? card(groups[0].rows) : groups.map((g) => <View key={g.name}>{g.name ? <SectionLabel>{g.name}</SectionLabel> : null}{card(g.rows)}{h.slot?.(k, `after:${g.name}`)}</View>)}
       {more(typeof c(b).more === "number" ? c(b).more : undefined)}
     </View>
   );

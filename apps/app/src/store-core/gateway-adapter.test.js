@@ -2,7 +2,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { TOOLS, createGatewayStore, parseUrn, storeError } from "./gateway-adapter.js";
+import { TOOLS, createGatewayStore, parseUrn, readableActors, storeError } from "./gateway-adapter.js";
 
 /** A fake vyred: records every call and answers from a table. */
 function fake(answers = {}) {
@@ -88,4 +88,22 @@ test("spaces are named by spaces.list, with the home's own space added when it i
   const f = fake({ [TOOLS.me]: { person: "per_x", space: "spc_home" }, [TOOLS.spaceList]: [{ id: "spc_a", displayName: "Juniper Studio", status: "done", role: "owner" }, { id: "spc_b", label: "x", status: "creating" }] });
   const s = createGatewayStore({ rpc: f.rpc });
   assert.deepEqual((await s.spaces()).map((x) => [x.id, x.name]), [["spc_home", "Home"], ["spc_a", "Juniper Studio"]]);
+});
+
+test("an actor known only by its id reads as a word, never as the id", () => {
+  const actors = readableActors([
+    { id: "per_l47gpa4r2zy6cn6jmyzi5rh", name: "per_l47gpa4r2zy6cn6jmyzi5rh", family: "person" },
+    { id: "per_other0000000000000000", name: "", family: "person" },
+    { id: "agt_0000000000", name: "agt_0000000000", family: "assistant" },
+    { id: "agt_1111111111", name: "agt_1111111111", family: "agent" },
+    { id: "per_named", name: "Dana Smith", family: "person" },
+  ], "per_l47gpa4r2zy6cn6jmyzi5rh");
+  assert.deepEqual(actors.map((a) => a.name), ["You", "Someone", "An assistant", "An agent", "Dana Smith"]);
+  assert.deepEqual(readableActors([], "x"), []);
+});
+
+test("the store's actors are the readable ones, with the signed-in person as You", async () => {
+  const f = fake({ [TOOLS.me]: { person: "per_me" }, [TOOLS.actors]: [{ id: "per_me", name: "per_me", family: "person" }] });
+  const s = createGatewayStore({ rpc: f.rpc });
+  assert.deepEqual((await s.actors()).map((a) => a.name), ["You"]);
 });

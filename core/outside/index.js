@@ -16,6 +16,8 @@ const obj = (/** @type {any} */ properties = {}, /** @type {string[]} */ require
 const fail = (/** @type {string} */ message, /** @type {string} */ code = "failed") => Object.assign(new Error(message), { code });
 const PERSON = [...PERSON_SURFACES, "tailnet", "device"];
 export const SENDER = "outside";
+/** How many changes one outside agent may have waiting at the Gate. */
+export const MAX_WAITING = 20;
 const CONTENT = { summary: "string (what the outside agent asks for, in words)", agent: "string (its name)", held: "string (its request id)", type: "string", fields: "object (the field values)" };
 
 /** The one-line change a person reads on the card: "Muse wants to add a client: Dana Reyes". @param {string} agent @param {"records_create"|"records_update"} tool @param {{ type: string, fields: Record<string, any> }} c @param {string} label */
@@ -125,9 +127,17 @@ export function registerOutside(ctx, seam = {}) {
   };
   /** @param {any} agent @param {"records_create"|"records_update"} tool @param {{ type: string, urn?: string, fields: Record<string, any> }} change */
   async function hold(agent, tool, change) {
+    // an outsider cannot flood the person's Gate: a few at a time, each of a sane size
+    if (JSON.stringify(change).length > 20_000) throw fail("that change is too large: ask for fewer fields at a time", "bad_input");
+    if (store.heldOf(agent.id).length >= MAX_WAITING) throw fail(`${MAX_WAITING} of your requests are already waiting for the person: wait for their answer before asking for more`, "refused");
     await offer();
     const reach = store.reach(agent.id).filter(r => r.kind === "records");
     const label = (reach.flatMap(r => r.spec.defs || []).find((/** @type {any} */ t) => t.name === change.type) || {}).label || change.type;
+    // An update is a change to the record as it is now (or as the agent last read it): what the person approves later is applied only if the record is still that version.
+    if (tool === "records_update" && !Number.isInteger(change.version)) {
+      const cur = await K.records.get(K.outside.chain(agent.id), change.type, String(change.urn).split("/").pop()).catch(() => null);
+      if (cur && cur.version !== undefined) change = { ...change, version: cur.version };
+    }
     const summary = summaryOf(agent.name, tool, change, label);
     const id = newPrefixedId("hd");
     store.hold({ id, agent: agent.id, tool, change, gate: null });
@@ -185,14 +195,26 @@ export function registerOutside(ctx, seam = {}) {
   });
 
   ctx.tool("outside.token", {
-    description: "Make a new token for an outside agent: { id }. The old one stops working at once. Shown once.",
-    input: obj({ id: str }, ["id"]), callers: PERSON,
+    description: "Make a new token for an outside agent: { id, days? }. The old one stops working at once. With days, the agent lasts that long from now. Shown once.",
+    input: obj({ id: str, days: { type: "number" } }, ["id"]), callers: PERSON,
     presence: { summary: (/** @type {any} */ i) => `Give ${String(i && i.id || "an agent").slice(0, 40)} a new token` },
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      await personChain(meta);
+      const chain = await personChain(meta);
       const a = live(i.id), token = newToken();
-      store.setToken(a.id, token); door.forget(a.id);
-      return { id: a.id, name: a.name, token, url: addr(), lines: lines(addr() || "<the address Vyre shows when the box is reachable>", token, a.name) };
+      // With days the agent is kept for that long from now. What it was given is given again until then (a grant's end cannot move), and anything the person no longer holds lapses with the old end.
+      const days = i.days ? Number(i.days) : a.expires <= now() ? LIMITS.defaultDays : 0;
+      const expires = days ? now() + Math.min(LIMITS.maxDays, Math.max(0.01, days)) * DAY : a.expires;
+      if (expires !== a.expires) {
+        store.setExpires(a.id, expires);
+        for (const r of store.reach(a.id)) {
+          const what = r.kind === "records" ? { kind: "records", types: r.spec.types, write: Boolean(r.spec.write) } : { kind: r.kind, project: r.spec.projects && r.spec.projects[0] && r.spec.projects[0].id };
+          try { await giveReach({ ...a, expires }, what, chain, expires); } catch { continue; }
+          if (r.kind !== "records") { for (const g of r.grants) await K.mint.end({ id: g, reason: "given again" }); store.dropReach(r.id); }
+        }
+      }
+      store.setToken(a.id, token);
+      door.forget(a.id);
+      return { id: a.id, name: a.name, token, expires, url: addr(), lines: lines(addr() || "<the address Vyre shows when the box is reachable>", token, a.name) };
     },
   });
 
@@ -241,7 +263,11 @@ export function registerOutside(ctx, seam = {}) {
       if (a.revoked) return { id: a.id, revoked: false };
       store.revoke(a.id); door.forget(a.id);
       await endGrants(a.id, "the outside agent was ended");
-      for (const h of store.heldOf(a.id)) store.settle(h.id, "declined", "the agent was ended");
+      // What it still waited on leaves the person's list too: a card nobody can act on would stay in Needs you.
+      for (const h of store.heldOf(a.id)) {
+        if (h.gate) await ctx.call("gate.reject", { id: h.gate, reason: `${a.name} was ended` }).catch(() => {});
+        store.settle(h.id, "declined", "the agent was ended");
+      }
       emit("outside.revoked", { id: a.id, name: a.name, by: "owner" });
       return { id: a.id, revoked: true };
     },
@@ -262,7 +288,7 @@ export function registerOutside(ctx, seam = {}) {
       if (type !== h.change.type) throw fail("the type of a request cannot change when it is approved", "bad_input");
       try {
         if (h.tool === "records_create") await K.records.create(chain, type, fields);
-        else { const rid = String(h.change.urn).split("/").pop(); const cur = await K.records.get(chain, type, rid); await K.records.update(chain, type, rid, fields, cur ? cur.version : undefined); }
+        else { const rid = String(h.change.urn).split("/").pop(); await K.records.update(chain, type, rid, fields, h.change.version); }
       } catch (e) {
         const msg = String(/** @type {any} */ (e) && /** @type {any} */ (e).message || e).slice(0, 200);
         store.settle(h.id, "failed", msg);
@@ -273,14 +299,14 @@ export function registerOutside(ctx, seam = {}) {
     },
   });
 
-  ctx.tool("outside.status", {
+  ctx.tool("outside.mcp.status", {
     internal: true, description: "Whether /agents-mcp is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.", input: obj(),
     run: async (/** @type {any} */ _i, /** @type {any} */ { caller: who }) => {
       if (who !== "module:wink") throw fail("only the public gate asks where /agents-mcp listens", "denied");
       return { listening: Boolean(listener), port: listener ? listener.port : null };
     },
   });
-  ctx.tool("outside.base", {
+  ctx.tool("outside.mcp.base", {
     internal: true, description: "The public address the gate serves this box on, or null: { base }. Only the wink module sets it; tokens made afterwards name it.", input: obj({ base: { type: ["string", "null"] } }),
     run: async (/** @type {any} */ { base }, /** @type {any} */ { caller: who }) => {
       if (who !== "module:wink") throw fail("only the public gate sets the public address", "denied");

@@ -8,6 +8,9 @@ test/allowed-dependencies.json merge=json3
 test/one-person-surfaces.json merge=json3
 test/reach-allowlist.json merge=json3
 test/description-baseline.json merge=json3
+apps/app/scripts/design-rules.baseline.json merge=json3
+# The changelog: every branch adds its lines at the top, so two branches landing together touch the same place. Keep both sides' lines instead of stopping the queue on a conflict.
+CHANGELOG.md merge=union
 # Generated files: keep ours on merge; scripts/team/regen.mjs rebuilds them right after.
 docs/index.json merge=regen
 docs/reference/** merge=regen

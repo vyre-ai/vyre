@@ -27,7 +27,7 @@ export function edgePath(a, b, m) {
 }
 
 /** What to call the way into a node, when it is not simply the next step. @param {string} kind */
-export const edgeWords = (kind) => (kind === "then" ? "If yes" : kind === "else" ? "Otherwise" : kind === "each" ? "For each one" : "");
+export const edgeWords = (kind) => (kind === "then" ? "If yes" : kind === "else" ? "Otherwise" : kind === "each" ? "For each one" : kind === "lane" ? "At the same time" : "");
 
 /** The order a phone lists the steps: top to bottom, which is the row. @template {{ y: number }} T @param {T[]} nodes */
 export const listOrder = (nodes) => nodes.slice().sort((a, b) => a.y - b.y);

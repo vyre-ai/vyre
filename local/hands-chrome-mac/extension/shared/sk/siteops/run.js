@@ -14,6 +14,10 @@ import { buildRequest, refsOf } from "./build.js";
 import { judge, nextStep } from "./classify.js";
 import { capOutput } from "./extract.js";
 import { readOnly } from "./spec.js";
+import { readHtml, emptyResults } from "./htmlread.js";
+
+/** A page answer is read by the pure reader unless a shell brings its own. */
+const PAGE_READERS = Object.freeze({ html: readHtml, emptyResults });
 
 /**
  * @typedef {object} RunDeps
@@ -60,7 +64,7 @@ export async function runOperation(op, inputs, deps) {
       : { ok: false, class: "error", reason: `the request may or may not have been made: ${msg}`, next: "the write may have gone through: check the site before any retry", executed: false, ambiguous: true };
   }
   // 5. judge
-  const j = judge(op, { status: res.status, headers: lower(res.headers), body: res.body ?? "", ...(res.url ? { url: res.url } : {}) }, deps.readers);
+  const j = judge(op, { status: res.status, headers: lower(res.headers), body: res.body ?? "", ...(res.url ? { url: res.url } : {}) }, { ...PAGE_READERS, ...(deps.readers || {}) });
   const cls = /** @type {any} */ (j.class);
   const ran = !ro && !(res.status === 400 || res.status === 401 || res.status === 403 || res.status === 404) || (!ro && !!res.redirected);
   if (cls === "ok") {

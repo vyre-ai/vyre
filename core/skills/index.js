@@ -170,7 +170,7 @@ export default {
 
     ctx.tool("skills.list", {
       effect: "read",
-      description: "The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre (Vyre's own), space (everyone's), personal (yours), account (installed on this machine), project or agent. Narrow with `project` or `level`. Nothing you may not use is listed. skills.find ranks them for what you are about to do.",
+      description: "The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre, space, personal, account, project or agent. Narrow with `project` or `level`. skills.find ranks them.",
       input: { type: "object", properties: { project: { type: "string", maxLength: 64 }, level: { type: "string", enum: ["vyre", "space", "personal", "account", "project", "agent"] }, limit: { type: "integer", minimum: 1, maximum: 200 }, harness: { type: "string", maxLength: 20 } } },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         const list = await visible(meta, { project: input.project, level: input.level });
@@ -215,8 +215,8 @@ export default {
     const obj = (/** @type {any} */ properties, /** @type {string[]} */ required = []) => ({ type: "object", properties, required });
     const common = { name: { type: "string" }, level: { type: "string", enum: [...LEVELS] }, scope: { type: "string", description: "personal: you (default); agent: the agent's name; project: its short name; space: leave out" } };
     ctx.tool("skills.draft", { effect: "write", callers: WHO_CAN,
-      description: "Write a skill or a plugin into the library as a DRAFT: nothing uses it until the level's owner approves (skills.approve, or flows.propose { what: \"skill\" } for a card in Now). kind skill: body is a SKILL.md with name and description in its front matter. kind plugin: body is JSON { name, description, skills?, commands?, hooks?, mcp? }; one with a hook or an MCP server has code and its draft says what it declares. level: space, personal, agent or project.",
-      input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string" }, note: { type: "string" } }, ["name", "level", "body"]),
+      description: "Draft a skill or plugin into the library; nothing uses it until the level's owner approves. Body: SKILL.md, or plugin JSON for kind plugin.",
+      input: obj({ ...common, kind: { type: "string", enum: ["skill", "plugin"] }, body: { type: "string", description: "kind skill: a SKILL.md with name and description in its front matter. kind plugin: JSON { name, description, skills?, commands?, hooks?, mcp? }; a hook or MCP server is code and the draft says what it declares" }, note: { type: "string" } }, ["name", "level", "body"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.draft(await need(meta), i) });
     // A lesson (a procedure the person keeps repeating, learn's proposal) is drafted for the install's owner, at the project level when it is a project's, else their own. A draft only: approving is the person's.
     ctx.tool("skills.draft.learned", { effect: "write", internal: true, callers: ["module"],
@@ -235,7 +235,7 @@ export default {
       input: obj({ ...common, to: { type: "integer" }, ack: { type: "string" } }, ["name", "level", "to"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => lib.rollback(await need(meta), i) });
     ctx.tool("skills.versions", { effect: "read", callers: WHO_CAN,
-      description: "The versions in the library, newest first, with who drafted each and which is in use; state: draft shows what is waiting for a yes. Narrow by name, level and scope.",
+      description: "The library's versions, newest first, with who drafted each and which is in use. state: draft shows those waiting for a yes.",
       input: obj({ ...common, state: { type: "string", enum: ["draft", "approved", "retired"] } }),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => { await need(meta); return { versions: await lib.versions(i) }; } });
 

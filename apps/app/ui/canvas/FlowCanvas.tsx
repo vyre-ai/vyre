@@ -15,9 +15,9 @@ export type CanvasNode = {
   id: string; kind: string; label: string; lane: number; y: number; state?: NodeState; note?: string; who?: string;
   outward?: boolean; sealed?: boolean; code?: boolean; waits?: boolean;
 };
-export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "else" | "each" };
+export type CanvasEdge = { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" };
 
-const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", ask: "faceid", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
+const ICON: Record<string, IconName> = { trigger: "play", find: "search", pick: "search", filter: "search", create: "plus", update: "file", upsert: "file", remove: "minus", decide: "link", repeat: "refresh", wait: "clock", parallel: "list", branch: "link", subflow: "flows", ask: "faceid", assign: "hand", agent: "chat", call: "send", stage: "todo", classify: "todo", http: "globe", fn: "terminal" };
 const STATE: Record<NodeState, { label: string; tone: "plain" | "accent" | "ok" | "err" | "warn" } | null> = {
   pending: null, running: { label: "Running", tone: "accent" }, waiting: { label: "Waiting on you", tone: "accent" }, done: { label: "Done", tone: "ok" }, failed: { label: "Failed", tone: "err" }, paused: { label: "Paused", tone: "warn" },
 };
