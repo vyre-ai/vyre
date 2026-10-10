@@ -232,7 +232,7 @@ shardTest("wink: sharing a computer is a node.host grant with limits, and only f
   assert.ok(shared.data?.grant, JSON.stringify(shared.error));
   const g = (await w.call("wink.access")).data.grants.find(x => x.source === "wink:W4");
   assert.ok(g);
-  assert.ok(g.resource.includes(`/node/${r.paired.device}/`));
+  assert.ok(g.resource.endsWith(`/node/${r.paired.device}`));
   assert.ok(w.events.some(e => e[0] === "wink.shared"));
   // Sharing is the two sides of the compute offer, not only a grant: the computer now offers compute and its owner accepts, so the runner may lease it for the personal space.
   assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
