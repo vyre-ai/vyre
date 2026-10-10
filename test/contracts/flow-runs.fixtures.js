@@ -5,5 +5,8 @@ export const RECORD_URN = "vyre://spc_aaaaaaaaaaaa/matter/11111111-1111-4111-811
 /** A row of flows.runs for a run a stage move started. */
 export const RUN_ROW = Object.freeze({ id: "run_fixture0000000000000a", flow: "fl_fixture", version: 1, state: "done", started_at: 1_790_000_000_000, finished_at: 1_790_000_000_500, tainted: false, record: RECORD_URN, label: "Welcome the client", error: null });
 
+/** A row of flows.runs for a lane or a sub-flow (v2): the same fields, and `parent` is the parent run's id. */
+export const LANE_ROW = Object.freeze({ ...RUN_ROW, id: "run_fixture0000000000000b", parent: RUN_ROW.id });
+
 /** An entry of work.timeline for that run. */
 export const TIMELINE_ENTRY = Object.freeze({ type: "flow-run", kind: "flow", title: "Welcome the client", line: "Welcome the client: done" });

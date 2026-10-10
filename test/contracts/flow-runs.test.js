@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../../core/daemon/index.js";
 import { tempHome, present } from "../helpers.js";
-import { RUN_ROW, TIMELINE_ENTRY } from "./flow-runs.fixtures.js";
+import { RUN_ROW, LANE_ROW, TIMELINE_ENTRY } from "./flow-runs.fixtures.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -41,4 +41,43 @@ test("flow-runs contract: one stage move, one entry, one run; the run names its 
   const hit = story.find((/** @type {any} */ e) => e.type === "flow-run");
   assert.ok(hit, `the record's timeline shows the run: ${JSON.stringify(story)}`);
   for (const k of Object.keys(TIMELINE_ENTRY)) assert.equal(hit[k], /** @type {any} */ (TIMELINE_ENTRY)[k], k);
+});
+
+test("flow-runs contract v2: a lane and a sub-flow are runs with a parent, listed beside the run that started them; the parent's detail gives the result the sub-flow returned", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const space = d.kernel.id.space;
+  const host = d.registry.deps.flowsHost.get(space);
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(admin, {})).token });
+  await d.kernel.gateway.records.define(admin, { add_types: [NOTE] });
+  const install = async (/** @type {any} */ flow) => {
+    const r = await d.registry.call("flows.define", { flow }, "cli", await meta());
+    assert.ok(r.data && r.data.ok, JSON.stringify(r));
+    await host.flows.tools["flows.approve"](host.personChain(), { id: r.data.id, version: r.data.version, hash: r.data.hash });
+    return r.data;
+  };
+  const innerF = await install({ format: 1, name: "inner", label: "Inner", authorship: "human", trigger: { on: "manual" }, returns: { body: { expr: "steps.c.record.data.body" } }, steps: [{ id: "c", kind: "create", type: "welcome-note", set: { body: "from inner" } }] });
+  const outer = await install({ format: 1, name: "outer", label: "Outer", authorship: "human", trigger: { on: "manual" }, steps: [
+    { id: "p", kind: "parallel", steps: [
+      { id: "one", kind: "branch", steps: [{ id: "n1", kind: "create", type: "welcome-note", set: { body: "lane one" } }] },
+      { id: "two", kind: "branch", steps: [{ id: "s", kind: "subflow", flow: "inner" }] },
+    ] },
+  ] });
+  const started = await host.flows.tools["flows.start"](host.personChain(), { id: outer.id, input: {} });
+  const runId = started.run || started.id;
+  const rows = await until(async () => { const r = (await d.registry.call("flows.runs", { id: outer.id }, "cli", await meta())).data || []; return r.length === 3 && r.every((/** @type {any} */ x) => x.state === "done") ? r : null; }, "the run and its two lanes to finish");
+  const parent = rows.find((/** @type {any} */ x) => x.id === runId);
+  // (a run nobody's record started has no `record`: it is the one optional field here)
+  const without = (/** @type {object} */ o, /** @type {string} */ k) => Object.keys(o).filter(x => x !== k).sort();
+  assert.deepEqual(Object.keys(parent).sort(), without(RUN_ROW, "record"), "the parent's row has the contract's fields");
+  for (const lane of rows.filter((/** @type {any} */ x) => x.id !== runId)) {
+    assert.deepEqual(Object.keys(lane).sort(), without(LANE_ROW, "record"), "a lane's row has the same fields and a parent");
+    assert.equal(lane.parent, runId);
+  }
+  const inner = (await d.registry.call("flows.runs", { id: innerF.id }, "cli", await meta())).data;
+  assert.equal(inner.length, 1, "the sub-flow's own run is listed under its Flow too");
+  const detail = (await d.registry.call("flows.run", { run: inner[0].id }, "cli", await meta())).data;
+  assert.deepEqual(detail.run.result, { body: "from inner" }, "the sub-flow's result");
 });

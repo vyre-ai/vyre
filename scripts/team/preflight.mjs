@@ -110,6 +110,11 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
+  // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
+  "test/no-lime.test.js", "test/no-tailscale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
+  "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
+  "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
+  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
 ].filter(f => fs.existsSync(f));
 // Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.
 if (fs.existsSync("test/contracts")) for (const t of fs.readdirSync("test/contracts")) if (/\.test\.m?js$/.test(t)) GUARDS.push(`test/contracts/${t}`);
@@ -178,19 +183,22 @@ if (!STATIC) {
   const changedSource = existing.filter(f => /\.(m?js|ts|tsx)$/.test(f) && !/\.test\.|\/testing\/|^test\/|^scripts\/|^\.github\//.test(f));
   const refactor = /\[refactor\]/i.test(bodies);
   if (changedSource.length && !refactor) {
-    if (!changedTests.length) fail("T5", `this branch changes code (${changedSource.slice(0, 3).join(", ")}${changedSource.length > 3 ? ", ..." : ""}) with no test that proves it. Add a test that fails without the change, or mark a behaviour-free change [refactor] in a commit message.`);
-    else {
-      const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-red-first-"));
-      try {
-        execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
-        for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
-        for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
-        const failedOnBase = changedTests.filter(f => spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0);
-        if (!failedOnBase.length) fail("T5", `none of this branch's tests fail without its code change, so none of them proves it (${changedTests.join(", ")}). Write the test that would catch the bug or the missing behaviour; check it fails on ${BASE}.`);
-        else console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
-      } catch (e) { warns.push(`could not run the red-first check (${String(e).slice(0, 120)})`); }
-      finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
-    }
+    // Proof is a changed test that fails on the base's code, or a guard that is red on the base and green here (a fix that turns a guard green).
+    const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-red-first-"));
+    try {
+      execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
+      for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
+      for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
+      const failsAtBase = (/** @type {string} */ f) => fs.existsSync(path.join(tmp, f)) && spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0;
+      const failedOnBase = changedTests.filter(failsAtBase);
+      const guardsTurnedGreen = failedOnBase.length ? [] : GUARDS.filter(g => !red.has(g) && failsAtBase(g));
+      if (failedOnBase.length) console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
+      else if (guardsTurnedGreen.length) console.log(`preflight: red first OK (guards red without the change and green with it: ${guardsTurnedGreen.join(", ")})`);
+      else fail("T5", changedTests.length
+        ? `none of this branch's tests fail without its code change, so none of them proves it (${changedTests.join(", ")}). Write the test that would catch the bug or the missing behaviour; check it fails on ${BASE}.`
+        : `this branch changes code (${changedSource.slice(0, 3).join(", ")}${changedSource.length > 3 ? ", ..." : ""}) with no test that proves it. Add a test that fails without the change, or mark a behaviour-free change [refactor] in a commit message.`);
+    } catch (e) { warns.push(`could not run the red-first check (${String(e).slice(0, 120)})`); }
+    finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
   }
 
   // App types: only errors in files this branch touched count against it.
