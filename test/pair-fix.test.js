@@ -182,6 +182,10 @@ const setup = async (t, kernel = true) => {
 };
 const rows = (w, device) => w.d.registry.deps.db.prepare("SELECT id, kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").all(device);
 
+test("a phone that offers a key and does not say how it keeps it is refused out loud, with the reason, and nothing is paired", { timeout: 120_000 }, async t => {
+  await assert.rejects(() => pairFreshServer(t, { kind: "phone", presenceStorage: /** @type {any} */ (null) }), /did not say how it keeps its key/);
+});
+
 test("typed code -> ack -> adopt, real daemon and relay: the app finishes the server's pairing, the server is owned, and the device is enrolled under the key the app reconnects with", async t => {
   typedOn(t);
   const { ident, w } = await setup(t);

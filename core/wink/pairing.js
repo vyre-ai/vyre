@@ -35,7 +35,7 @@ import { createServerLinks } from "./serverlink.js";
 import { directKey } from "./directkey.js";
 import { p256 } from "@noble/curves/p256";
 import { deviceKey } from "./devicekey.js";
-import { presenceKeyId } from "../../lib/presence-key-id.js";
+import { presenceKeyFor } from "./presence-key.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
 import { httpFetch } from "../../lib/http.js";
 
@@ -963,7 +963,8 @@ export function createPairing(o) {
       // keeps it only if the chain is the claimed id's. The directory out of reach is its own answer, never a "not them", and nothing is paired on a proof that could not be checked.
       const claimed = input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : undefined;
       const pin = input.owner && input.owner.pin && typeof input.owner.pin === "object" ? input.owner.pin : undefined;
-      const e = await Promise.resolve(o.identityEntry(to, pr.eid, claimed, pin)).catch((/** @type {any} */ err) => (err && err.code === "unreachable" ? { unreachable: true } : null));
+      const e = await Promise.resolve(o.identityEntry(to, pr.eid, claimed, pin)).catch((/** @type {any} */ err) => { if (err) ctx.log(`wink: the identity lookup for ${to} failed (${err.code || "error"}): ${String(err.message || "").slice(0, 200)}`); return err && err.code === "unreachable" ? { unreachable: true } : err && err.code === "refused" ? { refused: String(err.message || "") } : null; });
+      if (e && e.refused) throw fail("unavailable", e.refused);   // the directory address was refused: the person is told why, not that the directory is out of reach
       if (e && e.unreachable) throw fail("unavailable", words("pairCannotCheckNow"));
       const notThem = () => fail(open ? "denied_wrong_proof" : "denied", words(open ? "pairNotProven" : "pairWrongIdentity", open ? { name: shownName } : { name: to }));
       if (!e || e.eid !== pr.eid || typeof e.pub !== "string") { ctx.log(`wink: the identity proof named an entry that ${to} does not have${claimed ? " in the directory" : ""}`); throw notThem(); }
@@ -1022,17 +1023,7 @@ export function createPairing(o) {
       return r.data && typeof r.data.claimed === "string" ? r.data.claimed : null;
     };
     /** The presence key this device offered in its hello, as the home's sealing process takes it: a software key only from a computer that says it keeps it in software (the sealing process refuses it on a release-kind build), a hardware key only with the signer kind the device names. Anything else is not enrolled here. @param {string} device @param {any} confirmed @param {any} input */
-    const presenceKeyFor = (device, confirmed, input) => {
-      try {
-        if (!confirmed || typeof confirmed.key !== "string" || (confirmed.alg !== undefined && confirmed.alg !== -7)) return null;
-        const storage = String(confirmed.storage || input.keyStorage || "");
-        const kindOk = ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"].includes(String(confirmed.signer || ""));
-        const signer = storage === "software" ? "software" : kindOk ? String(confirmed.signer) : null;
-        if (!signer) return null;
-        const der = Buffer.from(confirmed.key, "base64url");
-        return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer, ...(signer === "webauthn_platform" && typeof confirmed.rp === "string" ? { rp: confirmed.rp } : {}) };
-      } catch { return null; }
-    };
+    // presenceKeyFor: core/wink/presence-key.js
     /**
      * Device-first pairing (lead ruling, 4 Oct): the pick of the three words at the server IS the owner's confirmation of the device that asked. When the app says what it is (`deviceKind`: phone,
      * computer or web), the device is recorded as one of the owner's with that kind, its key storage as the app reported it, and its paired session is granted in the same act, so it can go
@@ -1051,6 +1042,12 @@ export function createPairing(o) {
       // (the caller takes the owner record back); it is never logged and carried on. Without a verified proof the home's owner is unchanged, and the early check in wink.server.adopt has already
       // refused a different claimed owner.
       if (proven) {
+        // A phone or computer that offered a key and whose key could not be enrolled as the owner's presence key would pair and then never be able to approve anything: that is refused now, with the reason, not found out later.
+        if (["phone", "computer"].includes(String(input.deviceKind || "")) && confirmed && typeof confirmed.key === "string" && !presenceKeyFor(device, confirmed, input)) {
+          ctx.log(`wink: ${device} offered a key but did not say how it keeps it (storage: ${String(confirmed.storage || input.keyStorage || "not stated")}, signer: ${String(confirmed.signer || "not stated")}); nothing was paired`);
+          try { devices.remove(device); } catch { /* none */ }
+          throw fail("unavailable", "This device did not say how it keeps its key, so it could not be made your approving device and nothing was paired. Update Vyre on it and pair again.");
+        }
         /** @type {any} */ let adopted;
         try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}), ...(presenceKeyFor(device, confirmed, input) ? { presence_key: presenceKeyFor(device, confirmed, input) } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
         if (adopted && adopted.error && adopted.error.code !== "no_such_tool") {

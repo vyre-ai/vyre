@@ -215,7 +215,7 @@ export class Access {
    * of the agent's STABLE ID (agents.uid), which is never a delegate: an agent or the assistant reaches a credential only through a grant of its own.
    * @param {{ agent?: string, agentKind?: string }} meta @param {string} caller
    */
-  modelName(meta, caller) { return String(meta.agent || (/^mcp:agent:(.+)$/.exec(caller) || [])[1] || "assistant").toLowerCase(); }
+  modelName(meta, caller) { return String(meta.agent || (/(?:^|:)agent:([^:\s]+)/.exec(caller) || [])[1] || "assistant").toLowerCase(); }
 
   /** The kernel's answer for a model to use a credential: "allow", "ask" (an outward act, held for a person) or "deny". An agent the Space does not know, or an unreachable kernel, is deny. */
   async effectFor(/** @type {string} */ name, /** @type {string} */ item, /** @type {string} */ action, /** @type {string} */ origin) {

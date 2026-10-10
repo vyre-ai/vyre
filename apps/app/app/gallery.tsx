@@ -2,7 +2,7 @@
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { BlockScreen, Card, ChatCard, FlowCanvas, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -18,6 +18,16 @@ import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
+
+const MD_SAMPLE = [
+  "## The short answer", "",
+  "The check compares the day against a **fixed month table**, so it rejects 29 February in a *leap year*. Use the real month length instead:", "",
+  "```ts", "function validDay(year: number, month: number, day: number): boolean {", "  const days = new Date(year, month + 1, 0).getDate(); // 29 in Feb 2028", "  return Number.isInteger(day) && day >= 1 && day <= days;", "}", "```", "",
+  "Three things change:", "", "1. the month table is deleted", "2. the leap-year rule comes from `Date`", "3. the test adds two cases:", "   - 29 February 2028 passes", "   - 29 February 2027 fails", "",
+  "> A date check should never carry its own calendar.", "",
+  "| File | Change |", "|:--|--:|", "| `src/intake/date.ts` | 6 lines |", "| `src/intake/date.test.ts` | 12 lines |", "",
+  "The full history is in the [intake notes](https://example.com/intake). A tag such as <script>alert(1)</script> is only words, and [this](javascript:alert(1)) is not a link.",
+].join("\n");
 
 type Fx = { title: string; screens: Record<string, any> };
 const FX = (data as { fixtures: Record<string, Fx> }).fixtures;
@@ -104,6 +114,7 @@ function Sample({ name }: { name: string }) {
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
   }
+  if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>

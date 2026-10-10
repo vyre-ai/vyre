@@ -313,9 +313,28 @@ export function activityScript(o: { tps?: number } = {}): Segment[] {
   return [{ gate: null, steps: c.steps }];
 }
 
+/** The markdown scenario (/chat-demo?scenario=markdown): one reply that uses every mark the chat draws (headings, bold, italic, lists, a link, inline code, a quote, a table, a code block), to look at. */
+export function markdownScript(o: { tps?: number } = {}): Segment[] {
+  const tps = o.tps ?? 400;
+  const c = new Clock();
+  c.push("status", { state: "working", turn: "turn-1" });
+  c.push("user-message", { message: "m1", text: "Why does the intake form reject 29 February, and what should the check look like?", state: "sent" }, 40);
+  c.say("a1", [
+    "## The short answer", "",
+    "The check compares the day against a **fixed month table**, so it rejects 29 February in a *leap year*. Use the real month length instead:", "",
+    "```ts", "function validDay(year: number, month: number, day: number): boolean {", "  const days = new Date(year, month + 1, 0).getDate(); // 29 in Feb 2028", "  return Number.isInteger(day) && day >= 1 && day <= days;", "}", "```", "",
+    "Three things change:", "", "1. the month table is deleted", "2. the leap-year rule comes from `Date`", "3. the test adds two cases:", "   - 29 February 2028 passes", "   - 29 February 2027 fails", "",
+    "> A date check should never carry its own calendar.", "",
+    "| File | Change |", "|:--|--:|", "| `src/intake/date.ts` | 6 lines |", "| `src/intake/date.test.ts` | 12 lines |", "",
+    "The full history is in the [intake notes](https://example.com/intake).",
+  ].join("\n"), tps, 200);
+  c.push("status", { state: "waiting", turn: "turn-1" }, 60);
+  return [{ gate: null, steps: c.steps }];
+}
+
 export type MockOptions = {
   /** "group": two people, two assistants, a fan-out (groupScript). */
-  scenario?: "group" | "models" | "people" | "assistant" | "activity" | "previews";
+  scenario?: "group" | "models" | "people" | "assistant" | "activity" | "previews" | "markdown";
   session?: string;
   tps?: number;
   /** Fast-forward this many ms of the first segment at connect (shots). */
@@ -334,7 +353,7 @@ export function createMockStream(opts: MockOptions = {}): StreamSource & { log: 
   const now = opts.now ?? (() => (typeof performance !== "undefined" ? performance.now() : Date.now()));
   const setTimer = opts.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = opts.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
-  const segments = opts.scenario === "previews" ? previewsScript({ tps: opts.tps }) : opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
+  const segments = opts.scenario === "markdown" ? markdownScript({ tps: opts.tps }) : opts.scenario === "previews" ? previewsScript({ tps: opts.tps }) : opts.scenario === "group" ? groupScript({ tps: opts.tps }) : opts.scenario === "models" ? modelsScript({ tps: opts.tps }) : opts.scenario === "people" ? peopleScript({ tps: opts.tps }) : opts.scenario === "assistant" ? assistantScript({ tps: opts.tps }) : opts.scenario === "activity" ? activityScript({ tps: opts.tps }) : script({ tps: opts.tps });
   const log: Frame[] = [...(opts.history ?? [])];
   let cur = log.length ? log[log.length - 1].cur : 0;
   const listeners = new Set<(f: Frame) => void>();

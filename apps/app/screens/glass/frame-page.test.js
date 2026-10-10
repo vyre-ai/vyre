@@ -1,5 +1,5 @@
 // @ts-check
-// The Glass page the phone loads with no address (src/glass/frame-page.generated.ts): current with its sources, self-contained (no script, style or address of the box's), and a module script that names nothing outside it.
+// The Glass page the phone loads with no address (assets/glass/frame.html): current with its sources, self-contained (no script, style or address of the box's), and a module script that names nothing outside it.
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -15,8 +15,7 @@ test("the bundled Glass page is what the generator makes from frame.html, frame.
 });
 
 test("the page is one document: its only script is inline, it loads nothing by address, and it opens no socket of its own before the app tells it", async () => {
-  const mod = await import(path.join(ROOT, OUT));
-  const html = String(mod.FRAME_PAGE);
+  const html = fs.readFileSync(path.join(ROOT, OUT), "utf8");
   assert.match(html, /<script type="module">/);
   assert.doesNotMatch(html, /<script[^>]*\ssrc=/, "no script by address");
   assert.doesNotMatch(html, /<link[^>]*href=/, "no style by address");

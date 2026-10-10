@@ -65,7 +65,7 @@ export async function walk(w) {
     }, { needs: [S("become yourself in the app (the code is spent)")] });
 
     await run.step(S(`the server installs from the line (${server})`), async () => {
-      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store };
+      const a = { dir: path.join(dir, "server"), repo, code: flow.state.code, relayForServer: ins.relayForServer, relayPort: ins.relayPort, hostIp: ins.hostIp, namesForServer: ins.namesForServer, store, ...(server === "installer" ? { devBuild: true, recreate: false, ownerId: mac.identity.id } : {}) };
       srv = server === "installer" ? await startInstallerServer(a) : server === "mac" ? await startMacServer(a) : await startDaemonServer({ dir: a.dir, code: a.code, relay: a.relayForServer, directory: a.namesForServer, store, ownerId: mac.identity.id });
       return `${srv.kind}`;
     }, { needs: [S("add a server: the app shows the install line")] });
@@ -91,7 +91,7 @@ export async function walk(w) {
     }, { needs: [S("the four words in the app are the ones the server shows")] });
 
     await run.step(S("the app reaches the server and calls a tool"), async () => {
-      if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id));
+      if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id, srv.kind === "installer" ? mac.presenceSigner : undefined));
       await mac.openSession();
       const info = await mac.callTool("system.info");
       assert.ok(info, "system.info answered");
@@ -152,7 +152,7 @@ export async function walk(w) {
       await run.step(S("add a device: the computer shows a code"), async () => {
         try { code = await mac.showDeviceCode(); } catch (e) {
           // A release server takes presence only from a hardware key (Touch ID, Face ID, a phone's chip); this headless app has a software key, so it cannot answer the server's request. Not a product fault.
-          if (/** @type {any} */ (e).code === "presence_required" && /software|needs your yes/.test(String(/** @type {Error} */ (e).message))) throw Object.assign(new Error("a release server wants a hardware presence key (Touch ID, Face ID); this headless app has a software key, so Add a device is walked only on the daemon server"), { skip: true });
+          if (/** @type {any} */ (e).code === "presence_required" && !srv.yesFor && /software|needs your yes/.test(String(/** @type {Error} */ (e).message))) throw Object.assign(new Error("a release server wants a hardware presence key (Touch ID, Face ID); this headless app has a software key, so Add a device is walked only on the daemon server"), { skip: true });
           throw e;
         }
         assert.match(code.qr, /^vyre:\/\/wink\/2\?/);

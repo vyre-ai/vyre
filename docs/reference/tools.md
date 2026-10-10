@@ -10094,6 +10094,7 @@ Write the approved library for one AI and one session (ai: claude, codex or grok
 - Input:
   - `ai` one of "claude", "codex", "grok", required
   - `agent` string
+  - `manifest` string
   - `person` string
   - `project` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)

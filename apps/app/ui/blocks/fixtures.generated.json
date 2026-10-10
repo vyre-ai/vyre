@@ -4005,6 +4005,20 @@
     }
    }
   },
+  "markdown": {
+   "title": "Chat markdown",
+   "screens": {
+    "full": {
+     "component": "markdown"
+    },
+    "compact": {
+     "component": "markdown"
+    },
+    "glance": {
+     "component": "markdown"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
