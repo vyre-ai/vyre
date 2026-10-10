@@ -3,8 +3,6 @@
 // token-proof-world (R031-00n): the seeded box the token proof runs against, built so a paid round only has to press go.
 //
 //   node scripts/token-proof-world.mjs check --home <dir>     seed the world, then prove each of the ten tasks' tools works for a Vyre agent, with the stand-in claude (no model, no cost)
-//   node scripts/token-proof-world.mjs live --home <dir> --providers claude,codex [--codex-home <dir>] [--grok-home <dir>] [--only recall,todo] [--out <dir>]
-//                                                             the same world on real subscriptions, each task a fresh thread of juno on each provider; no API key, no spend (test box only)
 //   node scripts/token-proof-world.mjs run --home <dir> --max-usd <n> [--arms old,core] [--reps 1] [--only todo,doc] [--out <dir>] [--stand-in]
 //                                                             the paid round: the same world, but each task is a fresh thread of the assistant on the REAL claude (behind the tee in
 //                                                             scripts/token-proof-claude.mjs), once per arm. Needs VYRE_PROOF_PAID=yes and --max-usd; uses the ANTHROPIC_* auth of the shell.
@@ -86,7 +84,7 @@ const transcripts = path.join(home, "transcripts"); fs.mkdirSync(transcripts, { 
 // The switchboard reads the claude program once, when the daemon starts: a paid round puts the tee in front of the real claude (or, with --stand-in, in front of the stand-in) from the start.
 const TEE_BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "token-proof-claude.mjs");
 if (cmd === "run" || cmd === "eval") { process.env.TOKEN_PROOF_REAL_CLAUDE = args.includes("--stand-in") ? FAKE : flag("claude", "claude"); if (flag("model")) process.env.ANTHROPIC_MODEL = flag("model"); }
-Object.assign(process.env, { VYRE_CLAUDE_BIN: cmd === "run" || cmd === "eval" ? TEE_BIN : cmd === "live" ? flag("claude", "claude") : FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+Object.assign(process.env, { VYRE_CLAUDE_BIN: cmd === "run" || cmd === "eval" ? TEE_BIN : FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
 fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ name: "proof-box", role: "box", transcripts: [transcripts], vault: { keystore: "file" }, recall: { every: 0, vectors: false }, files: { roots: [work] }, projectsDir: path.join(home, "projects"), sessions: { install: false, thread_socket: "on" } }));
 const d = await start({ root: home, presence: present, log: () => {}, kernel: true });
 asOwner(d, home);
@@ -179,7 +177,6 @@ const person = setInterval(async () => {
   } catch { /* the next tick tries again */ }
 }, 150);
 person.unref();
-if (cmd === "live") clearInterval(person); // the live round answers asks for every provider itself (scripts/live-providers/tokens.mjs)
 
 /**
  * The skill Vyre would have offered after three clean sessions of the repeat job, through the real path: three scripted runs of the job as thread events (the same translate, receipts and tool-event
@@ -258,13 +255,6 @@ async function verifyLong(/** @type {string} */ text) {
 if (cmd === "eval") {
   const { evalMain } = await import("./eval-honest/run.mjs");
   const code = await evalMain({ args, flag, d, call, must, viaSession, home, work, until, readRun, clearTodos, vendor: vendorApi, vendorPort, FAKE, KEY, counters: () => ({ allowed, refused }), teammateAgent: () => teammateAgent });
-  vendor.close(); await d.stop(); process.exit(code);
-}
-
-// ------------------------------------------------------------------ the live round: the same world on real subscriptions (Claude, Codex, Grok), no API key
-if (cmd === "live") {
-  const { tokensMain } = await import("./live-providers/tokens.mjs");
-  const code = await tokensMain({ args, flag, d, call, must, clearTodos, teammateAgent: () => teammateAgent, home });
   vendor.close(); await d.stop(); process.exit(code);
 }
 

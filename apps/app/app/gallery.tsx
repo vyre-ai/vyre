@@ -13,6 +13,7 @@ import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
 import { AwayView } from "../screens/now/AwayCard";
+import { ForkRows } from "../screens/chat-tools/ChatToolsSheet";
 import { NoticeAnswered } from "../screens/shell/PhoneApprovals";
 import { FlowDraftNote } from "../src/chat/FlowDraftNote";
 import { Thumb } from "../src/chat/Thumb";
@@ -149,6 +150,7 @@ function Sample({ name }: { name: string }) {
   if (name === "notice-answered") {
     return <View style={{ gap: 8 }}><NoticeAnswered kind="approved" say="Approved: An assistant (kit) wants to send an email: Northwind" onClose={() => {}} /><NoticeAnswered kind="denied" say="Denied: An assistant (kit) wants to send an email: Oakline" onClose={() => {}} /><NoticeAnswered kind="gone" say="That request ended before you answered." onClose={() => {}} /><NoticeAnswered kind="failed" say="Face ID or Touch ID did not work. Nothing was approved." onClose={() => {}} /></View>;
   }
+  if (name === "chat-tools-fork") return <View style={{ gap: 12 }}><Card><ForkRows otherPlace="server" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace="mac" onFork={() => {}} onForkTo={() => {}} /></Card><Card><ForkRows otherPlace={null} onFork={() => {}} onForkTo={() => {}} /></Card></View>;
   if (name === "flow-draft") {
     return <View style={{ gap: 8 }}><FlowDraftNote s={{ kind: "making" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "ready", id: "fl_1", title: "Open a matter" }} onClear={() => {}} /><FlowDraftNote s={{ kind: "none" }} onClear={() => {}} /></View>;
   }

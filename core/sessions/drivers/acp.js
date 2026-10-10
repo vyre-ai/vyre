@@ -178,7 +178,7 @@ const remembered = new Map();
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
- *   takesImages?: boolean, mcpBarrier?: string, mcpBarrierMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
+ *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -251,7 +251,7 @@ function runAcp(entry, known, o) {
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
-  let quiet = false, buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false, imageOk = false;
+  let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false, imageOk = false;
   /** @type {Map<number, { resolve: (r: any) => void, reject: (e: any) => void }>} */ const calls = new Map();
   /** @type {Map<string, { rpc: number, options: any[] }>} permission questions open with a person */ const asks = new Map();
   /** @type {Set<string>} */ const announced = new Set();
@@ -350,7 +350,6 @@ function runAcp(entry, known, o) {
   }
 
   function update(u) {
-    if (quiet) return; // the answer to a barrier command (`mcpBarrier`) is for Vyre, not the person
     const kind = u.sessionUpdate;
     // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
     if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
@@ -572,8 +571,7 @@ function runAcp(entry, known, o) {
   async function open() {
     const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, ...(entry.clientCapabilities || {}) }, clientInfo: { name: "vyre", version: "0.2" } });
     const caps = init.agentCapabilities || {};
-    // An entry can say it takes images when the agent's own initialize does not (Grok Build 1.0.50 says image:false and answers an image block correctly, measured live 10 Oct).
-    imageOk = entry.takesImages === true || Boolean(caps.promptCapabilities && caps.promptCapabilities.image);
+    imageOk = Boolean(caps.promptCapabilities && caps.promptCapabilities.image);
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
     const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
@@ -639,19 +637,11 @@ function runAcp(entry, known, o) {
       mode = want;
     }
     const model = r.models && r.models.currentModelId || o.model || null;
-    // Codex starts the MCP servers it was given after session/new has answered and a prompt does not wait for them: sent at once, a first message found none of Vyre's tools (live, 10 Oct: 1 of 8
-    // fresh sessions had the finder on turn one, and a fixed wait of 4 s still failed on a loaded box). Its own `/mcp` command answers only when they are connected and calls no model, so the entry
-    // asks it first (`mcpBarrier`), the answer dropped, and the person's first message follows.
-    if (entry.mcpBarrier && servers.length) {
-      quiet = true;
-      try { await request("session/prompt", { sessionId: sid, prompt: [{ type: "text", text: String(entry.mcpBarrier) }] }, Number(entry.mcpBarrierMs) || 45_000); } catch { /* the first real prompt goes anyway */ }
-      quiet = false;
-    }
     ready = true;
     const offered = modelsOf(r);
     // What the agent said about itself in `initialize` (R031-85): names and booleans only, for the harness capability store.
     const harness = { agent: init.agentInfo && typeof init.agentInfo === "object" ? { name: String(init.agentInfo.name || "").slice(0, 60), version: String(init.agentInfo.version || "").slice(0, 40) } : undefined,
-      caps: { loadSession: Boolean(caps.loadSession), image: imageOk, mcpHttp: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.http), mcpSse: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.sse) },
+      caps: { loadSession: Boolean(caps.loadSession), image: Boolean(caps.promptCapabilities && caps.promptCapabilities.image), mcpHttp: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.http), mcpSse: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.sse) },
       auth: methods.map(x => x.id).slice(0, 8) };
     say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}), harness });
     pump();

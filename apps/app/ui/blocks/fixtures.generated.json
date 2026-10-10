@@ -4089,6 +4089,20 @@
     }
    }
   },
+  "chat-tools-fork": {
+   "title": "Chat tools, fork to the other place",
+   "screens": {
+    "full": {
+     "component": "chat-tools-fork"
+    },
+    "compact": {
+     "component": "chat-tools-fork"
+    },
+    "glance": {
+     "component": "chat-tools-fork"
+    }
+   }
+  },
   "flow-draft": {
    "title": "Flow draft ready",
    "screens": {

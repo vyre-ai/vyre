@@ -78,36 +78,6 @@ test("acp: an image goes to an agent that takes images as an image block, and to
   }
 });
 
-test("acp: an entry that says it takes images sends the image block to an agent whose initialize says it does not (Grok Build)", async t => {
-  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
-  const msg = { type: "user", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: "what is in this picture" }] } };
-  const w = world(t, { takesImages: true });
-  const s = open(w);
-  await s.until(m => m.type === "system" && m.subtype === "init", "init");
-  s.proc.write(msg);
-  await s.until(m => m.type === "result", "result");
-  assert.deepEqual(w.launches().filter(l => l.types).pop().types, ["image", "text"]);
-  await s.proc.stop(1000);
-});
-
-test("acp: an entry with a barrier command asks it before the first prompt, drops its answer, and only when it was given servers", async t => {
-  const servers = [{ name: "vyre", command: "node", args: ["-e", "0"], env: [] }];
-  const withServers = world(t, { mcpBarrier: "/mcp" }), without = world(t, { mcpBarrier: "/mcp" });
-  const a = open(withServers, { mcpServers: servers });
-  await a.until(m => m.type === "system" && m.subtype === "init", "init");
-  assert.equal(await a.say("hello"), "echo: hello");
-  await a.proc.stop(1000);
-  const seen = withServers.launches().filter(l => l.prompt).map(l => l.prompt.join(""));
-  assert.deepEqual(seen, ["/mcp", "hello"], "the barrier goes first and the person's words second");
-  assert.ok(!a.got.some(m => m.type === "stream_event" && /\/mcp/.test(JSON.stringify(m))), "the barrier's answer is not shown to the person");
-  assert.equal(a.got.filter(m => m.type === "result").length, 1, "one result: the person's turn, not the barrier");
-  const b = open(without);
-  await b.until(m => m.type === "system" && m.subtype === "init", "init");
-  assert.equal(await b.say("hello"), "echo: hello");
-  await b.proc.stop(1000);
-  assert.deepEqual(without.launches().filter(l => l.prompt).map(l => l.prompt.join("")), ["hello"], "a session with no servers has nothing to wait for");
-});
-
 test("acp: the client advertises fs and terminal, and the entry's args and env reach the agent (never read from the agent's own config)", async t => {
   const w = world(t, { args: o => ["--ask", "untrusted", "--cwd", o.cwd], env: { HOME: "/acct/home" } });
   const s = open(w);
@@ -421,27 +391,6 @@ test("grok: the entry starts `grok agent stdio` without auto-update or always-ap
   assert.ok(!l.launch.includes("--always-approve"));
   assert.equal(l.home, "/acct/2000");
   assert.deepEqual(l.grokImports, ["0", "0"], "Grok does not import the person's Claude or Cursor MCP servers");
-});
-
-test("acp: Grok is given the Space's skills folder with agent --plugin-dir, between agent and stdio, only when there is one", async t => {
-  const { grokProvider } = await import("./grok.js");
-  const w = world(t);
-  const bin = path.join(w.store, "grok");
-  fs.writeFileSync(bin, `#!/bin/sh\nexec ${JSON.stringify(process.execPath)} ${JSON.stringify(FAKE)} "$@"\n`);
-  fs.chmodSync(bin, 0o755);
-  w.provider = grokProvider({ bin, home: "/acct/2000", floor: () => null });
-  const lib = path.join(w.store, "lib-abc");
-  fs.mkdirSync(path.join(lib, "skills", "greeting"), { recursive: true });
-  fs.writeFileSync(path.join(lib, "skills", "greeting", "SKILL.md"), "---\nname: greeting\n---\nthe code\n");
-  w.env.VYRE_SKILLS_DIR = lib;
-  const s = open(w);
-  await s.until(m => m.type === "system" && m.subtype === "init", "init");
-  await s.proc.stop(1000);
-  // the folder Grok is given is a copy inside the session's own folder, because Vyre's file and terminal tools refuse anything in Vyre's home
-  const inFolder = path.join(w.cwd, ".vyre", "library", "lib-abc");
-  assert.deepEqual(w.launches()[0].launch, ["--no-auto-update", "agent", "--plugin-dir", inFolder, "stdio"]);
-  assert.equal(fs.readFileSync(path.join(inFolder, "skills", "greeting", "SKILL.md"), "utf8"), "---\nname: greeting\n---\nthe code\n");
-  assert.equal(fs.readFileSync(path.join(w.cwd, ".vyre", "library", ".gitignore"), "utf8"), "*\n");
 });
 
 test("acp: an agent that starts in a bypass-shaped mode is moved to an ask mode, or the session does not run", async t => {
