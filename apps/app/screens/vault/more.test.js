@@ -276,3 +276,48 @@ test("shared vaults and people: names, roles and fingerprints only, one plain li
   const people = await src.people();
   assert.deepEqual(people.map(personLine), ["Card checked.", "Card pinned but not checked. Compare fingerprints with them before sharing.", "Their key changed. Check it with them before sharing anything new."]);
 });
+
+// contracts/vault.md v1: the writes of a shared vault. The screen sends exactly these inputs, a model never does (the tools' callers lists refuse it), and a name is made into one the box accepts.
+test("shared vault writes: create, invite, role, remove, rotate and accept send the contract's inputs and read only names and codes back", { skip: !strip }, async () => {
+  const { vaultMoreSource } = await import("./more-source.ts");
+  const { newVaultInput, inviteInput, acceptKind, removedLine, INVITE_ROLES } = await import("./more-model.ts");
+  /** @type {{ tool: string, input: any }[]} */
+  const seen = [];
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+    seen.push({ tool, input });
+    if (tool === "vault.members.invite") return { data: { invite: "vyre-invite:v1:abc", vault: input.vault, member: input.person, role: input.role } };
+    if (tool === "vault.members.remove") return { data: { vault: input.vault, removed: input.person, kv: 3, rotate: ["acme/stripe", "acme/gmail"] } };
+    return { data: {} };
+  };
+  const src = vaultMoreSource(/** @type {any} */ (call));
+  await src.createVault("Acme-client");
+  const inv = await src.invite("Acme-client", "Dana", "read-only");
+  assert.deepEqual(inv, { invite: "vyre-invite:v1:abc", member: "Dana", role: "read-only" });
+  await src.memberRole("Acme-client", "Dana", "admin");
+  assert.deepEqual(await src.memberRemove("Acme-client", "Dana"), ["acme/stripe", "acme/gmail"]);
+  await src.rotateVault("Acme-client");
+  await src.acceptInvite("vyre-invite:v1:abc");
+  await src.acceptTicket("vyre-pass:v2:abc");
+  assert.deepEqual(seen.map((x) => [x.tool, x.input]), [
+    ["vault.vaults.create", { name: "Acme-client" }],
+    ["vault.members.invite", { vault: "Acme-client", person: "Dana", role: "read-only" }],
+    ["vault.members.role", { vault: "Acme-client", person: "Dana", role: "admin" }],
+    ["vault.members.remove", { vault: "Acme-client", person: "Dana" }],
+    ["vault.vaults.rotate", { vault: "Acme-client" }],
+    ["vault.members.accept", { invite: "vyre-invite:v1:abc" }],
+    ["vault.pass.accept", { ticket: "vyre-pass:v2:abc" }],
+  ]);
+  assert.deepEqual(newVaultInput("  Acme client (2026) "), { input: { name: "Acme-client-2026" } });
+  assert.deepEqual(newVaultInput(" "), { error: "Give the vault a name." });
+  assert.deepEqual(newVaultInput("!!"), { error: "Start the name with a letter or a number." });
+  assert.deepEqual(inviteInput("Acme", " Dana ", "member"), { input: { vault: "Acme", person: "Dana", role: "member" } });
+  assert.deepEqual(inviteInput("Acme", " ", "member"), { error: "Say who to invite." });
+  assert.deepEqual(INVITE_ROLES.map(([r]) => r), ["member", "admin", "read-only"]);
+  assert.deepEqual(acceptKind("  vyre-invite:v1:xyz "), { kind: "invite", value: "vyre-invite:v1:xyz" });
+  assert.deepEqual(acceptKind("vyre-pass:v2:xyz"), { kind: "ticket", value: "vyre-pass:v2:xyz" });
+  assert.deepEqual(acceptKind("hello"), { error: "That is not something Vyre made. Paste the whole thing they sent you." });
+  assert.deepEqual(acceptKind(""), { error: "Paste what they sent you." });
+  assert.equal(removedLine("Dana", "Acme", ["acme/stripe"]), "Dana is out of Acme. Replace acme/stripe: they could read it.");
+  assert.equal(removedLine("Dana", "Acme", ["a", "b"]), "Dana is out of Acme. Replace 2 items: they could read them.");
+  assert.equal(removedLine("Dana", "Acme", []), "Dana is out of Acme.");
+});

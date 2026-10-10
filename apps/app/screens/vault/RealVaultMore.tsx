@@ -7,7 +7,7 @@ import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, Icon, LoadingState, Menu, Row, Segmented, Sheet, Switch, Text, comingSoon, showToast, useUiTheme } from "@vyre/ui";
 import { Sec } from "../places/Frame";
 import { vaultMore } from "./more";
-import { personLine, roleWord, vaultLine, type Person, type SharedVault, EMERGENCY_WAITS, emergencyLine, type EmergencyContact, EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
+import { INVITE_ROLES, ROLE_HELP, acceptKind, inviteInput, newVaultInput, personLine, removedLine, roleWord, vaultLine, type Person, type SharedVault, EMERGENCY_WAITS, emergencyLine, type EmergencyContact, EXPIRES, MCP_DAYS, mcpPassInput, breachLine, deviceLines, revealLine, type Reveal, healthGroups, passInput, passLine, refusalWord, revokedLine, savedLine, sshNameError, updateInput, versionLine, waitingLine, dayWord,
   type Device, type Health, type NewMcpPass, type NewPass, type Pass, type Pending } from "./more-model";
 import type { ListRow } from "./real-model";
 
@@ -263,6 +263,7 @@ export function SharingPage(p: Props) {
 
 function SharedPage({ reload }: Props) {
   const [held, setHeld] = useState<Pass[] | null>(null);
+  const [accepting, setAccepting] = useState(false);
   const [problem, setProblem] = useState("");
   const load = useCallback(() => { vaultMore.passes().then((x) => { setHeld(x.passes.filter((p) => p.direction === "from")); setProblem(""); }).catch((e) => setProblem(say(e, "loaded"))); }, []);
   useEffect(load, [load]);
@@ -276,9 +277,10 @@ function SharedPage({ reload }: Props) {
             const l = passLine(p);
             return <View key={p.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={[l.sub, l.state].filter(Boolean).join(". ")} end={<Button kind="holdText" size="sm" label="Remove" onPress={() => vaultMore.revokePass(p.id).then(() => { showToast("Removed."); load(); reload(); }).catch((e) => showToast(say(e, "done")))} />} /></View>;
           })}</Card> : <Text tone="muted">Nothing shared with you yet. When someone shares an item, it shows up here and your assistants can use it. The value stays with them.</Text>}
-          <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Accept a share" onPress={comingSoon} /></View>
+          <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Accept a share" onPress={() => setAccepting(true)} /></View>
         </View>
       </Sec>
+      <AcceptSheet open={accepting} onClose={() => setAccepting(false)} onDone={() => { load(); reload(); }} />
       <SharedVaultsSection />
       <EmergencySection reload={reload} />
     </View>
@@ -291,28 +293,124 @@ function SharedPage({ reload }: Props) {
 export function SharedVaultsSection() {
   const [vaults, setVaults] = useState<SharedVault[] | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
-  useEffect(() => { vaultMore.sharedVaults().then(setVaults).catch(() => setVaults([])); vaultMore.people().then(setPeople).catch(() => setPeople([])); }, []);
+  const [making, setMaking] = useState(false);
+  const [inviting, setInviting] = useState<string | null>(null);
+  const load = useCallback(() => { vaultMore.sharedVaults().then(setVaults).catch(() => setVaults([])); vaultMore.people().then(setPeople).catch(() => setPeople([])); }, []);
+  useEffect(load, [load]);
+  const act = (f: () => Promise<unknown>, done: string | ((r: unknown) => string)) => f().then((r) => { showToast(typeof done === "function" ? done(r) : done); load(); }).catch((e) => showToast(say(e, "done")));
   if (!vaults) return null;
   return (
     <Sec title="Shared vaults">
       <View className="gap-s2">
-        {vaults.length ? vaults.map((v) => (
-          <Card key={v.id} title={v.name}>
-            <View className="gap-s2">
-              <Text size="secondary" tone="label">{vaultLine(v)}</Text>
-              {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`}
-                end={m.role === "owner" ? null : <Menu trigger={<Button kind="ghost" size="sm" label="Manage" />} items={[{ label: "Change role", onPress: comingSoon }, { label: "Remove", onPress: comingSoon, danger: true }]} />} />)}
-              <View className="flex-row flex-wrap gap-s2">
-                <Button kind="ghost" size="sm" icon="plus" label="Invite" onPress={comingSoon} />
-                <Button kind="ghost" size="sm" label="Replace the keys" onPress={comingSoon} />
+        {vaults.length ? vaults.map((v) => {
+          const mine = v.role === "owner" || v.role === "admin";
+          return (
+            <Card key={v.id} title={v.name}>
+              <View className="gap-s2">
+                <Text size="secondary" tone="label">{vaultLine(v)}</Text>
+                {v.members.map((m) => <Row key={m.name} dense title={m.name} sub={`${roleWord(m.role)}${m.fingerprint ? `, ${m.fingerprint}` : ""}`}
+                  end={!mine || m.role === "owner" ? null : <Menu trigger={<Button kind="ghost" size="sm" label="Manage" />} items={[
+                    ...INVITE_ROLES.filter(([r]) => r !== m.role).map(([r, l]) => ({ label: `Make ${l.toLowerCase()}`, onPress: () => void act(() => vaultMore.memberRole(v.name, m.name, r), `${m.name} is now ${l.toLowerCase()} in ${v.name}.`) })),
+                    { label: "Take out of the vault", danger: true, onPress: () => void act(() => vaultMore.memberRemove(v.name, m.name), (r) => removedLine(m.name, v.name, r as string[])) },
+                  ]} />} />)}
+                {mine ? <View className="flex-row flex-wrap gap-s2">
+                  <Button kind="ghost" size="sm" icon="plus" label="Invite" onPress={() => setInviting(v.name)} />
+                  <Button kind="ghost" size="sm" label="Change the keys" onPress={() => void act(() => vaultMore.rotateVault(v.name), `New keys for ${v.name}.`)} />
+                </View> : <Text size="caption" tone="label">Only an admin can add people or change the keys.</Text>}
               </View>
-            </View>
-          </Card>
-        )) : <Text size="secondary" tone="label">No shared vaults yet. A shared vault lets a group keep items together.</Text>}
-        <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="New shared vault" onPress={comingSoon} /></View>
+            </Card>
+          );
+        }) : <Text size="secondary" tone="label">No shared vaults yet. A shared vault lets a group keep items together.</Text>}
+        <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="New shared vault" onPress={() => setMaking(true)} /></View>
         {people.length ? <><Text strong size="secondary">People you share with</Text><Card flush>{people.map((p, i) => <View key={p.name}>{i ? <Divider /> : null}<Row dense title={p.name} sub={personLine(p)} /></View>)}</Card></> : null}
       </View>
+      <NewVaultSheet open={making} onClose={() => setMaking(false)} onDone={load} />
+      <InviteSheet vault={inviting} onClose={() => setInviting(null)} onDone={load} />
     </Sec>
+  );
+}
+
+function NewVaultSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setName(""); setProblem(""); } }, [open]);
+  const typed = newVaultInput(name);
+  const savedAs = "input" in typed ? typed.input.name : "";
+  const go = () => {
+    const p = newVaultInput(name);
+    if ("error" in p) { setProblem(p.error); return; }
+    setBusy(true); setProblem("");
+    vaultMore.createVault(p.input.name).then(() => { showToast(`${p.input.name} is made.`); onDone(); onClose(); }).catch((e) => setProblem(say(e, "made"))).finally(() => setBusy(false));
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="New shared vault">
+      <View className="gap-s3">
+        <Text tone="muted">A place for items a group keeps together, such as one client's keys. You invite the people after.</Text>
+        <Field label="Name" value={name} onChangeText={setName} placeholder="Acme client" help={savedAs && savedAs !== name.trim() ? `Saved as ${savedAs}.` : undefined} />
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+        <Button kind="primary" label={busy ? "Making" : "Make the vault"} disabled={busy} onPress={go} />
+      </View>
+    </Sheet>
+  );
+}
+
+function InviteSheet({ vault, onClose, onDone }: { vault: string | null; onClose: () => void; onDone: () => void }) {
+  const [person, setPerson] = useState("");
+  const [role, setRole] = useState("member");
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [made, setMade] = useState<{ invite: string; member: string } | null>(null);
+  useEffect(() => { if (vault) { setPerson(""); setRole("member"); setProblem(""); setMade(null); } }, [vault]);
+  const go = () => {
+    if (!vault) return;
+    const p = inviteInput(vault, person, role);
+    if ("error" in p) { setProblem(p.error); return; }
+    setBusy(true); setProblem("");
+    vaultMore.invite(p.input.vault, p.input.person, p.input.role).then((r) => { setMade({ invite: r.invite, member: r.member }); onDone(); }).catch((e) => setProblem(say(e, "invited"))).finally(() => setBusy(false));
+  };
+  return (
+    <Sheet open={!!vault} onClose={onClose} title={made ? "Invited" : `Invite someone to ${vault ?? ""}`}>
+      {made ? (
+        <View className="gap-s3">
+          <Text>{`Send ${made.member} this. It holds no value, and it works only for them.`}</Text>
+          <CopyLine label="Copy the invite" line={made.invite} />
+          <Button kind="primary" label="Done" onPress={onClose} />
+        </View>
+      ) : (
+        <View className="gap-s3">
+          <Field label="Who" value={person} onChangeText={setPerson} help="Someone whose Vyre card you have checked." />
+          <Segmented label="Role" value={role} onChange={setRole} options={INVITE_ROLES} />
+          <Text size="caption" tone="label">{ROLE_HELP[role]}</Text>
+          {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+          <Button kind="primary" label={busy ? "Inviting" : "Invite"} disabled={busy} onPress={go} />
+        </View>
+      )}
+    </Sheet>
+  );
+}
+
+/** Paste what someone sent: a vault invite joins that vault, a pass adds what they shared. */
+function AcceptSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [pasted, setPasted] = useState("");
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setPasted(""); setProblem(""); } }, [open]);
+  const go = () => {
+    const k = acceptKind(pasted);
+    if ("error" in k) { setProblem(k.error); return; }
+    setBusy(true); setProblem("");
+    (k.kind === "invite" ? vaultMore.acceptInvite(k.value) : vaultMore.acceptTicket(k.value)).then(() => { showToast(k.kind === "invite" ? "You joined the vault." : "Added. What they shared is in Shared with you."); onDone(); onClose(); }).catch((e) => setProblem(say(e, "accepted"))).finally(() => setBusy(false));
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Accept a share">
+      <View className="gap-s3">
+        <Text tone="muted">Paste the invite or share someone sent you.</Text>
+        <Field label="What they sent" value={pasted} onChangeText={setPasted} multiline lines={3} mono />
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+        <Button kind="primary" label={busy ? "Checking" : "Accept"} disabled={busy} onPress={go} />
+      </View>
+    </Sheet>
   );
 }
 

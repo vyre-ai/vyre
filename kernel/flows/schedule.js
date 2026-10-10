@@ -106,18 +106,21 @@ export function nextOpen(from, t, zone, space) {
 }
 
 /**
- * The next time the schedule fires after `after`. A cron line is walked until a time falls inside the window (at most 5,000 lines); an interval waits for the window to open when it lands outside.
+ * The next time the schedule fires after `after`. A cron time outside the window jumps to when the window opens; an interval waits for the window to open when it lands outside.
  * @param {any} t a time trigger (cron or every_ms; `at` is not scheduled here) @param {number} after @param {string} zone @param {string[]} [space]
  * @returns {number | null}
  */
 export function nextFire(t, after, zone, space = []) {
   if (t.cron !== undefined) {
     let at = after;
-    for (let i = 0; i < 5000; i++) {
+    for (let i = 0; i < 2000; i++) {
       const n = nextCron(t.cron, at, zone);
       if (n === null) return null;
       if (allowedAt(n, t, zone, space)) return n;
-      at = n;
+      // outside the window: go straight to when it opens and take the first cron time from there (a once-a-minute line must not be walked through the night, a minute at a time)
+      const open = nextOpen(n, t, zone, space);
+      if (open === null) return null;
+      at = open - 1;
     }
     return null;
   }
