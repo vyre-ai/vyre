@@ -126,7 +126,7 @@ test("a link planted in the chat's folder sends no file anywhere (trust row 28),
 });
 
 test("settings, hooks, MCP lists and instructions in the work folder are never carried on (trust row 29), by resume-lent or by restore", async t => {
-  const names = [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/x.sh", ".mcp.json", "CLAUDE.md", "sub/CLAUDE.md", ".git/hooks/pre-commit", ".codex/config.toml", ".cursorrules", ".github/copilot-instructions.md", ".npmrc", ".husky/pre-commit", ".vscode/tasks.json"];
+  const names = [".claude/settings.json", ".claude/settings.local.json", ".claude/hooks/x.sh", ".mcp.json", "CLAUDE.md", "sub/CLAUDE.md", ".git/hooks/pre-commit", ".codex/config.toml", ".cursorrules", ".github/copilot-instructions.md", ".npmrc", ".husky/pre-commit", ".vscode/tasks.json", ".whatever-tool/rules", "deep/er/.newagentrc", "deep/AGENTS.md", "GROK.md"];
   const w = await world(t, { files: Object.fromEntries([...names, "src/app.js"].map(n => [n, "x"])) });
   await w.go();
   for (const n of names) assert.ok(!fs.existsSync(path.join(w.cwd, n)), `${n} is not carried`);
@@ -134,5 +134,7 @@ test("settings, hooks, MCP lists and instructions in the work folder are never c
   const { plantable } = await import("./safefs.js");
   for (const n of names) assert.equal(plantable(n), true, n);
   assert.equal(plantable("docs/claude-notes.md"), false);
+  assert.equal(plantable("README.md"), false);
+  assert.equal(plantable("src/.hidden/x.js"), true, "a dot segment anywhere is held");
   assert.equal(plantable("src/app.js"), false);
 });

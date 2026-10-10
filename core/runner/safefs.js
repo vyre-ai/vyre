@@ -92,19 +92,13 @@ export function writeInside(root, rel, data) {
 }
 
 /**
- * Is this path in a work folder a file a session LOADS as its own configuration (project settings and hooks, an MCP server list, instructions, a git hook)? What comes back from another computer never includes
- * these, in the work folder at any depth: a file the agent there wrote would run here with this session's authority on the next turn (trust rows 17 and 29). One set for restore and for resume-lent.
+ * Is this path in a work folder one that is never carried back from another computer? One structural rule, not a list that grows: any path with a segment that starts with a dot (.claude, .cursor, .github,
+ * .husky, .vscode, rc files, whatever tool comes next), and the agent instruction files by name at any depth (CLAUDE.md, AGENTS.md, GEMINI.md, GROK.md and their local forms). Everything else the chat changed
+ * comes back. A file an agent wrote there would otherwise run here with this session's authority on the next turn (trust rows 17, 29, 45). One rule for restore and for resume-lent.
  * @param {string} rel
  */
 export function plantable(rel) {
   const p = String(rel).split(/[\\/]+/).filter(Boolean).map(x => x.toLowerCase());
-  if (p.some(x => x === ".claude" || x === ".codex" || x === ".cursor" || x === ".vyre" || x === ".gemini")) return true;
-  const last = p[p.length - 1] || "";
-  if (/^(\.cursorrules|\.windsurfrules|grok\.md|\.npmrc|\.yarnrc(\.yml)?|\.pnpmrc|\.bashrc|\.zshrc|\.profile)$/.test(last)) return true;
-  if (p.includes(".husky") || p.includes(".devcontainer")) return true;
-  const gi = p.indexOf(".github"); if (gi >= 0 && (p[gi + 1] === "copilot-instructions.md" || p[gi + 1] === "workflows")) return true;
-  const vi = p.indexOf(".vscode"); if (vi >= 0 && (p[vi + 1] === "tasks.json" || p[vi + 1] === "settings.json" || p[vi + 1] === "launch.json")) return true;
-  if (last === ".mcp.json" || last === "claude.md" || last === "claude.local.md" || last === "agents.md" || last === "gemini.md" || last === ".envrc") return true;
-  const g = p.indexOf(".git");
-  return g >= 0 && (p[g + 1] === "hooks" || p[g + 1] === "config" || p[g + 1] === "info");
+  if (p.some(x => x.startsWith("."))) return true;
+  return /^(claude|claude\.local|agents|gemini|grok|copilot-instructions)\.md$/.test(p[p.length - 1] || "");
 }
