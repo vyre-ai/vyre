@@ -1,6 +1,6 @@
 // @ts-check
 // model-lists: where each provider lists its models, and how its API key asks (R031-84). The inference door's `listModels` calls these drivers; the door checks the chain and the sink and clamps the
-// answer to names, and the driver alone holds the endpoint and the key slot. The key comes from `keyOf(account)` for one request and is never returned, logged or put in an error. A provider's own
+// answer to { id, label? } entries, and the driver alone holds the endpoint and the key slot. The key comes from `keyOf(account)` for one request and is never returned, logged or put in an error. A provider's own
 // header names live here and nowhere else.
 
 /** @type {Record<string, { url: (a: any) => string | null, headers: (key: string) => Record<string, string> }>} */
@@ -13,14 +13,23 @@ const BY_PROVIDER = {
 /** The providers that can be asked. */
 export const MODEL_LISTING_PROVIDERS = Object.freeze(Object.keys(BY_PROVIDER));
 
-/** The model names in a provider's answer: the `id` (or `name`) of each entry of `data` or `models`, text only. @param {any} body @returns {string[]} */
+/** The models in a provider's answer: each entry of `data` or `models` as { id, label? }: the `id` (or `name`) and the display name when it differs, text only, each once. @param {any} body @returns {{ id: string, label?: string }[]} */
 export function namesOf(body) {
   const rows = Array.isArray(body && body.data) ? body.data : Array.isArray(body && body.models) ? body.models : [];
-  return [...new Set(rows.map((/** @type {any} */ r) => (r && typeof r === "object" ? r.id ?? r.name : r)).filter((/** @type {any} */ n) => typeof n === "string" && n).map((/** @type {string} */ n) => n.replace(/^models\//, "")))];
+  /** @type {Map<string, { id: string, label?: string }>} */ const out = new Map();
+  for (const r of rows) {
+    const obj = r && typeof r === "object";
+    const raw = obj ? r.id ?? r.name : r;
+    if (typeof raw !== "string" || !raw) continue;
+    const id = raw.replace(/^models\//, "");
+    const label = obj ? [r.display_name, r.displayName, r.name].find(x => typeof x === "string" && x && x !== raw && x !== id) : undefined;
+    if (!out.has(id)) out.set(id, label ? { id, label } : { id });
+  }
+  return [...out.values()];
 }
 
 /**
- * One driver per listable provider: `models({ account })` -> names. `call` refuses, so a provider that can only be listed is not a model the door can call.
+ * One driver per listable provider: `models({ account })` -> [{ id, label? }]. `call` refuses, so a provider that can only be listed is not a model the door can call.
  * @param {{ keyOf: (account: any) => Promise<string | null | undefined> | string | null | undefined, fetch: (url: string, init: any) => Promise<any>, hostSafe?: (url: string) => Promise<boolean> }} io
  */
 export function modelListDrivers(io) {
