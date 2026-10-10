@@ -13775,10 +13775,11 @@ Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a he
 
 ### `vault.release`
 
-One value, to a module holding a grant for it. `project`, when the grant names one, must match.
+One value, to a module holding a grant for it, or to Publish for a deployment holding its own grant. `project`, when the grant names one, must match.
 
 - Input:
   - `name` string, required
+  - `deployment` string
   - `field` string
   - `project` string
   - `watcher` string
