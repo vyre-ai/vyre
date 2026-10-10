@@ -1,10 +1,10 @@
 // The pure half of This computer: what runs here, history search, webhooks, the Wink network, agent computers and shares as lines (the Deck's settings.js sections, ported).
 // A command a person must run themselves is shown to copy, never run: the box never runs it for them.
 
-export type Card = { title: string; state?: string; lines: string[]; warn: string[]; commands: { say: string; line: string }[] };
+export type Card = { title: string; state?: string; lines: string[]; warn: string[]; actions: { id: "hooks-on" | "hooks-off" | "hooks-open" | "hooks-close"; label: string; arg?: string }[] };
 const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const list = (v: unknown, key: string): any[] => (Array.isArray(v) ? v : []).filter((x) => x && typeof x === "object" && (key === "" || typeof (x as any)[key] === "string"));
-const card = (title: string, state?: string): Card => ({ title, state, lines: [], warn: [], commands: [] });
+const card = (title: string, state?: string): Card => ({ title, state, lines: [], warn: [], actions: [] });
 
 /** What runs here: host, role, version, platform. */
 export function machineRows(s: any): [string, string][] {
@@ -45,7 +45,7 @@ export function hooksCard(d: any, status: any): Card {
   if (!d?.enabled) {
     c.state = "Off";
     c.lines.push("A webhook lets a service such as a payment processor tell Vyre that something happened. It is the one part of Vyre open to the internet, so it stays off until you turn it on.");
-    c.commands.push({ say: "Turn it on from your home computer's terminal:", line: "vyre hooks on" });
+    c.actions.push({ id: "hooks-on", label: "Turn on" });
     return c;
   }
   c.state = routes.length ? `On, ${plural(routes.length, "open route")}` : "On, no open routes";
@@ -53,9 +53,9 @@ export function hooksCard(d: any, status: any): Card {
   for (const r of routes) {
     c.lines.push(`${r.path || `/hooks/${r.name}`} ${r.verify?.scheme || ""}${typeof r.deliveries === "number" ? `, ${plural(r.deliveries, "delivery", "deliveries")} kept` : ""}`.trim());
   }
-  c.commands.push({ say: "Open a route:", line: "vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>" });
-  if (routes.length) c.commands.push({ say: "Close one:", line: `vyre hooks close ${routes[0].name}` });
-  c.commands.push({ say: "Turn webhooks off:", line: "vyre hooks off" });
+  c.actions.push({ id: "hooks-open", label: "Open a route" });
+  for (const r of routes) c.actions.push({ id: "hooks-close", label: `Close ${r.name}`, arg: String(r.name) });
+  c.actions.push({ id: "hooks-off", label: "Turn off" });
   return c;
 }
 
@@ -82,7 +82,6 @@ export function egressCard(d: any): Card {
   if (!d?.enabled) {
     c.state = "Off";
     c.lines.push("Some sites refuse a datacenter address. The sites you list leave an agent's browser through your own Mac instead.");
-    c.commands.push({ say: "Turn it on:", line: `vyre call --tty computers.egress.set '{"enabled":true,"sites":["example.com"]}'` });
     return c;
   }
   c.state = sites.length ? `On, ${plural(sites.length, "site")}` : "On, no sites yet";
@@ -92,7 +91,6 @@ export function egressCard(d: any): Card {
   else c.warn.push(`The egress sidecar does not answer${side.why ? ` (${side.why})` : ""}. The listed sites fail until it does, rather than show your home's address.`);
   if (d.problem) c.warn.push(String(d.problem));
   if (d.applies) c.lines.push(`This ${d.applies}.`);
-  c.commands.push({ say: "Turn it off:", line: `vyre call --tty computers.egress.set '{"enabled":false}'` });
   return c;
 }
 

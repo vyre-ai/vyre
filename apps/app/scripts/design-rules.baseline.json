@@ -12,7 +12,6 @@
  },
  "app/pair.tsx": {
   "second-primitive": 1,
-  "command-line": 1,
   "style-sheet": 1
  },
  "app/session/[id].tsx": {
@@ -25,7 +24,6 @@
  },
  "app/settings/autofill.tsx": {
   "second-primitive": 1,
-  "command-line": 2,
   "style-sheet": 1,
   "type-literal": 1
  },
@@ -81,17 +79,5 @@
  },
  "src/terminal/Terminal.tsx": {
   "type-literal": 1
- },
- "screens/connections/model.ts": {
-  "command-line": 2
- },
- "screens/glass/GlassScreen.tsx": {
-  "command-line": 1
- },
- "screens/settings/system-model.ts": {
-  "command-line": 6
- },
- "screens/vault/RealVaultMore.tsx": {
-  "command-line": 3
  }
 }

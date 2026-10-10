@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Segmented, Sheet, Text, showToast } from "@vyre/ui";
 import { connections } from "./source-real";
-import { CLIENT_PUT, accountAuthLine, accountInput, grantCommand, itemsFor, scopeLines, words, type Account, type GoogleTest, type VaultItem } from "./model";
+import { accountAuthLine, accountInput, itemsFor, scopeLines, words, type Account, type GoogleTest, type VaultItem } from "./model";
 import { ItemPick, openUrl, usePoll } from "./shared";
 
 type How = "signin" | "service-account" | "oauth";
@@ -113,9 +113,12 @@ function AddGoogle({ open, known, onClose, onDone }: { open: boolean; known: str
     <Sheet open={open} onClose={flow ? cancel : onClose} title="Add a Google account">
       {left ? (
         <View className="gap-s3">
-          <Text>{`The google module cannot read the vault item ${left} yet. Run this on your server, then try again:`}</Text>
-          <Text mono selectable size="secondary">{grantCommand(left, "google")}</Text>
-          <Button kind="primary" label="Done" onPress={onClose} />
+          <Text>{`Google cannot use ${left} in the Vault yet. Give it access, then try again.`}</Text>
+          <View className="flex-row gap-s2">
+            <Button kind="primary" label={busy ? "Giving access" : "Give access"} disabled={busy} onPress={() => { setBusy(true); connections.grantItem(left, "google").then(() => { setLeft(null); onClose(); onDone(); }).catch((e) => setProblem(words(e as { code?: string; message?: string }))).finally(() => setBusy(false)); }} />
+            <Button kind="ghost" label="Not now" onPress={onClose} />
+          </View>
+          {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
         </View>
       ) : flow ? (
         <View className="gap-s3">
@@ -133,8 +136,7 @@ function AddGoogle({ open, known, onClose, onDone }: { open: boolean; known: str
           {how !== "signin" ? <Field label="Address" value={email} onChangeText={setEmail} placeholder="you@example.com" /> : null}
           <Text size="caption" strong tone="label">{how === "signin" ? "OAuth client" : "Vault item"}</Text>
           <ItemPick items={itemsFor(items, how)} value={item} onChange={setItem} empty="No vault item fits this. Add one in the Vault first." />
-          <Text size="caption" tone="label">{how === "signin" ? "A Desktop app OAuth client from Google Cloud console, kept in the vault as an env set with client_id and client_secret:" : how === "oauth" ? "An env set with client_id, client_secret, refresh_token and token_uri." : "A note or secret holding the service account's JSON. It acts as the address below through domain-wide delegation."}</Text>
-          {how === "signin" ? <Text mono selectable size="caption">{CLIENT_PUT}</Text> : null}
+          <Text size="caption" tone="label">{how === "signin" ? "A Desktop app OAuth client from Google Cloud console, kept in the Vault as an env set with client_id and client_secret (bring it in with Import, from a .env file)." : how === "oauth" ? "An env set with client_id, client_secret, refresh_token and token_uri." : "A note or secret holding the service account's JSON. It acts as the address below through domain-wide delegation."}</Text>
           {how === "service-account" ? <Field label="Acts as" value={subject} onChangeText={setSubject} help="Leave empty to act as the account's own address." /> : null}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
           <Button kind="primary" label={busy ? "Working" : how === "signin" ? "Sign in with Google" : "Add account"} disabled={busy} onPress={go} />

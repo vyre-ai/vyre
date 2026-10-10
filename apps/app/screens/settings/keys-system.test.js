@@ -100,15 +100,16 @@ test("system: history says what is indexed and why search by meaning is off", { 
   assert.equal(m.recallView({}).lines[2][1], "Not yet");
 });
 
-test("system: webhooks off shows the one command, on lists the routes and the way to close one", { skip: !strip }, async () => {
+test("system: webhooks off offers Turn on, on lists the routes with a way to open, close and turn off", { skip: !strip }, async () => {
   const m = await import("./system-model.ts");
   const off = m.hooksCard({ enabled: false }, null);
   assert.equal(off.state, "Off");
-  assert.deepEqual(off.commands.map((c) => c.line), ["vyre hooks on"]);
+  assert.deepEqual(off.actions.map((a) => a.id), ["hooks-on"]);
   const on = m.hooksCard({ enabled: true, listening: false, error: "port busy", routes: [{ name: "stripe", path: "/hooks/stripe", verify: { scheme: "hmac-sha256" }, deliveries: 2 }] }, null);
   assert.equal(on.state, "On, 1 open route");
   assert.deepEqual(on.warn, ["The webhook listener is not answering (port busy)."]);
-  assert.ok(on.commands.some((c) => c.line === "vyre hooks close stripe"));
+  assert.deepEqual(on.actions.map((a) => [a.id, a.arg]), [["hooks-open", undefined], ["hooks-close", "stripe"], ["hooks-off", undefined]]);
+  assert.ok(!JSON.stringify(on).includes("vyre hooks"), "no command line on the card");
   assert.ok(!JSON.stringify(on).toLowerCase().includes("tailscale"), "no Tailscale wording");
 });
 
