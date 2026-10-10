@@ -178,3 +178,19 @@ test("a build command on a folder is built by a Dockerfile Vyre writes: the comm
   fs.writeFileSync(path.join(d, "Dockerfile"), OK);
   await assert.rejects(build(withCmd({ command: "npm run build", image: "node-22" })), /has its own Dockerfile/);
 });
+
+test("a job's image builds with no port and no EXPOSE, and the helper is told the job's limit in the settings", async t => {
+  const d = tmp(t);
+  fs.writeFileSync(path.join(d, "Dockerfile"), "FROM node:22-alpine\nCOPY job.js .\nCMD [\"node\", \"job.js\"]\n"); fs.writeFileSync(path.join(d, "job.js"), "x");
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-")); t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const SPC = "spc_abcdefghijkl", DEP = "dep_0123456789abcdef";
+  /** @type {string[]} */ const requests = [];
+  seam.helper = { present: () => true, ask: /** @type {any} */ (async (/** @type {string} */ _v, /** @type {string} */ name) => { requests.push(fs.readFileSync(path.join(home, "publish", SPC, "servers", name, "request"), "utf8")); return { state: "ok", message: "built sha256:" + "9".repeat(64) }; }) };
+  const tools = new Map();
+  const mod = await builder.start({ config: { publish: { servers: true } }, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
+  t.after(() => { seam.helper = null; return mod.stop(); });
+  const r = await tools.get("builder.build").run({ deployment: { id: DEP, space: SPC, name: "nightly", version: 1, source: { kind: "folder", ref: d }, build: { command: "", output_dir: ".", image: "dockerfile" }, job: { every_minutes: 60, timeout_s: 600 } }, secretArgs: [] });
+  assert.equal(r.runtime.job, true);
+  assert.equal(r.runtime.port, 8080);
+  assert.match(requests[0], /\nsecrets=-\njob=600\n$/);
+});

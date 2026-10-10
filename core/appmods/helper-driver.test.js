@@ -139,3 +139,29 @@ test("a site's server: up writes the folder root takes (settings and secrets, no
   r3.stop();
   assert.deepEqual(r3.seen, ["app-up documents"]);
 });
+
+test("a job: up asks `pub-up` with the job's limit in the settings and joins nothing; run asks `pub-run`, returns what root kept, and a failed run still has its output", async () => {
+  const dirs2 = mk(); const home = path.join(dirs2.state, "..", "home"); fs.mkdirSync(home);
+  /** @type {any} */ let request = "";
+  let fail = false;
+  const root = fakeRoot(dirs2, undefined, text => {
+    if (text === `pub-up ${DEP}`) request = fs.readFileSync(path.join(home, "publish", SPC, "servers", DEP, "request"), "utf8");
+    if (text === `pub-run ${DEP}`) fs.writeFileSync(path.join(dirs2.state, `jobout-${DEP}`), fail ? "exit=3 seconds=2\nboom\n" : "exit=0 seconds=1\nhi\n");
+  });
+  const d = createHelperDriver({ ...dirs2, home, pollMs: 5, interfaces: () => ({}) });
+  const m = published({ "x-publish": { deployment: DEP, secrets: [], job: { everyMinutes: 60, timeoutS: 600 } } });
+  const up = await d.up(/** @type {any} */ ({ space: "spc_x", manifest: m, secrets: {}, publishSpace: SPC }));
+  assert.deepEqual(up, { origin: "", hookHost: "", outputs: null }, "no neighbour to find, nothing to serve");
+  assert.match(request, /\nsecrets=-\njob=600\n$/);
+  assert.deepEqual(await d.run({ manifest: m }), { ok: true, message: "ran", output: "exit=0 seconds=1\nhi\n" });
+  fail = true;
+  root.stop();
+  const bad = fakeRoot(dirs2, { state: "failed", message: "the job ended with exit 3 in 2 seconds" }, text => { if (text === `pub-run ${DEP}`) fs.writeFileSync(path.join(dirs2.state, `jobout-${DEP}`), "exit=3 seconds=2\nboom\n"); });
+  const r = await d.run({ manifest: m });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /exit 3/);
+  assert.equal(r.output, "exit=3 seconds=2\nboom\n");
+  assert.deepEqual(bad.seen, [`pub-run ${DEP}`]);
+  await assert.rejects(() => d.run({ manifest: published() }), /not a job/);
+  bad.stop();
+});
