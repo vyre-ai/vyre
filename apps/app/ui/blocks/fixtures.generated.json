@@ -3963,6 +3963,20 @@
     }
    }
   },
+  "sites-list": {
+   "title": "Sites",
+   "screens": {
+    "full": {
+     "component": "sites-list"
+    },
+    "compact": {
+     "component": "sites-list"
+    },
+    "glance": {
+     "component": "sites-list"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
