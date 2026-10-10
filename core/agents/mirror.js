@@ -24,11 +24,12 @@ export const AGENT = Object.freeze({
 export const recordOf = a => ({ name: a.name, uid: a.uid, kind: a.kind, owner: a.owner || "", builtin: Boolean(a.builtin), model: a.model || "", tags: a.tags || "" });
 
 /**
- * @param {{ kernel: () => any, rows: () => any[], log?: (m: string) => void }} o
+ * @param {{ kernel: () => any, rows: () => any[], log?: (m: string) => void, retryMs?: number }} o
  * @returns {{ schedule: () => Promise<any>, reconcile: () => Promise<{ created: number, updated: number, removed: number }> }}
  */
-export function createMirror({ kernel, rows, log = () => {} }) {
+export function createMirror({ kernel, rows, log = () => {}, retryMs = 5_000 }) {
   /** @type {Promise<any> | null} */ let pending = null, again = false;
+  let waits = 0;   // how many times in a row the record store was away: it is looked at again after a pause, never given up on (a team Space's store takes minutes on its first start)
   async function reconcile() {
     const k = kernel();
     if (!k || !k.records || typeof k.serviceChain !== "function") return { created: 0, updated: 0, removed: 0 };
@@ -51,8 +52,12 @@ export function createMirror({ kernel, rows, log = () => {} }) {
   function schedule() {
     if (pending) { again = true; return pending; }
     pending = (async () => {
-      try { do { again = false; await reconcile(); } while (again); }
-      catch (e) { log(`agents: the agent records did not follow the roster (${/** @type {Error} */ (e).message})`); }
+      try { do { again = false; await reconcile(); } while (again); waits = 0; }
+      catch (e) {
+        const away = Boolean(e) && (/** @type {any} */ (e).code === "unavailable" || /not available yet|still starting/.test(String(/** @type {any} */ (e).message)));
+        if (!away || waits === 0) log(`agents: the agent records did not follow the roster (${/** @type {Error} */ (e).message})`);
+        if (away) { const pause = Math.min(retryMs * 2 ** waits, 12 * retryMs); waits++; const t = setTimeout(() => { void schedule(); }, pause); if (typeof t.unref === "function") t.unref(); }
+      }
       finally { pending = null; }
     })();
     return pending;

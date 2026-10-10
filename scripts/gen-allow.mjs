@@ -207,8 +207,103 @@ export const DECLARED = Object.freeze({
   "docs.find": "92291f02c", "docs.read": "92291f02c", "skills.find": "08ccfca4c", "skills.get": "08ccfca4c", "skills.list": "08ccfca4c", "vyre.core": "cb8fd02ae",
 });
 
+
+/**
+ * Tools opened to a model, a module or a person-labelled agent cell since the golden set was stored (9 Oct 2026), each with the commit that did it and its date. The guard is the tool's line in test/reach-anyone.json
+ * (tried against the code by test/reach-anyone-behaviour.test.js) or its DECLARED_NOTES line. The registry's floor (lib/one-yes.js) still asks the person's yes in front of the moment tools; the golden recorder does not model the floor.
+ */
+export const DECLARED_SINCE = Object.freeze({
+  "agents.spawn": "a2caa8817@9 Oct 2026",
+  "agents.versions": "e1f5eebd7@9 Oct 2026",
+  "appmods.domain.list": "cfa8ce91e@10 Oct 2026",
+  "approvals.items": "aafc814ea@9 Oct 2026",
+  "ask.get": "0db315762@3 Oct 2026",
+  "ask.many": "3112254d5@10 Oct 2026",
+  "brand.draft": "afde6d660@9 Oct 2026",
+  "brand.get": "afde6d660@9 Oct 2026",
+  "brand.resolve": "afde6d660@9 Oct 2026",
+  "chrome.op": "c46135ba9@26 Sep 2026",
+  "computer.targets": "9dcd44529@9 Oct 2026",
+  "computer.use": "8b72edb5c@9 Oct 2026",
+  "connectors.site.attention": "940faf738@10 Oct 2026",
+  "connectors.site.limits": "8d813625d@9 Oct 2026",
+  "connectors.site.list": "e0762c1c9@9 Oct 2026",
+  "connectors.site.operations": "0a8df5c2b@9 Oct 2026",
+  "connectors.site.propose": "0a96cfcfa@9 Oct 2026",
+  "connectors.site.rows": "e0762c1c9@9 Oct 2026",
+  "design.catalogue": "da28446d5@9 Oct 2026",
+  "design.css": "afde6d660@9 Oct 2026",
+  "design.css.propose": "afde6d660@9 Oct 2026",
+  "design.propose": "da28446d5@9 Oct 2026",
+  "design.screens": "da28446d5@9 Oct 2026",
+  "design.validate": "da28446d5@9 Oct 2026",
+  "documents.generate": "613f5aad8@10 Oct 2026",
+  "documents.signed-link.revoke": "60d4a2c31@10 Oct 2026",
+  "documents.signing.flow": "2f459afa0@10 Oct 2026",
+  "documents.signing.waiting": "e9c422518@10 Oct 2026",
+  "documents.template.add": "613f5aad8@10 Oct 2026",
+  "documents.template.get": "613f5aad8@10 Oct 2026",
+  "documents.template.list": "613f5aad8@10 Oct 2026",
+  "memory.site.rollback": "b8e89c3ce@9 Oct 2026",
+  "models.eval-queue": "4e3c1f397@9 Oct 2026",
+  "models.evals": "4e3c1f397@9 Oct 2026",
+  "models.get": "fb9855589@27 Sep 2026",
+  "models.list": "4e3c1f397@9 Oct 2026",
+  "models.refresh": "4e3c1f397@9 Oct 2026",
+  "models.status": "4e3c1f397@9 Oct 2026",
+  "names.domain.check": "08773e0e4@10 Oct 2026",
+  "previews.get": "05a5ef8f4@30 Sep 2026",
+  "previews.list": "73744ff3d@9 Oct 2026",
+  "previews.open": "73744ff3d@9 Oct 2026",
+  "previews.operator": "fe76a862a@10 Oct 2026",
+  "previews.run-get": "fc01a560a@10 Oct 2026",
+  "previews.signin": "fe76a862a@10 Oct 2026",
+  "previews.signin-get": "fe76a862a@10 Oct 2026",
+  "previews.step": "fe76a862a@10 Oct 2026",
+  "publish.go": "cd3f9e63b@10 Oct 2026",
+  "publish.quick": "cd3f9e63b@10 Oct 2026",
+  "sessions.harness.get": "4e3c1f397@9 Oct 2026",
+  "sidebar.pin": "2ee4e9077@9 Oct 2026",
+  "sidebar.unpin": "2ee4e9077@9 Oct 2026",
+  "skills.approve": "95132d453@9 Oct 2026",
+  "skills.draft": "95132d453@9 Oct 2026",
+  "skills.rollback": "95132d453@9 Oct 2026",
+  "skills.versions": "95132d453@9 Oct 2026",
+  "vault.agent.fill": "ddbf4e500@27 Sep 2026",
+  "vault.agent.grant": "29f68e293@10 Oct 2026",
+  "vault.delete": "29f68e293@10 Oct 2026",
+  "vault.grant": "29f68e293@10 Oct 2026",
+  "vault.health.summary": "bda28f976@10 Oct 2026",
+  "vault.link": "b1efe5dd1@10 Oct 2026",
+  "vault.links": "b1efe5dd1@10 Oct 2026",
+  "vault.mcp.pass.list": "75159556c@9 Oct 2026",
+  "vault.mcp.pass.revoke": "75159556c@9 Oct 2026",
+  "vault.pass.accept": "29f68e293@10 Oct 2026",
+  "vault.pending": "aafc814ea@10 Oct 2026",
+  "vault.unlink": "b1efe5dd1@10 Oct 2026",
+  "vault.used-by": "3bff38f14@10 Oct 2026",
+  "views.show": "bc4f85ff0@9 Oct 2026",
+  "work.chat.link": "021a571ef@10 Oct 2026",
+  "work.chat.persistent": "4e3987561@9 Oct 2026",
+  "work.chat.pin": "4e3987561@9 Oct 2026",
+  "work.file.list": "4358bab9e@10 Oct 2026",
+  "work.file.share": "3874b075a@10 Oct 2026",
+  "work.file.unshare": "3874b075a@10 Oct 2026",
+  "work.link.suggest": "021a571ef@10 Oct 2026",
+  "work.start-project": "5d02ed44b@9 Oct 2026",
+  "work.template.define": "5d02ed44b@9 Oct 2026",
+  "work.template.from-project": "5d02ed44b@9 Oct 2026",
+  "work.template.get": "5d02ed44b@9 Oct 2026",
+  "work.template.install": "5d02ed44b@9 Oct 2026",
+  "work.template.library": "5d02ed44b@9 Oct 2026",
+  "work.template.list": "5d02ed44b@9 Oct 2026",
+  "work.template.test": "5d02ed44b@9 Oct 2026",
+  "work.timeline": "021a571ef@10 Oct 2026",
+});
+
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
 export const DECLARED_NOTES = Object.freeze({
+  "memory.site.rollback": "puts a learned website operation back to an earlier version; the body refuses everything but the person's own surfaces and Chrome's bridge (chrome() in core/memory/site.js)",
   "onboard.pair": "pairs a device while the box is being set up: the onboarding listener's own token and the person's surfaces; a cli label such as cli:agent:kit is the person's terminal, never a model (core/onboard/index.js)",
   "recall.turn": "a read of one past session's turns, word for word; callers are READERS and the body holds a model to its own project's sessions (reach() and readableSession in core/recall/index.js), the same guard as recall.search",
   "recall.links": "a read of the turns that touched a file, commit or url; callers are READERS and the body holds a model to its own project's folders (reach() and inFolders in core/recall/index.js), the same guard as recall.search",
@@ -305,10 +400,11 @@ export function generate() {
     out.push({ tool, reason: `${RULING}; open to the person's assistant but held for a one-tap task (${why})${note ? `: ${note}` : ""}` });
   }
   const reasons = DECLARED_REASONS();
-  for (const [tool, commit] of Object.entries(DECLARED)) {
+  for (const [tool, ref] of Object.entries({ ...DECLARED, ...DECLARED_SINCE })) {
+    const [commit, when = "4 Oct 2026"] = String(ref).split("@");
     const guard = /** @type {Record<string, string>} */ (DECLARED_NOTES)[tool] || (reasons[tool] && reasons[tool].reason);
     if (!guard) throw new Error(`gen-allow: ${tool} is in DECLARED with no guard in DECLARED_NOTES or test/reach-anyone.json`);
-    out.push({ tool, reason: `${RULING}; ${tool} opened to a model or a module in ${commit} (4 Oct 2026); the body decides: ${guard}` });
+    out.push({ tool, reason: `${RULING}; ${tool} opened to a model or a module in ${commit} (${when}); the body decides: ${guard}` });
   }
   for (const tool of flowsAnyone()) {
     const note = /** @type {Record<string, string>} */ (FLOWS_NOTES)[tool];
@@ -329,6 +425,9 @@ export const render = (/** @type {any[]} */ entries) => JSON.stringify(entries, 
  * removal of a fresh-proof requirement from a tool a PERSON does (a person-only tool, which allow.json never lists), it is named here: the tool, the one refusal it was (`was`, always presence_required), the person
  * callers it applies to (never a model, guest, MCP or harness caller), and the ruling that did it. kernel/golden/presence.json is generated from this list and read by the refresh beside allow.json.
  */
+const ONE_YES = "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound";
+/** A ruled presence removal under the one-yes ruling: the cell it replaced (`was`), the person callers, and what the tool does now. */
+const S = (/** @type {string} */ was, /** @type {readonly string[]} */ callers, /** @type {string} */ note) => Object.freeze({ ruling: ONE_YES, commit: "29f68e293", was, callers, note });
 export const PRESENCE_RULINGS = Object.freeze({
   "spaces.host-here": Object.freeze({
     ruling: "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership",
@@ -337,6 +436,56 @@ export const PRESENCE_RULINGS = Object.freeze({
     callers: Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet:owner", "device"]),
     note: "hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof",
   }),
+  "appmods.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "flows.approve": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "learn.skill-retire": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "names.domain.check": S("person_session_required", Object.freeze(["device", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "network.wink.leave": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "onboard.claude": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "onboard.finish": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "pluginagent.revoke": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "presence.person.renew-allow": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "recall.sealscrub": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "records.forget": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "relay.devices.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "relay.disable": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.account.create": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.account.enroll-touchid": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.account.unlock": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.account.unlock-phone": S("presence_required", Object.freeze(["device"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.breach.check": S("presence_required", Object.freeze(["cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.codes": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.codes.import": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.connect": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.delete|person_session_required": S("person_session_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "its yes is asked once at the registry floor now, in front of the tool (its moment), not by a presence declaration the tool carries"),
+  "vault.delete|presence_required": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "its yes is asked once at the registry floor now, in front of the tool (its moment), not by a presence declaration the tool carries"),
+  "vault.edit": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.emergency.refresh": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.emergency.request": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.import.preview": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.members.accept": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.migrate-key": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.move": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.people.verify": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.person.add": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.provider.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.provider.set": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.put": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.revert": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.rotate": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.ssh.add": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.sweep": S("presence_required", Object.freeze(["cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.unlock": S("presence_required", Object.freeze(["cli", "device", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.unlock-passphrase": S("presence_required", Object.freeze(["cli", "local"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "vault.update": S("presence_required", Object.freeze(["cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.code.redeem": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.offer.set": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.share": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.storage.bridge.drive": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.storage.pair": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.storage.pick": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
+  "wink.storage.remove": S("presence_required", Object.freeze(["capsule", "cli", "deck", "device", "local", "tailnet:owner"]), "no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"),
 });
 
 /**
@@ -366,6 +515,12 @@ export const SURFACE_RULINGS = Object.freeze({
     callers: Object.freeze(["mobile"]),
     note: "the phone app lists the .env files in the person's projects that hold keys: names and counts, never a value",
   }),
+  "vault.members.accept": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.members.invite": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.members.remove": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.members.role": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.vaults.create": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
+  "vault.vaults.rotate": Object.freeze({ ruling: ONE_YES, commit: "86dad5619", was: "denied", callers: Object.freeze(["device"]), note: "a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor" }),
 });
 
 /** @returns {{ tool: string, was: string, callers: string[], ruling: string, reason: string }[]} */
@@ -377,8 +532,8 @@ export function generatePresence() {
     return { tool, was: r.was, callers: [...r.callers], ruling: r.ruling, reason: `${r.ruling}; ${tool} changed in ${r.commit}: ${r.note}` };
   };
   const presence = Object.entries(PRESENCE_RULINGS).map(([tool, r]) => {
-    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
-    return person(tool, r);
+    if (r.was !== "presence_required" && r.was !== "person_session_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required or person_session_required cell`);
+    return person(tool.split("|")[0], r);
   });
   const surfaces = Object.entries(SURFACE_RULINGS).map(([tool, r]) => {
     if (r.was !== "denied") throw new Error(`gen-allow: ${tool}: a surface ruling is for a denied cell`);

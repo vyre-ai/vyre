@@ -3977,6 +3977,20 @@
     }
    }
   },
+  "chats-list": {
+   "title": "Chats",
+   "screens": {
+    "full": {
+     "component": "chats-list"
+    },
+    "compact": {
+     "component": "chats-list"
+    },
+    "glance": {
+     "component": "chats-list"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

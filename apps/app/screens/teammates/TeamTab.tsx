@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Avatar, Button, Card, Chip, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Select, Switch, Text, markRef, showToast } from "@vyre/ui";
-import { ROLE, dutyLine, errWords, fillLine, plural, rowLine, stateWord, type Pane, type Teammate } from "./model";
+import { ROLE, dutyLine, errWords, fillLine, plural, rosterOnly, rowLine, stateWord, type Pane, type Teammate } from "./model";
 import { teammates } from "./teammates";
 import { useTeam } from "./useTeam";
 
@@ -117,11 +117,12 @@ export function AddTeammate({ project, done }: { project: string; done: () => vo
 
 /** The project page's Team tab: the teammates that serve the project, and what each is doing. `project` is the Project record's id. */
 export function TeamTab({ project }: { project: string }) {
-  const { rows, error, steer, reload } = useTeam(project);
+  const { rows, error, steer, members, reload } = useTeam(project);
   const [open, setOpen] = useState("");
   const [busy, setBusy] = useState(false);
   if (rows === null) return <LoadingState rows={3} />;
   if (error) return <Card flush><ErrorState title="Teammates could not be read" reason={error} retry={reload} /></Card>;
+  const roster = rosterOnly(rows, members);
   const flip = async (on: boolean) => { setBusy(true); try { await teammates.setSteer(project, on); reload(); } catch (e) { showToast(errWords(e)); } finally { setBusy(false); } };
   return (
     <View className="gap-s4">
@@ -130,7 +131,12 @@ export function TeamTab({ project }: { project: string }) {
         <Card flush title="Teammates" actions={<Text size="caption" tone="label">{plural(rows.length, "teammate")}</Text>}>
           {rows.map((t, i) => <View key={t.agent}>{i ? <Divider /> : null}<TeammateRow t={t} project={project} open={open === t.agent} onToggle={() => setOpen(open === t.agent ? "" : t.agent)} reload={reload} /></View>)}
         </Card>
-      ) : <Card><EmptyState title="No teammates yet" body="A teammate is a role in this project, like design or backend, that keeps its own notes and takes work in order." /></Card>}
+      ) : roster.length ? null : <Card><EmptyState title="No teammates yet" body="A teammate is a role in this project, like design or backend, that keeps its own notes and takes work in order." /></Card>}
+      {roster.length ? (
+        <Card flush title="On this project's team" actions={<Text size="caption" tone="label">{plural(roster.length, "member")}</Text>}>
+          {roster.map((m, i) => <View key={m.agent}>{i ? <Divider /> : null}<Row dense title={m.agent} sub={m.role ? `The ${m.role}` : undefined} /></View>)}
+        </Card>
+      ) : null}
       <AddTeammate project={project} done={reload} />
     </View>
   );

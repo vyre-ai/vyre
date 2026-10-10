@@ -7,7 +7,7 @@ import { Banner, Button, Card, Chip, EmptyState, Field, Segmented, Text, useUiTh
 import { Frame } from "../places/Frame";
 import FilesTab from "./FilesTab";
 import { GlassFrame } from "./GlassFrame";
-import { frameUrl, useGlass } from "./state";
+import { frameUrl, relayOnly, useGlass } from "./state";
 import { badgeWord, clock, holdingRows, holdingTitle, latencyLabel, overText, relayed, stateLine, stateWord, watchersLine, whyBlocked } from "./model";
 
 export default function GlassScreen() {
@@ -80,7 +80,7 @@ function Computer({ name }: { name: string }) {
         <View className="flex-row flex-wrap gap-s3">
           <View className="min-w-0 flex-[3] gap-s2" style={{ minWidth: 320 }}>
             <View style={{ width: "100%", aspectRatio: g.size ? g.size.w / g.size.h : 16 / 10, backgroundColor: color["surface-3"], borderRadius: 8, overflow: "hidden" }} accessibilityLabel={`Live view of ${name}'s screen`}>
-              <GlassFrame src={frameUrl()} onMessage={g.onFrame} frameRef={g.frame} label={`${name}'s screen`} />
+              <GlassFrame src={frameUrl()} relay={relayOnly()} onMessage={g.onFrame} frameRef={g.frame} label={`${name}'s screen`} />
               {g.conn !== "live" ? (
                 <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", padding: 16 }}>
                   <View className="items-center gap-s2 rounded-card border border-edge bg-surface-3 p-s4"><Text strong>{title}</Text>{detail ? <Text size="secondary" tone="muted">{detail}</Text> : null}

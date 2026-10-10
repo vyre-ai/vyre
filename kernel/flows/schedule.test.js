@@ -160,3 +160,18 @@ test("a practice run over last week counts the schedule's real times: zone, hour
   assert.equal(r.ok, true, JSON.stringify(r.errors));
   assert.deepEqual(r.runs.map(x => x.at), [ny(5, 9), ny(6, 9), ny(7, 9), ny(9, 9)], "Monday to Friday at 9:00 New York, Thursday off");
 });
+
+test("the lines form (what @Engineer writes) of a scheduled Flow with lanes and a sub-flow reads back as the same Flow", async () => {
+  const { printLines, parseLines } = await import("./lines.js");
+  const { checkFlow } = await import("./schema.js");
+  const flow = { format: 1, name: "weekday_check", label: "Weekday check", authorship: "human", trigger: { on: "time", cron: "0 9 * * 1-5", tz: "America/New_York", hours: true, holidays: "space", catch_up: "skip" },
+    steps: [{ id: "p", kind: "parallel", steps: [
+      { id: "fees", kind: "branch", steps: [{ id: "find", kind: "find", type: "matter", where: "record.stage != \"Closed\"" }] },
+      { id: "call", kind: "branch", steps: [{ id: "task", kind: "assign", to: "role:manager", title: "Call the client", output: { kind: "note" } }] }] },
+    { id: "mail", kind: "subflow", flow: "follow_up_email", input: { client: { expr: "trigger.client" } } }] };
+  const back = parseLines(printLines(flow));
+  assert.deepEqual(back.trigger, flow.trigger);
+  assert.deepEqual(back.steps.map(s => [s.id, s.kind]), [["p", "parallel"], ["mail", "subflow"]]);
+  assert.deepEqual(back.steps[0].steps.map(s => [s.id, s.kind, s.steps.map(x => x.id)]), [["fees", "branch", ["find"]], ["call", "branch", ["task"]]]);
+  assert.deepEqual(checkFlow({ ...back, format: 1, name: "weekday_check", authorship: "human" }), []);
+});

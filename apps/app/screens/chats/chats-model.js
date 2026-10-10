@@ -1,4 +1,6 @@
 // @ts-check
+import { ageOf } from "./chat-model.js";
+import { AIS } from "../../../../lib/ai-ids.js";
 // The Chats list as one row type (CONTRACT-one-chat.md section 1): a chat is a record with a title, who is in it (people and assistants), the models on its slots, a project, a status and a last
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
@@ -10,7 +12,7 @@ const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 const strs = (/** @type {unknown} */ v) => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : typeof v === "string" ? v.split(",").map((x) => x.trim()).filter(Boolean) : []);
 /** The project's name: a name the row carries, else nothing (a project's urn is not for a person to read). @param {any} p */
 const projectName = (p) => (typeof p === "string" ? p : p && typeof p === "object" && typeof p.name === "string" ? p.name : "");
-const PROVIDERS = ["claude", "codex", "grok"];
+const PROVIDERS = AIS;
 
 /** The chat id out of a record address (vyre://<space>/chat/<id>) or the id itself. @param {string} urn */
 export const chatIdOf = (urn) => { const m = /\/chat\/([^/?#]+)$/.exec(urn); return m ? m[1] : urn; };
@@ -77,7 +79,7 @@ export function chatsOrdered(list) {
 export function sampleChats(now) {
   return [
     { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, unread: 0, open: true },
-    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: ["claude", "codex", "grok"], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
+    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: [...AIS], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
     { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, unread: 0, open: true },
     { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, unread: 0, open: true },
   ];
@@ -114,4 +116,23 @@ export function withNames(rows, actors, me = null) {
   for (const a of list) if (a && typeof a.id === "string" && typeof a.name === "string" && a.name.trim() && !/^per_/.test(a.name)) byId.set(a.id, a.name.trim());
   const nameOf = (/** @type {string} */ id) => byId.get(id) ?? (/^per_/.test(id) ? "Someone" : id);
   return rows.map((r) => ({ ...r, people: r.people.filter((id) => !me || id !== me).map(nameOf) }));
+}
+
+/**
+ * The chats as rows of a list block: who is in each (faces), the providers it runs on, where it runs, its state (needs you, failed, unread), when it last moved, and dim when it is not yours.
+ * @param {readonly ChatRow[]} list @param {number} now @param {any} places runner.places
+ */
+export function chatRowsOf(list, now, places) {
+  return list.map((t) => {
+    const state = chatState(t);
+    /** @type {{ label: string, tone?: string, as?: "text" }[]} */ const accessories = [];
+    if (state === "needs-you") accessories.push({ label: "Needs you", tone: "accent" });
+    else if (state === "failed") accessories.push({ label: "Failed", tone: "warn" });
+    if (t.unread > 0) accessories.push({ label: t.unread > 99 ? "99+" : String(t.unread), tone: "accent" });
+    if (t.last) accessories.push({ label: ageOf(t.last, now), as: "text" });
+    return {
+      id: t.id, title: t.pinned === "assistant" ? "Your assistant" : t.title, subtitle: t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id)),
+      faces: [...t.people.map((name) => ({ kind: "person", name })), ...t.agents.map((name) => ({ kind: "assistant", name }))].slice(0, 5), providers: t.providers.slice(0, 3), accessories, ...(t.open ? {} : { dim: true }),
+    };
+  });
 }
