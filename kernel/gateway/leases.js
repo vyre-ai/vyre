@@ -23,6 +23,9 @@ import { leasedUse, credentialAction, safePath, canonicalPath, requestBind, norm
 /** What a model-provider route may do without a grant: ask a model, count tokens, list models. Nothing here changes anything at the provider. */
 const INFERENCE = Object.freeze([{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }]);
 
+/** The tighter of two network limits ("provider" is tighter than "internet", none stated is the loosest). @param {...(string | null | undefined)} caps */
+const tightestCap = (...caps) => caps.reduce((a, c) => (c === "provider" || a === "provider" ? "provider" : c === "internet" || a === "internet" ? "internet" : null), /** @type {string | null} */ (null));
+
 export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
   /** @type {Map<string, { member: string, device: string, device_key?: string, hello?: any }>} */ const info = new Map();
@@ -47,20 +50,26 @@ export function createLeases(cfg) {
     async issue(chain, /** @type {{ device: string, device_key?: string, hello?: any, proof?: any }} */ i) {
       const p = person(chain);
       if (!i || typeof i.device !== "string" || !i.device) throw new KernelError("bad_input", "name the computer");
-      // R031-95 2.2: where the home requires it, a lease is asked for in a hello the computer's own presence key signed (device, key, limit, runner version, protocol). The sealing process checks the signature, the key's
-      // owner and its listed device with the one verifier every yes goes through; here the hello must say the very computer and key the lease is for. Without a proof the answer is `needs_presence` and the wire's
-      // challenge carries what to sign.
-      // A request with no hello is still answered when the answer is "no" (a revoked computer, no Offer): the lender's reinstate check reads that. It never gets a key.
-      /** @type {any} */ let hello = null;
-      if (cfg.signedHello) {
-        hello = helloOf(i);
-        if (hello && (hello.device !== i.device || hello.device_key !== (i.device_key ?? i.device))) throw new KernelError("bad_input", "the signed request names another computer");
-      }
-      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed: allowedFor(p.id, i.device, i.device_key), ...(cfg.signedHello ? { signed: true, hello, proof: i.proof } : {}) }));
+      // R031-95 2.2 (ruled 10 Oct): the member's lend IS the permit. The home checks it, not a signature: both Offers must stand for exactly this computer and key (`allowed`, below, from the Offers on every issue and every
+      // renewal), so a request from another computer, after an unlend, a revoke or a removal, is answered "revoked" and gets no key. What the computer says about itself in its hello (its limit, runner version, protocol) are
+      // claims that can only tighten: the home takes the tightest of them, the Offers and the floor, and never a looser one. Every request, granted or refused, is on the log.
+      const hello = helloOf(i);
+      if (hello && (hello.device !== i.device || hello.device_key !== (i.device_key ?? i.device))) throw new KernelError("bad_input", "the request names another computer");
+      // A computer asks for its OWN lease: the device the transport proved is the one the request names. Another of the member's computers, or their phone, naming it gets nothing. (A probe, `probe: true`, only asks
+      // whether this member's computer was removed before; it is answered yes or no and never holds a key.)
+      const via = chain.hops[0] && chain.hops[0].via, proven = via && typeof via.device === "string" && via.device ? via.device.replace(/^device:/, "") : null;
+      const probe = i.probe === true;
+      const refuse = (/** @type {string} */ why) => { try { cfg.log.append(kernelChain(), { type: "lease.refused", sv: 1, subject: `vyre://${cfg.space}/lease/${i.device}`, data: { member: p.id, device: i.device, why }, vis: "owner", red: "internal" }); } catch { /* best effort */ } };
+      if (proven && proven !== i.device && !probe) { refuse("another_computer"); throw new KernelError("not_allowed", "a computer asks for its own lease"); }
+      const allowed = allowedFor(p.id, i.device, i.device_key);
+      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed }));
+      if (probe) return { revoked: Boolean(r && r.revoked) };
+      const limit = tightestCap(typeof grantsStore.capOf === "function" ? grantsStore.capOf({ member: p.id, device: i.device }) : null, hello && hello.cap);
+      try { cfg.log.append(kernelChain(), { type: r && r.id ? "lease.issued" : "lease.refused", sv: 1, subject: `vyre://${cfg.space}/lease/${i.device}`, data: { member: p.id, device: i.device, limit, ...(r && r.id ? {} : { why: "no_lend" }), ...(hello ? { runner_version: hello.runner_version, protocol: hello.protocol } : {}) }, vis: "owner", red: "internal" }); } catch { /* the lease is the answer; the log is best effort here */ }
       if (r && r.id) info.set(r.id, { member: p.id, device: i.device, device_key: i.device_key, ...(hello ? { hello } : {}) });
       return r;
     },
-    /** What the computer signed when it asked for this lease (its limit, runner and protocol), or null: the home reads the lender's signed limit from here, never from a later unsigned call. */
+    /** What the computer said when it asked for this lease (its limit, runner and protocol), or null: the home reads the lender's claimed limit from here, and only ever tightens with it. */
     helloOf(/** @type {string} */ id) { const l = info.get(String(id)); return l && l.hello ? l.hello : null; },
     /** Renewal re-checks the Offers every time; a lease that is not this person's is unknown. */
     async renew(chain, /** @type {{ id: string }} */ i) {

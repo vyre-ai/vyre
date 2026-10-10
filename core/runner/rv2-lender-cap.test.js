@@ -42,7 +42,7 @@ async function rig(t, o = {}) {
   const acceptCap = o.acceptCap;
   const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const sealer = fakeSealer();
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, ...(o.signedHello ? { signedHello: true } : {}), resolveCredential: async () => ({ secret: "v" }) });
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "dev_laptop", person: BOB, path: "direct" });
   const g = k.gateway.grants;
@@ -54,8 +54,7 @@ async function rig(t, o = {}) {
     specFor: async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] }) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
   // The computer's own presence key stands in as a function over the home's challenge: the proof names the op and fields the challenge carries, this home and this challenge.
-  const signer = o.signer === false ? undefined : (/** @type {any} */ ch) => ({ presence: { decision: ch.op, fields: ch.fields, home: ch.home, challenge: ch.nonce } });
-  const as = (person, device, eid) => { const remote = createRemoteKernel({ space: SPACE, ...(signer ? { signer } : {}), transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP", ...(eid ? { eid, cap: () => o.helloCap } : {}) }); };
+    const as = (person, device, eid) => { const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: device, person, path: "wink" } }) }); return createLentClient({ invoke: remote.call, device, deviceKey: "KEY_LAPTOP", ...(eid ? { eid, cap: () => o.helloCap } : {}) }); };
   return { k, owner, bob, g, mk, accept, home, server, sealer, as, dir };
 }
 // ---- reviewer-2 probes on work/runner 037500d2e: the lender's cap (CAP-1, CAP-2, CAP-3). Drop into core/runner/. ----
@@ -161,36 +160,22 @@ test("CAP-7: an acceptance that states no limit never lowers the floor (CAP-2 re
   await assert.rejects(r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_other", device_key: "K2", network_cap: "everything" }), e => e.code === "bad_input");
 });
 
-// ---- R031-95 2.2: the lease request is a hello the computer signed. The wire: the home's challenge covers the hello, the lender's key answers, the sealing process checks it once. ----
-test("HELLO-1: where the home asks for a signed hello, the lease request carries one, the challenge covers exactly its fields, and the cap is among them", async t => {
-  const r = await rig(t, { signedHello: true, helloCap: "provider" });
+// ---- R031-95 2.2 (ruled 10 Oct): the lend is the permit; the lease request's hello is what the computer says about itself, and it can only tighten. (The lease itself is tested in lease-permit.test.js.) ----
+test("HELLO-1: the lease request carries the computer's claims (limit, runner version, protocol); the home keeps them and holds the session to the tightest", async t => {
+  const r = await rig(t);
   const c = r.as(BOB, "dev_laptop", "eid_mac");
   const lease = await c.vault.lease();
-  assert.ok(lease.id && lease.key, "the lease came back after the computer signed the challenge");
-  assert.equal(r.k.gateway.leases.helloOf(lease.id).cap, "provider", "the home kept what was signed: the lender's limit, the runner version and the protocol");
+  assert.ok(lease.id && lease.key);
   assert.deepEqual(Object.keys(r.k.gateway.leases.helloOf(lease.id)).sort(), ["cap", "device", "device_key", "eid", "protocol", "runner_version"]);
-  // and the home holds the session to it, though the start that follows says nothing about a limit: the Space asks for the internet, the lender's key signed provider
-  assert.equal((await c.spec({ session: "s_signed" })).network, "provider");
+  // the Space asks for the internet; a computer that claims provider gets provider at start, with the start saying nothing about a limit
+  const claims = createLentClient({ invoke: createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) }).call, device: "dev_laptop", deviceKey: "KEY_LAPTOP", cap: () => "provider" });
+  await claims.vault.lease();
+  assert.equal((await claims.spec({ session: "s_claimed" })).network, "provider");
 });
 
-test("HELLO-2: no hello, no signer, a hello for another computer, or a replayed proof gets no key", async t => {
-  const r = await rig(t, { signedHello: true });
-  // a computer that sends no hello (an older runner) is told to sign, and has no key to do it with
-  const bare = r.as(BOB, "dev_laptop");
-  await assert.rejects(bare.vault.lease(), e => e.code === "needs_presence");
-  // a computer with an eid but no way to sign
-  const none = await rig(t, { signedHello: true, signer: false });
-  await assert.rejects(none.as(BOB, "dev_laptop", "eid_mac").vault.lease(), e => e.code === "needs_presence");
-  // the home refuses a hello that names another computer than the lease
-  const kc = r.owner;
-  void kc;
-  await assert.rejects(r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP", hello: { device: "dev_other", device_key: "KEY_LAPTOP", eid: "eid_mac", cap: null, runner_version: "0.3.2", protocol: 1 }, proof: { decision: "lease.issue" } }), e => e.code === "bad_input");
-});
-
-test("HELLO-3: a home that does not ask for a hello still issues the old way, and a removed computer reads as removed with or without one", async t => {
+test("HELLO-2: a hello that names another computer than the request is refused; a removed computer reads as removed", async t => {
   const r = await rig(t);
-  assert.ok((await r.as(BOB, "dev_laptop").vault.lease()).id);
-  const s = await rig(t, { signedHello: true });
-  await s.g.offers.unlend(s.bob, { member: BOB, device: "dev_laptop" }, { presence: unlendProof({ member: BOB, device: "dev_laptop" }) });
-  assert.deepEqual(await s.k.gateway.leases.issue(s.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { revoked: true }, "the lender's probe reads \"no\" without signing anything");
+  await assert.rejects(r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP", hello: { device: "dev_other", device_key: "KEY_LAPTOP", eid: "eid_mac", cap: null, runner_version: "0.3.2", protocol: 1 } }), e => e.code === "bad_input");
+  await r.g.offers.unlend(r.bob, { member: BOB, device: "dev_laptop" }, { presence: unlendProof({ member: BOB, device: "dev_laptop" }) });
+  assert.deepEqual(await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" }), { revoked: true }, "no key without a lend");
 });
