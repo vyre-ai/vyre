@@ -297,7 +297,7 @@ export function registerSiteTools(ctx, { made, runner, governor, yours, fail, ob
   const NEEDS_PERSON = new Set(["auth", "blocked", "no_browser"]);
   ctx.tool("connectors.site.attention", {
     effect: "read", callers: [...people, "module", "mcp", "harness"],
-    description: "The website Connections that wait for a person (login ran out, security check, no browser): { sites: [{ id, host, class, words, agent?, stopped? }] }.",
+    description: "Website Connections that wait for a person (login out, security check, no browser): { sites: [{ id, host, class, words, agent? }] }.",
     input: obj({}, []),
     run: async () => ({ sites: siteRows().filter(({ r }) => r.light === "red").map(({ r, d }) => {
       /** @type {any} */ const form = (() => { try { return JSON.parse(r.form || "{}"); } catch { return {}; } })();
