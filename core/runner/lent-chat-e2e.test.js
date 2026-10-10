@@ -126,7 +126,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   const turnsBefore = await finished();
   await ok("runner.move", { thread: chatId, to: "server" });
   await until(async () => where() === "server", "the chat is the server's", 60_000);
-  await ok("threads.send", { thread: th.id, text: "now on the server" });
+  await asChat("threads.send", { thread: th.id, text: "now on the server" });
   await until(async () => (await finished()) > turnsBefore, "a turn on the server", 90_000);
   assert.match(await lastSaid(), /echo: now on the server/, "the server carried the chat on and answered");
   assert.equal(where(), "server");
@@ -139,7 +139,7 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   await ok("runner.move", { thread: chatId, to: "mac" });
   await until(async () => where() === "mac", "the chat is on the computer again", 60_000);
   const afterServer = await finished();
-  await ok("threads.send", { thread: th.id, text: "back on the computer" });
+  await asChat("threads.send", { thread: th.id, text: "back on the computer" });
   await until(async () => (await finished()) > afterServer, "a turn back on the computer", 90_000);
   assert.match(await lastSaid(), /echo: back on the computer/, "the computer carried the chat on and answered");
   assert.equal(where(), "mac");
