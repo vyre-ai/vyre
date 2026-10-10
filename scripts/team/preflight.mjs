@@ -89,7 +89,7 @@ try {
 // ---- tests: guard set + touched tests + the touched source files' sibling tests
 const GUARDS = [
   "test/boundaries.test.js", "test/declared-inputs.test.js", "test/dependency-guard.test.js", "test/description-lint.test.js",
-  "test/http-single.test.js", "test/ids-single.test.js", "test/key-screens.test.js", "test/one-mechanism.test.js",
+  "test/http-single.test.js", "test/ids-single.test.js", "test/key-screens.test.js", "test/design-rules.test.js", "test/one-mechanism.test.js",
   "test/one-role-list.test.js", "test/one-person-surfaces.test.js", "test/outward-flags.test.js", "test/plain-session-writes.test.js",
   "test/project-arg.test.js", "test/reach-anyone.test.js", "test/reach-explicit.test.js", "test/reach-registry.test.js",
   "test/reach-module-calls.test.js", "test/reach-classes.test.js", "kernel/retrofit/agent-reach.test.js", "kernel/size.test.js",

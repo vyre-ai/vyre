@@ -8,6 +8,7 @@ test/allowed-dependencies.json merge=json3
 test/one-person-surfaces.json merge=json3
 test/reach-allowlist.json merge=json3
 test/description-baseline.json merge=json3
+apps/app/scripts/design-rules.baseline.json merge=json3
 # Generated files: keep ours on merge; scripts/team/regen.mjs rebuilds them right after.
 docs/index.json merge=regen
 docs/reference/** merge=regen

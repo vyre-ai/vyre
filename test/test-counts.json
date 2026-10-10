@@ -831,6 +831,7 @@
  "test/cron-single.test.js": 5,
  "test/daemon.test.js": 27,
  "test/dependency-guard.test.js": 2,
+ "test/design-rules.test.js": 3,
  "test/do-firstboot.test.js": 7,
  "test/docs-shots.test.js": 11,
  "test/eval/answer-eval.test.js": 6,
