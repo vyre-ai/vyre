@@ -103,10 +103,10 @@ test("the first chat on a Mac that never ran a session for the Space runs there,
 test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks to the runner's door, the door asks the home, and the home answers as that session", { skip: SKIP || false, timeout: 120_000 }, async t => {
   const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
   /** @type {any[]} */ const asked = [];
-  const w = await world(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { asked.push([thread, p, headers, body]); if (method === "GET") return { status: 200, body: JSON.stringify({ data: [{ name: "records.list", description: "List records.", input: { type: "object" }, effect: "read" }, { name: "tools.find", description: "Find a tool.", input: { type: "object" }, effect: "read" }] }) }; return { status: 200, body: JSON.stringify({ data: { tool: p.split("/").pop(), you: `mcp:thread:${thread}` } }) }; } });
+  const w = await world(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p, /** @type {any} */ headers, /** @type {string} */ body) => { asked.push([thread, p, headers, body]); if (method === "GET") return { status: 200, body: JSON.stringify({ data: [{ name: "records.list", description: "List records.", input: { type: "object" }, effect: "read" }, { name: "tools.find", description: "Find a tool.", input: { type: "object" }, effect: "read" }] }) }; if (p.endsWith("/harness.rules")) return { status: 200, body: JSON.stringify({ data: { decision: "deny", reason: "from the home" } }) }; return { status: 200, body: JSON.stringify({ data: { tool: p.split("/").pop(), you: `mcp:thread:${thread}` } }) }; } });
   await w.run("runner.start", { space: SPACE, session: "s0" });
   await sleep(600);
-  const proc = w.r.home.spawn({ session: "s_tools", person: BOB, args: ["--output-format", "stream-json", "--mcp-config", JSON.stringify({ mcpServers: { canvas: { type: "sdk", name: "canvas" }, vyre: { command: "node", args: ["/box/mcp.js"] } } })] });
+  const proc = w.r.home.spawn({ session: "s_tools", person: BOB, args: ["--output-format", "stream-json", `--${"plugin-dir"}`, new URL("../../harness", import.meta.url).pathname, "--mcp-config", JSON.stringify({ mcpServers: { canvas: { type: "sdk", name: "canvas" }, vyre: { command: "node", args: ["/box/mcp.js"] } } })] });
   const out = lines(proc.stdout);
   await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
   // the process is told where Vyre is: a socket, and an MCP config with the SDK's own server and the lender's Vyre server (not the box's)
@@ -127,6 +127,11 @@ test("a chat's session on a Mac reaches Vyre's tools: its Vyre MCP server speaks
   assert.equal(reply.status, 200);
   assert.deepEqual(JSON.parse(reply.body).data, { tool: "records.list", you: "mcp:thread:s_tools" });
   assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"], asked.at(-1)[3]], ["s_tools", "/v1/tools/records.list", "mcp", "{\"type\":\"contact\"}"]);
+  // the Harness hooks run on the lender too, from its own copy of the plugin, and ask the home through the same door as the session's own (caller harness): the home's word is the hook's answer
+  proc.stdin.write("hook rules {\"session_id\":\"s_tools\",\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"ls\"}}\n");
+  const hook = JSON.parse(await waitFor(() => out.find(l => l.includes("\"hook\"")), 30_000));
+  assert.equal(JSON.parse(hook.stdout).hookSpecificOutput.permissionDecision, "deny", JSON.stringify(hook));
+  assert.deepEqual([asked.at(-1)[0], asked.at(-1)[1], asked.at(-1)[2]["x-vyre-caller"]], ["s_tools", "/v1/tools/harness.rules", "harness"], "as a hook, not as the MCP server");
   // and Vyre's real MCP server, run inside the sandbox from that config, lists the tools the home says this session has
   proc.stdin.write("mcp\n");
   const mcp = JSON.parse(await waitFor(() => out.find(l => l.includes("\"mcp\"") && l.includes("\"init\"")), 50_000));
