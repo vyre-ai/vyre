@@ -112,6 +112,44 @@ test("a send is held for the person's yes, never sent without it, and the sign-i
   assert.ok(w.d.registry.deps.events.since(0, { limit: 5000 }).some((/** @type {any} */ e) => e.type === "connectors.site-needs-signin" && e.payload.id === "linkedin"));
 });
 
+test("R031-79: a login that ran out is one Needs-you card that says what to do, re-checks on its answer, and closes by itself when the site answers again", async t => {
+  const w = await world(t);
+  await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
+  let loggedIn = false;
+  const x = await extension(w.sockPath, { "ops.call": (/** @type {any} */ a) => (loggedIn ? { ok: true, class: "ok", data: [{ name: "alpha one" }], op: a.op.name, status: 200 } : { ok: false, class: "auth", reason: "HTTP 401", next: "sign in again" }) });
+  t.after(() => { x.sock.destroy(); });
+  await online(w.d);
+  const cards = async () => ((await w.cli("approvals.items")).data || {}).items.filter((/** @type {any} */ c) => c.kind === "signin");
+  assert.deepEqual(await cards(), [], "nothing is wrong yet: no card");
+  const out = await w.cli("connectors.operation.run", { connection: "linkedin", operation: "search_people", input: { query: { query: "gamma labs" } } });
+  assert.equal(out.data && out.data.status, 401, JSON.stringify(out));
+  // the Connection says what is wrong, and the list for Needs you has it
+  const att = (await w.cli("connectors.site.attention")).data.sites;
+  assert.equal(att.length, 1);
+  assert.deepEqual([att[0].id, att[0].host, att[0].class], ["linkedin", "app.example.com", "auth"]);
+  const open = await cards();
+  assert.equal(open.length, 1, JSON.stringify(open));
+  assert.equal(open[0].id, "connectors:linkedin");
+  assert.equal(open[0].title, "Sign in to app.example.com again");
+  assert.match(open[0].detail, /sign in to app\.example\.com again/);
+  assert.deepEqual(open[0].answer, { tool: "connectors.connection.check", input: { id: "linkedin" }, fill: [] });
+  assert.deepEqual(open[0].answers.map((/** @type {any} */ a) => a.label), ["Check it now"], "a Mac's own Chrome has no screen of ours to open");
+  assert.ok(!JSON.stringify(open).includes(F.SECRET_COOKIE) && !JSON.stringify(open).includes(F.CSRF), "no cookie and no token on a card");
+  assert.equal((await w.cli("waiting.count")).data.by_kind.signin, 1, "and the one list counts it");
+  // still signed out: checking does not clear it
+  assert.equal((await w.cli("connectors.connection.check", { id: "linkedin" })).data.light === "green" ? "green" : "red", "red", "the card's answer re-checks and it is still red");
+  assert.equal((await cards()).length, 1);
+  // the person signs in, the Connection works again: the card closes with its outcome
+  loggedIn = true;
+  const again = await w.cli("connectors.operation.run", { connection: "linkedin", operation: "search_people", input: { query: { query: "gamma labs" } } });
+  assert.equal(again.data && again.data.status, 200, JSON.stringify(again));
+  assert.deepEqual(await cards(), []);
+  const done = ((await w.cli("approvals.items")).data || {}).recent.filter((/** @type {any} */ c) => c.kind === "signin");
+  assert.equal(done.length, 1);
+  assert.equal(done[0].outcome, "signed in");
+  assert.deepEqual((await w.cli("connectors.site.attention")).data.sites, []);
+});
+
 test("the Capsule's Websites and Website operations views list the Connections and their operations, with the light and a rollback, through the existing views engine", async t => {
   const w = await world(t);
   await w.cli("connectors.site.connect", { site: ORIGIN, label: "LinkedIn" });
