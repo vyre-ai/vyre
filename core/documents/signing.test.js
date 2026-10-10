@@ -126,11 +126,11 @@ function catalogWithActions() {
 
 test("the Estate Kit's own matter: entering Engagement sends the engagement letter to the linked Contact, one yes, signing moves it to Drafting, and the signed copy rides that yes", async () => {
   const kit = JSON.parse(fs.readFileSync(new URL("../../records/kits/estate-planning/kit.json", import.meta.url), "utf8"));
-  const matter = kit.types.find((/** @type {any} */ t) => t.name === "matter");
+  const matter = kit.types.find((/** @type {any} */ t) => t.name === "matter"), contact = kit.types.find((/** @type {any} */ t) => t.name === "contact");
   const c = catalogWithActions();
   const f = signingFlow({ type: "matter", out_stage: "Engagement", signed_stage: "Drafting", template_id: 12, contact_field: "client" });
   /** @type {any[]} */ const calls = [];
-  const w = await world({ cat: { ...c, types: { ...c.types, matter } }, ports: {
+  const w = await world({ cat: { ...c, types: { ...c.types, matter, contact } }, ports: {
     call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ _resource, /** @type {any} */ input) => {
       calls.push({ action, input });
       return action === "documents.send" ? { submission: 8101, slug: "est123", url: "https://documents.harlow.vyre.run/sign/8101/est123", sent: { held: "gi_1" } } : { url: "https://x/signed/2.a.s", expires: null, sent: { held: "gi_2" } };
@@ -138,7 +138,8 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   } });
   await install(w, f);
   const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
-  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: "vyre://spc_x/contact/c-1", stage: "Intake" });
+  const dana = await w.kernel.records.create(alex, "contact", { name: "Dana Harlow", email: "dana@harlow.test" });
+  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: dana.urn, stage: "Intake" });
   await w.kernel.records.update(alex, "matter", rec.id, { stage: "Engagement" }, rec.version);
   await settle(w);
   let asks = 0;
@@ -154,7 +155,7 @@ test("the Estate Kit's own matter: entering Engagement sends the engagement lett
   assert.equal(calls.length, 0, "nothing goes before the yes");
   await answer();
   assert.deepEqual(calls.map(x => x.action), ["documents.send"]);
-  assert.deepEqual(calls[0].input, { template_id: 12, contact: "vyre://spc_x/contact/c-1" });
+  assert.deepEqual(calls[0].input, { template_id: 12, contact: dana.urn });
   w.kernel.inbound("documents.signed", ev({ submission: 8101, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   await answer();
