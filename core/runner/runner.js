@@ -23,6 +23,7 @@ import { createEgress } from "./egress.js";
 import { createSessionSync, restore } from "./sync.js";
 import { sandboxReader } from "./readerhost.js";
 import { place, deviceState } from "./placement.js";
+import { createUsage } from "./usage.js";
 
 const WATCHDOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "watchdog.js");
 /** What a lent session may reach when the Space has not said: the internet (a lent session that cannot clone or install is not usable). The one place to flip it. */
@@ -93,7 +94,7 @@ export async function reconcile(o) {
 /**
  * @param {{ platform?: "darwin"|"linux"|"win32", base: string, space: string, device: string,
  *   vault: any, sync: any, grants: () => { spaceAllows: boolean, memberAccepts: boolean },
- *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string) => Promise<void>|void,
+ *   limits?: any, server?: () => { available: boolean, hasRoom: boolean, why?: string }, requestServer?: (session: string, reason?: string) => Promise<{ moved?: boolean } | void> | { moved?: boolean } | void, usage?: ReturnType<typeof createUsage>,
  *   lenderCap?: "provider"|"internet", reader?: any, sessionState?: (session: string) => any, labels?: (session: string) => any, sealState?: (state: any) => any, verifyState?: (state: any) => boolean,
  *   driver?: any, state?: () => any, onEvent?: (e: any) => void, retryMs?: number, watchdog?: boolean, lockRetryMs?: number,
  *   setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, now?: () => number }} o
@@ -106,6 +107,8 @@ export function createRunner(o) {
   const emit = e => { try { o.onEvent?.(e); } catch {} };
   /** @type {string|null} */ let mnt = null;
   /** @type {Map<string, any>} */ const live = new Map();
+  const usage = o.usage || createUsage({ platform });
+  let paused = false;
   const deadlineFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".deadline");
   let gen = crypto.randomBytes(6).toString("hex");   // one per opening of the workspace; its watchdog belongs to it
   const winPrepFile = path.join(o.base, "run", crypto.createHash("sha256").update(o.space).digest("hex").slice(0, 16) + ".winprep");
@@ -196,12 +199,12 @@ export function createRunner(o) {
   function decide(opts = {}) {
     const g = o.grants();
     const why = unavailable(platform);
-    return place({ pinnedToServer: opts.pinnedToServer, spaceAllows: g.spaceAllows, memberAccepts: g.memberAccepts, state: (o.state || deviceState)(), limits: o.limits, runnerReady: why, server: o.server?.() });
+    return place({ pinnedToServer: opts.pinnedToServer, spaceAllows: g.spaceAllows, memberAccepts: g.memberAccepts, state: (o.state || deviceState)(), limits: typeof o.limits === "function" ? o.limits() : o.limits, runnerReady: why, server: o.server?.() });
   }
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
+   * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     const g = o.grants();
@@ -244,7 +247,7 @@ export function createRunner(o) {
     const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
     try { const stat = fs.readFileSync(`/proc/${child.pid}/stat`, "utf8"); fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19], session: s.session }), { mode: 0o600 }); } catch { try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, session: s.session }), { mode: 0o600 }); } catch {} }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile };
+    const h = { session: s.session, chat: s.chat || null, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile, released: false };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -286,12 +289,16 @@ export function createRunner(o) {
     live.delete(h.session);
     // Checkpoints happen only at a turn's end. A stop or a crash in the middle of a turn keeps the transcript it already
     // streamed but not the half-finished file changes, so the session continues from the last whole turn.
-    try { await h.queue; if (mnt) await h.sy.flush(); } catch {}
+    try { await h.queue; if (mnt && !h.released) await h.sy.flush(); } catch {}
+    usage.forget(Number(h.child.pid));
     try { await h.eg.close(); } catch {}
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
     if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     emit({ type: "stopped", session: h.session });
   }
+
+  /** Send a signal to a session's whole process group. */
+  function signal(h, sig) { try { process.kill(-Number(h.child.pid), sig); } catch { try { h.child.kill(sig); } catch { /* gone */ } } }
 
   /** Stop one session: ask nicely, then end it. */
   async function stop(session, _o = {}) {
@@ -318,12 +325,32 @@ export function createRunner(o) {
     async revoke() { await lease.revoke(); },
     /** Ask the vault again. If access ended while this computer was locked or offline, the workspace is deleted now. */
     async contact() { const r = await lease.acquire(); if (r.ok && !mnt) await open(); return r; },
-    /** "Move to server": a last checkpoint here (the one at the last turn), stop, and ask the space's server to resume from it. */
-    async moveToServer(session) {
-      await stop(session);
-      await o.requestServer?.(session);
-      emit({ type: "moved", session, to: "server" });
+    /**
+     * Hand a session to the space's server (R031-95 2.4): freeze it so it takes no new work, flush what it has already said (the last whole turn is the checkpoint), tell the home, and only when the home
+     * has taken it stop it for good. A home that holds the move back (inside the cooldown) or cannot be reached leaves the session running. A turn cut in the middle is re-run from its start on the server.
+     * @param {string} session @param {string} [reason] why, as the chat says it (placement-book.js REASONS)
+     */
+    async moveToServer(session, reason = "you") {
+      const h = live.get(session);
+      if (h) {
+        signal(h, "SIGSTOP");
+        try { await h.queue; if (mnt) await h.sy.flush(); } catch { /* the last acknowledged checkpoint is what the server resumes from */ }
+      }
+      let r;
+      try { r = await o.requestServer?.(session, reason); } catch (e) { if (h) signal(h, "SIGCONT"); throw e; }
+      if (r && r.moved === false) { if (h) signal(h, "SIGCONT"); return { moved: false, why: /** @type {any} */ (r).why }; }
+      if (h) { h.released = true; await stop(session); }
+      emit({ type: "moved", session, to: "server", reason });
+      return { moved: true };
     },
+    /** The sessions running here, with what each uses now. */
+    info() { return [...live.values()].map(h => ({ session: h.session, chat: h.chat, pid: h.child.pid, paused: paused, ...usage.sample(Number(h.child.pid)) })); },
+    /** Freeze every session here (Pause all) until `resume`. They keep their place; nothing is checkpointed or lost. */
+    pause() { paused = true; for (const h of live.values()) signal(h, "SIGSTOP"); },
+    resume() { paused = false; for (const h of live.values()) signal(h, "SIGCONT"); },
+    get paused() { return paused; },
+    /** The home no longer has this session at the epoch this computer holds: end it without writing anything more. */
+    async fence(session) { const h = live.get(session); if (!h) return false; h.released = true; await stop(session); emit({ type: "fenced", session }); return true; },
     status() { return { workspace: driver.name, notices: [LENDER_NETWORK_LINE, ...(driver.name === "gocryptfs" ? [SLOWER_LINE] : []), ...(swap.line ? [SWAP_LINE] : []), SIZES_LINE], swap: swap.swap || swap.hibernation, state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },

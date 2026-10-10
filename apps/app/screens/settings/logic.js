@@ -70,6 +70,7 @@ function all(/** @type {string} */ space) {
       ["Notifications", "What can reach you, and when", "/u/settings/notifications", "bell"],
       ["AI accounts", "Claude, OpenAI and others, with budgets", "/u/settings/ai", "key"],
       ["Connections", "Services, MCP servers, Google, GitHub", "/u/connections", "link"],
+      ["Outside agents", "Agents elsewhere that reach what you choose", "/u/settings/outside", "link"],
       ["Spending limits", "A daily cap per provider", "/u/settings/spend", "download"],
       ["Standing permissions", "What may go without asking", "/u/settings/permissions", "shield"],
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],

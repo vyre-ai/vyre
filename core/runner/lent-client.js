@@ -14,10 +14,16 @@ const BATCH_BYTES = 120 * 1024;
  */
 export function createLentClient(o) {
   let lease = "";
+  // The epoch the home gave each session when it was lent: every write names it, so a session the server took back cannot be written by this computer any more. A write the home refuses as moved (or as
+  // unknown, after a restart without it) tells the runner to stop that session here (`onFenced`): what it does next belongs to the server.
+  /** @type {Map<string, number>} */ const epochs = new Map();
+  /** @type {Set<(session: string) => void>} */ const fencedFns = new Set();
+  const fence = (/** @type {string} */ session, /** @type {any} */ e) => { if (e && (e.code === "conflict" || e.code === "not_found")) { epochs.delete(session); for (const fn of fencedFns) { try { fn(session); } catch { /* the runner's own */ } } } };
+  const write = async (/** @type {string} */ session, /** @type {() => Promise<any>} */ f) => { try { return await f(); } catch (e) { fence(session, e); throw e; } };
   const sync = {
     async appendTranscript(session, entries) {
       let acked = 0, batch = [], size = 0;
-      const flush = async () => { if (batch.length) { acked = (await o.invoke("lent.appendTranscript", [session, batch])).acked; batch = []; size = 0; } };
+      const flush = async () => { if (batch.length) { const b = batch; acked = (await write(session, () => o.invoke("lent.appendTranscript", [session, b, epochs.get(session)]))).acked; batch = []; size = 0; } };
       for (const e of entries) { const n = Buffer.byteLength(e.line) + 40; if (size + n > BATCH_BYTES) await flush(); batch.push(e); size += n; }
       await flush();
       return { acked };
@@ -29,10 +35,10 @@ export function createLentClient(o) {
       for (;;) { const page = await o.invoke("lent.getTranscript", [session, at, 500]); out.push(...page); if (page.length < 500) return out; at = page[page.length - 1].seq + 1; }
     },
     async putFile(session, rel, bytes) {
-      if (bytes === null) return o.invoke("lent.putFile", [session, rel, { deleted: true }]);
+      if (bytes === null) return write(session, () => o.invoke("lent.putFile", [session, rel, { deleted: true, epoch: epochs.get(session) }]));
       const b = Buffer.from(bytes), upload = crypto.randomBytes(12).toString("base64url"), total = Math.max(1, Math.ceil(b.length / CHUNK_BYTES));
       let r;
-      for (let i = 0; i < total; i++) r = await o.invoke("lent.putFile", [session, rel, { upload, index: i, total, b64: b.subarray(i * CHUNK_BYTES, (i + 1) * CHUNK_BYTES).toString("base64") }]);
+      for (let i = 0; i < total; i++) r = await write(session, () => o.invoke("lent.putFile", [session, rel, { upload, index: i, total, epoch: epochs.get(session), b64: b.subarray(i * CHUNK_BYTES, (i + 1) * CHUNK_BYTES).toString("base64") }]));
       return r;
     },
     async getFile(session, rel, version) {
@@ -40,7 +46,7 @@ export function createLentClient(o) {
       while (offset < size) { const r = await o.invoke("lent.getFile", [session, rel, version, { offset, len: CHUNK_BYTES }]); size = r.size; const b = Buffer.from(r.b64, "base64"); parts.push(b); offset += b.length; if (!b.length) break; }
       return new Uint8Array(Buffer.concat(parts));
     },
-    putCheckpoint: (session, cp) => o.invoke("lent.putCheckpoint", [session, cp]),
+    putCheckpoint: (session, cp) => write(session, () => o.invoke("lent.putCheckpoint", [session, cp, epochs.get(session)])),
     getCheckpoint: session => o.invoke("lent.getCheckpoint", [session]),
   };
   return {
@@ -59,7 +65,23 @@ export function createLentClient(o) {
       credential: req => o.invoke("leases.use", [{ session: req.session, route: req.route, method: req.method, path: req.path }]),
     },
     /** The Space's definition of the session, written at the home with the lender's cap already applied. */
-    spec: ({ session, chat, cap }) => o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}), ...(cap ? { cap } : {}) }]),
-    stop: session => o.invoke("lent.stop", [{ session }]),
+    spec: async ({ session, chat, cap }) => {
+      const r = await o.invoke("lent.start", [{ session, lease, device_key: o.deviceKey, ...(chat ? { chat } : {}), ...(cap ? { cap } : {}) }]);
+      if (r && Number.isInteger(r.epoch)) epochs.set(session, r.epoch);
+      return r;
+    },
+    stop: session => o.invoke("lent.stop", [{ session }]).finally(() => { epochs.delete(session); }),
+    /** The epoch the home gave this session, or undefined when it is not lent from here. */
+    epochOf: session => epochs.get(session),
+    /** The heartbeat: this computer's sessions with their epochs and use, and whether nothing holds them back now. The answer lists the sessions the home no longer has at that epoch (stopped here), what it offers back and what it wants done. */
+    beat: async ({ sessions, well }) => {
+      const r = await o.invoke("lent.beat", [{ sessions, ...(well === true ? { well: true } : {}) }]);
+      if (r && Array.isArray(r.fenced)) for (const s of r.fenced) fence(s, { code: "conflict" });
+      return r;
+    },
+    /** Hand a session to the server after its final checkpoint. */
+    release: async ({ session, reason }) => { const r = await o.invoke("lent.release", [{ session, epoch: epochs.get(session), reason }]); if (r && r.moved) epochs.delete(session); return r; },
+    /** Told when the home fences a session of this computer. */
+    onFenced: fn => { fencedFns.add(fn); return () => { fencedFns.delete(fn); }; },
   };
 }

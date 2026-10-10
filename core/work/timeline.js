@@ -16,6 +16,8 @@ const URN = /^vyre:\/\/[^/]+\/[a-z0-9][a-z0-9-]*\/[0-9a-f-]{36}$/;
 const kindOf = (type, d) => (type === "communication" ? (d.kind === "text" ? "text" : d.kind === "call" ? "call" : d.kind === "meeting" ? "meeting" : "email") : type === "task" ? "task" : type === "team-member" ? "person" : type === "chat-record" ? "chat" : type === "file-share" ? "file" : type === "flow-run" ? "flow" : /document|letter|contract|agreement/.test(type) ? "document" : "record");
 const dateOf = (/** @type {any} */ v) => { const n = typeof v === "number" ? v : Date.parse(String(v || "")); return Number.isFinite(n) ? n : 0; };
 const cap = (/** @type {string} */ x) => (x ? x[0].toUpperCase() + x.slice(1) : x);
+/** What a Flow run's state means to the person reading a record's story. */
+const FLOW_RUN_WORDS = { running: "running", waiting: "waiting for a person", paused: "paused", queued: "held", done: "done", failed: "did not finish", cancelled: "stopped" };
 /** One plain line for a row, in the partner's words: what happened and to what. @param {string} type @param {any} d the record's data @param {string} title */
 export function lineOf(type, d, title) {
   if (type === "communication") {
@@ -27,6 +29,7 @@ export function lineOf(type, d, title) {
   }
   if (type === "task") return d.status === "done" ? `Task done: ${title}` : d.status === "skipped" ? `Task skipped: ${title}` : d.status === "stuck" ? `Task stuck: ${title}` : `Task: ${title}`;
   if (type === "chat-record") return `Chat: ${title}`;
+  if (type === "flow-run") return `${d.title || "A Flow"}: ${FLOW_RUN_WORDS[String(d.state)] || "ran"}`;
   if (type === "team-member") return `${title} joined the team${d.role ? ` as ${d.role}` : ""}`;
   const state = String(d.status || d.state || "").toLowerCase();
   if (/signed|completed|filed|sent|approved/.test(state)) return `${title} ${state}`;
