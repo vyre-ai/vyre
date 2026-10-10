@@ -9,6 +9,7 @@
     "android.permission.USE_BIOMETRIC",
     "android.permission.USE_FINGERPRINT",
     "android.permission.VIBRATE",
+    "android.permission.WAKE_LOCK",
     "{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
   ],
   "debugOnly": [
@@ -23,6 +24,7 @@
     "android.permission.VIBRATE": "A short tap when you press a control, if the phone's settings allow it.",
     "{package}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION": "Added by the system library so only Vyre can receive its own broadcasts.",
     "android.permission.FOREGROUND_SERVICE": "Keeps the app's own connection to your home while the app is closed, so it can tell you when something needs you. The system shows an ongoing 'Vyre is connected' notice while it does, and you can turn it off.",
+    "android.permission.WAKE_LOCK": "Keeps the phone awake for the moment it takes to look at your home and make a notice while the app is closed. Held only while that check runs.",
     "android.permission.FOREGROUND_SERVICE_DATA_SYNC": "The kind of foreground service that keeps that connection: it syncs with your own home and nothing else."
   }
 }

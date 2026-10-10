@@ -104,3 +104,13 @@ test("notices with the app closed: the connection is kept when notices are allow
   assert.deepEqual(["on", "off", "ask", "denied", "unavailable"].map(s => keepTap(/** @type {any} */ (s))), ["turn-off", "turn-on", "ask", "open-settings", "nothing"]);
   for (const s of ["on", "off", "ask", "denied"]) assert.ok(KEEP_SAY[/** @type {"on"} */ (s)].line.length > 10 && !/push|token|Firebase|Google/i.test(KEEP_SAY[/** @type {"on"} */ (s)].line), `${s}: the line is plain and promises no push service`);
 });
+
+test("the service that runs the notice loop asks for the wake lock React Native holds for a headless task, or it crashes the app when it starts (found on the emulator)", () => {
+  const dir = new URL("../../modules/vyre-notify/android/src/main/", import.meta.url);
+  const manifest = fs.readFileSync(new URL("AndroidManifest.xml", dir), "utf8");
+  const service = fs.readFileSync(new URL("java/sh/vyre/notify/KeepAliveService.kt", dir), "utf8");
+  assert.match(service, /HeadlessJsTaskService/);
+  assert.match(manifest, /android\.permission\.WAKE_LOCK/);
+  const perms = JSON.parse(fs.readFileSync(new URL("../../android-permissions.json", import.meta.url), "utf8"));
+  assert.ok(perms.allowed.includes("android.permission.WAKE_LOCK") && perms.reasons["android.permission.WAKE_LOCK"], "allowed, with its reason in words");
+});
