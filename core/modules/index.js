@@ -645,6 +645,7 @@ const RELAY_ALLOWED = Object.freeze({
   memory: ["spaces.storage."],
   work: ["spaces.storage.", "vault.uses.for"], // vault.uses.for: the timeline asks, as the person looking
   publish: ["previews.folder"], // a files preview card publishes its own folder, as the person who pressed it
+  previews: ["publish.quick"], // the share sheet's "anyone with the link" is that same press: previews.share (a person's own act) hands the person to Publish, which holds it for one yes
   vault: ["flows.connections"], // which Flows use a Connection, as the person looking at the credential (R031-70)
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],

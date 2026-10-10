@@ -399,15 +399,17 @@ export default {
       input: obj({ name: str, folder: str, preview: str, project: str }, ["name"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);
-        // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path
+        // a preview card publishes its own folder: the person who pressed it, the home resolves the folder, a surface never sends a path. The share sheet's "anyone with the link" is the same press:
+        // the previews module carries the person's own call (relay), which previews.share takes only from a person.
+        const byPerson = isPerson(meta) || Boolean(meta && meta.relayedBy === "module:previews" && i.preview);
         if (!!i.folder === !!i.preview) throw refuse("name the folder to publish, or the preview to publish, not both and not neither", "bad_input");
         if (i.preview) {
-          if (!isPerson(meta)) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
+          if (!byPerson) throw refuse("publishing a preview is the person's: ask them to press Publish on its card", "denied");
           const f = await call("previews.folder", { id: String(i.preview) }, { relay: true });
           if (f.missing) throw refuse("this server has no previews to publish from", "no_previews");
           i = { ...i, folder: String(f.data.root) };
         }
-        const no = folderRefusal(String(i.folder || ""), { person: isPerson(meta) });
+        const no = folderRefusal(String(i.folder || ""), { person: byPerson });
         if (no) throw refuse(no.message, no.code);
         const made = await b.pub.create(b.chain, { name: i.name, source: { kind: "folder", ref: i.folder }, build: { image: "static" }, ...(i.project ? { project: i.project } : {}) });
         const pv = await serial(b, () => b.pub.preview(b.chain, made.id));
