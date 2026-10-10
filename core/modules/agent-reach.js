@@ -332,6 +332,7 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
+  ["threads.undo-edit", "puts a file back from what the person's own surface saw the session do: the person's own act, and the session is told"],
   ["ask.answer", "answers a question card in the person's own words: an assistant answering would decide for the person"],
   ["ask.cancel", "puts a question card away: the person's own act, the agent is told it was cancelled"],
   ["previews.keep", "looks after a preview as its maker or an admin, read from the person's own session; the body admits a person surface only (assistant management: BACKLOG 0.3.2)"],
