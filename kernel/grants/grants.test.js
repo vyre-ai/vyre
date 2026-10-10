@@ -703,7 +703,9 @@ test("lender's cap (reviewer-2 CAP-1..3): the lend proof binds the cap (stated o
   assert.equal(g.offers.capOf({ member: BOB, device: "dev_a" }), "provider");
   // CAP-3: lending the accepted computer again with another cap (or none) is refused with a plain message, never silently kept at the old one
   await assert.rejects(() => g.offers.lend(personChain(BOB), { ...base, network_cap: "internet" }, lp({ ...base, network_cap: "internet" })), /different network limit/);
-  await assert.rejects(() => g.offers.lend(personChain(BOB), base, lp(base)), /different network limit/);
+  // a lend that states no limit inherits the floor this computer was lent with (ruled 10 Oct): it is the same lend again, not a change, and the limit stays
+  await g.offers.lend(personChain(BOB), base, lp(base));
+  assert.equal(g.offers.capOf({ member: BOB, device: "dev_a" }), "provider", "stating none keeps the old limit");
   // CAP-2: the tightest live cap wins, whatever the order, and an acceptance that states none never loosens one that does
   const x = { side: "member_accepts", member: BOB, device: "dev_b", device_key: "KEY_B" };
   const offer = (o) => g.offers.offer(personChain(BOB), o, { presence: proof("grants.offer", o, `vyre://${SPACE}/offer/new`) });
