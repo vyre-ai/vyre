@@ -1,3 +1,4 @@
+# (touched so the Android build runs on work/app-glass-relay for the Glass relay proof)
 # The Android app built from the Expo app (apps/app): `expo prebuild`, then gradle on JDK 17. It replaces android.yml, which built the
 # old Kotlin app (deleted with the SwiftUI app: the one Expo app is the only phone app; the sideload key described in
 # docs/work/vault.md is used by native-android.yml).
