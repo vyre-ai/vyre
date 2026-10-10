@@ -122,7 +122,16 @@ async function kernelSession(req, kernelOf) {
   if (!t || t.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t)) return null;
   const k = kernelOf ? kernelOf() : null;
   if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return null;
-  try { await k.surfaces.verify(t); return t; } catch { return null; }
+  try { await k.surfaces.verify(t); return t; } catch { /* not this home's own: a team Space's, below */ }
+  // A TEAM Space's own session (a model running a team chat's turn, opened by that Space's kernel): checked by THAT Space's Surfaces door, never accepted on the body's say-so
+  const sp = teamSpaceOfToken(t);
+  if (!sp || sp === k.id.space) return null;
+  try { const h = k.spaces && k.spaces.for(sp); if (!h || h.hosted !== true || !h.surfaces) return null; await h.surfaces.verify(t); return t; } catch { return null; }
+}
+
+/** The Space a session token names in its body (read only to pick which Space's door checks it; the check itself is that door's). @param {string} token @returns {string | null} */
+function teamSpaceOfToken(token) {
+  try { const b = JSON.parse(Buffer.from(String(token).split(".")[0], "base64url").toString()); return typeof b.space === "string" && /^spc_[a-z2-7]{12,26}$/.test(b.space) ? b.space : null; } catch { return null; }
 }
 
 /** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
@@ -525,13 +534,31 @@ async function startLocked(opts, root, p, release) {
     // The stream reopens the open turns itself at its start so a turn it cannot resume says so in its chat; when no stream asks (it is off), the daemon reopens them once its modules are up.
     let reopenCalled = false;
     const reopenOpts = (/** @type {any} */ o) => ({ personChainFor, ...o });
+    // The open turns reopen after a restart in the engine they belong to: the home's own for a home chat, each TEAM Space's for that Space's (the stored turn says which: `space`).
+    const reopenAll = async (/** @type {any} */ o) => {
+      const home = await kernelSessions.reopenPending(reopenOpts({ ...o, filter: (/** @type {any} */ r) => !r.space }));
+      const resumed = [...home.resumed], gaveUp = [...home.gaveUp];
+      for (const sp of new Set(turns.all().map(([, r]) => r && r.space).filter(Boolean))) {
+        const mine = turns.all().filter(([, r]) => r && r.space === sp).map(([t]) => t);
+        try {
+          const e = teamEngine(String(sp));
+          const r = await e.sessions.reopenPending({ ...o, personChainFor: async (/** @type {string} */ p) => teamChain(e.kernel, p), filter: (/** @type {any} */ x) => x.space === sp });
+          for (const t of r.resumed) spaceOfThread.set(t, String(sp));
+          resumed.push(...r.resumed); gaveUp.push(...r.gaveUp);
+        } catch (err) {
+          // the team's Space is not here (retired, not hosted now): its turns are given up, said in their chats, and forgotten
+          for (const t of mine) { turns.delete(t); gaveUp.push(t); try { await o.onGiveUp?.(t, String(/** @type {any} */ (err).code || "failed")); } catch { /* the giving up stands */ } }
+        }
+      }
+      return { resumed, gaveUp };
+    };
     registry.deps.kernelThreads = Object.freeze({
       forThread: (/** @type {string} */ thread) => { const sp = spaceOfThread.get(thread); return sp && teamSessions.get(sp) ? teamSessions.get(sp).sessions.forThread(thread) : kernelSessions.forThread(thread); },
-      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return kernelSessions.reopenPending(reopenOpts(o)); },
+      reopenPending: (/** @type {any} */ o) => { reopenCalled = true; return reopenAll(o); },
     });
-    reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
+    reopenLater = () => { if (!reopenCalled) void reopenAll({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) }).catch(() => {}); };
     closeKernelSessions = async () => { for (const e of teamSessions.values()) await e.sessions.closeAll(); await kernelSessions.closeAll(); };
-    registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
+    registry.deps.kernelSessionCount = () => kernelSessions.list().length + [...teamSessions.values()].reduce((n, e) => n + e.sessions.list().length, 0); // how many are open now (a number, for tests and status: never a token or a way to open one)
     // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
     // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
     // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
@@ -590,7 +617,7 @@ async function startLocked(opts, root, p, release) {
         let agent = await kernelAgentOf(q);
         let project;
         if (!agent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) { agent = q.rec.slot; if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project; }
-        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
+        const s = await e.sessions.open({ chain, ...(chat ? { chat } : {}), ...(agent ? { agent } : {}), ...(project ? { project } : {}), ...(agent && agent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread, space: q.space });
         spaceOfThread.set(q.thread, q.space);
         return { token: e.sessions.tokenFor(s.id), end: () => e.sessions.end(s.id) };
       }
@@ -1416,7 +1443,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
-    const input = await body(req);
+    let input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
     if (pluginAgent) {
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
@@ -1521,6 +1548,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
+    // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
+    const turnSpace = typeof sessionToken === "string" ? teamSpaceOfToken(sessionToken) : null;
+    if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) { const def = registry.tools.get(name); if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) input = { ...input, space: turnSpace }; }
     let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
