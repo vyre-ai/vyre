@@ -37,7 +37,7 @@ export function describeFlow(flow, o = {}) {
       if (s.retry === false) bits.push("no retry"); else if (s.retry && s.retry.attempts) bits.push(`${s.retry.attempts} tries`);
       if (s.on_fail) bits.push(`if it fails: ${s.on_fail.steps.length} step${s.on_fail.steps.length === 1 ? "" : "s"}, then ${s.on_fail.then || "stop"}`);
       if (s.verify) bits.push(`${s.verify.essential === false ? "optional" : "essential"} check${s.verify.readback ? " (read back)" : ""}${s.verify.say ? `: ${s.verify.say}` : ""}`);
-      const what = s.type ? ` ${s.type}` : s.action ? ` ${s.action}` : s.connector ? ` ${s.connector}` : s.to ? ` ${s.to}` : s.if ? ` if ${s.if}` : "";
+      const what = s.type ? ` ${s.type}` : s.kind === "subflow" ? ` ${s.flow}` : s.action ? ` ${s.action}` : s.connector ? ` ${s.connector}` : s.to ? ` ${s.to}` : s.if ? ` if ${s.if}` : "";
       lines.push(`${pad}${s.id}: ${s.kind}${what}${s.label && s.label !== s.id ? ` "${s.label}"` : ""}${bits.length ? `  [${bits.join("; ")}]` : ""}`);
       for (const b of ["then", "else", "steps"]) if (Array.isArray(s[b]) && s[b].length) { lines.push(`${pad}  ${b}:`); walk(s[b], pad + "    "); }
     }
@@ -57,7 +57,7 @@ export function describeRun(run, flow) {
   /** @type {string[]} */ const lines = [`Run ${run.id} of ${flow ? flow.label || flow.name : run.flow} (v${run.version}), started by ${run.trigger ? run.trigger.kind : "a trigger"}${run.tainted ? ", from outside this Space" : ""}.`];
   lines.push(t.lines[0]);
   if (run.error && run.error.code && run.error.code !== "note" && ["failed", "paused"].includes(run.state)) lines.push(`Stopped at ${run.error.step}: ${run.error.code}: ${run.error.message}`);
-  if (run.state === "waiting" && run.waiting) lines.push(run.waiting.kind === "task" ? `Waiting for a person (step ${run.waiting.step.replace(/\?ask$/, "")}).` : run.waiting.kind === "time" ? "Waiting for a time." : `Waiting for ${run.waiting.event || "an event"}.`);
+  if (run.state === "waiting" && run.waiting) lines.push(run.waiting.kind === "task" ? `Waiting for a person (step ${run.waiting.step.replace(/\?ask$/, "")}).` : run.waiting.kind === "time" ? "Waiting for a time." : run.waiting.kind === "children" ? `Waiting for the runs it started (step ${run.waiting.step}); each shows in the runs list.` : `Waiting for ${run.waiting.event || "an event"}.`);
   if (run.state === "failed" || run.state === "paused") lines.push("You can retry from that step, skip it (if a later step reads its output, with a value to use), or stop the run.");
   if (run.state === "queued" && run.queued) lines.push(`Held (${run.queued.reason.replace(/_/g, " ")}); it starts, in order, when it can.`);
   const done = t.lines.length - 1;
@@ -65,7 +65,7 @@ export function describeRun(run, flow) {
   return lines;
 }
 
-const DID = { create: "made", update: "updated", upsert: "saved", remove: "removed", find: "looked up", pick: "picked", assign: "gave out", agent: "handed to an assistant", call: "ran", service: "called", stage: "moved", classify: "sorted", extract: "read", fn: "ran code for", ask: "asked for a yes on" };
+const DID = { create: "made", update: "updated", upsert: "saved", remove: "removed", find: "looked up", pick: "picked", assign: "gave out", agent: "handed to an assistant", call: "ran", subflow: "ran the Flow", service: "called", stage: "moved", classify: "sorted", extract: "read", fn: "ran code for", ask: "asked for a yes on" };
 
 /**
  * A run in plain words, at most four sentences: why it ran, what it did in the order done, and what happens next. No step data and no secrets: only step labels and one-word outcomes.
@@ -83,7 +83,7 @@ export function explainRun(run, flow) {
     if (!entry || key.includes("?") || key.includes("!") || entry.status !== "done") continue;
     const id = key.replace(/@.*$/, "");
     const meta = idx.get(id);
-    if (!meta || meta.kind === "decide" || meta.kind === "repeat" || meta.kind === "wait") continue;
+    if (!meta || meta.kind === "decide" || meta.kind === "repeat" || meta.kind === "parallel" || meta.kind === "branch" || meta.kind === "wait") continue;
     const verb = /** @type {Record<string, string>} */ (DID)[meta.kind] || "did";
     did.push(`${verb} ${meta.label}`);
     if (entry.output && entry.output.dry) sent.push(meta.label);
