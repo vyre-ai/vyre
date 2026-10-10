@@ -343,7 +343,9 @@ async function startLocked(opts, root, p, release) {
       try { const r = /** @type {any} */ (await registry.call("relay.devices.all", {}, "module:vyred")); const list = r && r.data && (Array.isArray(r.data) ? r.data : r.data.devices); if (Array.isArray(list)) nameMap = new Map(list.filter((/** @type {any} */ x) => x && x.id && x.name).map((/** @type {any} */ x) => [String(x.id), String(x.name)])); } catch { /* the names are a nicety */ }
       return nameMap;
     };
-    const runnerHost = () => ({
+    // `space` is the Space the asking module's kernel serves: the switchboard places a new chat of that Space (contracts/lent-spawn.md placeNew)
+    const runnerHost = (/** @type {any} */ a) => ({
+      space: a && a.space,
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
       // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
