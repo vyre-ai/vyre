@@ -105,7 +105,7 @@ export function registerDocuments(ctx) {
   const daysFor = (/** @type {any} */ i) => (i.days !== undefined ? i.days : linkDays());
 
   ctx.tool("documents.signed-link", {
-    description: "A link to a signed copy: { slug, days? }. It lasts until revoked unless days or the setting documents.signed_link_days says otherwise. Whoever holds it can open the file.",
+    description: "A link to a signed copy: { slug, days? }. Lasts until revoked unless days is given. Whoever holds it can open the file.",
     input: obj({ space: str, slug: str, days: { type: "integer" } }, ["slug"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
