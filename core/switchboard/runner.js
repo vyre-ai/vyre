@@ -124,7 +124,10 @@ export function run(o) {
   child.stderr.on("data", c => { err = (err + c).slice(-2000); });
   // A write after the child died raises EPIPE on stdin; it is reported through onExit instead.
   child.stdin.on("error", () => {});
-  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err); };
+  // Release Node's own handles on the child's stdio: an open pipe keeps this process alive after the OS process is gone when a grandchild still holds its other end.
+  const release = () => { for (const p of [child.stdout, child.stderr, child.stdin]) { try { p?.destroy(); } catch {} } };
+  child.once("close", release);
+  const done = (code, signal) => { if (exited) return; exited = true; o.onExit(code, signal, err); setTimeout(release, 2000).unref(); };
   child.on("exit", done);
   child.on("error", e => { err = e.message; done(null, null); });
 
@@ -168,7 +171,7 @@ export function run(o) {
      */
     stop(grace = 3000) {
       return new Promise(resolve => {
-        if (exited) return resolve(undefined);
+        if (exited) { release(); return resolve(undefined); }
         let done = false;
         const finish = () => {
           if (done) return;
