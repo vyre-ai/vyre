@@ -121,7 +121,7 @@ else if (role === "lender") {
     call: async (name, input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: { devices: [] } }),
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: DEVICE, deviceKey: DEVICE }) }) },
   };
-  seams.set(base, { heartbeatMs: BEAT_MS, now: () => Date.now() + faults.skew });
+  seams.set(base, { heartbeatMs: BEAT_MS, now: () => Date.now() + faults.skew, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   const run = (tool, input) => tools.get(tool).run(input, { caller: "cli" });
   const r = await run("runner.start", { space: SPACE, session });

@@ -48,7 +48,8 @@ async function world(/** @type {import("node:test").TestContext} */ t, over = {}
     call: async (/** @type {string} */ name, /** @type {any} */ input) => (name === "settings.get" ? { data: { value: { "runner.enabled": true, "runner.plugged_in_only": false, "runner.cpu_percent": 90, "runner.memory_mb": 8192 }[input.key] } } : { data: { devices: [] } }),
     kernel: { owner: BOB, chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }), for: () => ({ call }), runnerHost: () => ({ identity: async () => ({ deviceId: "eid_mac", deviceKey: "dev_laptop" }) }) },
   };
-  seams.set(root, { heartbeatMs: 200 });
+  // the machine's own load is not what is being tested (a busy test box would never be "well")
+  seams.set(root, { heartbeatMs: 200, state: () => ({ onPower: true, awake: true, cpuPct: 5, memPct: 5 }) });
   const h = await mod.start(ctx);
   t.after(async () => { seams.delete(root); await h.stop(); fs.rmSync(agentDir, { recursive: true, force: true }); });
   const person = { caller: "cli" };
