@@ -109,6 +109,13 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     /** @type {Record<string, string[]>} */ const skippedAll = {};
     let next = 0;
     // One process per file with a time limit: a file that keeps the process open after its tests (what --test-force-exit used to hide) is named and killed, not left to run the job out.
+    /** @type {Map<string, string[]>} */ const firstFailure = new Map();
+    /** The first `not ok` / failing-test line of a file's output and up to 20 lines after it (its error block); the tail of the output when there is none (a hang, a crash). @param {string} out */
+    const excerpt = out => {
+      const lines = out.split("\n");
+      const at = lines.findIndex(l => /^\s*(not ok\b|✖ (?!failing tests))/.test(l));
+      return (at >= 0 ? lines.slice(at, at + 21) : lines.slice(-12)).map(l => l.slice(0, 300)).filter((l, i, a) => l.trim() || i < a.length - 1);
+    };
     const worker = async () => {
       for (let i = next++; i < files.length; i = next++) {
         const f = files[i], out = path.join(dir, `${i}.json`);
@@ -131,6 +138,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
             if (fs.existsSync(out)) Object.assign(ran, readJson(out)); else ran[f] ??= 0;
             if (fs.existsSync(`${out}.skips`)) Object.assign(skippedAll, readJson(`${out}.skips`));
             if (timedOut) hung.push(f); else if (code) failed.push(f);
+            if (timedOut || code) firstFailure.set(f, excerpt(buf));
             if (timedOut || code) process.stdout.write(`\n===== ${timedOut ? "HUNG (killed after " + limit / 1000 + " s)" : "FAILED"}: ${f}\n${buf}\n`);
             else process.stdout.write(`ok   ${f}\n`);
             done(undefined);
@@ -141,6 +149,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     await Promise.all(Array.from({ length: Math.min(width, files.length) }, worker));
     fs.rmSync(dir, { recursive: true, force: true });
     // No file is allowed to be red: there is no list of known failures. A file that fails or does not finish fails the run.
+    // The first failing test of each red file with its error block, so a summary read alone says what broke (the whole output stays above, under "===== FAILED").
+    if (firstFailure.size) console.error("test-counts: the first failure of each red file:\n" + [...firstFailure].map(([f, lines]) => `  ${f}\n${lines.map(l => `    ${l}`).join("\n")}`).join("\n"));
     if (hung.length) console.error("test-counts: files that did not finish (an open handle or a test that never settles):\n  " + hung.join("\n  "));
     if (failed.length) console.error("test-counts: files that failed:\n  " + failed.join("\n  "));
     const skipBad = process.env.VYRE_MUST_RUN === "1" && fs.existsSync(MUST_RUN) ? mustRunProblems(skippedAll, readJson(MUST_RUN).tests || {}) : [];

@@ -291,7 +291,7 @@ test("a card rides two hops down (the tool names each module's send it files), s
 });
 
 /** A Flow whose one step calls an outward tool: define it, start it, say yes to its held act as the person, and give the daemon a moment. */
-async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** @type {any} */ input, resource = "vyre://space/billing") {
+async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** @type {any} */ input, resource = "vyre://space/billing", unattended = false) {
   const space = w.d.kernel.id.space;
   const host = w.d.registry.deps.flowsHost.get(space);
   const admin = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.owner, path: "direct", session: "s" });
@@ -301,6 +301,12 @@ async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** 
   assert.ok(def.data && def.data.ok, JSON.stringify(def));
   await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
   await w.d.registry.call("flows.start", { id: def.data.id }, "cli", await meta());
+  // a send to a recipient the Flow names goes out on the person's one yes at turn-on (approving the version): the run asks nobody
+  if (unattended) {
+    const run = await until(async () => { const r = (await w.d.registry.call("flows.runs", { id: def.data.id }, "cli", await meta())).data; return r && r.length && ["done", "failed"].includes(r[0].state) ? r[0] : null; }, `the Flow run for ${action} to finish without asking`);
+    assert.equal((await w.d.kernel.gateway.ask.list(admin, { state: ["needs_check"] })).filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act").length, 0, "no question was put to the person");
+    return run;
+  }
   // the run must be waiting on its question before the person answers it (an answer in the instant between the question and the wait is a race a person never wins)
   await until(async () => { const r = (await w.d.registry.call("flows.runs", { id: def.data.id }, "cli", await meta())).data; return r && r.length && r[0].state === "waiting"; }, `the Flow run for ${action} to wait on its question`);
   const task = await until(async () => (await w.d.kernel.gateway.ask.list(admin, { state: ["needs_check"] })).find((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.form.action === action), `the Flow's held act for ${action}`);
@@ -397,8 +403,8 @@ test("an e-mail from comms.send reaches a real mail account on one yes: the acco
   const encoded = fake.sent[0].data.split("\r\n\r\n").slice(1).join("").replace(/\s+/g, "");
   assert.equal(Buffer.from(encoded, "base64").toString(), input.body, "the words the person approved are the words that went out");
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
-  // the same through a Flow: the person's answer to the Flow's own question is the yes, and the second message goes out the same way
-  await flowStep(w, "comms.send", { via: "email", to: "jo@harlow.test", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms");
+  // the same through a Flow: the person's yes was giving the Flow its approval (the recipient is the one the Flow names), so the second message goes out with no question at all
+  await flowStep(w, "comms.send", { via: "email", to: "jo@harlow.test", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms", true);
   await until(() => fake.sent.length === 2, "the Flow's message reached the mail server");
   assert.deepEqual(fake.sent[1].rcpt, ["jo@harlow.test"]);
   assert.equal(await gateHeld(w), 0, "and nothing waits at the Gate after the Flow's yes");
@@ -423,7 +429,7 @@ test("an e-mail from comms.send reaches a firm's Gmail on one yes: the Google ac
   const logged = await until(async () => { const q = await w.d.kernel.gateway.records.query(w.chain, "communication", { page: { limit: 10 } }); return q.rows.find((/** @type {any} */ x) => x.data.kind === "email" && x.data.subject === input.subject); }, "the e-mail was logged on the client");
   assert.deepEqual((logged.data.contacts || []).map((/** @type {any} */ c) => c.urn), [dana.urn], "and it shows on the client it went to");
   // a Flow's own question is the yes here too
-  await flowStep(w, "comms.send", { via: "email", to: "jo@harlowlegal.com", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms");
+  await flowStep(w, "comms.send", { via: "email", to: "jo@harlowlegal.com", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms", true);
   await until(() => fake.mail.sent.length === 2, "the Flow's message reached Gmail");
   assert.equal(await gateHeld(w), 0);
 });

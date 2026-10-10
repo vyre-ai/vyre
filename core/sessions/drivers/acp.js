@@ -466,7 +466,7 @@ function runAcp(entry, known, o) {
   /** The floor, and the cwd confinement, for one client-side call. Throws an ACP error to send back. */
   async function gate(tool, input, file) {
     const v = floor ? floor({ tool, input, cwd }) : { decision: "deny", reason: "no security floor is attached to this session, so file and shell access is off" };
-    if (v && v.decision === "deny") throw Object.assign(new Error(String(v.reason || "the floor refused this")), { code: -32003 });
+    if (v && v.decision === "deny") throw Object.assign(new Error(String(v.reason || "the floor refused this")), { code: -32003, floorDenied: true });
     if (v && v.decision === "ask") {
       const rid = `acp-perm-${++askN}`;
       const okay = await new Promise(resolve => {
@@ -540,8 +540,15 @@ function runAcp(entry, known, o) {
     const p = m.params || {};
     if (m.method === "terminal/create") {
       const command = [p.command, ...(Array.isArray(p.args) ? p.args : [])].join(" ");
-      await gate("Bash", { command });
       const tid = `term-${++tn}`;
+      try { await gate("Bash", { command }); } catch (e) {
+        // A command the floor refuses is answered as a command that ran and failed, its output the reason, not as an error: Grok Build reads an error from terminal/create as "the user rejected it" and
+        // ENDS THE WHOLE TURN (stopReason cancelled, PermissionRejected; measured live 10 Oct, 5 of 6 turns where it went looking for a Vyre tool with a find over the disk). Nothing runs; the agent reads the
+        // refusal and goes on. A person's own "no" to a question is still an error: that is a rejection.
+        if (!(e && /** @type {any} */ (e).floorDenied)) throw e;
+        terminals.set(tid, { output: String(/** @type {Error} */ (e).message) + "\n", truncated: false, exit: { exitCode: 126, signal: null }, waiters: [], child: { kill() {}, pid: 0 }, limit: 1_000_000 });
+        return respond(m.id, { terminalId: tid });
+      }
       const env = { ...(o.env || {}), ...Object.fromEntries((Array.isArray(p.env) ? p.env : []).filter(e => e && typeof e.name === "string" && !/^(LD_|DYLD_|NODE_OPTIONS)/.test(e.name)).map(e => [e.name, String(e.value)])) };
       for (const k of secretEnv) delete env[k];
       const t = { output: "", truncated: false, exit: /** @type {any} */ (null), waiters: /** @type {any[]} */ ([]), child: /** @type {any} */ (null), limit: Number(p.outputByteLimit) || 1_000_000 };
