@@ -26,10 +26,13 @@
       { "name": "appmods.origin", "effect": "read", "reach": "modules" },
       { "name": "appmods.ticket", "effect": "write", "reach": "modules" },
       { "name": "appmods.drop", "effect": "write", "reach": "modules" },
-      { "name": "appmods.connection", "effect": "read", "reach": "anyone" }
+      { "name": "appmods.connection", "effect": "read", "reach": "anyone" },
+      { "name": "appmods.domain.add", "effect": "write", "reach": "person" },
+      { "name": "appmods.domain.remove", "effect": "write", "reach": "person" },
+      { "name": "appmods.domain.list", "effect": "read", "reach": "anyone" }
     ]
   },
-  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.started", "appmods.stopped", "appmods.restarted", "documents.signed", "documents.form-completed"], "on": ["vault.item-changed"] },
+  "watches": { "emits": ["appmods.installed", "appmods.removed", "appmods.domain-changed", "appmods.started", "appmods.stopped", "appmods.restarted", "documents.signed", "documents.declined", "documents.form-completed"], "on": ["vault.item-changed"] },
   "shows": { "cli": [] },
   "views": {
     "documents-waiting": {
@@ -57,5 +60,5 @@
       }
     }
   },
-  "teaches": {}
+  "teaches": { "tips": [{ "id": "own-address", "text": "Send signers to your own address, like sign.yourfirm.com. Ask your assistant: you add two records at your domain, Vyre does the rest.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.3.3", "docs": "using/documents.md#your-own-address-for-signing-pages" }] }
 }

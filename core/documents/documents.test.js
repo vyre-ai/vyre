@@ -163,7 +163,7 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
   const down = rig({ call: async tool => (tool === "spaces.self" ? {} : tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
   const e = await code(down.run("documents.send", { template_id: 12, email: "dana@harlow.test" }));
-  assert.equal(e.code, "not_found"); assert.match(e.message, /not running/);
+  assert.equal(e.code, "unavailable"); assert.match(e.message, /install or start it from Apps/, "and a missing app says what to do");
 });
 
 test("documents.send-signed makes the expiring link and emails it; the slug is checked before anything is made", async () => {

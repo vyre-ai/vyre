@@ -42,10 +42,30 @@ export const WhenSigned = defineFlow({
   ],
 });
 
+// A signer who declines is a fact the firm needs on the signer's timeline at once, not after the wait for the signature runs out.
+export const WhenDeclined = defineFlow({
+  name: "document_declined",
+  label: "File a declined document",
+  description: "When a signer declines, file the Document as Declined, linked to the signer's Contact by their e-mail, so the refusal shows on their timeline.",
+  trigger: { on: "event", event: "documents.declined" },
+  steps: [
+    step.pick("who", { type: "contact", where: "record.email == trigger.payload.email" }),
+    step.decide("link", {
+      if: "steps.who.found",
+      then: [
+        step.upsert("doc", { type: "document", match: { submission: expr("text(trigger.payload.submission)") }, set: { name: expr("trigger.payload.template"), status: "Declined", template: expr("trigger.payload.template"), signer_email: expr("trigger.payload.email"), submission: expr("text(trigger.payload.submission)"), contact: { urn: expr("steps.who.record.urn") } } }),
+      ],
+      else: [
+        step.upsert("doc_unlinked", { type: "document", match: { submission: expr("text(trigger.payload.submission)") }, set: { name: expr("trigger.payload.template"), status: "Declined", template: expr("trigger.payload.template"), signer_email: expr("trigger.payload.email"), submission: expr("text(trigger.payload.submission)") } }),
+      ],
+    }),
+  ],
+});
+
 export default defineKit({
   id: "documents",
-  version: 1,
+  version: 2,
   label: "Documents",
-  description: "A Document record for each document sent for signature, linked to the signer's Contact and the project, and a Flow that files the signed copy when it arrives.",
-  includes: [Contact, Document, WhenSigned],
+  description: "A Document record for each document sent for signature, linked to the signer's Contact and the project, and Flows that file the signed copy when it arrives and a refusal when a signer declines.",
+  includes: [Contact, Document, WhenSigned, WhenDeclined],
 });

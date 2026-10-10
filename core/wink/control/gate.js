@@ -217,9 +217,14 @@ export function createGate(o) {
    */
   function appsHost(req) {
     const ing = o.ingress;
-    if (!ing || !ing.apps || !ing.appsSuffix) return null;
+    if (!ing || !ing.apps) return null;
     const h = String(req.headers.host || "").toLowerCase().replace(/:\d+$/, "");
-    if (!h.endsWith(ing.appsSuffix)) return null;
+    // An own host (sign.firm.com) is an app host when its certificate is held here; like the others it must be the SNI the visitor sent.
+    if (hostCtx.has(h)) {
+      const sni = /** @type {any} */ (req.socket).servername;
+      return String(sni || "").toLowerCase() === h ? h : "";
+    }
+    if (!ing.appsSuffix || !h.endsWith(ing.appsSuffix)) return null;
     if (!APP_LABEL.test(h.slice(0, h.length - ing.appsSuffix.length))) return "";
     const sni = /** @type {any} */ (req.socket).servername;
     if (/** @type {any} */ (req.socket).encrypted && String(sni || "").toLowerCase() !== h) return "";
@@ -341,9 +346,11 @@ export function createGate(o) {
   /** @param {import("node:net").Socket} s @param {Buffer} bytes */
   function refuse(s, bytes) { try { s.end(bytes); } catch { /* gone */ } setTimeout(() => s.destroy(), 1000).unref(); }
 
+  /** The certificates of own hosts the person pointed here, by host (lower case): picked by the SNI of the handshake, the Space's own certificate for every other name. @type {Map<string, import("node:tls").SecureContext>} */
+  const hostCtx = new Map();
   /** @type {import("node:http").Server} */
   const server = o.tls
-    ? https.createServer({ cert: o.tls.cert, key: o.tls.key, minVersion: "TLSv1.2", ALPNProtocols: ["http/1.1"], handshakeTimeout: L.handshakeMs, maxHeaderSize: L.maxHeaderBytes })
+    ? https.createServer({ cert: o.tls.cert, key: o.tls.key, SNICallback: (/** @type {string} */ name, /** @type {Function} */ cb) => cb(null, hostCtx.get(String(name || "").toLowerCase()) || undefined), minVersion: "TLSv1.2", ALPNProtocols: ["http/1.1"], handshakeTimeout: L.handshakeMs, maxHeaderSize: L.maxHeaderBytes })
     : http.createServer({ maxHeaderSize: L.maxHeaderBytes });
   server.headersTimeout = L.headersMs;
   // With app hosts an upload may take minutes: the request timer is longer and the plain paths get their short one back per request (below).
@@ -468,6 +475,14 @@ export function createGate(o) {
       /** @type {import("node:https").Server} */ (server).setSecureContext({ cert: t.cert, key: t.key });
       pin = next;
     },
+    /** Serve an own host with its own certificate (a new or renewed one replaces the last). @param {string} host @param {{ cert: string, key: string }} t */
+    setHostTls(host, t) {
+      if (!o.tls) throw new Error("this gate does not serve TLS");
+      hostCtx.set(String(host).toLowerCase(), tls.createSecureContext({ cert: t.cert, key: t.key }));
+    },
+    /** Stop serving an own host: its next handshake gets the Space's certificate and its requests the plain 404. @param {string} host */
+    dropHostTls(host) { hostCtx.delete(String(host).toLowerCase()); },
+    hosts: () => [...hostCtx.keys()],
     stats: () => ({ ...stats, open: open.size, blockedAddrs: blocked.size }),
     block, isBlocked, reportLog,
     unblock(/** @type {string} */ addr) { blocked.delete(addrKey(addr)); },

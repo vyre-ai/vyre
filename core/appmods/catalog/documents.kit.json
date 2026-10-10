@@ -2,9 +2,9 @@
   "kind": "kit",
   "sdk": 1,
   "id": "documents",
-  "version": 1,
+  "version": 2,
   "label": "Documents",
-  "description": "A Document record for each document sent for signature, linked to the signer's Contact and the project, and a Flow that files the signed copy when it arrives.",
+  "description": "A Document record for each document sent for signature, linked to the signer's Contact and the project, and Flows that file the signed copy when it arrives and a refusal when a signer declines.",
   "types": [
     {
       "name": "contact",
@@ -247,6 +247,89 @@
                 },
                 "file": {
                   "expr": "trigger.payload.files[0].path"
+                },
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "format": 1,
+      "authorship": "kit",
+      "name": "document_declined",
+      "label": "File a declined document",
+      "description": "When a signer declines, file the Document as Declined, linked to the signer's Contact by their e-mail, so the refusal shows on their timeline.",
+      "trigger": {
+        "on": "event",
+        "event": "documents.declined"
+      },
+      "steps": [
+        {
+          "id": "who",
+          "kind": "pick",
+          "type": "contact",
+          "where": "record.email == trigger.payload.email"
+        },
+        {
+          "id": "link",
+          "kind": "decide",
+          "if": "steps.who.found",
+          "then": [
+            {
+              "id": "doc",
+              "kind": "upsert",
+              "type": "document",
+              "match": {
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              },
+              "set": {
+                "name": {
+                  "expr": "trigger.payload.template"
+                },
+                "status": "Declined",
+                "template": {
+                  "expr": "trigger.payload.template"
+                },
+                "signer_email": {
+                  "expr": "trigger.payload.email"
+                },
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                },
+                "contact": {
+                  "urn": {
+                    "expr": "steps.who.record.urn"
+                  }
+                }
+              }
+            }
+          ],
+          "else": [
+            {
+              "id": "doc_unlinked",
+              "kind": "upsert",
+              "type": "document",
+              "match": {
+                "submission": {
+                  "expr": "text(trigger.payload.submission)"
+                }
+              },
+              "set": {
+                "name": {
+                  "expr": "trigger.payload.template"
+                },
+                "status": "Declined",
+                "template": {
+                  "expr": "trigger.payload.template"
+                },
+                "signer_email": {
+                  "expr": "trigger.payload.email"
                 },
                 "submission": {
                   "expr": "text(trigger.payload.submission)"
