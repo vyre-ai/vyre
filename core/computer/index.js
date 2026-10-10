@@ -60,14 +60,20 @@ export default {
       return out;
     }
 
-    /** Who the model is: its own agent, or (for a person's surface) the agent they name. */
-    function agentOf(/** @type {any} */ input, /** @type {any} */ meta) {
+    /** Who the model is: its own agent, the person's assistant (for a plain chat, which names no agent: it works on the person's own assistant's computer), or (for a person's surface) the agent they name. */
+    async function agentOf(/** @type {any} */ input, /** @type {any} */ meta) {
       const self = agentClaim(String(meta && meta.caller || ""));
       if (self) {
         if (input.agent && input.agent !== self) throw fail("denied", `${self} can only use its own computer, not ${input.agent}'s`);
         return self;
       }
-      if (/^(mcp|harness)\b/.test(String(meta && meta.caller || ""))) throw fail("denied", "a model session that names no agent has no computer of its own");
+      if (/^(mcp|harness)\b/.test(String(meta && meta.caller || ""))) {
+        const list = await ask("agents.list", {});
+        const found = (Array.isArray(list) ? list : list && Array.isArray(list.agents) ? list.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant" && AGENT.test(String(x.name)));
+        if (!found) throw fail("denied", "a model session that names no agent has no computer of its own, and this install has no assistant to lend its computer");
+        if (input.agent && input.agent !== found.name) throw fail("denied", `a plain chat works on its person's assistant's computer (${found.name}), not ${input.agent}'s`);
+        return String(found.name);
+      }
       return input.agent ? String(input.agent) : null;
     }
 
@@ -160,7 +166,7 @@ export default {
       effect: "write", callers: CALLERS,
       run: async (/** @type {any} */ input, /** @type {any} */ meta = {}) => {
         const action = String(input.do);
-        const agent = agentOf(input, meta);
+        const agent = await agentOf(input, meta);
         const all = await targets(meta);
         let picked = resolveTarget(input.on, all);
         if (!picked.ok) {

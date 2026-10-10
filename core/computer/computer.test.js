@@ -50,7 +50,12 @@ test("no name is the cloud computer, as the caller's own agent; the engine's inp
 test("a model may use only its own agent's computer", async () => {
   const b = await boot({ macs: MACS });
   await assert.rejects(b.run({ do: "look", agent: "juno" }), /can only use its own computer/);
-  await assert.rejects(b.run({ do: "look" }, "mcp"), /names no agent/);
+  await assert.rejects(b.run({ do: "look" }, "mcp"), /has no assistant to lend/, "a plain chat with no assistant on the install has no computer");
+  const withAssistant = await boot({ macs: MACS, answers: { "agents.list": [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] } });
+  const plain = await withAssistant.run({ do: "open", url: "https://example.org/x", screen: true }, "mcp");
+  assert.equal(plain.computer, "Cloud computer");
+  assert.deepEqual(withAssistant.calls.find(c => c.tool === "chrome.open").input, { url: "https://example.org/x", agent: "juno" }, "a plain chat works on the person's assistant's cloud computer");
+  await assert.rejects(withAssistant.run({ do: "look", agent: "kit" }, "mcp"), /not kit's/);
   assert.equal((await b.run({ do: "look", agent: "juno" }, "cli")).engine, "chrome.snapshot", "a person's surface may name the agent");
 });
 
