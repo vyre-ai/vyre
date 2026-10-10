@@ -93,7 +93,7 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
     let urn = String(i.record || "");
     if (!urn && i.project) {
       const p = ((await k.records.query(chain, "project", { filter: { field: "slug", op: "eq", value: String(i.project) }, page: { limit: 1 } })).rows || [])[0];
-      if (!p) throw Object.assign(new Error("no such project"), { code: "not_found" });
+      if (!p) throw Object.assign(new Error("no such project (projects.list shows them)"), { code: "not_found" });
       urn = p.urn;
     }
     if (!URN.test(urn)) throw Object.assign(new Error("name a record (its urn) or a project"), { code: "bad_input" });
@@ -103,14 +103,14 @@ export function createTimeline({ kernelOf, hub, inChat, me, vaultUses }) {
   /** @param {any} chain @param {{ chat: string, record?: string | null, shared?: boolean }} i */
   async function link(chain, i) {
     const chat = String(i.chat);
-    if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+    if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
     const rec = await hub().chatRecord(chat);
-    if (!rec) throw Object.assign(new Error("no record of that chat"), { code: "not_found" });
+    if (!rec) throw Object.assign(new Error("no record of that chat (work.chat.list shows the chats you may see)"), { code: "not_found" });
     /** @type {any} */ const patch = {};
     if (i.record !== undefined) {
       if (i.record !== null && !URN.test(String(i.record))) throw Object.assign(new Error("name the record by its urn"), { code: "bad_input" });
       // the person must be able to read the record they link a chat to
-      if (i.record !== null) { const [, , , type, id] = String(i.record).split("/"); const got = await kernelOf().records.get(chain, type, id).catch(() => null); if (!got) throw Object.assign(new Error("no such record"), { code: "not_found" }); }
+      if (i.record !== null) { const [, , , type, id] = String(i.record).split("/"); const got = await kernelOf().records.get(chain, type, id).catch(() => null); if (!got) throw Object.assign(new Error("no such record: check the address (urn) you gave, and that you may read it"), { code: "not_found" }); }
       patch.about = i.record === null ? null : { urn: String(i.record) };
       if (i.record === null) patch.shared = false;
     }

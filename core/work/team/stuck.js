@@ -25,7 +25,7 @@ export function createStuckWatch({ kernel, chainOf, detectChain = null, clock = 
   function track(task, { session = true } = {}) {
     tasks.set(task.id, { task, last: clock(), fails: new Map(), session, waiting: null, moved: false });
   }
-  const get = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw Object.assign(new Error("not a watched task"), { code: "not_found" }); return t; };
+  const get = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw Object.assign(new Error("not a watched task; check the task id"), { code: "not_found" }); return t; };
 
   /**
    * Move the task to stuck, through the kernel, as its doer. The fix is text only.

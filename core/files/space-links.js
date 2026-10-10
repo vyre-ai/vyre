@@ -57,9 +57,9 @@ export function registerSpaceLinks(ctx, o = {}) {
       const days = i.days === undefined ? DEFAULT_DAYS : i.days;
       if (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) throw refuse(`a link lasts 1 to ${MAX_DAYS} days`, "bad_input");
       const d = await door.open(i, meta);
-      if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+      if (!d.gateway.drive) throw refuse("this Space has no Drive yet; ask the owner or an admin of the Space", "unavailable");
       const bytes = await d.gateway.drive.get(d.chain, p, { version: i.version ?? null, maxBytes: MAX_UPLOAD });
-      if (bytes.length > MAX_UPLOAD) throw refuse(`a shared file is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a shared file is at most ${MAX_UPLOAD / 1048576} MB; share a smaller file`, "too_large");
       sweep();
       const held = /** @type {any} */ (open().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM files_links WHERE bytes IS NOT NULL").get());
       if (held.n >= MAX_LINKS) throw refuse(`at most ${MAX_LINKS} links can be live at once; revoke one first`, "too_many");
@@ -85,7 +85,7 @@ export function registerSpaceLinks(ctx, o = {}) {
     const code = String(i.code ?? "");
     if (!CODE.test(code)) throw refuse("that is not a link code", "bad_input");
     const r = open().prepare("UPDATE files_links SET revoked_at = ?, bytes = NULL WHERE code = ? AND revoked_at IS NULL").run(now(), code);
-    if (!r.changes) throw refuse("no such link, or it is already revoked", "not_found");
+    if (!r.changes) throw refuse("no such link, or it is already revoked; check the code you were given", "not_found");
     return { revoked: true };
   });
 

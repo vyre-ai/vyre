@@ -31,7 +31,7 @@ export function registerDocuments(ctx) {
   /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any) => Promise<any>} fn @param {any} [more] */
   const tool = (name, description, input, fn, more = {}) => ctx.tool(name, { description, input, callers: CALLERS, ...more, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
-    if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+    if (!d.gateway.drive) throw refuse("this Space has no Drive yet: ask the owner or an admin to set one up", "unavailable");
     return fn(i || {}, d);
   } });
   const pathOf = (/** @type {string} */ p) => { try { return safePath(p); } catch { throw refuse("that is not a path in the Drive", "bad_input"); } };
@@ -44,7 +44,7 @@ export function registerDocuments(ctx) {
     obj({ space: str, name: str, base64: str }, ["name", "base64"]), async (i, d) => {
       const name = nameOf(i.name), text = String(i.base64 ?? "");
       if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
-      if (Math.floor(text.length / 4) * 3 > MAX_BYTES + 3) throw refuse(`a template is at most ${MAX_BYTES / 1048576} MB`, "too_large");
+      if (Math.floor(text.length / 4) * 3 > MAX_BYTES + 3) throw refuse(`a template is at most ${MAX_BYTES / 1048576} MB: make it smaller and add it again`, "too_large");
       const bytes = Buffer.from(text, "base64");
       const p = placeholders(bytes);
       const r = await d.gateway.drive.put(d.chain, templatePath(name), new Uint8Array(bytes), { base: null });
@@ -65,7 +65,7 @@ export function registerDocuments(ctx) {
   tool("documents.template.get", "One template and what it asks for: { name, version?, space? } -> { name, version, placeholders, loops }.", obj({ space: str, name: str, version: { type: "integer" } }, ["name"]), async (i, d) => {
     const name = nameOf(i.name), p = templatePath(name);
     const version = i.version ?? (await latest(d, p));
-    if (!version) throw refuse(`no template named ${name}`, "not_found");
+    if (!version) throw refuse(`no template named ${name} (documents.template.list shows them)`, "not_found");
     const bytes = Buffer.from(await d.gateway.drive.get(d.chain, p, { version, maxBytes: MAX_BYTES }));
     return { name, version, ...(({ names, loops, loopFields }) => ({ placeholders: names, loops, loopFields }))(placeholders(bytes)) };
   }, { effect: "read" });
@@ -74,7 +74,7 @@ export function registerDocuments(ctx) {
     obj({ space: str, template: str, values: { type: "object" }, records: { type: "object" }, name: str, project: str, contact: str, format: { type: "string", enum: ["docx", "pdf"] }, version: { type: "integer" } }, ["template"]), async (i, d) => {
       const tname = nameOf(i.template), tpath = templatePath(tname);
       const tver = i.version ?? (await latest(d, tpath));
-      if (!tver) throw refuse(`no template named ${tname}`, "not_found");
+      if (!tver) throw refuse(`no template named ${tname} (documents.template.list shows them)`, "not_found");
       const tbytes = Buffer.from(await d.gateway.drive.get(d.chain, tpath, { version: tver, maxBytes: MAX_BYTES }));
       /** @type {Record<string, any>} */ const values = { ...(i.values && typeof i.values === "object" && !Array.isArray(i.values) ? i.values : {}) };
       // Records named by reference give their fields under their alias, read under the caller's own grants. One the caller may not see is missing, and said so.
@@ -93,7 +93,7 @@ export function registerDocuments(ctx) {
       const scope = i.project ? SLUG(String(i.project)) : "general";
       const title = String(i.name || tname).replace(/\s+/g, " ").trim().slice(0, 100);
       const path = pathOf(`Documents/${scope}/${SLUG(title)}-${sha256.slice(0, 8)}.${format}`);
-      if (out.length > 8 * 1024 * 1024) throw refuse("the document is more than 8 MB; it was not filed", "too_large");
+      if (out.length > 8 * 1024 * 1024) throw refuse("the document is more than 8 MB; it was not filed: make it smaller and generate it again", "too_large");
       const put = await d.gateway.drive.put(d.chain, path, new Uint8Array(out), { base: null });
       const rec = await filed(d, { name: title, status: "Draft", template: tname, template_version: tver, file: path, sha256, source: "generated", ...(i.contact ? { contact: String(i.contact) } : {}), ...(i.project ? { project: String(i.project) } : {}) });
       ctx.events.emit("documents.generated", { path, format, template: tname, template_version: tver, record: rec || null });
@@ -207,7 +207,7 @@ export function registerDocuments(ctx) {
       await door.open(i || {}, meta);
       const want = Number(i.submission);
       const q = (await waitingRequests()).find(x => x.submission === want);
-      if (!q) throw refuse("that document is not waiting for a signature (it may be signed or have lapsed)", "not_found");
+      if (!q) throw refuse("that document is not waiting for a signature (it may be signed or have lapsed): send it for signature again with documents.send if it still needs one", "not_found");
       if (!q.email) throw refuse("that request has no email address to send to", "bad_input");
       const text = String(i.note || "").trim();
       if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");
@@ -238,7 +238,7 @@ export function registerDocuments(ctx) {
 
   ctx.tool("documents.signing.flow", {
     description: "The Flow that signs a document from a stage: { type, out_stage, signed_stage, template_id, email_field or contact_field, name_field?, wait_days? }. Creates nothing.",
-    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, contact_field: str, name_field: str, submission_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
+    input: obj({ type: str, out_stage: str, signed_stage: str, template_id: { type: "integer" }, email_field: str, contact_field: str, name_field: str, submission_field: str, signed_field: str, wait_days: { type: "integer" }, subject: str }, ["type", "out_stage", "signed_stage", "template_id"]),
     callers: CALLERS, effect: "read",
     run: async (/** @type {any} */ i) => ({ flow: signingFlow(i || {}) }),
   });

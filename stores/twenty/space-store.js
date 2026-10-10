@@ -108,11 +108,27 @@ export async function planStore(o) {
  * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
+/** What the first start is doing, in words a person can read, for each phase the provisioning reports (stores/twenty/provision.js `phase`). */
+export const PHASE_WORDS = Object.freeze([
+  [/^reach/, "checking that it is running"], [/^pull images/, "downloading it (the first time only)"], [/^start database/, "starting its database"],
+  [/^start Records/, "starting Records (the first start takes a few minutes)"], [/^workspace and key/, "setting up its workspace"],
+]);
+/** The sentence for a store still starting: where it is and how long it has been. @param {string | undefined} phase @param {number} sinceMs */
+export function startingWords(phase, sinceMs) {
+  const doing = phase ? (PHASE_WORDS.find(([re]) => re.test(phase)) || [null, phase])[1] : "getting ready";
+  const secs = Math.round(sinceMs / 1000);
+  const took = secs < 90 ? `${Math.max(1, secs)} second${Math.max(1, secs) === 1 ? "" : "s"}` : `${Math.round(secs / 60)} minutes`;
+  return `the record store is still starting: ${doing} (${took} so far)`;
+}
+
 export function createStoreFor(cfg) {
   const mode = cfg.mode ?? storeMode(process.env, { server: cfg.server });
   const log = cfg.log ?? (() => {});
+  /** @type {Map<string, { phase?: string, since: number }>} where each Space's first start is */
+  const progress = new Map();
   /** @type {any} */
   const open = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
+    if (!progress.has(space)) progress.set(space, { since: Date.now() });
     const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
     const opts = { requireConfirm: !meta.personal && meta.accept_builtin_store !== true };
     if (!["sqlite", "auto", "twenty"].includes(mode)) throw new Error(`VYRE_STORE is sqlite, auto or twenty, not ${mode}`);
@@ -123,11 +139,11 @@ export function createStoreFor(cfg) {
     if (!chosen && mode === "sqlite") return undefined;
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
-      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")} (fix what it lists, then start the Space again)`), { code: "unavailable", reasons: pf.reasons });
       // Only a box too SMALL for Twenty may use the built-in store (the person was told at install, and a new Space asks first). A box that should run Twenty and cannot
       // (no Docker, the helper missing, another platform) is broken, and a broken box never falls back to SQLite quietly: the Space does not start and says why.
       const broken = pf.reasons.filter((/** @type {string} */ r) => !/^not enough (free memory|disk)/.test(r));
-      if (broken.length) throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${broken.join("; ")}`), { code: "unavailable", reasons: broken });
+      if (broken.length) throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${broken.join("; ")} (fix what it lists, then start the Space again)`), { code: "unavailable", reasons: broken });
       // a new Space the person has not agreed to put on the built-in store is not created: the answer comes first, never after
       if (opts.requireConfirm) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "sqlite", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -142,7 +158,7 @@ export function createStoreFor(cfg) {
     const runner = cfg.runner ?? (viaHelper ? helperRunner(name, { ...(cfg.helper || {}), log }) : realRunner());
     const reach = cfg.reach ?? (viaHelper || cfg.gatewayContainer ? "alias" : "ip");
     log(`store for ${space}: provisioning Twenty`);
-    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "auto", gatewayContainer: cfg.gatewayContainer ?? null, log });
+    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "auto", gatewayContainer: cfg.gatewayContainer ?? null, log, onPhase: (/** @type {string} */ name) => { const g = progress.get(space); if (g) g.phase = name; } });
     // the Space's key lives a year: checked now and every day, rotated well before the end, and a failure to rotate is loud (never a quiet countdown)
     const checkKey = async () => {
       const h = keyHealth({ home: twentyHome, space: name });
@@ -175,7 +191,7 @@ export function createStoreFor(cfg) {
   // `cfg.degrade` (the daemon sets it): a store that cannot be set up must not stop the daemon, or the supervisor starts it again forever. The Space gets a store that
   // answers `unavailable` in plain words, `<dir>/store-state.json` says why, and the setup is tried again in the background (30 s, doubling to 15 min, or now with `retry`).
   // A refusal that is an answer to a person (`needs_confirmation`) and a bad VYRE_STORE value still throw.
-  /** @type {Map<string, { store: any, dir: string, meta: any, attempts: number, reason: string, since: string, timer: any, running: boolean }>} */
+  /** @type {Map<string, { store: any, dir: string, meta: any, attempts: number, reason: string, since: string, timer: any, running: boolean, starting?: boolean }>} */
   const waiting = new Map();
   const stateFile = (/** @type {string} */ dir) => path.join(dir, "store-state.json");
   const writeState = (/** @type {any} */ w, /** @type {any} */ extra) => {
@@ -194,7 +210,7 @@ export function createStoreFor(cfg) {
       try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
       log(`store for ${space}: Records are available now`);
     } catch (e) {
-      w.attempts++; w.reason = /** @type {Error} */ (e).message;
+      w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
       const wait = backoff(w.attempts);
       writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
       log(`store for ${space}: still not available (${w.reason}); trying again in ${Math.round(wait / 1000)} s`);
@@ -214,8 +230,8 @@ export function createStoreFor(cfg) {
       clearTimeout(slow);
       if (got !== LATE) return got;
       const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: true };
-      w.reason = "the record store is still starting"; w.running = true;
-      if (!w.store) w.store = createDeferredStore({ reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      w.reason = "the record store is still starting"; w.running = true; w.starting = true;
+      if (!w.store) w.store = createDeferredStore({ reason: () => (w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : `the record store for this space is not available yet: ${w.reason}`), log });
       waiting.set(space, w);
       log(`store for ${space}: still starting; the server goes on and the store joins when it is ready`);
       opening.then(async (real) => {
@@ -224,7 +240,7 @@ export function createStoreFor(cfg) {
         try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
         log(`store for ${space}: Records are available now`);
       }, (e) => {
-        w.attempts++; w.reason = /** @type {Error} */ (e).message;
+        w.starting = false; w.attempts++; w.reason = /** @type {Error} */ (e).message;
         const wait = backoff(w.attempts);
         writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
         log(`store for ${space}: not available (${w.reason}); the server keeps running and tries again in ${Math.round(wait / 1000)} s`);
@@ -250,7 +266,7 @@ export function createStoreFor(cfg) {
   storeFor.retry = async (/** @type {string | undefined} */ space) => { for (const id of space ? [space] : [...waiting.keys()]) await attempt(id); return { waiting: [...waiting.keys()] }; };
   /** The home's kernel has started: a definition made now is a person's, and is refused while its store is away (a hosted Space's store keeps queueing). */
   storeFor.bootDone = () => { for (const w of waiting.values()) if (w.meta && w.meta.personal) w.store.bootDone(); };
-  storeFor.waiting = () => [...waiting].map(([space, w]) => ({ space, reason: w.reason, since: w.since, attempts: w.attempts }));
+  storeFor.waiting = () => [...waiting].map(([space, w]) => ({ space, reason: w.starting ? startingWords(progress.get(space)?.phase, Date.now() - (progress.get(space)?.since ?? Date.now())) : w.reason, since: w.since, attempts: w.attempts }));
   storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
 }

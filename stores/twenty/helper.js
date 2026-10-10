@@ -51,7 +51,7 @@ export async function askHelper(verb, name, o = {}) {
       if (st.state === "failed" || st.state === "busy") throw Object.assign(new Error(`the server could not ${verb} ${o.what ?? "this space's store"}: ${String(st.message || st.state)}`), { code: st.state === "busy" ? "unavailable" : "failed" });
       if (st.state === "running" && st.message !== last) { last = String(st.message || ""); if (o.log) o.log(`helper ${verb}: ${last}`); }
     }
-    if (now() > deadline) throw Object.assign(new Error(`the server did not answer a request to ${verb} ${o.what ?? "this space's store"} in time`), { code: "unavailable" });
+    if (now() > deadline) throw Object.assign(new Error(`the server did not answer a request to ${verb} ${o.what ?? "this space's store"} in time (wait a minute and try again)`), { code: "unavailable" });
     await sleep(o.pollMs ?? 1000);
   }
 }

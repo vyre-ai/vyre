@@ -34,7 +34,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
    * @param {string} share @param {string} rel @param {any} meta
    */
   async function resolve(share, rel, meta, { file = false } = {}) {
-    const nope = () => refuse("not available", "not_available");
+    const nope = () => refuse("not available (files.drive.status shows the shares on offer)", "not_available");
     const map = shares();
     if (!Object.prototype.hasOwnProperty.call(map, String(share))) throw nope();
     rel = String(rel || "").replace(/^\/+/, "");
@@ -194,10 +194,10 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
       if (g_ && g_.name) {
         // A generated item: found among what the asker may see, then read as this module (artifacts.media.read is not asker-scoped).
         const m = g_.media.find(x => x.name === g_.name);
-        if (!m) throw refuse("not available", "not_available");
+        if (!m) throw refuse("not available (files.drive.list shows the files you may read)", "not_available");
         const off = Math.max(0, Number(offset) || 0), len = clamp(Number(length) || CHUNK, 1, CHUNK);
         const r = await ctx.call("artifacts.media.read", { id: m.a.id, offset: off, length: len });
-        if (r.error) throw refuse("not available", "not_available");
+        if (r.error) throw refuse("not available (files.drive.list shows the files you may read)", "not_available");
         const d = r.data || {};
         return { share, path: "/" + String(rel).replace(/^\/+/, ""), kind: String(m.a.kind || "file"), mime: String(d.mime || mimeOf(m.a)), size: Number(d.size || bytesOf(m.a)),
           mtime: String(m.a.created_at || ""), offset: Number(d.offset ?? off), length: Number(d.length || 0), base64: String(d.bytes_b64 || ""), done: d.eof === true, virtual: true, artifact: String(m.a.id) };

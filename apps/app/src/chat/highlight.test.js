@@ -2,7 +2,7 @@
 import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { makeHighlight, addHighlight, removeHighlight, withQuotes, chipLabel, selectionIn, readSelection, MAX_HIGHLIGHTS, MAX_QUOTE } from "./highlight.js";
+import { fromOfNode, makeHighlight, addHighlight, removeHighlight, withQuotes, chipLabel, selectionIn, readSelection, MAX_HIGHLIGHTS, MAX_QUOTE } from "./highlight.js";
 
 test("a selection that is part of the item is the quote; one from elsewhere on the page is not, the whole item is", () => {
   const text = "The retainer is $4,200 and is due on signing.";
@@ -48,4 +48,13 @@ test("the chip says who it is from and the start of it; reading the selection of
   assert.ok(long && chipLabel(long).length <= "juno: ".length + 48);
   assert.equal(chipLabel(/** @type {any} */ ({ from: "", quote: "bare", id: "i", kind: "message" })), "bare");
   assert.equal(readSelection(), "");
+});
+
+test("a selection names the author of the message row it is in, and nobody when it is in no row", () => {
+  const row = { getAttribute: (/** @type {string} */ k) => (k === "data-from" ? " juno " : null) };
+  const el = { nodeType: 1, closest: (/** @type {string} */ sel) => (sel === "[data-from]" ? row : null) };
+  assert.equal(fromOfNode(el), "juno");
+  assert.equal(fromOfNode({ nodeType: 3, parentElement: el }), "juno", "a text node asks its parent element");
+  assert.equal(fromOfNode({ nodeType: 1, closest: () => null }), "");
+  assert.equal(fromOfNode(null), "");
 });

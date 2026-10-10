@@ -103,10 +103,10 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (current()) throw refuse("Claude Code on this computer is already granted; revoke it first to start over", "conflict");
         const ask = input && input.id ? db.prepare("SELECT * FROM pluginagent_asks WHERE id = ?").get(String(input.id)) : null;
-        if (input && input.id && !ask) throw refuse("no such request", "not_found");
+        if (input && input.id && !ask) throw refuse("no such request; Claude Code asks again with pluginagent.ask", "not_found");
         // An ask is granted only while it waits and is under 24 h old; the clock decides here, not whoever last swept the table.
         if (ask && (String(ask.state) === "expired" || (String(ask.state) === "waiting" && Number(ask.asked_at) < now() - ASK_MS))) throw refuse("that request ran out; Claude Code asks again on its own", "expired");
-        if (ask && String(ask.state) !== "waiting") throw refuse(`that request is ${String(ask.state)}`, "conflict");
+        if (ask && String(ask.state) !== "waiting") throw refuse(`that request is ${String(ask.state)}; Claude Code asks again with pluginagent.ask`, "conflict");
         const computer = ask ? String(ask.computer) : computerName();
         const agent = `claude-code-${slug(computer)}`;
         const k = ctx.kernel && ctx.kernel.grants ? ctx.kernel : null;

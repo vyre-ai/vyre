@@ -17,7 +17,7 @@ function ids() {
 
 /** @param {string} id @returns {any} */
 function stored(id) {
-  if (!/^[a-z][a-z0-9-]*$/.test(id) || !ids().includes(id)) throw Object.assign(new Error(`no Kit ${id} in the library`), { code: "not_found" });
+  if (!/^[a-z][a-z0-9-]*$/.test(id) || !ids().includes(id)) throw Object.assign(new Error(`no Kit ${id} in the library (flows.kit.library lists them)`), { code: "not_found" });
   return JSON.parse(fs.readFileSync(new URL(`${id}/kit.json`, ROOT), "utf8"));
 }
 

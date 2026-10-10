@@ -46,7 +46,7 @@ export default {
     ctx.tool("records.workspace.create", {
       description: "Internal, for the spaces module: confirm a new Space has its store. The built-in store is always there.", input: obj({ space: str, name: str, store: str }, ["space"]), callers: ["module"],
       run: async (/** @type {any} */ i) => {
-        if (i.store && i.store !== "builtin") throw refuse("that store is chosen when the Space is made; this one has the built-in store", "unavailable");
+        if (i.store && i.store !== "builtin") throw refuse("that store is chosen when the Space is made; this one has the built-in store; make a new Space to use another (spaces.create)", "unavailable");
         return { workspaceId: await door.spaceOf(i) };
       },
     });
@@ -137,7 +137,7 @@ export default {
     tool("records.forget.propose", "Ask the person to forget one record for good. Nothing is forgotten: a task goes to the person, who does it themselves with their presence. For an assistant, which may only propose.", obj({ urn: str, why: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
-      if (!rec) throw refuse("no such record", "not_found");
+      if (!rec) throw refuse("no such record: check the address (urn) you gave", "not_found");
       const me = d.chain.hops[0].actor;
       const task = await d.gateway.ask.request(d.chain, { title: `Forget ${u.type} ${u.id.slice(0, 8)}?`, record: i.urn, doer: me, output: { kind: "decision" }, note: `Proposed: forget this record for good. It cannot be undone.${i.why ? ` Why: ${String(i.why).slice(0, 300)}` : ""}` });
       return { proposed: true, task: task.id, message: "Nothing was forgotten. The person has a task to decide it with their presence." };
@@ -146,7 +146,7 @@ export default {
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
       const u = parseUrn(i.urn);
-      if (!d.gateway.seal) throw refuse("this Space has no sealing process", "unavailable");
+      if (!d.gateway.seal) throw refuse("this Space has no sealing process, so sealed values need another Space; ask the owner or an admin", "unavailable");
       let cls = i.class ? String(i.class) : "";
       if (!cls) {
         const def = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ t) => t.name === u.type);
@@ -157,12 +157,12 @@ export default {
       const put = await d.gateway.seal.put(d.chain, { record: i.urn, field: String(i.field), class: cls, value: String(i.value) });
       const ref = put && put.ref && typeof put.ref === "object" ? put.ref : put;
       const cur = await d.gateway.records.get(d.chain, u.type, u.id);
-      if (!cur) throw refuse("no such record", "not_found");
+      if (!cur) throw refuse("no such record: check the address (urn) you gave", "not_found");
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, { [String(i.field)]: ref }, cur.version) };
     }, byUrn);
     tool("records.reveal", "Show a sealed value to the person on their own screen, once. Human-only: the person's presence proof rides beside the request and the chain must be exactly one person.", obj({ urn: str, field: str, purpose: str }, ["urn", "field", "purpose"]), async (i, d) => {
       const u = parseUrn(i.urn);
-      if (!d.gateway.seal) throw refuse("this Space has no sealing process", "unavailable");
+      if (!d.gateway.seal) throw refuse("this Space has no sealing process, so sealed values need another Space; ask the owner or an admin", "unavailable");
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
       const v = rec && rec.data ? rec.data[String(i.field)] : undefined;
       if (!v || typeof v !== "object" || typeof v.ref !== "string") throw refuse("there is nothing sealed there to show", "not_found");

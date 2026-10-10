@@ -1,6 +1,7 @@
 // @ts-check
 // Signing from a stage (R032-05), end to end in the Flows test world: a record entering the stage asks Documents for a signature and emails the link; the signed event moves the record on.
 import "../../scripts/mac-test-guard.mjs";
+import fs from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "../../kernel/flows/testing/world.js";
@@ -17,7 +18,7 @@ function cat() {
   const c = catalog();
   const matter = { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "signature_submission", kind: "text", label: "Signature" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] };
   return { ...c, types: { ...c.types, matter },
-    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
+    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["comms.send"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true, covers: ["comms.send"] } } };
 }
 
 test("the builder refuses what it cannot make a Flow from", () => {
@@ -28,10 +29,11 @@ test("the builder refuses what it cannot make a Flow from", () => {
   const f = signingFlow(OPTS);
   assert.deepEqual(f.trigger, { on: "stage", type: "matter", stage: "Out for signature" });
   assert.equal(f.steps[1].then[1].action, "documents.send");
-  assert.equal(f.steps[1].then.filter((/** @type {any} */ x) => x.kind === "call").length, 2, "two acts that leave, two yeses: the request with its link, the signed copy");
+  assert.equal(f.steps[1].then.find((/** @type {any} */ x) => x.id === "copy").with, "send", "the signed copy rides the yes to the request");
+  assert.equal(f.steps[1].then.filter((/** @type {any} */ x) => x.kind === "call").length, 2, "two acts that leave: the request with its link, and the signed copy riding the same yes");
 });
 
-test("a matter entering the stage is sent for signature with one yes; the signed event moves it on; the signed copy goes by a second yes", async () => {
+test("a matter entering the stage is sent for signature with one yes; the signed event moves it on; the signed copy goes with no second yes", async () => {
   /** @type {any[]} */ const calls = [];
   const w = await world({ cat: cat(), ports: {
     call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ resource, /** @type {any} */ input) => {
@@ -66,9 +68,10 @@ test("a matter entering the stage is sent for signature with one yes; the signed
   w.kernel.inbound("documents.signed", ev({ submission: 4411, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
   await settle(w);
   assert.equal(mine(w, "matter")[0].data.stage, "Signed");
-  // the signed copy: a link made and emailed to the signer, one yes (it has no end unless the setting gives one)
+  // the signed copy: a link made and emailed to the signer, riding the first yes (it has no end unless the setting gives one)
   await answer();
-  assert.equal(asks, 2, "two yeses for the whole signing");
+  assert.equal(asks, 1, "one yes for the whole signing, days apart");
+  assert.equal(calls.length, 2);
   assert.deepEqual(calls[1], { action: "documents.send-signed", resource: "vyre://space/documents", input: { slug: "abc123", email: "dana@harlow.test" } });
   // a different submission moves nothing
   const again = mine(w, "matter")[0];
@@ -118,5 +121,47 @@ test("a record whose person is a linked Contact is sent by the link: no e-mail f
 function catalogWithActions() {
   const c = catalog();
   return { ...c, types: { ...c.types, matter: { ...c.types.matter, fields: [...c.types.matter.fields.filter((/** @type {any} */ f) => f.name !== "stage"), { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] } },
-    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true } } };
+    actions: { ...c.actions, "documents.send": { risk: "outward.send", label: "Send a document for signature", tool: true, covers: ["comms.send"] }, "documents.send-signed": { risk: "outward.send", label: "Email the signer their signed copy", tool: true, covers: ["comms.send"] } } };
 }
+
+test("the Estate Kit's own matter: entering Engagement sends the engagement letter to the linked Contact, one yes, signing moves it to Drafting, and the signed copy rides that yes", async () => {
+  const kit = JSON.parse(fs.readFileSync(new URL("../../records/kits/estate-planning/kit.json", import.meta.url), "utf8"));
+  const matter = kit.types.find((/** @type {any} */ t) => t.name === "matter"), contact = kit.types.find((/** @type {any} */ t) => t.name === "contact");
+  const c = catalogWithActions();
+  const f = signingFlow({ type: "matter", out_stage: "Engagement", signed_stage: "Drafting", template_id: 12, contact_field: "client", signed_field: "engagement_signed" });
+  /** @type {any[]} */ const calls = [];
+  const w = await world({ cat: { ...c, types: { ...c.types, matter, contact } }, ports: {
+    call: async (/** @type {any} */ _chain, /** @type {string} */ action, /** @type {string} */ _resource, /** @type {any} */ input) => {
+      calls.push({ action, input });
+      return action === "documents.send" ? { submission: 8101, slug: "est123", url: "https://documents.harlow.vyre.run/sign/8101/est123", sent: { held: "gi_1" } } : { url: "https://x/signed/2.a.s", expires: null, sent: { held: "gi_2" } };
+    },
+  } });
+  await install(w, f);
+  const alex = w.kernel.chainFor({ flow: "x", approver: ALEX, tainted: false, space: SPACE });
+  const dana = await w.kernel.records.create(alex, "contact", { name: "Dana Harlow", email: "dana@harlow.test" });
+  const danaUrn = dana.urn || `vyre://${SPACE}/contact/${dana.id}`;
+  const rec = await w.kernel.records.create(alex, "matter", { title: "Harlow estate plan", client: { urn: danaUrn }, stage: "Intake" });
+  await w.kernel.records.update(alex, "matter", rec.id, { stage: "Engagement" }, rec.version);
+  await settle(w);
+  let asks = 0;
+  const answer = async () => {
+    for (let i = 0; i < 6; i++) {
+      const held = w.kernel.tasks.filter((/** @type {any} */ x) => x.form && x.form.kind === "held_act" && x.state !== "done");
+      if (!held.length) break;
+      asks += held.length;
+      for (const t of held) w.kernel.completeTask(t.id, { outcome: "approved" });
+      await settle(w);
+    }
+  };
+  assert.equal(calls.length, 0, "nothing goes before the yes");
+  await answer();
+  assert.deepEqual(calls.map(x => x.action), ["documents.send"]);
+  assert.deepEqual(calls[0].input, { template_id: 12, contact: { urn: danaUrn } });
+  w.kernel.inbound("documents.signed", ev({ submission: 8101, email: "dana@harlow.test", template: "Engagement letter", at: "2026-10-10T10:00:00Z" }));
+  await settle(w);
+  await answer();
+  assert.equal(mine(w, "matter")[0].data.stage, "Drafting", "the Estate matter moved on to its Drafting stage, its own rule (signed before Drafting) satisfied");
+  assert.equal(mine(w, "matter")[0].data.engagement_signed, true);
+  assert.deepEqual(calls.map(x => x.action), ["documents.send", "documents.send-signed"]);
+  assert.equal(asks, 1, "one yes for both emails");
+});

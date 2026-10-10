@@ -45,11 +45,23 @@ export function chatState(c) {
   return "done";
 }
 
-/** What the row says under the title: who is in it, the project, the last line. @param {ChatRow} c */
-export function chatSub(c) {
+/**
+ * Where a chat runs when it is on a person's own computer, from runner.places ({ chat, computer, online } per lent run): "On <computer>", or "<computer> is offline". The server's own chats, a row with no
+ * computer name and a box without runner.places say nothing, so the list stays quiet unless something is lent. @param {any} places an array, or { places } @param {string} chat
+ */
+export function computerOf(places, chat) {
+  const rows = Array.isArray(places) ? places : Array.isArray(places?.places) ? places.places : [];
+  const row = rows.find((/** @type {any} */ r) => r && r.chat === chat && typeof r.computer === "string" && r.computer.trim());
+  if (!row) return "";
+  const name = row.computer.trim();
+  return row.online === false ? `${name} is offline` : `On ${name}`;
+}
+
+/** What the row says under the title: where it runs (only on a computer), who is in it, the project, the last line. @param {ChatRow} c @param {string} [on] computerOf's line */
+export function chatSub(c, on = "") {
   const who = [...c.people, ...c.agents];
   const names = who.length > 3 ? `${who.slice(0, 3).join(", ")} and ${who.length - 3} more` : who.join(", ");
-  return [c.asks > 0 ? `${c.asks} waiting on you` : "", names, c.project, c.line].filter(Boolean).join(" · ");
+  return [c.asks > 0 ? `${c.asks} waiting on you` : "", on, names, c.project, c.line].filter(Boolean).join(" · ");
 }
 
 /** The Chats list drops the Engineer's chat (it is reached from Settings, for an owner or an admin) and puts your assistant's pinned chat first, always. @param {readonly ChatRow[]} list */

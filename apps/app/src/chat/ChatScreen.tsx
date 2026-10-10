@@ -287,7 +287,7 @@ export function ChatScreen(p: ChatScreenProps) {
       <ChatHeader title={head.title} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} chat={p.sessionId} onOpenFiles={phone ? undefined : () => setFilesOpen(true)} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
-      <SelectionAsk onAsk={(t) => setHighlights((l) => addHighlight(l, makeHighlight({ from: "this chat", text: t, selected: t, kind: "message" })))} />
+      <SelectionAsk onAsk={(t, from) => setHighlights((l) => addHighlight(l, makeHighlight({ from: from || "this chat", text: t, selected: t, kind: "message" })))} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
@@ -374,6 +374,7 @@ export function ChatScreen(p: ChatScreenProps) {
 
       <StatusLine
         place={<PlacementChip placement={placed.placement} onMove={(to) => void placed.move(to)} />}
+        starting={placed.starting}
         presence={group.presenceLine()}
         state={meta.state}
         busy={meta.busy}

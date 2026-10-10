@@ -216,7 +216,7 @@ export function spaceDir(home, space) { need(space); return path.join(home, "spa
 /**
  * @typedef {{ home: string, space: string, runner?: Runner, image?: string, gatewayContainer?: string | null,
  *   reach?: "alias" | "ip" | "loopback", publish?: "loopback", pickPort?: () => Promise<number>, memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void,
- *   golden?: false | { dump: string, meta: GoldenMeta } }} ProvisionOptions
+ *   golden?: false | { dump: string, meta: GoldenMeta }, onPhase?: (name: string) => void }} ProvisionOptions
  * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, sha256: string, state?: Record<string, any> }} GoldenMeta
  * @typedef {{ space: string, dir: string, url: string, origin: string, keyFile: string, workspaceId: string, network: string,
  *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string, port?: number }} Provisioned
@@ -242,6 +242,7 @@ export async function provisionSpace(o) {
   try { const named = /^TWENTY_IMAGE_REF=(.*)$/m.exec(fs.readFileSync(path.join(dir, ".env"), "utf8"))?.[1]; if (named !== undefined && !isPinnedRef(named)) throw new Error(`This Space's env file names the Twenty image without a digest (${named.slice(0, 80)}): refusing to start it`); }
   catch (e) { if (/** @type {any} */ (e)?.code !== "ENOENT") throw e; }
   if (fs.existsSync(keyFile) && fs.existsSync(path.join(dir, "workspace.id"))) {
+    if (o.onPhase) o.onPhase("reach");
     const url = await reachUrl(o, runner, n, origin);
     const rp = o.reach === "loopback" ? readLoopbackPort(dir) : 0;
     return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim(), ...(rp ? { port: rp } : {}) };
@@ -266,7 +267,7 @@ export async function provisionSpace(o) {
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
   // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
-  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
+  const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); if (o.onPhase) o.onPhase(name); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
   await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
   await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
   await phase(localGolden ? "start Records (saved database, first healthy answer)" : "start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));

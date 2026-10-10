@@ -2,9 +2,7 @@
 // engagement letter from the record -> PDF -> Comms holds the email at the Gate -> ONE yes -> the signer opens the page as a stranger -> signed -> the signed copy is filed on the client -> the record moves to
 // the signed stage -> the timeline says each step in plain lines -> exactly one email went out.
 // Walked as the owners' real-daemon tests, each against the real thing it is about (a real DocuSeal in Docker, a real IMAP/SMTP mail server, the real relay, tunnel end and gate, a real Chrome as the signer,
-// the real Gotenberg): a FAIL names the owner. They need Docker and run only where VYRE_APPMODS_LIVE=1 is allowed (a test box or a CI runner). What is not walked yet is said at the end, not skipped silently:
-// the Estate project template's Signing stage as the trigger (the Flow is walked on a matter and, by the signing Flow's own tests, on a linked Contact), and the one-yes-for-both-emails (a later yes rides the
-// first, projects-flows' `with`).
+// the real Gotenberg): a FAIL names the owner. They need Docker and run only where VYRE_APPMODS_LIVE=1 is allowed (a test box or a CI runner). The Estate Kit's own matter is one of the cases (Engagement is the stage that sends the engagement letter), and the signed copy rides the same yes (`with`): one yes for both emails.
 import { walkTestFile } from "./lib/testfile.mjs";
 
 const LIVE = { VYRE_APPMODS_LIVE: "1" };
@@ -21,8 +19,5 @@ export default {
     await walkTestFile(J, "core/appmods/outside-signer.live.test.js", "operations", { env: LIVE, timeoutMs: 15 * 60_000 }).report();
     // the PDF of a filled engagement letter, made by the installable converter
     await walkTestFile(J, "core/appmods/pdf-app-live.test.js", "operations", { env: LIVE, timeoutMs: 10 * 60_000 }).report();
-    await J.step("not walked yet: the Estate project's Signing stage as the trigger, and one yes for both emails", () => {
-      throw Object.assign(new Error("the Estate template as the trigger needs the project's own stage in the signing Flow's walk; a later email riding the first yes needs `with` in the Flows runner (projects-flows)"), { skip: true });
-    }, { owner: "projects-flows" });
   },
 };

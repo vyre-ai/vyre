@@ -116,7 +116,7 @@ export default {
           const same = [...open.values()].find(a => a.moment && a.from === from && a.state === "waiting");
           if (same) {
             if (same.moment === moment && canon(same.request.fields) === canon(request.fields) && same.request.op === request.op) return { id: same.id, expires_in_s: Math.max(1, Math.round((ASK_MS - (now() - same.at)) / 1000)), line: same.line };
-            throw Object.assign(refuse("another card from this device is still waiting", "conflict"), { data: { open: { id: same.id, moment: same.moment } } });
+            throw Object.assign(refuse("another card from this device is still waiting: ask the person to answer it first, or wait for it to expire", "conflict"), { data: { open: { id: same.id, moment: same.moment } } });
           }
           if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
           const sg = signOf(moment, request), space = String((ctx.kernel && ctx.kernel.space) || "");
@@ -219,7 +219,7 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         sweep();
         const a = open.get(String(input.id));
-        if (!a || a.state !== "waiting" || !a.moment) throw refuse("there is nothing waiting for you with that id", "not_found");
+        if (!a || a.state !== "waiting" || !a.moment) throw refuse("there is nothing waiting for you with that id (it may be answered or expired: read the waiting cards again)", "not_found");
         if (a.from !== String((meta && meta.caller) || "") || !String(a.device || "").startsWith("local:")) throw refuse("only the surface that asked can confirm its own card here", "denied");
         const r = await ctx.call("presence.confirm", { summary: a.line || a.request.op, tool: a.request.op, input: a.request.fields, ...(input.tty ? { tty: String(input.tty) } : {}), ...(input.challenge ? { challenge: String(input.challenge), code: String(input.code || "") } : {}) });
         if (r.error) throw refuse(String(r.error.message || r.error.code), r.error.code === "no_dialog" ? "no_dialog" : "presence_required");
@@ -246,8 +246,8 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         sweep();
         const a = open.get(String(input.id));
-        if (!a || a.state !== "waiting") throw refuse("there is nothing waiting for you with that id", "not_found");
-        if (a.moment && a.from === String(meta.caller || "")) throw refuse("a device cannot answer its own card", "denied");
+        if (!a || a.state !== "waiting") throw refuse("there is nothing waiting for you with that id (it may be answered or expired: read the waiting cards again)", "not_found");
+        if (a.moment && a.from === String(meta.caller || "")) throw refuse("a device cannot answer its own card: the person answers it from another device", "denied");
         if (input.approve !== true) {
           if (a.moment) {
             // a "no" holds the asker for ten minutes, so it counts only from the owner's own surface on the server (the terminal, the Capsule) or from a device with a session of a real key; a software browser's no is ignored
@@ -260,12 +260,12 @@ export default {
           a.state = "refused"; return { answered: "refused" };
         }
         // A call whose card says part of it is not shown is approved only after the person has read all of it (approvals.item-view, to the end).
-        if (a.moment === "outward" && a.input && viewOf(a.input).partial && !a.seenAll) throw refuse("part of this call is not shown on the card: read all of it first (approvals.item-view), then approve", "needs_view");
+        if (a.moment === "outward" && a.input && viewOf(a.input).partial && !a.seenAll) throw refuse("part of this call is not shown on the card: read all of it to the end on your device first, then approve", "needs_view");
         const given = ctx.kernel && typeof ctx.kernel.proofFrom === "function" ? ctx.kernel.proofFrom(meta) : null;
         const proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }`, the option a kernel call takes
         if (!proof || typeof proof !== "object" || JSON.stringify(proof).length > MAX_PROOF) throw refuse("this needs your presence: approve it on your device", "needs_presence");
-        if (proof.payload_hash !== a.payload_hash) throw refuse("that approval was not for this", "needs_presence");
-        if (a.challenge && (proof.challenge !== a.challenge || proof.home !== a.home)) throw refuse("that approval did not name the home and the challenge this card is for", "needs_presence");
+        if (proof.payload_hash !== a.payload_hash) throw refuse("that approval was not for this call: approve this card again on your device", "needs_presence");
+        if (a.challenge && (proof.challenge !== a.challenge || proof.home !== a.home)) throw refuse("that approval did not name the home and the challenge this card is for: approve this card again on your device", "needs_presence");
         if (a.moment) {
           // the phone's yes is checked and spent HERE (yes() through the kernel's verifier); the asker never receives the proof
           /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
@@ -304,7 +304,7 @@ export default {
           if (!a || a.group !== group || a.moment !== "outward") throw refuse("an item is not in this group", "bad_input");
           if (seen.has(a.id)) throw refuse("an item is answered twice", "bad_input");
           seen.add(a.id);
-          if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot answer its own card", "denied");
+          if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot answer its own card: the person answers it from another device", "denied");
         }
         const proofs = input.proofs && typeof input.proofs === "object" && !Array.isArray(input.proofs) ? input.proofs : {};
         if (JSON.stringify(proofs).length > MAX_PROOF * MAX_GROUP) throw refuse("the proofs are too large", "bad_input");
@@ -338,8 +338,8 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         sweep();
         const a = open.get(String(input.id));
-        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id", "not_found");
-        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot read its own card", "denied");
+        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id (it may be answered or expired: read the waiting cards again)", "not_found");
+        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot read its own card: the person reads it from another device", "denied");
         const v = pageOf(a.input, Number(input.offset) || 0);
         if (v.next === null) a.seenAll = true;
         return v;
@@ -352,9 +352,9 @@ export default {
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         sweep();
         const a = open.get(String(input.id));
-        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id that can be edited", "not_found");
-        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot edit its own card", "denied");
-        if (!(await mayDecline(meta))) throw refuse("editing counts from your phone's own session or this server's own screen", "denied");
+        if (!a || a.state !== "waiting" || a.moment !== "outward" || !a.input) throw refuse("there is nothing waiting for you with that id that can be edited (it may be answered or expired: read the waiting cards again)", "not_found");
+        if (a.from === String((meta && meta.caller) || "")) throw refuse("a device cannot edit its own card: the person edits it from another device", "denied");
+        if (!(await mayDecline(meta))) throw refuse("editing counts only from your phone's own session or this server's own screen: edit it there", "denied");
         let next;
         try { next = editedInput(a.input, input.edits); } catch (e) { throw refuse(String(/** @type {Error} */ (e).message), "bad_input"); }
         const request = cardRequest("outward", { op: a.request.op, fields: holdFields(next) });

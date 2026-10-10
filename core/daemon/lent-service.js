@@ -47,7 +47,7 @@ export function lentServiceFor(o) {
     // A lent computer's work is kept on this home sealed under the Space's own key; a home with no key of its own for the Space (no Drive, no pool) refuses to hold it rather than keep it in the clear.
     const key = (o.keyOf || ((/** @type {any} */ kk, /** @type {string} */ sp) => derivedKey(kk, `lent-store/${sp}`)))(k, space);
     if (!key) {
-      const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work"), { code: "unavailable" }); };
+      const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work: ask the owner of this home to set up storage for that space"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage", "beat", "release", "pipe", "wait", "http"].map(n => [n, refuse])));
     }
     const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(o.emit ? { emit: o.emit } : {}), ...(o.resume ? { resume: o.resume } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), ...(o.http ? { http: o.http } : {}), ...(o.titleOf ? { titleOf: (/** @type {string} */ chat) => o.titleOf?.(space, chat) } : {}), chatHas: (/** @type {any} */ chain, /** @type {string} */ id) => { try { g.grants.chats.read(chain, id); return true; } catch { return false; } }, ...(g.leases ? { leases: g.leases } : {}),
@@ -74,7 +74,7 @@ export function lentServiceFor(o) {
  */
 export function lentPlacements(registry) {
   const homeOf = (/** @type {string} */ space) => { const f = registry.deps.lentHome; return typeof f === "function" ? f(space) : null; };
-  const book = (/** @type {string} */ space) => { const h = homeOf(space); if (!h) throw Object.assign(new Error("no such Space here"), { code: "not_found" }); return h.book; };
+  const book = (/** @type {string} */ space) => { const h = homeOf(space); if (!h) throw Object.assign(new Error("no such Space here (spaces.list shows the ones on this device)"), { code: "not_found" }); return h.book; };
   return Object.freeze({
     spaces: () => { const f = registry.deps.lentSpaces; return typeof f === "function" ? f() : []; },
     find: (/** @type {string} */ space, /** @type {string} */ id, /** @type {string} */ person) => { const h = homeOf(space); return h ? h.book.find(id, person) : null; },

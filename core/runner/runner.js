@@ -193,14 +193,14 @@ export function createRunner(o) {
    * @param {{ session: string, chat?: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
-    if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here"), { code: "conflict" });
+    if (starting.has(s.session)) throw Object.assign(new Error("that session is already being started here: wait a moment and ask again"), { code: "conflict" });
     starting.add(s.session);
     try { return await startInner(s); } finally { starting.delete(s.session); }
   }
   async function startInner(s) {
     const g = o.grants();
     if (!g.spaceAllows || !g.memberAccepts) throw new Error("both grants are needed: the space allows it and this computer accepts it");
-    if (live.has(s.session)) throw Object.assign(new Error("that session is already running here"), { code: "conflict" });
+    if (live.has(s.session)) throw Object.assign(new Error("that session is already running here (runner.places shows where it runs)"), { code: "conflict" });
     const bad = unavailable(platform);
     if (bad) throw new Error(bad);
     const ws = await open();

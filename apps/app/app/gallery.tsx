@@ -11,6 +11,7 @@ import { setBoxOverride } from "../src/real/box";
 import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
+import { StatusLine } from "../src/chat/StatusLine";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
 
@@ -71,18 +72,28 @@ function Sample({ name }: { name: string }) {
   if (name === "runner-settings") {
     const s = { enabled: true, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 };
     const here = [{ thread: "t1", title: "Intake call notes", state: "running" as const, cpuPercent: 14, memoryMb: 900 }, { thread: "t2", title: "Smith engagement letter", state: "waiting" as const, cpuPercent: 0, memoryMb: 512 }];
-    return <RunHereView s={s} here={here} cpu="50" mem="4096" problem="" setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
+    return <RunHereView s={s} here={here} shared={["Juniper Studio", "Northwind Bakery"]} cpu="50" mem="4096" problem="" setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
+  }
+  if (name === "runner-settings-off") {
+    return <RunHereView s={{ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 }} here={[]} cpu="50" mem="4096" problem="Not turned on: it needs your approval. Approve on this computer, then try again." setCpu={() => {}} setMem={() => {}} onSave={() => {}} onSaveLimits={() => {}} onPause={() => {}} onResume={() => {}} />;
   }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
         <PlacementChip placement={{ where: "mac" }} onMove={() => {}} />
         <PlacementChip placement={{ where: "server", reason: "lid-closed" }} onMove={() => {}} />
-        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }]} />
+        <View style={{ alignSelf: "stretch" }}><StartingSample /></View>
+        <MovedLines lines={[{ at: 1, text: "Moved to the server: lid closed." }, { at: 2, text: "Moved to this Mac: you moved it." }, { at: 3, text: "Dana's MacBook did not answer. Running on the server instead." }]} />
       </View>
     );
   }
   return null;
+}
+
+/** The chat's status line while its process starts on a computer: the words, then Stop, and no chip yet (the chip comes when it is up). */
+function StartingSample() {
+  const { phone } = useUiTheme();
+  return <StatusLine starting="Starting on Dana's MacBook..." presence="" state="working" busy canStop stopping={false} offline={false} phone={phone} onStop={() => {}} place={<PlacementChip placement={{ where: "mac", computer: "Dana's MacBook" }} onMove={() => {}} />} />;
 }
 
 export default function Gallery() {
