@@ -532,6 +532,8 @@ export default {
         if (problems.length) throw refuse(`that server cannot run here: ${problems.map(p => `${p.path}: ${p.message}`).join("; ")}`, "bad_input");
         const have = row(m.name), mine = db.prepare("SELECT * FROM appmods_published WHERE name = ?").get(m.name);
         if (have && !mine) throw refuse(`${m.name} is an app installed on this server already (appmods.status shows how it is doing)`, "exists");
+        // a name belongs to the Space that published it first: another Space's deployment cannot replace its running server (and its host)
+        if (mine && mine.space !== sp) throw refuse(`${m.name} is another Space's server on this box already: pick another name`, "exists");
         // the secrets are read before anything stops: a missing one leaves the running version as it was
         db.prepare("INSERT OR REPLACE INTO appmods_published (name, deployment, space, manifest) VALUES (?,?,?,?)").run(m.name, d.id, sp, JSON.stringify(m));
         const keep = catalog.get(m.name); catalog.set(m.name, m);

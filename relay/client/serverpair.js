@@ -50,6 +50,6 @@ export async function pairServer(o) {
   }
   if (!paired.pending) throw fail("unreachable", "The server did not ask who is pairing. Make a new code on the server and try again.");
   return adoptServer(paired, { relay, ticket, typed: false, owner: o.owner, deviceName, ...(o.proof ? { proof: o.proof } : {}), ...(o.signIdentity ? { signIdentity: o.signIdentity } : {}),
-    ...(o.deviceKind ? { deviceKind: o.deviceKind } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket,
+    ...(o.deviceKind ? { deviceKind: o.deviceKind } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), ...(o.presenceKey && typeof o.presenceKey.signer === "string" ? { keySigner: o.presenceKey.signer } : {}), ...(o.presenceKey && typeof o.presenceKey.rp === "string" ? { keyRp: o.presenceKey.rp } : {}), crypto: o.crypto, keyStore: o.keyStore, WebSocket: o.WebSocket,
     ...(o.onWords ? { onWords: o.onWords } : {}), ...(o.signal ? { signal: o.signal } : {}), ...(o.pollMs !== undefined ? { pollMs: o.pollMs } : {}), ...(o.timeoutMs !== undefined ? { timeoutMs: o.timeoutMs } : {}) });
 }

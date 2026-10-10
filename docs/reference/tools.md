@@ -15361,6 +15361,8 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `route` string
     - `space` string
   - `identity` string
+  - `keyRp` string
+  - `keySigner` one of "secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"
   - `keyStorage` "hardware" or "software"
   - `pairing` object
     - `cancel` boolean
@@ -15521,6 +15523,8 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `route` string
     - `space` string
   - `identity` string
+  - `keyRp` string
+  - `keySigner` one of "secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"
   - `keyStorage` "hardware" or "software"
   - `pairing` object
     - `cancel` boolean

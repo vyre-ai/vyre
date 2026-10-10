@@ -13,6 +13,7 @@ import { start, callerFacts } from "../core/daemon/index.js";
 import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
+import { FrameParser } from "../lib/ws.js";
 import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { nobleCrypto } from "../relay/client/noble.js";
@@ -72,6 +73,16 @@ async function world(t, opt = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
+  // What the relay can read: the request line, headers and body of every plain request, and every WebSocket message from a device or a box after it has been unmasked (the relay's own view, as it forwards). A test reads it to prove what the relay never sees.
+  /** @type {Buffer[]} */ const sniff = [];
+  relay.server.prependListener("request", (/** @type {any} */ req) => { sniff.push(Buffer.from(`${req.method} ${req.url}\n${JSON.stringify(req.headers)}`)); req.on("data", (/** @type {Buffer} */ c) => sniff.push(Buffer.from(c))); });
+  relay.server.prependListener("upgrade", (/** @type {any} */ req, /** @type {any} */ socket, /** @type {Buffer} */ head) => {
+    sniff.push(Buffer.from(`${req.method} ${req.url}\n${JSON.stringify(req.headers)}`));
+    const parser = new FrameParser();
+    const feed = (/** @type {Buffer} */ c) => { try { for (const f of parser.push(c)) if ("message" in f) sniff.push(Buffer.from(/** @type {any} */ (f).message)); } catch { /* not a frame */ } };
+    if (head && head.length) feed(head);
+    socket.on("data", feed);
+  });
   const logs = [];
   const root = tempHome(t);
   if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
@@ -86,7 +97,7 @@ async function world(t, opt = {}) {
   const screenFacts = { kind: "device", device_key_id: SCREEN.slice(7), person: d.kernel.id.owner, path: "relay", session: "ps1" };
   const call = (tool, input = {}, caller = SCREEN, meta = A) => (caller === SCREEN && meta && meta.person && !screenRow && (screenRow = true, d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'screen', 'p', 1, 'app', 0, NULL)").run(SCREEN.slice(7)), true), d.registry.call(tool, input, caller, caller === SCREEN && meta && meta.person && !meta.kernelFacts ? { ...meta, kernelFacts: screenFacts, kernel_proof: { op: "stand-in", fields: {}, n: 1 } } : meta));
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
-  return { d, url, root, events, call, status, logs };
+  return { d, url, root, events, call, status, logs, sniff };
 }
 const until = async (f, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 25)); } };
 const keystore = t => fileKeyStore(path.join(tempHome(t), "k.json"));
@@ -137,7 +148,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, ownerName = "Alex" } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -153,7 +164,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const owner = { id: ident.id, name: "Alex", vyre: "alex" };
+  const owner = { id: ident.id, name: ownerName, vyre: "alex" };
   let shown = "";
   const pairing = pairServer({ payload: made.qr, owner, signIdentity: ident.sign, deviceKind: kind, keyStorage: presenceStorage, ...(about ? { about } : {}), name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, pollMs: 100, onWords: x => { shown = x; } });
   pairing.catch(() => {});
@@ -422,4 +433,58 @@ test("a typed-code device that says it is a browser (kind web) is the limited ki
   const ch = await c.fetch("/v1/tools/presence.person.pair-challenge", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
   const body = await ch.json().catch(() => ({}));
   assert.equal(body.error && body.error.code, "no_such_tool", "this is what 'no tool presence.person.pair-challenge' was");
+});
+
+
+// ---- the relay never sees the adopt call: both routes ----
+// The adopt call (the owner, its proof, the device's key class, the passkey's rp) goes over the device-to-box Noise channel, and the relay only forwards ciphertext. The redeem step before it IS visible to the relay by
+// design (the route, the device's name, the key it offers), so the test looks for what only the adopt call carries: a marker in the owner's name, the owner's identity id, and the field names of the call.
+const NEEDLES = (/** @type {string} */ marker, /** @type {string} */ identityId) => [marker, identityId, '"keySigner"', '"keyRp"', '"peerSecret"', '"owner":{', '"proof":{'];
+/** Does the marker appear anywhere the box kept (any table of its database), its events or its log? The control that the adopt call really carried it. */
+const boxHas = (/** @type {any} */ w, /** @type {string} */ marker) => {
+  if (JSON.stringify(w.events).includes(marker) || w.logs.join("\n").includes(marker)) return true;
+  const db = w.d.registry.deps.db;
+  for (const { name } of db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()) { try { if (JSON.stringify(db.prepare(`SELECT * FROM "${name}"`).all()).includes(marker)) return true; } catch { /* a virtual table */ } }
+  return false;
+};
+const relaySaw = (/** @type {Buffer[]} */ sniff, /** @type {string[]} */ needles) => { const seen = Buffer.concat(sniff).toString("latin1"); return needles.filter(n => seen.includes(n)); };
+
+test("the sniffer can see: a relay-visible message with the markers in it is caught, and one without is not", () => {
+  const needles = NEEDLES("SNIFF-OWNER-1", "per_x");
+  assert.deepEqual(relaySaw([Buffer.from('{"owner":{"name":"SNIFF-OWNER-1"},"keySigner":"tpm"}')], needles), ["SNIFF-OWNER-1", '"keySigner"', '"owner":{']);
+  assert.deepEqual(relaySaw([Buffer.from("GET /v1/device?route=abc")], needles), []);
+});
+
+test("the relay never sees the adopt call on the QR / long-code route: the owner, its identity and the call's fields are not in anything the relay read", { timeout: 180_000 }, async t => {
+  const marker = "SNIFF-OWNER-7f3a91c2";
+  const r = await pairFreshServer(t, { kind: "phone", ownerName: marker });
+  const saw = r.w.sniff;
+  assert.ok(Buffer.concat(saw).length > 200, "the sniffer saw the relay's traffic");
+  assert.ok(Buffer.concat(saw).toString("latin1").includes(r.done.route), "and it saw the redeem step, which is public to the relay by design (the control)");
+  assert.ok(boxHas(r.w, marker) || JSON.stringify(r.done).includes(marker), "the adopt did carry the marker, and the box got it (the control)");
+  assert.deepEqual(relaySaw(saw, NEEDLES(marker, r.ident.id)), [], "nothing that only the adopt call carries was readable by the relay");
+});
+
+test("the relay never sees the adopt call on the typed-code (CPace) route either: the box's key comes from the sealed ticket, and the adopt is inside the Noise session", { timeout: 180_000 }, async t => {
+  typedOn(t);
+  const marker = "SNIFF-OWNER-5b8d02e4";
+  const { ident, w } = await setup(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const ks = keystore(t);
+  const states = [];
+  const joining = joinWithCode({ relay: w.status.url, input: made.code, name: "Alex's Mac", onState: s => states.push(s), pollMs: 100, finishPollMs: 100, waitMs: 20_000,
+    pairOptions: { crypto: nodeCrypto(), keyStore: ks, about: { kind: "app" }, presenceKey: devKey() },
+    server: { owner: { id: ident.id, name: marker, vyre: "alex" }, signIdentity: ident.sign, deviceKind: "computer", keyStorage: "software", crypto: nodeCrypto(), keyStore: ks } });
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.server.confirm", { offer: made.offer, typed: ack.code }, "cli", PROOF)).data.ok, true);
+  const r = await joining;
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.ok(Buffer.concat(w.sniff).length > 200, "the sniffer saw the relay's traffic");
+  assert.ok(Buffer.concat(w.sniff).toString("latin1").includes(r.paired.route), "and the redeem step (the control)");
+  assert.ok(boxHas(w, marker) || JSON.stringify(r.done).includes(marker), "the adopt did carry the marker (the control)");
+  assert.deepEqual(relaySaw(w.sniff, NEEDLES(marker, ident.id)), [], "the relay read none of the adopt call");
+  // the box key the channel is dialled to comes out of the ticket's sealed record: the relay returns a record it cannot open or forge (MAC and AES-GCM under keys derived from the seed that only the code holder has)
+  const src = fs.readFileSync(new URL("../relay/client/client.js", import.meta.url), "utf8");
+  assert.match(src, /if \(!equal\(mac, wantMac\)\) throw fail\("bad_record"/, "resolveTicket refuses a record whose MAC is not the seed's");
 });

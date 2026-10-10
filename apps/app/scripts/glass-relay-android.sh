@@ -43,3 +43,7 @@ echo "the fake screen server saw $(cat "$out/connections.txt") connection(s)"
 [ $ok = 0 ] || { echo "no frame was drawn"; exit 1; }
 echo "a frame was drawn by the phone's Glass page in relay mode"
 # run on the APK with the reason shown
+# rerun on the build with the richer proof page
+# rerun with the cleartext flag read at prebuild
+# rerun with socket diagnostics
+# rerun with GlassFrame taking openSocket

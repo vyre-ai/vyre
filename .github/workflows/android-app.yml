@@ -81,7 +81,10 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: The checks' own tests
         run: node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js" "src/native/*.test.js"
+      # The sample-world build lets the app open plain ws:// sockets (plugins/mock-cleartext.js reads this at prebuild), which the emulator proofs need to reach a fake server on the runner; a real build never does.
       - run: npx expo prebuild -p android --no-install --clean
+        env:
+          EXPO_PUBLIC_VYRE_MOCK: ${{ github.event.inputs.mock == '0' && '' || '1' }}
       # The debug APK is the one the emulator capture shows, with the sample world on purpose (apps/app/src/store-core/store.js). A release build never sets this.
       - run: ./gradlew --no-daemon assembleDebug
         working-directory: apps/app/android

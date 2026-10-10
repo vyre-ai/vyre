@@ -891,7 +891,7 @@
  "test/one-registry-b.test.js": 5,
  "test/one-role-list.test.js": 2,
  "test/owner-only.test.js": 5,
- "test/pair-fix.test.js": 11,
+ "test/pair-fix.test.js": 15,
  "test/patch-release.test.js": 5,
  "test/peer-live-mac.test.js": 1,
  "test/peer-race.test.js": 13,
@@ -1028,5 +1028,10 @@
  "apps/app/src/chat/feel.test.js": 2,
  "test/journey-run-explain-timeline.test.js": 1,
  "apps/app/src/chat/tool-runs.test.js": 3,
- "test/journey-notice-approve.test.js": 4
+ "test/journey-notice-approve.test.js": 4,
+ "core/sessions/residency.test.js": 3,
+ "core/switchboard/residency.test.js": 3,
+ "test/stage-gate-model-paths.test.js": 1,
+ "test/journey-fork-continue.test.js": 3,
+ "apps/app/screens/chat-tools/fork-move.test.js": 2
 }

@@ -506,6 +506,16 @@ test("a published server: only Publish runs it, from the secrets Publish wrote, 
   assert.equal(v2.error, undefined, JSON.stringify(v2.error));
   assert.deepEqual(w.log.map(l => l[0]).filter(x => x === "down" || x === "up"), ["down", "up"]);
   assert.deepEqual(w.log.find(l => l[0] === "down")[1], { data: false });
+  // another Space on the same box publishes under the same name: refused, and the first Space's server is left running as it was (trust row 60)
+  const SP2 = "spc_zyxwvutsrqpo", DEP2 = "dep_aaaaaaaaaaaaaaaa";
+  fs.mkdirSync(path.join(w.root, "publish", SP2, "secrets", DEP2), { recursive: true }); fs.writeFileSync(path.join(w.root, "publish", SP2, "secrets", DEP2, "API_KEY"), "k-other", { mode: 0o600 });
+  w.log.length = 0;
+  const taken = await asPublish("appmods.publish.install", { deployment: dep({ id: DEP2, space: SP2, version: 1, runtime: { kind: "image", image: "sha256:" + "c".repeat(64), port: 8080 } }) });
+  assert.equal(taken.error && taken.error.code, "exists", JSON.stringify(taken));
+  assert.match(taken.error.message, /another Space/);
+  assert.deepEqual(w.log.map(l => l[0]).filter(x => x === "down" || x === "up"), [], "nothing was stopped or started");
+  assert.equal((await w.cli("appmods.status", { name: "northwind" })).data.state, "running", "the first Space's server still runs");
+  assert.equal(w.d.registry.deps.db.prepare("SELECT space FROM appmods_published WHERE name = ?").get("northwind").space, SP, "and is still the first Space's");
   // stop, then remove with the deployment
   assert.equal((await asPublish("appmods.publish.stop", { deployment: "dep_fedcba9876543210" })).data.state, "stopped");
   assert.equal((await w.web("GET", "/anything", { headers: H })).status, 404, "a stopped site is not served");

@@ -139,7 +139,7 @@ export default {
       // key lives in their app), and the person who is calling is the chain's person all the same.
       const person = String(first.actor.id);
       const r = await call("spaces.merge-list", { person });
-      if (r.missing) throw refuse("no space is set up on this machine yet: create one first with spaces.create", "no_space");
+      if (r.missing) throw refuse("your Space is still being set up, try again in a moment. If you have not made one yet, create it first with spaces.create", "no_space");
       const list = /** @type {{ space: string, name: string }[]} */ ((r.data && Array.isArray(r.data.spaces)) ? r.data.spaces : []);
       if (!list.length) throw refuse("you are not a member of a space on this server", "forbidden");
       const want = input && input.space ? String(input.space) : null;
