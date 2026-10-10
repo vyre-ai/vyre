@@ -1,0 +1,5 @@
+#!/bin/sh
+# The limited `vyre` of a sandboxed session (core/session-cli): tools find, tools describe and call, against the session's own socket. The Switchboard puts this folder first on the PATH of a sandboxed
+# session and sets VYRE_NODE and VYRE_SESSION_CLI. Anything else (no socket, no node) says so in a line and stops.
+[ -n "$VYRE_SOCKET" ] && [ -n "$VYRE_NODE" ] && [ -n "$VYRE_SESSION_CLI" ] || { echo "vyre: this is not a Vyre session." >&2; exit 1; }
+exec "$VYRE_NODE" --no-warnings "$VYRE_SESSION_CLI" "$@"
