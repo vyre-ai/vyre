@@ -78,7 +78,7 @@ export default {
     /** What a group says about itself, from its waiting cards: how many, and what each is. @param {string} group */
     const groupLine = group => {
       const items = [...open.values()].filter(a => a.group === group && a.state === "waiting");
-      const asker = items.length ? items[0].(from.split(":").pop() || "").slice(0, 40) : "";
+      const asker = items.length ? items[0].from.replace(/^[a-z]+:/, "").slice(0, 40) : "";
       const ops = [...new Set(items.map(a => a.request.op))];
       return `${asker ? `An assistant (${asker})` : "An assistant"} wants to run ${items.length} calls${ops.length === 1 ? ` of ${ops[0]}` : ""}: ${items.map(a => String(a.request.fields.to || a.request.fields.name || a.request.fields.subject || a.request.op).slice(0, 40)).join(", ")}`;
     };
