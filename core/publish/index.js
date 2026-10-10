@@ -387,7 +387,7 @@ export default {
     });
     ctx.tool("publish.quick", {
       callers: WITH_MODELS,
-      description: "Publish a folder of ready files, or a files preview (preview: its id), as a site: build, preview, then hold for one yes that puts it live. Answers the task and plan.",
+      description: "Publish a folder of ready files, or a files preview by id: build, preview, hold for one yes. Answers the task and plan.",
       input: obj({ name: str, folder: str, preview: str, project: str }, ["name"]),
       run: async (i, meta) => {
         const b = await begin(i, meta);

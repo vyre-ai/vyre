@@ -286,7 +286,7 @@ export default {
     });
 
     ctx.tool("previews.folder", {
-      description: "The folder a files preview serves, for Publish: { root }. Internal: the publish module only, relaying the person who pressed the card.", internal: true,
+      description: "The folder a files preview serves, for Publish: { root }. Internal: Publish only, for the person who pressed the card.", internal: true,
       input: obj({ id: str }, ["id"]), callers: ["module"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!meta || meta.caller !== "module:publish") throw refuse("only Publish asks for a preview's folder", "denied");
