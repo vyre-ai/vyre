@@ -312,6 +312,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Shows on: no surface
 - Needs credentials: `[object Object]`
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`
 
 ## computer
 
@@ -390,6 +391,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Tools: [8](tools.md#documents)
 - Emits: [3 events](events.md#documents)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## events
 
