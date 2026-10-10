@@ -12,8 +12,8 @@ const documents = () => JSON.parse(fs.readFileSync(new URL("./catalog/documents.
 
 test("list: one line per app with a hook port, thirteen fields, from the checked manifests", () => {
   const lines = listLines();
-  assert.equal(lines.length, 1);
-  const f = lines[0].split(" ");
+  assert.equal(lines.length, 2);
+  const f = lines.find(l => l.startsWith("documents ")).split(" ");
   assert.equal(f.length, 13);
   const m = documents();
   assert.deepEqual(f, [m.name, m.app.image, "3000", "1536", "1.5", "512", "43001", "docuseal-bootstrap.rb", "bin/rails+runner", "api_token+login_password", "/", "200+302", "120"]);
@@ -69,4 +69,17 @@ test("the command line: `list` and `compose <name>` print, anything else is a us
 
 test("the catalog the helper reads is the daemon's: every manifest that passes its check, none that fails", () => {
   assert.deepEqual([...catalogOf().keys()], ["documents"]);
+});
+
+test("the PDF converter is listed and composed like any app: its flags are environment values, it has no volume and no setup", () => {
+  const line = listLines().find(l => l.startsWith("pdf ")) || "";
+  const f = line.split(" ");
+  assert.equal(f.length, 13);
+  assert.deepEqual([f[0], f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9], f[10], f[11], f[12]], ["pdf", "3000", "1024", "1", "256", "43002", "-", "-", "-", "/health", "200", "90"]);
+  const c = composeFile("pdf");
+  assert.match(c, /^    image: gotenberg\/gotenberg:8\.37\.0@sha256:[0-9a-f]{64}$/m);
+  assert.match(c, /^      CHROMIUM_DISABLE_ROUTES: "true"$/m);
+  assert.match(c, /^      API_TIMEOUT: "120s"$/m);
+  assert.doesNotMatch(c, /volumes:\n      - /);
+  assert.match(c, /^  net:\n    internal: true$/m, "on an internal network: it has no way out");
 });

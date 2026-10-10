@@ -88,7 +88,7 @@ export function registerDocuments(ctx) {
       }
       const { buffer, used } = fill(tbytes, values);
       const format = i.format === "pdf" ? "pdf" : "docx";
-      const out = format === "pdf" ? await toPdf(buffer, { url: cfg().pdf || process.env.VYRE_DOCUMENTS_PDF }) : buffer;
+      const out = format === "pdf" ? await toPdf(buffer, { url: await converter() }) : buffer;
       const sha256 = crypto.createHash("sha256").update(out).digest("hex");
       const scope = i.project ? SLUG(String(i.project)) : "general";
       const title = String(i.name || tname).replace(/\s+/g, " ").trim().slice(0, 100);
@@ -103,6 +103,13 @@ export function registerDocuments(ctx) {
   /** How long a link to a signed copy lasts when the call names no days: the setting documents.signed_link_days, and with it off, for good (a link to a signed contract is one the client keeps in their mail). @returns {number | undefined} */
   const linkDays = () => { const n = Number(cfg().signed_link_days); return Number.isInteger(n) && n >= 1 ? n : undefined; };
   const daysFor = (/** @type {any} */ i) => (i.days !== undefined ? i.days : linkDays());
+
+  /** Where the PDF converter is: the address in the setting, else the Records server's, else the PDF converter app when it is installed and running here. */
+  const converter = async () => {
+    const set = cfg().pdf || process.env.VYRE_DOCUMENTS_PDF;
+    if (set) return set;
+    try { const r = await ctx.call("appmods.origin", { name: "pdf" }); return r && !r.error && r.data && typeof r.data.origin === "string" ? r.data.origin : undefined; } catch { return undefined; }
+  };
 
   ctx.tool("documents.signed-link", {
     description: "A link to a signed copy: { slug, days? }. Lasts until revoked unless days is given. Whoever holds it can open the file.",

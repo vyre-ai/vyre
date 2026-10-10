@@ -121,6 +121,37 @@ test("a PDF needs the converter: refused in plain words without one, filed as a 
   assert.equal(w.files.get(out.path)[0].subarray(0, 4).toString(), "%PDF");
 });
 
+test("with no address set, a PDF is made by the PDF converter app when it is installed and running, found by Documents through appmods.origin, and the setting still wins", async t => {
+  allowLoopbackForTests(true);
+  /** @type {string[]} */ const hit = [];
+  const mk = (/** @type {string} */ who) => http.createServer((req, res) => { req.resume(); req.on("end", () => { hit.push(who); res.writeHead(200, { "content-type": "application/pdf" }); res.end(Buffer.from("%PDF-1.7 " + "x".repeat(2000))); }); });
+  const app = mk("app"), set = mk("setting");
+  await new Promise(r => app.listen(0, "127.0.0.1", () => r(undefined))); await new Promise(r => set.listen(0, "127.0.0.1", () => r(undefined)));
+  t.after(() => { app.close(); set.close(); allowLoopbackForTests(false); });
+  const origin = `http://127.0.0.1:${/** @type {any} */ (app.address()).port}`;
+  /** @type {any[]} */ const asked = [];
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "spaces.self") return {}; asked.push([tool, input]); return tool === "appmods.origin" && input.name === "pdf" ? { data: { origin } } : { error: { code: "not_found", message: "x" } }; };
+  const w = rig({ call });
+  await w.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  const out = await w.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" });
+  assert.match(out.path, /\.pdf$/);
+  assert.deepEqual(hit, ["app"]);
+  assert.deepEqual(asked.filter(a => a[0] === "appmods.origin"), [["appmods.origin", { name: "pdf" }]]);
+  // the address a person set is used and the app is not asked
+  asked.length = 0; hit.length = 0;
+  const own = rig({ call, config: { documents: { pdf: `http://127.0.0.1:${/** @type {any} */ (set.address()).port}` } } });
+  await own.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  await own.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" });
+  assert.deepEqual(hit, ["setting"]);
+  assert.equal(asked.some(a => a[0] === "appmods.origin"), false);
+  // the app is not installed or not running: the same plain refusal, and it says where to get one
+  const none = rig({ call: async tool => (tool === "spaces.self" ? {} : { error: { code: "not_found", message: "that app is not running" } }) });
+  await none.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
+  const e = await code(none.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" }));
+  assert.equal(e.code, "no_pdf_engine");
+  assert.match(e.message, /install "PDF converter" from Apps/);
+});
+
 test("the signing Flow comes back ready to define, and a bad ask is said", async () => {
   const r = rig();
   const out = await r.run("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 12 });

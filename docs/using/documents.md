@@ -16,7 +16,7 @@ A template is a Word file in your Drive under `Templates/`, with `{placeholders}
 
 `documents.generate` fills a template from values and from records you name by reference (`records: { client: <record> }`, so `{client.name}` fills from the record's field). It answers the path, version, size, hash and format. The same input makes the same file. If a value is missing, blank, or a list has nothing to repeat, nothing is made and the error names every one of them; Vyre never guesses.
 
-The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; elsewhere a PDF says plainly that it needs the Records server, and the Word file is still made.
+The result is filed in the Drive under `Documents/<project>/` and, when your Space has the Document record type, as a Document record linked to the client and the project. Ask for `format: "pdf"` to get a PDF. On a server with Records the converter (Gotenberg) runs beside Vyre by default; on any other server, install "PDF converter" from Apps (the same converter, pinned, with no way out of your server), and Documents finds it by itself. With neither, a PDF says plainly what it needs, and the Word file is still made.
 
 ## Send for signature
 
