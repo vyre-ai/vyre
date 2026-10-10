@@ -6816,14 +6816,6 @@ Step 1: your name as you like it shown, and your assistant's name. A name that i
 
 ## outside
 
-### `outside.base`
-
-The public address the gate serves this box on, or null: { base }. Only the wink module sets it; tokens made afterwards name it.
-
-- Input:
-  - `base` string or null
-- Callers: other modules only (internal: `vyre call` answers no_such_tool)
-
 ### `outside.grant`
 
 Give an outside agent something to reach: { id, what: { kind: records, types, write? } or { kind: memory, project } or { kind: files, project }, days?, rate? }. A write only ever asks you.
@@ -6842,6 +6834,21 @@ Your outside agents: name, what each may reach, until when, last used. Never a t
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
+
+### `outside.mcp.base`
+
+The public address the gate serves this box on, or null: { base }. Only the wink module sets it; tokens made afterwards name it.
+
+- Input:
+  - `base` string or null
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
+### `outside.mcp.status`
+
+Whether /agents-mcp is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.
+
+- Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `outside.register`
 
@@ -6871,13 +6878,6 @@ End an outside agent: { id }. Its token opens nothing, its grants are taken back
 - Input:
   - `id` string, required
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `tailnet`
-
-### `outside.status`
-
-Whether /agents-mcp is listening on loopback, and its port: { listening, port }. Only the wink module (the public gate) asks.
-
-- Input: none
-- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `outside.token`
 
