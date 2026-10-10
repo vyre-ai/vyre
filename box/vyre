@@ -1650,7 +1650,9 @@ sp_pub_load_name() {
 }
 # sp_app_load MODULE: the recorded line's fields in A_*, or failure when the module is not recorded.
 sp_app_load() {
-  l=$(sp_app_line "$1") || return 1
+  # no recorded catalog at all (no app was ever installed here) is no line, not a failure: a published server is found below
+  sp_app_name_ok "$1" || return 1
+  l=$(sp_app_line "$1") || l=""
   # a published server (pub-up) is not in the recorded catalog: its own record, found by the deployment its folder names, stands in (no hook port, no setup)
   [ -n "$l" ] || { sp_pub_load_name "$1"; return; }
   # shellcheck disable=SC2034 # the A_* variables are read by the callers
@@ -1763,7 +1765,9 @@ sp_app_lint() {
     if (last != "" && $0 == "    name: vyre-app-" mod "_" last) next
     bad("the volumes block"); next }
   { bad("a line outside every block") }
-  END { for (v in used) if (!(v in decl)) bad("a volume that is not declared"); exit ok ? 0 : 1 }' "$1"
+  END { for (v in used) if (!(v in decl)) bad("a volume that is not declared")
+    if (pub == 1 && (!("read_only" in seen) || !("tmpfs" in seen))) bad("a published server must keep its root read-only with the one tmpfs")
+    exit ok ? 0 : 1 }' "$1"
 }
 # sp_app_public MODULE: the address outside people reach the app at, https://<module>.<name>.vyre.run:<port>, or nothing. The box's name and the public gate's port are read by the vyre container's own node from its config
 # (the one place they live), and root keeps only what fits the shape: a name of letters, digits and dashes, a port of up to five digits, under vyre.run. Whatever else the config says is never used. A box
