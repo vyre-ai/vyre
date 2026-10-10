@@ -9,8 +9,6 @@ import os from "node:os";
 import path from "node:path";
 import builder, { seam, HEALTH } from "./index.js";
 import { checkDockerfile, fromAllowed, instructions, buildArgv, secretsOf, buildImage, BUILDKIT } from "./container.js";
-// the Dockerfile path is switched off in the test release unless this is set (core/builder/index.js planOf); these tests are about that path
-process.env.VYRE_PUBLISH_SERVERS = "1";
 
 const OK = "FROM node:22-alpine AS build\nWORKDIR /app\nCOPY . .\nRUN npm ci\nFROM node:22-alpine\nCOPY --from=build /app /app\nEXPOSE 8080/tcp\nCMD [\"node\", \"server.js\"]\n";
 const refused = (/** @type {string} */ text, /** @type {RegExp} */ words, /** @type {any} */ o) => assert.throws(() => checkDockerfile(text, o), (/** @type {any} */ e) => { assert.equal(e.code, "refused"); assert.match(e.message, words); return true; });
@@ -81,7 +79,7 @@ test("buildImage writes the files it was given into a context, passes secrets by
 
 // ---- builder.build over the folder reader, with the image build stood in
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-builder-c-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
-async function tool(/** @type {import("node:test").TestContext} */ t, config = {}) {
+async function tool(/** @type {import("node:test").TestContext} */ t, config = { publish: { servers: true } }) {
   const tools = new Map();
   const mod = await builder.start({ config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   t.after(() => { seam.buildImage = null; return mod.stop(); });
@@ -112,7 +110,7 @@ test("what a Dockerfile build cannot do is refused in words: no Dockerfile, no p
   const d = tmp(t);
   let built = 0;
   seam.buildImage = async () => { built++; return { image: "sha256:" + "d".repeat(64), logs: "" }; };
-  const build = await tool(t, { builder: { from: ["ghcr.io/vyre-ai/"] } });
+  const build = await tool(t, { builder: { from: ["ghcr.io/vyre-ai/"] }, publish: { servers: true } });
   fs.writeFileSync(path.join(d, "index.html"), "<p>x</p>");
   await assert.rejects(build(dep(d)), /no Dockerfile at its top/);
   fs.writeFileSync(path.join(d, "Dockerfile"), "FROM nginx\n");
@@ -137,7 +135,7 @@ test("on a server that builds through its host helper: the context and the setti
     return { state: "ok", message: "built sha256:" + "9".repeat(64) };
   }) };
   const tools = new Map();
-  const mod = await builder.start({ config: {}, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
+  const mod = await builder.start({ config: { publish: { servers: true } }, paths: { root: home }, tool: (/** @type {string} */ n, /** @type {any} */ def) => tools.set(n, def) });
   t.after(() => { seam.helper = null; return mod.stop(); });
   const build = (/** @type {string[]} */ secretArgs = []) => tools.get("builder.build").run({ deployment: { id: DEP, space: SPC, name: "northwind", version: 3, source: { kind: "folder", ref: d }, build: { command: "", output_dir: ".", image: "dockerfile" } }, secretArgs });
   const r = await build();
