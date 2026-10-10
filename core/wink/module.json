@@ -350,8 +350,6 @@
       "wink.code-ack",
       "wink.code-done",
       "wink.code-unavailable",
-      "grant.created",
-      "grant.revoked",
       "wink.pair-waiting",
       "wink.pair-done",
       "wink.pair-asked",
@@ -391,6 +389,28 @@
     ],
     "daemon": [
       "dataStores"
-    ]
+    ],
+    "kernel": {
+      "mints": [
+        {
+          "prefix": "member/*",
+          "actions": [
+            "member.act"
+          ]
+        },
+        {
+          "prefix": "node/*",
+          "actions": [
+            "node.host"
+          ]
+        },
+        {
+          "prefix": "storage/*",
+          "actions": [
+            "storage.hold"
+          ]
+        }
+      ]
+    }
   }
 }

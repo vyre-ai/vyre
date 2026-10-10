@@ -80,6 +80,7 @@ test("a person lends a login: a kernel grant at once, one agent, fill, one exact
   assert.equal(await v.access.allowed("juno", "harlow-drive", APP), false, "another agent has nothing");
   assert.equal(await v.access.allowed("kit", "harlow-drive", SSO), false, "another origin of the same login has nothing");
   assert.equal(await v.access.allowed("kit", "northwind-api", APP), false, "another item has nothing");
+  assert.deepEqual([...v.grantedNames()], ["harlow-drive"], "a login lent to an agent stays in the agent vault: read from the kernel grant, not from the emptied table");
   // A second origin of the login is its own grant; the default expiry is 30 days.
   const sso = (await run("vault.agent.grant", { agent: "kit", item: "harlow-drive", origin: SSO + "/" })).grant;
   assert.notEqual(sso.id, grant.id);
