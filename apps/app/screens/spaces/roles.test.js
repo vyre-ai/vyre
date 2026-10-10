@@ -59,3 +59,13 @@ test("changing a server's owner is done on the server, and the line says so", ()
   assert.ok(!assignable("owner").includes("owner"));
   assert.equal(ownerMoveLine("Chris Park"), "This server already belongs to Chris Park. To move it, do it on this server and approve with your passkey.");
 });
+
+test("members list: each person is a list row with the id-seeded face, their role or temp scope and end, and Extend only for a temp member you may manage", async () => {
+  const { memberRows } = await import("./roles.js");
+  const members = [{ id: "p1", name: "Chris Park", role: "owner" }, { id: "p2", name: "Dana Reyes", role: "temp", scope: "Smith estate", end: "14 Oct" }, { id: "p3", name: "Sam", role: "temp", scope: "X", end: "1 Nov" }];
+  const rows = memberRows(members, (m) => m.id !== "p3", [{ id: "juno", name: "juno", sub: "Your assistant" }]);
+  assert.deepEqual(rows[0], { id: "p1", title: "Chris Park", subtitle: "Owner", faces: [{ kind: "person", name: "Chris Park", id: "p1" }] });
+  assert.deepEqual([rows[1].subtitle, rows[1].accessories, rows[1].actions], ["Temp, ends 14 Oct · Only Smith estate", undefined, [{ id: "extend", title: "Extend" }]]);
+  assert.equal(rows[2].actions, undefined, "not yours to manage");
+  assert.deepEqual(rows[3], { id: "juno", title: "juno", subtitle: "Your assistant", faces: [{ kind: "assistant", name: "juno", id: "juno" }] });
+});

@@ -85,19 +85,5 @@ async function handle(line) {
   } else if (cmd === "argv") {
     out({ type: "argv", argv: process.argv.slice(2), socket: process.env.VYRE_SOCKET || null });
     out({ type: "result" });
-  } else if (cmd === "hook") {
-    // run a Harness hook as Claude Code would, from the plugin folder it was given: `hook <piece> <stdin json>`
-    const at = process.argv.indexOf(`--${"plugin-dir"}`), plugin = at >= 0 ? process.argv[at + 1] : null;
-    const { spawn } = await import("node:child_process");
-    const res = await new Promise(done => {
-      if (!plugin) return done({ error: "no plugin" });
-      const c = spawn(process.execPath, [path.join(plugin, "hooks", "run.js"), rest[0]], { env: { PATH: process.env.PATH, HOME: process.env.HOME, VYRE_SOCKET: process.env.VYRE_SOCKET, VYRE_THREAD: process.env.VYRE_THREAD, CLAUDE_PLUGIN_ROOT: plugin } });
-      let o = "", e = ""; c.stdout.on("data", d => { o += d; }); c.stderr.on("data", d => { e += d; }); c.on("close", () => done({ stdout: o, stderr: e.slice(0, 400) }));
-      c.stdin.end(rest.slice(1).join(" "));
-    });
-    out({ type: "hook", ...res });
-    out({ type: "result" });
-  } else if (cmd === "env") {
-    out({ type: "env", name: rest[0], value: process.env[rest[0]] ?? null });
   } else if (cmd === "exit") process.exit(0);
 }

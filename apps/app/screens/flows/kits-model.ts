@@ -104,3 +104,14 @@ export const versionLine = (d: KitDiff): string => (d.from == null ? `Not instal
 
 /** True when there is something to approve: newer, and the box found a difference. */
 export const hasChanges = (d: KitDiff): boolean => d.installed && d.newer && !!d.diff && (d.diff.added.length + d.diff.removed.length + d.diff.changed.length > 0 || d.diff.widenings.length > 0);
+
+/** The installed Kits as rows of a list block: Update (when a newer one is on offer) and a held Remove; one that is not installed yet shows where it stands. */
+export const installedRows = (shown: KitRow[], newer: Record<string, number>) => shown.map((k) => ({
+  id: k.id, title: kitName(k.id), subtitle: kitLine(k), icon: "kits",
+  ...(k.status === "installed" ? { actions: [...(newer[k.id] ? [{ id: "update", title: `Update to v${newer[k.id]}`, kind: "primary" }] : []), { id: "remove", title: "Remove", kind: "hold" }] } : { accessories: [{ label: statusWord(k.status) }] }),
+}));
+/** The Kits on offer as rows: one action, Read the card. */
+export const availableRows = (offer: LibraryKit[], loadingCard: string) => offer.map((k) => ({
+  id: k.id, title: k.name ?? kitName(k.id), subtitle: [k.description, addsLine(k)].filter(Boolean).join(" · "), icon: "kits",
+  actions: [{ id: "read", title: loadingCard === k.id ? "Reading" : "Read the card", kind: "primary" }],
+}));

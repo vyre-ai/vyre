@@ -72,3 +72,18 @@ export function withRole(/** @type {any} */ m, /** @type {Role} */ role, /** @ty
   const days = opts.days ?? m.left ?? 7;
   return { ...m, role, scope: opts.scope ?? m.scope, left: days, end: endDate(days) };
 }
+
+/**
+ * The people of a space as rows of a list block: the face (seeded by the person's id), the role, or for a temp member the project and when it ends, and Extend for a temp member you may manage.
+ * `team` are the mock build's teammates. @param {{ id: string, name: string, role: string, scope?: string, end?: string }[]} members @param {(m: any) => boolean} can @param {{ id: string, name: string, sub: string }[]} [team]
+ */
+export function memberRows(members, can, team = []) {
+  return [
+    ...members.map((m) => {
+      const temp = m.role === "temp";
+      return { id: m.id, title: m.name, subtitle: temp ? `Temp, ends ${m.end} · Only ${m.scope}` : roleLabel(/** @type {any} */ (m.role)), faces: [{ kind: "person", name: m.name, id: m.id }],
+        ...(temp && can(m) ? { actions: [{ id: "extend", title: "Extend" }] } : {}) };
+    }),
+    ...team.map((t) => ({ id: t.id, title: t.name, subtitle: t.sub, faces: [{ kind: t.id === "juno" || t.name === "juno" ? "assistant" : "teammate", name: t.name, id: t.id }] })),
+  ];
+}

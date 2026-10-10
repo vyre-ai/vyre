@@ -108,3 +108,26 @@ test("chats list: a chat that runs on a lent computer says so first in its line;
   assert.equal(chatSub(row, "On Dana's MacBook"), "On Dana's MacBook · alex, kit · Northwind");
   assert.equal(chatSub(row), "alex, kit · Northwind");
 });
+
+test("chats list: each chat is one list-block row with faces, provider marks, its state, its age, and dim when it is not yours", async () => {
+  const { chatRowsOf } = await import("./chats-model.js");
+  const { validateScreen } = await import("../../../../lib/views/blocks.js");
+  const now = 1_700_000_000_000;
+  const base = { project: "Northwind", people: ["alex"], agents: ["kit"], models: [], providers: ["claude", "codex"], status: "idle", last: now - 6 * 60_000, line: "", asks: 0, unread: 0, open: true };
+  const rows = chatRowsOf([
+    { ...base, id: "a", title: "Assistant", pinned: "assistant" },
+    { ...base, id: "b", title: "Lease reply", asks: 1, unread: 120 },
+    { ...base, id: "c", title: "Failed one", status: "failed", last: 0 },
+    { ...base, id: "d", title: "Not yours", open: false },
+  ], now, { places: [{ chat: "b", computer: "Dana's MacBook", online: true }] });
+  assert.equal(rows[0].title, "Your assistant");
+  assert.equal(rows[0].subtitle, "Always here. Lumen talks to this chat too.");
+  assert.deepEqual(rows[1].faces, [{ kind: "person", name: "alex" }, { kind: "assistant", name: "kit" }]);
+  assert.deepEqual(rows[1].providers, ["claude", "codex"]);
+  assert.deepEqual(rows[1].accessories.map((a) => [a.label, a.tone, a.as]), [["Needs you", "accent", undefined], ["99+", "accent", undefined], ["6m", undefined, "text"]]);
+  assert.match(rows[1].subtitle, /^1 waiting on you · On Dana's MacBook · alex, kit · Northwind/);
+  assert.deepEqual(rows[2].accessories.map((a) => a.label), ["Failed"], "no age when it never moved");
+  assert.equal(rows[3].dim, true);
+  assert.equal(rows[0].dim, undefined);
+  assert.deepEqual(validateScreen({ v: 2, title: "Chats", layout: { block: "l" }, blocks: { l: { type: "list", content: { rows } } } }), [], "the language accepts them");
+});
