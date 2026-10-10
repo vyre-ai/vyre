@@ -23,6 +23,7 @@ const CI = flag("--ci");
 
 const git = (/** @type {string[]} */ a) => execFileSync("git", a, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 /** @type {{rule: string, msg: string}[]} */ const fails = [];
+/** @type {string[]} */ const warns = [];
 const fail = (/** @type {string} */ rule, /** @type {string} */ msg) => fails.push({ rule, msg });
 
 if (!STATIC && process.platform === "darwin") {
