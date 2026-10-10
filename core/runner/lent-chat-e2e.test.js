@@ -81,7 +81,11 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
 
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "lce-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
-  const th = await ok("threads.start", { cwd: work, prompt: "hello from the phone", surface: "cli" });
+  // a chat turn as the phone makes it: the stream names the chat and the person who asked (only a turn with a person is placed on a computer)
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: ownerId, path: "direct", session: "s1" });
+  const chatRow = await d.kernel.gateway.grants.chats.create(ownerChain, {});
+  const asChat = (/** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, { ...input, surface: "deck", chat: chatRow.id, asker: ownerId }, "module:stream").then((/** @type {any} */ x) => { assert.ok(!x.error, `${tool}: ${JSON.stringify(x)}`); return x.data; });
+  const th = await asChat("threads.start", { cwd: work, prompt: "hello from the phone" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 100 })).events.some((/** @type {any} */ e) => e.type === "thread.finished"), "the first turn", 60_000);
   const events = (await ok("threads.get", { thread: th.id, limit: 100 })).events;
   const said = events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
@@ -96,13 +100,13 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   assert.ok(here.sessions.length >= 1 && here.sessions.some((/** @type {any} */ s) => s.computer === "Office Mac"), "the computer lists the session it runs: " + JSON.stringify(here));
 
   // a second message goes to the same process
-  await ok("threads.send", { thread: th.id, text: "and again" });
+  await asChat("threads.send", { thread: th.id, text: "and again" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 2, "the second turn", 60_000);
   const again = (await ok("threads.get", { thread: th.id, limit: 200 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1);
   assert.match(again, /echo: and again/);
 
   // a Vyre tool call from inside the lent session is answered by the home as that session: the fake Claude calls the tool the way the MCP server does, down the lender's door
-  await ok("threads.send", { thread: th.id, text: "vyre threads.list {}" });
+  await asChat("threads.send", { thread: th.id, text: "vyre threads.list {}" });
   await until(async () => (await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= 3, "the tool turn", 60_000);
   const tool = String((await ok("threads.get", { thread: th.id, limit: 300 })).events.filter((/** @type {any} */ e) => e.type === "thread.text" && e.payload.done && !e.payload.notice).map((/** @type {any} */ e) => e.payload.text).at(-1));
   const answer = JSON.parse(tool);
