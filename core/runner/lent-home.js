@@ -74,6 +74,18 @@ export function createLentHome(o) {
   const pipes = o.pipes || createPipes({ now });
   /** The key each computer lent under, as it last said it (in `status`): the Offers are made for the computer and its key. @type {Map<string, string>} */ const keys = new Map();
   /** The thread each spawned session was opened under (`spawn({ thread })`): the key of the tool socket the daemon holds for it. A row older than the rule has a session id that is not its thread id, so Vyre's tools are routed by this, never by the session. @type {Map<string, string>} */ const threads = new Map();
+  /** Tool calls that outlast one wire call (lent.http answers `{ pending }` after HTTP_FIRST_MS and the lender asks again with the ticket): ticket -> { session, p, at }. A call is kept at most CALL_MAX_MS. @type {Map<string, { session: string, p: Promise<any>, result: any, at: number }>} */ const calls = new Map();
+  const HTTP_FIRST_MS = o.httpFirstMs ?? 20_000, CALL_MAX_MS = o.callMaxMs ?? 30 * 60_000, MAX_PENDING = 8;
+  const dropCalls = (/** @type {string} */ session) => { for (const [k, c] of calls) if (c.session === session) calls.delete(k); };
+  /** Waits up to HTTP_FIRST_MS for a kept tool call: its answer (and the call is done), or `{ pending: ticket }` to ask again. */
+  const settle = async (/** @type {string} */ session, /** @type {string} */ ticket, /** @type {{ p: Promise<any> }} */ c) => {
+    const got = await Promise.race([c.p, new Promise(r => { const t = setTimeout(() => r(null), HTTP_FIRST_MS); t.unref?.(); })]);
+    if (got === null) return { pending: ticket };
+    calls.delete(ticket);
+    if (got.e) throw got.e;
+    if (!got.r) throw err("unavailable", "this session has no socket open on this home");
+    return { status: got.r.status, body: got.r.body };
+  };
   /** Sessions placed for a new chat that no lender has started yet. @type {Set<string>} */ const reserved = new Set();
   /** The ready computers waiting on the home for something to do (`wait`), one each. @type {Map<string, { t: any, res: (a: any) => void }>} */ const waiters = new Map();
   const directivesFor = (/** @type {string} */ device) => [...book.directives(device), ...pipes.wants(device)];
@@ -117,7 +129,7 @@ export function createLentHome(o) {
     if (!canResume()) return { changed: false, why: "unavailable" };
     const r = book.toServer(session, reason, opt);
     if (!r.changed) return r;
-    lent.delete(String(session)); threads.delete(String(session)); owed.add(String(session));
+    lent.delete(String(session)); threads.delete(String(session)); dropCalls(String(session)); owed.add(String(session));
     pipes.end(String(session), { moved: { to: "server", reason: r.row ? r.row.reason : reason, epoch: r.row ? r.row.epoch : null } });
     if (o.leases) { try { o.leases.unbind(String(session)); } catch { /* already gone */ } }
     kickResume(String(session));
@@ -351,16 +363,26 @@ export function createLentHome(o) {
     async http(chain, i) {
       writer(chain, i && i.session, i && i.epoch);
       if (typeof o.http !== "function") throw err("unavailable", "this home cannot bring Vyre's tools to a lent computer");
+      const session = String(i.session), now0 = now();
+      for (const [k, c] of calls) if (now0 - c.at > CALL_MAX_MS) calls.delete(k);
+      // A call that outlasted one wire call: the lender asks again with its ticket and waits for the same answer.
+      if (i.ticket !== undefined) {
+        const c = typeof i.ticket === "string" ? calls.get(i.ticket) : undefined;
+        if (!c || c.session !== session) throw err("not_found", "that tool call is not running any more");
+        return await settle(session, String(i.ticket), c);
+      }
       const p = String(i.path || ""), method = i.method === "GET" ? "GET" : "POST";
       // a tool call (POST /v1/tools/<name>) or the list of tools the session may use (GET /v1/tools): nothing else of vyred is reachable from a lent computer
       if (method === "GET" ? p !== "/v1/tools" : !/^\/v1\/tools\/[A-Za-z0-9._%-]{1,140}$/.test(p)) throw err("bad_input", "a lent computer asks for a tool: POST /v1/tools/<name>, or GET /v1/tools");
       const body = method === "GET" ? "" : typeof i.body === "string" ? i.body : "{}";
       if (body.length > 128 * 1024) throw err("bad_input", "that request is too large");
-      const r = await o.http(threads.get(String(i.session)) || lent.get(String(i.session))?.chat || String(i.session), method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body);
-      if (!r) throw err("unavailable", "this session has no socket open on this home");
-      return { status: r.status, body: r.body };
+      if ([...calls.values()].filter(c => c.session === session).length >= MAX_PENDING) throw err("unavailable", "this chat already has several tool calls running; wait for one to finish");
+      const run = Promise.resolve(o.http(threads.get(session) || lent.get(session)?.chat || session, method, p, { "x-vyre-caller": i.caller === "harness" ? "harness" : "mcp" }, body)).then(r => ({ r }), e => ({ e }));
+      const ticket = `call_${crypto.randomBytes(9).toString("hex")}`, c = { session, p: run, at: now0 };
+      calls.set(ticket, c);
+      return await settle(session, ticket, c);
     },
-    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
+    async stop(chain, i) { mine(chain, i && i.session); pipes.end(String(i.session), { signal: "SIGTERM" }); lent.delete(String(i.session)); threads.delete(String(i.session)); dropCalls(String(i.session)); book.forget(String(i.session)); if (o.leases) { try { o.leases.unbind(String(i.session)); } catch {} } return { stopped: true }; },
     appendTranscript: (chain, s, e, epoch) => { writer(chain, s, epoch); return store.appendTranscript(chain, String(s), e); },
     getTranscript: (chain, s, from, limit) => store.getTranscript(chain, String(s), from, limit),
     putCheckpoint: (chain, s, cp, epoch) => { writer(chain, s, epoch); return store.putCheckpoint(chain, String(s), cp); },
