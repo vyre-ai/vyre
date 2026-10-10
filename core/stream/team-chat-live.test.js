@@ -49,7 +49,8 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   const sess = (() => { try { return String(db.prepare("SELECT session FROM memory_engine_lines WHERE text LIKE ? LIMIT 1").get("%hello team, please answer%").session); } catch { return ""; } })();
   const runs = (() => { try { return JSON.stringify(db.prepare("SELECT who, thread FROM stream_groups_members").all()); } catch (e) { return String(e); } })();
   const tid = (() => { try { return String(db.prepare("SELECT thread FROM stream_groups_members WHERE thread IS NOT NULL").get().thread); } catch { return ""; } })();
-  const tGet = tid ? JSON.stringify(await w.internal("threads.get", { thread: tid, limit: 1 })).slice(0, 300) : "";
+  const tList = JSON.stringify((await w.internal("threads.list", {})).data || []).slice(0, 400);
+  const tGet = "LIST " + tList + " GET " + (tid ? JSON.stringify(await w.internal("threads.get", { thread: tid, limit: 1 })).slice(0, 300) : "");
   const tOrigin = tGet + " ## " + (tid ? JSON.stringify((await w.internal("threads.origin", { session: tid })).data) : "nothread");
   const klog = /** @type {any} */ (w).lines.filter((/** @type {string} */ l) => /no kernel session/i.test(l)).join(" | ");
   assert.ok(!klog, `a team turn's kernel session opened: ${klog}`);
