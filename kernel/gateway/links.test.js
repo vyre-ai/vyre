@@ -65,9 +65,28 @@ test("links: an explicit inverse is kept, and a name taken on the target by a fi
   await assert.rejects(() => rg.r.define(owner(), { add_types: [onField] }), { code: "bad_input" });
   const noTarget = { name: "deal", label: "Deal", fields: [{ name: "x", kind: "link", label: "X", to: "nope" }] };
   await assert.rejects(() => rg.r.define(owner(), { add_types: [noTarget] }), { code: "bad_input", message: /links to nope, which is not a type here/ });
-  const badMany = { name: "deal", label: "Deal", fields: [{ name: "x", kind: "link", label: "X", many: true }] };
-  await assert.rejects(() => rg.r.define(owner(), { add_types: [badMany] }), { code: "bad_input", message: /cannot be a list/ });
+  const badInverse = { name: "deal", label: "Deal", fields: [{ name: "x", kind: "link", label: "X", inverse: { name: "deals", label: "Deals" } }] };
+  await assert.rejects(() => rg.r.define(owner(), { add_types: [badInverse] }), { code: "bad_input", message: /has no inverse/ });
   await assert.rejects(() => rg.r.define(owner(), { add_types: [{ name: "deal", label: "Deal", fields: [{ name: "t", kind: "text", label: "T", many: true }] }] }), { code: "bad_input" });
+});
+
+test("links: a link to any record may be a list, and a list of it may hold a Vault login by its address (R031-71); a typed link and another Space's login never may", async () => {
+  const rg = rig();
+  const WITH = { name: "site", label: "Site", fields: [
+    { name: "title", kind: "text", label: "Title" },
+    { name: "credentials", kind: "link", label: "Logins", many: true },
+    { name: "typed", kind: "link", label: "Typed", to: "contact", many: true },
+  ] };
+  await rg.r.define(owner(), { add_types: [CONTACT, WITH] });
+  const mine = { urn: `vyre://${SPACE}/credential/portal-login` }, slashed = { urn: `vyre://${SPACE}/credential/team/portal` };
+  const s = await rg.r.create(owner(), "site", { title: "a", credentials: [mine, slashed] });
+  assert.deepEqual(s.data.credentials, [mine, slashed]);
+  const c = await rg.r.create(owner(), "contact", { name: "Jane" });
+  const t = await rg.r.update(owner(), "site", s.id, { credentials: { add: [{ urn: c.urn }], remove: [slashed] } }, s.version);
+  assert.deepEqual(t.data.credentials, [mine, { urn: c.urn }], "a record still links beside a login, and a login comes off by its address");
+  await assert.rejects(() => rg.r.create(owner(), "site", { title: "b", credentials: [{ urn: "vyre://spc_bbbbbbbbbbbb/credential/x" }] }), { code: "bad_input", message: /must name a record of this Space/ });
+  await assert.rejects(() => rg.r.create(owner(), "site", { title: "c", credentials: [{ urn: `vyre://${SPACE}/credential/` }] }), { code: "bad_input" });
+  await assert.rejects(() => rg.r.create(owner(), "site", { title: "d", typed: [mine] }), { code: "bad_input", message: /must name a record of this Space/ }, "a link to a type still names a record of that type");
 });
 
 test("links: a link names a live record of its type; the gateway refuses a missing, removed, other-type or other-space target, and a list never names a record twice", async () => {

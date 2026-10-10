@@ -265,6 +265,7 @@ export function createRecords(cfg) {
       const v = input[f.name];
       if (v === null || v === undefined) continue;
       for (const x of (f.many === true ? (Array.isArray(v) ? v : []) : [v])) {
+        if (!f.to && x && typeof x.urn === "string" && x.urn.length > `vyre://${space}/credential/`.length && x.urn.startsWith(`vyre://${space}/credential/`)) continue; // a Vault login is named by its address, not a record (R031-71)
         const parts = x && typeof x.urn === "string" ? x.urn.split("/") : [];
         if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", `${f.name} must name a record of this Space`);
         if (f.to && parts[3] !== f.to) throw new KernelError("bad_input", `${f.name} links to ${f.to}, not ${parts[3]}`);

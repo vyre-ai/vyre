@@ -54,7 +54,7 @@ export class Links {
     const K = this.need();
     const { chain, type, id, record } = await this.recordAt(K, meta, to);
     try { await K.records.update(chain, type, id, { credentials: { add: [{ urn: credentialUrn(K.space, name) }] } }, record.version); }
-    catch (/** @type {any} */ e) { throw bad(/credentials/.test(String(e && e.message)) ? `a ${type} has no place for logins yet; add a "credentials" field of links to its type first` : String(e && e.message || "the record would not take the link"), e && e.code || "failed"); }
+    catch (/** @type {any} */ e) { throw bad(e && e.code === "unknown_field" ? `a ${type} has no place for logins yet; add a "credentials" field of links to its type first` : String(e && e.message || "the record would not take the link"), e && e.code || "failed"); }
     this.v.audit("link", name, String(meta.caller), true, `${type}/${id}`);
     this.v.emit("vault.linked", { name, to: String(to) });
     return { linked: { item: name, to: String(to) } };

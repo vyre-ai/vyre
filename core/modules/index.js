@@ -645,7 +645,8 @@ const RELAY = Symbol("vyre.relay");
 const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
   memory: ["spaces.storage."],
-  work: ["spaces.storage."],
+  // the timeline asks the Vault for the uses of the logins a record links to, as the person looking (the record is read as them)
+  work: ["spaces.storage.", "vault.uses.for"],
   // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
   term: ["threads.get"],
   // appmods proposes the Kit an app ships (its record type and its Flow) as the installing person; the owner's yes in Now is what defines anything

@@ -59,8 +59,8 @@ test("link a login to a project, use it, and the project's timeline says so with
 
 test("a record whose type has no place for logins says so; a login that is deleted drops out of every answer; a model cannot link", { timeout: 180_000 }, async t => {
   const { d, owner, as, proj, use } = await world(t);
-  const contact = await d.kernel.gateway.records.create(owner, "contact", { name: "Dana Pierce" });
-  const no = await as("vault.link", { item: "portal-login", to: contact.urn });
+  const other = await d.kernel.gateway.records.create(owner, "task", { title: "Call Dana" });
+  const no = await as("vault.link", { item: "portal-login", to: other.urn });
   assert.match(no.error.message, /no place for logins yet/);
   assert.ok(!(await as("vault.link", { item: "portal-login", to: proj.urn })).error);
   await use();
