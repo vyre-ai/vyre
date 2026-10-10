@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(site): vyre.run serves its own fonts (site/fonts, the same two files as the Deck's), so the first page someone opens no longer calls Google: the preconnect, preload and noscript font links are gone from every page and the 404, v2.css declares the faces, and the privacy page says so. The social-card drawing script reads the local files too. core/daemon/csp-self-hosted.test.js now also reads every file under site/ for an outside font or script host.
 - fix(security): the device pairing page no longer loads fonts from Google (S2). web/onboard/device/index.html drops the fonts.googleapis.com stylesheet (deck.css already serves both faces from /fonts), and both content security policies (core/daemon/app.js, core/daemon/index.js) drop fonts.googleapis.com and fonts.gstatic.com. core/daemon/csp-self-hosted.test.js keeps the onboarding pages and both policies free of any outside host.
 - fix(flows): a send that rides an earlier yes (`with`) asks its own question when the run has read content from outside, or when a model drafted the Flow: what the later send says or goes to may come from content the earlier yes never saw (kernel/flows/runner.js, red first in kernel/flows/rides.test.js).
 - fix(app): a Flow's run that shrank to one line (flows.runs_keep_days) shows that line and says why its steps are gone, instead of a canvas where nothing ran (apps/app/screens/flows/RealFlow.tsx, real-model.js).

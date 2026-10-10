@@ -1,13 +1,14 @@
 # vyre.run changelog
 
 Newest first. The landing page is a static site: `index.html`, `styles.css`, `app.js` and a few
-assets, with no build step and no framework. Fonts load from Google Fonts; the one script is local.
+assets, with no build step and no framework. Fonts are vyre.run's own files (site/fonts); the one script is local.
 
 Since v2 the pages are written by `scripts/gen-site.mjs` (one nav, footer, metadata and structured-data source) and committed;
 the site itself still has no build step. `scripts/gen-og.sh` draws the social cards.
 
 ## Unreleased
 
+- Fonts are served from vyre.run itself: the two faces are in /fonts, declared in v2.css, and every page preloads the sans. No page calls fonts.googleapis.com or fonts.gstatic.com any more, and the privacy page no longer says Google sees a font request.
 - The setup page is one flow of ten steps with a timeline (#11): a rail beside the step at 900 px and wider, a segmented bar with
   "All steps" below that. The order is now install, check the words, choose your address, Tailscale, your AI, your phone, passkey,
   then steps 8 to 10 at your own address. Tailscale comes before the AI sign-in. The AI sign-in has a clear "Skip for now" (#52):
