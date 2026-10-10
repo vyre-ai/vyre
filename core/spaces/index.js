@@ -1051,7 +1051,7 @@ export default {
         // computer was never removed, gets its lease and nothing more is asked of the person.
         let removedBefore = again;
         if (on && h.gateway.leases && typeof h.gateway.leases.issue === "function") {
-          try { const t = h.hosted === false ? await h.gateway.leases.issue(null, { device: kdev, device_key: kdev }) : await h.gateway.leases.issue(k.chain, { device: kdev, device_key: kdev }); removedBefore = Boolean(t && t.revoked); } catch { /* the probe could not be asked: the lender's own record decides */ }
+          try { const t = h.hosted === false ? await h.gateway.leases.issue(null, { device: kdev, device_key: kdev, probe: true }) : await h.gateway.leases.issue(k.chain, { device: kdev, device_key: kdev, probe: true }); removedBefore = Boolean(t && t.revoked); } catch { /* the probe could not be asked: the lender's own record decides */ }
         }
         if (on && removedBefore && h.gateway.leases && typeof h.gateway.leases.reinstate === "function") {
           // The development stand-in for Face ID (a development build only) is not a proof the sealing process can check, so it cannot reinstate: the lend still goes through, as it did before the reinstate existed, and says so

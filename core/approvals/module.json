@@ -59,14 +59,6 @@
         "reach": "modules"
       },
       {
-        "name": "approvals.lease-ask", "effect": "write",
-        "reach": "modules"
-      },
-      {
-        "name": "approvals.lease-status", "effect": "read",
-        "reach": "modules"
-      },
-      {
         "name": "approvals.card-input", "effect": "read",
         "reach": "modules"
       },
