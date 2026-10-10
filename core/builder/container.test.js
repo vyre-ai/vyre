@@ -25,6 +25,12 @@ test("a Dockerfile starts from official images or the registries the owner allow
   refused("FROM", /no image|no FROM/);
 });
 
+test("a VOLUME line is refused: the server keeps its data in /data, which Vyre provides", () => {
+  refused("FROM alpine\nVOLUME /var/lib/data\nEXPOSE 80", /declares a VOLUME/);
+  refused("FROM alpine\nVOLUME [\"/a\", \"/b\"]\nEXPOSE 80", /remove the VOLUME line/);
+  assert.equal(checkDockerfile("FROM alpine\n# VOLUME /x\nEXPOSE 80").port, 80, "a comment is not an instruction");
+});
+
 test("an image or a frontend pulled in sideways is held to the same rule: COPY --from, RUN --mount from, and # syntax=", () => {
   refused("FROM alpine\nCOPY --from=evil.example/x /a /a\nEXPOSE 80", /takes files from evil\.example\/x/);
   refused("FROM alpine\nRUN --mount=type=bind,from=evil.example/x,target=/m true\nEXPOSE 80", /takes files from evil\.example\/x/);

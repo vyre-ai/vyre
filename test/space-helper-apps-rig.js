@@ -176,6 +176,7 @@ if (cmd[0] === "iptables" || cmd[0] === "ip6tables") {
   if (op === "-D") { if (idx < 0) process.exit(1); rules.splice(idx, 1); save(rules); process.exit(0); }
   process.exit(1);
 }
+if (cmd[0] === "cat" && cmd[1] === "/proc/sys/net/ipv4/ip_forward") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("ip-forward-on") ? "1\\n" : "0\\n"); process.exit(0); }
 if (cmd[0] === "setpriv") {
   const uid = cmd.find(x => x.startsWith("--reuid=")).slice(8);
   const daemon = fs.readFileSync(F + "/daemon-uid", "utf8").trim();

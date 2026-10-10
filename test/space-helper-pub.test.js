@@ -136,3 +136,15 @@ test("a build whose network can reach the metadata address, or whose rules canno
     assert.ok(!fs.existsSync(path.join(r.F, "pub-builds")), `${flag}: no build container was started`);
   }
 });
+
+test("the folder's size is its apparent size: a sparse file of tens of gigabytes is refused", opts, async t => {
+  const r = await ready(t);
+  const d = r.write(DEP, { files: r.GOOD });
+  const fd = fs.openSync(path.join(d, "ctx", "big.bin"), "w");
+  fs.ftruncateSync(fd, 80 * 1024 * 1024 * 1024); // 80 GB apparent, almost no blocks
+  fs.closeSync(fd);
+  const st = await r.ask(`pub-build ${DEP}`);
+  assert.equal(st.state, "failed", JSON.stringify(st));
+  assert.match(st.message, /bigger than \d+ MB/);
+  assert.ok(!fs.existsSync(path.join(r.F, "pub-builds")), "no build was started");
+});

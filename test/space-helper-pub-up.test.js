@@ -195,3 +195,17 @@ test("two starts of one name at once: the second is told to wait and writes noth
   assert.equal(ok.state, "ok", JSON.stringify(ok));
   assert.ok(!fs.existsSync(lock), "the lock is released when the start is over");
 });
+
+test("a server is not started when the vyre container forwards packets between its networks, and its compose keeps the log files bounded", opts, async t => {
+  const r = await ready(t);
+  assert.equal((await r.build(DEP)).state, "ok");
+  r.flag("ip-forward-on");
+  const st = await r.up(DEP);
+  assert.equal(st.state, "failed", JSON.stringify(st));
+  assert.match(st.message, /forwards packets between its networks/);
+  assert.ok(!fs.existsSync(path.join(r.F, "app-running-northwind")), "nothing started");
+  fs.rmSync(path.join(r.F, "ip-forward-on"));
+  assert.equal((await r.up(DEP)).state, "ok");
+  const compose = read(path.join(r.priv, "apps", "northwind", "compose.yml"));
+  for (const want of ["    logging:", "      driver: json-file", '        max-size: "10m"', '        max-file: "3"']) assert.ok(compose.includes(want), want);
+});

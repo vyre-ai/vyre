@@ -1746,11 +1746,12 @@ sp_app_lint() {
     else if (k == "init") { if ($0 != "    init: true") bad("init") }
     else if (k == "read_only") { if (pub != 1 || $0 != "    read_only: true") bad("read_only") }
     else if (k == "tmpfs") { if (pub != 1 || $0 != "    tmpfs:") bad("tmpfs") }
-    else if (k == "cap_drop" || k == "security_opt" || k == "networks" || k == "volumes" || k == "environment") { if ($0 != "    " k ":") bad(k " with a value on its line") }
+    else if (k == "cap_drop" || k == "security_opt" || k == "networks" || k == "volumes" || k == "environment" || k == "logging") { if ($0 != "    " k ":") bad(k " with a value on its line") }
     else bad("service key " k)
     next }
   top == "services" && /^      / {
     if (key == "cap_drop") { if ($0 != "      - ALL") bad("cap_drop") }
+    else if (key == "logging") { if ($0 != "      driver: json-file" && $0 != "      options:" && $0 != "        max-size: \"10m\"" && $0 != "        max-file: \"3\"") bad("logging") }
     else if (key == "tmpfs") { if ($0 != "      - /tmp:rw,size=64m,mode=1777") bad("tmpfs entry") }
     else if (key == "security_opt") { if ($0 != "      - no-new-privileges:true") bad("security_opt") }
     else if (key == "networks") { if ($0 != "      - net") bad("the service networks") }
@@ -2082,7 +2083,8 @@ sp_pub_vet() {
   { [ -d "$c" ] && [ ! -L "$c" ]; } || { MSG="what was taken is not a folder"; return 1; }
   [ -z "$(find "$c" -mindepth 1 ! -type f ! -type d 2>/dev/null | head -n 1)" ] || { MSG="the folder holds something that is not a plain file or folder"; return 1; }
   [ -z "$(find "$c" -type f -links +1 2>/dev/null | head -n 1)" ] || { MSG="the folder holds a file with a second link"; return 1; }
-  kb=$(du -sk "$c" 2>/dev/null | cut -f1)
+  # the apparent size, not the blocks used: a sparse file of 50 GB takes almost no blocks and would grow to its full size in the build's layer
+  kb=$(du -sk --apparent-size "$c" 2>/dev/null | cut -f1)
   case "$kb" in ""|*[!0-9]*) MSG="the folder's size could not be read"; return 1 ;; esac
   [ "$kb" -le "$SPACES_PUB_MAX_KB" ] || { MSG="the folder is bigger than $((SPACES_PUB_MAX_KB / 1024)) MB"; return 1; }
   [ "$(find "$c" 2>/dev/null | wc -l)" -le 4000 ] || { MSG="the folder holds too many files"; return 1; }
@@ -2329,6 +2331,9 @@ sp_pub_up_run() {
   sp_attach_net "$m" "vyre-app-${m}_net" "$APP_ALIAS" || return 1
   sp_fw_apply_net "$m" "vyre-app-${m}_net" "vyre-app:$m" "app:$m" || return 1
   sp_in_apply "$m" 0 || return 1
+  # the vyre container sits on the networks of several servers at once: it must not route between them (a server could then reach another's address through it)
+  _pidf=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  [ "$(timeout 20 nsenter -t "$_pidf" -n cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || true)" = 0 ] || { MSG="the vyre container forwards packets between its networks, so no server was started"; return 1; }
   sp_app_dc "$m" up -d >/dev/null 2>&1 || { MSG="the server did not start"; return 1; }
   if ! sp_app_wait "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; MSG="the server did not become healthy"; return 1; fi
   if ! { sp_probe_to "$m" "vyre-app-$m" app "vyre-app-${m}_net" "$A_PORT" "the server" && sp_in_probe "$m" 0; }; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; return 1; fi
