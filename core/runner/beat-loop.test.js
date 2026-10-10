@@ -75,6 +75,7 @@ test("a home that cannot be reached freezes the sessions after two missed beats;
   await w.run("runner.start", { space: SPACE, session: "s1", chat: w.chat });
   await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x !== "T"), 10_000);
   w.net.cut = true;
+  await sleep(1500); console.log("DEBUG states", JSON.stringify(statesOf(w.agent)));
   await waitFor(() => statesOf(w.agent).length > 0 && statesOf(w.agent).every(x => x === "T"), 10_000);
   assert.equal(w.book.get("s1").where, "mac", "the home has not taken it yet");
   w.net.cut = false;
