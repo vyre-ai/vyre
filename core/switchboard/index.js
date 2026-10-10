@@ -2002,7 +2002,7 @@ export class Switchboard {
     const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
     const moved = kind !== "roll" && thread;
     const tail = moved ? this.rollTurns(thread, 400, since) : held ? held.tail : thread ? this.rollTurns(thread) : [];
-    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, windows: kind === "roll" ? chain : [], sheet, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
+    return { ...seedOf({ decisions, plan, tasks, pointers, tail, roll, folder: rec.cwd, kind, receipts, facts, held: waiting, windows: kind === "roll" && process.env.VYRE_ROLLOVER_LINK !== "off" ? chain : [], sheet, ...(moved ? { limits: SWITCH } : {}) }), held: Boolean(held) };
   }
 
   /**

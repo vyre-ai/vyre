@@ -16,6 +16,10 @@ export function systemSource(call: Call) {
     reindex: () => ask("recall.index"),
     hooks: () => maybe("hooks.list"),
     hooksStatus: () => maybe("hooks.status"),
+    /** The webhook listener and its routes are the owner's own acts; each takes the person's yes. */
+    hooksEnable: (on: boolean) => ask("hooks.enable", { on }),
+    hooksOpen: (name: string, scheme: string, header: string, secret: string) => ask<any>("hooks.open", { name, verify: { scheme, ...(header.trim() ? { header: header.trim() } : {}), secret } }),
+    hooksClose: (name: string) => ask("hooks.close", { name }),
     wink: () => maybe("network.wink.status"),
     egress: () => maybe("computers.egress.status"),
     handback: () => maybe("computers.handback.status"),

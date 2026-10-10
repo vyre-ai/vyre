@@ -678,6 +678,8 @@ export default {
     const offNameA = ctx.events.on("name.claimed", () => { stopTunnel(); startTunnel().catch(() => {}); });
     const offNameB = ctx.events.on("name.released", () => stopTunnel());
     const offDomains = ctx.events.on("appmods.domain-changed", () => { void refreshGate(); });
+    // the edge address is a setting a person (or their assistant) changes; the door opens or shuts at once, with no restart
+    const offTunnelUrl = ctx.settings.on("relay.tunnel_url", () => { stopTunnel(); startTunnel().catch(() => {}); });
 
     // ---- tools ----
 
@@ -1436,6 +1438,6 @@ export default {
       if (row) forget(row.id, "presence key removed");
     });
 
-    return { async stop() { try { offNameA(); offNameB(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
+    return { async stop() { try { offNameA(); offNameB(); offTunnelUrl(); offDomains(); } catch {} stopTunnel(); try { offPresence(); } catch {} try { offSignedOut(); } catch {} for (const id of [...pendingPairs.keys()]) pendingDrop(id, "box stopping"); clearInterval(windowTimer); if (pairWindow) await closeWindow("stopped"); stopLink(); if (setup) clearTimeout(setup.timer); for (const set of live.values()) for (const ch of set) ch.close(1001, "box stopping"); live.clear(); } };
   },
 };

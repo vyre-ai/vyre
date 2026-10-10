@@ -34,10 +34,12 @@ export function connectorsOf(flow) {
  * @returns {{ id: string, label: string, level: 'green'|'amber'|'red'|'grey', line: string, last: { run: string, state: string, at: number } | null, week: { ok: number, failed: number, total: number }, next: number | null, attention: number, held: number, red_connections: string[] }}
  */
 export function healthOf(i) {
-  const week = i.runs.filter(r => i.now - r.started_at < 7 * 86_400_000);
+  // a lane of a parallel step is part of its parent's run: it counts for what needs a person, not as a run of its own
+  const own = i.runs.filter(r => !(r.parent && r.parent.lane));
+  const week = own.filter(r => i.now - r.started_at < 7 * 86_400_000);
   const ended = week.filter(r => ["done", "failed", "cancelled"].includes(r.state));
   const ok = ended.filter(r => r.state === "done").length, failed = ended.filter(r => r.state === "failed").length;
-  const last = [...i.runs].sort((a, b) => b.started_at - a.started_at)[0] || null;
+  const last = [...own].sort((a, b) => b.started_at - a.started_at)[0] || null;
   const attention = i.runs.filter(r => r.attention && !["done", "cancelled"].includes(r.state) || (r.attention && r.attention.kind === "verify")).length;
   const held = i.held ?? i.runs.filter(r => r.state === "queued").length;
   const lights = i.lights || {};
