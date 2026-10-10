@@ -29,7 +29,6 @@ export async function personWorld(o = {}) {
   if (!w.ready) { await w.stop().catch(() => {}); throw new Error(`the ${kind} world did not come up: ${run.results.filter(r => r.ok === false).map(r => `${r.name}: ${r.why || ""}`).join(" | ").slice(0, 500)}`); }
   const personId = w.mac.identity.id;
   const srv = w.srv;
-  if (kind === "box") await enrolStandIn(w);
   return {
     world: w, run, out, kind, person: w.person, personId, server: srv,
     /** A tool call as the person; a call the server answers presence_required to is retried with the person's yes (the stand-in key signs exactly what the card shows). @param {string} tool @param {any} [input] */
@@ -41,16 +40,6 @@ export async function personWorld(o = {}) {
     mac: w.mac,
     close: () => w.stop(),
   };
-}
-
-/** A development-build box: the stand-in owner key goes on the identity list, then into the box's sealer, through the product's own calls (trust's route). @param {any} w */
-async function enrolStandIn(w) {
-  const sg = w.srv.ownerSigner;
-  assert.ok(sg, "the box server has an owner signer (a development-build box)");
-  const spki = sg.enrolment.spki;
-  await w.call("spaces.identity.entry.add", { kind: "device", publicKey: Buffer.from(spki, "base64").toString("base64url"), label: "stand-in owner key" });
-  const begun = await w.call("spaces.presence.begin", { key_id: sg.enrolment.key_id, spki });
-  await w.call("spaces.presence.recover", { key_id: sg.enrolment.key_id, spki, signer: "software", token: begun.token });
 }
 
 /**

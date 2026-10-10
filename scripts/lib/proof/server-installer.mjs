@@ -60,13 +60,22 @@ export async function startInstallerServer(o) {
     fs.appendFileSync(logFile, `\nupdate unit drop-in: ${d.status} ${String(d.stdout || d.stderr).trim()}\n`);
   }
   if (o.devBuild && exit === 0) {
-    // The installer laid everything out and did not start it (VYRE_NO_UP=1 below): a root run of compose passes on only the few settings it checks, so the developer switches in vyre.env (the path rule, the
-    // sealer's) would not reach the box, and a box started twice would register the setup offer twice (the relay answers the second "contested"). It is started once, here, by `vyre up` as the person who owns
-    // the folder, which reads vyre.env whole. The setup code is in vyre.env and within its hour.
+    // The installer laid everything out and did not start it (VYRE_NO_UP=1 below). A development box is started by `vyre up` as the person who owns the folder (a root run of compose passes on only a few
+    // settings, so the developer switches in vyre.env would not reach it). The owner's stand-in presence key is put into the sealing folder OFFLINE, with the daemon stopped (scripts/dev-enrol-software-key.mjs,
+    // trust's route): the box starts once without the setup code to make its home, is stopped, the key is enrolled, and it starts again with the code and a fresh stamp, so the setup offer is registered once.
     const wrapper = process.env.VYRE_WRAPPER || "/usr/local/bin/vyre";
-    const up = sh(`cd ${dir} && VYRE_DIR=${dir} ${wrapper} up 2>&1`, { timeout: 900_000 });
-    fs.appendFileSync(logFile, `\nvyre up for the developer switches: ${up.status} ${String(up.stdout || up.stderr).slice(-300)}\n`);
-    if (up.status !== 0) throw new Error(`could not start the development box: ${String(up.stdout || up.stderr).slice(-300)}`);
+    const envFile = path.join(dir, "vyre.env");
+    const text = fs.readFileSync(envFile, "utf8");
+    const code = (/^VYRE_SETUP_CODE=(.*)$/m.exec(text) || [])[1] || "";
+    fs.writeFileSync(envFile, text.split("\n").filter(l => !/^VYRE_SETUP_CODE(_AT)?=/.test(l)).join("\n"), { mode: 0o600 });
+    const step = (/** @type {string} */ what, /** @type {string} */ cmd, /** @type {number} */ ms = 600_000) => { const r = sh(cmd, { timeout: ms }); fs.appendFileSync(logFile, `\n${what}: ${r.status} ${String(r.stdout || r.stderr).slice(-300)}\n`); if (r.status !== 0) throw new Error(`${what} failed: ${String(r.stdout || r.stderr).slice(-300)}`); return r; };
+    step("vyre up (first start, no setup code)", `cd ${dir} && VYRE_DIR=${dir} ${wrapper} up 2>&1`, 900_000);
+    for (let n = 0; n < 60; n++) { if (sh("docker exec -u vyre vyre-vyre-1 test -f /home/vyre/.vyre/kernel/space.json").status === 0) break; await new Promise(r => setTimeout(r, 3000)); }
+    step("stop the box", `cd ${dir} && docker compose -p vyre stop vyre 2>&1`);
+    const en = step("enrol the stand-in owner key offline", `cd ${dir} && docker compose -p vyre run --rm --no-deps -u vyre --entrypoint node vyre /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre 2>&1`);
+    fs.appendFileSync(envFile, `\nVYRE_SETUP_CODE_AT=${Math.floor(Date.now() / 1000)}\nVYRE_SETUP_CODE=${code}\n`);
+    step("start the box with the setup code", `cd ${dir} && docker compose -p vyre up -d vyre 2>&1`);
+    fs.appendFileSync(logFile, `\nenrolled: ${String(en.stdout).trim().slice(-200)}\n`);
   }
   if (exit === 0) {
     // the forwarder: the container's 127.0.0.1:<port> to the stand-in directory on the runner (node is in the image; it stops with the container)
@@ -85,15 +94,14 @@ export async function startInstallerServer(o) {
     const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "vyre", "call", tool, JSON.stringify(input)], { encoding: "utf8" });
     return r;
   };
-  const ownerSigner = o.devBuild && o.ownerId ? (await import("../../../kernel/seal/testing.js")).signer(o.ownerId) : null;
   return {
-    kind: "installer", store: o.store, logs: /** @type {string[]} */ ([]), ownerSigner,
-    /** The owner's yes for a call the box answered presence_required to: a development key signs the exact act (only on a development build box that enrolled this key). @param {string} personId */
-    yesFor: ownerSigner ? (/** @type {string} */ personId) => async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
-      const proof = ownerSigner.proof({ space: sign.space, hops: [{ actor: { kind: "person", id: personId, space: sign.space } }] }, sign.op, sign.fields);
-      return Buffer.from(JSON.stringify(proof)).toString("base64url");
+    kind: "installer", store: o.store, logs: /** @type {string[]} */ ([]),
+    /** The owner's yes for a call the box answered presence_required to: the stand-in key enrolled offline in the box's home signs the exact act (scripts/dev-sign-proof.mjs run inside the box), as the phone's key would. @param {string} _personId */
+    yesFor: o.devBuild ? (/** @type {string} */ _personId) => async (/** @type {{ op: string, space: string, fields: Record<string, any> }} */ sign) => {
+      const r = spawnSync("docker", ["exec", "-u", "vyre", "vyre-vyre-1", "node", "/opt/vyre/scripts/dev-sign-proof.mjs", "--home", "/home/vyre/.vyre", "--op", sign.op, "--space", sign.space, "--fields", JSON.stringify(sign.fields), "--header"], { encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`could not sign the yes: ${String(r.stderr || r.stdout).slice(-200)}`);
+      return String(r.stdout).trim();
     } : undefined,
-    /** The four words the installer printed on its terminal. */
     async words() {
       if (printed) return printed;
       if (!o.devBuild) throw new Error("the installer printed no check words (IR-1: show_words)");
