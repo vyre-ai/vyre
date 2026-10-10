@@ -145,27 +145,32 @@ export function createHostProxy(o) {
     }
     const sid = /(?:^|;\s*)vyre_app=([A-Za-z0-9_-]+)/.exec(String(req.headers.cookie || ""));
     const open = ["GET", "HEAD"].includes(String(req.method)) && Array.isArray(app.public) && app.public.includes(url.pathname);
-    if (!open && !o.tickets.valid(sid ? sid[1] : undefined, mh.name, host)) return plain(404, "not found");
+    const ticketed = o.tickets.valid(sid ? sid[1] : undefined, mh.name, host);
+    if (!open && !ticketed) return plain(404, "not found");
+    // Anyone without a ticket on a public path is a stranger, not the owner: the app is asked with no session of the install's (S6)
+    const stranger = open && !ticketed;
     if (!["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"].includes(String(req.method))) return plain(405, "method not allowed");
     try {
-      if (!(await ensure(mh.name, app))) return plain(502, "Vyre could not sign in to the app. Try again in a minute.");
+      if (!stranger && !(await ensure(mh.name, app))) return plain(502, "Vyre could not sign in to the app. Try again in a minute.");
       /** @param {boolean} retry */
       const once = async retry => {
         /** @type {Record<string, string>} */ const h = {};
         for (const [k, v] of Object.entries(req.headers)) if (!HOP.has(k) && !k.startsWith("x-vyre-") && typeof v === "string") h[k] = v;
-        const jar = jars.get(mh.name);
+        const jar = stranger ? undefined : jars.get(mh.name);
         if (jar && jar.size) h.cookie = cookieHeader(jar);
         if (req.headers["content-length"]) { if (Number(req.headers["content-length"]) > MAX_BODY) throw Object.assign(new Error("too big"), { code: "too_big" }); h["content-length"] = String(req.headers["content-length"]); }
         if (req.headers["transfer-encoding"]) h["transfer-encoding"] = String(req.headers["transfer-encoding"]);
         const r = await upstream(app.origin, String(req.method), url.pathname + url.search, h, { body: ["GET", "HEAD"].includes(String(req.method)) ? null : req });
         // The app lost our session (it restarted, it expired): sign in again, once, and repeat a request that has no body to repeat.
-        if (!retry && app.login && jars.has(mh.name) && String(r.headers.location || "").includes(app.login.path) && ["GET", "HEAD"].includes(String(req.method))) { await readAll(r).catch(() => {}); jars.delete(mh.name); if (!(await ensure(mh.name, app, true))) throw Object.assign(new Error("sign in"), { code: "login" }); return once(true); }
+        if (!retry && !stranger && app.login && jars.has(mh.name) && String(r.headers.location || "").includes(app.login.path) && ["GET", "HEAD"].includes(String(req.method))) { await readAll(r).catch(() => {}); jars.delete(mh.name); if (!(await ensure(mh.name, app, true))) throw Object.assign(new Error("sign in"), { code: "login" }); return once(true); }
         return r;
       };
       const r = await once(false);
-      const jar = jars.get(mh.name) || new Map();
-      keepCookies(jar, r.headers["set-cookie"]);
-      if (app.login) jars.set(mh.name, jar);
+      if (!stranger) {
+        const jar = jars.get(mh.name) || new Map();
+        keepCookies(jar, r.headers["set-cookie"]);
+        if (app.login) jars.set(mh.name, jar);
+      }
       /** @type {Record<string, string | string[]>} */ const out = {};
       for (const [k, v] of Object.entries(r.headers)) { if (HOP.has(k) || k === "set-cookie" || v === undefined) continue; out[k] = /** @type {any} */ (v); }
       if (typeof out.location === "string") out.location = rewriteLocation(out.location, app.origins, here);
