@@ -199,7 +199,7 @@ export interface Manifest {
     connections?: { provider: string; purpose: string }[];
     /** Its default daily cap on core/spend. */
     spend?: { dailyUsd: number };
-    /** Daemon services handed to a built in module (names the loader knows: kernelSession, kernelThreads, sandbox, flowsHost, credentials, dataStores, devStandIn, modulesListReset, modulesListResetPayload). */
+    /** Daemon services handed to a built in module (names the loader knows: kernelSession, chatFor, agentActor, kernelThreads, sandbox, flowsHost, credentials, dataStores, devStandIn, modulesListReset, modulesListResetPayload). */
     daemon?: string[];
     /** The record types and Drive folders it may reach, as narrow verbs on `ctx.kernel` (an added module; shown on the install card). Not the kernel handle: no defining types, no removing records. */
     kernel?: { records?: string[]; files?: string[] };
