@@ -42,7 +42,7 @@ export const until = async (fn, what, ms = 15_000) => {
  * A vyred in a temp home, on `driver`. `sessions` is config.json's sessions block; `vault` items
  * are put and granted to module threads (the box's own credential) unless `grant` is false.
  */
-export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [] } = {}) {
+export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box", modules = [], kernel = false } = {}) {
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise the
   // directory comes out from under a daemon (and any live child) still writing to it. `daemon` is
@@ -68,7 +68,7 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
   // The probe and any modules given here stand in for Vyre's own (internal tools, session
   // providers), so the home's modules folder loads as first party (ADR 0047). Test only.
-  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")], ...(kernel ? { kernel: true } : {}) });
   asOwner(d, root); // calls from cli/deck arrive as the owner's device, as on the real socket (chat gate)
   daemon = d;
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
