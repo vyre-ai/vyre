@@ -116,3 +116,16 @@ test("models: declining remembers the model; it is not proposed again", async t 
   const all = (await b.call("models.evals")).data.evals;
   assert.deepEqual(all.map((/** @type {any} */ e) => [e.model, e.state]), [["grok/grok-5", "declined"]]);
 });
+
+test("models: the model picker (sessions.models) reads this one list: Claude Code's aliases first, then every available model the registry knows, never twice, and the aliases alone before the registry has anything", async t => {
+  const b = await box(t, await openrouter(t, { value: OR }));
+  const before = (await b.call("sessions.models")).data;
+  assert.deepEqual(before.map((/** @type {any} */ m) => m.id).slice(0, 3), ["opus", "sonnet", "haiku"], "the aliases come first");
+  assert.equal((await b.call("models.refresh")).data.refreshed, true);
+  const known = (await b.call("models.list", { provider: "claude", available: true })).data.models.map((/** @type {any} */ m) => m.id);
+  const picker = (await b.call("sessions.models")).data.map((/** @type {any} */ m) => m.id);
+  assert.deepEqual(picker.slice(0, 3), ["opus", "sonnet", "haiku"]);
+  for (const id of known) assert.ok(picker.includes(id), `${id} is a registry model and the picker offers it`);
+  assert.equal(new Set(picker).size, picker.length, "no model twice");
+  assert.deepEqual((await b.call("sessions.models", { provider: "codex" })).data.map((/** @type {any} */ m) => m.id).filter((/** @type {string} */ id) => ["opus", "sonnet", "haiku"].includes(id)), [], "another provider's picker has no Claude aliases");
+});
