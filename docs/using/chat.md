@@ -165,6 +165,12 @@ visit. A session you opened before may also open from the app's offline cache.
 - It does not move a session on your paired Mac to another provider. The picker is for sessions
   the server runs.
 
+## Choose which model vendors may run your chats
+
+Settings has a list called Model vendors allowed. Leave it empty and a chat can run on any vendor. Add vendors (Claude, Codex, Grok, OpenRouter, or an OpenAI-compatible endpoint) and a chat on any other starts nothing and tells you which vendor your settings leave out. The list holds at every start and at each message of a chat that is already open, whichever way the account signs in: a subscription login that talks straight to its own vendor is held to it too.
+
+A word on what the direct path does not check. A chat that runs on a subscription login (Codex or Grok) sends your words to that vendor without Vyre's inference door in between, as a Claude chat does. Vyre removes anything shaped like a key or a password from what it sends. It does not compare your words with values sealed in the Vault, because the Claude path does not either. The vendor is the one you signed in to, and Vyre's Gate still holds any send that leaves your machine.
+
 ## Next
 
 - [Projects and threads](projects-and-threads.md), how sessions are grouped.
