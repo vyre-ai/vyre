@@ -13,6 +13,8 @@ import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
 import { fail } from "../../lib/publish/util.js";
+import { folderRefusal } from "../../lib/publish/folder-build.js";
+import { isPerson } from "../../lib/caller.js";
 import { withSecretGrants, moveSecretsToGrants } from "../../lib/publish/grants.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
@@ -309,6 +311,8 @@ export default {
       run: async (i, meta) => {
         const b = await begin(i, meta);
         const { space: _s, ...draft } = i;
+        // A folder on this server is read off its disk by the builder: whose folder it may be is judged here, once, with the caller known.
+        if (draft.source && draft.source.kind === "folder") { const no = folderRefusal(String(draft.source.ref || ""), { person: isPerson(meta), home: ctx.paths.root }); if (no) throw refuse(no.message, no.code); }
         return { deployment: shown(await b.pub.create(b.chain, draft)) };
       },
     });
