@@ -122,7 +122,16 @@ async function kernelSession(req, kernelOf) {
   if (!t || t.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(t)) return null;
   const k = kernelOf ? kernelOf() : null;
   if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return null;
-  try { await k.surfaces.verify(t); return t; } catch { return null; }
+  try { await k.surfaces.verify(t); return t; } catch { /* not this home's own: a team Space's, below */ }
+  // A TEAM Space's own session (a model running a team chat's turn, opened by that Space's kernel): checked by THAT Space's Surfaces door, never accepted on the body's say-so
+  const sp = teamSpaceOfToken(t);
+  if (!sp || sp === k.id.space) return null;
+  try { const h = k.spaces && k.spaces.for(sp); if (!h || h.hosted !== true || !h.surfaces) return null; await h.surfaces.verify(t); return t; } catch { return null; }
+}
+
+/** The Space a session token names in its body (read only to pick which Space's door checks it; the check itself is that door's). @param {string} token @returns {string | null} */
+function teamSpaceOfToken(token) {
+  try { const b = JSON.parse(Buffer.from(String(token).split(".")[0], "base64url").toString()); return typeof b.space === "string" && /^spc_[a-z2-7]{12,26}$/.test(b.space) ? b.space : null; } catch { return null; }
 }
 
 /** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
@@ -1416,7 +1425,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
-    const input = await body(req);
+    let input = await body(req);
     // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
     if (pluginAgent) {
       const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
@@ -1521,6 +1530,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
+    // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
+    const turnSpace = typeof sessionToken === "string" ? teamSpaceOfToken(sessionToken) : null;
+    if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) { const def = registry.tools.get(name); if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) input = { ...input, space: turnSpace }; }
     let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
