@@ -37,7 +37,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`comms`](#comms) | `core/comms` | `box` | 2 | 2 | none |
 | [`computer`](#computer) | `core/computer` | `box`, `local` | 2 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
-| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 39 | 14 | capsule, cli, deck |
+| [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 40 | 14 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
@@ -355,7 +355,7 @@ Vyre Computer: one front door over the cloud computer, your Macs and the screen 
 - Folder: `core/connectors`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: `vault`, `mcp`
-- Tools: [39](tools.md#connectors), 3 of them only for other modules
+- Tools: [40](tools.md#connectors), 3 of them only for other modules
 - Emits: [14 events](events.md#connectors)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
