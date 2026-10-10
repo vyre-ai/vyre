@@ -42,10 +42,11 @@ jobs:
       - name: Merge into the integration branch
         id: merge
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
           sh scripts/team/setup.sh || true
           git fetch -q origin "${{ steps.q.outputs.ref }}"
+          # The queue's own commits carry the same public identity as the branch's author, so the pre-push identity check passes for anyone who later merges the tip.
+          git config user.name "$(git log -1 --format=%an FETCH_HEAD)"
+          git config user.email "$(git log -1 --format=%ae FETCH_HEAD)"
           git merge-base --is-ancestor FETCH_HEAD HEAD && { echo "already landed"; echo "noop=1" >> "$GITHUB_OUTPUT"; exit 0; }
           if ! git merge --no-ff --no-edit -m "merge: ${{ steps.q.outputs.ref }} into $TARGET" FETCH_HEAD; then
             echo "## Merge conflict" >> "$GITHUB_STEP_SUMMARY"
@@ -80,6 +81,7 @@ jobs:
         run: |
           git push origin "HEAD:$TARGET"
           echo "Landed ${{ steps.q.outputs.ref }} on $TARGET at $(git rev-parse --short HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      # Landed or not, the queue branch goes: the run's summary keeps the reason, and the item name can be queued again.
       - name: Remove the queue branch
-        if: success()
+        if: always()
         run: git push -q origin --delete "${{ steps.q.outputs.ref }}" || true

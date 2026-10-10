@@ -8,8 +8,12 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
       - "127.0.0.1:8081:8081"
+      # - "443:8443"  and  - "80:8080"   with VYRE_TUNNEL_TLS_PORT=8443 VYRE_TUNNEL_HTTP_PORT=8088 (the container runs without privileges)
     environment:
       VYRE_TRUST_PROXY: "1"
+      # The Publish tunnel (public TLS passthrough, no certificate on the relay). Turn on with the directory's origin and the shared secret, and publish 443 and 80:
+      #   VYRE_TUNNEL_DIRECTORY: "https://names.example.com"
+      #   VYRE_RELAY_SECRET: "${VYRE_RELAY_SECRET}"      (32+ characters; the same value as the directory's RELAY_SECRET)
     volumes: [ "relay-data:/data" ]
     read_only: true
     tmpfs: [ /tmp ]

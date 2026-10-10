@@ -13,6 +13,25 @@ import { payloadHash, chainCtx } from "../seal/wire.js";
 import { KernelError } from "../core/errors.js";
 
 const MAX_PROOF_BYTES = 4096;
+
+/**
+ * The runner's signed hello on a lease request (R031-95 2.2): who is asking and for what, in exact fields. `device` and `device_key` are the ones the lease is for, `eid` the identity-list entry whose
+ * presence key signs, `cap` the lender's network limit, `runner_version` and `protocol` what the lender's runner is. Null when the call carries none, or one that is not well formed.
+ * @param {any} a the first argument of leases.issue
+ */
+export function helloOf(a) {
+  const h = a && typeof a === "object" ? a.hello : null;
+  if (!h || typeof h !== "object" || Array.isArray(h)) return null;
+  const s = (/** @type {any} */ v) => typeof v === "string" && v.length > 0 && v.length <= 200;
+  if (!s(h.device) || !s(h.device_key) || !s(h.eid) || !(typeof h.runner_version === "string" && /^[0-9A-Za-z._+-]{1,40}$/.test(h.runner_version)) || !(Number.isInteger(h.protocol) && h.protocol >= 1 && h.protocol < 1000)) return null;
+  if (h.cap !== undefined && h.cap !== null && h.cap !== "provider" && h.cap !== "internet") return null;
+  return { device: h.device, device_key: h.device_key, eid: h.eid, cap: h.cap ?? null, runner_version: h.runner_version, protocol: h.protocol };
+}
+/** What a proof for a lease request covers: the sealing process's own `lease.issue` over the hello. Null when the hello is missing or malformed. @param {string} space @param {any} a */
+export function leaseIssueCover(space, a) {
+  const f = helloOf(a);
+  return f ? { op: "lease.issue", fields: f, payload_hash: payloadHash("lease.issue", space, f) } : null;
+}
 const urn = (/** @type {string} */ space, /** @type {string} */ type, id = "new") => `vyre://${space}/${type}/${id}`;
 
 /**
@@ -37,7 +56,7 @@ const CALLS = {
   addActor: (s, actor) => ({ action: "grants.member", resource: urn(s, "member", actor.id), input: { actor } }),
   offer: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer"), input: o }),
   unoffer: (s, id) => ({ action: "grants.unoffer", resource: urn(s, "offer", id), input: { revoke: id } }),
-  lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } } }),
+  lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null, ...(o.loosen ? { loosen: true } : {}) } } }),
   unlend: (s, o) => ({ action: "grants.unoffer", resource: urn(s, "offer", "lend"), input: { unlend: { member: o.member, device: o.device } } }),
   inviteCreate: (s, i) => ({ action: "grants.invite", resource: urn(s, "invite"), input: i }),
   moveOut: (s, i) => ({ action: "project.move_out", resource: i.project, input: { to: i.to, plan_hash: i.plan_hash } }),

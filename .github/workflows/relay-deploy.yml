@@ -34,6 +34,10 @@ on:
         description: "Also set the names Worker's ADMIN_SECRET (the support-only rebind) from the environment's NAMES_ADMIN_SECRET"
         type: boolean
         default: false
+      names_tunnel_secrets:
+        description: "Also set the names Worker's public-door secrets RELAY_SECRET and TUNNEL_IPV4 from the environment's NAMES_RELAY_SECRET and NAMES_TUNNEL_IPV4 (relay/deploy/README.md)"
+        type: boolean
+        default: false
       relay_edge_rule:
         description: "Also write the relay's per-address edge cap (a Cloudflare rate-limit rule on /v1/pair and /v1/setup/mbx; needs the token's Zone WAF Edit scope on vyre.run)"
         type: boolean
@@ -174,6 +178,19 @@ jobs:
         run: |
           [ "${#NAMES_ADMIN_SECRET}" -ge 32 ] || { echo "::error::NAMES_ADMIN_SECRET must be an environment secret of at least 32 characters (make one with: openssl rand -hex 32)"; exit 1; }
           printf %s "$NAMES_ADMIN_SECRET" | "$W" secret put ADMIN_SECRET
+      - name: names/worker public-door secrets (the edge relay's shared secret and its address)
+        if: ${{ inputs.names && inputs.names_tunnel_secrets }}
+        working-directory: names/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          NAMES_RELAY_SECRET: ${{ secrets.NAMES_RELAY_SECRET }}
+          NAMES_TUNNEL_IPV4: ${{ secrets.NAMES_TUNNEL_IPV4 }}
+        run: |
+          [ "${#NAMES_RELAY_SECRET}" -ge 32 ] || { echo "::error::NAMES_RELAY_SECRET must be an environment secret of at least 32 characters, the same value as the edge VM's VYRE_RELAY_SECRET"; exit 1; }
+          printf %s "$NAMES_TUNNEL_IPV4" | grep -Eq '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' || { echo "::error::NAMES_TUNNEL_IPV4 must be an environment secret holding the edge VM's reserved IPv4 address"; exit 1; }
+          printf %s "$NAMES_RELAY_SECRET" | "$W" secret put RELAY_SECRET
+          printf %s "$NAMES_TUNNEL_IPV4" | "$W" secret put TUNNEL_IPV4
       - name: relay/app, the signed build (checked again here)
         if: ${{ inputs.app }}
         env:

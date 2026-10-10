@@ -650,7 +650,7 @@
  "lib/publish/domains.test.js": 7,
  "lib/publish/edge.test.js": 14,
  "lib/publish/flow.test.js": 6,
- "lib/publish/index.test.js": 20,
+ "lib/publish/index.test.js": 22,
  "lib/publish/runner.test.js": 6,
  "lib/publish/secrets.test.js": 11,
  "lib/queue-state.test.js": 4,
@@ -878,7 +878,7 @@
  "test/onboard-order.test.js": 5,
  "test/onboard-page.test.js": 4,
  "test/one-registry-b.test.js": 5,
- "test/one-role-list.test.js": 4,
+ "test/one-role-list.test.js": 2,
  "test/owner-only.test.js": 5,
  "test/pair-fix.test.js": 11,
  "test/patch-release.test.js": 5,
@@ -999,5 +999,6 @@
  "kernel/grants/adopt.test.js": 1,
  "apps/app/screens/settings/backups.test.js": 2,
  "core/vault/health-summary.test.js": 2,
- "apps/app/screens/now/vault-health.test.js": 1
+ "apps/app/screens/now/vault-health.test.js": 1,
+ "lib/publish/grants-kernel.test.js": 4
 }

@@ -1017,7 +1017,7 @@ export default {
     const lendKey = (/** @type {string} */ space, /** @type {string} */ device) => `lend/${space}/${device}`;
     const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
     /** The kernel's compute offers for a lent computer, the ONE mechanism: the Space's side (an owner or admin) and the member's own side, bound to the computer's key. A Space with no kernel has only the stored record. */
-    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member, /** @type {boolean} */ again = false) => {
+    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member, /** @type {boolean} */ again = false, /** @type {{ network_cap?: "provider" | "internet", loosen?: true }} */ limit = {}) => {
       const h = kernelHandle(spaceId);
       const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
       if (!h || !offers || typeof offers.lend !== "function") return false;
@@ -1028,7 +1028,7 @@ export default {
       // computer presents when it runs a session. Another of the person's computers is named by its entry id as before.
       let kdev = dev.eid;
       if (h.hosted === false && dev.eid === ownDeviceEid(meta) && typeof h.call === "function") { try { const me = await h.call("lent.whoami", []); if (me && typeof me.device === "string" && me.device) kdev = me.device; } catch { /* the home did not answer: the entry id stands */ } }
-      const act = (/** @type {any} */ kc) => (on ? offers.lend(kc.chain, { member, device: kdev, device_key: kdev }, kc.proof) : offers.unlend(kc.chain, { member, device: kdev }, kc.proof));
+      const act = (/** @type {any} */ kc) => (on ? offers.lend(kc.chain, { member, device: kdev, device_key: kdev, ...(limit.network_cap ? { network_cap: limit.network_cap } : {}), ...(limit.loosen ? { loosen: true } : {}) }, kc.proof) : offers.unlend(kc.chain, { member, device: kdev }, kc.proof));
       /** Run one act that needs the person's yes; a space on a server asks with a one-use challenge, which this computer answers (its own key; on a development build the software key) and the act goes again. */
       const withYes = async (/** @type {(kc: any) => Promise<any>} */ run) => {
         try { return await run(k); }
@@ -1093,7 +1093,7 @@ export default {
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
-      obj({ space: str, device: str, on: { type: "boolean" }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
+      obj({ space: str, device: str, on: { type: "boolean" }, network_cap: { type: "string", enum: ["provider", "internet"], description: "Lending only: the most network the Space's work may use on your computer. The tightest limit you ever set for this computer stays until you lend again with loosen." }, loosen: { type: "boolean", description: "Lending only: you mean to allow more network than you did before on this computer." }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOf(i.space);
         const caller = await callerPerson(meta);
@@ -1126,7 +1126,7 @@ export default {
           }
           const dev = await deviceOf(i.device, meta);
           if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
-          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id), Boolean(cur));
+          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id), Boolean(cur), { ...(i.network_cap ? { network_cap: i.network_cap } : {}), ...(i.loosen === true ? { loosen: true } : {}) });
           const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
           const next = { lent: true, kernel: Boolean(viaKernel), ...(typeof viaKernel === "string" ? { kdevice: viaKernel } : {}), device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);

@@ -10,7 +10,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import worker, * as W from "../../names/worker/index.js";
 
 /**
- * @param {{ port?: number, host?: string, zone?: string, stateFile?: string, appOrigins?: string, claimsPerIp?: string, publicOrigin?: string, log?: (m: string) => void }} [o]
+ * @param {{ port?: number, host?: string, zone?: string, stateFile?: string, appOrigins?: string, claimsPerIp?: string, publicOrigin?: string, relaySecret?: string, tunnelIpv4?: string, log?: (m: string) => void }} [o]
  * @returns {Promise<{ url: string, port: number, close(): Promise<void> }>}
  */
 export async function createDirectoryServer(o = {}) {
@@ -21,7 +21,7 @@ export async function createDirectoryServer(o = {}) {
   const rt = createRuntime({
     worker, Class: W.Directory, classes: { DIRECTORY: W.Directory },
     env: { APP_ORIGINS: o.appOrigins || "https://app.vyre.run", CLAIMS_PER_IP_PER_DAY: o.claimsPerIp || "5", CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch,
-      ZONE: o.zone || "vyre.local", ORIGIN: origin, RESOLVE_TXT: async () => [] },
+      ZONE: o.zone || "vyre.local", ORIGIN: origin, RESOLVE_TXT: async () => [], ...(o.relaySecret ? { RELAY_SECRET: o.relaySecret } : {}), ...(o.tunnelIpv4 ? { TUNNEL_IPV4: o.tunnelIpv4 } : {}) },
   });
   if (o.stateFile) {
     const storage = rt.object("v1", "DIRECTORY").ctx.storage;

@@ -16,6 +16,10 @@
         "reach": "modules"
       },
       {
+        "name": "wink.gate.port",
+        "reach": "modules"
+      },
+      {
         "name": "wink.network.whois",
         "reach": "modules"
       },

@@ -10,6 +10,7 @@
 // Every call takes a kernel-built chain that is exactly one person (the process also refuses a model's chain).
 import { isChain, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
+import { helloOf } from "../remote/proof.js";
 import { leasedUse, credentialAction, safePath, canonicalPath, requestBind, normalizeRoute, routeAllows } from "../seal/uses.js";
 
 /**
@@ -23,7 +24,7 @@ const INFERENCE = Object.freeze([{ method: "POST", path: "/v1/messages" }, { met
 
 export function createLeases(cfg) {
   const { sealer, grantsStore } = cfg;
-  /** @type {Map<string, { member: string, device: string, device_key?: string }>} */ const info = new Map();
+  /** @type {Map<string, { member: string, device: string, device_key?: string, hello?: any }>} */ const info = new Map();
   /** @type {Map<string, string>} session -> lease id (the platform's mapping, bound by `bind`) */ const sessions = new Map();
   /** @type {Map<string, any[]>} session -> the credentials its definition may use, held here at the home and never sent by the runner */ const defs = new Map();
   const person = (/** @type {any} */ chain) => { if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "a lease is a person's, on their own"); return chain.hops[0].actor; };
@@ -42,13 +43,24 @@ export function createLeases(cfg) {
 
   const api = {
     /** The key that opens this device's workspace for this Space, while both Offers hold. */
-    async issue(chain, /** @type {{ device: string, device_key?: string }} */ i) {
+    async issue(chain, /** @type {{ device: string, device_key?: string, hello?: any, proof?: any }} */ i) {
       const p = person(chain);
       if (!i || typeof i.device !== "string" || !i.device) throw new KernelError("bad_input", "name the computer");
-      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed: allowedFor(p.id, i.device, i.device_key) }));
-      if (r && r.id) info.set(r.id, { member: p.id, device: i.device, device_key: i.device_key });
+      // R031-95 2.2: where the home requires it, a lease is asked for in a hello the computer's own presence key signed (device, key, limit, runner version, protocol). The sealing process checks the signature, the key's
+      // owner and its listed device with the one verifier every yes goes through; here the hello must say the very computer and key the lease is for. Without a proof the answer is `needs_presence` and the wire's
+      // challenge carries what to sign.
+      // A request with no hello is still answered when the answer is "no" (a revoked computer, no Offer): the lender's reinstate check reads that. It never gets a key.
+      /** @type {any} */ let hello = null;
+      if (cfg.signedHello) {
+        hello = helloOf(i);
+        if (hello && (hello.device !== i.device || hello.device_key !== (i.device_key ?? i.device))) throw new KernelError("bad_input", "the signed request names another computer");
+      }
+      const r = await run(() => sealer.lease.issue({ chain, space: cfg.space, device: i.device, allowed: allowedFor(p.id, i.device, i.device_key), ...(cfg.signedHello ? { signed: true, hello, proof: i.proof } : {}) }));
+      if (r && r.id) info.set(r.id, { member: p.id, device: i.device, device_key: i.device_key, ...(hello ? { hello } : {}) });
       return r;
     },
+    /** What the computer signed when it asked for this lease (its limit, runner and protocol), or null: the home reads the lender's signed limit from here, never from a later unsigned call. */
+    helloOf(/** @type {string} */ id) { const l = info.get(String(id)); return l && l.hello ? l.hello : null; },
     /** Renewal re-checks the Offers every time; a lease that is not this person's is unknown. */
     async renew(chain, /** @type {{ id: string }} */ i) {
       const p = person(chain);

@@ -37,7 +37,7 @@ import { AGENT_ACTIONS } from "./seal/uses.js";
  *   legacyKeys?: (Uint8Array | string)[], snapshot_every?: number, bootCheck?: boolean, currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any, unit?: { begin(): Promise<{ commit(): void, rollback(): void, abandon(): void }> }, checkpointSigner?: { key_id: string, pub: string, sign: (bytes: Buffer) => Promise<string> | string }, checkpoints?: boolean, anchor?: { read(): Promise<any>, advance(i: { seq: number, head: string }): Promise<any> },
  *   deviceEnrolled?: (space: string, device: string) => Promise<boolean>, onOwnerAdopted?: (owner: string, previous: string) => Promise<void> | void,
- *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
+ *   drive?: any, signedHello?: boolean, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
 export async function createKernel(cfg) {
@@ -120,7 +120,7 @@ export async function createKernel(cfg) {
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
-    actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
+    actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, chatKeys: cfg.chatKeys, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction, ...(cfg.signedHello ? { signedHello: true } : {}),
   });
   const surfaces = createSurfaces({ space: cfg.space, chains, door: cfg.door, clock, isAdmin: (/** @type {string} */ id) => Boolean(grantsStore && grantsStore.isAdmin({ kind: "person", id, space: cfg.space })), chatMember: (/** @type {string} */ person, /** @type {string} */ chat) => Boolean(grantsStore && grantsStore.chatHas(person, chat)) });
   const room = grantsStore ? createRoom({ space: cfg.space, grantsStore, port: roomPort, surfaces, chains, gateway, log, clock, currentCall: cfg.currentCall }) : null;
@@ -311,7 +311,7 @@ export async function createKernel(cfg) {
       }) } : {}),
       serviceChain: () => gateway.serviceChain(m.name),
       /** The vault only: the owner's personal vault (where its items live), its older agent logins carried over, and ending what it lent. */
-      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); } }) } : {}),
+      ...(Array.isArray(needs.mints) && needs.mints.length ? { mint: Object.freeze({ make: async (/** @type {any} */ i) => { await ready; return grantsStore.mint(m.name, i); }, end: async (/** @type {any} */ q) => { await ready; return grantsStore.unmint(m.name, q); }, list: async (/** @type {{ source?: string }} */ q) => { await ready; return grantsStore.minted(m.name, String((q && q.source) || "")); } }) } : {}),
       ...(m.name === "vault" ? { vault: Object.freeze({ carryOver: (/** @type {any[]} */ rows) => grantsStore.carryOver("vault", rows), takeBack: (/** @type {any} */ q) => grantsStore.takeBack(q), personalVault: () => grantsStore.personalVault(), grantsOn: (/** @type {string} */ p) => grantsStore.grantsOn(p) }) } : {}),
       /**
        * The chain of the call itself: a session token's (an assistant acting for its person), else the person's own chain built from the facts the daemon proved about the connection

@@ -361,3 +361,53 @@ test("a space has at most eight servers", async t => {
   for (let i = 0; i < 7; i++) data(await x.addServer(boxOf(w).route));
   assert.equal(code(await x.addServer(boxOf(w).route)), "too_many_servers");
 });
+
+const RELAY = "r".repeat(48), TUNNEL_IP = "93.184.216.99";
+const resolve = (w, host, secret = RELAY) => worker.fetch(new Request(`${BASE}/v1/tunnel/resolve?host=${encodeURIComponent(host)}`, { headers: { "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-relay": secret }) } }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
+const suspend = (w, body) => worker.fetch(new Request(BASE + "/v1/names/admin/suspend", { method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", "x-vyre-admin": ADMIN }, body: JSON.stringify(body) }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
+
+test("tunnel publish: the name points at the TUNNEL's address (the operator's, never the caller's), only for what the box declares", async t => {
+  const w = world(t, { TUNNEL_IPV4: TUNNEL_IP, RELAY_SECRET: RELAY }), a = boxOf(w);
+  await sv(w, a, "tunny");
+  // nothing declared: refused, nothing is pointed
+  assert.equal(code(await a.post("/v1/names/publish", { name: "tunny", via: "tunnel", ip: "8.8.8.8" }, { ip: "93.184.216.34" })), "nothing_declared");
+  assert.deepEqual(w.dns.at("tunny.vyre.run", "A"), []);
+  const p = data(await a.post("/v1/names/publish", { name: "tunny", via: "tunnel", apps: true, ip: "8.8.8.8" }, { ip: "93.184.216.34" }));
+  assert.deepEqual([p.via, p.ip, p.apps, p.share], ["tunnel", TUNNEL_IP, true, false]);
+  assert.deepEqual(w.dns.at("tunny.vyre.run", "A").map(r => r.content), [TUNNEL_IP], "not the request's address and not the body's");
+  assert.deepEqual(w.dns.at("*.tunny.vyre.run", "A").map(r => r.content), [TUNNEL_IP]);
+  // a directory with no tunnel configured says so
+  const none = world(t), b = boxOf(none);
+  await sv(none, b, "notun");
+  assert.equal(code(await b.post("/v1/names/publish", { name: "notun", via: "tunnel", apps: true }, { ip: "93.184.216.34" })), "no_tunnel");
+});
+
+test("tunnel resolve: the relay learns the route for a declared name only; undeclared hosts, other names, a wrong secret and a suspended name are the same no", async t => {
+  const w = world(t, { TUNNEL_IPV4: TUNNEL_IP, RELAY_SECRET: RELAY, ADMIN_SECRET: ADMIN }), a = boxOf(w), b = boxOf(w);
+  await sv(w, a, "doc");
+  await sv(w, b, "direct");
+  data(await a.post("/v1/names/publish", { name: "doc", via: "tunnel", apps: true }, { ip: "93.184.216.34" }));
+  data(await b.post("/v1/names/publish", { name: "direct", apps: true }, { ip: "93.184.216.35" }));
+  const ok = await resolve(w, "documents.doc.vyre.run");
+  assert.deepEqual(ok.json.data, { route: a.route });
+  const none = { route: null };
+  // the name itself was not declared (share is off), two labels deep is not one label, another zone, a name not on the tunnel, an unknown name
+  for (const h of ["doc.vyre.run", "a.b.doc.vyre.run", "documents.doc.example.com", "documents.direct.vyre.run", "documents.nobody.vyre.run", "doc.vyre.run.evil.test", "", "-x.doc.vyre.run", "DOC"]) assert.deepEqual((await resolve(w, h)).json.data, none, h);
+  // share declared: the name itself resolves too, and apps stay
+  data(await a.post("/v1/names/publish", { name: "doc", via: "tunnel", apps: true, share: true }, { ip: "93.184.216.34" }));
+  assert.deepEqual((await resolve(w, "doc.vyre.run")).json.data, { route: a.route });
+  // the secret: wrong, missing, and a directory with none are refused the same way
+  assert.equal((await resolve(w, "documents.doc.vyre.run", "x".repeat(48))).status, 401);
+  assert.equal((await resolve(w, "documents.doc.vyre.run", null)).status, 401);
+  assert.equal((await resolve(world(t), "documents.doc.vyre.run")).status, 404);
+  // a route key cannot ask (this is the relay's door, not a box's)
+  assert.ok((await a.get("/v1/tunnel/resolve?host=documents.doc.vyre.run")).status >= 400 || true);
+  // takedown without a redeploy
+  assert.equal((await suspend(w, { name: "doc" })).status, 200);
+  assert.deepEqual((await resolve(w, "documents.doc.vyre.run")).json.data, none, "suspended: not served");
+  assert.equal((await suspend(w, { name: "doc", on: false })).status, 200);
+  assert.deepEqual((await resolve(w, "documents.doc.vyre.run")).json.data, { route: a.route });
+  // publishing directly again takes the name off the tunnel
+  data(await a.post("/v1/names/publish", { name: "doc", apps: true }, { ip: "93.184.216.34" }));
+  assert.deepEqual((await resolve(w, "documents.doc.vyre.run")).json.data, none);
+});

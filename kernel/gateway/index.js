@@ -133,7 +133,7 @@ export function createGateway(cfg) {
 
   const memory = createMemoryGateway({ space: cfg.space, store: cfg.store, authorizer, log: cfg.log, clock: cfg.clock, enforce });
   const drive = cfg.drive ? createDriveGateway({ space: cfg.space, drive: cfg.drive, authorizer, log: cfg.log, enforce }) : undefined;
-  const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, enforce, ...(drive ? { drive } : {}), log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, forward: cfg.forwardCredential, routeAction: cfg.routeAction }) : undefined;
+  const leases = cfg.sealer && gs && cfg.sealer.lease ? createLeases({ space: cfg.space, sealer: cfg.sealer, grantsStore: gs, authorize: authorizer.authorize, enforce, ...(drive ? { drive } : {}), log: cfg.log, chains: cfg.chains, resolve: cfg.resolveCredential, forward: cfg.forwardCredential, routeAction: cfg.routeAction, ...(cfg.signedHello ? { signedHello: true } : {}) }) : undefined;
 
 
   /**

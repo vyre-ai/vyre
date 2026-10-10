@@ -455,6 +455,20 @@ export function checkInput(schema, value, where = "input") {
 const PLACEHOLDER = /\{\{field:[^}]+\}\}/;
 const callStore = new AsyncLocalStorage();
 /** The running call's meta, or null: once the call has returned, work it started (a timer, a floating promise) no longer sees it, so a turn's token cannot outlive the turn. */
+/**
+ * The mark a nested call rides, when the card that covers the running call names this tool in `covers` and the caller is the module that owns the covered tool (or one it already passed the mark to).
+ * The mark gains the module the nested tool belongs to, so the Gate lets that module present it; the card is still used once, by the Gate, for the one send.
+ * @param {Map<string, any>} tools @param {any} cur @param {string} tool @param {string} caller @returns {any}
+ */
+export function coveredRide(tools, cur, tool, caller) {
+  const mark = cur && cur[COVERED];
+  if (!mark) return null;
+  const root = tools.get(String(mark.tool));
+  const who = String(caller).slice(7), at = new Set([String(mark.tool).split(".")[0], ...(mark.via || [])]);
+  if (!root || !Array.isArray(root.covers) || !root.covers.includes(tool) || !at.has(who)) return null;
+  const mod = tool.split(".")[0];
+  return { ...mark, via: [...new Set([...(mark.via || []), mod])] };
+}
 export const currentCall = () => { const b = callStore.getStore(); return b && b.live ? b.meta : null; };
 /** The caller class the running call came from, past module hops, or undefined when nothing is running (a timer, a start). A module that stores work to do later stores this beside it. */
 export const captureOrigin = () => { const m = currentCall(); if (!m) return undefined; return m.origin || (m.caller && !String(m.caller).startsWith("module:") ? m.caller : undefined); };
@@ -1379,7 +1393,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, flowStep: e && e.flowStep ? (this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) || e.flowStep.risk === "outward" ? e.flowStep : { ...e.flowStep, risk: "outward", forced: true }) : null, asks: Boolean(e && e.asks), covers: e && Array.isArray(e.covers) && this.isFirstParty(/** @type {string} */ (this.modules.get(m.name)?.dir)) ? e.covers.filter((/** @type {any} */ x) => typeof x === "string" && /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/.test(x)).slice(0, 4) : [], target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
@@ -1715,7 +1729,9 @@ export class Registry {
     // One yes: any other caller of a tool marked `outward: true` (an agent, a model, the harness, a module acting for one, a guest) is HELD as a card in the one approvals queue and the tool runs only when
     // that caller retries with the card the person's phone answered (bound to this exact call by a digest of its input). A tool that already holds non-person callers through its own ask flow says
     // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
-    if (def.outward === true && !def.asks && !door && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
+    // A first-party module's tool that the person's card already covers files a nested outward tool it names in `covers` (comms.send files mail.send): that is the same act, so it rides the same yes.
+    const rideMark = String(caller).startsWith("module:") ? coveredRide(this.tools, currentCall(), tool, caller) : null;
+    if (def.outward === true && !def.asks && !door && !rideMark && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
       const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
       let fields = holdFields(input);
       if (approval) {
@@ -1777,7 +1793,7 @@ export class Registry {
       }
       // a card the running turn spent covers one send a module files for it; the nested call is handed that, by reference, so it can be used once
       const cur = currentCall();
-      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
+      try { return await this.run(def, toInput, { ...meta, ...resolvedMeta, ...(String(caller).startsWith("module:") && cur && cur[COVERED] ? { [COVERED]: coveredRide(this.tools, cur, tool, caller) || cur[COVERED] } : {}), caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}), ...(terminal ? { terminal } : {}) }); }
       finally { if (counted) this.countUse(def.module); }
     };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();

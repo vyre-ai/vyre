@@ -22,7 +22,7 @@ export const FAMILIES = {
   team: { section: "team" }, agents: { section: "team" }, threads: { section: "team" }, memory: { section: "memory" }, recall: { section: "memory" }, projects: { section: "project" },
   connectors: { section: "connectors" }, mcp: { section: "connectors" }, vault: { section: "connectors" }, google: { section: "connectors" }, mail: { section: "connectors" }, github: { section: "connectors" },
   spaces: { section: "space" }, files: { section: "project" }, artifacts: { section: "project" }, publish: { section: "project" }, planner: { section: "planner" }, goals: { section: "planner" }, watchers: { section: "planner" },
-  glass: { section: "computer" }, computers: { section: "computer" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
+  glass: { section: "computer" }, computers: { section: "computer" }, computer: { section: "computer" }, documents: { section: "project" }, comms: { section: "connectors" }, chrome: { section: "computer" }, "hands-desktop": { section: "computer" }, runner: { section: "computer" },
   ask: { section: "show" }, previews: { section: "show" },
   // Named in "to learn more" only: they are Vyre's own housekeeping, or the person's.
   appearance: { more: true }, appmods: { more: true }, assistant: { more: true }, bridges: { more: true }, commands: { more: true }, events: { more: true }, harness: { more: true }, hooks: { more: true }, learn: { more: true },

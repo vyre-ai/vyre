@@ -14,6 +14,7 @@ import { createDockerDirect } from "./runtime.js";
 import { createHelperDriver, hostHelperHere } from "./helper-driver.js";
 import { createHostProxy, createTickets, originFor, ENTER } from "./proxy.js";
 import { signingBrand } from "../../lib/brand/profile.js";
+import { mintLink, SIGNED, MAX_LINK_DAYS, requestBody, readRequest } from "./signing.js";
 
 const MAX_FILE = 25 * 1024 * 1024;
 const CATALOG = path.join(path.dirname(fileURLToPath(import.meta.url)), "catalog");
@@ -29,6 +30,8 @@ export const MIGRATIONS = [
   `ALTER TABLE appmods_apps ADD COLUMN kit_task TEXT;`,
   // Signed-in browser sessions on an app's own origin (and a preview's): kept by the hash of the cookie so a restart or an update does not sign anyone out.
   `CREATE TABLE appmods_sessions (h TEXT PRIMARY KEY, name TEXT NOT NULL, host TEXT NOT NULL, exp INTEGER NOT NULL, who_w TEXT, who_r TEXT);`,
+  // the key an app's expiring links to a signed copy are made under; it never leaves the box
+  `CREATE TABLE appmods_link_keys (name TEXT PRIMARY KEY, key BLOB NOT NULL);`,
 ];
 
 /** The catalog: every manifest in catalog/, checked. A manifest that fails the check is left out and said in the log, never half used. @param {(m: string) => void} [log] */
@@ -332,8 +335,17 @@ export default {
     const brandCss = async () => {
       try { const r = await ctx.call("brand.resolve", {}); return r && !r.error && r.data ? signingBrand(r.data) : ""; } catch { return ""; }
     };
+    /** The key an app's signed-copy links are made under: made once, kept in the box's own store. @param {string} name */
+    const linkKey = name => {
+      const have = /** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name));
+      if (have) return Buffer.from(have.key);
+      const key = crypto.randomBytes(32);
+      db.prepare("INSERT OR IGNORE INTO appmods_link_keys (name, key) VALUES (?, ?)").run(name, key);
+      return Buffer.from(/** @type {any} */ (db.prepare("SELECT key FROM appmods_link_keys WHERE name = ?").get(name)).key);
+    };
     const hostProxy = createHostProxy({
       brand: brandCss,
+      linkKey,
       tickets,
       log: m => ctx.log.warn(m),
       app: async name => {
@@ -418,6 +430,40 @@ export default {
       description: "End every open sign-in to a preview (its access changed, or it was removed). Internal: the previews module only.", internal: true,
       input: obj({ name: str }, ["name"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => { previewsOnly(meta, i.name); tickets.drop(i.name); return { dropped: i.name }; },
+    });
+    ctx.tool("appmods.signed.link", {
+      internal: true, callers: ["module"],
+      description: "An expiring link to the signed copy of one finished document on an app's own address: { name, slug, days? (1 to 30, default 30) } -> { url, expires }. Only the app's own module asks (documents for Documents); the link opens the finished file and nothing else.",
+      input: obj({ name: str, slug: str, days: { type: "integer" } }, ["name", "slug"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module makes a link to its signed copies", "denied");
+        const r = row(name); if (!r || r.state !== "running") throw refuse("that app is not running", "not_found");
+        const m = known(name);
+        if (!(m.app && m.app.signing && m.app.signing.signed)) throw refuse("that app has no signed copies to link", "unsupported");
+        const days = i.days === undefined ? MAX_LINK_DAYS : i.days;
+        if (!Number.isInteger(days) || days < 1 || days > MAX_LINK_DAYS) throw refuse(`a link lasts 1 to ${MAX_LINK_DAYS} days`, "bad_input");
+        const expires = Date.now() + days * 86_400_000;
+        let token; try { token = mintLink(linkKey(name), String(i.slug), expires); } catch { throw refuse("that is not a signer's slug", "bad_input"); }
+        return { url: `${originFor(name, baseHost())}${SIGNED}${token}`, expires };
+      },
+    });
+    ctx.tool("appmods.signing.request", {
+      internal: true, callers: ["module"],
+      description: "Ask a running signing app for one signature, with no email from the app: { name, template_id, email, signer? } -> { submission, slug, url }. Only the app's own module asks (documents for Documents). Nothing leaves this server; the link is the signer's page.",
+      input: obj({ name: str, template_id: { type: "integer" }, email: str, signer: str }, ["name", "template_id", "email"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        const name = String(i.name || "");
+        if (!meta || meta.caller !== `module:${name}`) throw refuse("only the app's own module asks for a signature", "denied");
+        const r = row(name); if (!r || r.state !== "running" || !r.origin) throw refuse("that app is not running", "not_found");
+        if (!(known(name).app || {}).signing) throw refuse("that app does not collect signatures", "unsupported");
+        let body; try { body = requestBody(Number(i.template_id), String(i.email || ""), i.signer); } catch (e) { throw refuse(/** @type {Error} */ (e).message, "bad_input"); }
+        const res = await fetch(`${r.origin}/api/submissions`, { method: "POST", headers: { "content-type": "application/json", "x-auth-token": await secret(name, "api-token") }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+        if (!res.ok) throw refuse(`${name} would not make the signing request (${res.status}); check that template ${body.template_id} exists`, "app_refused");
+        const got = readRequest(await res.json().catch(() => null));
+        if (!got) throw refuse(`${name} answered, but not with a signing request`, "app_refused");
+        return { ...got, url: `${originFor(name, baseHost())}/sign/${got.submission}/${got.slug}` };
+      },
     });
     ctx.tool("appmods.hosts", { description: "The host names the installed apps need served (one per app): the front door's certificate and name must cover them.", input: obj({}), run: async () => ({
       hosts: db.prepare("SELECT name FROM appmods_apps WHERE state = 'running'").all().map((/** @type {any} */ r) => new URL(originFor(r.name, baseHost())).host) }) });
