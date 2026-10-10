@@ -130,7 +130,7 @@ test("with no address set, a PDF is made by the PDF converter app when it is ins
   t.after(() => { app.close(); set.close(); allowLoopbackForTests(false); });
   const origin = `http://127.0.0.1:${/** @type {any} */ (app.address()).port}`;
   /** @type {any[]} */ const asked = [];
-  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "spaces.self") return {}; asked.push([tool, input]); return tool === "appmods.origin" && input.name === "pdf" ? { data: { origin } } : { error: { code: "not_found", message: "x" } }; };
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { if (tool === "spaces.merge-list") return {}; asked.push([tool, input]); return tool === "appmods.origin" && input.name === "pdf" ? { data: { origin } } : { error: { code: "not_found", message: "x" } }; };
   const w = rig({ call });
   await w.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
   const out = await w.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" });
@@ -145,7 +145,7 @@ test("with no address set, a PDF is made by the PDF converter app when it is ins
   assert.deepEqual(hit, ["setting"]);
   assert.equal(asked.some(a => a[0] === "appmods.origin"), false);
   // the app is not installed or not running: the same plain refusal, and it says where to get one
-  const none = rig({ call: async tool => (tool === "spaces.self" ? {} : { error: { code: "not_found", message: "that app is not running" } }) });
+  const none = rig({ call: async tool => (tool === "spaces.merge-list" ? {} : { error: { code: "not_found", message: "that app is not running" } }) });
   await none.run("documents.template.add", { name: "Letter", base64: b64(docx(["Hello {who}"])) });
   const e = await code(none.run("documents.generate", { template: "Letter", values: { who: "Dana" }, format: "pdf" }));
   assert.equal(e.code, "no_pdf_engine");
@@ -174,7 +174,7 @@ test("a link to the signed copy: the person's chain is needed, the slug is check
 test("documents.send makes the signing request and emails the link in one act; a refusal from either is passed on in its own words", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const r = rig({ call: async (tool, input) => {
-    if (tool === "spaces.self") return {}; // the door's own lookup
+    if (tool === "spaces.merge-list") return {}; // the door's own lookup
     seen.push({ tool, input });
     if (tool === "appmods.signing.request") return { data: { submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123" } };
     return { data: { held: "gi_1", via: "email" } };
@@ -192,7 +192,7 @@ test("documents.send makes the signing request and emails the link in one act; a
   assert.equal((await code(r.run("documents.send", { template_id: 12, email: " " }))).code, "bad_input");
   const none = rig({ chain: null });
   assert.equal((await code(none.run("documents.send", { template_id: 12, email: "dana@harlow.test" }))).code, "denied");
-  const down = rig({ call: async tool => (tool === "spaces.self" ? {} : tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
+  const down = rig({ call: async tool => (tool === "spaces.merge-list" ? {} : tool === "appmods.signing.request" ? { error: { code: "not_found", message: "that app is not running" } } : { data: {} }) });
   const e = await code(down.run("documents.send", { template_id: 12, email: "dana@harlow.test" }));
   assert.equal(e.code, "unavailable"); assert.match(e.message, /install or start it from Apps/, "and a missing app says what to do");
 });
@@ -200,7 +200,7 @@ test("documents.send makes the signing request and emails the link in one act; a
 test("documents.send-signed makes the link (no end unless the setting or the call gives one) and emails it; the slug is checked before anything is made", async () => {
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const call = async (/** @type {string} */ tool, /** @type {any} */ input) => {
-    if (tool === "spaces.self") return {};
+    if (tool === "spaces.merge-list") return {};
     seen.push({ tool, input });
     return tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/1.abc.sig", expires: input.days === undefined ? null : Date.now() + input.days * 86_400_000 } } : { data: { held: "gi_2" } };
   };
@@ -270,7 +270,7 @@ test("documents.signing.waiting lists what nobody has signed without the link or
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const pending = [{ submission: 4411, slug: "abc123", url: "https://documents.harlow.vyre.run/sign/4411/abc123", email: "dana@harlow.test", signer: "Dana Harlow", template: "Engagement letter", at: 5 }];
   const r = rig({ call: async (tool, input) => {
-    if (tool === "spaces.self") return {};
+    if (tool === "spaces.merge-list") return {};
     seen.push({ tool, input });
     return tool === "appmods.signing.waiting" ? { data: { requests: pending } } : { data: { held: "gi_9" } };
   } });
@@ -283,7 +283,7 @@ test("documents.signing.waiting lists what nobody has signed without the link or
   assert.equal((await code(asQueue.run("documents.signing.waiting", {}, { caller: "module:comms" }))).code, "denied");
   assert.equal((await code(asQueue.run("documents.signing.waiting", {}))).code, "denied");
   // no Documents app here: nothing waits, nothing fails
-  for (const error of [{ code: "not_found", message: "x" }, { code: "no_such_tool", message: "x" }]) assert.deepEqual((await rig({ call: async tool => (tool === "spaces.self" ? {} : { error }) }).run("documents.signing.waiting", {})).requests, []);
+  for (const error of [{ code: "not_found", message: "x" }, { code: "no_such_tool", message: "x" }]) assert.deepEqual((await rig({ call: async tool => (tool === "spaces.merge-list" ? {} : { error }) }).run("documents.signing.waiting", {})).requests, []);
   seen.length = 0;
   const out = await r.run("documents.signing.remind", { submission: 4411, note: "Thanks, Dana." });
   assert.deepEqual(seen.map(s => s.tool), ["appmods.signing.waiting", "comms.send"]);
@@ -302,7 +302,7 @@ test("documents.send and send-signed take the signer from a Contact: its address
   /** @type {{ tool: string, input: any }[]} */ const seen = [];
   const contacts = { "c-1": { data: { name: "Dana Harlow", email: "dana@harlow.test" } }, "c-2": { data: { name: "Sam Poe" } } };
   const r = rig({ records: Object.fromEntries(Object.entries(contacts).map(([id, v]) => [`contact/${id}`, v])), call: async (tool, input) => {
-    if (tool === "spaces.self") return {};
+    if (tool === "spaces.merge-list") return {};
     seen.push({ tool, input });
     return tool === "appmods.signing.request" ? { data: { submission: 9, slug: "abc", url: "https://documents.harlow.vyre.run/sign/9/abc" } } : tool === "appmods.signed.link" ? { data: { url: "https://documents.harlow.vyre.run/signed/0.abc.sig", expires: null } } : { data: { held: "gi_1" } };
   } });
