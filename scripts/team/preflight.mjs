@@ -183,19 +183,22 @@ if (!STATIC) {
   const changedSource = existing.filter(f => /\.(m?js|ts|tsx)$/.test(f) && !/\.test\.|\/testing\/|^test\/|^scripts\/|^\.github\//.test(f));
   const refactor = /\[refactor\]/i.test(bodies);
   if (changedSource.length && !refactor) {
-    if (!changedTests.length) fail("T5", `this branch changes code (${changedSource.slice(0, 3).join(", ")}${changedSource.length > 3 ? ", ..." : ""}) with no test that proves it. Add a test that fails without the change, or mark a behaviour-free change [refactor] in a commit message.`);
-    else {
-      const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-red-first-"));
-      try {
-        execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
-        for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
-        for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
-        const failedOnBase = changedTests.filter(f => spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0);
-        if (!failedOnBase.length) fail("T5", `none of this branch's tests fail without its code change, so none of them proves it (${changedTests.join(", ")}). Write the test that would catch the bug or the missing behaviour; check it fails on ${BASE}.`);
-        else console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
-      } catch (e) { warns.push(`could not run the red-first check (${String(e).slice(0, 120)})`); }
-      finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
-    }
+    // Proof is a changed test that fails on the base's code, or a guard that is red on the base and green here (a fix that turns a guard green).
+    const tmp = fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "preflight-red-first-"));
+    try {
+      execFileSync("git", ["worktree", "add", "-q", "--detach", tmp, mergeBase], { stdio: "ignore" });
+      for (const nm of ["node_modules", "apps/app/node_modules"]) if (fs.existsSync(nm)) fs.symlinkSync(path.resolve(nm), path.join(tmp, nm));
+      for (const f of existing.filter(f => /\.test\.|\/testing\/|^test\//.test(f))) { fs.mkdirSync(path.dirname(path.join(tmp, f)), { recursive: true }); fs.copyFileSync(f, path.join(tmp, f)); }
+      const failsAtBase = (/** @type {string} */ f) => fs.existsSync(path.join(tmp, f)) && spawnSync(process.execPath, ["--test", f], { cwd: tmp, stdio: "ignore", timeout: 240000 }).status !== 0;
+      const failedOnBase = changedTests.filter(failsAtBase);
+      const guardsTurnedGreen = failedOnBase.length ? [] : GUARDS.filter(g => !red.has(g) && failsAtBase(g));
+      if (failedOnBase.length) console.log(`preflight: red first OK (${failedOnBase.length} of ${changedTests.length} changed test files fail without the change)`);
+      else if (guardsTurnedGreen.length) console.log(`preflight: red first OK (guards red without the change and green with it: ${guardsTurnedGreen.join(", ")})`);
+      else fail("T5", changedTests.length
+        ? `none of this branch's tests fail without its code change, so none of them proves it (${changedTests.join(", ")}). Write the test that would catch the bug or the missing behaviour; check it fails on ${BASE}.`
+        : `this branch changes code (${changedSource.slice(0, 3).join(", ")}${changedSource.length > 3 ? ", ..." : ""}) with no test that proves it. Add a test that fails without the change, or mark a behaviour-free change [refactor] in a commit message.`);
+    } catch (e) { warns.push(`could not run the red-first check (${String(e).slice(0, 120)})`); }
+    finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
   }
 
   // App types: only errors in files this branch touched count against it.

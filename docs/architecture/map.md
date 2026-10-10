@@ -294,6 +294,7 @@ Projects, records, tasks, rules, Flows, files.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `artifacts` | `core/artifacts/` | box | Documents, pages, dashboards and small apps your agents make, kept on your server. |
+| `documents` | `core/documents/` | box | Word templates filled from records, PDFs, documents sent for signature and their signed copies filed on the client. |
 | `files` | `core/files/` | box and local | Find and bring over files on this machine and the server, inside folders the person chose. |
 | `flows` | `core/flows/` | box and local | Flows and Kits: write, approve and run a Flow with its triggers, waits and tasks. |
 | `goals` | `core/goals/` | box and local | A goal and its ordered milestones, attached to a session or a project. |
@@ -324,6 +325,7 @@ Mail, Google, GitHub, webhooks, apps, computers and screens.
 | Module | Folder | Runs on | What it does |
 | --- | --- | --- | --- |
 | `appmods` | `core/appmods/` | box | Open-source apps (Documents first) run as containers on a server, from a pinned catalog. |
+| `comms` | `core/comms/` | box | One way to send a text or an email: it asks the Gate once, uses the person's own mail account or Twilio from the Vault, and logs it on the client. |
 | `computer` | `core/computer/` | box and local | Vyre Computer: one front door over the cloud computer, your Macs and the screen engines; computers by name, interface first, screen last. |
 | `computers` | `core/computers/` | box | Each agent's own computer, a shared pool of screens, and take-over. |
 | `connectors` | `core/connectors/` | box and local | The catalog of vendors that run their own MCP server, and connections a firm makes itself. |

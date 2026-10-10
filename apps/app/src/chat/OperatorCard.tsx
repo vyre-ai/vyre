@@ -86,7 +86,7 @@ export function OperatorCard({ block, sample }: { block: Op; sample?: string }) 
         </View>
       </View>
       <Modal visible={big} transparent animationType="fade" onRequestClose={() => setBig(false)}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setBig(false)} style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.72)", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Close" onPress={() => setBig(false)} style={{ flex: 1, backgroundColor: color.scrim, alignItems: "center", justifyContent: "center", padding: 16 }}>
           {bigStill.src || still.src ? <Image source={{ uri: bigStill.src || (still.src as string) }} resizeMode="contain" style={{ width: "100%", height: "80%" }} /> : <Text tone="inverse">{stillWord(still.why)}</Text>}
           <Text tone="inverse" size="caption" style={{ marginTop: 10 }}>{block.line}</Text>
         </Pressable>

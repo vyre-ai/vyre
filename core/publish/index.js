@@ -224,6 +224,27 @@ export default {
       };
     }
 
+    // ---- a built server runs as an app module (team/contracts/builder.md): Publish writes its granted runtime secrets as files, appmods runs the container ----
+    /** @param {{ id: string, name: string }} space */
+    function runnerFor(space) {
+      const names = (/** @type {any} */ d) => (d.secrets || []).filter((/** @type {any} */ s) => s.use.includes("runtime")).map((/** @type {any} */ s) => s.name);
+      return {
+        async start(/** @type {any} */ d) {
+          const files = secretsFor(space.id);
+          // each value is released by the Vault to Publish only on this deployment's live grant, and written where only the apps module reads it, mode 0600
+          for (const s of (d.secrets || [])) if (s.use.includes("runtime")) await files.writeFile(path.join(files.dir, d.id, s.name), await files.read(s.ref, { deployment: d.id }), { mode: 0o600 });
+          const r = await call("appmods.publish.install", { deployment: { id: d.id, space: space.id, name: d.name, version: d.version, runtime: d.runtime, secrets: names(d) } });
+          if (r.missing) throw refuse("this server has no apps module to run a site's server", "no_runner");
+          return r.data;
+        },
+        async remove(/** @type {any} */ d) {
+          await call("appmods.publish.remove", { deployment: d.id });
+          const files = secretsFor(space.id);
+          for (const s of (d.secrets || [])) await files.removeFile(path.join(files.dir, d.id, s.name));
+        },
+      };
+    }
+
     // ---- one publisher per space, built on first use ----
     /** @type {Map<string, { pub: any, ledger: ReturnType<typeof ledgerFor>, lock: Promise<any> }>} */
     const publishers = new Map();
@@ -262,6 +283,7 @@ export default {
         },
         names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
         builder,
+        runner: runnerFor(space),
         // The checked files of a static build go into a fresh folder under the space's publish folder (private, 0700); `publish.edge` hands the box the copy into the site volume.
         site: { write: async (/** @type {string} */ _id, /** @type {any[]} */ files) => {
           const sites = path.join(publishDir(space.id), "sites");
@@ -506,6 +528,8 @@ export default {
         const r = await b.pub.revokeSecret(b.chain, i.deployment, i.name);
         const files = secretsFor(b.space.id);
         await files.removeFile(path.join(files.dir, i.deployment, i.name));
+        // a live server is started again without it: the container's environment is made at start, so taking the file away alone would leave the secret in the running process
+        if (r.deployment.stage === "Production" && r.deployment.runtime && r.deployment.runtime.kind === "image") await runnerFor(b.space).start(r.deployment);
         return { deployment: shown(r.deployment) };
       },
     });

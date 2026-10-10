@@ -40,6 +40,7 @@ export function runArgs(p) {
     "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--init",
     "--env-file", p.envFile];
   for (const v of a.volumes || []) args.push("-v", `${n.volume(v.name)}:${v.path}`);
+  if (a.readOnly) args.push("--read-only", "--tmpfs", "/tmp:rw,size=64m,mode=1777");
   if (p.hostPort !== false) args.push("-p", `127.0.0.1::${a.port}`);
   args.push(a.image);
   return args;
