@@ -109,8 +109,8 @@ need_docker() {
 compose() {
   if [ "$ROOT_RUN" != 1 ]; then need_docker; docker compose --profile computers "$@"; return; fi
   [ -f "$RUN/compose.yml" ] || die "root's copy of the compose file is missing; run: sudo vyre updater install"
-  if [ "$BUILDF" = 1 ]; then docker compose --profile computers --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" "$@"
-  else docker compose --profile computers --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" "$@"
+  if [ "$BUILDF" = 1 ]; then docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" -f "$RUN/compose.build.yml" --profile computers "$@"
+  else docker compose --project-directory "$RUN" --project-name vyre --env-file "$RUN/compose.env" -f "$RUN/compose.yml" --profile computers "$@"
   fi
 }
 # The update this run is (UPD_TRACK=1 under the path unit): where it has got to, for the card in the Deck.
