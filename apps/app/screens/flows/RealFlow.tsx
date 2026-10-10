@@ -2,7 +2,7 @@
 import { dayTimeOf } from "../../src/time/show.js";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
@@ -21,13 +21,11 @@ const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "pl
 
 export function RealFlow({ id }: { id: string }) {
   const router = useRouter();
-  // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
-  const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; title: string } | null>(null);
   const [card, setCard] = useState<FlowCard | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
-  const [runId, setRunId] = useState<string | undefined>(wanted ? String(wanted) : undefined);
+  const [runId, setRunId] = useState<string | undefined>(undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
   const [shrunk, setShrunk] = useState<string | null>(null);
   const [explain, setExplain] = useState("");

@@ -12,6 +12,7 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { Thumb } from "../src/chat/Thumb";
 import { ExplainCard } from "../screens/flows/ExplainCard";
 import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
@@ -127,6 +128,19 @@ function Sample({ name }: { name: string }) {
       { type: "task", kind: "task", id: "t1", urn: "u", title: "Collect ID", line: "Collect ID was done by Sam", at: now - 27 * h },
       { type: "call", kind: "call", id: "c1", urn: "u", title: "Call", line: "Call with the client, 18 minutes", at: now - 50 * h },
     ]} />;
+  }
+  if (name === "attach-thumbs") {
+    const art = (a: string, b: string) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="120" height="120" fill="url(#g)"/><circle cx="84" cy="36" r="14" fill="white" opacity=".8"/><path d="M0 120 L46 62 L78 96 L96 78 L120 108 V120Z" fill="white" opacity=".55"/></svg>`)}`;
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Thumb uri={art("#7c6cf0", "#e58fb0")} name="lease-photo.png" onRemove={() => {}} />
+          <Thumb uri={art("#3fb8a0", "#2a6fa8")} name="signature.png" state="uploading" onRemove={() => {}} />
+          <Thumb uri={art("#f0a35c", "#c24a4a")} name="scan.jpg" state="failed" onRemove={() => {}} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}><Thumb uri={art("#7c6cf0", "#e58fb0")} name="lease-photo.png" size={120} /><Thumb uri={art("#3fb8a0", "#2a6fa8")} name="signature.png" size={120} /></View>
+      </View>
+    );
   }
   if (name === "runner-chip") {
     return (

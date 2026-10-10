@@ -34,6 +34,7 @@
  "apps/app/src/chat/highlight.test.js": 5,
  "apps/app/src/chat/mock-stream.test.js": 8,
  "apps/app/src/chat/stream-source.test.js": 3,
+ "apps/app/src/chat/tool-runs.test.js": 3,
  "apps/app/src/identity/claim-space.test.js": 1,
  "apps/app/src/identity/identity.test.js": 10,
  "apps/app/src/identity/passkey.test.js": 9,
