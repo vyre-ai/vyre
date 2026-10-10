@@ -45,6 +45,12 @@ if (!config.resolver.assetExts.includes("html")) config.resolver.assetExts.push(
 // Shared repo code under lib/, relay/client and kernel imports packages (@noble/hashes, ...) that live in this app's node_modules, not in the repo root's: let them resolve there too.
 config.resolver.nodeModulesPaths = [...(config.resolver.nodeModulesPaths ?? []), path.resolve(here, "node_modules")];
 
+// The sample-world pages (the component gallery, the screenshot pages, the terminal demo, the key check) import every screen, which makes each of those screens shared between routes and so part of the first
+// load of every page. A real build leaves them out; the mock build (EXPO_PUBLIC_VYRE_MOCK=1, the screenshots' and the sample world's) keeps them.
+if (process.env.EXPO_PUBLIC_VYRE_MOCK !== "1") {
+  config.resolver.blockList = [].concat(config.resolver.blockList ?? [], [/[\\/]app[\\/](gallery|shots-[a-z]+|terminal-demo|keycheck)\.tsx$/]);
+}
+
 const upstream = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, name, platform) => {
   if (name === "@vyre/ui") return (upstream ?? context.resolveRequest)(context, path.join(here, "ui/index.ts"), platform);

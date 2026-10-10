@@ -822,6 +822,7 @@
  "test/box-update.test.js": 37,
  "test/build-app-out.test.js": 6,
  "test/bump-version.test.js": 2,
+ "test/bundle-size.test.js": 3,
  "test/bytes-single.test.js": 3,
  "test/cc-plugin.test.js": 14,
  "test/chaos/chaos.test.js": 24,

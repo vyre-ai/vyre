@@ -171,18 +171,10 @@ jobs:
       - name: Bundle size against the last green run
         if: success() || failure()
         run: |
-          total=0
-          for f in $(find apps/app/dist -name '*.js'); do total=$((total + $(gzip -9c "$f" | wc -c))); done
-          kib=$((total / 1024))
-          echo "{\"js_gzip_kib\": $kib}" > size.json
-          base=$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).js_gzip_kib) } catch { console.log("") }' "$RUNNER_TEMP/base/size.json")
-          echo "web JS gzipped: ${kib} KiB${base:+ (last green ${base} KiB)}" | tee -a "$GITHUB_STEP_SUMMARY"
-          # A hard ceiling beside the relative rule, so the bundle cannot drift up 10% at a time: 1250 KiB gzipped for all the app's JS (work/ui measured 1151; 0.3.1 measured 1203 with the module screens, the Documents views and the Space roles screen, 3% over the last green run, so the ceiling moved up by 50 KiB, which is the lead's to move again). The 0.3.0 backlog line is
-          # route-level code splitting (chat, settings, flows, the records table and the planner loaded on demand), target under 700 KiB for the entry.
-          if [ "$kib" -gt 1250 ]; then echo "JS is over the 1250 KiB ceiling"; exit 1; fi
-          # a baseline under 900 KiB is the pre-0.3 app (about 585 KiB; the 0.3 app is about 1160): that doubling is the one the comment above describes, not drift, so only the ceiling holds until a green run of the 0.3 app exists
-          if [ -n "$base" ] && [ "$base" -lt 900 ]; then echo "baseline ${base} KiB is the pre-0.3 app: the 10% rule waits for a green run of the 0.3 app; the 1250 KiB ceiling above holds"; base=""; fi
-          if [ -n "$base" ] && [ $((kib * 100)) -gt $((base * 110)) ]; then echo "JS grew more than 10%"; exit 1; fi
+          # The budget measures what a person waits for (the rule and its reason: .github/scripts/bundle-size.mjs): first-load JS under 1100 KiB gzipped, hard; every lazy chunk under 300 KiB; the total of all
+          # the JS is reported, not ceilinged, because splitting a bundle does not make the app smaller; either number growing more than 10% against the last green run fails. The baseline is the 0.2.9 release
+          # line's last green run (work/v0.3, then the stage line, then main); a baseline from before this rule has no first-load number, so the 10% rules wait for the first green run that records both.
+          node .github/scripts/bundle-size.mjs --dist apps/app/dist --out size.json --base "$RUNNER_TEMP/base/size.json" | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
