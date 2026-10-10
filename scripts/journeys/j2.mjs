@@ -7,10 +7,17 @@ export default {
   id: "J2", title: "Intake to signed engagement", owner: "operations", world: "daemon", store: "plain",
   /** @param {any} w @param {ReturnType<typeof import("./lib/journey.mjs").stepper>} J */
   async steps(w, J) {
+    /** @type {any} */ let team = null;
+    await J.step("the owner makes a team space on the server", async () => {
+      team = await w.mac.createTeamSpace(`firm${w.person.slice(-5)}`);
+      assert.match(team.space, /^spc_/);
+      return team.name;
+    });
+    const sp = () => team.space;
     await J.step("explore: a client and its contact", async () => {
-      const c = await w.call("records.create", { type: "contact", data: { name: "Dana Harlow", email: "dana@harlow.test" } });
-      const cl = await w.call("records.create", { type: "client", data: { contact: c.record.urn } });
-      const got = await w.call("records.get", { type: "client", id: cl.record.id });
+      const c = await w.call("records.create", { type: "contact", space: sp(), data: { name: "Dana Harlow", email: "dana@harlow.test" } });
+      const cl = await w.call("records.create", { type: "client", space: sp(), data: { contact: c.record.urn } });
+      const got = await w.call("records.get", { type: "client", space: sp(), id: cl.record.id });
       return JSON.stringify({ c: c.record, cl: cl.record, got });
     });
   },
