@@ -2,16 +2,17 @@
 import { dayTimeOf } from "../../src/time/show.js";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
 import { effectLines } from "./engineer-model";
 import { retryReal, startReal } from "./run";
+import { ExplainCard } from "./ExplainCard";
 import { canRetry, recordLines, startRefusal } from "./run-model";
-import { approveReal, cardReal, getReal, graphReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
-import { APPROVE_LABEL, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
+import { approveReal, cardReal, getReal, graphReal, explainReal, healthReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
+import { APPROVE_LABEL, explainText, healthBanner, shownWarnings, shrunkNote, titleOf, versionWaits } from "./real-model.js";
 
 const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
@@ -20,13 +21,16 @@ const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "pl
 
 export function RealFlow({ id }: { id: string }) {
   const router = useRouter();
+  // a Flow-run line on a timeline opens this page with that run showing (?run=<id>)
+  const { run: wanted } = useLocalSearchParams<{ run?: string }>();
   const [g, setG] = useState<Graph | null>(null);
   const [meta, setMeta] = useState<{ version: number; hash: string; status: string; approver: unknown; title: string } | null>(null);
   const [card, setCard] = useState<FlowCard | null>(null);
   const [runs, setRuns] = useState<RunRow[]>([]);
-  const [runId, setRunId] = useState<string | undefined>(undefined);
+  const [runId, setRunId] = useState<string | undefined>(wanted ? String(wanted) : undefined);
   const [painted, setPainted] = useState<any[] | null>(null);
   const [shrunk, setShrunk] = useState<string | null>(null);
+  const [explain, setExplain] = useState("");
   const [health, setHealth] = useState<{ level: string; line: string } | null>(null);
   const [picked, setPicked] = useState<string | undefined>(undefined);
   const [err, setErr] = useState("");
@@ -48,7 +52,8 @@ export function RealFlow({ id }: { id: string }) {
   }, [id, n]);
 
   useEffect(() => {
-    if (!runId) { setPainted(null); setShrunk(null); return; }
+    if (!runId) { setPainted(null); setShrunk(null); setExplain(""); return; }
+    explainReal(runId).then((d) => setExplain(explainText(d))).catch(() => setExplain(""));
     runReal(runId).then((r) => { setPainted(r.painted?.nodes ?? null); setShrunk(shrunkNote(r.run)); }).catch(() => { setPainted(null); setShrunk(null); });
   }, [runId]);
 
@@ -98,6 +103,7 @@ export function RealFlow({ id }: { id: string }) {
       {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
       {painted && picked_run ? (
         <Sec title={`What the run of ${when(picked_run.started_at)} did`}>
+          <ExplainCard text={explain} />
           <Card flush>
             {shrunk ? <Row dense title={shrunk} sub="Its step-by-step details were cleared after the days the Space keeps them (Settings, Flows)." /> : recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
           </Card>

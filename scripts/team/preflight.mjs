@@ -158,7 +158,7 @@ const GUARDS = [
   "test/no-" + "li" + "me.test.js", "test/no-" + "tail" + "scale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
   "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
   "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
-  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
+  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js", "test/stdin-hygiene.test.js", "test/file-size.test.js", "test/netguard-single.test.js",
   "test/references-not-values.test.js", "test/reach-person-split.test.js", "test/identity-from-input.test.js", "test/reach-anyone-behaviour.test.js",
 ].filter(f => fs.existsSync(f));
 // Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.

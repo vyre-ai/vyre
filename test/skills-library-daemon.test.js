@@ -12,6 +12,7 @@ import http from "node:http";
 import { execFileSync } from "node:child_process";
 import { start } from "../core/daemon/index.js";
 import { hookSeams } from "../core/watchers/index.js";
+import { PLUGIN_LAYOUT } from "../core/sessions/config.js";
 import { getWall } from "../lib/sandbox/index.js";
 import { tempHome } from "./helpers.js";
 import { canonical } from "../kernel/core/canonical.js";
@@ -120,7 +121,7 @@ test("a plugin with code is approved only against exactly what it declares; its 
 
   // materialised for each AI
   for (const ai of ["claude", "codex", "grok"]) {
-    const m = await asModule("skills.materialise", { ai });
+    const m = await asModule("skills.materialise", { ai, manifest: PLUGIN_LAYOUT.manifest });
     assert.ok(m.dir && fs.existsSync(path.join(m.dir, "skills", "case-law", "SKILL.md")), `${ai}: the skill is written`);
     if (ai === "codex") assert.ok(!fs.existsSync(path.join(m.dir, ".claude-plugin")), "codex reads a skills folder, nothing more");
     else { assert.ok(fs.existsSync(path.join(m.dir, ".claude-plugin", "plugin.json")) && fs.existsSync(path.join(m.dir, "commands", "cite.md")), `${ai}: plugin layout`); assert.match(fs.readFileSync(path.join(m.dir, "hooks", "hooks.json"), "utf8"), /skills\.hook\.run/); assert.ok(!fs.readFileSync(path.join(m.dir, "hooks", "hooks.json"), "utf8").includes("fetch("), "the script itself is never written out"); }

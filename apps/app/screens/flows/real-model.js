@@ -37,3 +37,6 @@ export const healthRow = (f) => {
 
 /** How a Flow's own page says how it is doing: a banner for a red or amber one (what is wrong comes first in the line), a quiet line for the rest. @param {{ level?: string, line?: string } | null | undefined} h @returns {{ tone: "err" | "warn" | "quiet", text: string } | null} */
 export const healthBanner = (h) => (h && h.line ? { tone: h.level === "red" ? "err" : h.level === "amber" ? "warn" : "quiet", text: h.line } : null);
+
+/** The one plain paragraph flows.describe gives for a run (explain), or nothing: a box without it, or an answer with no words, shows no card. @param {any} d */
+export const explainText = (d) => (d && typeof d.explain === "string" ? d.explain.trim() : "");

@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1618,"event":533,"config":300,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1618,"event":533,"config":302,"env":282,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -1296,6 +1296,7 @@
     {"kind":"config","name":"projectsDir","definedIn":"core/config/index.js","page":"reference/config.md#configjson","mentions":[]},
     {"kind":"event","name":"prompt.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
     {"kind":"tool","name":"providers.list","definedIn":"core/providers/index.js","page":"reference/tools.md#providerslist","module":"providers","mentions":[]},
+    {"kind":"config","name":"publish","definedIn":"core/builder/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"publish.approve","definedIn":"core/publish/index.js","page":"reference/tools.md#publishapprove","module":"publish","mentions":[{"page":"using/publish.md","line":21,"anchor":"a-folder-of-ready-files-one-yes"}]},
     {"kind":"tool","name":"publish.create","definedIn":"core/publish/index.js","page":"reference/tools.md#publishcreate","module":"publish","mentions":[{"page":"using/publish.md","line":21,"anchor":"a-folder-of-ready-files-one-yes"}]},
     {"kind":"tool","name":"publish.decide","definedIn":"core/publish/index.js","page":"reference/tools.md#publishdecide","module":"publish","mentions":[{"page":"using/publish.md","line":17,"anchor":"a-folder-of-ready-files-one-yes"}]},
@@ -1316,6 +1317,7 @@
     {"kind":"tool","name":"publish.rollback","definedIn":"core/publish/index.js","page":"reference/tools.md#publishrollback","module":"publish","mentions":[{"page":"using/publish.md","line":17,"anchor":"a-folder-of-ready-files-one-yes"}]},
     {"kind":"tool","name":"publish.secret.grant","definedIn":"core/publish/index.js","page":"reference/tools.md#publishsecretgrant","module":"publish","mentions":[{"page":"using/publish.md","line":40,"anchor":"an-app-with-a-server-from-a-dockerfile"}]},
     {"kind":"tool","name":"publish.secret.revoke","definedIn":"core/publish/index.js","page":"reference/tools.md#publishsecretrevoke","module":"publish","mentions":[]},
+    {"kind":"config","name":"publish.servers","definedIn":"core/builder/index.js","page":null,"mentions":[]},
     {"kind":"tool","name":"publish.status","definedIn":"core/publish/index.js","page":"reference/tools.md#publishstatus","module":"publish","mentions":[]},
     {"kind":"config","name":"push","definedIn":"core/push/index.js","page":null,"mentions":[{"page":"concepts/box-and-mac.md","line":31,"anchor":"one-process-per-machine"}]},
     {"kind":"config","name":"push.allow_http","definedIn":"core/push/index.js","page":null,"mentions":[]},

@@ -356,7 +356,7 @@
  "core/spaces/identity-ops.test.js": 11,
  "core/spaces/kernel-members-compat.test.js": 2,
  "core/spaces/kernel-members.test.js": 3,
- "core/spaces/spaces.test.js": 61,
+ "core/spaces/spaces.test.js": 62,
  "core/spawner/isolation.test.js": 1,
  "core/spawner/spawner.test.js": 9,
  "core/spawner/wall.test.js": 11,
@@ -1021,5 +1021,6 @@
  "core/github/scan.test.js": 3,
  "apps/app/screens/runner/run-switch.test.js": 7,
  "test/a5-no-copies.test.js": 2,
- "apps/app/src/chat/feel.test.js": 2
+ "apps/app/src/chat/feel.test.js": 2,
+ "test/journey-run-explain-timeline.test.js": 1
 }

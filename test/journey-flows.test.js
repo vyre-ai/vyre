@@ -16,7 +16,7 @@ const DOSSIER = { name: "dossier", label: "Dossier", fields: [{ name: "name", ki
 const NOTE = { name: "filing-note", label: "Filing note", fields: [{ name: "body", kind: "text", label: "Body" }] };
 const ALL_DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, shows on the timeline, replays true; a business-hours schedule fires on its own", { timeout: 300_000 }, async t => {
+test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, shows on the timeline, replays true; a business-hours schedule fires on its own", { timeout: 900_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
@@ -25,6 +25,8 @@ test("J6: a Flow with a parallel branch and a sub-flow runs from a stage move, s
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   const meta = async () => ({ token: (await d.kernel.surfaces.open(admin, {})).token });
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => (await d.registry.call(tool, input, "cli", await meta()));
+  // A Space on its own record store (Twenty, as in the journeys world) answers "the type definitions could not be read" until that store has started: wait for it before defining anything.
+  await until(async () => { try { await d.kernel.store.types(); return true; } catch { return false; } }, "the record store to start", 600_000);
   await d.kernel.gateway.records.define(admin, { add_types: [DOSSIER, NOTE] });
   const install = async (/** @type {any} */ flow) => {
     const r = await call("flows.define", { flow });

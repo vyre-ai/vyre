@@ -12,6 +12,8 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { ExplainCard } from "../screens/flows/ExplainCard";
+import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
@@ -115,6 +117,17 @@ function Sample({ name }: { name: string }) {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
   }
   if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
+  if (name === "explain-card") return <ExplainCard text="It ran because the stage moved to Engagement. It made Welcome note and handed Send the welcome email to an assistant. It is waiting for a person (step Approve the email)." />;
+  if (name === "record-timeline") {
+    const now = 1_700_000_000_000, h = 3_600_000;
+    return <TimelineEntries rows={[
+      { type: "flow-run", kind: "flow", id: "r1", urn: "u", title: "Welcome the client", line: "Welcome the client ran and finished", at: now - 2 * h },
+      { type: "stage", kind: "stage", id: "s1", urn: "u", title: "Engagement", line: "Moved to Engagement", at: now - 3 * h },
+      { type: "email", kind: "email", id: "e1", urn: "u", title: "Re: lease", line: "Alex sent the welcome email", at: now - 26 * h },
+      { type: "task", kind: "task", id: "t1", urn: "u", title: "Collect ID", line: "Collect ID was done by Sam", at: now - 27 * h },
+      { type: "call", kind: "call", id: "c1", urn: "u", title: "Call", line: "Call with the client, 18 minutes", at: now - 50 * h },
+    ]} />;
+  }
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
