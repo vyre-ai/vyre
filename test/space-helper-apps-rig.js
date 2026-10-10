@@ -137,6 +137,7 @@ const pid = a[1];
 const cmd = a.slice(3);
 const base = () => { const r = cp.spawnSync("node", [F + "/nsenter-base.cjs", ...a], { stdio: "inherit" }); process.exit(r.status ?? 1); };
 if (cmd[0] === "ip") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("no-iface") ? "" : "7: eth1    inet " + (fs.existsSync(F + "/vip") ? fs.readFileSync(F + "/vip", "utf8").trim() : "172.31.7.2") + "/24 brd 172.31.7.255 scope global eth1\\n"); process.exit(0); }
+if (cmd[0] === "cat" && cmd[1] === "/proc/sys/net/ipv4/ip_forward") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("ip-forward-on") ? "1\\n" : "0\\n"); process.exit(0); }
 if (cmd[0] === "cat") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("listen") ? fs.readFileSync(F + "/listen", "utf8") : ""); process.exit(0); }
 const file = F + "/appfw-" + pid;
 const load = () => fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
@@ -176,7 +177,6 @@ if (cmd[0] === "iptables" || cmd[0] === "ip6tables") {
   if (op === "-D") { if (idx < 0) process.exit(1); rules.splice(idx, 1); save(rules); process.exit(0); }
   process.exit(1);
 }
-if (cmd[0] === "cat" && cmd[1] === "/proc/sys/net/ipv4/ip_forward") { fs.appendFileSync(F + "/calls", "nsenter " + a.join(" ") + "\\n"); process.stdout.write(has("ip-forward-on") ? "1\\n" : "0\\n"); process.exit(0); }
 if (cmd[0] === "setpriv") {
   const uid = cmd.find(x => x.startsWith("--reuid=")).slice(8);
   const daemon = fs.readFileSync(F + "/daemon-uid", "utf8").trim();
