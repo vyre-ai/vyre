@@ -84,6 +84,9 @@ export function createCards({ kernel }) {
         if (exact.length === 1 && !found.some(f => f.ref.urn === exact[0].ref.urn)) found.push(exact[0]);
         if (found.length > LIMITS.others) break;
       }
+      // the card is for the record the person named first in their words
+      const where = (/** @type {{ name: string }} */ f) => { const at = String(text).toLowerCase().indexOf(f.name.toLowerCase()); return at < 0 ? Infinity : at; };
+      found.sort((a, b) => where(a) - where(b) || b.name.length - a.name.length);
       const fresh = found.filter(f => !(st.told.has(f.ref.urn) && st.turn - /** @type {number} */ (st.told.get(f.ref.urn)) < LIMITS.again));
       const first = fresh[0];
       if (!first) return "";
