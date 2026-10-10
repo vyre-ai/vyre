@@ -18,7 +18,7 @@ test("outside agents: the rows keep only what is drawn, and each state is said i
   const m = await import("./outside-model.ts");
   const rows = m.agentsOf(LIST);
   assert.deepEqual(rows.map((r) => r.id), ["k3m9x2q7pw4t", "a2", "a3"], "a row with no id or name is dropped");
-  assert.deepEqual(rows.map((r) => m.endsLine(r, NOW)), ["Ends in 3 days", "Expired. Make a new token to use it again.", "Ended"]);
+  assert.deepEqual(rows.map((r) => m.endsLine(r, NOW)), ["Ends in 3 days", "Expired, so it needs a new token", "Ended"]);
   assert.deepEqual(rows.map((r) => m.usedLine(r, NOW)), ["Last connected 30 minutes ago", "Has not connected yet", "Last connected 5 days ago"]);
   assert.deepEqual(rows[0].gives.map(m.givesLine), ["contact and matter, and may ask to change them", "The memory of Harlow"]);
   assert.equal(rows[1].reach, "");
