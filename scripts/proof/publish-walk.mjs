@@ -26,6 +26,12 @@ CMD ["node", "server.js"]
 `;
 const SERVER = `const http = require("http"), fs = require("fs"), crypto = require("crypto");
 http.createServer((q, r) => {
+  if (q.url.startsWith("/api/")) {
+    r.setHeader("access-control-allow-origin", "https://client.example");
+    if (q.method === "OPTIONS") { r.writeHead(204, { "access-control-allow-methods": "POST, PUT" }); return r.end(); }
+    let b = ""; q.on("data", d => { b += d; });
+    return q.on("end", () => { r.writeHead(200, { "content-type": "application/json" }); r.end(JSON.stringify({ api: true, method: q.method, path: q.url, received: b.length, echo: (() => { try { return JSON.parse(b); } catch { return null; } })() })); });
+  }
   let root = "root-read-only"; try { fs.writeFileSync("/etc/x", "1"); root = "root-writable"; } catch { /* read-only */ }
   let data = "data-writable"; try { fs.writeFileSync("/data/n", "1"); } catch { data = "data-read-only"; }
   const k = process.env.GREETING_PHRASE;
@@ -76,9 +82,9 @@ try {
     return j;
   };
   /** A stranger at the apps' front, from inside the box's container: the Host is the site's own, the cookie is made up, nothing of Vyre's. */
-  const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}) => {
+  const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}, /** @type {string} */ body = "") => {
     const host = siteHost(), port = frontPort(host);
-    const script = `const http=require("http");const r=http.request({host:"127.0.0.1",port:${Number(port)},path:${JSON.stringify(p)},method:${JSON.stringify(method)},headers:Object.assign({host:${JSON.stringify(host)}},${JSON.stringify(headers)})},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>console.log(JSON.stringify({status:res.statusCode,headers:res.headers,body:b})))});r.on("error",e=>console.log(JSON.stringify({error:String(e)})));r.end();`;
+    const script = `const http=require("http");const r=http.request({host:"127.0.0.1",port:${Number(port)},path:${JSON.stringify(p)},method:${JSON.stringify(method)},headers:Object.assign({host:${JSON.stringify(host)}},${JSON.stringify(headers)})},res=>{let b="";res.on("data",d=>b+=d);res.on("end",()=>console.log(JSON.stringify({status:res.statusCode,headers:res.headers,body:b})))});${body ? `r.write(${JSON.stringify(body)});` : ""}r.on("error",e=>console.log(JSON.stringify({error:String(e)})));r.end();`;
     const r = sh(`docker exec -u vyre vyre-vyre-1 node -e ${JSON.stringify(script)}`);
     try { return JSON.parse(String(r.stdout).trim().split("\n").pop() || "null"); } catch { return null; }
   };
@@ -128,6 +134,19 @@ try {
     assert(j.key === hexSha("first-secret"), "the granted secret reached the process");
     assert(j.cookie === "theme=dark" && j.vyre.length === 0, "the visitor's cookie, never Vyre's");
     return "200";
+  });
+  await J.step("a stranger calls the site's API: JSON in and out over POST and PUT, the app's own CORS answer comes through, and a large body arrives whole", async () => {
+    const post = visit("POST", "/api/orders", { "content-type": "application/json" }, JSON.stringify({ sku: "rye", qty: 2 }));
+    assert(post && post.status === 200, JSON.stringify(post).slice(0, 200));
+    const j = JSON.parse(post.body);
+    assert(j.api === true && j.method === "POST" && j.echo && j.echo.sku === "rye" && j.echo.qty === 2, post.body.slice(0, 200));
+    assert(post.headers["access-control-allow-origin"] === "https://client.example", "the app's own CORS header reaches the caller");
+    const pre = visit("OPTIONS", "/api/orders", { origin: "https://client.example", "access-control-request-method": "POST" });
+    assert(pre && pre.status === 204 && /POST/.test(String(pre.headers["access-control-allow-methods"])), JSON.stringify(pre).slice(0, 200));
+    const big = JSON.stringify({ blob: "x".repeat(200_000) });
+    const put = visit("PUT", "/api/blob", { "content-type": "application/json" }, big);
+    assert(put && put.status === 200 && JSON.parse(put.body).received === big.length, `a 200 KB body arrives whole: ${String(put && put.body).slice(0, 120)}`);
+    return "POST, PUT and OPTIONS";
   });
   await J.step("the root-side walls: no host mount, capabilities dropped, no way out, no door in", async () => {
     const ins = JSON.parse(sh("docker inspect vyre-app-northwind").stdout)[0];
