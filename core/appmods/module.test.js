@@ -157,6 +157,12 @@ test("a webhook with the app's token becomes a Vyre event, through the hook tool
   assert.equal(res.status, 202);
   assert.equal(w.d.registry.deps.events.since(0, { type: "documents.signed" }).length, 2);
   assert.equal((await fetch(url, { method: "POST", headers: { "x-vyre-token": "no", "content-type": "application/json" }, body: "{}" })).status, 403);
+  // a signer who declines, and a request that expires, are events too (the timeline and a Flow hear of them; the person is not left waiting on a silence)
+  const declined = await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "form.declined", timestamp: "2026-10-08T00:00:00Z", data: { id: 3, email: "b@example.com", submission: { id: 9 } } } }, "hook");
+  assert.equal(declined.data && declined.data.event, "documents.declined", JSON.stringify(declined));
+  assert.deepEqual(w.d.registry.deps.events.since(0, { type: "documents.declined" }).map(e => [e.payload.submission, e.payload.email]), [[9, "b@example.com"]]);
+  const expired = await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "submission.expired", timestamp: "2026-10-08T00:00:00Z", data: { id: 10 } } }, "hook");
+  assert.equal(expired.data && expired.data.event, "documents.expired", JSON.stringify(expired));
   // an event the manifest does not map is ignored, not an error
   assert.deepEqual((await w.d.registry.call("appmods.hook", { name: "documents", token, body: { event_type: "template.created" } }, "hook")).data, { ignored: "template.created" });
 });
