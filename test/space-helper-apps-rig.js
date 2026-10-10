@@ -52,9 +52,9 @@ if (a[0] === "compose" && /vyre-app-/.test(a[a.indexOf("--project-name") + 1] ||
 // published servers (pub-build, pub-up): the rootless BuildKit run, docker load, the image id of root's tag
 if (a[0] === "run" && a.includes("--name") && a[a.indexOf("--name") + 1] === "vyre-pub-build") {
   fs.appendFileSync(F + "/pub-builds", a.join(" ") + "\\n");
-  if (has("build-fails")) { process.stderr.write("#7 ERROR: process \"npm ci\" did not complete successfully: exit code: 1\\n"); process.exit(1); }
+  if (has("build-fails")) { process.stderr.write("#7 ERROR: process npm ci did not complete successfully: exit code: 1\\n"); process.exit(1); }
   const mnt = a.filter((x, i) => a[i - 1] === "-v" && x.endsWith(":/out"))[0];
-  const o = (/--output type=docker,name=([^,]+),dest=\/out\/image.tar/.exec(a.join(" ")) || [])[1];
+  const o = (a[a.indexOf("--output") + 1] || "").split(",")[1].replace("name=", "");
   fs.writeFileSync(F + "/pub-tag", o || "");
   if (!has("no-tar") && mnt) fs.writeFileSync(mnt.split(":")[0] + "/image.tar", "TAR".repeat(10));
   process.exit(0);
