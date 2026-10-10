@@ -342,6 +342,27 @@ test("vyre uninstall --delete-data deletes every volume in one step, with no sec
   assert.match(r.stdout, /your data is deleted/);
 });
 
+test("vyre uninstall --delete-data also removes the root-owned state Vyre wrote and the Spaces' stores, so a fresh install starts clean; --keep-data leaves them", t => {
+  for (const [args, gone] of [[["--delete-data"], true], [["--keep-data"], false]]) {
+    const b = installed(t);
+    const upd = path.join(b.base, "var-lib-vyre-update"), spaces = path.join(b.base, "var-lib-vyre-spaces");
+    for (const d of [upd, spaces]) { fs.mkdirSync(path.join(d, "status"), { recursive: true }); fs.writeFileSync(path.join(d, "status", "release"), "stale"); }
+    const env = { ...b.env, VYRE_UPDATE_ROOT: upd, VYRE_SPACES_ROOT: spaces };
+    const r = spawnSync("sh", [BOXVYRE, "uninstall", ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(fs.existsSync(upd), !gone, `${args}: the updater's state ${gone ? "is removed" : "is kept"}`);
+    assert.equal(fs.existsSync(spaces), !gone, `${args}: the Space helper's state ${gone ? "is removed" : "is kept"}`);
+  }
+});
+
+test("vyre uninstall --delete-data never removes a root or system folder named through the environment", t => {
+  const b = installed(t);
+  const env = { ...b.env, VYRE_UPDATE_ROOT: "/", VYRE_SPACES_ROOT: "relative/path" };
+  const r = spawnSync("sh", [BOXVYRE, "uninstall", "--delete-data"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync("/usr") && fs.existsSync("/etc"), "the machine is still there");
+});
+
 test("vyre uninstall --keep-data and a bad option", t => {
   const b = installed(t);
   const bad = uninstall(b, ["--nuke"]);
