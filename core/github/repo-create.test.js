@@ -123,5 +123,7 @@ test("only a person, or the Publish module acting inside Vyre's home, makes a re
   assert.equal((await w.as("module:publish")("github.repo.create", { name: "from-publish", dir })).data.full_name, "alex/from-publish");
   const outside = tmp(t, "outside"); fs.writeFileSync(path.join(outside, "a.txt"), "x");
   assert.match((await w.as("module:publish")("github.repo.create", { name: "elsewhere", dir: outside })).error.message, /only a folder kept under Vyre's home/);
+  const link = path.join(w.root, "sites", "sneaky"); fs.symlinkSync(outside, link);
+  assert.match((await w.as("module:publish")("github.repo.create", { name: "via-link", dir: link })).error.message, /only a folder kept under Vyre's home/, "a link out of the home is not under it");
   assert.equal((await w.as("module:publish")("github.owners", {})).error.code, "denied", "the owner list is the person's");
 });
