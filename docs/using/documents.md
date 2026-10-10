@@ -22,7 +22,7 @@ The result is filed in the Drive under `Documents/<project>/` and, when your Spa
 
 `documents.send` sends a template for signature: it makes the signing request and emails the signer their link through Comms. That is one act with one yes: you read the words once, and the signing app sends nothing of its own. When the signer has signed, `documents.send-signed` makes a link to the finished copy that stops working after 30 days and emails it to the signer, again one yes. A new link is one call away: `documents.signed-link` with the signer's `slug` and `days` (1 to 30).
 
-From an agent, the approval card for `documents.send` carries the whole act. From a Flow, your answer to the Flow's own question is the yes: nothing waits at the Gate afterwards. Either way, what you read before saying yes is the signer, the template and any note; the link line is fixed.
+In the Documents screen, Send for signature shows the signer, the template and your note; confirm it and the signer gets their link by e-mail. From an agent, the approval card for `documents.send` carries the whole act. From a Flow, your answer to the Flow's own question is the yes: nothing waits at the Gate afterwards. Either way, what you read before saying yes is the signer, the template and any note; the link line is fixed.
 
 ## Sign from a stage
 
