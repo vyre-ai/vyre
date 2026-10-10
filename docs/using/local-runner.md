@@ -61,7 +61,7 @@ When you lend a computer you choose how far its sessions may reach: only the AI 
 
 - The limit is yours and it only tightens by itself. If you stop lending a computer and lend it again without saying a limit, it keeps the limit it had. You cannot widen it by leaving it out.
 - To widen it, say so: lend again and confirm the looser limit. That is your own act, so it asks for nothing more. An assistant that tries to lend your computer with a looser limit waits for your one yes first.
-- Your computer signs the limit into every request for a lease, so the space's server holds a session to what the computer itself said, even if a later message says less or more.
+- Lending is the only yes it takes. After you turn "Run on this computer" on, your computer gets its key without asking you again, only while both sides still allow it: stop lending, or have the space take the computer away, and the next request is refused. Your computer says its own limit with each request, and the server only ever uses the tighter of that and what you allowed. The space's timeline shows each time your computer borrows its key.
 
 
 You can read what your session can read. This protects against loss, theft and access after removal, not against
