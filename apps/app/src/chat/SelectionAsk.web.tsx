@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text, useUiTheme } from "@vyre/ui";
+import { fromOfNode } from "./highlight.js";
 
 const inField = (n: Node | null) => { const e = n && (n.nodeType === 1 ? (n as Element) : n.parentElement); return !!(e && e.closest("textarea, input, [contenteditable='true'], [data-selection-ask='off']")); };
 
-export function SelectionAsk({ onAsk }: { onAsk: (text: string) => void }) {
+export function SelectionAsk({ onAsk }: { onAsk: (text: string, from?: string) => void }) {
   const { color } = useUiTheme();
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
   const words = useRef("");
+  const author = useRef("");
   useEffect(() => {
     const check = () => {
       const sel = window.getSelection();
@@ -18,6 +20,7 @@ export function SelectionAsk({ onAsk }: { onAsk: (text: string) => void }) {
       const r = sel.getRangeAt(0).getBoundingClientRect();
       if (!r || (r.width === 0 && r.height === 0)) { setAt(null); return; }
       words.current = text;
+      author.current = fromOfNode(sel.anchorNode);
       setAt({ x: Math.min(Math.max(r.left + r.width / 2, 70), window.innerWidth - 70), y: Math.max(r.top - 8, 48) });
     };
     const later = () => setTimeout(check, 0);
@@ -29,7 +32,7 @@ export function SelectionAsk({ onAsk }: { onAsk: (text: string) => void }) {
   if (!at) return null;
   return (
     <View pointerEvents="box-none" style={{ position: "fixed" as never, left: at.x, top: at.y, transform: [{ translateX: -60 }, { translateY: -34 }], zIndex: 50 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPress={() => { onAsk(words.current); setAt(null); window.getSelection()?.removeAllRanges(); }}
+      <Pressable accessibilityRole="button" accessibilityLabel="Ask about this" onPress={() => { onAsk(words.current, author.current || undefined); setAt(null); window.getSelection()?.removeAllRanges(); }}
         style={{ backgroundColor: color.text, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 }}>
         <Text size="caption" strong style={{ color: color.bg }}>Ask about this</Text>
       </Pressable>

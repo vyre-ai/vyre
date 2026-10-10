@@ -91,7 +91,7 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
   const [held, setHeld] = useState(false);
   const { color } = useUiTheme();
   return (
-    <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
+    <View {...({ dataSet: { from: who } } as object)} style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
       <ActionsOn.Provider value={hover || held || showActions()}>
