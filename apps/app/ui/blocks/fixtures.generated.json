@@ -3991,6 +3991,20 @@
     }
    }
   },
+  "access-list": {
+   "title": "Access",
+   "screens": {
+    "full": {
+     "component": "access-list"
+    },
+    "compact": {
+     "component": "access-list"
+    },
+    "glance": {
+     "component": "access-list"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {

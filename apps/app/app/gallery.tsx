@@ -12,6 +12,8 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { AccessList } from "../screens/devices/AccessList";
+import { loadAccess } from "../screens/devices/data";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { SitesList } from "../screens/sites/SitesList";
@@ -100,6 +102,7 @@ function Sample({ name }: { name: string }) {
     ];
     return <ChatsList rows={rows} now={now} places={{ places: [{ chat: "demo", computer: "Dana's MacBook", online: true }] }} onOpen={() => {}} />;
   }
+  if (name === "access-list") return <AccessList rows={loadAccess().filter((a, i) => i < 3 || a.kind === "Person" || a.kind === "Kit" || a.kind === "Flow").slice(0, 7)} empty="" onRemove={() => {}} />;
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>
