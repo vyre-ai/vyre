@@ -26,6 +26,10 @@ In the Documents screen, Send for signature shows the signer, the template and y
 
 If the signer declines instead, Documents says so at once: the Document is filed as Declined on the signer's Contact (their timeline shows it), and the event `documents.declined` carries the reason they gave for a Flow of your own to use.
 
+## Waiting for a signature
+
+A document you sent that nobody has signed shows in Needs you as a quiet row: "Dana Harlow has not signed Engagement letter", with the address it went to. Nothing pushes for it. It goes away when the signature arrives, the signer declines, or the request lapses. Its answer is `documents.signing.remind`, which emails the signer their link again (the same one yes as any send; add a short note if you like). `documents.signing.waiting` returns the same list to an assistant. The signer's link and code are never on the row.
+
 ## Sign from a stage
 
 `documents.signing.flow` returns a ready Flow: when a record enters the stage you name, it sends the document for signature (your yes), remembers it on the record, waits for the signature, moves the record to the stage you name, and emails the signer their signed copy (your yes). It sends once per record. Define it with the Flows tools like any other Flow.
