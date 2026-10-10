@@ -27,8 +27,12 @@ console.log(`words match: ${flow.state.box.words.join(" ") === await srv.words()
 await flow.confirmWords();
 if (flow.state.stage !== "done") throw new Error(`pairing stopped: ${flow.state.error && flow.state.error.message}`);
 await mac.openSession();
+// a Space listed by this server under a name: the directory then knows which box serves <name>.vyre.run (what names.domain.check and the DNS lines need)
+const team = await mac.createTeamSpace(`firm${person.slice(-5)}`);
+console.log(`SPACE=${team.space} LABEL=${team.label}`);
 const call = async (/** @type {string} */ tool, /** @type {any} */ input) => { try { return await mac.callTool(tool, input); } catch (e) { return { error: String(/** @type {Error} */ (e).message) }; } };
 console.log("identity", me.id ? "ok" : "none");
+console.log("names.serve:", JSON.stringify(await call("names.serve", { name: team.label })));
 console.log("names.domain.check:", JSON.stringify(await call("names.domain.check", { domain: host })));
 console.log("appmods.domain.add:", JSON.stringify(await call("appmods.domain.add", { host })));
 console.log("names.status:", JSON.stringify(await call("names.status", {})).slice(0, 600));
