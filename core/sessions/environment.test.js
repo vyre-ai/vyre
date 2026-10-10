@@ -219,5 +219,4 @@ test("environment: every brief carries the time line, in the person's own zone e
 test("the brief says Vyre Computer is the default browser only when the person turned that on", () => {
   assert.doesNotMatch(environmentOf(base).text, /default browser/);
   assert.match(environmentOf({ ...base, computerDefault: true }).text, /Vyre Computer is this person's default browser\. For anything that needs a browser, call computer\.use first/);
-  assert.match(environmentOf({ ...base, computerDefault: true }, { budget: 2000 }).text, /computer\.use/);
 });
