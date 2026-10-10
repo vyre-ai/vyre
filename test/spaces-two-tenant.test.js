@@ -29,4 +29,20 @@ test("spaces.list and spaces.records.status answer for the caller: a member of o
   assert.deepEqual(ids(await as(EVE, "spaces.list")), [], "a person in none sees none");
   assert.deepEqual(ids(await as(EVE, "spaces.records.status")), []);
   assert.deepEqual(ids(await as(owner, "spaces.records.status")), [s1.space, s2.space, d.kernel.id.space].sort());
+  // a call with no chain of its own: the box's local terminal is the owner's, anything else gets nothing
+  assert.deepEqual(ids(await d.registry.call("spaces.list", {}, "cli", {})), [s1.space, s2.space, d.kernel.id.space].sort(), "the local terminal is the owner's own surface");
+  const mcp = await d.registry.call("spaces.list", {}, "mcp", {});
+  assert.deepEqual(mcp.error ? [] : ids(mcp), [], "a caller that is not the local terminal and has no chain is told nothing");
+});
+
+test("listCaller: the first person on the chain, whatever hops follow; a service-only chain is nobody; only the local terminal with no chain is the owner", async () => {
+  const { listCaller } = await import("../core/spaces/kernel-members.js");
+  const person = (/** @type {string} */ id) => ({ actor: { kind: "person", id } }), agent = { actor: { kind: "agent", id: "assistant" } }, service = { actor: { kind: "service", id: "spaces" } };
+  const K = (/** @type {any[]} */ hops) => ({ owner: "per_owner", chain: async () => ({ hops }) });
+  assert.equal(await listCaller(K([person("per_bob"), agent]), { caller: "cli", token: "t" }), "per_bob", "Bob's assistant asks for Bob");
+  assert.equal(await listCaller(K([person("per_eve"), agent, service]), { caller: "mcp", token: "t" }), "per_eve");
+  assert.equal(await listCaller(K([service]), { caller: "mcp", token: "t" }), null, "a service-only chain is nobody's");
+  assert.equal(await listCaller(K([service]), { caller: "cli", token: "t" }), null, "a token that gives no person is not the local terminal");
+  assert.equal(await listCaller(K([service]), { caller: "cli" }), "per_owner", "the local terminal with no chain is the owner's own");
+  assert.equal(await listCaller(K([service]), { caller: "module:x" }), null);
 });

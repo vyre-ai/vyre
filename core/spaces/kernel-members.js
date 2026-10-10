@@ -118,3 +118,15 @@ export async function recordsStatus(K, mine) {
   }
   return { spaces: out };
 }
+
+/**
+ * The person a Space LIST is for: the first person on the call's chain, whatever hops follow (a person's assistant or an automation asks for that person). A call with no person on its chain is the
+ * owner's own only when it came over this box's local terminal (`cli` or `local`); any other caller without a chain gets nothing. Not `callerPerson`: the one-hop rule there is deliberate for acts.
+ * @param {any} K @param {any} meta @returns {Promise<string | null>}
+ */
+export async function listCaller(K, meta) {
+  if (K && typeof K.chain === "function" && meta && (meta.kernelFacts || meta.token)) {
+    try { const c = await K.chain(meta); const h = c && Array.isArray(c.hops) ? c.hops.find((/** @type {any} */ x) => x.actor && x.actor.kind === "person") : null; if (h) return String(h.actor.id); } catch { /* no chain */ }
+  }
+  return meta && /^(cli|local)$/.test(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
+}
