@@ -62,9 +62,10 @@ export function sampleOf(re) {
     return out;
   };
   /** @param {string[]} pool @param {number} n */
-  const pick = (pool, n) => Array.from({ length: n }, (_, k) => pool[(k * 7 + 3) % pool.length]).join("");
+  // a real token ends in a letter or a digit and is not as short as its shape allows: the last character is alphanumeric, and an open-ended repeat is at least 36 long
+  const pick = (pool, n) => { const out = Array.from({ length: n }, (_, k) => pool[(k * 7 + 3) % pool.length]); const a = pool.find(c => /[A-Za-z0-9]/.test(c)); if (a && n > 1 && !/[A-Za-z0-9]/.test(out[n - 1])) out[n - 1] = a; return out.join(""); };
   const quant = () => {
-    if (src[i] === "{") { const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i)); if (!m) return 1; i += m[0].length; return Number(m[1]); }
+    if (src[i] === "{") { const m = /^\{(\d+)(,(\d*))?\}/.exec(src.slice(i)); if (!m) return 1; i += m[0].length; const lo = Number(m[1]); return m[2] !== undefined && m[3] === "" ? Math.max(lo, 36) : lo; }
     if (src[i] === "+") { i++; return 1; }
     return 1;
   };
