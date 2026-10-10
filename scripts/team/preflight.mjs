@@ -78,6 +78,14 @@ const inBase = f => { if (!f.startsWith("kernel/")) return false; const r = f.sl
   else if (net > 0) warns.push(`kernel: about +${net} net lines (ruled in a commit message); report the size number in your landing`);
 }
 
+// ---- R2: security paths land only after trust has read them. A branch that changes one names the review in a commit message as
+// [reviewed: trust] (trust adds it, or the author after trust's yes). Trust's own branches carry it too. The lead may rule an exception in writing.
+{
+  const SEC = /^(kernel\/(?!golden\/)|core\/vault\/|core\/gate\/|core\/spawner\/|core\/appmods\/|core\/previews\/|lib\/door-bridge\.js$|lib\/http\.js$|lib\/one-yes(-ops)?\.js$|lib\/secret-shapes\.js$|lib\/publish\/dockerfile\.js$|core\/transcripts\/sanitize\.js$|core\/modules\/index\.js$|core\/daemon\/flows-host\.js$|core\/switchboard\/(scrub|residency)\.js$|core\/runner\/(sandbox|safefs|resume-lent|vyre-door|preview-home|proctree)\.js$|core\/wink\/pairing\.js$|scripts\/gen-allow\.mjs$|scripts\/release\/|\.github\/workflows\/release[^/]*\.yml$|box\/vyre$)/;
+  const sec = changed.filter(f => SEC.test(f) && !/\.test\.m?js$/.test(f));
+  if (sec.length && !/\[reviewed: trust\]/i.test(bodies)) fail("R2", `this branch changes security code (${sec.join(", ")}): send it to trust first, and land it with [reviewed: trust] in a commit message once they say yes.`);
+}
+
 // ---- D1: a test, a guard or the test machinery is never deleted by accident (a merge once dropped test/headless-chrome.js and the Chrome install steps). Deleting one needs [delete: why] in a commit message.
 {
   const gone = git(["diff", "--name-only", "--diff-filter=D", `${mergeBase}...HEAD`]).split("\n").filter(Boolean)
@@ -143,6 +151,7 @@ const GUARDS = [
   "test/scrub-single.test.js", "test/tools-budget.test.js", "test/module-sdk.test.js", "test/docs-build.test.js",
   "test/agent-docs.test.js", "test/docs-check.test.js", "test/credential-pins.test.js", "core/sessions/environment.test.js",
   "kernel/golden/allow.test.js",
+  "test/errors-teach.test.js", "test/tools-find-quality.test.js",
   // The stored decisions: a branch that moves a cell re-records them with its ruling (node kernel/golden/index.js --write), so drift never reaches the tip.
   "kernel/golden/golden-box-plain.test.js", "kernel/golden/golden-local-plain.test.js",
   // Repo-wide hygiene rules that fail on any branch that breaks them (they were outside preflight and reached the full suite red).
@@ -150,7 +159,7 @@ const GUARDS = [
   "test/no-" + "li" + "me.test.js", "test/no-" + "tail" + "scale.test.js", "test/person-label-hygiene.test.js", "test/within-hygiene.test.js",
   "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
   "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
-  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
+  "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js", "test/stdin-hygiene.test.js", "test/file-size.test.js", "test/netguard-single.test.js",
   "test/references-not-values.test.js", "test/reach-person-split.test.js", "test/identity-from-input.test.js", "test/reach-anyone-behaviour.test.js",
 ].filter(f => fs.existsSync(f));
 // Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.
@@ -262,8 +271,14 @@ if (!STATIC) {
 }
 
 console.log("");
-for (const w of warns) console.log(`warn ${w}`);
-if (!fails.length) { console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`); process.exit(0); }
+if (!fails.length) {
+  for (const w of warns) console.log(`warn ${w}`);
+  console.log(`preflight: CLEAN${STATIC ? " (static only)" : ""}. Queue it: scripts/team/queue.sh <item>`);
+  process.exit(0);
+}
+// The cause first: what is red because of this branch, then the notes (base reds are listed under their own heading so they never read as the reason).
 for (const f of fails) console.log(`FAIL ${f.rule}: ${f.msg}\n`);
 console.log(`preflight: ${fails.length} problem(s). Rules: team/FOUNDATION.md.`);
+if (warns.length) console.log("\nNotes (not blocking you):");
+for (const w of warns) console.log(`warn ${w.replace(/^base red \(already red on ([^ ]+) without your change; owned by release's red list, not blocking you\)/, "already red on the base, not blocking you ($1)")}`);
 process.exit(1);
