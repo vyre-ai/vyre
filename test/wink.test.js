@@ -186,7 +186,8 @@ shardTest("wink: an invitation is sealed into a ticket; the invited person's red
   assert.deepEqual(looked.invite.projects, ["intake"]);
   const paired = await pairTicket(ticket, { relay: w.status.url, name: "Chris's laptop", crypto: nodeCrypto(), keyStore: keystore(t) });
   assert.equal(paired.device, undefined, "no device is enrolled by an invitation");
-  const grants = (await w.call("wink.access")).data.grants;
+  // the kernel keeps the grant a moment after the redemption (the admission runs on the relay's event), so the screen's list is read when it has it
+  const grants = await until(async () => { const l = (await w.call("wink.access")).data.grants; return l.length ? l : null; });
   assert.equal(grants.length, 1);
   assert.equal(grants[0].source, "wink:W5");
   assert.equal(grants[0].subject.actor.kind, "person");
