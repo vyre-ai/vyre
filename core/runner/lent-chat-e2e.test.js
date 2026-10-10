@@ -47,7 +47,11 @@ test("a new chat is placed on the person's computer, runs there, answers in the 
   t.after(() => d.stop());
   const deps = /** @type {any} */ (d.registry.deps);
   // only the computer's person is placed (BOB in the rig); the daemon's owner stands in for him
-  const home = new Proxy(r.home, { get: (target, prop) => (prop === "placeNew" ? (/** @type {any} */ i) => target.placeNew({ ...i, person: BOB }) : prop === "spawn" ? (/** @type {any} */ i) => target.spawn({ ...i, person: BOB }) : /** @type {any} */ (target)[prop]) });
+  // The book keeps the computer's person (BOB); the daemon sees the same row as its owner's, because the turn's person must be the row's person for a session to run on that computer (a session runs only on its own person's computer).
+  const ownerId = String(d.kernel.id.owner);
+  const asOwner0 = (/** @type {any} */ row) => (row && row.person === BOB ? { ...row, person: ownerId } : row);
+  const book = new Proxy(r.home.book, { get: (b, prop) => (prop === "find" ? (/** @type {string} */ id, /** @type {string} */ person) => asOwner0(b.find(id, person === ownerId ? BOB : person)) : prop === "get" ? (/** @type {string} */ id) => asOwner0(b.get(id)) : /** @type {any} */ (b)[prop]) });
+  const home = new Proxy(r.home, { get: (target, prop) => (prop === "placeNew" ? (/** @type {any} */ i) => target.placeNew({ ...i, person: BOB }) : prop === "spawn" ? (/** @type {any} */ i) => target.spawn({ ...i, person: BOB }) : prop === "book" ? book : /** @type {any} */ (target)[prop]) });
   deps.lentHome = () => home;
   deps.lentSpaces = () => [SPACE];
 
