@@ -205,3 +205,17 @@ test("reply mode: the group knows the mode the log last set, and the folder show
   assert.match(lines[0], /^Bob set replies to: the AI answers when mentioned/);
   assert.match(lines[1], /^Someone set replies to: the AI answers every message/, "an author the chat has no name for is Someone, never a raw id");
 });
+
+test("no internal words: a participant whose only name is an id shows as Someone, and no line carries an id", async () => {
+  const { createFolder } = await import("./frames.js");
+  const f = createFolder();
+  const raw = "per_tfbsa6hidwpwva5rdllixa6yio";
+  const frames = [
+    { v: 1, id: "j1", cur: 1, session: "s", turn: null, type: "session.participant-joined", time: 1, corr: null, data: { who: `person:${raw}`, name: "Per tfbsa6hidwpwva5rdllixa6yio" } },
+    { v: 1, id: "m2", cur: 2, session: "s", turn: null, type: "session.reply-mode", time: 2, corr: null, author: `person:${raw}`, data: { mode: "mention" } },
+  ];
+  for (const fr of frames) f.apply(fr);
+  const lines = f.rows.map((r) => JSON.stringify(f.item(r.key)));
+  assert.ok(lines.some((t) => /Someone set replies/.test(t)));
+  for (const t of lines) assert.doesNotMatch(t, /per[_ ][a-z2-7]{12,}|tfbsa6hid/i, "an id never reaches a person");
+});
