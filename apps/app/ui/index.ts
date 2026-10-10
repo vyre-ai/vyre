@@ -31,7 +31,7 @@ export { AskCard } from "./components/AskCard";
 export { Sheet } from "./components/Sheet";
 export { Menu } from "./components/Menu";
 export type { MenuItem } from "./components/Menu";
-export { showToast, ToastHost } from "./components/Toast";
+export { showToast, comingSoon, ToastHost } from "./components/Toast";
 export { Table } from "./components/Table";
 export type { Column, TableProps } from "./components/Table";
 export { Board } from "./components/Board";

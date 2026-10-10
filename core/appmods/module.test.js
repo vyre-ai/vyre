@@ -378,3 +378,29 @@ test("appmods.signing.request: only the app's own module asks, the app is asked 
   assert.equal((await ask({ template_id: 0 })).error.code, "bad_input");
   assert.equal(w.seen.api.length, 1, "a bad ask never reached the app");
 });
+
+test("a key rotated in the Vault reaches the running app: its container is made again with the new value, its data stays, once for a burst", async t => {
+  seam.rotateMs = 20;
+  t.after(() => { seam.rotateMs = undefined; });
+  const w = await world(t);
+  await w.cli("appmods.install", { name: "documents" });
+  const ups = () => w.log.filter(l => l[0] === "up").length, downs = () => w.log.filter(l => l[0] === "down");
+  const before = ups();
+  const names = w.log.find(l => l[0] === "up")[4];
+  const until = async (f, ms = 5000) => { const t0 = Date.now(); while (!f()) { if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 20)); } };
+  assert.ok(names.length > 0, "the app has keys of its own");
+  const item = `app-documents-${names[0].toLowerCase()}`;
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-new-key-0123456789abcdef" }, "cli");
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-newer-key-0123456789abcdef" }, "cli");
+  await until(() => ups() === before + 1);
+  assert.deepEqual(downs().at(-1), ["down", { data: false }], "the container goes, its data stays");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1, "two changes in a burst are one restart");
+  assert.ok(w.d.registry.deps.db.prepare("SELECT 1 FROM appmods_apps WHERE name = 'documents' AND state = 'running'").get());
+  // a key that is not one of the app's, or an app that is stopped, is left alone
+  await w.d.registry.call("vault.put", { name: "app-documents-hook", kind: "secret", value: "x".repeat(40) }, "cli");
+  await w.cli("appmods.stop", { name: "documents" });
+  await w.d.registry.call("vault.put", { name: item, kind: "secret", value: "a-third-key-0123456789abcdef" }, "cli");
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(ups(), before + 1);
+});

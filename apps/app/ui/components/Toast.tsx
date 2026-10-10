@@ -12,6 +12,9 @@ export function showToast(line: string) {
   useToasts.getState().set(line);
 }
 
+/** The press of a button whose feature is not built yet: it says so in the one phrase every screen uses, never nothing (FOUNDATION section 4). */
+export const comingSoon = () => showToast("Coming in this release.");
+
 export function ToastHost() {
   const line = useToasts((s) => s.line);
   const { resolved } = useUiTheme();

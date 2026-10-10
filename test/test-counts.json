@@ -805,6 +805,7 @@
  "test/add-server.test.js": 1,
  "test/added-module-never.test.js": 1,
  "test/agent-docs.test.js": 5,
+ "test/agent-reach-classes.test.js": 3,
  "test/appmods-origin.test.js": 1,
  "test/architecture-map.test.js": 5,
  "test/boundaries.test.js": 5,
