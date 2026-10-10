@@ -81,7 +81,11 @@ async function localWorld(o) {
     if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code });
     return r.data;
   };
-  const made = await call("spaces.identity.create", { name });
+  // the name is reserved at the directory the way vyre.run/setup does, then made on this computer with the code
+  const rsv = await (await fetch(`${ins.names}/v1/ids/reserve`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name }) })).json();
+  const code = rsv && rsv.data && rsv.data.code;
+  assert.ok(code, `the directory gave no reservation code: ${JSON.stringify(rsv).slice(0, 200)}`);
+  const made = await call("spaces.identity.create", { name, code });
   const personId = String((made && (made.id || made.identity || d.kernel.id.owner)) || d.kernel.id.owner);
   const ownerSigner = seal.signer(d.kernel.id.owner);
   await seal.enrolDevice(sealer, ownerSigner);
