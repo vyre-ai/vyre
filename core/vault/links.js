@@ -1,16 +1,16 @@
 // @ts-check
-// links: a credential linked to a record or a project (R031-71). "This client's portal login." The link is a pair of names, an item and a record's address: it grants nothing, it holds no value, and it
-// is how the record's timeline can say "the portal login was used by Kit" without the record ever holding the login. Deleting the item takes its links with it.
+// links: a credential linked to a record or a project (R031-71). "This client's portal login." The link is the record's own: a `credentials` field of links on the record, holding the credential's address
+// (kernel/contracts `credentialUrn`), the same mechanism every other link between records uses. It grants nothing, it holds no value, and it is how the record's timeline can say "the portal login was
+// used by Kit" without the record ever holding the login. A type with no `credentials` field has no place for one: it says so, and the Kit or the Engineer adds the field where it is wanted.
 
 import { USE_ACTIONS } from "./agents.js";
-
-export const LINKS_MIGRATION = `CREATE TABLE vault_links (
-     item TEXT NOT NULL, urn TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (item, urn)
-   );
-   CREATE INDEX vault_links_urn ON vault_links (urn);`;
+import { asPerson } from "../../lib/project-reach.js";
+import { credentialUrn } from "../../kernel/contracts/index.js";
 
 /** A record or project address inside one Space: vyre://<space>/<type>/<id>. */
 export const LINKED_URN = /^vyre:\/\/[^/]+\/[a-z0-9][a-z0-9-]*\/[A-Za-z0-9._-]{1,80}$/;
+/** The record types a reverse lookup (which records use this credential) asks. A type that does not exist here, or has no `credentials` field, answers nothing. */
+const LOOKED_AT = ["project", "client", "matter", "contact", "organization"];
 const bad = (/** @type {string} */ m, /** @type {string} */ code = "bad_input") => Object.assign(new Error(m), { code });
 
 /** Who used it, in the words a person reads on a record: never an id of a device. @param {string} who */
@@ -29,44 +29,87 @@ export class Links {
   /** @param {import("./vault.js").Vault} vault */
   constructor(vault) { this.v = vault; this.db = vault.db; }
 
-  /** @param {{ item: string, to: string }} i @param {string} caller */
-  link({ item, to }, caller) {
+  /** The kernel's side, or the plain reason there is none. */
+  need() {
+    const K = this.v.access && this.v.access.K;
+    if (!K) throw bad("linking a login to a record needs this server's kernel, which this build runs without", "unavailable");
+    return K;
+  }
+
+  /** The record a link is on, read as the person: [type, id] and the record. @param {any} K @param {any} meta @param {string} to */
+  async recordAt(K, meta, to) {
+    if (!LINKED_URN.test(String(to))) throw bad("name the record or project by its address (vyre://...)");
+    const [, , space, type, id] = String(to).split("/");
+    if (space !== K.space) throw bad("that record is in another Space");
+    const { chain } = await asPerson(K, meta);
+    let record;
+    try { record = await K.records.get(chain, type, id); } catch (e) { throw bad("that record is not there, or is not yours to change", "not_found"); }
+    return { chain, type, id, record };
+  }
+
+  /** @param {{ item: string, to: string }} i @param {any} meta the call, with its caller */
+  async link({ item, to }, meta) {
     const name = String(item || "");
     if (!this.v.row(name)) throw bad(`no item named ${name || "that"}`, "not_found");
-    if (!LINKED_URN.test(String(to))) throw bad("name the record or project by its address (vyre://...)");
-    this.db.prepare("INSERT OR IGNORE INTO vault_links (item, urn, by, at) VALUES (?,?,?,?)").run(name, String(to), String(caller), Date.now());
-    this.v.audit("link", name, caller, true, String(to).split("/").slice(-2).join("/"));
+    const K = this.need();
+    const { chain, type, id, record } = await this.recordAt(K, meta, to);
+    try { await K.records.update(chain, type, id, { credentials: { add: [{ urn: credentialUrn(K.space, name) }] } }, record.version); }
+    catch (/** @type {any} */ e) { throw bad(/credentials/.test(String(e && e.message)) ? `a ${type} has no place for logins yet; add a "credentials" field of links to its type first` : String(e && e.message || "the record would not take the link"), e && e.code || "failed"); }
+    this.v.audit("link", name, String(meta.caller), true, `${type}/${id}`);
     this.v.emit("vault.linked", { name, to: String(to) });
     return { linked: { item: name, to: String(to) } };
   }
 
-  /** @param {{ item: string, to: string }} i @param {string} caller */
-  unlink({ item, to }, caller) {
-    const r = this.db.prepare("DELETE FROM vault_links WHERE item = ? AND urn = ?").run(String(item), String(to));
-    if (!r.changes) throw bad("that item is not linked there", "not_found");
-    this.v.audit("unlink", String(item), caller, true, String(to).split("/").slice(-2).join("/"));
-    this.v.emit("vault.unlinked", { name: String(item), to: String(to) });
-    return { unlinked: { item: String(item), to: String(to) } };
+  /** @param {{ item: string, to: string }} i @param {any} meta */
+  async unlink({ item, to }, meta) {
+    const name = String(item || "");
+    const K = this.need();
+    const { chain, type, id, record } = await this.recordAt(K, meta, to);
+    const urn = credentialUrn(K.space, name);
+    const have = record.data && Array.isArray(record.data.credentials) ? record.data.credentials : [];
+    if (!have.some((/** @type {any} */ x) => x && x.urn === urn)) throw bad("that item is not linked there", "not_found");
+    await K.records.update(chain, type, id, { credentials: { remove: [{ urn }] } }, record.version);
+    this.v.audit("unlink", name, String(meta.caller), true, `${type}/${id}`);
+    this.v.emit("vault.unlinked", { name, to: String(to) });
+    return { unlinked: { item: name, to: String(to) } };
   }
 
-  /** Names and addresses only. @param {{ item?: string, to?: string }} [q] */
-  list({ item, to } = {}) {
-    const where = [], args = [];
-    if (item) { where.push("item = ?"); args.push(String(item)); }
-    if (to) { where.push("urn = ?"); args.push(String(to)); }
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT item, urn, at FROM vault_links ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY at DESC LIMIT 500`).all(...args));
-    return { links: rows.map(r => ({ item: r.item, to: r.urn, since: r.at })) };
+  /** The items a record holds links to that still exist, by name. @param {any} K @param {any} record */
+  itemsOf(K, record) {
+    const prefix = credentialUrn(K.space, "");
+    const have = record && record.data && Array.isArray(record.data.credentials) ? record.data.credentials : [];
+    return have.map((/** @type {any} */ x) => String(x && x.urn || "")).filter((/** @type {string} */ u) => u.startsWith(prefix)).map((/** @type {string} */ u) => u.slice(prefix.length)).filter((/** @type {string} */ n) => this.v.row(n));
+  }
+
+  /** Names and addresses only: the items one record links to, or the records that link to one item (as the person asking can read them). @param {{ item?: string, to?: string }} q @param {any} meta */
+  async list({ item, to } = {}, meta = {}) {
+    const K = this.need();
+    if (to) {
+      const { record } = await this.recordAt(K, meta, to);
+      return { links: this.itemsOf(K, record).filter((/** @type {string} */ n) => !item || n === item).map((/** @type {string} */ n) => ({ item: n, to: String(to) })) };
+    }
+    if (!item) throw bad("name an item or a record");
+    const { chain } = await asPerson(K, meta);
+    const urn = credentialUrn(K.space, String(item));
+    /** @type {{ item: string, to: string }[]} */ const links = [];
+    for (const type of LOOKED_AT) {
+      try {
+        const r = await K.records.query(chain, type, { filter: { field: "credentials", op: "contains", value: { urn } }, page: { limit: 100 } });
+        for (const row of r.rows || []) links.push({ item: String(item), to: row.urn });
+      } catch { /* this Space has no such type, or it has no credentials field */ }
+    }
+    return { links };
   }
 
   /**
-   * The uses of the credentials linked to one record, newest first, as lines a timeline shows: which item, when, and by whom in plain words. A use is a fact from the audit log; no value is read.
-   * @param {{ urn: string, limit?: number }} q
+   * The recent uses of the credentials one record links to, newest first, as lines a timeline shows: which item, when, and by whom in plain words. A use is a fact from the audit log; no value is read.
+   * Asked as the person (a record they cannot read answers nothing). @param {{ urn: string, limit?: number }} q @param {any} meta
    */
-  usesFor({ urn, limit = 20 }) {
-    if (!LINKED_URN.test(String(urn))) throw bad("name the record by its address");
-    const items = /** @type {any[]} */ (this.db.prepare("SELECT item FROM vault_links WHERE urn = ?").all(String(urn))).map(r => String(r.item));
+  async usesFor({ urn, limit = 20 }, meta = {}) {
+    const K = this.need();
+    const { record } = await this.recordAt(K, meta, urn);
     const out = [];
-    for (const item of items) {
+    for (const item of this.itemsOf(K, record)) {
       for (const u of this.v.agents.uses({ item, limit: 50 }).uses) {
         if (!u.ok || !USE_ACTIONS.includes(u.action)) continue;
         out.push({ item, at: u.at, by: byWords(u.who), line: `${item} was ${DID[u.action] || "used"} by ${byWords(u.who)}` });
@@ -75,7 +118,4 @@ export class Links {
     out.sort((a, b) => b.at - a.at);
     return { uses: out.slice(0, Math.max(1, Math.min(100, Number(limit) || 20))) };
   }
-
-  /** The item is gone: so are its links. @param {string} item */
-  drop(item) { this.db.prepare("DELETE FROM vault_links WHERE item = ?").run(String(item)); }
 }
