@@ -166,3 +166,40 @@ test("a free-flow project becomes a draft template: its tasks are the working st
   assert.equal(stages[0].tasks.find((/** @type {any} */ x) => x.title.startsWith("Collect")).brief, "Ask the family for a certified copy");
   assert.equal(got.body.name, "Estate intake");
 });
+
+test("a team project lives in the team Space: the template tools take a `space` and make everything there (J9)", { timeout: 240_000 }, async t => {
+  const { d, call, owner } = await boot(t);
+  const team = await d.kernel.spaces.host({ owner, name: "teamroom" });
+  const lib = (await call("work.template.library", { space: team.space })).templates;
+  assert.ok(lib.length, "the library answers for the team Space");
+  const inst = await call("work.template.install", { id: lib[0].id, space: team.space });
+  assert.equal(inst.state, "draft");
+  assert.deepEqual((await call("work.template.list", { space: team.space })).templates.map((/** @type {any} */ x) => x.template), [inst.template], "the team Space has the template");
+  assert.deepEqual((await call("work.template.list")).templates, [], "and the home's own Space does not");
+  await call("work.template.golive", { template: inst.template, version: inst.version, space: team.space });
+  const started = await call("work.start-project", { template: inst.template, name: "Team day", space: team.space });
+  const teamChain = team.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const projects = (await team.gateway.records.query(teamChain, "project", { page: { limit: 50 } })).rows.map((/** @type {any} */ r) => r.data.name);
+  assert.deepEqual(projects, ["Team day"], `the project is in the team Space (${JSON.stringify(started).slice(0, 120)})`);
+  const home = (await d.kernel.gateway.records.query(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), "project", { page: { limit: 50 } })).rows;
+  assert.ok(!home.some((/** @type {any} */ r) => r.data.name === "Team day"), `and not in the home's (${home.map((/** @type {any} */ r) => r.data.name)})`);
+  await assert.rejects(() => call("work.template.list", { space: "spc_nowhere000000" }), /does not host that Space/);
+});
+
+test("a Flow attached to a template runs for each project it starts, as its own approver (G21 Automations)", { timeout: 180_000 }, async t => {
+  const { d, call, ownerChain, host } = await boot(t);
+  const flow = { format: 1, name: "welcome_contact", label: "Welcome the client", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "c", kind: "create", type: "contact", set: { name: { expr: "\"Welcome \" + trigger.stage" } } }] };
+  const def = await call("flows.define", { flow });
+  assert.ok(def.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.id, version: def.version, hash: def.hash });
+  await call("work.template.define", { body: { ...TEMPLATE, name: "With automation", automations: [{ when: "start", flow: def.id, note: "greets the client" }] } });
+  const tried = await call("work.template.test", { template: "tpl_with-automation", version: 1 });
+  assert.match(tried.lines.join("\n"), /Automation: the Flow fl_.* runs when a project starts \(greets the client\)\. Nothing is run in test mode\./, "test mode lists the attached Flow and runs none");
+  await call("work.template.golive", { template: "tpl_with-automation", version: 1 });
+  await call("work.start-project", { template: "tpl_with-automation", name: "Okafor" });
+  const names = async () => ((await d.kernel.gateway.records.query(ownerChain, "contact", { page: { limit: 50 } })).rows || []).map((/** @type {any} */ r) => r.data.name);
+  await until(async () => (await names()).includes("Welcome Intake"), "the attached Flow to run when the project started (its first stage is Intake)");
+  await call("work.start-project", { template: "tpl_with-automation", name: "Rivera" });
+  await until(async () => (await names()).filter((/** @type {string} */ n) => n === "Welcome Intake").length === 2, "and once for each project");
+  await assert.rejects(() => call("work.template.define", { body: { ...TEMPLATE, name: "Bad auto", automations: [{ when: "Nowhere", flow: def.id }] } }), /when is "start" or the name/);
+});

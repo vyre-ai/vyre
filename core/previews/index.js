@@ -151,7 +151,9 @@ export default {
         if (await shoot({ chrome, url, out: thumbFile(id) })) { db.prepare("UPDATE previews_items SET thumb = ? WHERE id = ?").run(now(), id); card(row(id)); }
       } catch (e) { ctx.log.warn(`previews: no picture for ${id}: ${/** @type {Error} */ (e).message}`); } finally { shooting.delete(id); }
     };
-    const soon = (/** @type {string} */ id, ms = 1500) => { const t = setTimeout(() => { void takeThumb(id); }, ms); if (typeof t.unref === "function") t.unref(); };
+    /** The thumbnail timers still waiting: stop() clears them, so none fires after the database is closed (a late one used to reject unhandled). @type {Set<any>} */
+    const thumbTimers = new Set();
+    const soon = (/** @type {string} */ id, ms = 1500) => { const t = setTimeout(() => { thumbTimers.delete(t); takeThumb(id).catch(() => {}); }, ms); thumbTimers.add(t); if (typeof t.unref === "function") t.unref(); };
 
     // ---- who ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
     /** The person behind a call and their role in this Space: { id, role }, or null for anyone who is not a person. @param {any} meta */
@@ -615,6 +617,6 @@ export default {
       }
     }
 
-    return { async stop() { bridge.closeAll(); staticSrv.close(); /** @type {any} */ (staticSrv).closeAllConnections?.(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
+    return { async stop() { for (const t of thumbTimers) clearTimeout(t); thumbTimers.clear(); bridge.closeAll(); staticSrv.close(); /** @type {any} */ (staticSrv).closeAllConnections?.(); sup.shutdown(); for (const x of signins.values()) x.waiters.forEach(w => w()); } };
   },
 };

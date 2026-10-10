@@ -91,13 +91,18 @@ test("a recipient off the Flow's allow list asks", { timeout: 120_000 }, async t
 });
 
 test("the cap set at turn-on stops the run that would pass it, and says so", { timeout: 120_000 }, async t => {
-  const { host, install, calls, space } = await boot(t);
+  const ctx = await boot(t);
+  const { host, install, calls, space } = ctx;
   const flow = await install(flowOf(space, { to: "sam@example.com", body: "hello" }, { sends: { max: 2 } }));
   for (let i = 0; i < 3; i++) { await run(host, flow.id); await new Promise(r => setTimeout(r, 600)); }
   await new Promise(r => setTimeout(r, 1500));
   assert.equal(notified(calls).length, 2, "two sends, the third stopped by the grant's budget");
   const runs = JSON.stringify(await host.flows.tools["flows.runs"](host.personChain(), { id: flow.id }));
   assert.match(runs, /bound|allowed when they turned it on/, "the person can see why it stopped");
+  // and the approver is told on the "Needs you" list, in words
+  const { d, admin } = ctx;
+  const told = await until(async () => (await cards(d, admin)).find((/** @type {any} */ x) => /stopped at the limit you set/.test(x.title)), "a card saying the Flow stopped at its limit");
+  assert.ok(told, "a card names the Flow that stopped");
 });
 
 test("a new approved version ends the old version's grant; a pause ends the standing yes", { timeout: 120_000 }, async t => {
