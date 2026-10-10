@@ -15,7 +15,10 @@ export const heldError = {
 export const refusedError = { code: "approval_refused", message: "that approval does not cover this call (no_proof); ask again" };
 
 /** A manifest entry of a tool that is outward and files another outward tool as part of the same act. */
-export const manifestEntry = { name: "comms.send", outward: true, covers: ["mail.send"], effect: "write", reach: "anyone" };
+export const manifestEntry = { name: "comms.send", outward: true, covers: ["mail.send", "google.mail.send", "mcp.call"], effect: "write", reach: "anyone" };
+
+/** The ids a receipt may have (a Flow's spent task, a person's confirmed preview), and ids that are not receipts. */
+export const receiptKinds = { ok: ["flowtask:task_abc123", "viewask:0123456789abcdef0123456789abcdef"], notReceipts: ["ap_01a12328-a4fa-4c50-9e95-13ea33242a1d", "flowtask:x", "viewask:short", "task_abc123"] };
 
 /** The shape of `yes()` for each way it ends. */
 export const yesResults = {

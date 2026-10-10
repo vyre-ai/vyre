@@ -10,6 +10,7 @@ import crypto from "node:crypto";
 import { newPrefixedId } from "../../lib/id.js";
 import { actorIdOf } from "../../lib/outside.js";
 import { credentialAction } from "../../kernel/seal/uses.js";
+import { createDoor, LOCKOUT } from "../../lib/token-door.js";
 
 /** The passes made for outside agents (appended to the vault's MIGRATIONS). */
 export const MCP_PASSES_MIGRATION = `CREATE TABLE vault_mcp_passes (
@@ -21,13 +22,8 @@ export const MCP_PASSES_MIGRATION = `CREATE TABLE vault_mcp_passes (
 const DAY = 86_400_000, DEFAULT_DAYS = 7, MAX_DAYS = 90, DEFAULT_RATE = 30;
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const PROTOCOL = "2025-06-18";
-/** Bad tokens from one source before it is locked out, within the window, and for how long. */
-export const LOCKOUT = { bad: 5, windowMs: 10 * 60_000, forMs: 10 * 60_000 };
-/** A token bucket: `size` tokens refilled at `perMinute`, worked out from the clock when asked. */
-class Bucket {
-  constructor(/** @type {number} */ size, /** @type {number} */ perMinute, /** @type {() => number} */ now) { this.size = size; this.rate = perMinute / 60_000; this.now = now; this.tokens = size; this.at = now(); }
-  take() { const t = this.now(); this.tokens = Math.min(this.size, this.tokens + (t - this.at) * this.rate); this.at = t; if (this.tokens < 1) return false; this.tokens -= 1; return true; }
-}
+/** Bad tokens from one source before it is locked out, within the window, and for how long: the one set of numbers (lib/token-door.js). */
+export { LOCKOUT };
 const bad = (/** @type {string} */ message, code = "bad_input") => Object.assign(new Error(message), { code });
 const sha = (/** @type {string} */ t) => crypto.createHash("sha256").update(t).digest();
 
@@ -44,9 +40,7 @@ export class PassMcp {
   /** @param {import("./vault.js").Vault} vault @param {{ requests: any, url?: () => string, log?: (m: string) => void }} deps requests: the ApiRequests relay (request.js) */
   constructor(vault, deps) {
     this.v = vault; this.db = vault.db; this.deps = deps; this.log = deps.log || (() => {});
-    /** @type {Map<string, { n: number, since: number, until: number }>} */ this.misses = new Map();
-    /** @type {Map<string, Bucket>} */ this.buckets = new Map();
-    /** @type {Map<string, Bucket>} */ this.sources = new Map();
+    this.door = createDoor({ now: () => this.now() });
   }
 
   /** The loopback listener, set by index.js; the public address, set by the gate through vault.mcp.base. @type {{ port: number } | null} */ listener = null;
@@ -118,6 +112,7 @@ export class PassMcp {
     if (!p) throw bad(`no pass ${id}`, "not_found");
     if (p.revoked) return { revoked: false };
     this.db.prepare("UPDATE vault_mcp_passes SET revoked=? WHERE id=?").run(this.now(), p.id);
+    this.door.forget(p.id);
     const K = this.K;
     if (K) for (const g of K.vault.grantsOn(`vyre://${K.space}/vault/`)) if (g.source === `vault:pass:${this.actor(p.id)}`) await K.vault.takeBack({ id: g.id, reason: "the pass was ended" });
     this.db.prepare("UPDATE vault_mcp_reveals SET state='declined' WHERE pass=? AND state IN ('asked', 'allowed')").run(p.id);
@@ -135,26 +130,46 @@ export class PassMcp {
   /** The pass a token opens, or a refusal as { status }. Constant time over every pass; a source that sends too many wrong tokens is locked out. */
   auth(/** @type {string} */ token, /** @type {string} */ source) {
     const t = this.now();
-    const m = this.misses.get(source);
-    if (m && m.until > t) { this.refuse(source, "locked out"); return { status: 429 }; }
-    let src = this.sources.get(source);
-    if (!src) this.sources.set(source, src = new Bucket(120, 120, () => this.now()));
-    if (!src.take()) { this.refuse(source, "too many requests"); return { status: 429 }; }
+    const admitted = this.door.admit(source);
+    if (!admitted.ok) { this.refuse(source, admitted.why); return { status: 429 }; }
     const h = sha(String(token || ""));
     /** @type {any} */ let hit = null;
     for (const p of /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_mcp_passes").all())) if (crypto.timingSafeEqual(h, Buffer.from(p.token_hash, "hex"))) hit = p;
     if (!hit || hit.revoked || hit.expires <= t) {
-      const x = m && t - m.since < LOCKOUT.windowMs ? m : { n: 0, since: t, until: 0 };
-      x.n += 1; if (x.n >= LOCKOUT.bad) x.until = t + LOCKOUT.forMs;
-      this.misses.set(source, x);
+      this.door.miss(source);
       this.refuse(source, hit ? (hit.revoked ? "ended pass" : "expired pass") : "unknown token", hit ? hit.id : "");
       return { status: 401 };
     }
-    this.misses.delete(source);
-    let b = this.buckets.get(hit.id);
-    if (!b) this.buckets.set(hit.id, b = new Bucket(hit.rate, hit.rate, () => this.now()));
-    if (!b.take()) { this.refuse(source, "pass rate", hit.id); return { status: 429 }; }
+    this.door.clear(source);
+    if (!this.door.credit(hit.id, hit.rate)) { this.refuse(source, "pass rate", hit.id); return { status: 429 }; }
     return { pass: hit };
+  }
+
+  /** The open pass an outside agent id stands for (a pass is an agent: its id is the actor ext_<uuid>), or null when there is none, it was ended or it ran out. @param {string} agent */
+  passOf(agent) {
+    const id = String(agent).replace(/^ext_/, "").replace(/^vp_/, "");
+    const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_mcp_passes WHERE id = ?").get(`vp_${id}`));
+    return p && !p.revoked && p.expires > this.now() ? p : null;
+  }
+
+  /** The Vault's tools for a registered outside agent: the pass's own, none for an agent that holds no Vault reach (core/outside asks, ext-agents contract). @param {string} agent */
+  agentTools(agent) {
+    const p = this.passOf(agent);
+    return { tools: p ? (p.reveal ? [...TOOLS, REVEAL_TOOL] : TOOLS) : [] };
+  }
+
+  /** One call of a Vault tool as that agent, answered the way tools/call answers: content, or isError with a short reason. @param {string} agent @param {string} tool @param {any} args @param {string} source */
+  async agentCall(agent, tool, args, source) {
+    const p = this.passOf(agent);
+    if (!p) return { isError: true, content: [{ type: "text", text: "this agent holds no Vault reach" }] };
+    try {
+      const out = await this.call(p, String(tool), args || {}, source);
+      return { content: [{ type: "text", text: JSON.stringify(out) }] };
+    } catch (e) {
+      const err = /** @type {any} */ (e);
+      if (err && err.code === "denied") this.refuse(source, String(err.message).slice(0, 80), p.id);
+      return { isError: true, content: [{ type: "text", text: String(err && err.message || "failed").slice(0, 300) }] };
+    }
   }
 
   /** The address of an item under the pass's own grants, or null when the pass was not given it. */

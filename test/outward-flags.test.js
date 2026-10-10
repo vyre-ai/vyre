@@ -13,6 +13,7 @@ const VERBS = /(^|[.-])(send|post|pay|publish|reply|forward|share|invite|transfe
 
 /** Tools whose name matches a verb but that stay inside your own spaces and devices (or do not act). One line each. */
 const NOT_OUTWARD = {
+  "vault.mcp.agent.call": "the Vault's own tool call as an outside agent: a read runs, anything that changes something outside is held for the person by the same relay as vault.request; only the outside-agents module asks",
   "previews.share": "chooses which people inside the Space (me, the project, everyone) may open a preview; nothing leaves the Space",
   "previews.reply": "the person types the answer a stuck run asked for, on its card; it goes to the person's own agent and nowhere else",
   "work.file.share": "a share record by someone in the chat: it opens one file to the chat's project members inside the Space; nothing leaves the Space",

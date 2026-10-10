@@ -2503,15 +2503,11 @@
   },
   "vault.links": {
    "module": "vault",
-   "reason": "read-only: item names and record addresses, never a value"
+   "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; read-only: item names and record addresses, never a value"
   },
   "vault.unlink": {
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, device, local): no model caller; takes a link away, nothing else"
-  },
-  "vault.uses.for": {
-   "module": "vault",
-   "reason": "read-only: when and by whom the items linked to one record were used, in words; person surfaces and modules only; never a value"
   },
   "appmods.domain.list": {
    "module": "appmods",

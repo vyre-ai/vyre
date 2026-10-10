@@ -9,6 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
+import { credentialUrn } from "../kernel/contracts/index.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -27,8 +28,8 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
   const space = d.kernel.id.space;
   /** Publish's grant for one deployment, as lib/publish/grants.js makes it. */
   const give = (/** @type {string} */ dep, name = "deepgram") => publish.mint.make({
-    subject: { kind: "actor", actor: { kind: "service", id: `deployment-${dep}`, space } }, actions: ["vault.run"], resource: { prefix: `vyre://${space}/credential/${name}` },
-    source: `publish:secret:${dep}:DEEPGRAM_KEY:secret:runtime`, reason: "granted by the owner",
+    subject: { kind: "actor", actor: { kind: "service", id: `deployment-${dep}`, space } }, actions: ["vault.run"], resource: { prefix: credentialUrn(space, name) },
+    source: `publish:secret:${dep}:DEEPGRAM_KEY:secret:runtime:per_owner`, reason: "granted by the owner",
   });
   const release = (/** @type {string} */ caller, /** @type {any} */ input) => d.registry.call("vault.release", input, caller, { door: true });
   return { d, publish, give, release, space };
@@ -51,7 +52,7 @@ test("one key serves two deployments and the chat's transcripts, each on its own
   // another module cannot borrow a deployment's grant
   assert.match((await release("module:notes", { name: "deepgram", deployment: "dep_a" })).error.message, /not granted to notes/, "naming a deployment gives no other module anything");
   // ending one deployment's grant leaves the other deployment and the transcripts
-  await publish.mint.end({ source: "publish:secret:dep_a:DEEPGRAM_KEY:secret:runtime" });
+  await publish.mint.end({ source: "publish:secret:dep_a:DEEPGRAM_KEY:secret:runtime:per_owner" });
   assert.match((await release("module:publish", { name: "deepgram", deployment: "dep_a" })).error.message, /not granted to this deployment/);
   assert.equal((await release("module:publish", { name: "deepgram", deployment: "dep_b" })).data.value, KEY);
   assert.equal((await release("module:voice", { name: "deepgram" })).data.value, KEY);

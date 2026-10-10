@@ -110,7 +110,9 @@ export async function moveLocalGrants({ ctx, space, adoptDevice }) {
     const root = /^vyre:\/\/[^/]+\/$/;
     const resource = root.test(g.resource.prefix) && g.actions.includes("member.act") && sub ? { ...g.resource, prefix: `${g.resource.prefix}member/${sub.id}` } : g.resource;
     const given = inKernelSpace(ctx, { subject: g.subject, resource });
-    const made = await mint.make({ subject: given.subject, actions: g.actions, resource: given.resource, conditions: g.conditions || {}, source: g.source, ...(g.reason ? { reason: g.reason } : {}) });
+    // A stop between making a grant and deleting its row leaves both; the next try finds the grant and only deletes the row, so a grant is never made twice.
+    const twin = (await mint.list({ source: g.source })).find((/** @type {any} */ x) => x.resource.prefix === given.resource.prefix && subjectKey(x.subject) === subjectKey(given.subject) && x.actions.join() === g.actions.join());
+    const made = twin ? twin.id : await mint.make({ subject: given.subject, actions: g.actions, resource: given.resource, conditions: g.conditions || {}, source: g.source, ...(g.reason ? { reason: g.reason } : {}) });
     if (has("wink_storage_devices")) db.prepare("UPDATE wink_storage_devices SET grant_id = ? WHERE grant_id = ?").run(made, id);
     db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(id);
     moved++;

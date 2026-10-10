@@ -181,3 +181,20 @@ test("the endpoint: POST /vault-mcp with a pass token answers MCP; any other pat
   assert.equal((await post("{}", { authorization: `Bearer ${p.token}` }, l.url.replace("/vault-mcp", "/other"))).status, 404);
   assert.equal((await post("x".repeat(70_000), { authorization: `Bearer ${p.token}` }).catch(() => ({ status: 0 }))).status === 200, false, "a body over 64 KB is cut off");
 });
+
+test("a registered outside agent that is a pass gets the Vault's tools and calls them; one that holds none gets none; an ended pass gets none", async t => {
+  const { mk: make, v, rpc, tool, net } = await mk(t);
+  const p = await make();
+  const agent = `ext_${p.id.replace(/^vp_/, "")}`;
+  assert.deepEqual(v.mcp.agentTools(agent).tools.map(x => x.name), ["vault_list", "vault_request"], "the same tools the pass's own door lists");
+  assert.deepEqual(v.mcp.agentTools("ext_k3m9x2q7pw4t"), { tools: [] }, "an agent with no Vault reach");
+  const listed = await v.mcp.agentCall(agent, "vault_list", {}, "agent");
+  assert.deepEqual(JSON.parse(listed.content[0].text).items.map(i => i.name), ["graph-api"]);
+  const other = await v.mcp.agentCall(agent, "vault_request", { item: "other-api", method: "GET", path: "/x" }, "agent");
+  assert.equal(other.isError, true, "an item that is not on the pass is absent");
+  assert.equal((await v.mcp.agentCall("ext_k3m9x2q7pw4t", "vault_list", {}, "agent")).isError, true);
+  await v.mcp.revoke(p.id, "cli");
+  assert.deepEqual(v.mcp.agentTools(agent), { tools: [] }, "ended: nothing");
+  assert.equal((await v.mcp.agentCall(agent, "vault_list", {}, "agent")).isError, true);
+  void rpc; void tool; void net;
+});

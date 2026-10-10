@@ -12,7 +12,7 @@ export function outsideSource(call: Call) {
     list: async (): Promise<Agent[]> => agentsOf(await ask("outside.list")),
     types: async (): Promise<RecordType[]> => typesOf(await ask("records.types")),
     register: (name: string, note = ""): Promise<Registered> => ask("outside.register", { name, ...(note ? { note } : {}) }),
-    token: (id: string): Promise<Registered> => ask("outside.token", { id }),
+    token: (id: string, days?: number): Promise<Registered> => ask("outside.token", { id, ...(days ? { days } : {}) }),
     grant: (id: string, what: Record<string, unknown>) => ask("outside.grant", { id, what }),
     ungrant: (id: string, grant: string) => ask("outside.ungrant", { id, grant }),
     revoke: (id: string) => ask("outside.revoke", { id }),
