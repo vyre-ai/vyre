@@ -456,6 +456,7 @@ export default {
           if (hold.action === "grant_secret") {
             const s = (task.plan || {}).secret || {};
             const r = await p.pub.grantSecret(chain, hold.deployment, { ref: s.ref, name: s.name, use: s.use, task: task.id });
+            await restartForGrant(space, r.deployment, s.use);
             return { ...out, deployment: shown(r.deployment) };
           }
           const r = await serial(p, () => p.pub[hold.action](chain, hold.deployment, { task: task.id }));
@@ -527,6 +528,12 @@ export default {
       run: async (i, meta) => { const b = await begin(i, meta); return b.pub.removeDomain(b.chain, i.host); },
     });
 
+    /** A secret granted to a live server for running is in its environment only from its next start: start it again now, so the person sees it work at once (a build-only secret changes nothing running). @param {any} space @param {any} deployment @param {string[]|undefined} use */
+    const restartForGrant = async (space, deployment, use) => {
+      if (!deployment || deployment.stage !== "Production" || !deployment.runtime || deployment.runtime.kind !== "image") return;
+      if (Array.isArray(use) && use.length && !use.includes("runtime")) return;
+      await runnerFor(space).start(deployment);
+    };
     ctx.tool("publish.secret.grant", {
       callers: WITH_MODELS,
       description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
@@ -536,6 +543,7 @@ export default {
         const b = await begin(i, meta, await warmDecider(sp, i.task));
         const r = await b.pub.grantSecret(b.chain, i.deployment, { ref: i.ref, name: i.name, use: i.use, task: i.task });
         if (r.held) return { held: true, task: r.task, plan: r.plan };
+        await restartForGrant(b.space, r.deployment, i.use);
         return { deployment: shown(r.deployment) };
       },
     });
