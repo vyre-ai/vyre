@@ -36,7 +36,7 @@ async function containerBuild(ctx, d, dir, secretArgs) {
   const allow = (ctx.config && ctx.config.builder && Array.isArray(ctx.config.builder.from) ? ctx.config.builder.from : []).filter((/** @type {any} */ x) => typeof x === "string");
   const checked = checkDockerfile(df.content.toString("utf8"), { allow });
   const port = d.build && Number.isInteger(d.build.port) ? d.build.port : checked.port;
-  if (!port) throw refuse("name the port the app listens on: set build.port, or put an EXPOSE line in the Dockerfile", "refused");
+  if (!port) throw refuse("name the port the app listens on: set the build's port, or put an EXPOSE line in the Dockerfile", "refused");
   const tag = `vyre-pub-${String(d.name || "app").replace(/[^a-z0-9-]/g, "")}:${site.digest.replace(/^sha256:/, "").slice(0, 16)}`;
   const built = await (seam.buildImage || buildImage)({ files: site.files, tag, secretArgs });
   const left = site.skipped.length ? `; left out: ${site.skipped.slice(0, 5).join(", ")}${site.skipped.length > 5 ? ` and ${site.skipped.length - 5} more` : ""}` : "";

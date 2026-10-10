@@ -521,7 +521,7 @@ export default {
       input: obj({ deployment: { type: "object" } }, ["deployment"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         publishOnly(meta);
-        if (byHelper) throw refuse("this server runs apps through its host helper, which cannot run your own image yet", "unsupported");
+        if (byHelper) throw refuse("this server runs apps through its host helper, which cannot run your own image yet: install an app from the catalog instead (appmods.catalog lists them)", "unsupported");
         const d = i.deployment || {};
         const sp = String(d.space || "");
         if (!/^spc_[a-z2-7]{12}$/.test(sp)) throw refuse("the deployment names no Space", "bad_input");
@@ -530,7 +530,7 @@ export default {
         const problems = checkPublished(m);
         if (problems.length) throw refuse(`that server cannot run here: ${problems.map(p => `${p.path}: ${p.message}`).join("; ")}`, "bad_input");
         const have = row(m.name), mine = db.prepare("SELECT * FROM appmods_published WHERE name = ?").get(m.name);
-        if (have && !mine) throw refuse(`${m.name} is an app installed on this server already`, "exists");
+        if (have && !mine) throw refuse(`${m.name} is an app installed on this server already (appmods.status shows how it is doing)`, "exists");
         // the secrets are read before anything stops: a missing one leaves the running version as it was
         db.prepare("INSERT OR REPLACE INTO appmods_published (name, deployment, space, manifest) VALUES (?,?,?,?)").run(m.name, d.id, sp, JSON.stringify(m));
         const keep = catalog.get(m.name); catalog.set(m.name, m);

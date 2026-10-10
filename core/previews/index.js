@@ -406,7 +406,7 @@ export default {
       description: "A folder's files as a static site that runs on its own: a React page becomes its page, compiled files and libraries. Internal: the builder module only.", internal: true,
       input: obj({ files: { type: "array", items: { type: "object" } } }, ["files"]), callers: ["module"],
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        if (!meta || meta.caller !== "module:builder") throw refuse("the builder alone asks for a site", "denied");
+        if (!meta || meta.caller !== "module:builder") throw refuse("the builder alone asks for a site: hand the job to the builder", "denied");
         const files = (Array.isArray(i.files) ? i.files : []).map((/** @type {any} */ f) => ({ path: String(f && f.path || ""), content: Buffer.isBuffer(f && f.content) ? f.content : Buffer.from(f && f.content && f.content.data ? f.content.data : []) }));
         return siteOf(files);
       },

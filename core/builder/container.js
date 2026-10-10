@@ -66,22 +66,22 @@ export function checkDockerfile(text, o = {}) {
     if (op === "FROM") {
       const parts = rest.split(/\s+/).filter(p => !p.startsWith("--"));
       const ref = parts[0] || "";
-      if (!ref) throw refuse("a FROM line names no image", "refused");
-      if (!fromAllowed(ref, stages, o.allow || [])) throw refuse(`the Dockerfile starts from ${ref.slice(0, 80)}, which is not allowed here: use an official image (such as node, python or nginx) or ask the owner to allow its registry`, "refused");
+      if (!ref) throw refuse("a FROM line names no image: put the image's name after FROM", "refused");
+      if (!fromAllowed(ref, stages, o.allow || [])) throw refuse(`the Dockerfile starts from ${ref.slice(0, 80)}, which is not allowed here: copy only files from the app's own folder: use an official image (such as node, python or nginx) or ask the owner to allow its registry`, "refused");
       froms.push(ref);
       const as = /\bAS\s+([A-Za-z0-9_.-]+)\s*$/i.exec(rest);
       if (as) stages.add(as[1].toLowerCase());
     } else if (op === "RUN" || op === "COPY" || op === "ADD") {
       // `COPY --from=<image>` and `RUN --mount=...from=<image>` pull another image into the build: it must pass the same rule as FROM (or be an earlier stage)
       for (const m2 of rest.matchAll(/(?:--from=|\bfrom=)([^\s,]+)/gi)) {
-        if (!fromAllowed(m2[1], stages, o.allow || [])) throw refuse(`the Dockerfile takes files from ${m2[1].slice(0, 80)}, which is not allowed here`, "refused");
+        if (!fromAllowed(m2[1], stages, o.allow || [])) throw refuse(`the Dockerfile takes files from ${m2[1].slice(0, 80)}, which is not allowed here: copy only files from the app's own folder`, "refused");
       }
     } else if (op === "EXPOSE" && port === null) {
       const n = /^(\d{1,5})(?:\/tcp)?\b/i.exec(rest.trim());
       if (n && Number(n[1]) >= 1 && Number(n[1]) <= 65535) port = Number(n[1]);
     }
   }
-  if (!froms.length) throw refuse("the Dockerfile has no FROM line", "refused");
+  if (!froms.length) throw refuse("the Dockerfile has no FROM line: start it with FROM and an image", "refused");
   return { port, froms };
 }
 
@@ -147,7 +147,7 @@ export async function buildImage(p) {
     fs.mkdirSync(ctx, { recursive: true, mode: 0o755 });
     for (const f of p.files) {
       const to = path.join(ctx, f.path);
-      if (!to.startsWith(ctx + path.sep)) throw refuse("a file path leaves the folder", "refused");
+      if (!to.startsWith(ctx + path.sep)) throw refuse("a file path leaves the folder: use paths inside the app's folder", "refused");
       fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o755 });
       fs.writeFileSync(to, f.content, { mode: 0o644 });
     }
@@ -163,7 +163,7 @@ export async function buildImage(p) {
     const r = await pipeline(argv, { timeoutMs: BUILD_MS, maxBytes: IMAGE_MAX });
     const lines = r.stderr.split("\n").filter(Boolean);
     const logs = lines.slice(-60).join("\n");
-    if (r.code === 127) throw refuse("this server cannot build an image: Docker is not available here", "not_available");
+    if (r.code === 127) throw refuse("this server cannot build an image: Docker is not available here: ask the owner to install Docker on this server", "not_available");
     if (r.code !== 0) throw refuse(`the build failed:\n${lines.slice(-40).join("\n")}`, "build_failed");
     const id = await run(["image", "inspect", p.tag, "--format", "{{.Id}}"]);
     const image = id.stdout.trim();

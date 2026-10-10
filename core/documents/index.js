@@ -207,7 +207,7 @@ export function registerDocuments(ctx) {
       await door.open(i || {}, meta);
       const want = Number(i.submission);
       const q = (await waitingRequests()).find(x => x.submission === want);
-      if (!q) throw refuse("that document is not waiting for a signature (it may be signed or have lapsed)", "not_found");
+      if (!q) throw refuse("that document is not waiting for a signature (it may be signed or have lapsed): send it for signature again with documents.send if it still needs one", "not_found");
       if (!q.email) throw refuse("that request has no email address to send to", "bad_input");
       const text = String(i.note || "").trim();
       if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");

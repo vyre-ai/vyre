@@ -622,7 +622,7 @@ async function startLocked(opts, root, p, release) {
         emit: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("link", type, payload, { thread: payload && payload.thread }); } catch (e) { log(`lent: could not say ${type}: ${/** @type {Error} */ (e).message}`); } },
         // the server carries on a session its lender gave up or lost; the loader that turns a lent transcript into a chat is `opts.resumeLent` (or the registry's `resumeLent`, agent-core's). Until it exists the server
         // takes no session from a computer (`canResume`): a move answers "coming in this release" and the computer keeps running the session, because a session taken with nothing to continue it is a session lost.
-        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet"), { code: "unavailable" }); return f(i); },
+        resume: async (/** @type {any} */ i) => { const f = opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent; if (typeof f !== "function") throw Object.assign(new Error("nothing continues a lent session yet: start a new session on that computer instead"), { code: "unavailable" }); return f(i); },
         canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {

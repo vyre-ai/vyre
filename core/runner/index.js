@@ -232,12 +232,12 @@ export default {
           const h = hostOf();
           if (h && h.placements) return placeDeps.moveThread(i, meta);
           await person(ctx, meta, "moving a session");
-          if (i.to !== "server") throw Object.assign(new Error("Coming in this release: bringing a session back to a computer is done from the Space's server"), { code: "unavailable" });
+          if (i.to !== "server") throw Object.assign(new Error("Coming in this release: bringing a session back to a computer is done from the Space's server: do it there"), { code: "unavailable" });
           for (const [, r] of runners) for (const x of r.info()) if (x.chat === i.thread || x.session === i.thread) {
             const out = await r.moveToServer(x.session, "you");
             return out.moved === false ? { where: "mac", computer: null, state: "here", reason: null, since: null, offer: null, pinned: false, pin: null } : { where: "server", computer: null, state: "server", reason: "you", since: Date.now(), offer: null, pinned: false, pin: null };
           }
-          throw Object.assign(new Error("no such session on this computer"), { code: "not_found" });
+          throw Object.assign(new Error("no such session on this computer (runner.places shows where each chat runs)"), { code: "not_found" });
         }
         // the computer's own: a last checkpoint here, then the server takes it
         if (typeof i.space !== "string" || typeof i.session !== "string") throw Object.assign(new Error("name the chat to move, or the space and session on this computer"), { code: "bad_input" });

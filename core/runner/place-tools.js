@@ -114,7 +114,7 @@ export function registerPlaceTools(ctx, d) {
     }
     if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
     const p = placements();
-    if (i.to === "server" && typeof p.resumable === "function" && !p.resumable(hit.space)) throw refuse("Coming in this release: moving a chat from a computer to the server. It keeps running where it is.", "unavailable");
+    if (i.to === "server" && typeof p.resumable === "function" && !p.resumable(hit.space)) throw refuse("Coming in this release: moving a chat from a computer to the server. It keeps running where it is: leave it there.", "unavailable");
     const row = i.to === "server" ? p.askRelease(hit.space, hit.row.session, "you", person) : p.bringBack(hit.space, hit.row.session, person);
     return answer(row);
   };
