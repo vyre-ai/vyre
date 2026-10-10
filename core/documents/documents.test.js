@@ -202,3 +202,12 @@ test("one yes: the card for documents.send rides down to the mail module's own s
   assert.ok(coveredRide(tools, meta(signed), "comms.send", "module:documents"));
   assert.equal(coveredRide(tools, meta(signed), "appmods.signing.request", "module:documents"), null);
 });
+
+test("an agent sees lean tool descriptions, and documents.generate is held to the projects the agent is granted", async () => {
+  const { readFileSync } = await import("node:fs");
+  const r = rig();
+  for (const [name, def] of r.tools) assert.ok(String(def.description).trim().split(/\s+/).length <= 25, `${name} is over the 25-word cap`);
+  const manifest = JSON.parse(readFileSync(new URL("./module.json", import.meta.url), "utf8"));
+  const entry = manifest.does.tools.find((/** @type {any} */ t) => t && t.name === "documents.generate");
+  assert.equal(entry.projectArg, "project");
+});

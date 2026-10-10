@@ -37,11 +37,10 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   const a = ra.data, b = rb.data;
   assert.ok(a && a.ok, JSON.stringify(ra));
   assert.ok(b && b.ok, JSON.stringify(rb));
-  // approving is a person's own and asks for the person's proof: the tool refuses an unproven call
-  const noProof = await d.registry.call("flows.approve", { id: a.id, version: a.version, hash: a.hash }, "cli", await ownerMeta());
-  assert.ok(noProof.error, "approval needs the person's proof");
-  // (the proof itself is the kernel's one verifier; here the person's own chain approves through the assembly)
-  for (const x of [a, b]) await host().flows.tools["flows.approve"](host().personChain(), { id: x.id, version: x.version, hash: x.hash });
+  // approving is a person's own: their own request in their own session is the yes (it is not one of the moments that ask for a proof), and a call with no chain is refused above
+  const asked = await d.registry.call("flows.approve", { id: a.id, version: a.version, hash: a.hash }, "cli", await ownerMeta());
+  assert.ok(asked.data && !asked.error, `the person's own request approves: ${JSON.stringify(asked.error)}`);
+  await host().flows.tools["flows.approve"](host().personChain(), { id: b.id, version: b.version, hash: b.hash });
 
   // an event trigger: a new contact is marked
   const jane = await d.kernel.gateway.records.create(admin, "contact", { name: "Jane" });
@@ -58,7 +57,8 @@ test("Flows run in a real daemon: an event trigger and a schedule, approved by a
   await host().flows.store.putSchedule(b.id, Date.now() - 120_000);
   await host().flows.tick();
   const sched = await until(async () => { const r = (await d.registry.call("flows.runs", { id: b.id }, "cli", await ownerMeta())).data; return r.length ? r : null; }, "the scheduled run");
-  const srun = (await d.registry.call("flows.run", { run: sched[0].id }, "cli", await ownerMeta())).data.run;
+  // the run exists the moment it starts; wait for it to finish (a loaded box takes a while)
+  const srun = await until(async () => { const r = (await d.registry.call("flows.run", { run: sched[0].id }, "cli", await ownerMeta())).data.run; return r.state === "running" ? null : r; }, "the scheduled run to finish");
   assert.equal(srun.trigger.kind, "time");
   assert.match(String(srun.trigger.source), /^schedule:/, "the run record names the schedule that started it");
   assert.equal(srun.state, "done", JSON.stringify(srun.error));

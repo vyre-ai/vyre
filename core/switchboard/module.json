@@ -193,6 +193,11 @@
         "effect": "write"
       },
       {
+        "name": "threads.undo-edit",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
         "name": "threads.model",
         "reach": "anyone",
         "effect": "write"
@@ -379,7 +384,8 @@
       "thread.thinking",
       "thinking.switched",
       "thread.shell",
-      "thread.remembered"
+      "thread.remembered",
+      "thread.edit-undone"
     ]
   },
   "shows": {
