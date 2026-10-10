@@ -91,7 +91,7 @@ export function checkDockerfile(text, o = {}) {
  */
 export function buildArgv(p) {
   return ["run", "--rm", "--name", p.name || `vyre-build-${crypto.randomBytes(5).toString("hex")}`,
-    "--security-opt", "seccomp=unconfined", "--security-opt", "apparmor=unconfined", "--cap-drop", "ALL",
+    "--security-opt", "seccomp=unconfined", "--security-opt", "apparmor=unconfined", "--cap-drop", "ALL", "--cap-add", "SETUID", "--cap-add", "SETGID",
     "--memory", "2g", "--cpus", "2", "--pids-limit", "1024",
     "-e", "BUILDKITD_FLAGS=--oci-worker-no-process-sandbox",
     "-v", `${p.ctx}:/ctx:ro`, ...(p.secrets ? ["-v", `${p.secrets}:/bsecrets:ro`] : []),

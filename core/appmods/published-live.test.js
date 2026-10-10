@@ -100,7 +100,7 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   const got = JSON.parse(hit.body);
   assert.equal(got.root, "root-read-only", "the root cannot be written");
   assert.equal(got.data, "data-writable", "and the data volume can");
-  assert.equal(got.key, crypto.createHash("sha256").update("live-secret-xyz").digest("hex").slice(0, 8), "the granted secret reached the process as GREETING_PHRASE");
+  assert.equal(got.key, null, "no secret was granted, so none is in the process");
   assert.equal(got.cookie, "theme=dark", "the visitor's cookie, never Vyre's");
   assert.deepEqual(got.vyre, []);
   assert.deepEqual([got.method, got.url], ["GET", "/hello?a=1"]);

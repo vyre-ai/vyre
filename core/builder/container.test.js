@@ -41,6 +41,7 @@ test("the build runs rootless, with the context and the secrets read-only and no
   const a = buildArgv({ ctx: "/tmp/c/ctx", secrets: "/tmp/c/secrets", secretIds: ["npm_token"], tag: "vyre-pub-x:1", name: "vyre-build-test" });
   assert.deepEqual(a.slice(0, 3), ["run", "--rm", "--name"]);
   assert.ok(a.includes(BUILDKIT) && /rootless@sha256:[0-9a-f]{64}$/.test(BUILDKIT), "the pinned rootless image");
+  assert.ok(a.join(" ").includes("--cap-drop ALL --cap-add SETUID --cap-add SETGID"), "everything dropped but the two a user namespace needs");
   assert.ok(a.join(" ").includes("--cap-drop ALL") && a.join(" ").includes("--memory 2g") && a.join(" ").includes("--pids-limit 1024"));
   const mounts = a.flatMap((x, i) => (a[i - 1] === "-v" ? [x] : []));
   assert.deepEqual(mounts, ["/tmp/c/ctx:/ctx:ro", "/tmp/c/secrets:/bsecrets:ro"]);
