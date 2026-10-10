@@ -60,26 +60,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: publishes an artifact)"
  },
  {
-  "tool": "ask.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state and answers of a question card the agent made"
- },
- {
-  "tool": "ask.many",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts several questions to the person as one card in the chat; the answers are the person's own words, and whatever the agent then sends or changes still waits for the person's yes"
- },
- {
-  "tool": "brand.draft",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): turns a web page the caller fetched into a draft brand profile; it keeps nothing and sends nothing"
- },
- {
-  "tool": "brand.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the space's brand profile (names, colours, fonts, logos), which the space already shows on everything it makes"
- },
- {
-  "tool": "brand.resolve",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what to use by default for this space: names, the theme colour as drawn in each scheme, fonts, logos and letterhead"
- },
- {
   "tool": "bridges.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one share the person's Space is part of; the bridges module takes the person from the verified caller"
  },
@@ -296,30 +276,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.operation.run opened to a model or a module in 1d1318369 (4 Oct 2026); the body decides: callers list and scope: a module reaches only its own app's Connection and its declared operations; a send, change or delete is held at the Gate"
  },
  {
-  "tool": "design.catalogue",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the design language's block catalogue: names, props and sample data, nothing of the person's"
- },
- {
-  "tool": "design.css",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the custom CSS in force, which the web app draws"
- },
- {
-  "tool": "design.css.propose",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): files custom CSS for a screen or the space as pending; only the Engineer proposes it, it must pass the linter, and the owner sees it before and after"
- },
- {
-  "tool": "design.propose",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): files a proposed screen as pending; nothing changes on any screen until the screen's owner says yes, and the proposal lists every tool it reads and every button runs"
- },
- {
-  "tool": "design.screens",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the space's own screens as data (layout and blocks); the data they show is fetched as the viewer"
- },
- {
-  "tool": "design.validate",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): checks a screen against the design language and answers the problems; it keeps nothing"
- },
- {
   "tool": "docs.find",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; docs.find opened to a model or a module in 92291f02c (4 Oct 2026); the body decides: read-only: ranks pages of the docs tree for an intent; a person's own surface gets the human docs, any other caller gets the human and the agent docs (the agent docs are not secret, the code is open source); nothing here writes, sends or reaches the network (core/docs/index.js)"
  },
@@ -394,6 +350,10 @@
  {
   "tool": "files.send",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
+ },
+ {
+  "tool": "flows.advance",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger"
  },
  {
   "tool": "flows.attention",
@@ -510,6 +470,10 @@
  {
   "tool": "flows.runs",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the recent runs of a Flow; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.settle",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): answers a run that needs attention (retry, skip, stop, or move a stage gate on early) under the person's own chain; a stage gate moves only for its owner or an admin, with a reason on the ledger, and a value for a skipped step stays the person's"
  },
  {
   "tool": "flows.simulate",
@@ -722,38 +686,6 @@
  {
   "tool": "presence.remove",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; presence.remove opened to a model or a module in 235da322d (4 Oct 2026); the body decides: a presence proof is required (HUMAN_ONLY); module callers need the tool"
- },
- {
-  "tool": "previews.get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one preview by title and state, never an address or ticket"
- },
- {
-  "tool": "previews.list",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the previews of a chat or project by title and state, never an address or ticket"
- },
- {
-  "tool": "previews.open",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a server the agent started on a port of its own as a preview card; the port is checked against Vyre's own, a command is never run for a model, and the address needs a ticket only the person's surface can ask for"
- },
- {
-  "tool": "previews.operator",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a computer's live screen as a card in the agent's own chat; the card holds a name and words, the screen is Glass's and the person's surface asks for it"
- },
- {
-  "tool": "previews.run-get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the state of a run the agent started and what the person typed when it was stuck"
- },
- {
-  "tool": "previews.signin",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to sign in on a computer as a card; private to the person, never giving the agent the password or the page"
- },
- {
-  "tool": "previews.signin-get",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether the person finished a sign-in the agent asked for"
- },
- {
-  "tool": "previews.step",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): words for the status line of the agent's own card"
  },
  {
   "tool": "projects.access.pending",
@@ -1168,6 +1100,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.watch opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
  },
  {
+  "tool": "update.whats-new",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words"
+ },
+ {
+  "tool": "update.whats-new-seen",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): marks the release notes of the running version as seen by this person; the only thing written is that mark"
+ },
+ {
   "tool": "vault.emergency.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads where an emergency request to an owner stands"
  },
@@ -1186,10 +1126,6 @@
  {
   "tool": "views.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer"
- },
- {
-  "tool": "views.show",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows the person a read-only card of a module screen in their chat; the module's tool runs as the asking agent, and an action in it opens the full screen"
  },
  {
   "tool": "voice.listen",

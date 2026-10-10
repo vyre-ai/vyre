@@ -27,7 +27,8 @@
       {
         "name": "documents.generate",
         "effect": "write",
-        "reach": "anyone"
+        "reach": "anyone",
+        "projectArg": "project"
       },
       {
         "name": "documents.signing.flow",
@@ -43,14 +44,14 @@
       {
         "name": "documents.send",
         "outward": true,
-        "covers": ["comms.send", "mail.send"],
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       },
       {
         "name": "documents.send-signed",
         "outward": true,
-        "covers": ["comms.send", "mail.send"],
+        "covers": ["comms.send", "mail.send", "google.mail.send", "mcp.call"],
         "effect": "write",
         "reach": "anyone"
       }

@@ -108,7 +108,7 @@ export function pick(o, at) {
 }
 
 /** Tests put a fake driver here before the daemon starts; production leaves it null. */
-export const seam = /** @type {{ driver: any }} */ ({ driver: null });
+export const seam = /** @type {{ driver: any, rotateMs?: number }} */ ({ driver: null });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /** A preview's name on the front: pv- and eight hex digits. Never an installed app's name (those are catalog names). */
@@ -321,6 +321,27 @@ export default {
       },
     });
 
+    // A key rotated in the Vault reaches the app (R031-73): the container is made again with the new value and its data stays. A burst of changes (two keys rotated together) is one restart, and an app the host
+    // helper runs has its keys made by root, so those are not this module's to change.
+    /** @type {Map<string, NodeJS.Timeout>} */ const rotating = new Map();
+    const rotate = async (/** @type {any} */ r) => {
+      const m = known(r.name), p = { space: r.space, manifest: m, hookPort: r.hook_port };
+      await driver.down(p, { data: false });
+      const up = await driver.up({ ...p, vars: { name: m.name, origin: originFor(m.name, baseHost()) }, secrets: await secretsOf(m) });
+      db.prepare("UPDATE appmods_apps SET state = 'running', origin = ? WHERE name = ?").run(up.origin, m.name);
+      listen(m, up.hookHost, r.hook_port);
+      ctx.events.emit("appmods.restarted", { name: m.name, why: "a key changed in the Vault" });
+    };
+    const offRotate = ctx.events.on("vault.item-changed", (/** @type {any} */ e) => {
+      const changed = String((e.payload || e).name || "");
+      if (byHelper || !changed.startsWith("app-")) return;
+      for (const r of /** @type {any[]} */ (db.prepare("SELECT * FROM appmods_apps WHERE state = 'running'").all())) {
+        const m = catalog.get(String(r.name));
+        if (!m || !(m.app.secrets || []).some((/** @type {any} */ s) => item(r.name, s.env.toLowerCase()) === changed) || rotating.has(r.name)) continue;
+        rotating.set(r.name, setTimeout(() => { rotating.delete(r.name); rotate(r).catch(err => ctx.log.warn(`appmods: ${r.name} did not restart with its new key: ${err.message}`)); }, seam.rotateMs ?? 300));
+      }
+    });
+
     // The daemon's hook door (POST /v1/appmods/<name>/hook) for apps that share the daemon's network; the token rides in x-vyre-token.
     ctx.tool("appmods.hook", { description: "An app's webhook, from the daemon's hook door. Checks the app's token.", input: obj({ name: str, token: str, body: { type: "object", additionalProperties: true } }, ["name"]), run: async (/** @type {any} */ i) => receive(String(i.name), String(i.token || ""), i.body) });
 
@@ -474,6 +495,6 @@ export default {
         .then((/** @type {any} */ up) => { db.prepare("UPDATE appmods_apps SET origin = ? WHERE name = ?").run(up.origin, r.name); listen(known(r.name), up.hookHost, r.hook_port); })
         .catch((/** @type {Error} */ e) => ctx.log.warn(`appmods: ${r.name} did not come back: ${e.message}`));
     }
-    return { async stop() { for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
+    return { async stop() { offRotate(); for (const t of rotating.values()) clearTimeout(t); rotating.clear(); for (const s of listeners.values()) s.close(); listeners.clear(); front.close(); } };
   },
 };

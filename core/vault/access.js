@@ -95,6 +95,14 @@ export class Access {
     return all.filter((/** @type {any} */ g) => g.status === "active" && g.source === SOURCE && (!f.uid || g.subject.actor.id === f.uid) && (!f.res || g.resource.prefix === f.res) && (!f.origin || g.conditions.where.origins[0] === f.origin));
   }
 
+  /** The names of the logins lent to an agent right now, read live from the kernel (none without one). @returns {string[]} */
+  items() {
+    const K = this.K;
+    if (!K) return [];
+    const t = this.v.clock();
+    return K.vault.grantsOn(`vyre://${K.space}/vault/`).filter((/** @type {any} */ g) => g.source === SOURCE && !(g.conditions && g.conditions.when && g.conditions.when.expires <= t)).map((/** @type {any} */ g) => String(g.resource.prefix).split("/item/")[1]);
+  }
+
   /** Requests waiting for a person, for vault.pending. */
   pending() {
     return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_access_requests ORDER BY at").all()).map(g => ({ id: g.id, agent: g.agent, item: g.item, origin: g.origin, expires: g.expires, status: "pending", by: g.by, at: g.at }));
@@ -123,6 +131,25 @@ export class Access {
     this.v.audit("agent-revoke", g.item, caller, true, `agent:${g.agent}`, { origin: g.origin });
     this.v.emit("vault.agent-revoked", { agent: g.agent, item: g.item, origin: g.origin });
     return { revoked: true, grant: g };
+  }
+
+  /**
+   * May this deployment have this item's value? Publish grants a deployment its secret as a kernel grant (`vault.run` on the credential's address, to the deployment's own service actor, source
+   * `publish:secret:<deployment>:...`); the Vault releases to Publish for that deployment only while the grant is live, so one key can serve many deployments and the chat's own use, each on its own.
+   * @param {string} name the item @param {string} deployment
+   */
+  deploymentMay(name, deployment) {
+    const K = this.K;
+    if (!K || !/^[A-Za-z0-9_.-]{1,80}$/.test(String(deployment))) return false;
+    const t = this.v.clock(), at = `vyre://${K.space}/credential/${name}`;
+    return K.vault.grantsOn(at).some((/** @type {any} */ g) => g.resource.prefix === at && g.actions.includes("vault.run") && g.source.startsWith(`publish:secret:${deployment}:`)
+      && g.subject.actor && g.subject.actor.id === `deployment-${deployment}` && !(g.conditions && g.conditions.when && g.conditions.when.expires <= t));
+  }
+
+  /** Every deployment's use of a credential goes when the item goes. @param {string} item */
+  async revokeDeployments(item) {
+    const K = this.K;
+    return K ? (await K.vault.takeBack({ prefix: `vyre://${K.space}/credential/${item}`, reason: "the credential was deleted" })).length : 0;
   }
 
   /** Every lending of an item goes when the item goes. */

@@ -268,7 +268,8 @@ driving the page each time. `chrome_op` in Claude Code (or your assistant) does 
 Your login never leaves the browser. A call is signed inside the page, by the browser that is
 signed in; Vyre keeps names, shapes and the places a token comes from, never the token, a cookie or
 what you typed. When the site changes, a read is repaired once from the page and kept only after a
-replay answers; each kept version can be rolled back in one step.
+replay answers, in the browser that made the call (your Chrome, or the assistant's own Chrome on your box with the Mac off);
+each kept version can be rolled back in one step.
 
 Then make the site a Connection: `connectors.site.connect` (your own act). A Flow's "Call a
 service" step, a watcher's poll, a view and your assistant call its operations like any

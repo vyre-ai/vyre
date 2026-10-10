@@ -6,7 +6,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { migrate } from "../../store/index.js";
 import { createStorageDevices, MIGRATIONS } from "./index.js";
-import { storageGrants } from "./grants.js";
+import { createGrants } from "../grants.js";
+import { fakeMint } from "../../../test/fake-chain-kernel.js";
 import { attachPool } from "./pool.js";
 import { fakeS3 } from "./testing/fake-s3.js";
 
@@ -32,13 +33,13 @@ async function world(t) {
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   migrate(db, "wink-storage", MIGRATIONS);
   const events = [], logs = [];
-  const ctx = { store: { db }, events: { emit: (type, payload) => events.push({ type, payload }) }, log: m => logs.push(m), config: { name: "Alex's Mac" } };
+  const ctx = { kernel: { mint: fakeMint(), space: SPACE }, store: { db }, events: { emit: (type, payload) => events.push({ type, payload }) }, log: m => logs.push(m), config: { name: "Alex's Mac" } };
   const items = new Map();
   const vault = { put: async ({ name, fields }) => { items.set(name, { fields }); }, fetch: async (name, field) => items.get(name).fields[field], remove: async name => { items.delete(name); } };
   const bucket = await fakeS3({ bucket: "harlow-backup", accessKey: ACCESS, secretKey: SECRET });
   t.after(bucket.close);
   const s = createStorageDevices({
-    ctx, vault, grants: storageGrants({ ctx, space: () => SPACE }), space: () => SPACE, scanners: [],
+    ctx, vault, grants: createGrants({ ctx }), space: () => SPACE, scanners: [],
     admin: { self: async () => SELF, isAdmin: async (p, sp) => p === SELF.id && sp === SPACE, nameOf: async () => "Harlow Legal" },
   });
   const pool = fakePool();
