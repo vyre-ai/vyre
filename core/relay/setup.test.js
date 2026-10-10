@@ -472,9 +472,65 @@ test("setup boot: a code starts only with a stamp from the last hour; missing, g
     if (expect === "waiting") await until(async () => (await w.d.registry.call("relay.setup.status", {}, "cli")).data.state === "waiting");
     const st = (await w.d.registry.call("relay.setup.status", {}, "cli")).data;
     assert.equal(st.state, expect, `stamp ${at}`);
+    if (expect === "none") { assert.equal(st.failed, true, `stamp ${at}: the status says the code was not used`); assert.match(st.why, /older than an hour|no valid time/, "and why"); } else assert.notEqual(st.failed, true);
     assert.equal(process.env.VYRE_SETUP_CODE, undefined, "taken out of the environment either way");
     await w.d.stop();
   }
+});
+
+test("setup boot: a relay that is not answering yet is tried again for the code's hour, and the status says it is retrying; a box with an owner is refused at once with its reason", async t => {
+  const saved = { ...process.env };
+  t.after(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; });
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (real)));
+  const first = createRelay();
+  const base = await first.listen();
+  const port = Number(new URL(base).port);
+  await first.close();
+  const { code } = await newCode();
+  process.env.VYRE_SETUP_CODE = code;
+  process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000));
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: false, url: base, setupRetryMs: 40 }, modules: { disable: ["names", "onboard"] } }));
+  lenient.enrolled.length = 0;
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const status = async () => (await d.registry.call("relay.setup.status", {}, "cli")).data;
+  let st = await status();
+  for (let i = 0; i < 60 && !st.retrying && st.state === "none"; i++) { await settle(50); st = await status(); }
+  // the relay is not there: either the session waits for it (state waiting, not registered) or the boot is retrying; neither is a failure
+  assert.notEqual(st.failed, true, `not given up: ${JSON.stringify(st)}`);
+  const second = createRelay();
+  await second.listen(port);
+  t.after(() => second.close());
+  for (let i = 0; i < 200; i++) { st = await status(); if (st.state === "waiting" && st.registered) break; await settle(50); }
+  assert.equal(st.state, "waiting", `the relay came up and the setup began: ${JSON.stringify(st)}`);
+  assert.equal(st.registered, true, "and the offer is registered");
+});
+
+test("setup boot: a box that already has an owner says so in the status, not only in a log line (a code does nothing there)", async t => {
+  const saved = { ...process.env };
+  t.after(() => { for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k]; });
+  const real = Object.getOwnPropertyDescriptor(process, "platform");
+  Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+  t.after(() => Object.defineProperty(process, "platform", /** @type {any} */ (real)));
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const { code } = await newCode();
+  process.env.VYRE_SETUP_CODE = code;
+  process.env.VYRE_SETUP_CODE_AT = String(Math.floor(Date.now() / 1000));
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex", owner: { id: "0123456789abcdef0123456789abcdef" } }, relay: { enabled: false, url: base }, modules: { disable: ["names", "onboard"] } }));
+  lenient.enrolled.length = 0;
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  let st = {};
+  for (let i = 0; i < 60 && !st.failed; i++) { await settle(50); st = (await d.registry.call("relay.setup.status", {}, "cli")).data; }
+  assert.equal(st.state, "none");
+  assert.equal(st.failed, true, JSON.stringify(st));
+  assert.match(st.why, /already has an owner/);
 });
 
 test("web deny: an untrusted paired browser cannot make a setup claim, and can still read the network status", () => {

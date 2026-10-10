@@ -467,6 +467,16 @@ test("install-box.sh v2: IR-1 words that cannot be read at all are said so, with
   assert.ok(r.stdout.indexOf("four words did not show") < r.stdout.indexOf("Go back to the Vyre app to finish."));
 });
 
+test("install-box.sh v2: a box that says why it did not take the setup code is believed at once, and the person is told what to do, not left on the fallback line", t => {
+  const why = "the relay or this box refused the setup code: too many setup requests; wait a minute";
+  const b = box(t, { docker: `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"state":"none","failed":true,"why":"${why}"}}' ;; esac ;; esac; exit 0` });
+  const r = run({ ...b.env, VYRE_CODE: CODE, VYRE_NO_UP: "0", VYRE_WORDS_TRIES: "50" }, ["--yes", "--from", REPO]);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Vyre could not start the pairing: the relay or this box refused the setup code: too many setup requests; wait a minute/);
+  assert.match(r.stdout, /Make a new install line in the Vyre app and run it again\./);
+  assert.doesNotMatch(r.stdout, /The four words did not show yet/);
+});
+
 const PAIRING_BOX = `case "$1 $2" in "compose version") echo 2.29.1 ;; "ps -q") echo abc123 ;; "compose exec") case "$*" in *relay.setup.status*) echo '{"data":{"words":"lantern quiet river oak"}}' ;; *wink.server.code*) echo '{"data":{"qr":"WINKLONGCODE","art":"##","code":"ABCD-EFGH","code_tries":3,"code_expires":9999999999999}}' ;; esac ;; esac; exit 0`;
 
 test("install-box.sh v2: IR-2 with a setup code the terminal shows the check words only, no pairing QR, long code or typed code", t => {
