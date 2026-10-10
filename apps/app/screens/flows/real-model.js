@@ -34,3 +34,6 @@ export const healthRow = (f) => {
   const sub = [f.line, f.trigger].filter(Boolean).join(" · ");
   return { sub: sub || undefined, chip: f.level === "red" ? "Needs a look" : null };
 };
+
+/** How a Flow's own page says how it is doing: a banner for a red or amber one (what is wrong comes first in the line), a quiet line for the rest. @param {{ level?: string, line?: string } | null | undefined} h @returns {{ tone: "err" | "warn" | "quiet", text: string } | null} */
+export const healthBanner = (h) => (h && h.line ? { tone: h.level === "red" ? "err" : h.level === "amber" ? "warn" : "quiet", text: h.line } : null);
