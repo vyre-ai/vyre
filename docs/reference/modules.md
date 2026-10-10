@@ -158,6 +158,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Shows on: cli
 - Needs daemon: `flowsHost`
 - Needs kernel: `{"actions":["drive.write","drive.read"],"prefixes":["file/Signed"]}`
+- Needs tools: `documents.send`
 - Needs vault: `per-app`
 
 ## approvals
