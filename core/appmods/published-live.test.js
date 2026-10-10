@@ -60,11 +60,10 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   };
   const made = await as("spaces.identity.create", { name: "alex" });
   assert.ok(!made.error, JSON.stringify(made.error));
-  const sp = await as("spaces.create", { name: "bakery", home: { kind: "this-computer", confirmed: true } });
-  assert.ok(!sp.error, JSON.stringify(sp.error));
-  const spaceId = String(sp.data.id || sp.data.space || "");
+  // the owner's own Space: a deployment's secret is a kernel grant, minted in the space the kernel serves
+  const spaceId = d.kernel.id.space;
   names = namesOf(d.kernel.id.space, "northwind");
-  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(tool, { space: "bakery.vyre.run", ...input }); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(tool, input); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
   const decide = (/** @type {string} */ task) => call("publish.decide", { task, approve: true });
 
   const src = fs.mkdtempSync(path.join(root, "northwind-"));
