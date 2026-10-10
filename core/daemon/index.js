@@ -1550,8 +1550,19 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
     // A model in a team chat's turn names no Space: a tool that takes `space` acts in the Space its session belongs to (a session of another Space, or the home's, is refused by that door, as ever)
     const turnSpace = typeof sessionToken === "string" ? teamSpaceOfToken(sessionToken) : null;
-    if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) { const def = registry.tools.get(name); if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) input = { ...input, space: turnSpace }; }
-    let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    /** @type {any} */ let teamResult = null;
+    if (turnSpace && input && typeof input === "object" && !Array.isArray(input) && input.space === undefined) {
+      const def = registry.tools.get(name);
+      if (def && def.input && def.input.properties && Object.hasOwn(def.input.properties, "space")) input = { ...input, space: turnSpace };
+      else if (def && /^mcp(:|$)/.test(String(caller))) {
+        // A tool with no `space` of its own, called by a model in a team chat's turn, never lands in the home: it runs in the chat's Space, as the member, only if it declares it may (`crossSpace`, which that
+        // Space's own authorize then checks); judged as the caller class the model came in as. Any other tool says so.
+        const h = /** @type {any} */ (kernelOf && kernelOf() && kernelOf().spaces && kernelOf().spaces.for(turnSpace));
+        if (def.crossSpace && h && h.hosted === true && h.surfaces) { try { teamResult = await registry.callInSpace({ name: "vyred" }, turnSpace, { gateway: h.gateway }, name, input, await h.surfaces.chainFor(sessionToken), String(caller)); } catch (e) { teamResult = { error: { code: "denied", message: String(/** @type {any} */ (e).message || "refused") } }; } }
+        else teamResult = { error: { code: "not_in_team_space", message: `${name} does not act in a team chat's Space, and a team chat's tools never act in the home: name the Space it is for, or use a tool made for teams` } };
+      }
+    }
+    let result = teamResult || await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       idempotencyKey: idemKey(req), ...(yesHeader(req) ? { yes: yesHeader(req) } : {}), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };

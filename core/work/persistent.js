@@ -11,7 +11,9 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message, /** @ty
 
 /** @param {{ db: any, kernel: () => any, agentOf: (chain: any, chat: string) => Promise<string[]> }} o */
 export function createPersistent({ db, kernel, agentOf }) {
-  db.exec("CREATE TABLE IF NOT EXISTS work_persistent (person TEXT NOT NULL, kind TEXT NOT NULL, chat TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (person, kind))");
+  // The module's store follows the Space a call runs in (a team Space has a file of its own), so the table is made on every use of the file the call is for, not once at start.
+  const ensure = () => db.exec("CREATE TABLE IF NOT EXISTS work_persistent (person TEXT NOT NULL, kind TEXT NOT NULL, chat TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (person, kind))");
+  ensure();
   const personOf = (/** @type {any} */ chain) => { const h = chain && chain.hops && chain.hops.length === 1 ? chain.hops[0] : null; if (!h || h.actor.kind !== "person") throw fail("not_allowed", "a persistent chat is a person's own: it is asked for by that person, directly"); return h.actor; };
   /** May this person have a chat of this kind: anyone for the assistant, an owner or an admin for the Engineer. */
   const mayHave = (/** @type {any} */ person, /** @type {string} */ kind) => {
@@ -20,7 +22,7 @@ export function createPersistent({ db, kernel, agentOf }) {
     return role === "owner" || role === "admin";
   };
   const kindOk = (/** @type {unknown} */ k) => { if (!KINDS.includes(/** @type {string} */ (k))) throw fail("bad_input", `kind is one of ${KINDS.join(", ")}`); return /** @type {string} */ (k); };
-  const row = (/** @type {string} */ person, /** @type {string} */ kind) => db.prepare("SELECT chat FROM work_persistent WHERE person = ? AND kind = ?").get(person, kind);
+  const row = (/** @type {string} */ person, /** @type {string} */ kind) => (ensure(), db).prepare("SELECT chat FROM work_persistent WHERE person = ? AND kind = ?").get(person, kind);
 
   return {
     /** @param {any} chain @param {{ kind: string }} i */
@@ -46,6 +48,6 @@ export function createPersistent({ db, kernel, agentOf }) {
     /** The caller's pinned chats, by chat id. @param {string} person @returns {Map<string, string>} */
     /** Is this chat that person's pinned assistant or Engineer chat? The one fact vyred asks before it opens a session with the assistant's authority. @param {string} person @param {string} chat @returns {string | null} */
     kindOf(person, chat) { const r = /** @type {any} */ (row(person, "assistant")), e = /** @type {any} */ (row(person, "engineer")); return r && String(r.chat) === chat ? "assistant" : e && String(e.chat) === chat ? "engineer" : null; },
-    pinnedOf(person) { return new Map(db.prepare("SELECT chat, kind FROM work_persistent WHERE person = ?").all(person).map((/** @type {any} */ r) => [String(r.chat), String(r.kind)])); },
+    pinnedOf(person) { ensure(); return new Map(db.prepare("SELECT chat, kind FROM work_persistent WHERE person = ?").all(person).map((/** @type {any} */ r) => [String(r.chat), String(r.kind)])); },
   };
 }

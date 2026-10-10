@@ -968,8 +968,8 @@ export class Registry {
     });
   }
 
-  /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain */
-  async callInSpace(m, space, base, tool, input, chain) {
+  /** @param {any} m @param {string} space @param {any} base the hosted handle @param {string} tool @param {any} input @param {any} chain @param {string} [originOverride] */
+  async callInSpace(m, space, base, tool, input, chain, originOverride) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!def.crossSpace) return { error: { code: "not_declared", message: `${tool} does not declare that it may run in another Space` } };
@@ -978,7 +978,8 @@ export class Registry {
     try { verdict = await base.gateway.authorize({ chain, action: def.crossSpace, resource: `vyre://${space}/tool/${tool}` }); } catch { verdict = null; }
     if (!verdict || verdict.effect !== "allow") return { error: { code: "denied", message: "you have no right to do that in that Space" } };
     // judged as the caller class the running call came from, as ctx.call does: a module acting for a person is the person's reach, never more
-    const origin = captureOrigin();
+    // the daemon's edge, for a model running a team chat's turn, says which caller class the call came from (`originOverride`); a module's own hop keeps the running call's
+    const origin = originOverride || captureOrigin();
     return this.call(tool, input, `module:${m.name}`, { ...(origin ? { origin } : {}), [IN_SPACE]: { space, chain } });
   }
 
