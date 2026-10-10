@@ -137,18 +137,23 @@ export function registerPlaceTools(ctx, d) {
   d.moveThread = async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const thread = threadOf(i);
     if (i.to !== "server" && i.to !== "mac") throw refuse("move to mac or to server", "bad_input");
-    const { person } = await who(meta, i.space);
+    const { person, chain } = await who(meta, i.space);
     const hit = find(thread, i.space, person);
-    if (!hit) {
+    // a chat that began on the server, or one that came back to it from a computer, goes out to a computer: its whole turns go to a ready computer of the person's, which carries it on from there
+    const goingOut = i.to === "mac" && (!hit || (hit.row.person === person && hit.row.where === "server"));
+    if (!hit || goingOut) {
       if (i.to === "server") return answer(null);
-      // a chat that began on the server: its whole turns go to a ready computer of the person's, which carries it on from there
       const p0 = placements();
       if (typeof p0.adopt !== "function") throw refuse("Coming in this release: a chat that began on the server cannot be moved to a computer yet; leave it on the server for now", "unavailable");
       const space = i.space || p0.spaces()[0];
       if (!space) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
-      if (!(await mineChat((await who(meta, space)).chain, thread))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
-      try { await p0.adopt(space, { thread, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
-      const placed = find(thread, space, person);
+      const named = /** @type {any} */ (await ctx.call("threads.chat-thread", { thread }).catch(() => null));
+      const at = named && named.data;
+      if (!at || !(await mineChat(chain, String(at.chat || thread)))) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");
+      // the chat's process on this server ends first (refused while it is working), so its next turn starts on the computer
+      { const left = /** @type {any} */ (await ctx.call("threads.leave-box", { thread: at.thread }).catch((/** @type {any} */ e) => ({ error: { message: e && e.message } }))); if (left && left.error) throw refuse(String(left.error.message || "that chat is busy: let it finish, then move it"), "conflict"); }
+      try { await p0.adopt(space, { thread: String(at.thread), chat: at.chat ? String(at.chat) : null, person }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "that chat cannot move now"), /** @type {any} */ (e).code === "conflict" ? "conflict" : "unavailable"); }
+      const placed = find(String(at.thread), space, person);
       return answer(placed ? placed.row : null);
     }
     if (hit.row.person !== person) throw refuse("no such chat (work.chat.list shows the ones you may see)", "not_found");

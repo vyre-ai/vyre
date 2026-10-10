@@ -155,6 +155,14 @@
         "reach": "modules"
       },
       {
+        "name": "threads.chat-thread",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.leave-box",
+        "reach": "modules"
+      },
+      {
         "name": "threads.lineage",
         "reach": "modules"
       },
