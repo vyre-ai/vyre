@@ -17,6 +17,7 @@
 //                   and says back the answers it got
 //   "plan"          asks ExitPlanMode with a sample plan (steps, what it will not touch, the files);
 //                   says it starts building if allowed, else that it keeps planning (with the note)
+//   "tooluse2 <a> <b>"  two finished tool calls, then a reply
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
 //                   a TodoWrite, then a markdown reply
 //   "limit"         on a setup token, fails as a subscription at its limit would
@@ -474,6 +475,15 @@ async function turn(prompt, uuid = null) {
   if (tooluse) {
     out({ type: "assistant", message: { id: "m-tool", role: "assistant", content: [{ type: "tool_use", id: "tu-x", name: tooluse[1], input: {} }] } });
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
+    await say("done"); return result(true, "done");
+  }
+  // "tooluse2 <name1> <name2>": two finished tool calls in one turn, then a reply (what "Turn this into a Flow" is offered after).
+  const tooluse2 = /^tooluse2 (\S+) (\S+)$/.exec(p);
+  if (tooluse2) {
+    for (const [i, name] of [tooluse2[1], tooluse2[2]].entries()) {
+      out({ type: "assistant", message: { id: `m-t2-${i}`, role: "assistant", content: [{ type: "tool_use", id: `tu-t2-${i}`, name, input: {} }] } });
+      out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: `tu-t2-${i}`, content: "ok" }] } });
+    }
     await say("done"); return result(true, "done");
   }
   // "tooljson <name> <json>": a finished tool call whose result is that JSON, as a Vyre MCP tool's is (the rollover test reads the receipt it leaves), then a reply.

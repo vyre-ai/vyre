@@ -67,6 +67,8 @@ export function createFolder() {
   let sawStatus = false;
   /** Where the turn in progress began in `rows`, and when (-1 while none is). */
   let turnFrom = -1, turnAt = 0;
+  /** A group chat's turn (it has no status frames): the row after the person's last message, and that message's key. */
+  let turnUserAt = -1, turnUserKey = "";
   /** @type {Set<string>} */ const open = new Set();
   const groupState = () => {
     if (sawStatus || !participants.size) return;
@@ -164,6 +166,7 @@ export function createFolder() {
           const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(Array.isArray(d.attachments) && d.attachments.length ? { attachments: d.attachments.filter((/** @type {any} */ a) => a && typeof a.name === "string").map((/** @type {any} */ a) => ({ id: String(a.id), name: a.name, mime: String(a.mime || ""), bytes: Number(a.bytes) || 0 })) } : {}), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...(typeof f.time === "number" ? { at: f.time } : {}), ...(typeof d.tz === "string" && d.tz ? { tz: d.tz } : {}), ...who(f), ...(d.parent ? { parent: d.parent } : {}), ...quoteFromData(d) };
           if (put(key, "user", it)) out.layout = true;
           else { items.set(key, it); }
+          if (d.state !== "cancelled") { turnUserAt = rows.findIndex((r) => r.key === key) + 1; turnUserKey = key; }
           touch(key);
         }
         break;
@@ -194,6 +197,17 @@ export function createFolder() {
         touch(key);
         break;
       }
+      case "step-summary": {
+        // A group chat has no status frames; a step that closes is the cursored sign that the assistant did something. What the turn did so far is one line, kept under its last message.
+        if (sawStatus || turnUserAt < 0) break;
+        const sum = turnSummary(rows.slice(turnUserAt).map((r) => items.get(r.key)), 0);
+        if (!sum) break;
+        const key = "z:" + turnUserKey;
+        const row = { key, kind: "turnsummary", ...sum };
+        if (put(key, "turnsummary", row)) out.layout = true; else items.set(key, row);
+        touch(key);
+        break;
+      }
       case "text-done": {
         const key = "a:" + (f.message ?? d.message);
         const it = items.get(key);
@@ -201,6 +215,9 @@ export function createFolder() {
         if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
         const rk = "r:" + (f.message ?? d.message) + ":" + (d.index ?? 0);
         if (items.has(rk) && patch(rk, { done: true })) touch(rk);
+        // the turn's line stays under the turn's last message
+        const zk = "z:" + turnUserKey;
+        if (turnUserKey && items.has(zk)) { const at = rows.findIndex((r) => r.key === zk); if (at >= 0 && at !== rows.length - 1) { const [r] = rows.splice(at, 1); rows.push(r); layoutRev++; out.layout = true; } }
         // The reply's cited fields (field-ref, drawn per viewer by the server into field blocks): one block row each, after its text.
         if (Array.isArray(d.blocks)) {
           d.blocks.slice(0, 8).forEach((/** @type {any} */ b, /** @type {number} */ i) => {
