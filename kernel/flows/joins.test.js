@@ -6,6 +6,7 @@ import { world, install, settle, ALEX, BOB } from "./testing/world.js";
 import { checkFlow } from "./schema.js";
 import { printLines, parseLines } from "./lines.js";
 import { sameFlow } from "./text.js";
+import { explainRun } from "./describe.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 const flowOf = (steps, extra = {}) => ({ format: 1, name: "par", authorship: "human", trigger: { on: "event", event: "payment.received" }, steps, ...extra });
@@ -29,6 +30,7 @@ test("parallel: both lanes start at once and the step after waits for all of the
   const [parent] = await roots(w, id);
   assert.equal(parent.state, "waiting", "the left lane waits for a person, so the parent waits");
   assert.equal(parent.waiting.kind, "children");
+  assert.match(explainRun(parent, (await w.runner.store.getVersion(parent.flow, parent.version)).flow), /waiting for the runs p started to finish/);
   assert.equal(mine(w, "matter").length, 1, "the right lane ran at once");
   assert.equal(mine(w, "payment").length, 0, "the step after the join has not run");
   const lanes = await kids(w, id);

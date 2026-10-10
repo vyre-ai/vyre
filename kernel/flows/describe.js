@@ -100,7 +100,7 @@ export function explainRun(run, flow) {
   else if (run.state === "failed") parts.push(`It stopped at ${label(err ? err.step : "?")} (${err ? err.code : "an error"}); retry it, skip that step, or stop the run.`);
   else if (run.state === "paused") parts.push(`It is paused${err ? ` at ${label(err.step)}` : ""}.`);
   else if (run.state === "queued") parts.push(`It is held (${String(run.queued && run.queued.reason || "waiting its turn").replace(/_/g, " ")}) and starts, in order, when it can.`);
-  else if (run.state === "waiting" && w) parts.push(w.kind === "task" ? `It is waiting for ${(idx.get(String(w.step || "").replace(/\?.*$/, "")) || {}).kind === "ask" || String(w.step || "").endsWith("?ask") ? "a person's yes" : "a person"} on ${label(w.step)}.` : w.kind === "time" ? "It is waiting for a time." : `It is waiting for ${w.event || "an event"}.`);
+  else if (run.state === "waiting" && w) parts.push(w.kind === "task" ? `It is waiting for ${(idx.get(String(w.step || "").replace(/\?.*$/, "")) || {}).kind === "ask" || String(w.step || "").endsWith("?ask") ? "a person's yes" : "a person"} on ${label(w.step)}.` : w.kind === "time" ? "It is waiting for a time." : w.kind === "children" ? `It is waiting for the runs ${label(w.step)} started to finish.` : `It is waiting for ${w.event || "an event"}.`);
   else if (run.state === "waiting") parts.push("It is waiting.");
   else parts.push("It is running.");
   if (run.attention && run.attention.kind) parts.push(`Needs attention: ${run.attention.kind}.`);
