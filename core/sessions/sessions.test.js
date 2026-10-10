@@ -37,11 +37,18 @@ import { paths } from "../config/index.js";
 import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
 // The module harness here has no inference door: providers run on the legacy direct path. The door path is lib/door-bridge.test.js.
 process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
+// This file runs 149 cases and took over nine minutes, past the 300 s per-file limit. The cases in the driver loop
+// are dealt out to eight files (this one and sessions-b to sessions-h.test.js, which set VYRE_SESSIONS_SHARD and import this module);
+// the cases above the loop run in the first only.
+const SHARDS = 8;
+const SHARD = Number(process.env.VYRE_SESSIONS_SHARD ?? 0);
+let dealt = 0;
+const shardTest = (...a) => (dealt++ % SHARDS === SHARD ? test(...a) : undefined);
 
 
 // ------------------------------------------------------------ pure parts
 
-test("config: the approved defaults per machine, and overrides", () => {
+(SHARD === 0 ? test : () => {})("config: the approved defaults per machine, and overrides", () => {
   const was = process.env.VYRE_SESSIONS_DRIVER;
   delete process.env.VYRE_SESSIONS_DRIVER;
   try {
@@ -67,7 +74,7 @@ test("config: the approved defaults per machine, and overrides", () => {
   } finally { if (was !== undefined) process.env.VYRE_SESSIONS_DRIVER = was; }
 });
 
-test("sdk options: the same launch the CLI runner turns into flags", () => {
+(SHARD === 0 ? test : () => {})("sdk options: the same launch the CLI runner turns into flags", () => {
   const base = { id: "11111111-2222-3333-4444-555555555555", cwd: "/w", env: {} };
   const o = optionsFor({ ...base, plugin: "/h", plugins: ["/l"], model: "m", name: "Intake", system: { mode: "append", text: "Your name is juno." }, budgetUsd: 2, bin: "/c" });
   assert.equal(o.sessionId, base.id);
@@ -82,7 +89,7 @@ test("sdk options: the same launch the CLI runner turns into flags", () => {
   assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
 });
 
-test("optionsFor: the Agent SDK loads only Vyre's own MCP server, strictly, with or without the plugin", () => {
+(SHARD === 0 ? test : () => {})("optionsFor: the Agent SDK loads only Vyre's own MCP server, strictly, with or without the plugin", () => {
   const base = { id: "11111111-1111-4111-8111-111111111111", cwd: "/w", env: {} };
   const withPlugin = optionsFor({ ...base, plugin: "/h" });
   assert.equal(withPlugin.strictMcpConfig, true);
@@ -92,7 +99,7 @@ test("optionsFor: the Agent SDK loads only Vyre's own MCP server, strictly, with
   assert.deepEqual(bare.mcpServers, {});
 });
 
-test("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
+(SHARD === 0 ? test : () => {})("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
   assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
   assert.deepEqual(PERSON_MODES, ["default", "acceptEdits", "plan", "bypassPermissions"]);
   const offered = [{ type: "setMode", mode: "bypassPermissions", destination: "session" }, { type: "setMode", mode: "acceptEdits", destination: "session" },
@@ -100,7 +107,7 @@ test("modes: an answer never hands back bypassPermissions; only a person picks i
   assert.deepEqual(safePermissions(offered).map(x => x.mode || x.type), ["acceptEdits", "addRules"]);
 });
 
-test("bind: on Linux the hook's parent is dash's `sh -c`, and the claude above it is bound", t => {
+(SHARD === 0 ? test : () => {})("bind: on Linux the hook's parent is dash's `sh -c`, and the claude above it is bound", t => {
   const root = tempHome(t);
   const db = openStore(path.join(root, "vyre.db"));
   t.after(() => db.close());
@@ -117,14 +124,14 @@ test("bind: on Linux the hook's parent is dash's `sh -c`, and the claude above i
   assert.ok(shellCommand("/bin/sh -c x") && shellCommand("dash -c x") && !shellCommand("/bin/sh script.sh"));
 });
 
-test("callers: a Vyre-owned session's MCP caller is an mcp caller, like an agent's", () => {
+(SHARD === 0 ? test : () => {})("callers: a Vyre-owned session's MCP caller is an mcp caller, like an agent's", () => {
   assert.equal(callerKind("mcp:thread:0f3a-11"), "mcp");
   assert.equal(callerKind("mcp:agent:juno"), "mcp");
   assert.equal(callerAllowed(["cli", "mcp"], "mcp:thread:0f3a-11"), true);
   assert.equal(callerAllowed(["cli", "deck"], "mcp:thread:0f3a-11"), false);
 });
 
-test("models: Opus for real work, the fast model for quick answers and jobs; purpose from the launch", () => {
+(SHARD === 0 ? test : () => {})("models: Opus for real work, the fast model for quick answers and jobs; purpose from the launch", () => {
   assert.equal(purposeOf({}, null), "chat");
   assert.equal(purposeOf({}, "harlow-legal"), "project");
   assert.equal(purposeOf({ agent: "kit" }, null), "agent");
@@ -133,14 +140,14 @@ test("models: Opus for real work, the fast model for quick answers and jobs; pur
   assert.equal(purposeOf({ purpose: "capsule", lean: true }, null), "capsule");
 });
 
-test("conformance: the CLI runner passes the provider contract", async t => {
+(SHARD === 0 ? test : () => {})("conformance: the CLI runner passes the provider contract", async t => {
   const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const fails = await conform(claudeProvider({ sdk: null, bin: FAKE }), { id: crypto.randomUUID(), cwd, env: { ...process.env } });
   assert.deepEqual(fails, []);
 });
 
-test("conformance: the Agent SDK driver passes the provider contract", { skip: noSdk }, async t => {
+(SHARD === 0 ? test : () => {})("conformance: the Agent SDK driver passes the provider contract", { skip: noSdk }, async t => {
   const cwd = fs.mkdtempSync(path.join(SCRATCH, "vyre-conform-"));
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const module = await loadSdk(SDK);
@@ -148,7 +155,7 @@ test("conformance: the Agent SDK driver passes the provider contract", { skip: n
   assert.deepEqual(fails, []);
 });
 
-test("providers: a module adds one through its manifest, with no core change, and a session runs on it", async t => {
+(SHARD === 0 ? test : () => {})("providers: a module adds one through its manifest, with no core change, and a session runs on it", async t => {
   const runner = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "runner.js");
   const w = await boot(t, { modules: [{ name: "echo-provider", manifest: { does: { providers: ["echo"] } }, source: `
     import { argsFor, run } from ${JSON.stringify(runner)};
@@ -166,7 +173,7 @@ test("providers: a module adds one through its manifest, with no core change, an
   assert.match(none.error.message, /echo/);
 });
 
-test("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {
+(SHARD === 0 ? test : () => {})("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {
   const w = await boot(t, { sessions: { limits: { max_subagents: 1 } } });
   const rules = (session, id) => w.tool("harness.rules", { tool_name: "Agent", tool_input: { description: "read the menu", prompt: "read the menu" }, session, tool_use_id: id, cwd: w.work }, "harness");
   const s1 = "11111111-1111-4111-8111-111111111111", s2 = "22222222-2222-4222-8222-222222222222";
@@ -188,7 +195,7 @@ test("slots: a terminal session's subagent takes a slot through the plugin's hoo
 for (const driver of ["cli", "sdk"]) {
   const skip = driver === "sdk" ? noSdk : false;
 
-  test(`${driver}: a thread runs on the ${driver} driver and says so`, { skip }, async t => {
+  shardTest(`${driver}: a thread runs on the ${driver} driver and says so`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -197,7 +204,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(w.launches()[0].argv.includes("--session-id"));
   });
 
-  test(`${driver}: the system prompt, at three levels, versioned, reaches the next session`, { skip }, async t => {
+  shardTest(`${driver}: the system prompt, at three levels, versioned, reaches the next session`, { skip }, async t => {
     const w = await boot(t, { driver });
     const set = (scope, text, mode, caller) => w.tool("sessions.prompt.set", { scope, text, ...(mode ? { mode } : {}) }, caller);
     assert.equal((await set("assistant", "Answer alex in short paragraphs.")).data.version, 1);
@@ -232,7 +239,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(p.mode, "replace");
   });
 
-  test(`${driver}: interrupt ends the turn and cancels its question; the thread takes the next message`, { skip }, async t => {
+  shardTest(`${driver}: interrupt ends the turn and cancels its question; the thread takes the next message`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
     const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
@@ -251,7 +258,7 @@ for (const driver of ["cli", "sdk"]) {
   // queued words over on any thread.finished, cancelled or not, unless st.stopping is set (a
   // hard threads.stop, not this soft threads.interrupt) - so it should, but nothing tested the
   // combination end to end.
-  test(`${driver}: a message queued while a turn runs is still handed over when Stop ends that turn`, { skip }, async t => {
+  shardTest(`${driver}: a message queued while a turn runs is still handed over when Stop ends that turn`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
     await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
@@ -267,7 +274,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual((await w.tool("threads.queue", { thread: th.id })).data.queued, [], "nothing left waiting");
   });
 
-  test(`${driver}: an idle session is closed and comes back on the next message`, { skip }, async t => {
+  shardTest(`${driver}: an idle session is closed and comes back on the next message`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { idle_minutes: 0.02 } });           // 1.2 s
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -289,7 +296,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resumed[resumed.indexOf("--resume") + 1], th.id, "resumed, same session");
   });
 
-  test(`${driver}: a real crash (killed, not stopped) is said as failed, and the next message still resumes it`, { skip }, async t => {
+  shardTest(`${driver}: a real crash (killed, not stopped) is said as failed, and the next message still resumes it`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -311,7 +318,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.said(th.id)).includes("echo: back after the crash"));
   });
 
-  test(`${driver}: the cap closes the longest-idle session to make room, and refuses when all are busy`, { skip }, async t => {
+  shardTest(`${driver}: the cap closes the longest-idle session to make room, and refuses when all are busy`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { max_live: 1 } });
     const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello" })).data;
     await w.finished(a.id);
@@ -327,7 +334,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(c.error.message, /sessions\.max_live/);
   });
 
-  test(`${driver}: the box's own credential: the vault's setup token, the API key behind it`, { skip }, async t => {
+  shardTest(`${driver}: the box's own credential: the vault's setup token, the API key behind it`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" },
       vault: { "claude-setup-token": "fake-setup-value", "anthropic-api-key": "fake-api-value" } });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;
@@ -343,7 +350,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
   });
 
-  test(`${driver}: accounts: a session runs on the account it resolves to, its credential from the vault, and a removed account is never a silent fallback`, { skip }, async t => {
+  shardTest(`${driver}: accounts: a session runs on the account it resolves to, its credential from the vault, and a removed account is never a silent fallback`, { skip }, async t => {
     const w = await boot(t, { driver, vault: { "work-token": "fake-work-value", "other-token": "fake-other-value" } });
     for (const n of ["Harlow Legal", "Northwind"]) assert.equal((await w.tool("projects.create", { name: n, home: path.join(w.work, n.split(" ")[0].toLowerCase()) })).error, undefined);
     const wr = await w.tool("sessions.accounts.add", { provider: "claude", label: "Harlow work", kind: "setup-token", vault_item: "work-token", scope: { projects: ["harlow-legal"], agents: "*" } });
@@ -371,7 +378,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
   });
 
-  test(`${driver}: account.changed is announced when an AI account becomes usable or goes, with no credential in it, and never for a label edit`, { skip }, async t => {
+  shardTest(`${driver}: account.changed is announced when an AI account becomes usable or goes, with no credential in it, and never for a label edit`, { skip }, async t => {
     const w = await boot(t, { driver, vault: { "work-token": "fake-work-value" } });
     /** @type {any[]} */ const seen = [];
     const off = w.d.events.on("*", /** @type {any} */ e => { if (e.type === "account.changed") seen.push(e.payload); });
@@ -391,7 +398,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.accounts.remove", { id: login.id })).error, undefined);
   });
 
-  test(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
+  shardTest(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null);
     assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: "*" })).error, undefined);
@@ -417,7 +424,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(named.error && named.error.code, "bad_input", JSON.stringify(named));
   });
 
-  test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
+  shardTest(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
     const w = await boot(t, { driver });
     noMemoryBlocks(w);
     // A stand-in `grok` first on PATH: the fake ACP agent, its sessions kept in a folder.
@@ -462,7 +469,7 @@ for (const driver of ["cli", "sdk"]) {
     t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   };
 
-  test(`${driver}: a Grok or Codex thread gets memory.prompt's blocks ahead of the person's words, scoped by the thread's own project and agent`, { skip }, async t => {
+  shardTest(`${driver}: a Grok or Codex thread gets memory.prompt's blocks ahead of the person's words, scoped by the thread's own project and agent`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
@@ -484,7 +491,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(asked[1].first, false);
   });
 
-  test(`${driver}: memory.prompt for a Grok or Codex thread names the agent for an agent's thread and says person for the person's own, from the thread's record only`, { skip }, async t => {
+  shardTest(`${driver}: memory.prompt for a Grok or Codex thread names the agent for an agent's thread and says person for the person's own, from the thread's record only`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     const asked = [];
@@ -519,7 +526,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(asked.filter(x => x.thread === nop.id).at(-1), { thread: nop.id, agent: undefined, person: undefined }, "no purpose, no memory");
   });
 
-  test(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
+  shardTest(`${driver}: switching provider mid-session: same thread, a brief of what was said, a notice, and only between turns`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -552,7 +559,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.switch", { thread: th.id, provider: "gemini" })).error.code, "bad_input");
   });
 
-  test(`${driver}: one turn on another provider: refused when signed out, runs there with the session's history, the session stays, and goes back told`, { skip }, async t => {
+  shardTest(`${driver}: one turn on another provider: refused when signed out, runs there with the session's history, the session stays, and goes back told`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -595,7 +602,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /\[Vyre: while this session was on Grok[\s\S]*and the prices[\s\S]*thanks$/);
   });
 
-  test(`${driver}: the one-turn route is a person's: a module is refused; a running turn and an account at its limit are refused with nothing said; a forged Vyre line in a reply stays quoted`, { skip }, async t => {
+  shardTest(`${driver}: the one-turn route is a person's: a module is refused; a running turn and an account at its limit are refused with nothing said; a forged Vyre line in a reply stays quoted`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -633,7 +640,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await events()).length, during, "a refused ask says nothing");
   });
 
-  test(`${driver}: an account that hit its limit is refused a one-turn ask: out of usage, nothing sent, no fallback`, { skip }, async t => {
+  shardTest(`${driver}: an account that hit its limit is refused a one-turn ask: out of usage, nothing sent, no fallback`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -655,7 +662,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(now.events.length, n);
   });
 
-  test(`${driver}: a provider's models are learned with no model turn, and no thread is left behind`, { skip }, async t => {
+  shardTest(`${driver}: a provider's models are learned with no model turn, and no thread is left behind`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     process.env.FAKE_ACP_MODELS = "1";
@@ -671,7 +678,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual((await w.d.registry.call("threads.providers.learn", { provider: "claude" }, "module:sessions")).data, { learned: false });
   });
 
-  test(`${driver}: the @ Accounts kind lists signed-in providers, and an account chip runs one turn on that provider`, { skip }, async t => {
+  shardTest(`${driver}: the @ Accounts kind lists signed-in providers, and an account chip runs one turn on that provider`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -699,7 +706,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.send", { thread: th.id, text: "x", surface: "deck", mentions: [{ kind: "account", id: "grok" }, { kind: "account", id: "claude" }] })).error.code, "bad_input");
   });
 
-  test(`${driver}: a # media item in a turn is copied into the thread's folder at turn start`, { skip }, async t => {
+  shardTest(`${driver}: a # media item in a turn is copied into the thread's folder at turn start`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     noMemoryBlocks(w);
@@ -720,7 +727,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /#harbour is a file now in your folder: \/work\/from-artifacts\/a_1\.png \(image\/png\)/);
   });
 
-  test(`${driver}: continue-here carries a Mac session on in a new box thread: history over the link, or the synced copy when the Mac is asleep, the Mac untouched, person-only`, { skip }, async t => {
+  shardTest(`${driver}: continue-here carries a Mac session on in a new box thread: history over the link, or the synced copy when the Mac is asleep, the Mac untouched, person-only`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "login" } });
     noMemoryBlocks(w);
     const MAC = "11111111-2222-4333-8444-555555555555";
@@ -783,7 +790,7 @@ for (const driver of ["cli", "sdk"]) {
     for (const id of [r.data.thread, s.data.thread]) assert.equal((await w.tool("threads.get", { thread: id })).error, undefined, "both continued threads exist");
   });
 
-  test(`${driver}: continue-here for a provider with no account on this server points to Settings > Your AI and makes no thread`, { skip }, async t => {
+  shardTest(`${driver}: continue-here for a provider with no account on this server points to Settings > Your AI and makes no thread`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     const MAC = "22222222-2222-4333-8444-555555555555";
@@ -798,7 +805,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(r.error.message, /^There is no Grok account on this server yet\. Add one in Settings > Your AI, then carry this session on again\.$/);
   });
 
-  test(`${driver}: continue-here treats a Mac's words as data: its name is cleaned, an unknown provider is Claude, an unknown project is a plain folder, and no Claude credentials is account_required`, { skip }, async t => {
+  shardTest(`${driver}: continue-here treats a Mac's words as data: its name is cleaned, an unknown provider is Claude, an unknown project is a plain folder, and no Claude credentials is account_required`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "login" } });
     noMemoryBlocks(w);
     const MAC = "33333333-2222-4333-8444-555555555555";
@@ -833,7 +840,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(none.error.message, /^There is no Claude account on this server yet\. Add one in Settings > Your AI/);
   });
 
-  test(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {
+  shardTest(`${driver}: two switches of one thread at once make one process: the second is busy`, { skip }, async t => {
     const w = await boot(t, { driver });
     withGrok(t, w);
     assert.equal((await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).error, undefined);
@@ -847,7 +854,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(both.filter(x => !x.error).length, 1);
   });
 
-  test(`${driver}: routing: a limit moves the thread to the next entry of its list, and says why`, { skip }, async t => {
+  shardTest(`${driver}: routing: a limit moves the thread to the next entry of its list, and says why`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { auth: "setup-token" }, vault: { "claude-setup-token": "fake-setup-value" } });
     withGrok(t, w);
     // A list naming Grok with no Grok account set up: a limit moves nowhere (never onto a login nobody made).
@@ -869,7 +876,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.text" && e.payload.notice && /^Claude's limit was reached\. Switched to Grok\. It has this session's memory and files\./.test(e.payload.text)), JSON.stringify(ev.filter(e => e.payload && e.payload.notice)));
   });
 
-  test(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {
+  shardTest(`${driver}: threads.busy says whether a turn streams in a folder, for github's Undo; a session's worktree branch is kept on its record`, { skip }, async t => {
     const w = await boot(t, { driver });
     // A stand-in github module: a session in a project gets a worktree and a branch.
     const wt = path.join(w.work, "wt-1");
@@ -895,7 +902,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.notEqual((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "an interrupt, not a stop");
   });
 
-  test(`${driver}: threads.origin says a session is a person's only from the Switchboard's own record`, { skip }, async t => {
+  shardTest(`${driver}: threads.origin says a session is a person's only from the Switchboard's own record`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     const ask = id => w.d.registry.call("threads.origin", { session: id }, "module:vyred");
@@ -905,7 +912,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.origin", { session: th.id })).error.code, "no_such_tool", "modules only");
   });
 
-  test(`${driver}: threads.archive stops a thread and has github clean its worktree; threads.unarchive makes the worktree again; a resume of an archived thread is refused`, { skip }, async t => {
+  shardTest(`${driver}: threads.archive stops a thread and has github clean its worktree; threads.unarchive makes the worktree again; a resume of an archived thread is refused`, { skip }, async t => {
     const w = await boot(t, { driver });
     const wt = path.join(w.work, "wt-arch");
     fs.mkdirSync(wt, { recursive: true });
@@ -942,7 +949,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.includes("thread.archived") && ev.includes("thread.unarchived"));
   });
 
-  test(`${driver}: a person's turn is said and its #mentions become "use" intents; an agent's, a module's and a queued teammate's words are never said`, { skip }, async t => {
+  shardTest(`${driver}: a person's turn is said and its #mentions become "use" intents; an agent's, a module's and a queued teammate's words are never said`, { skip }, async t => {
     const w = await boot(t, { driver });
     const calls = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
@@ -987,7 +994,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(calls.length, 2, "no grant from a pasted span");
   });
 
-  test(`${driver}: a # tag of any kind is resolved by its provider for this thread, said as thread.mentioned, and told to the model as data`, { skip }, async t => {
+  shardTest(`${driver}: a # tag of any kind is resolved by its provider for this thread, said as thread.mentioned, and told to the model as data`, { skip }, async t => {
     const w = await boot(t, { driver });
     const resolved = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
@@ -1013,13 +1020,13 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resolved.length, before);
   });
 
-  test(`${driver}: VYRE_OPENROUTER_URL moves the key only to this machine`, () => {
+  shardTest(`${driver}: VYRE_OPENROUTER_URL moves the key only to this machine`, () => {
     assert.equal(testBase("http://127.0.0.1:4010"), true);
     assert.equal(testBase("http://localhost:4010"), true);
     for (const u of ["https://evil.example/api", "http://evil.example", "http://127.0.0.1.evil.example", "", undefined, "not a url"]) assert.equal(testBase(u), false, String(u));
   });
 
-  test(`${driver}: # tags ride with the first prompt of threads.start and with agents.ask, heard as any person's turn, and from nobody else`, { skip }, async t => {
+  shardTest(`${driver}: # tags ride with the first prompt of threads.start and with agents.ask, heard as any person's turn, and from nobody else`, { skip }, async t => {
     const w = await boot(t, { driver });
     const resolved = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
@@ -1058,7 +1065,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resolved.length, before2, "a module cannot tag for a person");
   });
 
-  test(`${driver}: a person's "open a PR" or "merge it" records an act_out intent through the assistant's prIntents, bound to github's composite target, and nothing in doubt`, { skip }, async t => {
+  shardTest(`${driver}: a person's "open a PR" or "merge it" records an act_out intent through the assistant's prIntents, bound to github's composite target, and nothing in doubt`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [], asked = [];
     let prs = [7];
@@ -1112,7 +1119,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(recorded.length, 0);
   });
 
-  test(`${driver}: REAL REGISTRY, no stubs: a typed #VaultItem is granted to the thread through vault, end to end`, { skip }, async t => {
+  shardTest(`${driver}: REAL REGISTRY, no stubs: a typed #VaultItem is granted to the thread through vault, end to end`, { skip }, async t => {
     const w = await boot(t, { driver, vault: { GHLapikey: "fake-ghl-value" } });
     // vault refuses a caller it does not list; the turn is heard by the threads module. Until vault lists it, this cannot pass.
     // A hard test: vault lists module:threads as a resolver, and this fails loudly if that ever regresses.
@@ -1138,7 +1145,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.events(th.id)).filter(e => e.type === "thread.mentioned").length, 1);
   });
 
-  test(`${driver}: REAL VAULT, github stood in: "merge it" is recorded by the real vault and its match covers that PR and no other`, { skip }, async t => {
+  shardTest(`${driver}: REAL VAULT, github stood in: "merge it" is recorded by the real vault and its match covers that PR and no other`, { skip }, async t => {
     const w = await boot(t, { driver });
     // A hard test: vault lists module:threads as a recorder, and this fails loudly if that ever regresses.
     const probe = await w.d.registry.call("vault.said.record", { thread: "probe", said: "probe", kind: "act_out", to: ["x.y:z"], what: "probe" }, "module:threads");
@@ -1175,7 +1182,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await match("github.project.pr.review:alex/app#7")).matched, false, "another tool");
   });
 
-  test(`${driver}: a queued message keeps the note its tags made and hands it over with the words; an edit is heard only when the composer says which spans were pasted`, { skip }, async t => {
+  shardTest(`${driver}: a queued message keeps the note its tags made and hands it over with the words; an edit is heard only when the composer says which spans were pasted`, { skip }, async t => {
     const w = await boot(t, { driver });
     const resolved = [];
     const realCall = w.d.registry.call.bind(w.d.registry);
@@ -1214,7 +1221,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(resolved.length, 2);
   });
 
-  test(`${driver}: editing or taking back queued words revokes what the original words recorded, so an agent is not covered by words the person no longer stands behind`, { skip }, async t => {
+  shardTest(`${driver}: editing or taking back queued words revokes what the original words recorded, so an agent is not covered by words the person no longer stands behind`, { skip }, async t => {
     const w = await boot(t, { driver });
     // Vault stood in: a use intent per tag heard, listable and revocable, recorded against the message's said id.
     const intents = [];
@@ -1255,7 +1262,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(live(), ["i4"], "delivered words stand");
   });
 
-  test(`${driver}: REAL VAULT, github stood in: queue "merge it", edit it to "wait": the merge is no longer covered; take a queued "merge it" back: same`, { skip }, async t => {
+  shardTest(`${driver}: REAL VAULT, github stood in: queue "merge it", edit it to "wait": the merge is no longer covered; take a queued "merge it" back: same`, { skip }, async t => {
     const w = await boot(t, { driver });
     const realCall = w.d.registry.call.bind(w.d.registry);
     w.d.registry.call = async (tool, input, caller, meta) => {
@@ -1286,7 +1293,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(await covered(), false, "no pasted key: not heard");
   });
 
-  test(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
+  shardTest(`${driver}: a person's "retire the designer" or "fill the design role with kit" records an act_out for the team key the project really has, through the assistant's teamIntents, and nothing for words that name none of it`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [];
     const PROJECT_RECORD = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f"; // the Project record's id: team's rows (and so its asked-for keys) are keyed by it
@@ -1334,7 +1341,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(recorded.length, 0);
   });
 
-  test(`${driver}: a person's "turn on the inbox watcher" records an act_out for watchers.create bound to the card shown in this thread (name and hash), through the assistant's watchersIntents, and nothing for a card not shown, a model's call or pasted words`, { skip }, async t => {
+  shardTest(`${driver}: a person's "turn on the inbox watcher" records an act_out for watchers.create bound to the card shown in this thread (name and hash), through the assistant's watchersIntents, and nothing for a card not shown, a model's call or pasted words`, { skip }, async t => {
     const w = await boot(t, { driver });
     const recorded = [], fresh = [];
     let shown = { kinds: ["mail", "calendar", "repo", "slack", "feed"], watchers: [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail", state: "draft", project: "harlow-legal", at: Date.now() - 60_000 }] };
@@ -1367,7 +1374,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(recorded.length, 0);
   });
 
-  test(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
+  shardTest(`${driver}: threads.lineage lists the threads a thread was started for, from what vyred verified and never from a claim`, { skip }, async t => {
     const w = await boot(t, { driver });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const root = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
@@ -1386,7 +1393,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.lineage", { thread: sub.id })).error.code, "no_such_tool", "modules only");
   });
 
-  test(`${driver}: signing in: the provider's own login runs as the account, the code comes back to show, and the account is signed in only when it finishes`, { skip }, async t => {
+  shardTest(`${driver}: signing in: the provider's own login runs as the account, the code comes back to show, and the account is signed in only when it finishes`, { skip }, async t => {
     const w = await boot(t, { driver });
     const bin = path.join(w.root, "shim2");
     fs.mkdirSync(bin);
@@ -1409,7 +1416,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.accounts.signin", { provider: "gemini" })).error.code, "bad_input");
   });
 
-  test(`${driver}: OpenRouter is the last rung: an API-key account answers a thread with no process, and a limit on Claude reaches it through the routing list`, { skip }, async t => {
+  shardTest(`${driver}: OpenRouter is the last rung: an API-key account answers a thread with no process, and a limit on Claude reaches it through the routing list`, { skip }, async t => {
     // A local OpenAI-compatible endpoint standing in for OpenRouter.
     const http = await import("node:http");
     const srv = http.createServer((req, res) => {
@@ -1439,7 +1446,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /^router: /);
   });
 
-  test(`${driver}: threads.delete removes the thread, its events and the OpenRouter conversation, and says thread.deleted`, { skip }, async t => {
+  shardTest(`${driver}: threads.delete removes the thread, its events and the OpenRouter conversation, and says thread.deleted`, { skip }, async t => {
     const http = await import("node:http");
     const srv = http.createServer((req, res) => { req.resume(); req.on("end", () => { res.writeHead(200, { "content-type": "text/event-stream" }); res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "kept" } }] })}\n\ndata: [DONE]\n\n`); res.end(); }); });
     await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
@@ -1463,7 +1470,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.tool("threads.delete", { thread: th.id })).error, "a second delete finds nothing");
   });
 
-  test(`${driver}: accounts: an agent is refused, the assistant may only start an account (project-scoped, pending, unusable until the person finishes), remove is the person's, bind is limited to the asked project`, { skip }, async t => {
+  shardTest(`${driver}: accounts: an agent is refused, the assistant may only start an account (project-scoped, pending, unusable until the person finishes), remove is the person's, bind is limited to the asked project`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "kit", projects: [] })).error, undefined);
@@ -1509,7 +1516,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).error, undefined, "the person adds directly");
   });
 
-  test(`${driver}: a model session cannot stop, delete or read another project's thread, may stop a child it started, a plain mcp caller starts threads and handles only those it started (never delete or rewind), and the verified assistant still can`, { skip }, async t => {
+  shardTest(`${driver}: a model session cannot stop, delete or read another project's thread, may stop a child it started, a plain mcp caller starts threads and handles only those it started (never delete or rewind), and the verified assistant still can`, { skip }, async t => {
     const w = await boot(t, { driver });
     for (const [name, dir] of [["Harlow Legal", "harlow"], ["Northwind Bakery", "northwind"]]) assert.equal((await w.tool("projects.create", { name, home: path.join(w.work, dir) })).error, undefined);
     const mk = async o => { const th = (await w.tool("threads.start", { prompt: "hello", surface: "deck", ...o })).data; await w.finished(th.id); return th.id; };
@@ -1586,7 +1593,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.d.registry.call("agents.stop", { agent: "kit" }, "mcp:agent:juno", { agent: "juno", agentKind: "assistant", granted: "*", thread: a1 })).error?.code, "denied", "stopping an agent is the person's, the assistant's included");
   });
 
-  test(`${driver}: thread.taint: a tool result from outside or from the person's private things flags the thread for good, per what the tool is; a fork inherits it; nothing clears it`, { skip }, async t => {
+  shardTest(`${driver}: thread.taint: a tool result from outside or from the person's private things flags the thread for good, per what the tool is; a fork inherits it; nothing clears it`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { max_live: 0 } });
     const mk = async tool => { const r = await w.tool("threads.start", { cwd: w.work, prompt: tool ? `tooluse ${tool}` : "hello", surface: "deck" }); assert.equal(r.error, undefined, `${tool}: ${JSON.stringify(r.error)}`); await w.finished(r.data.id); return r.data.id; };
     const taint = async id => (await w.tool("threads.get", { thread: id })).data.thread.taint;
@@ -1610,7 +1617,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(await taint(fork.id), { outside: true, private: true }, "a fork inherits");
   });
 
-  test(`${driver}: a session starts strict: Vyre's own MCP server only, so none of the account's claude.ai connectors (Gmail, Drive, Docs) is in its tools`, { skip }, async t => {
+  shardTest(`${driver}: a session starts strict: Vyre's own MCP server only, so none of the account's claude.ai connectors (Gmail, Drive, Docs) is in its tools`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1621,7 +1628,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(Object.keys(cfg.mcpServers), ["vyre"]);
   });
 
-  test(`${driver}: a GitHub project's session gets its commit identity and hooks in its environment on every launch and resume (github.session.env), and only those keys`, { skip }, async t => {
+  shardTest(`${driver}: a GitHub project's session gets its commit identity and hooks in its environment on every launch and resume (github.session.env), and only those keys`, { skip }, async t => {
     const w = await boot(t, { driver });
     const env = { GIT_AUTHOR_NAME: "Dana (Harlow)", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "Dana (Harlow)", GIT_COMMITTER_EMAIL: "dana@example.com",
       GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.hooksPath", GIT_CONFIG_VALUE_0: "/tmp/hooks-x", LD_PRELOAD: "/evil.so", GIT_SSH_COMMAND: "evil" };
@@ -1648,7 +1655,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual([second.git.name, second.git.count, second.git.k0], ["Dana (Harlow)", "1", "core.hooksPath"]);
   });
 
-  test(`${driver}: a GIT_CONFIG_COUNT already in vyred's environment is appended to, never overwritten, by the session's hooks entry`, { skip }, async t => {
+  shardTest(`${driver}: a GIT_CONFIG_COUNT already in vyred's environment is appended to, never overwritten, by the session's hooks entry`, { skip }, async t => {
     const saved = { c: process.env.GIT_CONFIG_COUNT, k: process.env.GIT_CONFIG_KEY_0, v: process.env.GIT_CONFIG_VALUE_0 };
     Object.assign(process.env, { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "user.useConfigOnly", GIT_CONFIG_VALUE_0: "true" });
     t.after(() => { for (const [k, v] of [["GIT_CONFIG_COUNT", saved.c], ["GIT_CONFIG_KEY_0", saved.k], ["GIT_CONFIG_VALUE_0", saved.v]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
@@ -1667,7 +1674,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual([g.count, g.k0, g.k1], ["2", "user.useConfigOnly", "core.hooksPath"], "the existing entry stays at 0 and the hooks entry is 1");
   });
 
-  test(`${driver}: sessions.files.read: a file in an account's own folder is read as the account and returned as bytes; a link, an outside path, a non-provider folder and a person's call are refused`, { skip }, async t => {
+  shardTest(`${driver}: sessions.files.read: a file in an account's own folder is read as the account and returned as bytes; a link, an outside path, a non-provider folder and a person's call are refused`, { skip }, async t => {
     const w = await boot(t, { driver });
     const acct = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
     const home = path.join(w.root, "accounts", acct.id);
@@ -1688,7 +1695,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.files.read", { account: acct.id, file: rel })).error.code, "no_such_tool", "a person cannot call it");
   });
 
-  test(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
+  shardTest(`${driver}: generated media a tool call returns is saved as an artifact of the thread: bytes in the stream as they are, a provider's file read as the account, nothing else`, { skip }, async t => {
     const w = await boot(t, { driver });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Second", kind: "login" })).data;
@@ -1727,7 +1734,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(evs.some(e => /Could not save a generated file/.test(String(e.payload.text))), "the refused path says so once in the thread");
   });
 
-  test(`${driver}: a generated file from a Grok account is registered with that account's privacy mode (zdr when on, off when off)`, { skip }, async t => {
+  shardTest(`${driver}: a generated file from a Grok account is registered with that account's privacy mode (zdr when on, off when off)`, { skip }, async t => {
     const w = await boot(t, { driver });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     withGrok(t, w);
@@ -1752,7 +1759,7 @@ for (const driver of ["cli", "sdk"]) {
     }
   });
 
-  test(`${driver}: a Grok account's privacy choice defaults to on, only the person sets it, and the rows say plainly what it means`, { skip }, async t => {
+  shardTest(`${driver}: a Grok account's privacy choice defaults to on, only the person sets it, and the rows say plainly what it means`, { skip }, async t => {
     const w = await boot(t, { driver });
     const g = (await w.tool("sessions.accounts.add", { provider: "grok", label: "Grok", kind: "login" })).data;
     const c = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Codex", kind: "login" })).data;
@@ -1770,7 +1777,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await row(g.id)).privacy, false);
   });
 
-  test(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
+  shardTest(`${driver}: a label never grants the assistant's powers: a client labelled mcp:agent:juno with no verified agent is refused, the real assistant with no thread record yet passes`, { skip }, async t => {
     const w = await boot(t, { driver });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined); // no thread record yet
@@ -1807,7 +1814,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(String(swapped.error && swapped.error.message), /only the assistant/);
   });
 
-  test(`${driver}: a hook names only its own session: harness.stop, brief, enrich, learn, rules and touched on another session's id are refused`, { skip }, async t => {
+  shardTest(`${driver}: a hook names only its own session: harness.stop, brief, enrich, learn, rules and touched on another session's id are refused`, { skip }, async t => {
     const w = await boot(t, { driver });
     const mk = async () => { const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data; await w.finished(th.id); return th.id; };
     const a = await mk(), b = await mk();
@@ -1821,7 +1828,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.notEqual((await w.d.registry.call("harness.touched", { session: crypto.randomUUID() }, "harness", {})).error?.code, "denied");
   });
 
-  test(`${driver}: threads.bind refuses a pid that is not the caller's own process, one above it or one it started`, { skip }, async t => {
+  shardTest(`${driver}: threads.bind refuses a pid that is not the caller's own process, one above it or one it started`, { skip }, async t => {
     const w = await boot(t, { driver });
     // A process this test did NOT start (an orphan, as another session's claude would be): started by a shell that exits, so its parent is init.
     const starter = spawn("sh", ["-c", `${JSON.stringify(process.execPath)} -e "setTimeout(()=>{},30000)" >/dev/null 2>&1 & echo $!`], { stdio: ["ignore", "pipe", "ignore"] });
@@ -1834,7 +1841,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match(String(r.error && r.error.message), /own process/);
   });
 
-  test(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
+  shardTest(`${driver}: from inside a session, a person-only call is refused, even claiming to be the CLI`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "forge cli sessions.prompt.set", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1845,7 +1852,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("sessions.prompt.get", { scope: "assistant" })).data.prompt, null, "nothing was set");
   });
 
-  test(`${driver}: open in terminal hands an idle session over to claude --resume, and a busy one is left alone`, { skip }, async t => {
+  shardTest(`${driver}: open in terminal hands an idle session over to claude --resume, and a busy one is left alone`, { skip }, async t => {
     const w = await boot(t, { driver });
     const bin = path.join(w.root, "fakebin");
     fs.mkdirSync(bin);
@@ -1866,7 +1873,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "vyred let go of it first");
   });
 
-  test(`${driver}: the floor refuses a session's write to its own permission settings before anyone is asked`, { skip }, async t => {
+  shardTest(`${driver}: the floor refuses a session's write to its own permission settings before anyone is asked`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "settings", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1877,7 +1884,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(said.includes("I was not allowed to."));
   });
 
-  test(`${driver}: only a person changes a session's mode; no answer and no model ever reaches bypassPermissions`, { skip }, async t => {
+  shardTest(`${driver}: only a person changes a session's mode; no answer and no model ever reaches bypassPermissions`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1894,7 +1901,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.match((await w.said(th.id)).at(-1), /^403 .*denied/, "from inside the session, even as the CLI");
   });
 
-  test(`${driver}: "Doesn't ask": a person turns it on with no prompt, nothing is asked, and the floor still refuses`, { skip }, async t => {
+  shardTest(`${driver}: "Doesn't ask": a person turns it on with no prompt, nothing is asked, and the floor still refuses`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1923,7 +1930,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.mode", { thread: lean.id, mode: "bypassPermissions" }, "deck")).error.code, "refused");
   });
 
-  test(`${driver}: a project's default mode: set by the person, taken by new sessions there`, { skip }, async t => {
+  shardTest(`${driver}: a project's default mode: set by the person, taken by new sessions there`, { skip }, async t => {
     const w = await boot(t, { driver });
     assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
     assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "mcp")).error.code, "denied", "a model never sets it");
@@ -1941,7 +1948,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.events(b.id)).find(e => e.type === "thread.started").payload.mode, "default");
   });
 
-  test(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {
+  shardTest(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { subreaper: TINI } });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -1958,7 +1965,7 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => !(await w.internal("threads.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
   });
 
-  test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
+  shardTest(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
     const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
       export default { async start(ctx) {
         ctx.tool("whoami.me", { callers: ["mcp"], input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
@@ -1990,7 +1997,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(w2.launches().at(-1).socket, null);
   });
 
-  test(`${driver}: an agent's calls carry the grant vyred stored for it, whatever the session's own env or input says`, { skip }, async t => {
+  shardTest(`${driver}: an agent's calls carry the grant vyred stored for it, whatever the session's own env or input says`, { skip }, async t => {
     const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
       export default { async start(ctx) {
         ctx.tool("whoami.me", { callers: ["mcp"], input: { type: "object" }, run: async (i, meta) => ({ agent: meta.agent || null, granted: meta.granted ?? null, kind: meta.agentKind ?? null, said: i.projects ?? null }) });
@@ -2015,7 +2022,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(JSON.parse((await w.said(th.id)).at(-1)).data.granted, "*");
   });
 
-  test(`${driver}: the Capsule's quick answer is Vyre Memory: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
+  shardTest(`${driver}: the Capsule's quick answer is Vyre Memory: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
     const w = await boot(t, { driver });
     // What an older Capsule sends: its own instruction lines around the facts (dropped).
     const append = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.\n\n"
@@ -2056,7 +2063,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(cl.max_thinking, null);
   });
 
-  test(`${driver}: the model comes from the purpose map, a project override and an agent, and the chip says it`, { skip }, async t => {
+  shardTest(`${driver}: the model comes from the purpose map, a project override and an agent, and the chip says it`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { models: { capsule: "claude-haiku-4-5" } } });
     const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(a.id);

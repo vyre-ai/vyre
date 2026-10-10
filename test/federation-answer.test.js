@@ -23,8 +23,9 @@ fs.chmodSync(FAKE, 0o755);
 
 /** A box (harlow-box) and a Mac (alex-mac) with the Switchboard's fake claude, the Mac holding its request. */
 async function world(t) {
-  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  const env = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   process.env.VYRE_CLAUDE_BIN = FAKE;
+  process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // the sandbox check reaches the provider over the internet; these cases are about the link, not the sandbox
   delete process.env.FAKE_CLAUDE_LOG;
   t.after(() => { for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const s = await pair(t, { macTranscripts: [], boxName: "harlow-box", macHost: "alex-mac" });

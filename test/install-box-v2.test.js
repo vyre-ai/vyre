@@ -39,6 +39,8 @@ function box(t, opts = {}) {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
     VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
     VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
+    // the stub box answers the check words at once or never (the sudo retry starts at the third ask): the installer waits for them up to 180 tries, about 3 minutes, otherwise
+    VYRE_WORDS_TRIES: "4",
     // Never the machine's own units: on a host that runs a real Vyre the uninstall sees them and keeps the wrapper.
     VYRE_SYSTEMD_DIR: path.join(base, "systemd"),
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.

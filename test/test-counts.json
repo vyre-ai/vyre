@@ -865,7 +865,7 @@
  "test/peer-race.test.js": 13,
  "test/peer.test.js": 26,
  "test/person-only-guard.test.js": 3,
- "test/person.test.js": 9,
+ "test/person.test.js": 2,
  "test/presence-bypass.test.js": 9,
  "test/presence-cli.test.js": 4,
  "test/project-arg.test.js": 2,
