@@ -113,7 +113,12 @@ export function createGatewayStore({ rpc }) {
       const { proof, ...rest } = approval;
       return one(await write(TOOLS.decide, { id, ...rest }, { proof }), "task");
     },
-    async submit(id, evidence) { return one(await write(TOOLS.submit, { id, evidence }), "task"); },
+    // The kernel lets a doer hand in only what it has started (ready -> working -> done). A person pressing Mark done on a task that is still ready means both, so the start is made here.
+    async submit(id, evidence) {
+      const cur = one(await rpc.read(TOOLS.task, { id }), "task");
+      if (cur && typeof cur === "object" && cur.state === "ready") await write(TOOLS.move, { id, to: "working" });
+      return one(await write(TOOLS.submit, { id, evidence }), "task");
+    },
     // The daemon derives the transition (start, stuck, skip, fix) from the kernel's own rules: the screen names where it wants to go.
     async move(id, to, _by, o = {}) { return one(await write(TOOLS.move, { id, to, ...o }), "task"); },
     async reassign() { throw Object.assign(new Error("Reassigning a task is not available on this Vyre yet."), { code: "invalid" }); },
