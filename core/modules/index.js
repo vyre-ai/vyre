@@ -1543,7 +1543,7 @@ export class Registry {
     // assistant (a session of the person's, no named agent: a named agent has its own grants) and only for tools it may otherwise reach; the check is the assistant module's, which keeps the person's rows.
     // No assistant module running means nothing was narrowed. A check that fails is a refusal: never a way round the person's limit.
     if (!door && claimsAgent(caller) && proven(meta) && !(meta.agent && meta.agentKind !== "assistant") && !(agentClaim(caller) && meta.agentKind !== "assistant")) {
-      const chk = this.tools.get("assistants.access.check");
+      const chk = this.tools.get("assistant.access.check");
       if (chk) {
         let said = null;
         try { said = await chk.run({ tool }, { ...meta, caller: "module:registry" }); }

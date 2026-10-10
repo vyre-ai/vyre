@@ -28,12 +28,12 @@ async function world(/** @type {import("node:test").TestContext} */ t) {
 test("probe", async t => {
   const w = await world(t);
   console.log("MOD", JSON.stringify(((await w.person("system.modules", {})).data || {}).modules?.filter?.(m => /assist/.test(m.name)) ?? await w.person("system.modules", {})).slice(0, 400));
-  console.log("PERSON get", JSON.stringify(await w.person("assistants.access.get", {})));
-  console.log("ASSIST get", JSON.stringify(await w.assistant("assistants.access.get", {})));
+  console.log("PERSON get", JSON.stringify(await w.person("assistant.access.get", {})));
+  console.log("ASSIST get", JSON.stringify(await w.assistant("assistant.access.get", {})));
   console.log("ASSIST types before", JSON.stringify((await w.assistant("records.types", {})).error || "ok"));
-  console.log("PERSON narrow", JSON.stringify(await w.person("assistants.access.narrow", { tools: ["records.*"] })));
+  console.log("PERSON narrow", JSON.stringify(await w.person("assistant.access.narrow", { tools: ["records.*"] })));
   console.log("ASSIST types after", JSON.stringify((await w.assistant("records.types", {})).error || "ok"));
   console.log("PERSON types after", JSON.stringify((await w.person("records.types", {})).error || "ok"));
-  console.log("ASSIST narrow", JSON.stringify((await w.assistant("assistants.access.narrow", { tools: ["vault.*"] })).error));
+  console.log("ASSIST narrow", JSON.stringify((await w.assistant("assistant.access.narrow", { tools: ["vault.*"] })).error));
   assert.ok(true);
 });

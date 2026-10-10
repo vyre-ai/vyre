@@ -156,13 +156,13 @@ export default {
     const rowsOf = person => db.prepare("SELECT kind, name, at FROM assistant_access WHERE person = ? ORDER BY name").all(person);
     const accessProps = { assistant: { type: "string", enum: ["assistant"], description: "Whose access: the person's own assistant." }, tools: { type: "array", items: { type: "string" }, description: "Tool names, or a family like records.*." }, screens: { type: "array", items: { type: "string" }, description: "Areas: vault, mail, records, files, flows, projects, documents, publish, connections, memory, calendar." } };
 
-    ctx.tool("assistants.access.get", {
+    ctx.tool("assistant.access.get", {
       description: "What the person has turned off for their own assistant: { assistant, tools: [{ name, at }], screens: [{ id, label, off }] }. The assistant may read it to say why something was refused.",
       input: { type: "object", properties: { assistant: accessProps.assistant } },
       run: async (_i, meta = {}) => stateOf(rowsOf(await personOf(meta, false))),
     });
 
-    ctx.tool("assistants.access.narrow", {
+    ctx.tool("assistant.access.narrow", {
       description: "Turn off tools, a family of tools (records.*) or a whole area (screens) for the person's own assistant. It only ever makes the assistant's access smaller; nothing here gives it more, and only the person can call it. Answers the new state.",
       input: { type: "object", properties: accessProps },
       run: async (i, meta = {}) => {
@@ -179,7 +179,7 @@ export default {
       },
     });
 
-    ctx.tool("assistants.access.restore", {
+    ctx.tool("assistant.access.restore", {
       description: "Turn tools, a family or an area back on for the person's own assistant: the person's own yes, never the assistant's. Answers the new state.",
       input: { type: "object", properties: accessProps },
       presence: { summary: () => "Let your assistant use these again" },
@@ -195,7 +195,7 @@ export default {
     });
 
     // The registry's own question before an assistant's call runs (core/modules/index.js): is this tool turned off for the person this assistant acts for?
-    ctx.tool("assistants.access.check", {
+    ctx.tool("assistant.access.check", {
       description: "For the registry only: whether a tool is turned off for the assistant acting for this person. { stopped, words }.",
       input: { type: "object", properties: { tool: { type: "string" } }, required: ["tool"] },
       callers: ["module"],

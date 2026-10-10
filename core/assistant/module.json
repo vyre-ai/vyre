@@ -52,22 +52,22 @@
         "effect": "read"
       },
       {
-        "name": "assistants.access.get",
+        "name": "assistant.access.get",
         "reach": "anyone",
         "effect": "read"
       },
       {
-        "name": "assistants.access.narrow",
+        "name": "assistant.access.narrow",
         "reach": "person",
         "effect": "write"
       },
       {
-        "name": "assistants.access.restore",
+        "name": "assistant.access.restore",
         "reach": "person",
         "effect": "write"
       },
       {
-        "name": "assistants.access.check",
+        "name": "assistant.access.check",
         "reach": "modules",
         "effect": "read",
         "internal": true
