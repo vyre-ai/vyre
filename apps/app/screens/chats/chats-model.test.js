@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, sampleChats } from "./chats-model.js";
+import { withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, chatsView, sampleChats } from "./chats-model.js";
 
 test("work.chat.list rows become one row type; the id comes from the record address; a row with no open flag is not openable", () => {
   const rows = chatsFrom({ rows: [
@@ -81,4 +81,16 @@ test("your assistant's pinned chat is always first and the Engineer's chat is no
   ] });
   assert.deepEqual(chatsOrdered(chatsShown(rows)).map((r) => r.id), ["c2", "c1", "c4"]);
   assert.equal(rows.find((r) => r.id === "c3")?.pinned, "engineer");
+});
+
+test("a person who has chats sees them with the gap above; the gap fills the page only when there is nothing else", () => {
+  const gap = { title: "Nothing can approve yet" };
+  const row = { id: "c1" };
+  assert.deepEqual(chatsView({ from: "live", gap, rows: [row], live: true }), { body: "list", banner: true });
+  assert.deepEqual(chatsView({ from: "live", gap: null, rows: [row], live: true }), { body: "list", banner: false });
+  assert.deepEqual(chatsView({ from: "live", gap, rows: [], live: true }), { body: "gap", banner: false });
+  assert.deepEqual(chatsView({ from: "none", gap: null, rows: [], live: true }), { body: "loading", banner: false });
+  assert.deepEqual(chatsView({ from: "none", gap: null, rows: [], live: false }), { body: "offline", banner: false });
+  assert.deepEqual(chatsView({ from: "live", gap: null, rows: [], live: true }), { body: "empty", banner: false });
+  assert.deepEqual(chatsView({ from: "unsupported", gap, rows: [row], live: true }), { body: "unsupported", banner: false });
 });

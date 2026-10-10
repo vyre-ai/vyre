@@ -58,6 +58,23 @@ export const urnOf = (v) => (v && typeof v === "object" ? String(v.urn || "") : 
 /** The actor id of an actor value. @param {any} v */
 export const actorIdOf = (v) => (v && typeof v === "object" ? String(v.actor?.id || v.id || "") : String(v || ""));
 
+/** An id the kernel made (per_..., agt_..., a long token): never a thing to read on a screen. */
+const looksInternal = (/** @type {string} */ id) => /^[a-z]{2,5}_[A-Za-z0-9_-]{8,}$/.test(id) || /^[A-Za-z0-9_-]{20,}$/.test(id);
+
+/**
+ * Who an actor cell reads as: "You" for the signed-in person, the actor's name when it is known (the screen's actors, else the name the value carries), a plain word for an id nobody
+ * resolved, and the text itself when it was never an id (a name typed by hand).
+ * @param {any} value @param {{ actors?: { id: string, name: string }[], me?: string }} env
+ */
+export function actorName(value, env) {
+  const id = actorIdOf(value);
+  if (!id) return "";
+  if (env.me && id === env.me) return "You";
+  const known = (env.actors || []).find((x) => x.id === id);
+  const carried = value && typeof value === "object" ? String(value.actor?.name || value.name || "") : "";
+  return known?.name || carried || (looksInternal(id) ? "Someone" : id);
+}
+
 /** A date value (an ISO day, a full ISO time or milliseconds) as a local Date, or null. @param {any} v */
 export function toDate(v) {
   if (isEmpty(v)) return null;

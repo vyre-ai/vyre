@@ -12,7 +12,7 @@ export const REASON_WORDS = /** @type {Record<string, string>} */ ({
 /** The reason in words; a code this app does not know says nothing (the line stays "Moved to the server."), never the code. */
 const why = (/** @type {string | null | undefined} */ r) => (r ? REASON_WORDS[r] || "" : "");
 
-/** @typedef {{ where: "mac" | "server", computer?: string, reason?: string | null, since?: number | null, state?: "here" | "moving" | "server" | "locked" | "updating" | "paused", offer?: "mac" | null, epoch?: number }} Placement */
+/** @typedef {{ where: "mac" | "server", computer?: string, reason?: string | null, since?: number | null, state?: "here" | "moving" | "server" | "locked" | "updating" | "paused", offer?: "mac" | null, pinned?: boolean, pin?: "server" | "mac" | null, epoch?: number }} Placement */
 
 /**
  * The chip on a session. Tapping it offers the other place. While it is moving the chip says only that; "locked", "updating" and "paused" say so without a menu; and when the lid has opened the
@@ -24,6 +24,8 @@ export function chipOf(p) {
   const mac = p.where === "mac";
   const name = (p.computer || "").trim();
   const fixed = (/** @type {string} */ label, /** @type {"ok" | "plain"} */ tone = "plain") => ({ label, tone, moveTo: /** @type {"mac" | "server" | null} */ (null), moveLabel: "", why: "" });
+  // A session kept where it is (contracts/runner.md: pinned, read only in v1) offers no move; the chip says it stays.
+  if (p.pinned && p.state !== "moving") return { ...fixed(mac ? (name ? `On ${name}` : "On this Mac") : "On the server", mac ? "ok" : "plain"), why: mac ? "it is kept on this Mac" : "it is kept on the server" };
   if (p.state === "moving") return fixed("Moving");
   if (p.state === "locked") return fixed("Locked");
   if (p.state === "updating") return fixed("This Mac is updating");
@@ -68,16 +70,18 @@ export function switchNote(s) {
   return `Sessions may run on this Mac${s.pluggedInOnly ? " while it is plugged in" : ""}, up to ${s.cpuPercent}% of the processor and ${s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`} of memory. Past a limit, a session moves to the server and carries on.`;
 }
 
-/** The sessions running here, for the Settings page and the menu bar. @param {any} d */
+/** The sessions running here, for the Settings page and the menu bar. The box words each row's second line and accessory (`line`, `cpu`: runner.here in contracts/runner.md), so the Lumen list and this list read the same; an older box sends the numbers only. @param {any} d */
 export function pickHere(d) {
   const list = Array.isArray(d) ? d : d && Array.isArray(d.sessions) ? d.sessions : [];
   return list.filter((/** @type {any} */ x) => x && typeof x.thread === "string").map((/** @type {any} */ x) => ({
     thread: String(x.thread), title: String(x.title || "A session"), computer: typeof x.computer === "string" ? x.computer : "", state: /** @type {"running" | "waiting" | "paused"} */ (x.state === "waiting" || x.state === "paused" ? x.state : "running"),
-    cpuPercent: typeof x.cpuPercent === "number" ? Math.round(x.cpuPercent) : 0, memoryMb: typeof x.memoryMb === "number" ? Math.round(x.memoryMb) : 0 }));
+    cpuPercent: typeof x.cpuPercent === "number" ? Math.round(x.cpuPercent) : 0, memoryMb: typeof x.memoryMb === "number" ? Math.round(x.memoryMb) : 0,
+    ...(typeof x.line === "string" && x.line ? { line: x.line } : {}), ...(typeof x.cpu === "string" && x.cpu ? { cpu: x.cpu } : {}) }));
 }
 
-/** One row of the list: the title and what it is using. @param {ReturnType<typeof pickHere>[number]} s */
+/** One row of the list: the title and what it is using, in the box's own words when it sent them. @param {ReturnType<typeof pickHere>[number]} s */
 export function hereLine(s) {
+  if (s.line) return { title: s.title, sub: s.line };
   const mem = s.memoryMb >= 1024 ? `${Math.round(s.memoryMb / 102.4) / 10} GB` : `${s.memoryMb} MB`;
   return { title: s.title, sub: `${s.state === "paused" ? "Paused" : s.state === "waiting" ? "Waiting for you" : "Running"}, ${s.cpuPercent}% processor, ${mem}` };
 }
@@ -91,5 +95,5 @@ const STATES = ["here", "moving", "server", "locked", "updating", "paused"];
 export function pickPlacement(d) {
   if (!d || (d.where !== "mac" && d.where !== "server")) return null;
   return { where: d.where, ...(typeof d.computer === "string" && d.computer ? { computer: d.computer } : {}), reason: typeof d.reason === "string" ? d.reason : null, since: typeof d.since === "number" ? d.since : null,
-    ...(STATES.includes(d.state) ? { state: d.state } : {}), ...(d.offer === "mac" ? { offer: /** @type {"mac"} */ ("mac") } : {}), ...(Number.isInteger(d.epoch) ? { epoch: d.epoch } : {}) };
+    ...(STATES.includes(d.state) ? { state: d.state } : {}), ...(d.offer === "mac" ? { offer: /** @type {"mac"} */ ("mac") } : {}), ...(d.pinned === true ? { pinned: true, pin: d.pin === "mac" ? /** @type {"mac"} */ ("mac") : /** @type {"server"} */ ("server") } : {}), ...(Number.isInteger(d.epoch) ? { epoch: d.epoch } : {}) };
 }

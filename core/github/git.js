@@ -447,8 +447,13 @@ const SECRET_PATTERNS = [
 export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
   const diff = await gitAsync(repoDir, ["diff", "--unified=0", `refs/heads/${defaultBranch}...refs/heads/${branch}`]);
   if (!diff.ok) return null; // can't diff (no such branch, no such default) - the push call itself will fail plainly next
+  return scanDiffText(diff.stdout);
+}
+
+/** The first hit in a zero-context diff's added lines, or null. @param {string} text */
+function scanDiffText(text) {
   let file = null, line = 0;
-  for (const l of diff.stdout.split("\n")) {
+  for (const l of text.split("\n")) {
     if (l.startsWith("+++ ")) { file = l.slice(6).replace(/^b\//, ""); continue; }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)/.exec(l);
     if (hunk) { line = Number(hunk[1]); continue; }
@@ -457,6 +462,17 @@ export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
     line++;
   }
   return null;
+}
+
+/**
+ * Scan everything a branch holds (a first push has no default branch to subtract) for a known secret shape. Same patterns and same answer as scanOutgoing. Local only.
+ * @param {{ repoDir: string, branch: string }} p
+ */
+export async function scanWholeBranch({ repoDir, branch }) {
+  const empty = await gitAsync(repoDir, ["hash-object", "-t", "tree", "/dev/null"]);
+  if (!empty.ok) return null;
+  const diff = await gitAsync(repoDir, ["diff", "--unified=0", empty.stdout.trim(), `refs/heads/${branch}`]);
+  return diff.ok ? scanDiffText(diff.stdout) : null;
 }
 
 /**
@@ -478,11 +494,24 @@ export async function scanOutgoing({ repoDir, branch, defaultBranch }) {
  */
 export async function pushSession({ repoDir, session, defaultBranch, token, fullName, allowSecret = false, base = "https://github.com", inspect }) {
   const branch = `vyre/${safeSegment(session, "session id")}`;
-  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(fullName || "")) || /(^|\/)\.\.?$/.test(fullName)) throw fail("the project's recorded repo name is not owner/name", "bad_input");
+  checkFullName(fullName);
   if (!allowSecret) {
     const hit = await scanOutgoing({ repoDir, branch, defaultBranch });
     if (hit) return { pushed: false, blocked: "secret", ...hit };
   }
+  return pushLocalBranch({ repoDir, branch, token, fullName, base, inspect });
+}
+
+/** @param {unknown} fullName */
+function checkFullName(fullName) {
+  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(String(fullName || "")) || /(^|\/)\.\.?$/.test(String(fullName))) throw fail("the project's recorded repo name is not owner/name", "bad_input");
+}
+
+/**
+ * Push one local branch to the same name on `<base>/<fullName>.git`, from a throwaway bare repo that borrows the objects (the isolation described on pushSession). No force, one refspec.
+ * @param {{ repoDir: string, branch: string, token: string, fullName: string, base?: string, inspect?: (tmp: string) => void }} p
+ */
+async function pushLocalBranch({ repoDir, branch, token, fullName, base = "https://github.com", inspect }) {
   const url = `${base}/${fullName}.git`;
   const refspec = `refs/heads/${branch}:refs/heads/${branch}`;
   const sha = await gitAsync(repoDir, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
@@ -504,7 +533,7 @@ export async function pushSession({ repoDir, session, defaultBranch, token, full
     if (r.ok) {
       // Keep "is this commit on a remote" (worktree cleanup's safety check) true after a push by URL.
       await gitAsync(repoDir, ["update-ref", `refs/remotes/origin/${branch}`, sha.stdout.trim()]);
-      return { pushed: true, branch };
+      return { pushed: true, branch, commit: sha.stdout.trim() };
     }
     if (/\[rejected\]|non-fast-forward|fetch first/i.test(r.stderr)) {
       return { pushed: false, blocked: "non_fast_forward", detail: r.stderr.trim().slice(0, 300) };
@@ -513,6 +542,25 @@ export async function pushSession({ repoDir, session, defaultBranch, token, full
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
+}
+
+/**
+ * Get a folder ready to be the first push of a new repo, before anything is made on GitHub: the folder becomes a repo with a starting commit (or keeps its own history), nothing secret-looking is
+ * swept in (`left_out` names what was kept out), and what would go is scanned for secrets (`hit`). Local only.
+ * @param {{ dir: string }} p @returns {Promise<{ branch: string, left_out: string[], hit: null | { pattern: string, file: string, line: number } }>}
+ */
+export async function prepareFirstPush({ dir }) {
+  const init = await localInit(dir);
+  return { branch: init.branch, left_out: init.left_out, hit: await scanWholeBranch({ repoDir: dir, branch: init.branch }) };
+}
+
+/**
+ * Send that branch to `<base>/<fullName>.git`, the repo just made (same isolation and token handling as pushSession). Answers { pushed, branch, commit } or { pushed: false, blocked: ... }.
+ * @param {{ dir: string, branch: string, fullName: string, token: string, base?: string }} p
+ */
+export async function pushFirst({ dir, branch, fullName, token, base = "https://github.com" }) {
+  checkFullName(fullName);
+  return pushLocalBranch({ repoDir: dir, branch, token, fullName, base });
 }
 
 /** File names never swept into the starting commit of a project Vyre turns into a repo. */

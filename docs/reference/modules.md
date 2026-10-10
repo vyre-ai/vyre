@@ -45,7 +45,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
-| [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
+| [`github`](#github) | `core/github` | `box`, `local` | 35 | 9 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`goals`](#goals) | `core/goals` | `box`, `local` | 5 | 5 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 21 | 7 | capsule, cli, deck |
@@ -312,6 +312,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Shows on: no surface
 - Needs credentials: `[object Object]`
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`
 
 ## computer
 
@@ -390,6 +391,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Tools: [8](tools.md#documents)
 - Emits: [3 events](events.md#documents)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## events
 
@@ -444,8 +446,8 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/github`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `vault`
-- Tools: [33](tools.md#github), 6 of them only for other modules
-- Emits: [8 events](events.md#github)
+- Tools: [35](tools.md#github), 6 of them only for other modules
+- Emits: [9 events](events.md#github)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

@@ -200,6 +200,8 @@ export const PERSON_ONLY = new Map([
   ["connectors.connection.decline", "the person's no to a proposed Connection"],
   ["connectors.connection.rebuild", "rewrites the Connection's vault credential from its record: the person's own act"],
   ["connectors.connection.delete", "removes a Connection and its vault credential: the person's own act"],
+  ["github.owners", "lists the organisations the person's GitHub account belongs to: their own screen picks the owner of a new repo"],
+  ["github.repo.create", "creates a repo on the person's GitHub account and sends a folder there: their own act, with their yes"],
   ["gate.said.add", "would let an assistant widen its own authority: records the person's own words as approval"],
   ["github.connect", "needs the person's Face ID or presence: signs an account in or out"],
   ["github.connect.cancel", "needs the person's Face ID or presence: signs an account in or out"],
