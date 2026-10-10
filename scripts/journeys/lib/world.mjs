@@ -86,7 +86,7 @@ export async function bringUp(o) {
     assert.ok(mac.pairing && mac.pairing.owner, "the server named this identity its owner");
   }, { needs: [S("the app finds the server and the four words match")] });
   await run.step(S("the app reaches the server and calls a tool"), async () => {
-    if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id));
+    if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id, srv.kind === "installer" ? mac.presenceSigner : undefined));
     await mac.openSession();
     assert.ok(await mac.callTool("system.info"), "system.info answered");
   }, { needs: [S("confirm the words in the app: adopt and pair")] });
