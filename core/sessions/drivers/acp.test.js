@@ -78,6 +78,18 @@ test("acp: an image goes to an agent that takes images as an image block, and to
   }
 });
 
+test("acp: an entry that says it takes images sends the image block to an agent whose initialize says it does not (Grok Build)", async t => {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==";
+  const msg = { type: "user", message: { role: "user", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: png } }, { type: "text", text: "what is in this picture" }] } };
+  const w = world(t, { takesImages: true });
+  const s = open(w);
+  await s.until(m => m.type === "system" && m.subtype === "init", "init");
+  s.proc.write(msg);
+  await s.until(m => m.type === "result", "result");
+  assert.deepEqual(w.launches().filter(l => l.types).pop().types, ["image", "text"]);
+  await s.proc.stop(1000);
+});
+
 test("acp: the client advertises fs and terminal, and the entry's args and env reach the agent (never read from the agent's own config)", async t => {
   const w = world(t, { args: o => ["--ask", "untrusted", "--cwd", o.cwd], env: { HOME: "/acct/home" } });
   const s = open(w);

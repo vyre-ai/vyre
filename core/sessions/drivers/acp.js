@@ -178,7 +178,7 @@ const remembered = new Map();
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
- *   authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
+ *   takesImages?: boolean, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -571,7 +571,8 @@ function runAcp(entry, known, o) {
   async function open() {
     const init = await request("initialize", { protocolVersion: 1, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true, ...(entry.clientCapabilities || {}) }, clientInfo: { name: "vyre", version: "0.2" } });
     const caps = init.agentCapabilities || {};
-    imageOk = Boolean(caps.promptCapabilities && caps.promptCapabilities.image);
+    // An entry can say it takes images when the agent's own initialize does not (Grok Build 1.0.50 says image:false and answers an image block correctly, measured live 10 Oct).
+    imageOk = entry.takesImages === true || Boolean(caps.promptCapabilities && caps.promptCapabilities.image);
     const prior = o.resume ? known.get(o.id) : undefined;
     const servers = Array.isArray(o.mcpServers) ? o.mcpServers : [];
     const seeded = typeof entry.seed === "function" ? entry.seed(o) : entry.seed;
