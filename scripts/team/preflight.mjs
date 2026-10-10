@@ -23,6 +23,7 @@ const CI = flag("--ci");
 
 const git = (/** @type {string[]} */ a) => execFileSync("git", a, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).trim();
 /** @type {{rule: string, msg: string}[]} */ const fails = [];
+/** @type {string[]} */ const warns = [];
 const fail = (/** @type {string} */ rule, /** @type {string} */ msg) => fails.push({ rule, msg });
 
 if (!STATIC && process.platform === "darwin") {
@@ -89,7 +90,6 @@ for (const { file: f, line } of added) {
 }
 
 // ---- W1: edits in another team's paths (a warning, not a failure): the two ends of a seam talk first
-/** @type {string[]} */ const warns = [];
 try {
   const own = JSON.parse(fs.readFileSync("scripts/team/owners.json", "utf8"));
   const me = process.env.VYRE_TEAM || "";
