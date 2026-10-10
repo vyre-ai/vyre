@@ -1041,5 +1041,6 @@
  "test/journey-space-names.test.js": 3,
  "test/journey-signin-again.test.js": 2,
  "core/previews/previews-project.test.js": 3,
- "lib/types-extend.test.js": 3
+ "lib/types-extend.test.js": 3,
+ "core/previews/thumb-stop.test.js": 1
 }

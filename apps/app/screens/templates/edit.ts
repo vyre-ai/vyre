@@ -24,9 +24,9 @@ export const setDescription = (b: Body, description: string): Body => dropEmpty(
 export const setOpensOn = (b: Body, page: string): Body => { const { opens_on: _o, ...rest } = b as Body & { opens_on?: string }; return (page ? { ...rest, opens_on: page } : rest) as Body; };
 
 export const addStage = (b: Body): Body => ({ ...b, stages: [...b.stages, { name: `Stage ${b.stages.length + 1}` }] });
-export const renameStage = (b: Body, i: number, name: string): Body => ({ ...b, stages: at(b.stages, i, (s) => ({ ...s, name })) });
+export const renameStage = (b: Body, i: number, name: string): Body => { const old = b.stages[i]?.name; const next = { ...b, stages: at(b.stages, i, (s) => ({ ...s, name })), ...(b.automations ? { automations: b.automations.map((a) => (a.when === old ? { ...a, when: name } : a)) } : {}) }; return next as Body; };
 export const moveStage = (b: Body, i: number, by: -1 | 1): Body => ({ ...b, stages: move(b.stages, i, by) });
-export const removeStage = (b: Body, i: number): Body => ({ ...b, stages: b.stages.filter((_, n) => n !== i) });
+export const removeStage = (b: Body, i: number): Body => tidyAutomations({ ...b, stages: b.stages.filter((_, n) => n !== i) });
 /** Who may move a project out of the stage early ("" for no one in particular). */
 export const setStageOwner = (b: Body, i: number, owner: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { owner: _o, ...rest } = s; return (owner ? { ...rest, owner } : rest) as Stage; }) });
 export const setMovesOn = (b: Body, i: number, text: string): Body => ({ ...b, stages: at(b.stages, i, (s) => { const { moves_on_when: _m, ...rest } = s; return (text.trim() ? { ...rest, moves_on_when: text.trim() } : rest) as Stage; }) });
@@ -77,3 +77,12 @@ export function missing(b: Body): string[] {
   });
   return out;
 }
+
+/** The points an automation can sit at: when a project starts, or when it enters one of the template's stages. */
+export const whenChoices = (b: Body): [string, string][] => [["start", "When a project starts"], ...b.stages.filter((s) => s.name.trim()).map((s): [string, string] => [s.name, `When a project enters ${s.name}`])];
+/** Attach a Flow at a point; the same Flow at the same point once. */
+export const addAutomation = (b: Body, flow: string, when = "start"): Body => ((b.automations || []).some((a) => a.when === when && a.flow === flow) ? b : { ...b, automations: [...(b.automations || []), { when, flow }] });
+export const setAutomationWhen = (b: Body, i: number, when: string): Body => ({ ...b, automations: (b.automations || []).map((a, n) => (n === i ? { ...a, when } : a)) });
+export const removeAutomation = (b: Body, i: number): Body => { const automations = (b.automations || []).filter((_, n) => n !== i); const { automations: _a, ...rest } = b; return (automations.length ? { ...rest, automations } : rest) as Body; };
+/** A stage renamed or removed takes its automations with it, so the template never points at a stage that is gone. */
+export const tidyAutomations = (b: Body): Body => { const ok = new Set(["start", ...b.stages.map((s) => s.name)]); const keep = (b.automations || []).filter((a) => ok.has(a.when)); const { automations: _a, ...rest } = b; return (keep.length ? { ...rest, automations: keep } : rest) as Body; };

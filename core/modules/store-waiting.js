@@ -34,7 +34,9 @@ export async function startWaiting(reg) {
     for (const r of [...reg.modules.values()]) {
       if (r.state !== "waiting" || !r.waitsForStore) continue;
       for (const [t, def] of [...reg.tools]) if (def.module === r.manifest.name) reg.tools.delete(t);
+      const t0 = Date.now();
       await reg.startOne({ manifest: r.manifest, dir: r.dir });
+      if (reg.deps && reg.deps.log) reg.deps.log(`phase module ${r.manifest.name} started after the store joined: ${((Date.now() - t0) / 1000).toFixed(1)}s`);
       if (r.state !== "waiting") moved = true;
     }
   }
