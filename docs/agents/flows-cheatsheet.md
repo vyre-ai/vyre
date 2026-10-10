@@ -98,6 +98,7 @@ A `key=value` value is a word, number, "string", [list], {key: value}, or a `bac
 ## Lanes, other Flows, schedules
 - `parallel`: lanes (2 to 8 `branch` steps) run together; the next step waits for all and reads any lane's step as `steps.<id>` (lanes cannot read each other). A failed lane fails the step; a retry reruns only it.
 - `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.
+- `call` step `with=<earlier send step>`: this send rides that step's yes (one question names both; the earlier tool must list this one in its `covers`; same path, not out of a loop or lane).
 - A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.
 
 ## If it can fail

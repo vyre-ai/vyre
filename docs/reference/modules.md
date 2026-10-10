@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 25 | 9 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 28 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 16 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -155,7 +155,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [25](tools.md#appmods)
+- Tools: [28](tools.md#appmods)
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
