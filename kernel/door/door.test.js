@@ -205,3 +205,19 @@ test("stream S-2: a tool input that grows past its cap, or too many open tools, 
   assert.equal(ev.at(-1).type, "cut"); assert.equal(ev.at(-1).code, "budget"); assert.equal(ev.at(-1).class, "tool_input");
   const many = await run(w, Array.from({ length: 70 }, (_, i) => ({ tool_start: { id: "t" + i, name: "n" } }))); assert.equal(many.at(-1).type, "cut");
 });
+
+test("listModels: the door asks the provider's driver for its model list and answers names only; a sink and a provider are each checked", async t => {
+  const KEY = "fixture-key-0123456789abcdef";
+  const driver = { call: async () => ({ content: "" }), models: async ({ account }) => [`m-${account.id}`, `echo-${KEY}`.slice(0, 5), 7, "x".repeat(300), ...Array.from({ length: 600 }, (_, i) => `n${i}`)] };
+  const { door } = await world(t, { door: { drivers: { fake: driver, bare: { call: async () => ({}) } } } });
+  const names = await door.listModels({ chain: person(), provider: "fake", account: { id: "a1" } });
+  assert.equal(names.length, 500, "bounded");
+  assert.equal(names[0], "m-a1");
+  assert.ok(names.every(n => typeof n === "string" && n.length <= 120), "text only, cut");
+  assert.ok(!JSON.stringify(names).includes(KEY));
+  // a provider with no list, an unknown one and a service that is no declared sink are refused in words, before any driver runs
+  for (const provider of ["bare", "nope"]) assert.match((await refusal(door.listModels({ chain: person(), provider, account: {} }))).detail, /no model list to ask for/);
+  const svc = chain([["person", "per_alex"], ["service", "not-declared"]]);
+  assert.equal((await refusal(door.listModels({ chain: svc, provider: "fake", account: {} }))).code, "not_a_sink");
+  assert.deepEqual(await door.listModels({ chain: chain([["person", "per_alex"], ["service", "summaries"]]), provider: "fake", account: { id: "z" } }).then(n => n.slice(0, 1)), ["m-z"], "a declared sink may ask");
+});

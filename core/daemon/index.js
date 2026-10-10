@@ -397,7 +397,12 @@ async function startLocked(opts, root, p, release) {
     };
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
-    const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
+    const { modelListDrivers } = await import("./model-lists.js");
+    const { httpFetch } = await import("../../lib/http.js");
+    const { hostSafe } = await import("../../lib/api-endpoint.js");
+    // the providers whose own model list the door can ask for (door.listModels): each driver holds its endpoint, and the key comes from the switchboard (`registry.deps.accountKey`, set by it) for one request
+    const lists = modelListDrivers({ keyOf: async (/** @type {any} */ a) => { const f = /** @type {any} */ (registry.deps).accountKey; return typeof f === "function" ? f(a) : null; }, fetch: httpFetch, hostSafe });
+    const modelDrivers = { ...lists, openrouter: openrouterDoorDriver(), "openai-compatible": { ...openrouterDoorDriver(), models: lists["openai-compatible"].models } };
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
