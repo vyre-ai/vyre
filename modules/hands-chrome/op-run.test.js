@@ -59,7 +59,7 @@ function fakePool() {
         if (e.includes("fetch(P.url")) {
           const P = JSON.parse(e.match(/\}\)\((\{.*\})\)$/s)?.[1] || "{}");
           st.fetches.push(P);
-          if (st.brokenAfterTrigger) return { result: { value: { status: 500, mime: "application/json", headers: { "content-type": "application/json" }, body: JSON.stringify({ error: "nope" }) } } };
+          if (st.brokenAfterTrigger && st.navigations.length) return { result: { value: { status: 500, mime: "application/json", headers: { "content-type": "application/json" }, body: JSON.stringify({ error: "nope" }) } } };
           return { result: { value: { status: 200, mime: "application/json", headers: { "content-type": "application/json" }, body: JSON.stringify(people(new URL(P.url).searchParams.get("q") || "", st.listKey)) } } };
         }
       }
