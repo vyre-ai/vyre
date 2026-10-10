@@ -38,6 +38,9 @@ export const ACCOUNTS_PRIVACY_MIGRATION = `ALTER TABLE sessions_accounts ADD COL
 export const ACCOUNTS_ENDPOINT_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN base_url TEXT;
 ALTER TABLE sessions_accounts ADD COLUMN model TEXT`;
 
+/** Whose account it is: a person's id (a member's own sign-in, served only to that person's turns), or NULL for the home's own accounts (the owner's, from before accounts had a person). Added by checking for the column, like privacy. */
+export const ACCOUNTS_PERSON_MIGRATION = `ALTER TABLE sessions_accounts ADD COLUMN person TEXT`;
+
 /**
  * An endpoint a key may be sent to: https, or plain http to this machine only; no login in the address, no query or fragment, nothing that names the cloud's
  * metadata service. Returns the address without a trailing slash, or throws bad_input saying why.
@@ -91,8 +94,9 @@ export class Accounts {
    * @param {{ wipe?: (uid: number) => Promise<any> }} [o] wipe: empty a uid's HOME (the spawner's
    *   wipe op). A uid whose account was removed is handed to a new account only after this
    *   succeeds, so nothing of the last account's sign-in is ever there for the next.
+   *   owner: the home owner's person id (read each time), whose accounts the legacy rows (no person) are.
    */
-  constructor(db, o = {}) { this.db = db; this.wipe = o.wipe || null; /** @type {Promise<any>} */ this.lock = Promise.resolve(); }
+  constructor(db, o = {}) { this.db = db; this.wipe = o.wipe || null; this.owner = o.owner || (() => null); /** @type {Promise<any>} */ this.lock = Promise.resolve(); }
 
   row(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM sessions_accounts WHERE id = ?").get(String(id)));
@@ -102,17 +106,27 @@ export class Accounts {
   fromRow(r) {
     return { id: r.id, provider: r.provider, label: r.label, kind: r.kind || "api-key", vault_item: r.vault_item == null ? null : r.vault_item, uid: r.uid == null ? null : Number(r.uid), signed_in_at: r.signed_in_at == null ? null : Number(r.signed_in_at),
       scope: { projects: JSON.parse(r.scope_projects), agents: JSON.parse(r.scope_agents) },
-      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
+      is_default: Boolean(r.is_default), pending: Boolean(r.pending), privacy: r.provider === "grok" ? Boolean(r.privacy ?? 1) : null, base_url: r.base_url == null ? null : String(r.base_url), person: r.person == null ? null : String(r.person), model: r.model == null ? null : String(r.model), needs: (r.kind || "api-key") === "login" && r.signed_in_at == null ? "sign-in" : (r.pending ? "confirm" : null), added: r.added, updated: r.updated };
+  }
+
+  /**
+   * Does this account serve `person`? A person's own account serves only that person. An account with no person is the home's own (the owner's, and every one from before accounts had a person): it serves the
+   * home's owner, and a call that names no person (the home's own modules). Nobody's account ever serves another person.
+   * @param {any} a @param {string | null | undefined} person
+   */
+  serves(a, person) {
+    if (a.person) return a.person === person;
+    return person == null || person === this.owner();
   }
 
   /** Every account for a provider (or every account, provider omitted), plus a synthesized
    * "default" one when the provider has none configured yet - today's one-account-per-machine
    * behavior, unchanged until a person adds a real row. */
-  list(provider) {
-    const rows = provider
+  list(provider, person = undefined) {
+    const rows = (provider
       ? /** @type {any[]} */ (this.db.prepare("SELECT * FROM sessions_accounts WHERE provider = ? ORDER BY added").all(String(provider))).map(r => this.fromRow(r))
-      : /** @type {any[]} */ (this.db.prepare("SELECT * FROM sessions_accounts ORDER BY provider, added").all()).map(r => this.fromRow(r));
-    if (provider === "claude" && !rows.some(r => r.provider === "claude")) {
+      : /** @type {any[]} */ (this.db.prepare("SELECT * FROM sessions_accounts ORDER BY provider, added").all()).map(r => this.fromRow(r))).filter(r => this.serves(r, person));
+    if (provider === "claude" && !rows.some(r => r.provider === "claude") && (person == null || person === this.owner())) {
       rows.push({ id: "default", provider: "claude", label: "Default", kind: "login", vault_item: null, uid: null,
         scope: { projects: "*", agents: "*" }, is_default: true, added: 0, updated: 0, synthetic: true });
     }
@@ -143,7 +157,7 @@ export class Accounts {
    * A "login" account has no vault item: the provider's own sign-in fills its HOME. Person-only
    * for now (adding a real account is provisioning access, weighted like vault.grant), even though
    * picking WHICH already-added account a project uses is not (see resolve/bind).
-   * @param {{ provider: string, label: string, kind?: string, vault_item?: string, scope?: any, is_default?: boolean }} i
+   * @param {{ provider: string, label: string, kind?: string, vault_item?: string, scope?: any, is_default?: boolean, person?: string | null }} i `person`: whose account it is (a member's own sign-in); none is the home's own
    */
   add(i) {
     // Allocate and insert run one at a time: two adds landing together must never take one uid
@@ -164,15 +178,18 @@ export class Accounts {
     const vaultItem = i.vault_item == null ? null : String(i.vault_item);
     if (kind === "login" ? vaultItem !== null : !vaultItem || !VAULT_ITEM.test(vaultItem)) throw bad(kind === "login" ? "a login account holds no vault item" : "vault_item must name an existing vault item");
     const scope = normalizeScope(i.scope);
+    // A member holds one sign-in account of their own on this server: each one takes a user of the box's fixed 64.
+    if (i.person && kind === "login" && this.db.prepare("SELECT 1 FROM sessions_accounts WHERE kind = 'login' AND person = ?").get(String(i.person))) throw Object.assign(new Error("you have one sign-in account on this server already; remove it first, or add a key instead"), { code: "too_many" });
     const id = crypto.randomBytes(6).toString("hex");
     const uid = await this.allocate();
     const now = Date.now();
     // A provider's first account is its default: with only one, there is nothing to choose, and a start must never find "no account".
-    const first = !this.db.prepare("SELECT 1 FROM sessions_accounts WHERE provider = ?").get(provider);
-    if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(provider);
-    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
-      i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100));
+    const person = i.person == null || i.person === "" ? null : String(i.person);
+    const first = !this.db.prepare("SELECT 1 FROM sessions_accounts WHERE provider = ? AND person IS ?").get(provider, person);
+    if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ? AND person IS ?").run(provider, person);
+    this.db.prepare(`INSERT INTO sessions_accounts (id, provider, label, kind, vault_item, scope_projects, scope_agents, is_default, uid, added, updated, pending, base_url, model, person)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, provider, label, kind, vaultItem, JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || (first && !i.pending) ? 1 : 0, uid, now, now, i.pending ? 1 : 0,
+      i.base_url == null ? null : endpointOk(i.base_url), i.model == null || i.model === "" ? null : String(i.model).slice(0, 100), person);
     return this.row(id);
   }
 
@@ -193,7 +210,7 @@ export class Accounts {
     if (!r) throw Object.assign(new Error(`no account ${id} (sessions.accounts.list shows them)`), { code: "not_found" });
     this.db.prepare("DELETE FROM sessions_accounts WHERE id = ?").run(String(id));
     // If one account is left on the provider it is the default.
-    const rest = /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ?").all(r.provider));
+    const rest = /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ? AND person IS ?").all(r.provider, r.person));
     if (rest.length === 1) this.db.prepare("UPDATE sessions_accounts SET is_default = 1 WHERE id = ?").run(rest[0].id);
     // Its uid, and the HOME with its sign-in, wait for a wipe before another account takes them.
     if (r.uid != null) this.db.prepare("INSERT OR IGNORE INTO sessions_uids_dirty (uid) VALUES (?)").run(r.uid);
@@ -210,8 +227,8 @@ export class Accounts {
     if (i.agent) scope.agents = add(scope.agents, String(i.agent));
     const now = Date.now();
     // The person finishing the provider's only account makes it the default.
-    const sole = Boolean(i.confirm) && /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ?").all(r.provider)).length === 1;
-    if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ?").run(r.provider);
+    const sole = Boolean(i.confirm) && /** @type {any[]} */ (this.db.prepare("SELECT id FROM sessions_accounts WHERE provider = ? AND person IS ?").all(r.provider, r.person)).length === 1;
+    if (i.is_default) this.db.prepare("UPDATE sessions_accounts SET is_default = 0 WHERE provider = ? AND person IS ?").run(r.provider, r.person);
     this.db.prepare("UPDATE sessions_accounts SET scope_projects = ?, scope_agents = ?, is_default = ?, pending = ?, updated = ? WHERE id = ?")
       .run(JSON.stringify(scope.projects), JSON.stringify(scope.agents), i.is_default || sole ? 1 : (r.is_default ? 1 : 0), i.confirm && !(r.kind === "login" && r.signed_in_at == null) ? 0 : (r.pending ? 1 : 0), now, r.id);
     return this.row(r.id);
@@ -223,14 +240,14 @@ export class Accounts {
    * account out of scope is a refusal, never a fallback to a different one (reviewer-2's finding:
    * the assistant, or anything a prompt injection shapes, must not be able to reach another
    * project's account just by naming it).
-   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null }} i
+   * @param {{ provider: string, account?: string|null, project?: string|null, agent?: string|null, person?: string|null }} i `person`: whose turn this is; only accounts that serve them are candidates, so another person's sign-in is never chosen, never a fallback, and an explicit id of someone else's is not found
    * @returns {any} the resolved account (never synthetic-only unless nothing else exists), or null
    *   when the provider has no accounts configured at all (today's single-credential behavior).
    */
   resolve(i) {
     const provider = String(i.provider || "");
     const target = { project: i.project || null, agent: i.agent || null };
-    const listed = this.list(provider);
+    const listed = this.list(provider, i.person);
     // An account a non-person started is not usable until the person finishes it on their own device: never chosen, never a fallback.
     const all = listed.filter(a => !a.pending);
     const real = all.filter(a => !a.synthetic);
