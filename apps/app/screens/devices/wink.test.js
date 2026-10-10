@@ -68,3 +68,17 @@ test("a device row says its key is in software only when it is", () => {
   assert.deepEqual(deviceSub("Server", "Now", true), ["Server, last used Now", "This device keeps its key in software"]);
   assert.equal(SOFTWARE_KEY, "This device keeps its key in software");
 });
+
+test("access list: each thing that reaches your spaces is one row; Remove says what it does first, in a confirm", async () => {
+  const { accessRows } = await import("./wink.js");
+  const rows = accessRows([
+    { id: "d1", kind: "Device", device: "phone", family: "device", name: "Alex's iPhone", allows: "Does everything you can.", since: "12 Aug", last: "2 min ago" },
+    { id: "k1", kind: "Kit", family: "kit", name: "estate", allows: "Adds Flows.", since: "1 Sep", last: "Today" },
+  ]);
+  assert.deepEqual(rows[0].faces, [{ kind: "device", name: "Alex's iPhone", id: "d1", device: "phone" }]);
+  assert.equal(rows[0].subtitle, "Does everything you can. Since 12 Aug · last used 2 min ago");
+  assert.deepEqual(rows[0].accessories, [{ label: "Device" }]);
+  assert.match(rows[0].actions[0].confirm, /^Removing Alex's iPhone stops it opening anything of yours/);
+  assert.equal(rows[0].actions[0].title, "Remove Alex's iPhone");
+  assert.deepEqual([rows[1].icon, rows[1].faces], ["kits", undefined]);
+});

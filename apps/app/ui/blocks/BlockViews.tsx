@@ -22,6 +22,7 @@ import { ProviderBadge } from "../components/ProviderBadge";
 import { markRef } from "../marks/useMark";
 import { IconButton } from "../components/Button";
 import { Menu } from "../components/Menu";
+import { Sheet } from "../components/Sheet";
 import { useUiTheme } from "../theme";
 import { TypedTable } from "./TypedTable";
 import type { Action, Block, Handlers } from "./types";
@@ -42,17 +43,25 @@ export function ActionBar({ k, actions, primary, h, id }: { k: string; actions?:
 }
 
 /** A row's actions: the first is a button (44 high on a phone), the rest are in a menu behind the more mark. Nothing else is drawn from them but their words. */
-function RowActions({ k, row, actions, h }: { k: string; row: any; actions: { id: string; title: string; kind: "plain" | "primary" | "hold" }[]; h: Handlers }) {
+function RowActions({ k, row, actions, h }: { k: string; row: any; actions: { id: string; title: string; kind: "plain" | "primary" | "hold"; confirm?: string }[]; h: Handlers }) {
   const { phone } = useUiTheme();
+  const [ask, setAsk] = useState<{ id: string; title: string; confirm?: string } | null>(null);
   if (!actions.length || !h.act) return null;
   // A held press cannot be a menu item, so a hold action is always its own button; the first action is a button; the rest are in the menu.
   const inline = actions.filter((a, i) => i === 0 || a.kind === "hold");
   const rest = actions.filter((a) => !inline.includes(a));
-  const go = (id: string) => h.act!(k, id, String(row.id));
+  // An action with a sentence to say first opens a sheet that says it; the action runs only when the person confirms.
+  const go = (a: { id: string; title: string; confirm?: string }) => (a.confirm ? setAsk(a) : h.act!(k, a.id, String(row.id)));
   return (
     <>
-      {inline.map((a) => <Button key={a.id} size={phone ? "md" : "sm"} kind={a.kind === "primary" ? "primary" : a.kind === "hold" ? "holdText" : "ghost"} label={a.title} onPress={() => go(a.id)} />)}
-      {rest.length ? <Menu trigger={<IconButton icon="more" label={`More for ${row.title}`} touch={phone} />} items={rest.map((a) => ({ label: a.title, onPress: () => go(a.id) }))} /> : null}
+      {inline.map((a) => <Button key={a.id} size={phone ? "md" : "sm"} kind={a.kind === "primary" ? "primary" : a.kind === "hold" ? "holdText" : "ghost"} label={a.title} onPress={() => go(a)} />)}
+      {rest.length ? <Menu trigger={<IconButton icon="more" label={`More for ${row.title}`} touch={phone} />} items={rest.map((a) => ({ label: a.title, onPress: () => go(a) }))} /> : null}
+      <Sheet open={!!ask} onClose={() => setAsk(null)} title={ask?.title}>
+        <View className="gap-s3">
+          <Text>{ask?.confirm ?? ""}</Text>
+          <View className="flex-row gap-s2"><Button kind="danger" label={ask?.title ?? "Confirm"} onPress={() => { const a = ask; setAsk(null); if (a) h.act!(k, a.id, String(row.id)); }} /><Button kind="ghost" label="Not now" onPress={() => setAsk(null)} /></View>
+        </View>
+      </Sheet>
     </>
   );
 }
@@ -78,7 +87,7 @@ export function ListBlock({ k, b, h }: P) {
           <View key={x.id ?? i} style={ex.dim ? { opacity: 0.5 } : undefined}>
             {i > 0 ? <Divider inset={iconFor(x.icon, ICON_NAMES) ? 60 : 0} /> : null}
             <Row dense={tight} chevron={tight && !!h.open}
-              lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => markRef(f.kind as "person" | "assistant" | "teammate", f.name, f.id))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
+              lead={ex.faces.length ? <AvatarStack of={ex.faces.map((f) => ({ ...markRef(f.kind as "person" | "assistant" | "teammate" | "agent" | "device", f.name, f.id), ...(f.device ? { device: f.device as "phone" | "computer" | "server" } : {}) }))} size={40} max={3} /> : iconFor(x.icon, ICON_NAMES) ? <IconTile name={iconFor(x.icon, ICON_NAMES) as IconName} /> : undefined}
               title={x.title} sub={x.subtitle}
               end={ex.any
                 ? <>{ex.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{ex.accessories.map((a, j) => (a.as === "text" ? <Text key={j} size="caption" tone="label">{a.label}</Text> : <Chip key={j} tone={a.tone as any}>{a.label}</Chip>))}<RowActions k={k} row={x} actions={ex.actions} h={h} /></>

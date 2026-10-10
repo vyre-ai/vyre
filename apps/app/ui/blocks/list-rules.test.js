@@ -34,3 +34,9 @@ test("list row actions: up to four, the first drawn as the button; a kind that i
 test("list row faces keep the id that seeds a person's mark, so a face looks the same as everywhere else", () => {
   assert.deepEqual(rowExtras({ faces: [{ kind: "person", name: "Dana", id: "p2" }, { kind: "person", name: "Sam" }] }).faces, [{ kind: "person", name: "Dana", id: "p2" }, { kind: "person", name: "Sam" }]);
 });
+
+test("list row actions keep a confirm sentence, and a device face keeps its kind of device", () => {
+  const x = rowExtras({ faces: [{ kind: "device", name: "Mac", id: "d1", device: "computer" }, { kind: "device", name: "x", device: "toaster" }], actions: [{ id: "remove", title: "Remove", confirm: "It stops at once." }, { id: "b", title: "B", confirm: 7 }] });
+  assert.deepEqual(x.faces, [{ kind: "device", name: "Mac", id: "d1", device: "computer" }, { kind: "device", name: "x" }]);
+  assert.deepEqual(x.actions.map((a) => a.confirm), ["It stops at once.", undefined]);
+});

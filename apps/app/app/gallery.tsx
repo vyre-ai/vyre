@@ -18,6 +18,8 @@ import { PreviewCard } from "../src/chat/PreviewCard";
 import { AssistantsList } from "../screens/settings/AssistantsList";
 import { MembersList } from "../screens/spaces/MembersList";
 import { InstalledKits, AvailableKits } from "../screens/flows/KitsLists";
+import { AccessList } from "../screens/devices/AccessList";
+import { loadAccess } from "../screens/devices/data";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
@@ -124,6 +126,7 @@ function Sample({ name }: { name: string }) {
       </View>
     );
   }
+  if (name === "access-list") return <AccessList rows={loadAccess().filter((a, i) => i < 3 || a.kind === "Person" || a.kind === "Kit" || a.kind === "Flow").slice(0, 7)} empty="" onRemove={() => {}} />;
   if (name === "runner-chip") {
     return (
       <View style={{ gap: 12, alignItems: "flex-start" }}>

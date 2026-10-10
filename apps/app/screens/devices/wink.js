@@ -92,3 +92,15 @@ export function removeText(/** @type {"Device"|"Person"|"Assistant"|"Kit"|"Flow"
     Flow: `Turn off and remove "${name}"? Runs in progress finish on the version they started with. New ones stop.`,
   }[kind];
 }
+
+/**
+ * The things that can reach your spaces as rows of a list block: the face (a device keeps its kind of device), what it may do and since when, what it is, and a Remove that says what it does first.
+ * @param {{ id: string, kind: "Device"|"Person"|"Assistant"|"Kit"|"Flow", name: string, allows: string, since: string, last: string, family: string, device?: string }[]} items
+ */
+export function accessRows(items) {
+  return items.map((a) => ({
+    id: a.id, title: a.name, subtitle: `${a.allows} Since ${a.since} · last used ${a.last}`, accessories: [{ label: a.kind }],
+    ...(a.kind === "Kit" ? { icon: "kits" } : a.kind === "Flow" ? { icon: "flows" } : { faces: [{ kind: a.family, name: a.name, id: a.id, ...(a.device ? { device: a.device } : {}) }] }),
+    actions: [{ id: "remove", title: `Remove ${a.name}`, confirm: removeText(a.kind, a.name) }],
+  }));
+}
