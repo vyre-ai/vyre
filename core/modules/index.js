@@ -132,7 +132,6 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
 const OUTWARD = ["send", "post", "pay", "delete"]; // `outward: true` is the plain mark (one yes): leaves Vyre and reaches someone outside your spaces and devices; a word names the Gate kind
 
-
 /**
  * The SDK's added-module check, as a load reads it: the graces applied first, so only the 1.0
  * rules that keep a module inside its doors are problems (person reach, presence-free tools,

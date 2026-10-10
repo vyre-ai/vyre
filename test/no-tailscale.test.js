@@ -20,7 +20,7 @@ const TEXT = /\.(js|mjs|cjs|ts|tsx|json|md|html|css|sh|yml|yaml|go|mod|txt|swift
 const PERMANENT = [
   /^wink\/forwarder\//, /^core\/wink\/node\//, /^core\/wink\/control\//, /^scripts\/spike-wink\//,
   /^docs\/(adr|design|work|proposals|releases)\//, /^docs\/(nav|index)\.json$/, /^CHANGELOG\.md$/, /^site\/CHANGELOG\.md$/, /^release\/notes\//,
-  /^lib\/sanitize\.js$/, /^lib\/credential-shapes\.js$/, /^test\/allowed-dependencies\.json$/, /^local\/hands-chrome-mac\/extension\/shared\/sk\/credential-shapes\.js$/,
+  /^lib\/sanitize\.js$/, /^lib\/credential-shapes\.js$/, /^test\/allowed-dependencies\.json$/, /^local\/hands-chrome-mac\/extension\/shared\/sk\/credential-shapes\.js$/, /^apps\/app\/src\/store-core\/credential-shapes\.js$/,
   /^lib\/api-endpoint\.js$/, /^core\/mcp\/hub\.js$/, /^core\/vault\/api-request\.js$/, /^core\/spawner\/wall\.js$/, /^packages\/module-sdk\//,
   /^core\/names\/rules\.js$/, /^core\/memory\/lexicon\.js$/, /^core\/network\/other-vpn\.js$/, /^test\/no-tailscale\.test\.js$/, /^NOTICE$/,
   /^scripts\/lib\/hygiene\.js$/,
