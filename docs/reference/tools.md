@@ -1613,6 +1613,7 @@ Run one learned operation of a site in an agent's own Chrome on this box, for th
   - `site` string, required
   - `approved` boolean
   - `check` boolean
+  - `heal` boolean
   - `inputs` object
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
