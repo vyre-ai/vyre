@@ -452,7 +452,7 @@
  "core/vault/module-put-own.test.js": 1,
  "core/vault/native.test.js": 4,
  "core/vault/needs.test.js": 3,
- "core/vault/passmcp.test.js": 8,
+ "core/vault/passmcp.test.js": 9,
  "core/vault/presence.test.js": 8,
  "core/vault/prompt.test.js": 3,
  "core/vault/provider-token.test.js": 8,
