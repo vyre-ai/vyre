@@ -69,7 +69,7 @@ test("the uses of the linked items are lines about who and when, newest first, f
 test("deleting the item takes its links with it; who used it is said in words, never as an id", async t => {
   const { v } = await mk(t);
   v.links.link({ item: "portal-login", to: CLIENT }, "cli");
-  await v.delete({ name: "portal-login" }, "cli");
+  v.remove({ name: "portal-login" }, "cli");
   assert.deepEqual(v.links.list().links, []);
   assert.equal(byWords("mcp agent:kit"), "the agent kit");
   assert.equal(byWords("module:appmods"), "Vyre's appmods module");
