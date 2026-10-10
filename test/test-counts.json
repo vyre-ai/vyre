@@ -652,7 +652,7 @@
  "lib/publish/domains.test.js": 7,
  "lib/publish/edge.test.js": 14,
  "lib/publish/flow.test.js": 6,
- "lib/publish/index.test.js": 22,
+ "lib/publish/index.test.js": 24,
  "lib/publish/runner.test.js": 6,
  "lib/publish/secrets.test.js": 11,
  "lib/queue-state.test.js": 4,

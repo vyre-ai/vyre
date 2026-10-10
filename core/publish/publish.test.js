@@ -575,3 +575,22 @@ test("publish: a folder of ready files builds with the real builder, is checked,
   const gone = await b.call("publish.create", { name: "ghost", source: { kind: "folder", ref: path.join(b.home, "nope") }, build: { image: "static" } });
   assert.equal(gone.error.code, "not_found");
 });
+
+test("publish: quick takes a folder of ready files to live on one decision, with the real builder; a decision for one site is not a decision for another", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "names", "projects"], realBuilder: true });
+  const dir = fs.mkdtempSync(path.join(b.home, "site-src-"));
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>Northwind Bakery</h1>");
+  const q = await b.ok("publish.quick", { name: "bakery", folder: dir, project: "bakery" });
+  assert.equal(q.held, true);
+  assert.equal(q.deployment.stage, "Preview");
+  assert.equal(q.plan.goes_public, true, "what the person says yes to is the public plan");
+  assert.match(q.logs, /^Read 1 file/);
+  const q2 = await b.ok("publish.quick", { name: "bakery-two", folder: dir, project: "bakery" });
+  const wrong = await b.call("publish.decide", { task: q2.task, approve: true, plan_hash: q.plan.hash });
+  assert.equal(wrong.error?.code, "approval_mismatch", "a hash for another plan is refused");
+  const done = await b.ok("publish.decide", { task: q.task, approve: true, plan_hash: q.plan.hash });
+  assert.equal(done.deployment.stage, "Production");
+  assert.equal((await b.ok("publish.status", { deployment: q2.deployment.id })).deployment.stage, "Preview", "the other site is still only a preview");
+  const refused = await b.call("publish.quick", { name: "ghost", folder: path.join(b.home, "nope") });
+  assert.equal(refused.error?.code, "not_found");
+});
