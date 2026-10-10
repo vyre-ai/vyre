@@ -101,7 +101,7 @@ export function startInstall(host, line, out) {
 const tailOf = (/** @type {string} */ s) => s.split("\n").filter(l => l.trim() && !/█|▀|▄/.test(l)).slice(-6).join(" | ").slice(0, 500);
 
 /**
- * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, host: string, out: string, expectVersion?: string, channel?: string }} w
+ * @param {{ run: ReturnType<typeof import("./run.mjs").createRun>, host: string, out: string, expectVersion?: string, channel?: string, installFrom?: string, userUpdate?: boolean }} w
  *   expectVersion: the release under test. The first server installs whatever vyre.run serves now (the previous release, until the new one is published and deployed), then the walk waits for
  *   the box to see expectVersion and updates from the app as the Settings button does. A second install, after the new release is out, must land on expectVersion at once.
  */
@@ -134,7 +134,11 @@ export async function walkLive(w) {
       return line.replace(flow.state.code, "<code>");
     }, { needs });
     await run.step(S("the server installs from that line (the published release): it shows four words"), async () => {
-      installed = startInstall(host, flow.state.installLine, dir);
+      // --install-from TAG: the install line is run as a person would run it, but from that release's own assets on GitHub (vyre.run may serve another release): its install-box.sh, told where its files are.
+      const base = w.installFrom ? `https://github.com/vyre-ai/vyre/releases/download/${w.installFrom}/` : "";
+      const line = base ? flow.state.installLine.replace("curl -fsSL vyre.run/i", `curl -fsSL ${base}install-box.sh`).replace(/\| (VYRE_CODE=)/, `| VYRE_BOX_URL=${base} $1`) : flow.state.installLine;
+      assert.ok(!base || line.includes(base) && line.includes("VYRE_BOX_URL="), `the install line was not rewritten: ${line.replace(/VYRE_CODE=\S+/, "VYRE_CODE=<hidden>")}`);
+      installed = startInstall(host, line, dir);
       const words = await installed.words();
       return words;
     }, { needs: [S("add a server: the app shows the install line")] });
@@ -281,6 +285,13 @@ export async function walkLive(w) {
         return `${st.current} -> ${st.available}`;
       }, { needs: [called] });
       await run.step(U("the app asks for the update (the button's call)"), async () => {
+        if (w.userUpdate) {
+          // THE GATE: the person types `vyre update` at the server, as themselves (no sudo, the default waits), on a default Records install. It must end with the new version running and every module up.
+          const r = await asWalker(host, `vyre update${channel ? ` --channel ${channel}` : ""} </dev/null 2>&1`, { pty: false, timeoutMs: 45 * 60_000 });
+          fs.writeFileSync(path.join(dir, "user-update.log"), r.out);
+          assert.equal(r.code, 0, `vyre update as a normal user failed (exit ${r.code}): ${r.out.slice(-400)}`);
+          return "vyre update as a normal user: exit 0";
+        }
         const r = await mac.callTool("update.apply", {});
         assert.equal(r.requested, true, `the request was not taken: ${JSON.stringify(r).slice(0, 200)}`);
         return "requested";
@@ -292,6 +303,11 @@ export async function walkLive(w) {
         assert.equal(v, expectVersion, `the box says ${v || "nothing"} ten minutes after the request`);
         // ONE sign-in try with the session the app holds, as on reconnecting (more wrong tries lock the device out).
         await mac.reconnect();
+        if (w.userUpdate) {
+          const stt = await asWalker(host, "vyre status 2>&1", { pty: false, timeoutMs: 120_000 });
+          assert.match(stt.out, /vyred running/, stt.out.slice(-300));
+          assert.doesNotMatch(stt.out, /[1-9]\d* failed/, `modules failed after the update: ${stt.out.slice(-300)}`);
+        }
         const st = await mac.callTool("update.status", {});
         assert.equal(st.current, expectVersion);
         assert.equal(st.available, null, "no newer version is offered any more");
