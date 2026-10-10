@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
+import { templateStage } from "./template-stage.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { Avatar } from "../components/Avatar";
 import { Card, Divider } from "../components/Card";
@@ -56,7 +57,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
   const work = workTypes(items);
   const shown = items.filter((i) => (space === "all" || i.row.labels?.source_spaces?.[0] === space) && (type === "all" || i.def.name === type));
   const ownerOf = (i: Item) => { const f = i.def.fields.find((x: any) => x.kind === "actor"); return f ? aid(i.row.data?.[f.name]?.actor) : ""; };
-  const stageOf = (i: Item) => { const sf = stageFieldOf(i.def); const stages: string[] = sf ? stageNames(i.def, sf) : []; return { stages, at: sf ? stages.indexOf(String(i.row.data?.[sf.name] ?? "")) : -1 }; };
+  const stageOf = (i: Item) => { const pinned = templateStage(i.row.data); if (pinned) return pinned; const sf = stageFieldOf(i.def); const stages: string[] = sf ? stageNames(i.def, sf) : []; return { stages, at: sf ? stages.indexOf(String(i.row.data?.[sf.name] ?? "")) : -1 }; };
   const tasksOf = (i: Item) => taskFraction(world.tasks.filter((t) => t.record === i.row.urn));
   const spaceId = (i: Item): string | undefined => i.row.labels?.source_spaces?.[0];
   const emblem = (i: Item, size: 32 | 44, badge: boolean) => (
@@ -93,7 +94,7 @@ export function ProjectsList({ world, items, onOpen, onNew }: { world: World; it
           </View>
         ) },
         ...(showType ? [{ key: "type", label: "Type", sortValue: (i: Item) => i.def.label, render: (i: Item) => i.def.label }] : []),
-        { key: "stage", label: "Stage", sortValue: (i) => String(i.row.data?.stage ?? ""), render: (i) => { const s = stageOf(i); return <StageMini stages={s.stages} current={s.at} />; } },
+        { key: "stage", label: "Stage", sortValue: (i) => String(i.row.data?.template_stage ?? i.row.data?.stage ?? ""), render: (i) => { const s = stageOf(i); return <StageMini stages={s.stages} current={s.at} />; } },
         ...(showOwner ? [{ key: "owner", label: "Owner", sortValue: (i: Item) => who(world, ownerOf(i))?.name || "", render: (i: Item) => { const a = who(world, ownerOf(i)); return a ? <View className="flex-row items-center gap-s2"><ActorMark who={a} size="sm" /><Text size="secondary" tone="muted" numberOfLines={1}>{a.name}</Text></View> : <Text tone="faint">{"–"}</Text>; }}] : []),
         ...(showTasks ? [{ key: "tasks", label: "Tasks", sortValue: (i: Item) => tasksOf(i).total, render: (i: Item) => { const t = tasksOf(i); return <TaskBar done={t.done} total={t.total} />; }}] : []),
       ]}
