@@ -24,6 +24,8 @@ import { tempHome, present, writeModule } from "./helpers.js";
 import { groupsFrom, approveGroup, closingLine } from "../apps/app/src/real/group-approve.js";
 import { boot as _unused } from "../core/team/team-fixture.js";
 import { startFakeMail } from "../core/mail/testing/fake-imap.js";
+import { startFakeGoogle } from "../lib/connectors/testing/fake-google.js";
+import { allowLoopbackForTests } from "../lib/http.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -197,8 +199,8 @@ test("one card covers one send: a call that files two sends gets the first sent 
 });
 
 /** Hold one call as the plain model session `mcp`, approve its card alone with the app's own code, and give back what a retry needs. @param {any} w @param {string} toolName @param {any} input */
-async function approved(w, toolName, input) {
-  const first = await w.d.registry.call(toolName, input, "mcp", {});
+async function approved(w, toolName, input, extra = {}) {
+  const first = await w.d.registry.call(toolName, input, "mcp", extra);
   assert.equal(first.error && first.error.code, "held_for_approval", JSON.stringify(first));
   const p = await w.asPerson("approvals.pending", {});
   const g = groupsFrom(p).find(x => x.items.some((/** @type {any} */ i) => i.id === first.error.approval));
@@ -289,12 +291,12 @@ test("a card rides two hops down (the tool names each module's send it files), s
 });
 
 /** A Flow whose one step calls an outward tool: define it, start it, say yes to its held act as the person, and give the daemon a moment. */
-async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** @type {any} */ input) {
+async function flowStep(/** @type {any} */ w, /** @type {string} */ action, /** @type {any} */ input, resource = "vyre://space/billing") {
   const space = w.d.kernel.id.space;
   const host = w.d.registry.deps.flowsHost.get(space);
   const admin = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.owner, path: "direct", session: "s" });
   const meta = async () => ({ token: (await w.d.kernel.surfaces.open(admin, {})).token });
-  const flow = { format: 1, name: `step_${action.replace(/\W/g, "_")}`, label: action, authorship: "human", trigger: { on: "manual" }, steps: [{ id: "go", kind: "call", action, resource: "vyre://space/billing", input }] };
+  const flow = { format: 1, name: `step_${action.replace(/\W/g, "_")}`, label: action, authorship: "human", trigger: { on: "manual" }, steps: [{ id: "go", kind: "call", action, resource, input }] };
   const def = await w.d.registry.call("flows.define", { flow }, "cli", await meta());
   assert.ok(def.data && def.data.ok, JSON.stringify(def));
   await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
@@ -390,4 +392,30 @@ test("an e-mail from comms.send reaches a real mail account on one yes: the acco
   const encoded = fake.sent[0].data.split("\r\n\r\n").slice(1).join("").replace(/\s+/g, "");
   assert.equal(Buffer.from(encoded, "base64").toString(), input.body, "the words the person approved are the words that went out");
   assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+  // the same through a Flow: the person's answer to the Flow's own question is the yes, and the second message goes out the same way
+  await flowStep(w, "comms.send", { via: "email", to: "jo@harlow.test", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms");
+  await until(() => fake.sent.length === 2, "the Flow's message reached the mail server");
+  assert.deepEqual(fake.sent[1].rcpt, ["jo@harlow.test"]);
+  assert.equal(await gateHeld(w), 0, "and nothing waits at the Gate after the Flow's yes");
+});
+
+test("an e-mail from comms.send reaches a firm's Gmail on one yes: the Google account, mail.send's hop to google.mail.send, the Gate's release, the Gmail API", { timeout: 300_000 }, async t => {
+  allowLoopbackForTests(true); t.after(() => allowLoopbackForTests(false));
+  const w = await world(t);
+  const fake = await startFakeGoogle(t);
+  const ME = "alex@example.com";
+  await w.asPerson("vault.put", { name: "work-google", kind: "secret", fields: { value: fake.serviceAccount(ME) } });
+  await w.asPerson("vault.grant", { name: "work-google", module: "google" });
+  const added = await w.asPerson("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base });
+  assert.ok(added.auth, JSON.stringify(added).slice(0, 300));
+  const input = { via: "email", to: "dana@harlowlegal.com", subject: "Your document is ready to sign", body: "Your document is ready to sign: https://documents.harlow.vyre.run/sign/4411/abc123" };
+  const card = await approved(w, "comms.send", input);
+  const r = await w.d.registry.call("comms.send", input, "mcp", { approval: card });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  await until(() => fake.mail.sent.length === 1, "Gmail received the message");
+  assert.equal(await gateHeld(w), 0, "nothing waits at the Gate for a second yes");
+  // a Flow's own question is the yes here too
+  await flowStep(w, "comms.send", { via: "email", to: "jo@harlowlegal.com", subject: "Your signed copy", body: "Thank you for signing." }, "vyre://space/comms");
+  await until(() => fake.mail.sent.length === 2, "the Flow's message reached Gmail");
+  assert.equal(await gateHeld(w), 0);
 });
