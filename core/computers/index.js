@@ -213,7 +213,7 @@ export default {
         return { id: agent, name: label || null };
       });
 
-    tool("computers.list", "Every agent's computer: its state (none, running, frozen, stopped), its screen and thread when checked out, viewers, take-over and pause. Says driver none when this machine cannot run computers.",
+    tool("computers.list", "Every agent's computer: state, screen and thread when checked out, viewers, take-over, pause. Driver none means this machine cannot run computers.",
       obj({}), async (_, { caller }) => {
         const names = new Set(pool.rows().map(r => String(r.agent)));
         const r = await ctx.call("agents.list", {});
@@ -228,7 +228,7 @@ export default {
     tool("computers.get", "One agent's computer.", obj({ agent: str }),
       async (i, { caller }) => pool.view(await resolve(i, caller)));
 
-    tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when every screen is held.",
+    tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when screens are busy.",
       obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
         ownOnly(caller);
         if (!driver) throw new Error(NO_DRIVER);
@@ -251,11 +251,11 @@ export default {
         return pool.stop(agent);
       });
 
-    tool("computers.restart", "Restart an agent's computer: a new container on the same home, so its files and Chrome profile stay, with its current limits. Whatever is open on its screen closes.",
+    tool("computers.restart", "Restart an agent's computer: a new container on the same home, so files and Chrome profile stay. Anything open on its screen closes.",
       obj({ agent: str }), async (i, { caller }) => { ownOnly(caller); return pool.restart(await resolve(i, caller)); }, { callers: OWN });
 
-    tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
-      obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
+    tool("computers.limits", `Set an agent's processor cores and memory; they apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
+      obj({ agent: str, cpus: { type: "number", description: `whole cores, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}` }, memory_gb: { type: "number", description: `whole GB, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}` } }), async (i, { caller }) => {
         ownOnly(caller);
         const agent = await resolve(i, caller);
         const claim = agentClaim(caller);

@@ -273,8 +273,8 @@ export default {
       return mins < 90 ? `in ${mins} min` : `in ${Math.round(mins / 60)} h`;
     };
     ctx.tool("google.calendar.today", {
-      description: "Today's next meetings, for a next-meeting line: { events: [{ id, account, title, start, end, when, join?, link }] }. Timed events only, from now to the end of today (this box's day), running ones included; `join` is an https meeting link if the event has one, and `link` is that or the event's own page. Empty when no Google account is connected. Read only; cached for a minute.",
-      input: obj({ limit: int }),
+      description: "Today's remaining timed meetings, running ones included, each with title, start, end, join link (if any) and page link. Empty with no Google account.",
+      input: obj({ limit: { type: "integer", description: "how many, 1 to 10; default 3" } }),
       run: safe(async ({ limit }) => {
         const accts = accounts.all();
         const at = now();
@@ -308,11 +308,11 @@ export default {
     });
 
     const eventInput = { title: str, start: { type: "string", description: "ISO 8601 time, or a date for all day" }, end: str, where: str, description: str,
-      attendees: { ...emails, description: "attendee addresses; naming any holds the invite at the Gate" }, time_zone: str, account, why: str };
+      attendees: { ...emails, description: "attendee addresses (the full new list on update); naming any holds the invite at the Gate" }, time_zone: str, account, why: str };
 
     ctx.tool("google.calendar.create", {
       callers: WITH_MODELS,
-      description: "Create an event. Without attendees it is written at once and nobody is told. With attendees an invite would go out, so it is held at the Gate for the user: returns { held, message }.",
+      description: "Create an event. With no attendees it is written at once; with attendees the invite is held at the Gate for the user.",
       input: obj(eventInput, ["title", "start"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
@@ -330,7 +330,7 @@ export default {
 
     ctx.tool("google.calendar.update", {
       callers: WITH_MODELS,
-      description: "Change an event: only the fields given. Without a change to attendees it is written at once with no notice to anyone. Giving `attendees` (the full new list) holds it at the Gate, since Calendar mails them: returns { held, message }.",
+      description: "Change an event, only the fields given. Written at once unless attendees (the full new list) are given, which holds it at the Gate.",
       input: obj({ id: str, ...eventInput }, ["id"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
@@ -361,13 +361,13 @@ export default {
     // ---- mail ----
 
     ctx.tool("google.mail.search", {
-      description: "Messages matching a Gmail query (from:dana, subject:invoice, newer_than:7d, is:unread, plain words), newest first, across every account unless one is named: [{id, thread_id, account, from, to, subject, date, snippet, url}].",
-      input: obj({ q: str, account, limit: int }, ["q"]),
+      description: "Search Gmail, newest first, across every account unless one is named: [{id, thread_id, account, from, to, subject, date, snippet, url}].",
+      input: obj({ q: { type: "string", description: "a Gmail query, such as from:dana subject:invoice newer_than:7d is:unread, or plain words" }, account, limit: int }, ["q"]),
       run: safe(({ q, account: a, limit }) => gm.search(forRead(accounts.all(), named(a)), { q, limit: clamp(limit, 1, 25, 10) })),
     });
 
     ctx.tool("google.mail.read", {
-      description: "One message (`id`) or a whole thread (`thread_id`) as plain text with its headers; bodies are capped near 20,000 characters. `message_id` is what a reply's in_reply_to takes.",
+      description: "Read one message (id) or a whole thread (thread_id) as plain text with headers. Bodies are capped near 20,000 characters.",
       input: obj({ id: str, thread_id: str, account }),
       run: safe(async ({ id, thread_id, account: a }) => {
         if (!named(id) && !named(thread_id)) throw fail("give the message's id or a thread_id");
@@ -414,7 +414,7 @@ export default {
 
     ctx.tool("google.mail.send", {
       callers: WITH_MODELS,
-      description: "Send an email as the user. It is always held at the Gate until the user approves it (and may edit it); returns { held, message }. Nothing is sent from here.",
+      description: "Send an email as the user. It is always held at the Gate for the user's approval and edit; nothing is sent from here.",
       input: obj({ ...mailInput, why: str, on_behalf: obj({ thread: str, agent: str }) }, ["to", "subject", "body"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
@@ -490,8 +490,8 @@ export default {
     // ---- the Capsule ----
 
     ctx.tool("google.find", {
-      description: "The Capsule's results: \"what's next\", \"today\", \"tomorrow\", \"email from dana\", \"email about invoice\", or any words (a few events and a few messages). { rows: [{ id, name, kind, sub }] }.",
-      input: obj({ q: str, limit: int }, ["q"]),
+      description: "Find events and messages for the Capsule (\"what's next\", \"today\", \"email from dana\", any words): { rows: [{ id, name, kind, sub }] }.",
+      input: obj({ q: { type: "string", description: "words, or what's next, today, tomorrow, email from someone, email about a topic" }, limit: int }, ["q"]),
       run: safe(async ({ q, limit }) => {
         const all = accounts.all();
         if (!all.length) return { rows: [] };

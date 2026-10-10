@@ -483,7 +483,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     ctx.tool("files.drive.status", {
-      description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
+      description: "VyreDrive on the box: whether it may share folders with the paired Mac, the shares offered, and what is shared now.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
         const st = { ...(await driveStatus()), space: await spaceDriveState(meta) };
@@ -570,7 +570,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     ctx.tool("files.drive.audit", {
       // The box sees who asks: a named agent is refused in the body (reach), a bare session is the person's own Claude and is not.
       callers: [...PERSON_AND_MODULE, "mcp", "harness"],
-      description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
+      description: "Check the tailnet policy from the box: any online node besides a paired Mac that can reach the VyreDrive shares is a finding. Owner only.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
         if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
@@ -595,9 +595,9 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     ctx.tool("files.drive.search", {
-      description: "Find files by name or content across the box's offered VyreDrive shares (server files). It is the search behind the Capsule's find-a-file and the Windows panel, neither of which keeps its own index of the box's folders. A named agent sees only the shares whose folder falls inside its own granted projects (files.drive.status's own rule); an offered share outside that is left out of the search entirely, not merely hidden from the list.",
+      description: "Find files by name or content across the box's offered VyreDrive shares. A named agent searches only shares inside its granted projects.",
       input: { type: "object", required: ["q"], properties: {
-        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
+        q: { type: "string" }, limit: { type: "integer" }, share: { type: "string", description: "search only this share" },
         kinds: { type: "array", items: { type: "string", enum: KINDS } } } },
       run: async ({ q, limit = 50, share, kinds }, meta = {}) => {
         q = String(q || "").trim();

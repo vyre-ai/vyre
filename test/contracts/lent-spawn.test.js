@@ -87,6 +87,25 @@ test("lent-spawn v1.2: lent.http carries a tool call and the tool list of the se
   for (const bad of ["/v1/tools/x/y", "/v1/health", "/v1/presence/x", "/events"]) await assert.rejects(c.http({ session: SESSION, method: "POST", path: bad, body: "{}" }), (/** @type {any} */ e) => e.code === "bad_input", bad);
 });
 
+test("lent-spawn v1.3: Vyre's tools are routed by the thread the chat's socket is open under, so a row older than the rule (session is not the thread) still gets the catalogue", { timeout: 60_000 }, async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const seen = [];
+  const r = await rig(t, { http: async (/** @type {string} */ thread, /** @type {string} */ method, /** @type {string} */ p) => { seen.push([thread, method, p]); return F.httpAnswer; } });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  // an older chat: its row's session id is its own, the thread the switchboard opens its socket under is another
+  const OLD = "s_older_row", THREAD = "t_the_socket_thread";
+  r.home.placeNew({ session: OLD, person: BOB });
+  r.home.spawn({ session: OLD, thread: THREAD, person: BOB, command: "/box/bin/node", args: F.args.given });
+  await c.beat({ sessions: [], well: true });
+  await c.spec({ session: OLD });
+  await c.http({ session: OLD, method: "GET", path: "/v1/tools" });
+  await c.http({ session: OLD, method: "POST", path: "/v1/tools/vyre.hello", body: "{}" });
+  assert.deepEqual(seen.map(x => x.join(" ")), [`${THREAD} GET /v1/tools`, `${THREAD} POST /v1/tools/vyre.hello`], "routed by the thread; the session stays the book key");
+  // the book and the checkpoints still use the session id
+  assert.ok(r.home.placements().some((/** @type {any} */ x) => x.session === OLD), "the row is still keyed by the session");
+});
+
 test("lent-spawn v1: a session lent with no pipe open answers idle; a limit broken is bad_input; an old epoch is conflict", { timeout: 60_000 }, async t => {
   keepAlive(t);
   const r = await rig(t);
@@ -159,14 +178,12 @@ test("lent-spawn v1.1: on a real daemon the host names the Spaces this computer 
   put("server-hosted/spc_otherscomputer", { device: "srv_home0000000001" }); put("lend/spc_otherscomputer/eid_another", { lent: true });
   const host = /** @type {any} */ (d.kernel).kernelFor({ name: "runner", needs: { kernel: { actions: [] } } }).runnerHost();
   assert.deepEqual(await host.lentTo(), ["spc_lendedspace1"], "only a Space reached over a wire, lent from this computer, and still on");
-  // a screen hears a chat's process fall back to the server when no computer is ready: thread.starting with state fallback
+  // with no computer ready the spawn fails as one that never started (the switchboard says thread.placing "fallback" for it: core/sessions/lent-spawn.test.js)
   const team = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "team" });
-  /** @type {any[]} */ const heard = [];
-  /** @type {any} */ (d.registry.deps).events.on("*", (/** @type {any} */ e) => { if (e && e.type === "thread.starting") heard.push(e.payload || e.data || e); });
   /** @type {any} */ (d.registry.deps).lentHome(team.space);
   const proc = host.lentSpawn(team.space, { session: "s_heard", chat: "chat_00000000-0000-4000-8000-0000000000c1", person: d.kernel.id.owner });
-  await new Promise(res => proc.on("close", res));
-  assert.deepEqual(heard.map(x => [x.state, x.reason || null, x.thread]), [["fallback", "no_computer_ready", "chat_00000000-0000-4000-8000-0000000000c1"]]);
+  const failed = await new Promise(res => proc.on("error", res));
+  assert.equal(/** @type {any} */ (failed).code, "lent_unavailable");
   assert.deepEqual(await host.placeNew(d.kernel.id.space, { session: "s_x1", person: d.kernel.id.owner }), { where: "box" });
 });
 

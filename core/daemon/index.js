@@ -22,7 +22,6 @@ import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
-import { signedLeasesWanted } from "../../lib/signed-leases.js";
 import { build, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST, cspFor } from "./app.js";
 import { watchForList } from "./release-watch.js";
@@ -44,7 +43,6 @@ import { lentServiceFor, lentPlacements } from "./lent-service.js";
 import { lentRequest } from "./threadsock.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
-import { askLeaseProof } from "../../lib/lease-card.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 // The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
@@ -354,11 +352,6 @@ async function startLocked(opts, root, p, release) {
       get placements() { return lentPlacements(registry); },
       // A chat's agent process on this person's computer, for the Agent SDK (`sandboxSpawn`, contracts/lent-spawn.md): a ChildProcess whose bytes ride `lent.pipe`. Null when this daemon is not the Space's home.
       lentSpawn: (/** @type {string} */ space, /** @type {any} */ i) => { const f = /** @type {any} */ (registry.deps).lentHome; const h = typeof f === "function" ? f(space) : null; if (!h) return null; const proc = h.spawn(i); if (proc.lent && !proc.lent.computer) proc.lent.computer = nameMap.get(proc.lent.device) || null; void nameCache();
-        // what a screen hears of a chat's process on a computer: starting (with the computer's name), up, or the fall back to the server (nothing ran)
-        const say = (/** @type {string} */ state, /** @type {any} */ more = {}) => { try { events.emit("link", "thread.starting", { thread: i.chat || i.session, session: i.session, computer: proc.lent ? proc.lent.computer : null, state, ...more }, { thread: i.chat || i.session }); } catch { /* a notice, never a stop */ } };
-        if (proc.lent) proc.once("starting", () => say("starting")); else say("fallback", { reason: "no_computer_ready" });
-        proc.once("spawn", () => say("up"));
-        proc.once("error", (/** @type {any} */ e) => { if (e && e.code === "lent_unavailable" && proc.lent) say("fallback", { reason: "lent_unavailable" }); });
         return proc; },
       // A new chat's place (contracts/lent-spawn.md): a ready computer of the person's with the row written, or the box.
       placeNew: async (/** @type {string} */ space, /** @type {any} */ i) => {
@@ -398,12 +391,12 @@ async function startLocked(opts, root, p, release) {
       if (typeof sf === "function") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ } }
       // A space this person JOINED on someone else's server (an invite accepted here): the spaces module reaches it with a member stream to the home its record names (the module hands the remote up as `memberRemote`)
       if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
-      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: (/** @type {any} */ ch) => (ch && ch.call === "leases.issue" ? askLeaseProof({ challenge: ch, call: (/** @type {string} */ tool, /** @type {any} */ input) => registry.call(tool, input, "module:runner") }) : proofSigner()) });
+      return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...((opts.signedHello ?? signedLeasesWanted(process.env, opts.packageRoot)) ? { signedHello: true } : {}), ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, requireStore: Boolean(storeFor), emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.

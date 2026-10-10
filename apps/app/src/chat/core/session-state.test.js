@@ -177,7 +177,7 @@ test("the ADR 0030 shapes: started fields, thread.state wins over guesses, usage
   ev(s, "thread.usage", { tokens: { input: 10, output: 5 }, cost_usd: 0.1, context: { used: 1000, max: 200000 } });
   assert.deepEqual(s.usage.context, { used: 1000, max: 200000 });
   ev(s, "ask.raised", { ask: "q1", kind: "question", tool: "AskUserQuestion" });
-  ev(s, "ask.cancelled", { ask: "q1" });
+  ev(s, "ask.answered", { ask: "q1", decision: "cancelled" });
   assert.equal(s.asks.get("q1").state, "cancelled");
   ev(s, "thread.finished", { result: "done", cost: 0.3, tokens: { input: 1, output: 1 } });
   assert.equal(s.byKey.get("turn:1").cost_usd, 0.3);
@@ -628,7 +628,7 @@ test("mode, model and thinking: from thread.started and their own events", () =>
   assert.equal(s.mode, "plan");
   assert.deepEqual(ev(s, "thread.mode", { mode: "acceptEdits" }), [], "your server says mode.changed");
   assert.equal(s.mode, "plan");
-  assert.deepEqual(ev(s, "thread.model", { model: "sonnet" }), ["@session"]);
+  assert.deepEqual(ev(s, "model.switched", { model: "sonnet" }), ["@session"]);
   assert.equal(s.model, "sonnet");
   // threads.thinking's event (sessions 034c71e5).
   assert.deepEqual(ev(s, "thinking.switched", { on: true }), ["@session"]);

@@ -17,6 +17,11 @@ import { ROLE_IDS } from "../../kernel/contracts/index.js";
 
 const MIN_TICK_MS = 60_000;
 
+/** Is the Space's own record store still starting (a deferred store that has not attached)? A store with no deferral is never away. @param {any} store */
+export function storeIsAway(store) {
+  return Boolean(store && typeof store.attached === "function" && !store.attached());
+}
+
 /**
  * Run `f` now when the Space's store is attached, or when it joins. A Space on its own records store (Twenty) attaches a moment after the server is up (stores/twenty/deferred-store.js): whatever reads the Flow
  * record types has to wait for that, and for the types to be defined, or it reads "no type flow-state".
@@ -253,8 +258,10 @@ export function createFlowsHost(o) {
     // A wait or a schedule that comes due sooner than the timer's sleep wakes it early (set below).
     /** @type {() => Promise<void>} */ let nudge = async () => {};
     // One subscription feeds triggers, waits, Kit approvals and stages.
-    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { try { await flows.onEvent(e); void nudge(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
-      if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
+    // (while the Space's own record store is still starting there is nothing to match an event against, and each one would fail and log the same line: they are skipped, and the store's join starts the Flows)
+    const storeAway = () => storeIsAway(k.store);
+    k.log.subscribe("flows", {}, async (/** @type {any} */ e) => { if (storeAway()) return; try { await flows.onEvent(e); void nudge(); // An event this very publish put in the log (subject .../event/<module>) is not a task change: publishing it again never stops.
+      if (o.publish && !/\/event\/[^/]+$/.test(String(e.subject)) && /^task\.(stuck|unblocked|readied|skipped|completed|approved|voided)$/.test(String(e.type))) o.publish(String(e.type), { task: taskIdOf(e) }); } catch (err) { if (/** @type {any} */ (err) && /** @type {any} */ (err).code === "unavailable") return; log(`flows ${space}: ${/** @type {Error} */ (err).message}`); } await stages.onEvent(e); });
 
     // The timer: time triggers and waits. It sleeps until the runner's next wake, never longer than a minute and never faster than a second.
     /** @type {NodeJS.Timeout | null} */ let timer = null;

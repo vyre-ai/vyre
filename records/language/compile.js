@@ -115,7 +115,7 @@ export function checkKit(kit) {
         if (inverseOn.has(key) && inverseOn.get(key) !== `${t.name}.${f.name}`) err(`type ${t.name}.${f.name}`, `${inverseOn.get(key)} already shows "${f.inverse.name}" on ${f.to}: name this one differently`);
         inverseOn.set(key, `${t.name}.${f.name}`);
       }
-      if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
+      if (f.kind === "link" && f.to !== undefined && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
     const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");

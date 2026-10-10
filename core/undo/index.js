@@ -171,8 +171,8 @@ export default {
 
     ctx.tool("undo.list", {
       effect: "read",
-      description: "What was done on the person's behalf, newest first: {id, at, actor, actor_kind, tool, summary, state, why, can_undo}. Filters: actor_kind (assistant, agent, module, person), actor, since (ms), limit (default 50, at most 200).",
-      input: { type: "object", properties: { actor_kind: { type: "string", enum: [...KINDS] }, actor: { type: "string" }, since: { type: "number" }, limit: { type: "integer" } } },
+      description: "What was done on the person's behalf, newest first, with id, actor, tool, summary, state and can_undo. Optional filters.",
+      input: { type: "object", properties: { actor_kind: { type: "string", enum: [...KINDS] }, actor: { type: "string" }, since: { type: "number", description: "only rows at or after this time, in ms" }, limit: { type: "integer", description: `default ${LIST_DEFAULT}, at most ${LIST_MAX}` } } },
       examples: [{}, { actor_kind: "assistant", limit: 10 }],
       run: async (i = {}) => {
         const where = [], args = [];
@@ -192,7 +192,7 @@ export default {
       effect: "write",
       // The person, and an agent or module for its own rows only (the body checks sameActor); the inverse runs as module:undo, never outward or person-only.
       callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
-      description: "Undo one recorded action: runs the inverse its module declared. The person may undo any row; an agent or module only its own. A row already undone answers {already: true}.",
+      description: "Undo one recorded action by id, running its declared inverse. A person may undo any row; an agent or module only its own.",
       input: { type: "object", required: ["id"], properties: { id: { type: "string" } } },
       examples: [{ id: "u_abc" }],
       run: async (i, meta = {}) => {

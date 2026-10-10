@@ -306,7 +306,7 @@ export default {
 
     ctx.tool("bridges.view.read", {
       callers: BRIDGE_CALLERS,
-      description: "Read a shared view through its source Space, live and read-only. Only the fields the share lists come back; sealed fields never do. The result is marked external and carries the source's residency rules.",
+      description: "Read a shared view live and read-only through its source Space. Returns only the fields the share lists, marked external.",
       input: { type: "object", required: ["share"], properties: { person: PERSON, share: str, space: str, filter: { type: "object" }, sort: { type: "array" }, limit: { type: "number" }, cursor: str } },
       run: guard(async (i, meta) => {
         const person = (await personOf(i, meta));
@@ -319,15 +319,15 @@ export default {
 
     ctx.tool("bridges.resolve", {
       callers: BRIDGE_CALLERS,
-      description: "Look up the name behind a vyre:// reference to another Space. A reference you may not read and one that does not exist answer the same way.",
+      description: "Look up the name behind a vyre:// reference to another Space. Unreadable and missing references answer alike.",
       input: { type: "object", required: ["space", "urn"], properties: { person: PERSON, space: str, urn: str } },
       run: guard(async (i, meta) => resolveReference(i.urn, { chain: chainFor(i.space, (await personOf(i, meta)), meta) }, deps)),
     });
 
     ctx.tool("bridges.copy", {
       callers: BRIDGE_CALLERS,
-      description: "Copy a record into another Space you belong to, as a new record that notes where it came from. Sealed fields come across empty. A model's copy is held for you to approve; sealed values copy only for you, in person.",
-      input: { type: "object", required: ["urn", "toSpace"], properties: { person: PERSON, urn: str, toSpace: str, destType: str, copy_sealed: strs } },
+      description: "Copy a record into another Space you belong to. Sealed fields arrive empty unless you copy_sealed in person; a model's copy is held for approval.",
+      input: { type: "object", required: ["urn", "toSpace"], properties: { person: PERSON, urn: str, toSpace: str, destType: str, copy_sealed: { ...strs, description: "sealed fields to copy; only a person, in person" } } },
       presence: { when: i => Boolean(i && Array.isArray(i.copy_sealed) && i.copy_sealed.length), summary: i => `Copy sealed values (${i && i.copy_sealed ? i.copy_sealed.join(", ") : ""}) into another Space` },
       run: guard(async (i, meta) => {
         const person = (await personOf(i, meta));
@@ -366,7 +366,7 @@ export default {
 
     ctx.tool("bridges.continue", {
       callers: BRIDGE_CALLERS,
-      description: "Continue in another Space: hand the work over as a task there that points back at records here by reference. A model's hand-off is held for you to approve.",
+      description: "Hand work over to another Space as a task that points back at records here by reference. A model's hand-off is held for approval.",
       input: { type: "object", required: ["fromSpace", "toSpace", "summaryRefs"], properties: { person: PERSON, fromSpace: str, toSpace: str, summaryRefs: strs, title: str } },
       run: guard(async (i, meta) => continueIn({ fromSpace: i.fromSpace, toSpace: i.toSpace, by: chainFor(i.fromSpace, (await personOf(i, meta)), meta), summaryRefs: i.summaryRefs, title: i.title }, deps)),
     });
