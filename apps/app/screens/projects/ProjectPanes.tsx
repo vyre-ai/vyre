@@ -91,7 +91,7 @@ export function TimelinePane({ slug }: { slug: string }) {
   if (!rows.length) return <EmptyState title="Nothing on the timeline yet" body="Stages, tasks, messages, files and shared chats linked to this project show here, newest first." />;
   const days: { key: string; at: number; items: Entry[] }[] = [];
   for (const e of rows) { const k = e.at ? dayKey(e.at) : "none"; const g = days[days.length - 1]; if (g && g.key === k) g.items.push(e); else days.push({ key: k, at: e.at, items: [e] }); }
-  const open = (e: Entry) => router.push((e.type === "chat" && e.chat ? `/u/chats/${e.chat}` : e.type === "stage" || e.type === "file-share" ? undefined : `/u/record/${e.id}`) as never);
+  const open = (e: Entry) => router.push((e.type === "chat" && e.chat ? `/u/chats/${e.chat}` : e.type === "stage" || e.type === "file-share" || e.type === "flow-run" ? undefined : `/u/record/${e.id}`) as never);
   return (
     <View className="gap-s3">
       {days.map((g) => (

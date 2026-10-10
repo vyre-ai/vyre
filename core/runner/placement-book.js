@@ -87,6 +87,24 @@ export function createPlacementBook(o = {}) {
       return copy(r);
     },
 
+    /**
+     * A computer whose runner is older than the server needs asked to run a session: it is the server's, and the chat says this computer is updating. Nothing was lent, so there is no epoch to fence; the next
+     * lend by the updated runner is allowed without the person asking again (they asked for it to run there).
+     * @param {{ session: string, chat?: string | null, person: string, device: string, key?: string | null }} i
+     */
+    skew(i) {
+      const session = String(i.session);
+      if (!SESSION.test(session)) throw bad("name the session", "bad_input");
+      const had = rows.get(session);
+      if (had && had.person !== i.person) throw bad("not found", "not_found");
+      if (had && had.where === "mac") return copy(had);
+      const t = now();
+      /** @type {Row} */ const r = { session, chat: i.chat || (had && had.chat) || null, person: i.person, device: i.device, key: i.key || null, where: "server", state: "updating", reason: "version-skew", since: t, epoch: (had ? had.epoch : 0) + 1,
+        offer: null, pin: had ? had.pin : null, beat: t, movedAt: had ? had.movedAt : null, allowMac: had ? had.pin !== "server" : true, ask: null };
+      rows.set(session, r); save();
+      return copy(r);
+    },
+
     /** The person asks for a session on the server to run on its computer again (the offer, or a tap): the next lend of it is allowed. @param {string} id @param {string} person */
     bringBack(id, person) {
       const r = this.find(id); if (!r || r.person !== person) throw bad("no such session", "not_found");

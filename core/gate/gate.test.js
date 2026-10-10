@@ -483,3 +483,22 @@ test("gate: a shipped module's sender may report its `to` as the real destinatio
   assert.equal(gate.recipients({ kind: "send", via: "chrome:none", to: "https://app.example.test", content: {} }), null, "a sender that does not say so names none");
   assert.throws(() => gate.offer({ name: "chrome:bad", tool: "chrome.x", recipients: "yes" }, "module:chrome", true), /recipients/);
 });
+
+test("gate: the same ask again while it waits is the same item, so a turn re-run after a session moved shows one draft; a change of words, place, chat or agent is a new ask, and so is asking again once it is sent", async () => {
+  const { gate, events, sent } = setup();
+  const first = ask(gate, { tool_use_id: "toolu_a" });
+  const again = ask(gate, { tool_use_id: "toolu_b", why: "asked again after the move" });
+  assert.equal(again.id, first.id);
+  assert.equal(gate.held().length, 1);
+  assert.equal(events.filter(e => e.type === "gate.held").length, 1, "the person is told once");
+  assert.notEqual(ask(gate, { content: { ...DRAFT, body: DRAFT.body + " P.S." } }).id, first.id, "other words");
+  assert.notEqual(ask(gate, { to: "someone@else.com" }).id, first.id, "other place");
+  assert.notEqual(ask(gate, { thread: "t-2" }).id, first.id, "other chat");
+  assert.equal(gate.held().length, 4);
+  // sent: the next ask of the same words is a new item the person decides on again
+  await gate.approve({ id: first.id });
+  assert.equal(sent.length, 1);
+  const third = ask(gate);
+  assert.notEqual(third.id, first.id);
+  assert.equal(gate.held({ thread: "t-1" }).filter(h => h.id === third.id).length, 1);
+});

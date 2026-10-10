@@ -12,7 +12,7 @@ import { describeSchedule } from "./schedule-words.js";
 export { describeTrigger };
 import { canonical, flowHash, walkSteps, BLOCK_KINDS } from "./schema.js";
 
-const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", extract: "tag", service: "globe", fn: "code" };
+const ICON = { find: "search", pick: "search", filter: "filter", create: "plus", update: "edit", upsert: "edit", remove: "trash", decide: "branch", repeat: "loop", parallel: "branch", branch: "branch", subflow: "run", wait: "clock", ask: "question", assign: "person", agent: "assistant", call: "send", stage: "stage", classify: "tag", extract: "tag", service: "globe", fn: "code" };
 
 /** @param {import('./compile.js').Catalog} cat @param {string} type */
 const typeLabel = (cat, type) => ((cat.types[type] && cat.types[type].label) || type).toLowerCase();
@@ -44,6 +44,9 @@ export function describeStep(s, cat) {
     case "remove": return `Remove a ${typeLabel(cat, s.type)}`;
     case "decide": return "Decide";
     case "repeat": return `Do this for each ${s.as}`;
+    case "parallel": return `Do ${(s.steps || []).length} things at the same time, then carry on`;
+    case "branch": return s.label || "One of them";
+    case "subflow": return `Run the Flow ${s.flow}`;
     case "wait": return s.for_ms !== undefined ? `Wait ${span(s.for_ms)}` : s.event ? `Wait for ${s.event}` : "Wait until a time";
     case "ask": return `Ask ${whoLabel(s.to)}`;
     case "assign": return `Give a task to ${whoLabel(s.to)}`;
@@ -84,6 +87,8 @@ export function graph(flow, cat, view = {}) {
         // after a decide, the flow carries on from the decide itself; the branches rejoin implicitly
         void t; void e;
       } else if (s.kind === "repeat") lay(s.steps || [], lane + 1, s.id, "each");
+      else if (s.kind === "parallel") for (const [j, b] of (s.steps || []).entries()) lay([b], lane + 1 + j, s.id, "lane");
+      else if (s.kind === "branch") lay(s.steps || [], lane, s.id, "next");
     }
     return prev;
   };
