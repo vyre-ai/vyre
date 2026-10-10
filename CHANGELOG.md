@@ -1,6 +1,7 @@
 # Changelog
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
+- fix(sessions): a Codex or Grok subscription login works on every install. Both were wrapped to go through the inference door, and the daemon never connects one, so every turn answered "Model calls must go through Vyre's inference door and none is connected". A login CLI talks to its own vendor with the person's own sign-in, so it now runs direct with the prompt scrubbed of credentials on its way in (`loginDirect` in lib/door-bridge.js); with a door connected it still goes through it, and an API-key driver still requires the door. The session stays Vyre's (transcript, the Gate, recall). core/sessions/login-direct.test.js leaves VYRE_LEGACY_DIRECT_MODEL unset, which is what hid this.
 - fix(vault): the connector list asks for no key when there is no api-credential item (as on the tip). With the Flows timer now waking at start, the list was asked in the first second and made the vault's key on a home with nothing to list (core/vault/stop.test.js).
 - fix(vault): an agent inside the person's own CLI (`cli:agent:kit`) is held to a credential's scope in vault.request like any model; the check stopped at the label mcp, so such an agent read through any credential.
 - test(ci): when scripts/perf-check is over budget on the first shard, the job runs it once more with a CPU profile of vyred (PERF_CPU_PROF_DIR) and uploads the profile, so the red names what ran at idle.
