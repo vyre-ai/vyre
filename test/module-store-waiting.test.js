@@ -22,11 +22,13 @@ test("a module whose start finds the record store away is waiting, not failed; i
   t.after(() => { delete globalThis.__storeUp; });
   writeModule(root, "needsrec", { does: { reads: [], tools: [{ name: "needsrec.list", effect: "read", reach: "anyone" }] } }, `
     export default { async start(ctx) {
-      if (!globalThis.__storeUp) throw Object.assign(new Error("the record store for this space is not available yet: starting Records (12 s so far)"), { code: "unavailable" });
+      if (!globalThis.__storeUp) throw Object.assign(new Error("the record store for this space is not available yet: starting Records (12 s so far)"), { name: "StoreError", code: "unavailable" });
       ctx.tool("needsrec.list", { effect: "read", input: { type: "object" }, run: async () => ({ rows: [] }) }); return {};
     } };`);
   writeModule(root, "after", { requires: ["needsrec"], does: { reads: [], tools: [{ name: "after.ping", effect: "read", reach: "anyone" }] } }, `
     export default { async start(ctx) { ctx.tool("after.ping", { effect: "read", input: { type: "object" }, run: async () => ({ pong: true }) }); return {}; } };`);
+  // `unavailable` for a reason that is not the store (no way to reach a paired server yet) is a failure, not a wait
+  writeModule(root, "nolink", { does: { reads: [], tools: [{ name: "nolink.x", effect: "read", reach: "anyone" }] } }, `export default { async start() { throw Object.assign(new Error("no way to reach a paired server yet"), { code: "unavailable" }); } };`);
   writeModule(root, "broken", { does: { reads: [], tools: [{ name: "broken.x", effect: "read", reach: "anyone" }] } }, `export default { async start() { throw new Error("a real bug"); } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
@@ -38,6 +40,8 @@ test("a module whose start finds the record store away is waiting, not failed; i
   assert.equal(row("after").state, "running", "a module that requires it waits too");
   assert.equal(row("after").waiting, "records");
   assert.equal(row("broken").state, "failed", "a real failure is still a failure");
+  assert.equal(row("nolink").state, "failed", "an `unavailable` that is not the store's own refusal is a failure too, never shown as running");
+  assert.equal(row("nolink").waiting, undefined);
   const early = await reg.call("needsrec.list", {}, "cli", {});
   assert.equal(early.error?.code, "unavailable");
   assert.match(early.error?.message || "", /waiting for the records.*starting Records/, "the tool answers in the store's words");

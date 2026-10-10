@@ -1361,7 +1361,7 @@ test("modules: a module that failed only because the record store was still star
   const flag = path.join(tempHome(t), "store-ready");
   const waits = `import fs from "node:fs";
 export default { async start(ctx) {
-  if (!fs.existsSync(${JSON.stringify(flag)})) throw Object.assign(new Error("the record store for this space is not available yet"), { code: "unavailable" });
+  if (!fs.existsSync(${JSON.stringify(flag)})) throw Object.assign(new Error("the record store for this space is not available yet"), { name: "StoreError", code: "unavailable" });
   ctx.tool("notes.add", { effect: "read", input: { type: "object", properties: {} }, run: async () => ({ ok: true }) });
   return { async stop() {} };
 } };`;
