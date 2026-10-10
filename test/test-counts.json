@@ -336,6 +336,7 @@
  "core/runner/module.test.js": 5,
  "core/sessions/accounts.test.js": 12,
  "core/sessions/door-bridge.test.js": 7,
+ "core/sessions/login-direct.test.js": 4,
  "core/sessions/drivers/openrouter.test.js": 5,
  "core/sessions/identity.test.js": 3,
  "core/sessions/prompts.test.js": 12,
