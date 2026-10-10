@@ -68,6 +68,8 @@ export default {
         return self;
       }
       if (/^(mcp|harness)\b/.test(String(meta && meta.caller || ""))) {
+        // one assistant per person: on this install it is the owner's, so only the owner's plain chat may use it
+        if (!(await isOwner(meta))) throw fail("denied", "a plain chat uses its own person's assistant's computer");
         const list = await ask("agents.list", {});
         const found = (Array.isArray(list) ? list : list && Array.isArray(list.agents) ? list.agents : []).find((/** @type {any} */ x) => x && x.kind === "assistant" && AGENT.test(String(x.name)));
         if (!found) throw fail("denied", "a model session that names no agent has no computer of its own, and this install has no assistant to lend its computer");
