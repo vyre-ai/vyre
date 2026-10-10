@@ -86,6 +86,12 @@ export function registerOutside(ctx, seam = {}) {
       }
       for (const t of types) grants.push(await mint(agent, write ? ["records.read", "records.create", "records.update"] : ["records.read"], u(t), until, `outside agent ${agent.name}: records of ${t}`));
       const spec = { types, write, defs: defs.map((/** @type {any} */ t) => ({ name: t.name, label: t.label || t.name, fields: (t.fields || []).map((/** @type {any} */ f) => ({ name: f.name, label: f.label || f.name, kind: f.kind })) })) };
+      // What it was given before for these same types is now covered by this: its row and its grants go, so the list reads as one line per thing.
+      for (const old of store.reach(agent.id)) {
+        if (old.kind !== "records" || !old.spec.types.every((/** @type {string} */ x) => types.includes(x)) || (old.spec.write && !write)) continue;
+        for (const g of old.grants) await K.mint.end({ id: g, reason: "given again" });
+        store.dropReach(old.id);
+      }
       store.addReach(agent.id, "records", spec, grants);
       return { kind: "records", types, write };
     }

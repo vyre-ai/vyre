@@ -86,6 +86,7 @@ test("a write waits at the Gate: nothing changes until the person says yes, and 
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"] } });
   assert.match((await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes" } })).text, /needs the person to give you more access|write access/, "read access is not write access");
   await ok("outside.grant", { id: reg.id, what: { kind: "records", types: ["contact"], write: true } });
+  assert.deepEqual((await ok("outside.list", {})).agents[0].gives.map(g => g.write === true), [true], "giving again for the same type replaces the row, it does not add one");
   const asked = await use(reg.token, "records_create", { type: "contact", fields: { name: "Dana Reyes", age: 31 } });
   assert.ok(asked.json && /^hd_/.test(asked.json.held), JSON.stringify(asked));
   assert.equal((await ok("records.list", { type: "contact" })).rows.filter(r => r.data.name === "Dana Reyes").length, 0, "nothing was made yet");
