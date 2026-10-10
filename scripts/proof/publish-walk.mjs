@@ -106,6 +106,7 @@ try {
 } finally {
   if (w && process.env.WALK_KEEP !== "1") await w.stop().catch(() => {});
 }
+if (code !== 0 && process.env.WALK_KEEP === "1") { console.error("WALK_KEEP: the stand-ins and the box stay up for 25 minutes"); await new Promise(r => setTimeout(r, 25 * 60_000)); }
 process.exit(code);
 
 /** @param {any} v @param {string} m */
