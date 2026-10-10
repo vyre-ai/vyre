@@ -51,6 +51,8 @@ test("a member speaks in a team chat with an assistant and the assistant answers
   const tid = (() => { try { return String(db.prepare("SELECT thread FROM stream_groups_members WHERE thread IS NOT NULL").get().thread); } catch { return ""; } })();
   const tGet = tid ? JSON.stringify(await w.internal("threads.get", { thread: tid, limit: 1 })).slice(0, 300) : "";
   const tOrigin = tGet + " ## " + (tid ? JSON.stringify((await w.internal("threads.origin", { session: tid })).data) : "nothread");
+  const klog = /** @type {any} */ (w).lines.filter((/** @type {string} */ l) => /kernel session|no kernel/i.test(l)).join(" | ");
+  assert.ok(!klog, `a team turn's kernel session opened: ${klog}`);
   const orig = runs + " :: tOrigin " + tOrigin + " :: " + (sess ? JSON.stringify((await w.internal("threads.origin", { session: sess })).data) : "none");
   const which = (() => { try { return JSON.stringify(db.prepare("SELECT * FROM memory_engine_lines WHERE text LIKE ?").all("%hello team, please answer%")).slice(0, 700); } catch { return ""; } })();
   assert.equal(Number(lines.n), 0, `nothing the team said is in the home's personal memory (home ${homeSpace}, team ${firm.space}): ${which} :: origin ${orig}`);
