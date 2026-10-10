@@ -178,7 +178,7 @@ const remembered = new Map();
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
- *   takesImages?: boolean, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
+ *   takesImages?: boolean, mcpSettleMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -638,11 +638,15 @@ function runAcp(entry, known, o) {
       mode = want;
     }
     const model = r.models && r.models.currentModelId || o.model || null;
+    // Codex starts the MCP servers it was given after session/new has answered and does not hold a prompt for them: a prompt sent at once finds none of Vyre's tools (live, 10 Oct: 7 of 8 fresh sessions had
+    // no Vyre finder on their first turn). The entry says how long to let them come up.
+    const settle = Number(entry.mcpSettleMs || 0);
+    if (settle > 0 && servers.length) await new Promise(r => setTimeout(r, settle));
     ready = true;
     const offered = modelsOf(r);
     // What the agent said about itself in `initialize` (R031-85): names and booleans only, for the harness capability store.
     const harness = { agent: init.agentInfo && typeof init.agentInfo === "object" ? { name: String(init.agentInfo.name || "").slice(0, 60), version: String(init.agentInfo.version || "").slice(0, 40) } : undefined,
-      caps: { loadSession: Boolean(caps.loadSession), image: Boolean(caps.promptCapabilities && caps.promptCapabilities.image), mcpHttp: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.http), mcpSse: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.sse) },
+      caps: { loadSession: Boolean(caps.loadSession), image: imageOk, mcpHttp: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.http), mcpSse: Boolean(caps.mcpCapabilities && caps.mcpCapabilities.sse) },
       auth: methods.map(x => x.id).slice(0, 8) };
     say({ type: "system", subtype: "init", session_id: o.id, agent_session_id: sid, model, modes: modes.map(x => x.id), mode, resumed: loaded, ...(offered.length ? { models: offered } : {}), ...(plan ? { plan } : {}), harness });
     pump();

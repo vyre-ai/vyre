@@ -65,6 +65,9 @@ export function codexProvider(o = {}) {
     //  - "agent-full-access" never asks.
     // Vyre's own MCP server is gated by vyred on every call, so Codex's per-call approval for it (which names no tool) is let through (acp.js).
     mcpOwn: true,
+    // codex-acp answers session/new before the MCP servers it was given are up, and a prompt does not wait for them: measured live on 10 Oct, a first turn sent at once had Vyre's tools in 1 of 8 fresh
+    // sessions, with 2 s in 6 of 8, with 3 s and with 6 s in 6 of 6. Held for 4 s.
+    mcpSettleMs: 4000,
     allowModes: /^(read-only|workspace-write)$/i,
     // Pinned on every start: "workspace-write" (Codex's own sandbox plus a question for what leaves it), else "read-only". Codex's own config cannot choose it.
     pinMode: ["workspace-write", "read-only"],
