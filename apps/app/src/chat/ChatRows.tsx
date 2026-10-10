@@ -8,6 +8,7 @@ import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Button, Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
+import { sizeWord } from "./attach-model.js";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
@@ -403,6 +404,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} />
+          {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>)}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
           {it.pending ? null : (
             <ActionRow>

@@ -45,6 +45,9 @@ import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 import { secureSecrets } from "./secure-paste.js";
+import { useAttachments } from "./useAttachments";
+import { useAttachDrop } from "./useAttachDrop";
+import { chipLine, defaultWords } from "./attach-model.js";
 import { useNeeds } from "../state/needs";
 import { heldFor } from "../state/held.js";
 import { useRouter } from "expo-router";
@@ -108,6 +111,9 @@ export function ChatScreen(p: ChatScreenProps) {
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
   const placed = usePlacement(p.sessionId, !allowsMock());
+  // Files added to the next message: picked, pasted or dropped, uploaded at once, and sent with the words.
+  const att = useAttachments(allowsMock() ? undefined : p.sessionId);
+  useAttachDrop(att.add);
   useChatKeyLease(p.sessionId);
   // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
   useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
@@ -231,7 +237,9 @@ export function ChatScreen(p: ChatScreenProps) {
       const safe = await secureSecrets(typed, { list: async () => ((await tool<{ items?: { name: string }[] }>("vault.list")).items ?? []).map((i) => i.name), put: (input) => tool("vault.put", input), onSecuring: setSecuring });
       setSecuring(null);
       if ("error" in safe) { setNote(safe.error); return; }
-      const text = safe.text;
+      const sending = att.take();
+      if (sending.waiting) { setNote("A file is still being added: send in a moment."); return; }
+      const text = safe.text.trim() || (sending.attachments.length ? defaultWords(sending.attachments.length) : safe.text);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
         if (!r.ok) setNote(r.reason);
@@ -245,10 +253,10 @@ export function ChatScreen(p: ChatScreenProps) {
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
-      if (why) setNote(why);
+      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}), ...(sending.attachments.length ? { attachments: sending.attachments } : {}) });
+      if (why) setNote(why); else att.clear();
     },
-    [store, editing, actions, replyTo, highlights],
+    [store, editing, actions, replyTo, highlights, att],
   );
   const renderRow = useCallback((row: TranscriptRow) => <ChatRow store={store} row={row as never} ctx={ctx} />, [store, ctx]);
   const base = useRef(rows.length);
@@ -420,6 +428,11 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={slots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
+          attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state }))}
+          onRemoveAttachment={att.remove}
+          attachProblem={att.problem}
+          onAttachFile={() => void att.choose(false)}
+          onAttachPhoto={() => void att.choose(true)}
           {...p.composer}
         />
       </View>

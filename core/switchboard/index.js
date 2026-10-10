@@ -38,7 +38,7 @@ import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { recordTags } from "./record-tags.js";
-import { cardsFor } from "./record-cards.js";
+import { cardsFor, ownerChain } from "../../lib/record-cards.js";
 import { registerEdits } from "./edits.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
@@ -3924,7 +3924,7 @@ export default {
     /** The kernel chain of the call being run (set by tool()): undefined when this build has no kernel, null when the kernel refused the call. */
     const kchainNow = () => { const v = /** @type {any} */ (calls.getStore()); return v && "kchain" in v ? v.kchain : (ctx.kernel ? null : undefined); };
     const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner, kchainNow(), kernelOwner());
-    const cardsNote = cardsFor({ kernel: ctx.kernel, call: ctx.call, chain: kchainNow });
+    const cardsNote = cardsFor({ kernel: ctx.kernel, call: ctx.call, chain: () => ownerChain(ctx.kernel, kchainNow()) });
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;

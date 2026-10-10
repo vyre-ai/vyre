@@ -61,8 +61,8 @@ export type ButtonProps = {
   className?: string;
 };
 
-/** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). */
-export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className }: ButtonProps) {
+/** Button: one primary per surface. "hold" carries the count of what goes and fires after a held press (tokens.v2.motion.hold). What it is not given (the handlers, aria props and ref a Menu trigger receives from Radix) goes on to the pressable, so a Button can be a Menu trigger. */
+export function Button({ label, kind = "secondary", size = "md", icon, onPress, disabled, loading, accessibilityLabel, className, ...slot }: ButtonProps) {
   const ctx = useUiTheme();
   const { color, phone } = ctx;
   const hold = kind === "hold" || kind === "holdText";
@@ -83,6 +83,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
   };
   return (
     <PressableScale
+      {...(slot as object)}
       depth={hold ? 1 : 0.97}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
@@ -109,14 +110,15 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
   );
 }
 
-/** A square button for an icon. Always named. 36 (control) or 44 (touch). */
-export function IconButton({ icon, label, onPress, kind = "ghost", touch }: { icon: IconName; label: string; onPress?: () => void; kind?: "ghost" | "secondary" | "primary"; touch?: boolean }) {
+/** A square button for an icon. Always named. 36 (control) or 44 (touch). Like Button, it hands what it is not given (the handlers, aria props and ref a Menu trigger receives) to the pressable. */
+export function IconButton({ icon, label, onPress, kind = "ghost", touch, ...slot }: { icon: IconName; label: string; onPress?: () => void; kind?: "ghost" | "secondary" | "primary"; touch?: boolean }) {
   const ctx = useUiTheme();
   const side = px(ctx, touch ? "--touch" : "--control");
   const c = ctx.color;
   const look = { alignItems: "center", justifyContent: "center", borderRadius: px(ctx, "--r-button"), borderWidth: 1, width: side, height: side, borderColor: kind === "secondary" ? c["edge-strong"] : "transparent", backgroundColor: kind === "primary" ? c.primary : kind === "secondary" ? c["surface-3"] : "transparent" } as const;
   return (
     <PressableScale
+      {...(slot as object)}
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={slop(side)}

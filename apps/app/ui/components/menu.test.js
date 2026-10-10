@@ -15,3 +15,11 @@ test("the menu's portal has one child on the web: the content, with no overlay b
   assert.ok(!web.includes("P.Overlay"), "no overlay in the web branch");
   assert.equal((portal.match(/<P\.Overlay/g) || []).length, 1, "the overlay is only in the phone branch");
 });
+
+// A Menu trigger is cloned with Radix's pointer handlers, aria props and ref. A Button or IconButton that drops them never opens the menu on the web: the Vault's Add button was dead until they passed them on.
+test("Button and IconButton pass what they are not given on to the pressable, so either can be a Menu trigger", () => {
+  const button = fs.readFileSync(new URL("./Button.tsx", import.meta.url), "utf8");
+  assert.equal((button.match(/\.\.\.slot\b/g) || []).length, 2, "both components collect the rest");
+  assert.equal((button.match(/\{\.\.\.\(slot as object\)\}/g) || []).length, 2, "and spread it onto their pressable");
+  assert.ok(/\{\.\.\.\(slot as object\)\}\s+depth=/.test(button), "Button spreads it onto its PressableScale");
+});

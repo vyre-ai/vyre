@@ -128,7 +128,7 @@ file, and leaves a file alone when its values differ from the vault's (a conflic
 
 ### In the app
 
-Vault, Items, **Import** does the same without a terminal. Pick where your passwords are now (1Password,
+Vault, **Add**, Bring in from another app does the same without a terminal. Pick where your passwords are now (1Password,
 Bitwarden, LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass, Apple Passwords, Chrome,
 Edge and the other Chromium browsers, Firefox, Safari, or a .env file), follow the one-line export
 steps, and choose the file. You see what would come in (new, already in the Vault, different, by kind)
@@ -200,9 +200,11 @@ vyre vault get stripe-live    # one item's metadata
 vyre vault audit stripe-live  # who used it, when, and whether it was allowed
 ```
 
-In the Vyre app, **Vault** (`/u/vault`) has the sections **Items**, **Passes**, **Shared**,
-**Devices** and **Health**. Health is the Watchtower: it flags weak or reused values and can check
-for known breaches.
+In the Vyre app, **Vault** (`/u/vault`) has the sections **Items**, **Sharing**, **Browsers** and
+**Health**. **Add** at the top right makes a login, an API key, a secret or an SSH key, or brings
+them in from another app. **Sharing** holds what you share, what is shared with you, shared
+vaults and emergency access. Health is the Watchtower: it flags weak or reused values and can
+check for known breaches. A row on the Items page tells you when something needs a look.
 
 ## Show, copy or fill a value yourself
 
@@ -260,7 +262,7 @@ When Claude asks for a grant (`vault.grant`), it only creates a pending request.
      vyre vault approve <id>
    ```
 
-2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Passes** in the Vyre app, where
+2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Sharing** in the Vyre app, where
    what waits for you is listed.
 
 Taking access away never needs presence; giving it does.
@@ -433,6 +435,11 @@ vyre vault offboard dana       # revoke every pass she holds and list what must 
 For a team, `vyre vault vaults create <name>` makes a shared vault and
 `vyre vault members invite <vault> <person>` adds people to it. Its items appear as
 `<vault>/<item>`.
+
+Your phone does the same from the app: it makes a shared vault, lists and syncs them with no
+question, and asks for your yes (the same one as for showing a secret) before it invites someone,
+changes a role, removes a member or changes the vault's key. An assistant or an outside agent can
+read the list and pull changes, and can do nothing else here.
 
 ## Emergency access
 

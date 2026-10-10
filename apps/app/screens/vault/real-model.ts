@@ -10,7 +10,7 @@ export type ListRow = {
 export type UseRow = { at: number; action: string; item: string | null; who: string; origin?: string; surface?: string; ok: boolean };
 
 export type Tab = "Login" | "Key" | "Card";
-export type RealItem = { id: string; kind: string; tab: Tab; name: string; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
+export type RealItem = { id: string; kind: string; tab: Tab; name: string; title: string; icon: ReturnType<typeof iconOf>; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
 
 /** Logins and cards have their own tabs; every other kind (api keys, secrets, ssh keys, notes, env sets) is a Key. */
 export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind === "card" ? "Card" : "Key");
@@ -18,20 +18,36 @@ export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind =
 const KIND_WORD: Record<string, string> = { login: "Login", card: "Card", "api-key": "API key", secret: "Secret", "ssh-key": "SSH key", note: "Note", "env-set": "Env set", authenticator: "Authenticator", passkey: "Passkey", identity: "Identity", address: "Address", wifi: "Wi-Fi" };
 export const kindWord = (kind: string): string => KIND_WORD[kind] ?? kind;
 
+/** The icon of a kind in the list, so a long list reads at a glance: a login is a site, a card is a card, a terminal key is a terminal. */
+const KIND_ICON: Record<string, "globe" | "key" | "card" | "term" | "file" | "person"> = { login: "globe", card: "card", "ssh-key": "term", note: "file", "env-set": "file", identity: "person", address: "person" };
+export const iconOf = (kind: string): "globe" | "key" | "card" | "term" | "file" | "person" => KIND_ICON[kind] ?? "key";
+
+/** A name as a person reads it: the vault keeps letters, digits, dot, dash and underscore, so "Airline-account" is shown as "Airline account". The name itself is still what every action sends. */
+export const displayName = (name: string): string => name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+const FIELD_WORD: Record<string, string> = { totp: "One-time code", cvc: "Security code", expiry: "Expires", number: "Number", url: "Web address", ssh_private_key: "Private key", public_key: "Public key", client_id: "Client ID", client_secret: "Client secret" };
+/** A field's name as a person reads it: "totp" is "One-time code"; anything else is the name with a capital and no underscores. */
+export const fieldWord = (f: string): string => FIELD_WORD[f] ?? (f.charAt(0).toUpperCase() + f.slice(1).replace(/[_-]+/g, " "));
+
+/** A site as a person reads it: the host, with no scheme or path. */
+export const hostWord = (h: string): string => h.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "").replace(/^www\./, "");
+
 /** The line under a name: what the person wrote, else where it is used, else the kind. */
 export function lineOf(r: ListRow): string {
-  const host = r.hosts[0] ?? (r.url ? r.url.replace(/^https?:\/\//, "").split("/")[0] : "");
+  const host = hostWord(r.hosts[0] ?? r.url ?? "");
   return r.description || host || kindWord(r.kind);
 }
 
 export function toItem(r: ListRow): RealItem {
   return {
-    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
+    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), icon: iconOf(r.kind), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
     grants: r.grants.map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
   };
 }
 
-export const itemsOf = (rows: ListRow[], tab: Tab): RealItem[] => rows.filter((r) => tabOf(r.kind) === tab).map(toItem);
+/** What the list can show: every item, or one kind's. */
+export type Filter = Tab | "All";
+export const itemsOf = (rows: ListRow[], tab: Filter): RealItem[] => rows.filter((r) => tab === "All" || tabOf(r.kind) === tab).map(toItem);
 
 /**
  * Find items by what the person remembers: part of the name, the note, the site it is for, or the kind ("card", "api key"). Every word typed must match somewhere; names first, then the rest, each in
@@ -109,10 +125,14 @@ export const NEW_KINDS: [NewItem["kind"], string][] = [["login", "Login"], ["api
 /** The host of a link the person typed, lower case, or "" when it is not one. */
 export const hostOf = (url: string): string => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(url.trim()); return m ? m[1].toLowerCase() : ""; };
 
+/** The vault's own name for what the person typed: a name is letters, digits, dot, dash and underscore, so spaces become dashes and anything else is dropped ("Juniper Drive" is saved as Juniper-Drive). */
+export const slugName = (typed: string): string => typed.trim().replace(/\s+/g, "-").replace(/[^A-Za-z0-9._-]/g, "").replace(/^[^A-Za-z0-9]+/, "").slice(0, 128);
+
 /** What is wrong with a new item, field by field, in words the person can act on: every required field that is empty, shown under that field (never left to the browser's own bubble). */
 export function putProblems(n: NewItem): Partial<Record<"name" | "username" | "secret" | "url", string>> {
   const out: Partial<Record<"name" | "username" | "secret" | "url", string>> = {};
   if (!n.name.trim()) out.name = "Give it a name.";
+  else if (!slugName(n.name)) out.name = "Start the name with a letter or a number.";
   if (n.kind === "login" && !n.username.trim()) out.username = "Type the username.";
   if (!n.secret) out.secret = n.kind === "login" ? "Type the password." : "Type the value.";
   if (n.kind === "login" && n.url.trim() && !hostOf(n.url)) out.url = "That is not a web address.";
@@ -123,7 +143,7 @@ export function putProblems(n: NewItem): Partial<Record<"name" | "username" | "s
 export function putInput(n: NewItem): { input: Record<string, unknown> } | { error: string } {
   const first = Object.values(putProblems(n))[0];
   if (first) return { error: first };
-  const name = n.name.trim();
+  const name = slugName(n.name);
   if (n.kind === "login") {
     const host = hostOf(n.url);
     return { input: { name, kind: "login", fields: { username: n.username.trim(), password: n.secret }, ...(host ? { url: n.url.trim(), hosts: [host] } : {}) } };
