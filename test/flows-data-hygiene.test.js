@@ -51,3 +51,24 @@ test("what Flows leave in records, tasks and the log holds no [object Object] an
   scan("log", d.kernel.log.read({}).map((/** @type {any} */ e) => ({ type: e.type, subject: e.subject, data: e.data })));
   assert.deepEqual(found, [], "a value reads as words");
 });
+
+test("the Vault can ask which Flows name a credential and read every stored definition (module-only reads)", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const host = d.registry.deps.flowsHost.get(d.kernel.id.space);
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input, caller = "cli") => d.registry.call(tool, input, caller, { token: (await d.kernel.surfaces.open(admin, {})).token });
+  const r = (await call("flows.define", { flow: { format: 1, name: "uses_key", label: "Uses a key", authorship: "human", trigger: { on: "manual" }, steps: [{ id: "w", kind: "wait", for_ms: 1000 }, { id: "n", kind: "create", type: "contact", set: { name: "vault://deepgram" } }] } })).data;
+  void host;
+  assert.equal(r && r.ok, true, JSON.stringify(r));
+  const uses = await call("flows.credential-uses", { name: "deepgram" }, "module:vault");
+  assert.ok(!uses.error, JSON.stringify(uses.error));
+  assert.ok(uses.data && uses.data.uses.length, JSON.stringify([uses, (await call("flows.definitions.scan", {}, "module:vault")).data]).slice(0, 600));
+  assert.deepEqual((uses.data && uses.data.uses || []).map((/** @type {any} */ u) => u.name), ["Uses a key"]);
+  assert.deepEqual((await call("flows.credential-uses", { name: "other" }, "module:vault")).data.uses, []);
+  const scan = await call("flows.definitions.scan", {}, "module:vault");
+  assert.equal(scan.data.definitions.length, 1);
+  assert.match(scan.data.definitions[0].json, /vault:\/\/deepgram/);
+  assert.ok((await call("flows.credential-uses", { name: "deepgram" }, "cli")).error, "a person's surface is not a module: refused");
+});
