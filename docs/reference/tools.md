@@ -545,7 +545,7 @@ What is waiting for the person, as the phone shows it: [{ id, title, body, op, s
 
 ### `approvals.receipt`
 
-The registry's own: a Flow's approved act, just spent by the Flows host, is kept like a redeemed card so the Gate can use it once for the send the act files. { card, tool, input_sha256, asker }.
+The registry's own: a Flow's approved act or a person's confirmed preview is kept like a redeemed card so the Gate can use it once for the send the act files. { card, tool, input_sha256, asker }.
 
 - Input:
   - `asker` string, required
