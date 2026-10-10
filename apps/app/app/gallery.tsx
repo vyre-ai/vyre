@@ -2,7 +2,7 @@
 // load /gallery?f=<id>&form=full|compact|glance and take a picture of #fixture; /gallery?f=all lists everything for a person to read.
 import { View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { BlockScreen, Card, ChatCard, FlowCanvas, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
+import { BlockScreen, Card, ChatCard, FlowCanvas, Markdown, ThemeProvider, Text, useAppearance, useUiTheme } from "@vyre/ui";
 import type { CanvasEdge, NodeState } from "../ui/canvas/FlowCanvas";
 import data from "../ui/blocks/fixtures.generated.json";
 import "../screens/records/register";
@@ -12,12 +12,25 @@ import RealVault from "../screens/vault/RealVault";
 import { RunHereView } from "../screens/runner/RunHere";
 import { PlacementChip, MovedLines } from "../src/chat/placement";
 import { StatusLine } from "../src/chat/StatusLine";
+import { Thumb } from "../src/chat/Thumb";
+import { ExplainCard } from "../screens/flows/ExplainCard";
+import { TimelineEntries } from "../screens/projects/TimelineList";
 import { ChatsList } from "../screens/chats/ChatsList";
 import { sampleChats } from "../screens/chats/chats-model.js";
 import { PreviewCard } from "../src/chat/PreviewCard";
 import { SitesList } from "../screens/sites/SitesList";
 import { EmergencyView } from "../screens/vault/RealVaultMore";
 import { DesignChangesView } from "../screens/design/DesignChanges";
+
+const MD_SAMPLE = [
+  "## The short answer", "",
+  "The check compares the day against a **fixed month table**, so it rejects 29 February in a *leap year*. Use the real month length instead:", "",
+  "```ts", "function validDay(year: number, month: number, day: number): boolean {", "  const days = new Date(year, month + 1, 0).getDate(); // 29 in Feb 2028", "  return Number.isInteger(day) && day >= 1 && day <= days;", "}", "```", "",
+  "Three things change:", "", "1. the month table is deleted", "2. the leap-year rule comes from `Date`", "3. the test adds two cases:", "   - 29 February 2028 passes", "   - 29 February 2027 fails", "",
+  "> A date check should never carry its own calendar.", "",
+  "| File | Change |", "|:--|--:|", "| `src/intake/date.ts` | 6 lines |", "| `src/intake/date.test.ts` | 12 lines |", "",
+  "The full history is in the [intake notes](https://example.com/intake). A tag such as <script>alert(1)</script> is only words, and [this](javascript:alert(1)) is not a link.",
+].join("\n");
 
 type Fx = { title: string; screens: Record<string, any> };
 const FX = (data as { fixtures: Record<string, Fx> }).fixtures;
@@ -103,6 +116,31 @@ function Sample({ name }: { name: string }) {
   }
   if (name === "preview-card") {
     return <View style={{ gap: 12 }}><PreviewCard block={{ block: "preview", id: "0a1b2c3d", title: "Intake form", state: "live", source: "files", mode: "supervised", access: "me", thumb: 0 }} /><PreviewCard block={{ block: "preview", id: "1a1b2c3d", title: "Dev server", state: "live", source: "port", mode: "session", access: "me", thumb: 0 }} /></View>;
+  }
+  if (name === "markdown") return <Markdown text={MD_SAMPLE} onCopy={() => {}} />;
+  if (name === "explain-card") return <ExplainCard text="It ran because the stage moved to Engagement. It made Welcome note and handed Send the welcome email to an assistant. It is waiting for a person (step Approve the email)." />;
+  if (name === "record-timeline") {
+    const now = 1_700_000_000_000, h = 3_600_000;
+    return <TimelineEntries rows={[
+      { type: "flow-run", kind: "flow", id: "r1", urn: "u", title: "Welcome the client", line: "Welcome the client ran and finished", at: now - 2 * h },
+      { type: "stage", kind: "stage", id: "s1", urn: "u", title: "Engagement", line: "Moved to Engagement", at: now - 3 * h },
+      { type: "email", kind: "email", id: "e1", urn: "u", title: "Re: lease", line: "Alex sent the welcome email", at: now - 26 * h },
+      { type: "task", kind: "task", id: "t1", urn: "u", title: "Collect ID", line: "Collect ID was done by Sam", at: now - 27 * h },
+      { type: "call", kind: "call", id: "c1", urn: "u", title: "Call", line: "Call with the client, 18 minutes", at: now - 50 * h },
+    ]} />;
+  }
+  if (name === "attach-thumbs") {
+    const P = { a: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAACFUlEQVR42sXUa08TURAG4PcHFwoUCpS20DvVCPESMEqAqPESNUpQe9tewIKAgMB22227Lb0BBQr6D+DAJo1uhbPGPTmT9/uTmcwM7KZfDtNPp+l8tOvM1dVyd7c83ac+84nffBwwN4M9zTs9R3d7D+/1Hkz0NSb7Gvct9QeW2kNL9VF/Zaq/Mj2w/3ig/MRaempVZqzK7GBxbrAwP5R/NiQ/H5ZfDOde2rKvbNJrW+bNSObtiPjOvvfevvvBsQMu6kcCc1EXHD/ARV10boOL+sm5BS7q59FNcFFDBDZWvfizblLDY9/BTlXrr2pkbANMVbU61ZhrHaxVtTSq4FqDIdtEhTVqnMCG7DAV1qgJ9zcYcjlUWKOm3Ksw5F6psEZd8qzAqC/xT+qyJw0Df5N+Ne1Nw9iPqFNd8X4Fiz/cucMaddW7DC7qmm8JXNR1Xwpc1A1/ClzUTX8SXNStQAJc1O1AHFzUnXEBXNRdAnNR98Zj4KKKwSj0qOKXeiZUl0K1W1QlWlaipVK0dIvaEPIHgnwYl6VgBHp6VVWSbKiWC1dJOntV1fJVlEqMpNjZq6oexXMk0DNhjSqHK/nrFCL77Qlr1GqsWCMRCnUh355wW20S+H/UYqTcnvBNauM6v/dK1ONEFtRtYqFewdQdZqGeJCRQL4eFepqUQL1XFmqLwNQvwUJtJTOg/iYW6llSBPUjslDPU+Il3WE3rUUO8aoAAAAASUVORK5CYII=", b: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAAB4UlEQVR42sXU6VIaQRQF4H4h9n3Nc0WzuEWdYSBxyR61F8C4BQUFsif+Hp7JnGYCVQPRnpTT1V3n/1d9695DHgxpdUCrfVq9opVLWunRSpdWLmj5nJY7tPyJlc9YCTllpRNWOmbFI1b8yIqHrNhmhRYvNHlB8DzCeZ7xPOW5A57b57k9nvsgsu9F9p3IvhXZNyKDvBaZVyLzUqR3BTGipneaxIia3gZsQk1tNYkRNfUCsAk19RywCTXVAByqeuN/t6lJwPpU7/1TTdYB61S9N68mHcCa1b+2X03WAIexTWrYrybsFgllh5XwjJqwAIdxOWrYryY2AYdxr2rYryY2AIfUEv+lxtdbJMRuCq7GnwEOtREDqvE1wBp6eH6HZ9T4KmATagywETW2AtiEGltuEyNqdKlNjKjRp4BNqNEngE2o0ceATaiRR21iRI0sAjahRhYAB1Ab127jt8wdqvPNdb7K3KHa/ZF9JRN5CDjAXz218Uumjvx05//qqc4XmRry2Z3/q6falzIkyIRnVJkfrvNdZjrhGbU2HMkMZKYTnqpj+B6qHO9kwrepNYx3MuGpavcAq7ZJh2p3Aat2WIdqAVZejg7VugCsulcd6hhWtYQO1ToHrOomHaqElY2oQ7U6oz/sMkViifXP7QAAAABJRU5ErkJggg==", c: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAoCAIAAAADnC86AAACGUlEQVR42sXU+U8TURAH8PkDaSndbvciKl5B8IoXahDPKB4QVFDTvdoi4IGi/BUKCBUQBNxttzdF0P8AX7uhSXctb4378ibf3z+ZyczA79H2XwlpJy7t6NK2Jm2r4k9F3JLFrZhYeSFUngubz4TNEaE8LJSe8qUnfPExXxziC4NcYYDLP+JyD7ncAy57P5rtj1r3otbdaOYOm77Npm+x5k3WvMEa1yNGX+THtchGb2TjKrN+hVm/zKz1MEBFXbvEABX1+8UwUFFXL4SBirp6HsE01JVzYaCirpxtA3/V3cZqpn47g2Biql1/VZdPtwFR1S63unwKwYRVuxzq0skQ+LJNeLhRXepGsB87jIUd6mJXCHy5HCzsUBdPhMCXe8XDjerXTgT79CX+SU0dbwUff5N3NXUMwb5+RI/qwtFWIPGH3TvsUBeOIJiGOn84CFTU+Y4gUFG/HEIwDXXuYBCoqHMHEExDnW0PABV1VkIwDXVGDAAVdUYIABX1M98CXtTytF7+WM0+av6tln+j5l+r+6jWqGIllUxS/sS1gJdebbX0QS9NaSjF95q7V1vNobxScxMKirtXW80kqgEvE3aoxXe1TGqFSa0+YYeaHa9lTLFeKvUJ19V0XIb/UQtovHsTbqZWszfhulqDcdtEQjV1GbA7TEI1NRmwl0NCrcG4eyWhGqoM2C9BQjWUGGB/Ewm1CmM/IgnVkGN/APded9/JzrEcAAAAAElFTkSuQmCC" };
+    return (
+      <View style={{ gap: 16 }}>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Thumb uri={P.a} name="lease-photo.png" onRemove={() => {}} />
+          <Thumb uri={P.b} name="signature.png" state="uploading" onRemove={() => {}} />
+          <Thumb uri={P.c} name="scan.jpg" state="failed" onRemove={() => {}} />
+        </View>
+        <View style={{ flexDirection: "row", gap: 8 }}><Thumb uri={P.a} name="lease-photo.png" size={120} /><Thumb uri={P.b} name="signature.png" size={120} /></View>
+      </View>
+    );
   }
   if (name === "runner-chip") {
     return (

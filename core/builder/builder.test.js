@@ -46,3 +46,11 @@ test("a folder that is missing or empty answers with the folder reader's own wor
   await assert.rejects(() => build(dep({ source: { kind: "folder", ref: path.join(d, "gone") } })), { code: "not_found", message: /not there/ });
   await assert.rejects(() => build(dep({ source: { kind: "folder", ref: d } })), { message: /no files to publish/ });
 });
+
+test("publishing an app with its own server is switched off in the test release (setting publish.servers, off by default): a Dockerfile build is refused in words, a folder of ready files still publishes, and the setting turns it on", () => {
+  assert.throws(() => planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" } }), /Publishing apps with their own server is turned off in this test release/);
+  assert.throws(() => planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" } }, { servers: false }), /turned off/);
+  assert.deepEqual(planOf({ source: { kind: "folder", ref: "/x" }, build: {} }), { dir: "/x", outputDir: ".", dockerfile: false }, "a folder of ready files is untouched");
+  assert.equal(planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "static" } }).dockerfile, false);
+  assert.equal(planOf({ source: { kind: "folder", ref: "/x" }, build: { image: "dockerfile" } }, { servers: true }).dockerfile, true, "the setting turns it on");
+});

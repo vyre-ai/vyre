@@ -21,11 +21,13 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
   const group = q.scenario === "group";
   const activity = q.scenario === "activity";
   const previews = q.scenario === "previews";
+  const markdown = q.scenario === "markdown";
+  const steps = q.scenario === "steps";
   const n = Number(q.n) || 0;
   const at = Number(q.at) || 0;
   const source = useMemo(
-    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" ? "assistant" : activity ? "activity" : previews ? "previews" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
-    [n, at, q.tps, q.hold, group, activity, previews, sample],
+    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" ? "assistant" : activity ? "activity" : markdown ? "markdown" : steps ? "steps" : previews ? "previews" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
+    [n, at, q.tps, q.hold, group, activity, previews, markdown, steps, sample],
   );
   const router = useRouter();
   const meter = useMemo<Meter>(() => ({ delta: [], first: [], keys: [], paints: [], mounted: 0 }), []);

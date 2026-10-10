@@ -63,6 +63,8 @@
  "apps/app/ui/canvas/layout.test.js": 4,
  "apps/app/ui/canvas/real-graph.test.js": 1,
  "apps/app/ui/fields/logic.test.js": 11,
+ "apps/app/ui/markdown/highlight.test.js": 3,
+ "apps/app/ui/markdown/parse.test.js": 6,
  "apps/app/ui/marks/source.test.js": 7,
  "apps/app/ui/motion/motion.test.js": 9,
  "apps/app/ui/shell/nav.test.js": 6,
@@ -334,6 +336,7 @@
  "core/runner/module.test.js": 5,
  "core/sessions/accounts.test.js": 12,
  "core/sessions/door-bridge.test.js": 7,
+ "core/sessions/login-direct.test.js": 4,
  "core/sessions/drivers/openrouter.test.js": 5,
  "core/sessions/identity.test.js": 3,
  "core/sessions/prompts.test.js": 12,
@@ -353,7 +356,7 @@
  "core/spaces/identity-ops.test.js": 11,
  "core/spaces/kernel-members-compat.test.js": 2,
  "core/spaces/kernel-members.test.js": 3,
- "core/spaces/spaces.test.js": 61,
+ "core/spaces/spaces.test.js": 62,
  "core/spawner/isolation.test.js": 1,
  "core/spawner/spawner.test.js": 9,
  "core/spawner/wall.test.js": 11,
@@ -819,6 +822,7 @@
  "test/box-update.test.js": 37,
  "test/build-app-out.test.js": 6,
  "test/bump-version.test.js": 2,
+ "test/bundle-size.test.js": 3,
  "test/bytes-single.test.js": 3,
  "test/cc-plugin.test.js": 14,
  "test/chaos/chaos.test.js": 24,
@@ -1016,5 +1020,8 @@
  "core/vault/links.test.js": 2,
  "core/github/scan.test.js": 3,
  "apps/app/screens/runner/run-switch.test.js": 7,
- "test/a5-no-copies.test.js": 2
+ "test/a5-no-copies.test.js": 2,
+ "apps/app/src/chat/feel.test.js": 2,
+ "test/journey-run-explain-timeline.test.js": 1,
+ "apps/app/src/chat/tool-runs.test.js": 3
 }

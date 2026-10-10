@@ -1152,6 +1152,16 @@ uninstall() {
   if [ "$choice" = delete ]; then
     # shellcheck disable=SC2086 # one volume name per word
     [ -z "$vols" ] || docker volume rm $vols >/dev/null
+    # The Spaces' own record stores (vyre-spc-*) and the root-owned state Vyre wrote (the updater's, the Space helper's) go too: a purge leaves nothing a later install would read as its own
+    # (a stale signed release folder once made a development build look packaged, and a kept home kept its owner). Only the two folders this wrapper names, never a path from anywhere else.
+    svols=$(docker volume ls -q 2>/dev/null | grep '^vyre-spc-' || true)
+    # shellcheck disable=SC2086 # one volume name per word
+    [ -z "$svols" ] || docker volume rm $svols >/dev/null 2>&1 || true
+    for d in "$UPD_ROOT" "$SPACES_ROOT"; do
+      case "$d" in ""|/|/var|/var/lib|/home|/root|/usr) continue ;; /*) ;; *) continue ;; esac
+      [ -e "$d" ] || continue
+      if [ "$(id -u)" = 0 ]; then rm -rf -- "$d"; else sudo rm -rf -- "$d" 2>/dev/null || say "note: $d is still on this server; remove it with: sudo rm -rf $d"; fi
+    done
     say "your data is deleted"
   else
     say "your data is kept: a fresh install picks up where this left off"
@@ -1644,7 +1654,7 @@ sp_app_line_ok() {
 sp_pub_load_name() {
   _pf=$SP_APPS/$1/pubdep
   { [ -f "$_pf" ] && [ ! -L "$_pf" ]; } || return 1
-  _pd=$(head -n 1 "$_pf" 2>/dev/null || true)
+  _pd=$(awk 'NR == 1 { print $1; exit }' "$_pf" 2>/dev/null || true)
   sp_pub_dep_ok "$_pd" || return 1
   sp_pub_rec_load "$_pd" && [ "$A_NAME" = "$1" ]
 }
@@ -1736,11 +1746,12 @@ sp_app_lint() {
     else if (k == "init") { if ($0 != "    init: true") bad("init") }
     else if (k == "read_only") { if (pub != 1 || $0 != "    read_only: true") bad("read_only") }
     else if (k == "tmpfs") { if (pub != 1 || $0 != "    tmpfs:") bad("tmpfs") }
-    else if (k == "cap_drop" || k == "security_opt" || k == "networks" || k == "volumes" || k == "environment") { if ($0 != "    " k ":") bad(k " with a value on its line") }
+    else if (k == "cap_drop" || k == "security_opt" || k == "networks" || k == "volumes" || k == "environment" || k == "logging") { if ($0 != "    " k ":") bad(k " with a value on its line") }
     else bad("service key " k)
     next }
   top == "services" && /^      / {
     if (key == "cap_drop") { if ($0 != "      - ALL") bad("cap_drop") }
+    else if (key == "logging") { if ($0 != "      driver: json-file" && $0 != "      options:" && $0 != "        max-size: \"10m\"" && $0 != "        max-file: \"3\"") bad("logging") }
     else if (key == "tmpfs") { if ($0 != "      - /tmp:rw,size=64m,mode=1777") bad("tmpfs entry") }
     else if (key == "security_opt") { if ($0 != "      - no-new-privileges:true") bad("security_opt") }
     else if (key == "networks") { if ($0 != "      - net") bad("the service networks") }
@@ -2052,7 +2063,7 @@ sp_pub_dep_ok() { [ "${#1}" = 20 ] && printf '%s\n' "$1" | grep -Eqx 'dep_[0-9a-
 # sp_pub_src DEP: SRC is the one folder <home>/publish/<space>/servers/<dep> the daemon made, every step of the way a real folder the daemon's uid owns.
 sp_pub_src() {
   base=$(sp_lend_base) || { MSG="the daemon's home folder could not be found"; return 1; }
-  SRC=""; cnt=0
+  SRC=""; SRC_SPACE=""; cnt=0
   for p in "$base"/publish/spc_*/servers/"$1"; do
     [ -e "$p" ] || [ -L "$p" ] || continue
     sid=${p%/servers/*}; sid=${sid##*/}
@@ -2062,7 +2073,7 @@ sp_pub_src() {
       d=$d/$seg
       { [ -d "$d" ] && [ ! -L "$d" ] && [ "$(stat -c %u "$d" 2>/dev/null)" = "$DAEMON_UID" ]; } || { MSG="the server's folder is not where it should be"; return 1; }
     done
-    SRC=$p; cnt=$((cnt + 1))
+    SRC=$p; SRC_SPACE=$sid; cnt=$((cnt + 1))
   done
   [ "$cnt" = 1 ] || { MSG="there is no such server folder"; return 1; }
 }
@@ -2072,7 +2083,8 @@ sp_pub_vet() {
   { [ -d "$c" ] && [ ! -L "$c" ]; } || { MSG="what was taken is not a folder"; return 1; }
   [ -z "$(find "$c" -mindepth 1 ! -type f ! -type d 2>/dev/null | head -n 1)" ] || { MSG="the folder holds something that is not a plain file or folder"; return 1; }
   [ -z "$(find "$c" -type f -links +1 2>/dev/null | head -n 1)" ] || { MSG="the folder holds a file with a second link"; return 1; }
-  kb=$(du -sk "$c" 2>/dev/null | cut -f1)
+  # the apparent size, not the blocks used: a sparse file of 50 GB takes almost no blocks and would grow to its full size in the build's layer
+  kb=$(du -sk --apparent-size "$c" 2>/dev/null | cut -f1)
   case "$kb" in ""|*[!0-9]*) MSG="the folder's size could not be read"; return 1 ;; esac
   [ "$kb" -le "$SPACES_PUB_MAX_KB" ] || { MSG="the folder is bigger than $((SPACES_PUB_MAX_KB / 1024)) MB"; return 1; }
   [ "$(find "$c" 2>/dev/null | wc -l)" -le 4000 ] || { MSG="the folder holds too many files"; return 1; }
@@ -2142,7 +2154,7 @@ sp_pub_plan() {
 # shellcheck disable=SC2015
 sp_pub_rec_save() {
   t=$(mktemp "$SP_PUB/$1/rec.XXXXXX") || return 1
-  printf '%s %s %s %s %s %s %s %s %s %s %s %s\n' "$PB_NAME" "$2" "$3" "$PB_PORT" "$PB_MEM" "$PB_CPUS" "$PB_PIDS" "$PB_HPATH" "$PB_HOK" "$PB_HSTART" "$PB_VERSION" "$PB_SECRETS" >"$t"
+  printf '%s %s %s %s %s %s %s %s %s %s %s %s %s\n' "$PB_NAME" "$2" "$3" "$PB_PORT" "$PB_MEM" "$PB_CPUS" "$PB_PIDS" "$PB_HPATH" "$PB_HOK" "$PB_HSTART" "$PB_VERSION" "$PB_SECRETS" "$SRC_SPACE" >"$t"
   chmod 600 "$t" && rename_over "$t" "$SP_PUB/$1/rec" || { rm -f "$t"; return 1; }
 }
 # sp_pub_rec_load DEP: root's record back into PR_* (every field checked again) and A_* (what the app functions read). `A_HOOK=0`: a published server has no door in.
@@ -2151,13 +2163,51 @@ sp_pub_rec_save() {
 sp_pub_rec_load() {
   r=$SP_PUB/$1/rec
   { [ -f "$r" ] && [ ! -L "$r" ]; } || { MSG="that server was never built here"; return 1; }
-  read -r PR_NAME PR_TAG PR_ID PR_PORT PR_MEM PR_CPUS PR_PIDS PR_HPATH PR_HOK PR_HSTART PR_VERSION PR_SECRETS <"$r" || { MSG="the record of that server could not be read"; return 1; }
+  read -r PR_NAME PR_TAG PR_ID PR_PORT PR_MEM PR_CPUS PR_PIDS PR_HPATH PR_HOK PR_HSTART PR_VERSION PR_SECRETS PR_SPACE <"$r" || { MSG="the record of that server could not be read"; return 1; }
   sp_app_name_ok "$PR_NAME" && sp_fld 'vyre-pub/[a-z0-9-]+:[0-9a-f]{16}' "$PR_TAG" && sp_fld 'sha256:[0-9a-f]{64}' "$PR_ID" && sp_int_in "$PR_PORT" 1 65535 && sp_int_in "$PR_MEM" 64 8192 \
     && sp_fld '[0-9](\.[0-9]{1,2})?' "$PR_CPUS" && sp_int_in "$PR_PIDS" 32 4096 && sp_fld '/[A-Za-z0-9_./-]{0,80}' "$PR_HPATH" && sp_fld '[0-9]{3}(\+[0-9]{3}){0,5}' "$PR_HOK" && sp_int_in "$PR_HSTART" 1 600 \
-    && sp_fld '-|[A-Z][A-Z0-9_]{0,63}(\+[A-Z][A-Z0-9_]{0,63}){0,11}' "$PR_SECRETS" \
+    && sp_fld '-|[A-Z][A-Z0-9_]{0,63}(\+[A-Z][A-Z0-9_]{0,63}){0,11}' "$PR_SECRETS" && sp_fld 'spc_[a-z0-9]{12}' "$PR_SPACE" \
     || { MSG="the record of that server is not one this helper wrote"; return 1; }
   # shellcheck disable=SC2034 # the A_* variables are read by the app functions
   A_NAME=$PR_NAME; A_IMAGE=$PR_TAG; A_PORT=$PR_PORT; A_MEM=$PR_MEM; A_CPUS=$PR_CPUS; A_PIDS=$PR_PIDS; A_HOOK=0; A_SCRIPT=-; A_EXEC=-; A_OUTS=-; A_HPATH=$PR_HPATH; A_HOK=$PR_HOK; A_HSTART=$PR_HSTART
+}
+# The build's network (trust row 37): the rootless BuildKit runs a Dockerfile's RUN and ADD steps, which are the author's code. It gets a bridge of its own (vyrepub0) with the public internet
+# (base images, package installs) and nothing else: the metadata address and every other private, link-local, loopback or carrier range are dropped in DOCKER-USER, the host itself in INPUT,
+# and other containers are other private addresses. DNS to the host's own configured (non-loopback) resolvers is the one exception. The rules are checked before every build, and a probe from a
+# throwaway container on that network must find the metadata address, the bridge's gateway and the vyre container closed, or the build is refused. The network has no IPv6 (it is made without --ipv6), so there is no
+# second path to filter; the daemon must never enable IPv6 on user networks.
+PUB_NET=vyre-pub-build
+PUB_BR=vyrepub0
+PUB_DENY="0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.0.0.0/24 192.168.0.0/16 198.18.0.0/15 224.0.0.0/3"
+hfw() { env -i PATH="$PATH" iptables -w "$@"; }
+# sp_pub_rule CHAIN RULE...: the rule is there, or it is added at the top, and then it is looked for again.
+sp_pub_rule() {
+  _ch=$1; shift
+  hfw -C "$_ch" "$@" >/dev/null 2>&1 || hfw -I "$_ch" 1 "$@" >/dev/null 2>&1 || { MSG="the build's network rules could not be added"; return 1; }
+  hfw -C "$_ch" "$@" >/dev/null 2>&1 || { MSG="the build's network rule is not there after it was added"; return 1; }
+}
+sp_pub_net() {
+  hdock network inspect "$PUB_NET" >/dev/null 2>&1 || hdock network create --driver bridge --opt "com.docker.network.bridge.name=$PUB_BR" --opt com.docker.network.bridge.enable_icc=false --label run.vyre=1 "$PUB_NET" >/dev/null 2>&1 \
+    || { MSG="the build's own network could not be made"; return 1; }
+  _br=$(hdock network inspect -f '{{index .Options "com.docker.network.bridge.name"}}' "$PUB_NET" 2>/dev/null || true)
+  [ "$_br" = "$PUB_BR" ] || { MSG="the build's network is not the one this helper made; remove it with: docker network rm $PUB_NET"; return 1; }
+  # drops first, then the DNS exceptions go in above them (each rule is put at the top)
+  for _c in $PUB_DENY; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -d "$_c" -j DROP || return 1; done
+  sp_pub_rule INPUT -i "$PUB_BR" -j DROP || return 1
+  # the host's resolvers; when /etc/resolv.conf is only a local stub (127.0.0.53), the upstream list systemd-resolved keeps is used instead
+  _nss=$(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /etc/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3 || true)
+  [ -n "$_nss" ] || _nss=$(sed -n 's/^nameserver[[:space:]][[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' /run/systemd/resolve/resolv.conf 2>/dev/null | grep -v '^127\.' | head -n 3 || true)
+  for _ns in $_nss; do
+    for _pr in udp tcp; do sp_pub_rule DOCKER-USER -i "$PUB_BR" -p "$_pr" -d "$_ns" --dport 53 -j ACCEPT || return 1; done
+  done
+  # the probe: from a throwaway container on that network, none of these may answer
+  _gw=$(hdock network inspect -f '{{(index .IPAM.Config 0).Gateway}}' "$PUB_NET" 2>/dev/null || true)
+  _vy=$(hdock inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' "$CTR_NAME" 2>/dev/null | tr -s ' ' '\n' | sed -n '/^[0-9][0-9.]*$/p' | head -n 4)
+  for _t in 169.254.169.254 $_gw $_vy; do
+    sp_fld '([0-9]{1,3}\.){3}[0-9]{1,3}' "$_t" || continue
+    _r=$(timeout 20 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network "$PUB_NET" --cap-drop ALL --entrypoint sh "$PUB_BUILDKIT" -c "nc -w 2 -z $_t 80 >/dev/null 2>&1 && echo OPEN || echo CLOSED" 2>/dev/null | tail -n 1)
+    [ "$_r" = CLOSED ] || { MSG="the build's network can reach $_t, so no build was started"; return 1; }
+  done
 }
 # sp_pub_build DEP: claim, vet, judge, build, load, record. MSG ends with the image id the daemon starts the server from.
 # Each "A && B || C" below means: if A and B do not both hold, take the refusal.
@@ -2181,9 +2231,10 @@ sp_pub_build() {
   out=$SP_PUB/$dep/out
   rm -rf -- "$out"; { mkdir -p "$out" && chmod 777 "$out"; } 2>/dev/null || { MSG="the helper's build folder could not be made"; return 1; }
   hdock rm -f vyre-pub-build >/dev/null 2>&1 || true
+  sp_pub_net || { rm -rf -- "$out"; return 1; }
   sp_status "$ID" running "building"
   # rootless BuildKit as an unprivileged container: SETUID and SETGID kept only for its user namespace, the context read-only, nothing else mounted, bounded in memory, processes and time
-  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-pub-build --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
+  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --name vyre-pub-build --network "$PUB_NET" --security-opt seccomp=unconfined --security-opt apparmor=unconfined \
     --cap-drop ALL --cap-add SETUID --cap-add SETGID --memory 2g --cpus 2 --pids-limit 1024 -e BUILDKITD_FLAGS=--oci-worker-no-process-sandbox -v "$bc/ctx:/ctx:ro" -v "$out:/out" \
     --entrypoint buildctl-daemonless.sh "$PUB_BUILDKIT" build --frontend dockerfile.v0 --local context=/ctx --local dockerfile=/ctx --output "type=docker,name=$tag,dest=/out/image.tar" >/dev/null 2>"$SP_PUB/$dep/build.log"
   brc=$?
@@ -2206,13 +2257,34 @@ sp_pub_build() {
 # sp_pub_up DEP: the server from root's record, with the secrets the daemon wrote read by root.
 # Each "A && B || C" below means: if A and B do not both hold, take the refusal.
 # shellcheck disable=SC2015
+# A name is one server on this box, so starting, stopping or removing it is one at a time: a lock per name (stale ones cleaned like the others), taken from the Space check through the pubdep write.
+sp_pub_namelock() {
+  _nl=$SP_PRIV/lock-pub-name.$1
+  if [ -d "$_nl" ] && [ -n "$(find "$_nl" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rm -rf "${_nl:?}" 2>/dev/null || true; fi
+  if [ -d "$_nl" ]; then _lp=$(cat "$_nl/pid" 2>/dev/null || true); case "$_lp" in ""|*[!0-9]*) ;; *) kill -0 "$_lp" 2>/dev/null || rm -rf "${_nl:?}" 2>/dev/null ;; esac; fi
+  mkdir "$_nl" 2>/dev/null || { MSG="another start, stop or removal of that name is running; try again in a moment"; return 1; }
+  printf '%s\n' "$$" >"$_nl/pid" 2>/dev/null || true
+}
+sp_pub_nameunlock() { rm -rf "${SP_PRIV:?}/lock-pub-name.$1" 2>/dev/null || true; }
 sp_pub_up() {
+  dep=$1
+  sp_pub_rec_load "$dep" || return 1
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_up_run "$dep"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+# shellcheck disable=SC2015
+sp_pub_up_run() {
   dep=$1
   sp_pub_rec_load "$dep" || return 1
   cur=$(hdock image inspect "$PR_TAG" --format '{{.Id}}' 2>/dev/null || true)
   [ "$cur" = "$PR_ID" ] || { MSG="the image that was built is not here any more; publish it again"; return 1; }
   sp_pub_claim "$dep" up || return 1
   up=$CLAIM
+  # the folder the daemon gave root to start from must be in the Space the build was made for
+  [ "$SRC_SPACE" = "$PR_SPACE" ] || { MSG="that folder is not in the Space the server was built for"; return 1; }
   sp_pub_vet "$up" || return 1
   [ -z "$(find "$up" -mindepth 1 -maxdepth 1 ! -name request ! -name secrets 2>/dev/null | head -n 1)" ] || { MSG="the folder holds more than settings and secrets"; return 1; }
   sp_pub_request "$up/request" || return 1
@@ -2220,6 +2292,14 @@ sp_pub_up() {
   [ "$PB_NAME $PB_PORT $PB_MEM $PB_CPUS $PB_PIDS $PB_HPATH $PB_HOK $PB_HSTART $PB_VERSION" = "$PR_NAME $PR_PORT $PR_MEM $PR_CPUS $PR_PIDS $PR_HPATH $PR_HOK $PR_HSTART $PR_VERSION" ] || { MSG="the settings are not those of the build"; return 1; }
   m=$PR_NAME
   [ -z "$(sp_app_line "$m")" ] || { MSG="that name is an app that ships with Vyre"; return 1; }
+  # A name is one server on this box: one Space's server may be replaced by a newer deployment of the same Space, never taken over by another Space (its compose, secrets and data volume are named by it).
+  _pf=$SP_APPS/$m/pubdep
+  if [ -f "$_pf" ] && [ ! -L "$_pf" ]; then
+    _ps=$(awk 'NR == 1 { print $2; exit }' "$_pf" 2>/dev/null || true)
+    [ "$_ps" = "$PR_SPACE" ] || { MSG="another Space already has a server with that name on this server; choose another name"; return 1; }
+  elif [ -e "$SP_APPS/$m/compose.yml" ] || [ -L "$SP_APPS/$m/compose.yml" ]; then
+    MSG="that name is already used on this server by something that is not a published server"; return 1
+  fi
   # shellcheck disable=SC2015 # a failed mkdir or chmod both take the same exit
   mkdir -p "$SP_APPS/$m" && chmod 700 "$SP_APPS/$m" || { MSG="could not make the server's folder"; return 1; }
   # the secrets: each named file is a plain file of one short printable line without a quote; they are written by root into root's env file and nowhere else
@@ -2245,26 +2325,51 @@ sp_pub_up() {
   if ! sp_pub_plan "$t" "" compose "$m" "$PR_TAG" "$PR_PORT" "$PR_MEM" "$PR_CPUS" "$PR_PIDS" "$PB_SECRETS" || ! head -n 1 "$t" | grep -q '^# Generated by Vyre'; then rm -f "$t"; MSG="the compose file could not be made"; return 1; fi
   if ! l=$(sp_app_lint "$t" "$m" 1); then rm -f "$t"; MSG="the compose file was refused: $(printf '%s' "$l" | head -n 1)"; return 1; fi
   chmod 600 "$t" && rename_over "$t" "$SP_APPS/$m/compose.yml"
-  printf '%s\n' "$dep" >"$SP_APPS/$m/pubdep"
+  printf '%s %s\n' "$dep" "$PR_SPACE" >"$SP_APPS/$m/pubdep"
   sp_app_dc "$m" create >/dev/null 2>&1 || { MSG="the server's container could not be created"; return 1; }
   # joined and walled BEFORE it starts, so it never runs unwalled; proved after, and stopped again if the proof fails. No door in: the only packets it may send the vyre container are answers.
   sp_attach_net "$m" "vyre-app-${m}_net" "$APP_ALIAS" || return 1
   sp_fw_apply_net "$m" "vyre-app-${m}_net" "vyre-app:$m" "app:$m" || return 1
   sp_in_apply "$m" 0 || return 1
+  # the vyre container sits on the networks of several servers at once: it must not route between them (a server could then reach another's address through it)
+  _pidf=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  [ "$(timeout 20 nsenter -t "$_pidf" -n cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || true)" = 0 ] || { MSG="the vyre container forwards packets between its networks, so no server was started"; return 1; }
   sp_app_dc "$m" up -d >/dev/null 2>&1 || { MSG="the server did not start"; return 1; }
   if ! sp_app_wait "$m"; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; MSG="the server did not become healthy"; return 1; fi
   if ! { sp_probe_to "$m" "vyre-app-$m" app "vyre-app-${m}_net" "$A_PORT" "the server" && sp_in_probe "$m" 0; }; then sp_app_dc "$m" stop >/dev/null 2>&1 || true; return 1; fi
   MSG="the server is up and walled off"
 }
+sp_pub_owns() {
+  _pf=$SP_APPS/$PR_NAME/pubdep
+  { [ -f "$_pf" ] && [ ! -L "$_pf" ]; } || return 1
+  [ "$(awk 'NR == 1 { print $1 " " $2; exit }' "$_pf" 2>/dev/null || true)" = "$1 $PR_SPACE" ]
+}
 sp_pub_stop() {
   sp_pub_rec_load "$1" || return 1
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_stop_run "$1"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+sp_pub_stop_run() {
+  sp_pub_rec_load "$1" || return 1
+  sp_pub_owns "$1" || { MSG="that is not the server running under that name"; return 1; }
   [ -f "$SP_APPS/$PR_NAME/compose.yml" ] || { MSG="that server was never started"; return 1; }
   sp_app_dc "$PR_NAME" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }
   MSG=stopped
 }
 sp_pub_down() {
   sp_pub_rec_load "$1" || return 1
-  [ "$(cat "$SP_APPS/$PR_NAME/pubdep" 2>/dev/null || true)" = "$1" ] || { MSG="that is not the server running under that name"; return 1; }
+  sp_pub_namelock "$PR_NAME" || return 1
+  _un=$PR_NAME
+  sp_pub_down_run "$1"; _rc=$?
+  sp_pub_nameunlock "$_un"
+  return "$_rc"
+}
+sp_pub_down_run() {
+  sp_pub_rec_load "$1" || return 1
+  sp_pub_owns "$1" || { MSG="that is not the server running under that name"; return 1; }
   sp_app_down "$PR_NAME" || return 1
   MSG="removed; the data is kept"
 }

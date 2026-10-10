@@ -16,7 +16,7 @@ import * as folderMod from "./folder.js";
 import { isAgent, isPerson } from "../../lib/caller.js";
 import { DUTY_NAME } from "./duty.js";
 import { testHooks } from "../../lib/sandbox/index.js";
-import { Runtime, MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
 import { runOnce } from "./run.js";
 import fs from "node:fs";
 import os from "node:os";
@@ -30,6 +30,7 @@ import { validZone, systemZone } from "../../lib/time/index.js";
  * this sits right at that floor rather than four times past it.
  */
 const TICK_MS = 60_000;
+export const SYNC_EVERY = 30;
 
 /** The wall is probed once per vyred. @type {Promise<any>|null} */
 let cachedWall = null;
@@ -65,7 +66,7 @@ export const hookSeams = new Map();
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([...MIGRATIONS, ...DEF_MIGRATIONS]);
+    ctx.store.migrate([...MIGRATIONS, ...DEF_MIGRATIONS, ...LATE_MIGRATIONS]);
     // Definitions are hidden records where the kernel is on (core/watchers/defs.js); without it the folders are the whole definition, as before.
     /** @type {any} */ let rtRef = null;
     const defs = ctx.kernel && ctx.kernel.records ? createDefs({ kernel: ctx.kernel, dir: ctx.paths.watchers, db: ctx.store.db, log: ctx.log, onGone: name => { try { if (rtRef) rtRef.remove(name); } catch { /* it had no schedule row */ } } }) : null;
@@ -229,7 +230,9 @@ export default {
       run: async ({ name, token, body }) => rt.hook(name, token, body),
     });
 
-    const timer = setInterval(() => { rt.tick(); void sync(); }, TICK_MS);
+    // the minute look is one local query for what is due; the definition records (Records) are brought into step when a watcher tool changes one, and as a safety net every half hour, not every minute
+    let looks = 0;
+    const timer = setInterval(() => { rt.tick(); if (++looks % SYNC_EVERY === 0) void sync(); }, TICK_MS);
     timer.unref?.();
     rt.tick();
     void sync();

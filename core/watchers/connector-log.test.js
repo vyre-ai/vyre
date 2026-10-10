@@ -14,7 +14,7 @@ import { EventEmitter } from "node:events";
 import { testHooks, OPEN_WALL } from "../../lib/sandbox/index.js";
 testHooks.wall = OPEN_WALL;
 import { open, migrate } from "../store/index.js";
-import { Runtime, MIGRATIONS } from "./runtime.js";
+import { Runtime, MIGRATIONS, LATE_MIGRATIONS } from "./runtime.js";
 import { tempHome } from "../../test/helpers.js";
 import { fakeGoogle, TOKEN } from "../../records/testing/fake-google.js";
 import { createRecordsHost } from "../../records/host.js";
@@ -29,7 +29,7 @@ test("mail and meetings found by the poll watchers land on the contacts' timelin
   const google = fakeGoogle({ mailbox: MAILBOX });
   const root = tempHome(t), db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
-  migrate(db, "watchers", MIGRATIONS);
+  migrate(db, "watchers", [...MIGRATIONS, ...LATE_MIGRATIONS]);
   const dir = path.join(root, "watchers"); fs.mkdirSync(dir);
   const clock = { now: Date.now() };
   const bus = new EventEmitter();

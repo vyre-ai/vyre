@@ -7,8 +7,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
+import { Chip, Icon, Text, useUiTheme, type IconName } from "@vyre/ui";
 import { Face } from "./Face";
+import { Thumb } from "./Thumb";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { busyState } from "./frames.js";
@@ -40,7 +41,7 @@ export type ComposerProps = {
   onAttachFile?: () => void;
   onAttachPhoto?: () => void;
   /** The files added to the next message, as chips (name, a line under it, and where it is), and how to take one off. Sending with files and no words is allowed. */
-  attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed" }[];
+  attachments?: readonly { key: string; name: string; line: string; state: "uploading" | "ready" | "failed"; thumb?: string }[];
   onRemoveAttachment?: (key: string) => void;
   /** Why the last file was not added, in words. */
   attachProblem?: string | null;
@@ -53,6 +54,16 @@ export type ComposerProps = {
 };
 
 const T = 44;
+
+/** A quiet choice under the box (the model, where it runs, send now or queue): words with a small arrow, not a chip, so it reads as a thing you can change and not as a setting that is on. */
+function Quiet({ icon, label, onPress, name, T, active }: { icon?: IconName; label: string; onPress?: () => void; name: string; T: number; active?: boolean }) {
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={onPress} style={{ minHeight: T, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 }}>
+      {icon ? <Icon name={icon} tone={active ? "accent" : "label"} size={14} /> : null}
+      <Text size="caption" tone={active ? "accent" : "label"} numberOfLines={1}>{`${label} \u25BE`}</Text>
+    </Pressable>
+  );
+}
 
 function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress?: () => void; big: boolean }) {
   const s = big ? T : 36;
@@ -134,7 +145,7 @@ export function ChatComposer(p: ComposerProps) {
         onBlur={() => setFocused(false)}
         autoFocus={p.autoFocus}
         multiline
-        placeholder={askAll ? "Ask every assistant here at once" : intent.queue || p.state === "working" ? "Say more. It queues until the next step." : "Message, or / for commands"}
+        placeholder={askAll ? (p.phone ? "Ask everyone" : "Ask every assistant here at once") : intent.queue || p.state === "working" ? (p.phone ? "Say more (it queues)" : "Say more. It queues until the next step.") : (p.phone ? "Message" : "Message, or / for commands")}
         placeholderTextColor={color.label}
         accessibilityLabel="Message"
         onKeyPress={(e: any) => { if (!p.phone && e.nativeEvent.key === "Enter" && !e.nativeEvent.shiftKey && !trig) { e.preventDefault?.(); const ne = e.nativeEvent; send(ne.metaKey || ne.ctrlKey ? "steer" : undefined); } }}
@@ -144,28 +155,19 @@ export function ChatComposer(p: ComposerProps) {
   const chips = (
     <>
       {busyState(p.state) ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip tone="accent" icon={mode === "steer" ? "bolt" : "clock"}>{mode === "steer" ? "Steer now" : "Queue"}</Chip>
-        </Pressable>
+        <Quiet T={big ? T : 32} icon={mode === "steer" ? "bolt" : "clock"} label={mode === "steer" ? "Send now" : "Queue"}
+          name={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} />
       ) : null}
       {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
-        <Pressable key={sl.id} accessibilityRole="button" accessibilityLabel={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip>{sl.label}</Chip>
-        </Pressable>
+        <Quiet key={sl.id} T={big ? T : 32} label={sl.label} name={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} />
       )) : p.models?.length ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip>{current ? current.label : "Model"}</Chip>
-        </Pressable>
+        <Quiet T={big ? T : 32} label={current ? current.label : "Model"} name="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} />
       ) : null}
       {assistants > 1 ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{assistants === 2 ? "Ask both" : "Ask all"}</Chip>
-        </Pressable>
+        <Quiet T={big ? T : 32} icon="agents" label={assistants === 2 ? "Ask both" : "Ask all"} active={askAll} name="Ask all assistants at once" onPress={() => setAskAll((a) => !a)} />
       ) : null}
       {p.runsOn ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={runsOnLabel(p.runsOn)} onPress={p.onRunsOn} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip icon={p.runsOn === "mac" ? "laptop" : "box"}>{p.runsOn === "mac" ? "This Mac" : "The server"}</Chip>
-        </Pressable>
+        <Quiet T={big ? T : 32} icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "This Mac" : "The server"} name={runsOnLabel(p.runsOn)} onPress={p.onRunsOn} />
       ) : null}
     </>
   );
@@ -205,14 +207,16 @@ export function ChatComposer(p: ComposerProps) {
           ))}
         </View>
       ) : null}
-      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: 10, gap: 6 }}>
+      <View style={{ backgroundColor: color["surface-2"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: expanded && p.phone ? 22 : 18, padding: p.phone ? 6 : 10, gap: 4 }}>
         {p.attachments?.length ? (
           <View accessibilityLabel="Files for this message" style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {p.attachments.map((a) => (
+            {p.attachments.map((a) => (a.thumb ? (
+              <Thumb key={a.key} uri={a.thumb} name={a.name} state={a.state} onRemove={() => p.onRemoveAttachment?.(a.key)} />
+            ) : (
               <Pressable key={a.key} accessibilityRole="button" accessibilityLabel={`${a.name}, ${a.line}. Remove`} onPress={() => p.onRemoveAttachment?.(a.key)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
                 <Chip tone={a.state === "failed" ? "err" : a.state === "ready" ? "plain" : "accent"} icon={a.state === "failed" ? "failed" : "file"}>{a.state === "failed" ? `${a.name} · not added` : `${a.name} · ${a.line}`}</Chip>
               </Pressable>
-            ))}
+            )))}
           </View>
         ) : null}
         {p.attachProblem ? <Text size="caption" tone="warn">{p.attachProblem}</Text> : null}

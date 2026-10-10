@@ -230,7 +230,7 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const w = shared || await world(t, { kernel: true });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
   const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
   const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
@@ -337,7 +337,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const w = await world(t, { kernel: true, realPresence, kernelSealer });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage, ...(presenceStorage === "hardware" ? { signer: "secure_enclave" } : {}) };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
@@ -381,7 +381,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   let shown = "";
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const pairing = pairServer({ payload: code.qr, owner, deviceKind: "phone", presenceKey, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, ...(sign ? { signIdentity: sign } : {}), onWords: x => { shown = x; } });
   pairing.catch(() => {});
   const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 3000).catch(() => null);
@@ -857,7 +857,7 @@ shardTest("a home that already has a claimed owner is not paired by a different 
   assert.notEqual(ownerAfterClaim, ident.id);
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const ks = keystore(t);
   const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: () => {} });
   await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /^This server belongs to .*Ask them to add you to a space, or reset the server to start over/.test(e.message), "refused with its own words");
@@ -878,7 +878,7 @@ shardTest("a kernel that refuses the owner fails the pairing: the owner record i
   // the kernel adopts another identity between the early check and the pick (a claim at the server's own screen while the pairing waits)
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware", signer: "secure_enclave" };
   const ks = keystore(t);
   let shown = "";
   const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: x => { shown = x; } });

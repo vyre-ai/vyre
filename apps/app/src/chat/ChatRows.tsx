@@ -5,10 +5,14 @@
 
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Button, Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
+import { Caret, Turning } from "./Live";
+import { runWords } from "./tool-runs.js";
+import { showsCaret, thoughtWord } from "./feel.js";
+import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
-import { sizeWord } from "./attach-model.js";
+import { sizeWord, thumbFor } from "./attach-model.js";
+import { Thumb } from "./Thumb";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
@@ -95,10 +99,11 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
       <ActionsOn.Provider value={hover || held || showActions()}>
-      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        <Face name={who} family={family} size={32} provider={provider} />
+      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: wide ? "row" : "column", gap: wide ? 12 : 4, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
+        {wide ? <Face name={who} family={family} size={32} provider={provider} /> : null}
         <View style={S.s3}>
-          <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
+          {/* on a phone the face is a small mark beside the name, so the words use the whole width instead of an indent */}
+          {wide ? <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /> : <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Face name={who} family={family} size={20} provider={provider} /><Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /></View>}
           {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
@@ -113,10 +118,13 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
 
 /** Highlight to assistant: the message, or the part of it the person selected, goes above the composer as a quoted reference. Nothing is sent. */
 /** The one renderer for words that may name a Vault item (vault://name): the name is a small shield chip wherever it sits, in a person's message or an assistant's reply. Plain words stay plain text. */
-export function RefText({ text, style }: { text: string; style?: object }) {
+export function refNodes(text: string): React.ReactNode {
   const parts = partsOf(text);
-  if (!parts.some((p) => "vault" in p)) return <Text size="read" selectable style={style}>{text}</Text>;
-  return <Text size="read" selectable style={style}>{parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text))}</Text>;
+  if (!parts.some((p) => "vault" in p)) return text;
+  return parts.map((p, i) => ("vault" in p ? <View key={i} style={{ marginHorizontal: 2, transform: [{ translateY: 5 }] }}><Chip tone="ok" icon="shield">{itemLabel(p.vault)}</Chip></View> : p.text));
+}
+export function RefText({ text, style }: { text: string; style?: object }) {
+  return <Text size="read" selectable style={style}>{refNodes(text)}</Text>;
 }
 
 /** A person's words. A key they pasted was moved to the Vault and left a reference (vault://name): it reads as a chip, and one quiet line under the words says it is secured. */
@@ -189,17 +197,11 @@ function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
   );
 }
 
-function StreamText({ store, k, text, done }: { store: ChatStore; k: string; text: string; done: boolean }) {
+/** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
+function StreamText({ store, k, text, done, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
-  if (cut >= text.length) return <RefText text={text} />;
-  // The rest is laid out, so the height is the final height; it is only not drawn yet.
-  return (
-    <Text size="read">
-      {text.slice(0, cut)}
-      <Text size="read" style={S.s5}>{text.slice(cut)}</Text>
-    </Text>
-  );
+  return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} tail={showsCaret({ done }) ? <Caret /> : undefined} />;
 }
 
 export function Skeleton({ w, h = 12, r = 6 }: { w: number | `${number}%`; h?: number; r?: number }) {
@@ -276,7 +278,10 @@ export function TurnChip({ it, ctx, session, defaultOpen = false }: { it: any; c
     .catch((e) => setSaid((m) => ({ ...m, [path]: e instanceof Error && e.message ? e.message : "That did not go through." })));
   return (
     <View>
-      <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <Chip tone="plain" icon={has ? "file" : undefined} onPress={has ? () => setOpen(true) : undefined}>{it.line}</Chip>
+        {it.vyreCalls >= 2 && ctx.onTurnIntoFlow ? <Button size="sm" kind="ghost" label="Turn this into a Flow" onPress={ctx.onTurnIntoFlow} /> : null}
+      </View>
       {has ? (
         <Sheet open={open} onClose={() => setOpen(false)} title="Changes in this turn">
           <View style={{ padding: 16, gap: 12 }}>
@@ -312,8 +317,8 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${words}. ${open ? "Hide" : "Show"} the details`} onPress={() => setOpen((v) => !v)}>
       <View style={S.s9}>
-        <Icon name={running ? "refresh" : it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />
-        <Text size="caption" tone="muted" numberOfLines={1} style={S.s10}>{words}</Text>
+        {running ? <Turning name="refresh" /> : <Icon name={it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />}
+        <Text size="caption" tone={running ? "default" : "muted"} numberOfLines={1} style={S.s10}>{words}</Text>
         {running ? <Text size="caption" tone="label">running</Text> : null}
       </View>
       {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${it.tool}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
@@ -325,10 +330,14 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
 function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
+  // how long it thought, from the moment we saw it start to the moment it finished; a thread loaded from before has no start to quote
+  const t0 = useRef(streaming ? Date.now() : 0);
+  const [took, setTook] = useState(0);
+  useEffect(() => { if (streaming && !t0.current) t0.current = Date.now(); if (!streaming && t0.current) { setTook(Date.now() - t0.current); t0.current = 0; } }, [streaming]);
   return (
     <View style={{ gap: 4 }}>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? "Hide the thinking" : "Show the thinking"} onPress={() => setOpen((v) => !v)} style={{ minHeight: 22, justifyContent: "center", alignSelf: "flex-start" }}>
-        <Text size="caption" tone="label">{`${streaming ? "Thinking" : "Thought"} ${open ? "▾" : "▸"}`}</Text>
+        <Text size="caption" tone="label">{`${thoughtWord(streaming, took)} ${open ? "▾" : "▸"}`}</Text>
       </Pressable>
       {open ? <View style={{ borderLeftWidth: 2, borderLeftColor: color.edge ?? color.hover, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{text}</Text></View> : null}
     </View>
@@ -404,7 +413,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
         <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={metaOf(it, timeLineOf)} dress={dressOf(store, k, it.text, ctx)} wide={wide}>
           <QuoteBlock store={store} it={it} ctx={ctx} />
           <UserText text={it.text} pending={!!it.pending} />
-          {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>)}</View> : null}
+          {Array.isArray(it.attachments) && it.attachments.length ? <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>{it.attachments.map((a: { id: string; name: string; bytes: number }) => (thumbFor(a.id) ? <Thumb key={a.id} uri={thumbFor(a.id) as string} name={a.name} size={wide ? 120 : 96} /> : <Chip key={a.id} tone="plain" icon="file">{`${a.name} · ${sizeWord(a.bytes)}`}</Chip>))}</View> : null}
           {it.pending ? <Text size="caption" tone="label">Sending</Text> : null}
           {it.pending ? null : (
             <ActionRow>
@@ -421,13 +430,13 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const fo = store.group.fanoutAt(k);
       if (fo) {
         if (!fo.first) return null;
-        return <Frame wide={wide} indent={wide}><FanoutSet store={store} fanout={fo.fanout} wide={wide} renderText={(key) => { const x = store.item(key); return x ? <StreamText store={store} k={key} text={x.text} done={x.done} /> : null; }} /></Frame>;
+        return <Frame wide={wide} indent={wide}><FanoutSet store={store} fanout={fo.fanout} wide={wide} renderText={(key) => { const x = store.item(key); return x ? <StreamText store={store} k={key} text={x.text} done={x.done} ctx={ctx} /> : null; }} /></Frame>;
       }
       const w = whoOf(store, k);
       return (
         <Replyable ctx={ctx} message={k.slice(2)} name={w.name} text={it.text}>
         <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text, ctx)} wide={wide} provider={it.provider ?? null}>
-          <StreamText store={store} k={k} text={it.text} done={it.done} />
+          <StreamText store={store} k={k} text={it.text} done={it.done} ctx={ctx} />
           {it.done ? (
             <ActionRow>
               <AnswerActions text={it.text} ctx={ctx} />
@@ -490,9 +499,30 @@ function ArtifactLink({ title, href }: { title: string; href: string }) {
   );
 }
 
+/** Three or more steps in a row, folded: one quiet line ("Ran 4 steps", or what is running now and how many so far) that opens to the steps. */
+function ToolRun({ store, keys, wide }: { store: ChatStore; keys: string[]; wide: boolean }) {
+  const [open, setOpen] = useState(false);
+  useSyncExternalStore((f) => { const offs = keys.map((k) => store.subscribeRow(k, f)); return () => offs.forEach((o) => o()); }, () => keys.map((k) => store.rowRev(k)).join(","));
+  const its = keys.map((k) => store.item(k)).filter(Boolean);
+  const w = runWords(its);
+  return (
+    <Frame wide={wide} indent dense>
+      <View style={{ gap: 2 }}>
+        <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${w.title}. ${open ? "Hide" : "Show"} the steps`} onPress={() => setOpen((v) => !v)} style={{ minHeight: wide ? 28 : 44, flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {w.running ? <Turning name="refresh" /> : <Icon name={w.failed ? "failed" : "check"} tone={w.failed ? "warn" : "text-2"} />}
+          <Text size="caption" tone={w.running ? "default" : "muted"} numberOfLines={1} style={{ flexShrink: 1 }}>{w.title}</Text>
+          <Text size="caption" tone="label">{open ? "\u25BE" : "\u25B8"}</Text>
+        </Pressable>
+        {open ? <View style={{ paddingLeft: 12, borderLeftWidth: 2, borderLeftColor: "transparent", gap: 2 }}>{its.map((it: any) => <ToolLine key={it.key} it={it} running={it.status === "running"} />)}</View> : null}
+      </View>
+    </Frame>
+  );
+}
+
 export const ChatRow = memo(
   function ChatRow({ store, row, ctx }: { store: ChatStore; row: LayoutRow; ctx: BlockCtx }) {
+    if (row.kind === "toolrun") return <ToolRun store={store} keys={(row as unknown as { keys: string[] }).keys} wide={ctx.wide} />;
     return <ItemBody store={store} k={row.key} ctx={ctx} />;
   },
-  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && a.ctx === b.ctx,
+  (a, b) => a.store === b.store && a.row.key === b.row.key && a.row.kind === b.row.kind && a.ctx === b.ctx && (a.row as unknown as { keys?: string[] }).keys?.length === (b.row as unknown as { keys?: string[] }).keys?.length,
 );

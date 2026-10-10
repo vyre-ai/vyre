@@ -37,7 +37,13 @@ export async function bringUp(o) {
     kind: o.kind, store: o.store, dir, ins, mac, person, S,
     get srv() { return srv; },
     /** A tool call as the person's app, over its paired session. @param {string} tool @param {any} [input] */
-    call: (tool, input = {}) => mac.callTool(tool, input),
+    // A Space's record store starts on its own clock ("the first start takes a few minutes", the product says so and the app shows it): the walk waits for it the way a person does, up to 15 minutes, and any other error is the answer.
+    call: async (tool, input = {}) => {
+      for (const end = Date.now() + 15 * 60_000; ;) {
+        try { return await mac.callTool(tool, input); }
+        catch (e) { if (!/record store is still starting/i.test(String(/** @type {Error} */ (e).message)) || Date.now() > end) throw e; await new Promise(r => setTimeout(r, 10_000)); }
+      }
+    },
     /** A tool call as the server's own operator (the terminal on that machine). @param {string} tool @param {any} [input] */
     operator: (tool, input = {}) => srv.operator(tool, input),
     until: mac.until,

@@ -280,7 +280,7 @@ export default {
         const c = String(caller);
         const k = callerKind(c);
         // The person's surfaces revoke any grant. A model session (named agent, thread or bare mcp) and another module may only withdraw a request they made themselves (group D LOW).
-        return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
+        return vault.revoke(input, c, isAsker(c) || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
     // "module": the approvals queue lists what waits as cards (core/approvals/items.js); names only, and only Vyre's own modules (closeToAddedModules above).
