@@ -159,6 +159,7 @@ test("memory and files of a project it was given are asked and read through the 
   const other = await ok("work.project.create", { name: "Northwind Bakery" });
   const id = String(made.project).split("/").pop();
   await ok("files.drive.upload", { path: `${made.drive_path}/notes.txt`, base64: Buffer.from("Dana pays on the 15th").toString("base64") });
+  await ok("files.drive.upload", { path: `${made.drive_path}/chat/chat_x/private.txt`, base64: Buffer.from("a chat's private file").toString("base64") });
   await ok("files.drive.upload", { path: `${other.drive_path}/menu.txt`, base64: Buffer.from("not for Muse").toString("base64") });
   await d.kernel.gateway.memory.file(owner, { text: "Harlow settles on the 15th", source: jane.urn, kind: "decision", scope: `project:${id}` });
   const reg = await ok("outside.register", { name: "Muse" });
@@ -169,6 +170,8 @@ test("memory and files of a project it was given are asked and read through the 
   const dir = (await use(reg.token, "files_read", { project: made.slug })).json;
   assert.deepEqual(dir.files.map(f => f.name), ["notes.txt"], JSON.stringify(dir));
   assert.equal((await use(reg.token, "files_read", { project: made.slug, path: "notes.txt" })).json.text, "Dana pays on the 15th");
+  assert.match((await use(reg.token, "files_read", { project: made.slug, path: "chat/chat_x/private.txt" })).text, /was not found for you/, "a chat's folder is not the project's files");
+  assert.match((await use(reg.token, "files_read", { project: made.slug, path: ".project" })).text, /was not found for you/);
   assert.match((await use(reg.token, "files_read", { project: other.slug })).text, /not a project you were given/);
   assert.match((await use(reg.token, "files_read", { project: made.slug, path: "../" + String(other.drive_path).split("/").pop() + "/menu.txt" })).text, /inside the project's folder/);
   const asked = (await use(reg.token, "memory_ask", { project: made.slug, question: "settles" })).json;
