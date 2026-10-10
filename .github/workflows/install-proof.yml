@@ -34,6 +34,9 @@ jobs:
         run: |
           docker ps -a || true
           docker logs --tail 80 vyre-vyre-1 2>&1 || true
+          # why the app did not find or pair the server: the box's own account of its setup session, and the relay lines of its log
+          docker exec -u vyre vyre-vyre-1 vyre call relay.setup.status 2>&1 || true
+          docker exec -u vyre vyre-vyre-1 sh -c 'grep -h -i "relay\|setup" ~/.vyre/logs/*.log | tail -n 40' 2>&1 || true
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: install-proof-linux, path: proof-out, retention-days: 14 }
