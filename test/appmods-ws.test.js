@@ -30,7 +30,7 @@ async function rig(t, onUpstream, more = {}) {
     let b = ""; c.on("data", d => { b += d; }); c.on("error", () => {}); c.on("close", () => { c.emit("done"); });
     setTimeout(() => resolve({ c, text: () => b }), 150);
   });
-  return { stranger, ups };
+  return { stranger, ups, port };
 }
 const SWITCH = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n";
 
@@ -88,4 +88,31 @@ test("every spelling of Vyre's header family is dropped on the way to the app", 
   const h = heads[0].toLowerCase();
   assert.ok(!/x[-_]vyre/.test(h), `no Vyre header reached the app:\n${heads[0]}`);
   assert.ok(h.includes("x-other: kept"), "other headers pass");
+});
+
+test("bytes pipelined after the upgrade request wait for the app's 101: an upstream that answers 200 never sees a second request, one that answers 101 gets them", async t => {
+  /** @type {string[]} */ const seen = [];
+  const bad = await rig(t, (sock, head) => { seen.push(head); sock.write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n"); sock.on("data", d => seen.push("PIPELINED:" + d)); });
+  await new Promise(resolve => {
+    const c = net.connect(/** @type {any} */ (bad.port), "127.0.0.1", () => c.write(`GET /live HTTP/1.1\r\nHost: ${HOST}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n\r\nGET /admin HTTP/1.1\r\nHost: ${HOST}\r\nX-Vyre-Viewer: owner\r\n\r\n`));
+    c.on("error", () => {}); c.on("close", resolve); setTimeout(resolve, 400);
+  });
+  await wait(100);
+  assert.equal(seen.filter(x => x.startsWith("PIPELINED:")).length, 0, "the pipelined second request never reached the app");
+  assert.equal(seen.filter(x => /^GET /.test(x)).length, 1, "the app saw exactly one request line");
+  /** @type {string[]} */ const got = [];
+  const good = await rig(t, (sock) => { sock.write(SWITCH); sock.on("data", d => got.push(String(d))); });
+  await new Promise(resolve => {
+    const c = net.connect(/** @type {any} */ (good.port), "127.0.0.1", () => c.write(`GET /live HTTP/1.1\r\nHost: ${HOST}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZQ==\r\nSec-WebSocket-Version: 13\r\n\r\nFIRSTFRAME`));
+    c.on("error", () => {}); setTimeout(resolve, 400);
+  });
+  assert.ok(got.join("").includes("FIRSTFRAME"), "after the 101 the held bytes are the tunnel's");
+});
+
+test("all tunnels of all apps are capped together", async t => {
+  const a = await rig(t, (sock) => { sock.write(SWITCH); }, { wsTotalMax: 1 });
+  const first = /** @type {any} */ (await a.stranger());
+  assert.match(first.text(), /^HTTP\/1\.1 101 /);
+  const second = /** @type {any} */ (await a.stranger());
+  assert.match(second.text(), /^HTTP\/1\.1 503 /);
 });

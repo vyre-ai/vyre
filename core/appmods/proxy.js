@@ -122,7 +122,7 @@ const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => 
  * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
  *   alias?: (host: string) => string | null,   the app an own domain (sign.firm.com) is for, or null
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number,
- *   wsMax?: number, wsConnectMs?: number, wsHeadMs?: number, wsIdleMs?: number }} o
+ *   wsMax?: number, wsTotalMax?: number, wsConnectMs?: number, wsHeadMs?: number, wsIdleMs?: number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
 export function createHostProxy(o) {
@@ -307,6 +307,8 @@ export function createHostProxy(o) {
    */
   /** @type {Map<string, number>} open tunnels per app */
   const wsOpen = new Map();
+  /** all tunnels of all apps: many apps times the per-app cap must not use up the daemon's descriptors */
+  let wsAll = 0;
   serve.upgrade = async (req, socket, head) => {
     const host = String(req.headers.host || "").toLowerCase();
     const mh = appHost(host);
@@ -321,12 +323,12 @@ export function createHostProxy(o) {
     // A tunnel is a file descriptor of the daemon's, which serves the owner's Vyre too: a cap per app, a limit on connecting, on the app's answer and on silence, and either end closing closes the other.
     const L = { max: o.wsMax ?? 64, connectMs: o.wsConnectMs ?? 10_000, headMs: o.wsHeadMs ?? 10_000, idleMs: o.wsIdleMs ?? 600_000 };
     const open = (wsOpen.get(mh.name) || 0);
-    if (open >= L.max) { socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nretry-after: 5\r\ncontent-length: 0\r\n\r\n"); return true; }
-    wsOpen.set(mh.name, open + 1);
+    if (open >= L.max || wsAll >= (o.wsTotalMax ?? 512)) { socket.end("HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nretry-after: 5\r\ncontent-length: 0\r\n\r\n"); return true; }
+    wsOpen.set(mh.name, open + 1); wsAll++;
     const u = new URL(app.origin);
     const up = net.connect({ host: u.hostname, port: Number(u.port) || 80 });
     let done = false;
-    const end = () => { if (done) return; done = true; wsOpen.set(mh.name, Math.max(0, (wsOpen.get(mh.name) || 1) - 1)); try { up.destroy(); } catch { /* gone */ } try { socket.destroy(); } catch { /* gone */ } };
+    const end = () => { if (done) return; done = true; wsOpen.set(mh.name, Math.max(0, (wsOpen.get(mh.name) || 1) - 1)); wsAll = Math.max(0, wsAll - 1); try { up.destroy(); } catch { /* gone */ } try { socket.destroy(); } catch { /* gone */ } };
     up.on("error", end); up.on("close", end); socket.on("error", end); socket.on("close", end);
     socket.pause();
     const connectT = setTimeout(end, L.connectMs); connectT.unref?.();
@@ -345,7 +347,7 @@ export function createHostProxy(o) {
       const wsWho = app.viewerKey ? o.tickets.whoOf(sid ? sid[1] : undefined) : null;
       if (wsWho && app.viewerKey) lines.push(`X-Vyre-Viewer: ${viewerHeader(app.viewerKey, wsWho)}`);
       up.write(lines.join("\r\n") + "\r\n\r\n");
-      if (head && head.length) up.write(head);
+      // bytes the client pipelined after the upgrade request wait here: they are the tunnel's, and only after the app has answered 101 (anything sent before is a second request nobody filtered)
       // the app's answer is read here first: only a 101 turns the connection into a tunnel; anything else (a plain 200 that keeps the connection alive) would let the client send further requests with no header filtering
       let buf = Buffer.alloc(0);
       const headT = setTimeout(end, L.headMs); headT.unref?.();
@@ -357,6 +359,7 @@ export function createHostProxy(o) {
         up.off("data", onData);
         if (!/^HTTP\/1\.1 101[ \r]/.test(buf.subarray(0, 16).toString("latin1"))) { socket.end("HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\ncontent-length: 0\r\n\r\n"); end(); return; }
         socket.write(buf);
+        if (head && head.length) up.write(head);
         up.setTimeout(L.idleMs, end); socket.setTimeout(L.idleMs, end);
         up.pipe(socket); socket.pipe(up);
         socket.resume();
