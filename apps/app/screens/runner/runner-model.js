@@ -47,6 +47,20 @@ export function movedLine(e) {
   return `Moved to ${where}${w ? `: ${w}` : ""}.`;
 }
 
+/** What the chat's status line says while its process starts on a computer (`thread.placing`, state "starting"); nothing once it is up or has fallen back. The computer is named by its own name, never an id. @param {{ state?: string, computer?: string } | null | undefined} e */
+export function placingWords(e) {
+  if (!e || e.state !== "starting") return "";
+  const n = String(e.computer || "").trim();
+  return n ? `Starting on ${n}...` : "Starting on your computer...";
+}
+
+/** The one line when nothing could start on the computer and the server runs the chat instead (`thread.placing`, state "fallback"). @param {{ state?: string, computer?: string } | null | undefined} e */
+export function placingLine(e) {
+  if (!e || e.state !== "fallback") return "";
+  const n = String(e.computer || "").trim();
+  return `${n || "Your computer"} did not answer. Running on the server instead.`;
+}
+
 /** The limits a person may set. Percent of one core's worth is how the box counts; memory is in megabytes. @typedef {{ enabled: boolean, pluggedInOnly: boolean, cpuPercent: number, memoryMb: number }} MacSettings */
 export const LIMIT_RANGE = { cpuPercent: [10, 100], memoryMb: [512, 65536] };
 export const DEFAULT_SETTINGS = /** @type {MacSettings} */ ({ enabled: false, pluggedInOnly: true, cpuPercent: 50, memoryMb: 4096 });
