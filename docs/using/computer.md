@@ -20,6 +20,8 @@ one, with the real names as choices and room to type or speak your own. It never
 
 `computer.targets` lists the computers you can name and whether each is online.
 
+`computer.use` takes `do`: `look` (read the page or app), `shot`, `tabs`, `open` with a `url`, `click`, `type`, `fill`, `act`, `press`, `find` and `get` for files, `signin` with a `login` lent to the agent (it never sees it), and `route` with a `goal` and `site` (what already covers the job without the screen). `screen: true` keeps the screen when a Connection covers the site. `args` are the engine's own inputs: a selector, a reference, some text.
+
 ## Interface first, screen last
 
 Before an agent clicks around a page, Vyre looks for a better way: a Connection you made (a Slack

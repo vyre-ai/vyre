@@ -91,6 +91,7 @@ export async function walk(w) {
     }, { needs: [S("the four words in the app are the ones the server shows")] });
 
     await run.step(S("the app reaches the server and calls a tool"), async () => {
+      if (srv.yesFor) mac.setYes(srv.yesFor(mac.identity.id));
       await mac.openSession();
       const info = await mac.callTool("system.info");
       assert.ok(info, "system.info answered");
