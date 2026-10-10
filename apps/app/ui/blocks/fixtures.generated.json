@@ -3977,17 +3977,17 @@
     }
    }
   },
-  "chats-list": {
-   "title": "Chats",
+  "preview-card": {
+   "title": "Preview card",
    "screens": {
     "full": {
-     "component": "chats-list"
+     "component": "preview-card"
     },
     "compact": {
-     "component": "chats-list"
+     "component": "preview-card"
     },
     "glance": {
-     "component": "chats-list"
+     "component": "preview-card"
     }
    }
   },

@@ -92,17 +92,3 @@ export function projectId(row: { id?: unknown } | null | undefined): string {
 
 /** A project's name for the Assistants page: the box's answer for its id, else a plain word, never the raw id. */
 export const projectTitle = (id: string, names: Record<string, string>) => (id ? names[id] || "A project" : "Everywhere");
-
-export type Member = { agent: string; role: string };
-
-/** work.project.members' answer: rows with an agent. */
-export function membersOf(d: unknown): Member[] {
-  const list = Array.isArray((d as any)?.members) ? (d as any).members : [];
-  return list.filter((m: any) => m && typeof m.agent === "string" && m.agent).map((m: any): Member => ({ agent: String(m.agent), role: String(m.role || "") }));
-}
-
-/** Who is on the project's team but is not one of its teammates (a project started from a template names its roles and the assistants that fill them): shown beside the teammates so a project is never "No teammates yet" over a team its timeline names. */
-export function rosterOnly(teammates: Teammate[], members: Member[]): Member[] {
-  const known = new Set(teammates.flatMap((t) => [t.agent, t.filler || ""]).filter(Boolean));
-  return members.filter((m) => !known.has(m.agent));
-}

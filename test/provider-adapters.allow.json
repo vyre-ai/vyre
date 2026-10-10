@@ -70,7 +70,6 @@
  "harness/mcp/server.js": 1,
  "lib/agent-sandbox.js": 4,
  "lib/door-bridge.js": 2,
- "lib/skill-library.js": 2,
  "local/hands-chrome-mac/standalone/harness/real.mjs": 1,
  "local/hands-chrome-mac/standalone/trace.js": 3
 }

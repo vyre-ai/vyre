@@ -137,7 +137,7 @@ async function tools() {
   }
   names = next;
   catalog = cat;
-  index = null;   // built by the first tools_find: the index costs most of a second and the handshake should not wait for it
+  index = indexOf(cat);
   return listing(cat, process.env.VYRE_MCP_LISTING, process.env.VYRE_MCP_FEATURES);
 }
 
@@ -258,7 +258,7 @@ async function handle(msg) {
       if (asked === "tools_find") {
         const q = String(params?.arguments?.query || "").trim();
         if (!q) return { content: [{ type: "text", text: "bad_input: query is required" }], isError: true };
-        const found = find(/** @type {any} */ (index ||= indexOf(catalog)), q, Math.min(10, Math.max(1, Number(params?.arguments?.limit) || 5)), learner.boosts(q));
+        const found = find(/** @type {any} */ (index), q, Math.min(10, Math.max(1, Number(params?.arguments?.limit) || 5)), learner.boosts(q));
         lastFind = { query: q, shown: new Set(found.map((f) => f.name)), at: Date.now() };
         const data = shapeFind(found, (n) => { const c = catalog.find((x) => x.name === n); return c ? c.input : null; });
         return { content: [{ type: "text", text: JSON.stringify(data) }], structuredContent: data };

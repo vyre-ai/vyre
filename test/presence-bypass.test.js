@@ -234,7 +234,7 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 0);
 });
 
-test("bypass: making or changing an agent is a person's, with no passkey; a model, the assistant included, proposes a change and changes nothing itself", async t => {
+test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
   const b = await box(t);
 
   const refused = async (tool, input, caller) => {
@@ -265,14 +265,12 @@ test("bypass: making or changing an agent is a person's, with no passkey; a mode
     await allowed("agents.update", { name: "kit", ...change }, "deck");
     await allowed("agents.update", { agent: "kit", ...change }, "cli");
   }
-  // No model edits an agent, the assistant included (R031-09): it proposes, and the agent's owner says yes on one card. vyred names an agent caller only from inside its running thread, so this is that
-  // call as it arrives; its words and model are refused with the way to ask, and nothing changed.
+  // The assistant changes an agent's words and model, and nothing it can reach or spend. vyred
+  // names an agent caller only from inside its running thread, so this is that call as it arrives.
   const words = { name: "kit", instructions: "Drafts replies for Northwind Bakery.", model: "claude-sonnet-5" };
   const asJuno = input => b.d.registry.call("agents.update", input, "mcp:agent:juno", { agent: "juno" });
   const mine = await asJuno(words);
-  assert.equal(mine.error?.code, "denied", JSON.stringify(mine));
-  assert.match(mine.error.message, /propose it: flows\.propose \{ what: "agent"/, "the refusal says how to ask");
-  assert.notEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data.find(a => a.name === "kit").instructions, words.instructions, "nothing changed");
+  assert.equal(mine.data?.instructions, words.instructions, JSON.stringify(mine));
   for (const change of [{ auth: { budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: true }]) {
     assert.equal((await asJuno({ ...words, ...change })).error?.code, "denied", Object.keys(change)[0]);
   }

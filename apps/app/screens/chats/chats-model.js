@@ -1,5 +1,4 @@
 // @ts-check
-import { ageOf } from "./chat-model.js";
 // The Chats list as one row type (CONTRACT-one-chat.md section 1): a chat is a record with a title, who is in it (people and assistants), the models on its slots, a project, a status and a last
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
@@ -115,23 +114,4 @@ export function withNames(rows, actors, me = null) {
   for (const a of list) if (a && typeof a.id === "string" && typeof a.name === "string" && a.name.trim() && !/^per_/.test(a.name)) byId.set(a.id, a.name.trim());
   const nameOf = (/** @type {string} */ id) => byId.get(id) ?? (/^per_/.test(id) ? "Someone" : id);
   return rows.map((r) => ({ ...r, people: r.people.filter((id) => !me || id !== me).map(nameOf) }));
-}
-
-/**
- * The chats as rows of a list block: who is in each (faces), the providers it runs on, where it runs, its state (needs you, failed, unread), when it last moved, and dim when it is not yours.
- * @param {readonly ChatRow[]} list @param {number} now @param {any} places runner.places
- */
-export function chatRowsOf(list, now, places) {
-  return list.map((t) => {
-    const state = chatState(t);
-    /** @type {{ label: string, tone?: string, as?: "text" }[]} */ const accessories = [];
-    if (state === "needs-you") accessories.push({ label: "Needs you", tone: "accent" });
-    else if (state === "failed") accessories.push({ label: "Failed", tone: "warn" });
-    if (t.unread > 0) accessories.push({ label: t.unread > 99 ? "99+" : String(t.unread), tone: "accent" });
-    if (t.last) accessories.push({ label: ageOf(t.last, now), as: "text" });
-    return {
-      id: t.id, title: t.pinned === "assistant" ? "Your assistant" : t.title, subtitle: t.pinned === "assistant" ? "Always here. Lumen talks to this chat too." : chatSub(t, computerOf(places, t.id)),
-      faces: [...t.people.map((name) => ({ kind: "person", name })), ...t.agents.map((name) => ({ kind: "assistant", name }))].slice(0, 5), providers: t.providers.slice(0, 3), accessories, ...(t.open ? {} : { dim: true }),
-    };
-  });
 }
