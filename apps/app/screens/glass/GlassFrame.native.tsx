@@ -1,11 +1,19 @@
-import { useEffect, useImperativeHandle, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Asset } from "expo-asset";
 import { WebView } from "react-native-webview";
 import type { GlassFrameProps } from "./GlassFrame";
 import { fromPage, toPage } from "./frame-bridge.js";
 import { createWsBridge, webviewShim } from "@vyre/relay-client/wsbridge.js";
 import { lazySocket } from "./lazy-socket.js";
 import { socket } from "../../src/api/box";
-import { FRAME_PAGE } from "../../src/glass/frame-page.generated";
+
+/** The bundled Glass page (assets/glass/frame.html), read from the app's files the first time a relay screen opens; kept after that. */
+let framePage: Promise<string> | null = null;
+const loadFramePage = () => framePage ??= (async () => {
+  const asset = Asset.fromModule(require("../../assets/glass/frame.html"));
+  await asset.downloadAsync();
+  return (await fetch(asset.localUri ?? asset.uri)).text();
+})().catch((e) => { framePage = null; throw e; });
 
 /** A page message that belongs to the socket shim (an `open`, `send` or `close` of a numbered socket), not to the frame's own wire. */
 const isSocketMessage = (m: any) => m && typeof m === "object" && Number.isInteger(m.id) && (m.t === "open" || m.t === "send" || m.t === "close");
@@ -13,7 +21,7 @@ const isSocketMessage = (m: any) => m && typeof m === "object" && Number.isInteg
 /**
  * The screen page in a WebView on the phone: the noVNC canvas lives in it, the app tells it what to do with a script (toPage) and hears it as strings (fromPage).
  * Where the phone reaches the box directly (the same network or the tailnet) the page is the box's own (public/glass/frame.html) and its stream is the box's own origin; navigation away from that origin is refused.
- * Away from the server (`relay`) there is no origin to load it from: the page is bundled into the app (frame-page.generated.ts), its WebSocket is replaced by a shim, and the app carries the stream's bytes on the relay
+ * Away from the server (`relay`) there is no origin to load it from: the page is bundled into the app (assets/glass/frame.html), its WebSocket is replaced by a shim, and the app carries the stream's bytes on the relay
  * channel (relay/client/wsbridge.js, contracts/glass-relay.md).
  */
 export function GlassFrame({ src, onMessage, frameRef, label, relay }: GlassFrameProps) {
@@ -23,6 +31,8 @@ export function GlassFrame({ src, onMessage, frameRef, label, relay }: GlassFram
   if (relay && !bridge.current) bridge.current = createWsBridge({ open: (path: string) => lazySocket((p) => socket(p), path), post: send });
   useEffect(() => () => { bridge.current?.closeAll(); bridge.current = null; }, []);
   useImperativeHandle(frameRef, () => ({ post: (m) => web.current?.injectJavaScript(toPage(m)) }), []);
+  const [page, setPage] = useState<string | null>(null);
+  useEffect(() => { if (relay) loadFramePage().then(setPage, () => setPage("")); }, [relay]);
   let origin = "";
   try { origin = new URL(src).origin; } catch { /* a bad address loads nothing */ }
   const hear = (raw: string) => {
@@ -30,10 +40,11 @@ export function GlassFrame({ src, onMessage, frameRef, label, relay }: GlassFram
     const m = fromPage(raw);
     if (m) onMessage(m);
   };
+  if (relay && !page) return null;
   return (
     <WebView
       ref={web}
-      {...(relay ? { source: { html: FRAME_PAGE, baseUrl: "about:blank" }, originWhitelist: ["about:*"], injectedJavaScriptBeforeContentLoaded: webviewShim(), onShouldStartLoadWithRequest: (r: { url: string }) => r.url === "about:blank" }
+      {...(relay ? { source: { html: page ?? "", baseUrl: "about:blank" }, originWhitelist: ["about:*"], injectedJavaScriptBeforeContentLoaded: webviewShim(), onShouldStartLoadWithRequest: (r: { url: string }) => r.url === "about:blank" }
         : { source: { uri: src }, originWhitelist: origin ? [origin] : [], onShouldStartLoadWithRequest: (r: { url: string }) => Boolean(origin) && r.url.startsWith(origin) })}
       onMessage={(e) => hear(e.nativeEvent.data)}
       javaScriptEnabled

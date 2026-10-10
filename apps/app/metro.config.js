@@ -40,6 +40,8 @@ const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir), ...EXTRA_WATCH];
 // The web build's fonts are woff2 (src/theme/fonts.web.ts); the native builds embed the ttf files.
 if (!config.resolver.assetExts.includes("woff2")) config.resolver.assetExts.push("woff2");
+// The Glass page the phone loads away from the server (assets/glass/frame.html) is an app asset, read when the screen first needs it, not part of the JS bundle.
+if (!config.resolver.assetExts.includes("html")) config.resolver.assetExts.push("html");
 // Shared repo code under lib/, relay/client and kernel imports packages (@noble/hashes, ...) that live in this app's node_modules, not in the repo root's: let them resolve there too.
 config.resolver.nodeModulesPaths = [...(config.resolver.nodeModulesPaths ?? []), path.resolve(here, "node_modules")];
 

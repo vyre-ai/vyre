@@ -87,6 +87,7 @@
         }
       ],
       "./plugins/strip-firebase.js",
+      "./plugins/mock-cleartext.js",
       "./plugins/embed-bundle.js"
     ],
     "experiments": {
