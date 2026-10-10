@@ -266,36 +266,49 @@
       },
       {
         "name": "work.template.define",
+        "crossSpace": "records.create",
         "summary": "write a project template as a new draft version",
         "reach": "anyone",
         "effect": "write"
       },
       {
         "name": "work.template.list",
+        "crossSpace": "records.read",
         "summary": "the project templates, or the versions of one",
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "work.template.get",
+        "crossSpace": "records.read",
         "summary": "one template version with its body",
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "work.template.golive",
+        "crossSpace": "records.create",
         "summary": "put a draft version live (its owner or an admin)",
         "reach": "person",
         "effect": "write"
       },
       {
+        "name": "work.template.golive-in-space",
+        "crossSpace": "records.create",
+        "summary": "work.template.golive run inside another Space (cross-Space door only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.template.test",
+        "crossSpace": "records.read",
         "summary": "try a template with nothing created, sent or changed",
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "work.template.from-project",
+        "crossSpace": "records.create",
         "projectArg": [
           "project"
         ],
@@ -305,18 +318,21 @@
       },
       {
         "name": "work.template.library",
+        "crossSpace": "records.read",
         "summary": "the project templates the Kits ship",
         "reach": "anyone",
         "effect": "read"
       },
       {
         "name": "work.template.install",
+        "crossSpace": "records.create",
         "summary": "a library template as a draft in this Space",
         "reach": "anyone",
         "effect": "write"
       },
       {
         "name": "work.start-project",
+        "crossSpace": "records.create",
         "summary": "start a project from a live template",
         "reach": "anyone",
         "effect": "write"
