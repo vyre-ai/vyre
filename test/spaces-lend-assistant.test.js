@@ -59,5 +59,16 @@ test("a member's assistant cannot lend or stop the owner's computer, and every S
   assert.deepEqual(nobody.error ? [] : idsOf(nobody), [], "a caller with no chain that is not the local terminal is told nothing, even on an identity box");
   const bobList = (await asBobsAssistant("spaces.list", {})).data;
   assert.equal(bobList[0].role, "member", "and sees his own role there");
+  // the owner keeps every Space they are in: the home and both hosted rooms, from the terminal and from the app's own surface with the owner's session
+  const made1 = (await A("spaces.create", { name: "ownerone", home: { kind: "this-computer", confirmed: true } })).data, made2 = (await A("spaces.create", { name: "ownertwo", home: { kind: "this-computer", confirmed: true } })).data;
+  assert.ok(made1 && made2, "the owner made two Spaces");
+  const ownerSession = { token: (await alice.kernel.surfaces.open(aliceChain, {})).token };
+  const want = [alice.kernel.id.space, made1.space ?? made1.row?.id, made2.space ?? made2.row?.id].sort();
+  for (const [label, meta, caller] of [["the terminal", {}, "cli"], ["the app's surface", ownerSession, "deck"], ["the capsule", ownerSession, "capsule"]]) {
+    const l = await alice.registry.call("spaces.list", {}, /** @type {any} */ (caller), meta);
+    assert.deepEqual(idsOf(l), want, `${label}: the owner sees the home and both Spaces they made in spaces.list`);
+    const st = await alice.registry.call("spaces.records.status", {}, /** @type {any} */ (caller), meta);
+    assert.deepEqual((st.data || { spaces: [] }).spaces.map((/** @type {any} */ x) => x.space).sort(), want, `${label}: and in spaces.records.status`);
+  }
 });
 
