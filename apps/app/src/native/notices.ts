@@ -3,13 +3,18 @@
 import { AppState } from "react-native";
 import { call } from "../api/box";
 import { showLocal } from "./notify";
-import { approvalNotices, doneNotices } from "./notices-model.js";
+import { scriptedCall } from "./notices-proof";
+import { approvalNotices, doneNotices, sharedLoop } from "./notices-model.js";
 
 /** How often the server is asked while the app is alive in the background. */
 const EVERY_MS = 20_000;
 
 /** Start the loop. Returns the stop. `open` says which session the person has open, so it is not told "done" about it. */
-export function startNotices(open: () => string | null = () => null): () => void {
+/** Start the loop, once for the whole app: the screen and the headless task (the app closed, kept alive by the service) both ask, and the loop is one (notices-model.js sharedLoop). Returns this caller's stop. */
+const shared = sharedLoop((open: () => string | null) => runNotices(open));
+export function startNotices(open: () => string | null = () => null): () => void { return shared(open); }
+
+function runNotices(open: () => string | null): () => void {
   let seen = new Set<string>();
   let was = new Map<string, string>();
   let first = true;
@@ -18,7 +23,8 @@ export function startNotices(open: () => string | null = () => null): () => void
     if (!live) return;
     const looking = AppState.currentState === "active";
     try {
-      const [p, t] = await Promise.all([call<any>("approvals.pending", {}), call<any>("threads.list", {})]);
+      const ask = scriptedCall() || call;
+      const [p, t] = await Promise.all([ask<any>("approvals.pending", {}), ask<any>("threads.list", {})]);
       const a = approvalNotices(seen, p.error ? null : p.data);
       const d = doneNotices(was, Array.isArray(t.data) ? t.data : t.data && Array.isArray(t.data.threads) ? t.data.threads : [], { openId: open() });
       seen = a.seen;
