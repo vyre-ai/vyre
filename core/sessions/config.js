@@ -100,3 +100,6 @@ export function claudeBin(dir, cfg) {
   if (cfg.claude === "installed") return onPath();
   return cfg.claude;
 }
+
+/** The plugin layout the skill library lays down (a provider fact, kept with the drivers). */
+export { PLUGIN_LAYOUT } from "./drivers/plugin-layout.js";

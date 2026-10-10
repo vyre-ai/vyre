@@ -58,7 +58,7 @@
  "core/spawner/server.js": 3,
  "core/switchboard/adopt.js": 4,
  "core/switchboard/asks.js": 3,
- "core/switchboard/index.js": 43,
+ "core/switchboard/index.js": 42,
  "core/switchboard/runner.js": 10,
  "core/switchboard/translate.js": 12,
  "core/sync/index.js": 6,
