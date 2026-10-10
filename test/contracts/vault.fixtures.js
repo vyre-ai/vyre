@@ -29,7 +29,13 @@ export const vaultFixtures = {
   healthSummary: { total: 3, rotate: 1, fix: 2, counts: { weak: 1, reused: 1, old: 1 }, dismissed_until: null },
   healthDismissed: { total: 0, rotate: 0, fix: 0, counts: {}, dismissed_until: 1_790_604_800_000 },
   dismiss: { dismissed_until: 1_790_604_800_000 },
+  link: { linked: { item: "portal-login", to: "vyre://spc_aaaaaaaaaaaa/client/0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10" } },
+  unlink: { unlinked: { item: "portal-login", to: "vyre://spc_aaaaaaaaaaaa/client/0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10" } },
+  links: { links: [{ item: "portal-login", to: "vyre://spc_aaaaaaaaaaaa/client/0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10", since: 1_790_000_000_000 }] },
+  usesFor: { uses: [{ item: "portal-login", at: 1_790_000_100_000, by: "the agent kit", line: "portal-login was used to sign in by the agent kit" }] },
   events: {
+    "vault.linked": { name: "portal-login", to: "vyre://spc_aaaaaaaaaaaa/client/0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10" },
+    "vault.unlinked": { name: "portal-login", to: "vyre://spc_aaaaaaaaaaaa/client/0194c2a1-7b3e-4c1d-9a55-3f2b8e6d7c10" },
     "vault.shared-created": { vault: "team" },
     "vault.shared-joined": { vault: "team", role: "member" },
     "vault.member-added": { vault: "team", member: "dana", role: "member" },
@@ -49,6 +55,8 @@ export const vaultCallers = {
   "vault.members.accept": { admits: ["cli", "local", "device"], yes: false },
   "vault.members.role": { admits: ["cli", "local", "device"], yes: true },
   "vault.members.remove": { admits: ["cli", "local", "device"], yes: true },
+  "vault.link": { admits: ["cli", "local", "device"], yes: false },
+  "vault.unlink": { admits: ["cli", "local", "device"], yes: false },
 };
 /** Caller kinds a model session has: none of them reaches a write above. */
 export const modelCallers = ["harness", "ext"];
