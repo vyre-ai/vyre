@@ -255,3 +255,15 @@ test("lent.http: a tool call of the chat's session on a lender is the session's 
   await r.home.takeOver("s_http", "lid-closed", { auto: true });
   await assert.rejects(c.http({ session: "s_http", path: "/v1/tools/x", body: "{}" }), (/** @type {any} */ e) => e.code === "conflict" || e.code === "not_found");
 });
+
+test("each chat that borrows a computer is one line on the timeline: lease.borrowed names the chat, the computer and the limit that holds", async t => {
+  keepAlive(t);
+  /** @type {any[]} */ const said = [];
+  const r = await rig(t, { emit: (/** @type {string} */ type, /** @type {any} */ payload) => said.push([type, payload]) });
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await c.spec({ session: "s_line" });
+  const [type, line] = said.find(x => x[0] === "lease.borrowed") || [];
+  assert.equal(type, "lease.borrowed");
+  assert.deepEqual([line.session, line.person, line.device, line.limit, line.epoch], ["s_line", BOB, "dev_laptop", null, 1]);
+  assert.ok(Number.isInteger(line.at) && line.thread);
+});

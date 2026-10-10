@@ -132,7 +132,7 @@ const GUARDS = [
   "test/chrome-flags.test.js", "test/architecture-map.test.js", "test/model-is-never-person.test.js", "test/docs-rulings.test.js",
   "test/tools-text-names.test.js", "test/provider-adapters.test.js", "apps/app/src/theme/raw-colours.test.js", "kernel/seal/budget.test.js",
   "kernel/contracts/contracts.test.js", "test/tools-find-quality.test.js",
-  "test/references-not-values.test.js", "test/reach-person-split.test.js",
+  "test/references-not-values.test.js", "test/reach-person-split.test.js", "test/identity-from-input.test.js",
 ].filter(f => fs.existsSync(f));
 // Every seam's contract test is a guard too (FOUNDATION section 10): a change on either side of a seam runs them all.
 if (fs.existsSync("test/contracts")) for (const t of fs.readdirSync("test/contracts")) if (/\.test\.m?js$/.test(t)) GUARDS.push(`test/contracts/${t}`);
@@ -219,12 +219,11 @@ if (!STATIC) {
     finally { try { execFileSync("git", ["worktree", "remove", "--force", tmp], { stdio: "ignore" }); } catch { /* git worktree prune */ } }
   }
 
-  // App types: only errors in files this branch touched count against it.
-  if (existing.some(f => /^(apps\/app|lib)\//.test(f)) && fs.existsSync("apps/app/node_modules")) {
+  // App types: any error fails, wherever it is (10 Oct ruling: fully green, no known fails). A branch that does not touch the app still runs it when the app's modules are installed, so an error that is already there cannot sit and be called "existing".
+  if (fs.existsSync("apps/app/node_modules")) {
     const t = spawnSync("npx", ["tsc", "--noEmit", "-p", "apps/app"], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
     const errs = (t.stdout || "").split("\n").filter(l => /error TS/.test(l));
-    const mine = errs.filter(l => existing.some(f => l.includes(f.replace(/^apps\/app\//, "")) || l.includes(f)));
-    if (mine.length) { tscOk = false; fail("T3", `app type errors in files you touched:\n    ${mine.slice(0, 20).join("\n    ")}`); }
+    if (errs.length) { tscOk = false; fail("T3", `app type errors (${errs.length}; every one counts, in any file):\n    ${errs.slice(0, 20).join("\n    ")}`); }
   }
   // put the generated files back as they are in git
   const dirty = git(["status", "--porcelain"]).split("\n").map(l => l.slice(3)).filter(f => f && GENERATED.some(re => re.test(f)));

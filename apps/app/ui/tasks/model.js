@@ -201,7 +201,7 @@ const PLAIN = {
 };
 /** Recent's line: a plain sentence with the real actor, or null for housekeeping (a raw event type with no sentence of its own). @param {World} w @param {any} l */
 export function plainLine(w, l) {
-  const raw = typeof l.what === "string" && /^[a-z_]+(\.[a-z_]+)+$/.test(l.what);
+  const raw = typeof l.what === "string" && /^[a-z_-]+(\.[a-z_-]+)+$/.test(l.what);
   if (!raw) return l;
   const f = /** @type {any} */ (PLAIN)[l.what];
   return f ? { ...l, ...f(w, l) } : null;

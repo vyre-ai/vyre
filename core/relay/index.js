@@ -793,9 +793,8 @@ export default {
       description: "During onboarding only, before this box has any person on a device: make the QR code for the first device. Refused once a device is paired or a tailnet owner exists.",
       input: obj(),
       callers: ["onboard"],
-      // On a Mac the person at it proves presence with Touch ID; a Linux box has nothing a
-      // process cannot also do, which ADR 0026 section 6 names as the residual risk.
-      presence: { when: () => platform === "darwin", summary: async () => "Pair your first device with this box" },
+      // No yes is asked here (ruled 10 Oct): before the first device exists no yes can, so a Mac's Touch ID prompt could never be answered by anyone but the process that asks. What guards it instead: only the
+      // onboarding page's own caller (a listener behind the one-time setup token, never a label a socket client can claim), and never once any person or owner exists (below).
       run: async () => {
         if (personExists()) throw fail("denied", "this box already has a person on a device; pair more from Settings, Devices");
         return mint(true);
