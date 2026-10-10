@@ -32,6 +32,8 @@ test("a team session token passes the daemon's edge and a tool acts in the team 
   const forged = team.split(".")[0] + ".AAAAAAAA";
   assert.equal((await call("records.me", {}, asToken(forged))).error.code, "no_session");
   assert.equal((await call("records.me", {}, asToken(`${Buffer.from(JSON.stringify({ v: 1, space: firm.space, person: OWNER, agent: null, session: "x", thread: null, chat: null, exp: Date.now() + 1e6 })).toString("base64url")}.${team.split(".")[1]}`))).error.code, "no_session", "a body made up under another body's mac");
-  assert.ok((await call("records.me", { space: firm.space }, asToken(home))).error, "the home's token does not speak in a team Space");
-  assert.ok((await call("records.me", { space: other.space }, asToken(team))).error, "a team token does not speak in another Space");
+  const read = (/** @type {string} */ token, /** @type {any} */ input) => call("records.list", { type: "chat-record", ...input }, asToken(token));
+  assert.ok(!(await read(team, {})).error, "the member reads in the team's Space (no Space named)");
+  assert.ok((await read(home, { space: firm.space })).error, "the home's token, who is no member of the team, reads nothing there");
+  assert.ok((await read(team, { space: other.space })).error, "a team token does not read in another Space");
 });
