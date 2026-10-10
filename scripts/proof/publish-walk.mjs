@@ -65,6 +65,16 @@ try {
   };
   /** The site's public host: the one appmods.hosts lists for its name. */
   const siteHost = () => { const h = ((op("appmods.hosts") || {}).hosts || []).find((/** @type {string} */ x) => x.startsWith(`${NAME}.`)); return h || ""; };
+  /** What a stranger gets from the site, tried until it carries the secret the process should have (a restart takes a while), or the time is up. */
+  const keyWithin = async (/** @type {number} */ ms, /** @type {string} */ secret) => {
+    let j = /** @type {any} */ ({});
+    for (const end = Date.now() + ms; Date.now() < end;) {
+      try { j = JSON.parse((visit("GET", "/") || {}).body || "{}"); } catch { j = {}; }
+      if (j.key === hexSha(secret)) return j;
+      await sleep(3000);
+    }
+    return j;
+  };
   /** A stranger at the apps' front, from inside the box's container: the Host is the site's own, the cookie is made up, nothing of Vyre's. */
   const visit = (/** @type {string} */ method, /** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}) => {
     const port = frontPort(), host = siteHost();
@@ -134,8 +144,7 @@ try {
     await pw.call("vault.put", { name: "greeting-key-2", kind: "secret", description: "walk", value: "second-secret" });
     const g = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key-2", name: "GREETING_PHRASE", use: ["runtime"] });
     if (g.held) await decide(g);
-    await sleep(4000);
-    const j = JSON.parse((visit("GET", "/") || {}).body || "{}");
+    const j = await keyWithin(90_000, "second-secret");
     assert(j.key === hexSha("second-secret"), `the new secret is in the process: ${j.key}`);
     return "restarted with the new secret";
   });
@@ -150,10 +159,9 @@ try {
     const up = sh(`cd /srv/vyre && docker compose -p vyre up -d --force-recreate vyre 2>&1`, { timeout: 600_000 });
     assert(up.status === 0, String(up.stdout).slice(-200));
     for (let i = 0; i < 60; i++) { if (sh("docker inspect -f '{{.State.Health.Status}}' vyre-vyre-1").stdout.trim() === "healthy") break; await sleep(5000); }
-    await sleep(15000);
+    const j = await keyWithin(240_000, "second-secret");
     const rules = sh("docker exec -u root vyre-vyre-1 iptables -S").stdout;
     assert(/vyre-app:northwind/.test(rules), "the server is walled again in the new container");
-    const j = JSON.parse((visit("GET", "/") || {}).body || "{}");
     assert(j.key === hexSha("second-secret"), "and still reachable with its secret");
     return "re-walled";
   });
