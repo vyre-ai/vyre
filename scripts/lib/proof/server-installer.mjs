@@ -12,7 +12,7 @@ const sh = (/** @type {string} */ cmd, /** @type {any} */ opt = {}) => spawnSync
 /** @param {{ dir: string, repo: string, code: string, store: "records" | "plain", relayForServer: string, namesForServer: string, relayPort?: number, hostIp?: string, noCodeProbe?: boolean, release?: { oldBox: string, oldUrl: string, newUrl: string, newVersion: string, pub: string } }} o
  * `release` (the update proof): the server is the OLD release, installed by that release's own installer from a local release site, and its update unit is pointed at the candidate's site (signed by the same throwaway key). */
 export async function startInstallerServer(o) {
-  if (!process.env.CI) throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds");
+  if (!process.env.CI && process.env.VYRE_JOURNEY_BOX !== "1") throw new Error("the installer server runs on a CI runner only (CI is unset): it uses /srv/vyre and the container names vyre-*, which a shared test box already holds (a test box that holds nothing there says so with VYRE_JOURNEY_BOX=1)");
   const script = path.join(o.repo, "scripts", "install-box.sh");
   fs.mkdirSync(o.dir, { recursive: true });
   const dir = process.env.VYRE_DIR || "/srv/vyre";
