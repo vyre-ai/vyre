@@ -4061,6 +4061,34 @@
     }
    }
   },
+  "away-card": {
+   "title": "While you were away",
+   "screens": {
+    "full": {
+     "component": "away-card"
+    },
+    "compact": {
+     "component": "away-card"
+    },
+    "glance": {
+     "component": "away-card"
+    }
+   }
+  },
+  "flow-draft": {
+   "title": "Flow draft ready",
+   "screens": {
+    "full": {
+     "component": "flow-draft"
+    },
+    "compact": {
+     "component": "flow-draft"
+    },
+    "glance": {
+     "component": "flow-draft"
+    }
+   }
+  },
   "runner-chip": {
    "title": "Session placement",
    "screens": {
