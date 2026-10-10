@@ -81,6 +81,8 @@ async function handle(line) {
     let buf = "", err = ""; const replies = new Map();
     child.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(l); replies.get(m.id)?.(m); } catch {} } });
     child.stderr.on("data", d => { err += d; });
+    child.on("error", e => { err += "spawn: " + e.message; for (const r of replies.values()) r({ timeout: true, err: err.slice(0, 600) }); });
+    child.on("exit", (c, sg) => { err += ` exit ${c} ${sg}`; });
     const rpc = (id, method, params) => new Promise(res => { const t = setTimeout(() => res({ timeout: true, err: err.slice(0, 600) }), 12000); replies.set(id, m => { clearTimeout(t); res(m); }); child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
     const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
     const list = await rpc(2, "tools/list", {});
@@ -88,7 +90,7 @@ async function handle(line) {
     const [tname, ...tj] = arg.split(" ");
     const called = tname ? await rpc(3, "tools/call", { name: tname, arguments: JSON.parse(tj.join(" ") || "{}") }) : null;
     child.kill();
-    out({ type: "mcp", init: init.result ? "ok" : init, tools: list.result ? list.result.tools.map(x => x.name) : list, ...(called ? { called: called.result || called } : {}) });
+    out({ type: "mcp", init: init.result ? "ok" : init, err: err.slice(0, 500), tools: list.result ? list.result.tools.map(x => x.name) : list, ...(called ? { called: called.result || called } : {}) });
     out({ type: "result" });
   } else if (cmd === "argv") {
     out({ type: "argv", argv: process.argv.slice(2), socket: process.env.VYRE_SOCKET || null });
