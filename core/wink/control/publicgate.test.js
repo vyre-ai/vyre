@@ -28,7 +28,11 @@ function world({ name = /** @type {string | null} */ ("alex"), failIssue = false
   const issued = /** @type {any[]} */ ([]);
   const dirCalls = /** @type {string[]} */ ([]);
   const gates = /** @type {any[]} */ ([]);
-  const directory = { async acme(/** @type {string} */ n, /** @type {string} */ t) { dirCalls.push(`acme ${n}`); }, async acmeClear(/** @type {string} */ n) { dirCalls.push(`clear ${n}`); }, async publish(/** @type {string} */ n, /** @type {any} */ o) { dirCalls.push(`publish ${n}${o && o.apps ? " apps" : ""}`); } };
+  const directory = { async acme(/** @type {string} */ n, /** @type {string} */ t) { dirCalls.push(`acme ${n}`); }, async acmeClear(/** @type {string} */ n) { dirCalls.push(`clear ${n}`); }, async publish(/** @type {string} */ n, /** @type {any} */ o) { dirCalls.push(`publish ${n}${o && o.apps ? " apps" : ""}`); },
+    async acmeOwn(/** @type {string} */ _t) { dirCalls.push("acme-own"); }, async acmeOwnClear() { dirCalls.push("clear-own"); },
+    async hostAdd(/** @type {string} */ h) { dirCalls.push(`host-add ${h}`); if (unproven.has(h)) throw Object.assign(new Error(`point _acme-challenge.${h} at the box`), { code: "not_proven" }); },
+    async hostRemove(/** @type {string} */ h) { dirCalls.push(`host-remove ${h}`); } };
+  const unproven = /** @type {Set<string>} */ (new Set());
   const acme = {
     DIRECTORIES: { production: "https://prod/dir", staging: "https://stg/dir" },
     covers: acmeReal.covers,
@@ -47,10 +51,12 @@ function world({ name = /** @type {string | null} */ ("alex"), failIssue = false
     const g = { o, tlsSet: /** @type {any[]} */ ([]), closed: false, pin: certPin(o.tls.cert),
       async listen() { return { host: "0.0.0.0", port: o.listen.port || 7443 }; },
       setTls(/** @type {any} */ t) { g.tlsSet.push(t); g.pin = certPin(t.cert); },
+      hostTls: /** @type {Record<string, any>} */ ({}),
+      setHostTls(/** @type {string} */ h, /** @type {any} */ t) { g.hostTls[h] = t; }, dropHostTls(/** @type {string} */ h) { delete g.hostTls[h]; },
       async close() { g.closed = true; } };
     gates.push(g); return g;
   };
-  return { log, issued, dirCalls, gates, mk: (/** @type {any} */ extra = {}) => createPublicGate({ name: () => name, dir: tmp(), directory, upstream: { port: 1234 }, listen: { port: 7443 }, log: m => log.push(m), deps: { createGate, certs: certsReal, acme } , ...extra }) };
+  return { log, issued, dirCalls, gates, unproven, mk: (/** @type {any} */ extra = {}) => createPublicGate({ name: () => name, dir: tmp(), directory, upstream: { port: 1234 }, listen: { port: 7443 }, log: m => log.push(m), deps: { createGate, certs: certsReal, acme } , ...extra }) };
 }
 
 test("a box with no name stays out: state no-name, nothing issued, no listener", async () => {
@@ -232,4 +238,45 @@ test("apps: the wildcard is published only once the certificate that covers it i
   assert.equal(s.state, "failed");
   assert.deepEqual(w.dirCalls.filter(c => c.startsWith("publish")), [], "no certificate, no address of any kind");
   await g.stop();
+});
+
+test("own hosts: a host is listed, gets its own certificate under the own-domain label and is served by SNI; one whose DNS record is missing waits and is not ordered; a removed one is unlisted and dropped", async () => {
+  const w = world();
+  let hosts = ["sign.firm.example", "later.firm.example"];
+  w.unproven.add("later.firm.example");
+  const g = w.mk({ publish: true, apps: () => true, hosts: () => hosts, ingress: { hooks: () => null, share: () => null, apps: () => ({ port: 9, hosts: [] }) } });
+  await g.start();
+  const st = () => Object.fromEntries(g.status().hosts.map((/** @type {any} */ h) => [h.host, h.state]));
+  assert.deepEqual(st(), { "sign.firm.example": "live", "later.firm.example": "waiting" });
+  assert.deepEqual(w.issued.map(i => i.names), [["alex.vyre.run", "*.alex.vyre.run"].slice(0, 1), ["sign.firm.example"]].map(x => x), "nothing is ordered for the host that is not proven");
+  assert.deepEqual(w.dirCalls.filter(c => /own|host/.test(c)), ["host-add sign.firm.example", "acme-own", "clear-own", "host-add later.firm.example"]);
+  assert.deepEqual(Object.keys(w.gates[0].hostTls), ["sign.firm.example"]);
+  assert.deepEqual(g.liveHosts(), ["sign.firm.example"]);
+  assert.match(g.status().hosts.find((/** @type {any} */ h) => h.host === "later.firm.example").why, /_acme-challenge/);
+  // the person adds the record: the next look lists it and orders its certificate
+  w.unproven.clear();
+  await g.hostsChanged();
+  assert.deepEqual(st(), { "sign.firm.example": "live", "later.firm.example": "live" });
+  assert.deepEqual(g.liveHosts().sort(), ["later.firm.example", "sign.firm.example"]);
+  assert.equal(w.issued.filter(i => i.names[0] === "sign.firm.example").length, 1, "a good certificate on disk is not ordered again");
+  // the person removes one
+  hosts = ["sign.firm.example"];
+  await g.hostsChanged();
+  assert.deepEqual(st(), { "sign.firm.example": "live" });
+  assert.deepEqual(Object.keys(w.gates[0].hostTls), ["sign.firm.example"]);
+  assert.ok(w.dirCalls.includes("host-remove later.firm.example"));
+  await g.stop();
+});
+
+test("own hosts: a failing question about the hosts, or a box with no hosts option, changes nothing", async () => {
+  const w = world();
+  const a = w.mk({ publish: true });
+  await a.start();
+  assert.deepEqual(a.status().hosts, []);
+  await a.stop();
+  const w2 = world();
+  const b = w2.mk({ publish: true, hosts: () => { throw new Error("no"); } });
+  assert.equal((await b.start()).state, "up");
+  assert.deepEqual(b.status().hosts, []);
+  await b.stop();
 });

@@ -45,6 +45,16 @@
         "effect": "write"
       },
       {
+        "name": "names.directory.host-add",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "names.directory.host-remove",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "names.directory.publish",
         "reach": "modules",
         "effect": "write"

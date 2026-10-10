@@ -983,6 +983,11 @@ export function nameDirectory(dirCall) {
   return {
     acme: async (/** @type {string} */ _name, /** @type {string} */ token) => dirCall("names.directory.acme", { token }),
     acmeClear: async () => dirCall("names.directory.acme-clear", {}),
+    // an own domain (sign.firm.com): its challenge goes under the box's own-domain label, and the directory lists the host once the CNAME proof reads
+    acmeOwn: async (/** @type {string} */ token) => dirCall("names.directory.acme", { token, own: true }),
+    acmeOwnClear: async () => dirCall("names.directory.acme-clear", { own: true }),
+    hostAdd: async (/** @type {string} */ host) => dirCall("names.directory.host-add", { host }),
+    hostRemove: async (/** @type {string} */ host) => dirCall("names.directory.host-remove", { host }),
     publish: async (/** @type {string} */ _name, /** @type {{ apps?: boolean, via?: string, share?: boolean }} [o] */ o) => dirCall("names.directory.publish", { ...(o && o.apps === true ? { apps: true } : {}), ...(o && o.via === "tunnel" ? { via: "tunnel", share: o.share === true } : {}) }),
   };
 }
