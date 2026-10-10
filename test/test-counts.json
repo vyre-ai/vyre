@@ -1002,5 +1002,6 @@
  "core/vault/health-summary.test.js": 2,
  "apps/app/screens/now/vault-health.test.js": 1,
  "lib/publish/grants-kernel.test.js": 4,
- "apps/app/ui/tasks/one-vault.test.js": 1
+ "apps/app/ui/tasks/one-vault.test.js": 1,
+ "apps/app/screens/spaces/add-space.test.js": 1
 }
