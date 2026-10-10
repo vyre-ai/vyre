@@ -381,7 +381,6 @@ export class Vault {
     /** Which module may be handed which item (release.js): kernel grants on a server, the same grants in this vault's own table in vyre-core. */
     this.releases = new Release(this);
     this.links = new Links(this);
-    /** @type {import("./used-by.js").UsedBy | null} Everything that uses one credential (R031-70), set by index.js with the module context. */ this.usedBy = null;
     /** @type {Set<Promise<any>>} what was lent of an item just deleted, being taken back */ this.revoking = new Set();
     /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
     this.emergency = new Emergency(this);
@@ -1141,11 +1140,8 @@ export class Vault {
 
   /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
   async apiCredentialNames() {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all());
-    // no such item, no key needed: the connector list is asked for at start-up, and a home with none must not get a key made for it
-    if (!rows.length) return [];
-    await this.key();
-    return rows.filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()); if (!rows.length) return []; // no such item, no key needed: asked at start-up, and a home with none must not get a key made for it
+    await this.key(); return rows.filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
   }
 
   /**
