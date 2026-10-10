@@ -12,17 +12,18 @@ const bad = (/** @type {string} */ message) => Object.assign(new Error(message),
 
 /**
  * @param {{ kernel: any, call: (tool: string, input: any) => Promise<any> }} o
- * @returns {(q: { chain: any, grp: string, text: string, pasted?: unknown, attachments?: unknown, members: { who: string, cwd: string | null, session: boolean }[] }) => Promise<{
+ * @returns {(q: { chain: any, grp: string, text: string, pasted?: unknown, attachments?: unknown, people?: number, members: { who: string, cwd: string | null, session: boolean }[] }) => Promise<{
  *   saved: import("../../lib/attachments.js").Attachment[], noteOf: (who: string) => string, imagesOf: (who: string) => { media_type: string, data: string }[] }>}
  */
 export function createSendContext({ kernel, call }) {
   let chainNow = /** @type {any} */ (null);
   const card = cardsFor({ kernel, call, chain: () => chainNow });
-  return async ({ chain, grp, text, pasted, attachments, members }) => {
+  return async ({ chain, grp, text, pasted, attachments, people = 1, members }) => {
     const checked = checkList(attachments);
     if (!checked.ok) throw bad(checked.error);
     chainNow = chain;
-    const cardNote = await card({ thread: grp, text, pasted });
+    // A card is read under the sender's chain, and the assistants (and so the other people of the chat) may repeat it: it is made only where the sender is the one person in the chat.
+    const cardNote = people > 1 ? "" : await card({ thread: grp, text, pasted });
     if (!checked.list.length) return { saved: [], noteOf: () => cardNote, imagesOf: () => [] };
     if (!kernel || !chain) throw bad("files can be attached by a person at their own surface");
     const have = new Map((await listFiles(kernel, chain, grp).catch(() => [])).map(a => [a.id, a]));

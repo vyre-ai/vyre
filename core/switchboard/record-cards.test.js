@@ -122,3 +122,13 @@ test("on a real daemon a named client reaches the model as a card with the seale
   await w.finished(th2.id, 2);
   assert.doesNotMatch((await w.said(th2.id)).at(-1), /record card/, "off means the model fetches it itself");
 });
+
+test("one message cannot make the box search for every capitalised word: kernel calls per turn are capped", async () => {
+  let calls = 0;
+  const kernel = { records: { search: async () => { calls += 1; return { rows: [1, 2, 3, 4, 5].map(n => ({ type: "contact", id: `c${n}` })) }; }, reference: async () => { calls += 1; return null; } } };
+  const cards = createCards({ kernel });
+  const person = { hops: [{ actor: { kind: "person", id: "per_x" } }] };
+  const words = Array.from({ length: 60 }, (_, i) => `"Name Number${String.fromCharCode(97 + (i % 26))}${i}"`).join(" ");
+  await cards.note({ chain: person, thread: "t1", text: `Ask about ${words}` });
+  assert.ok(calls > 0 && calls <= LIMITS.calls, `${calls} kernel calls`);
+});
