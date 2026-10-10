@@ -2,7 +2,7 @@
  "_comment": "A11: a source file over 2,000 lines does not grow. Today’s offenders with their size; the number may only go down (test/file-size.test.js), a file that drops under the limit leaves the list, and growth needs [ratchet +N: why] (preflight R1). Splits are in team/BACKLOG.md under 0.3.4.",
  "limit": 2000,
  "files": {
-  "core/switchboard/index.js": 4856,
+  "core/switchboard/index.js": 4841,
   "core/spaces/index.js": 2553,
   "core/cli/commands/vault.js": 2158,
   "core/modules/index.js": 2041,
