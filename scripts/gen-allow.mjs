@@ -29,7 +29,6 @@ export const OPEN_NOTES = Object.freeze({
   "update.whats-new": "reads the release notes of the version that is running, once per person; the assistant says them in the notes' own words",
   "update.whats-new-seen": "marks the release notes of the running version as seen by this person; the only thing written is that mark",
   "flows.settle": "answers a run that needs attention (retry, skip, stop, or move a stage gate on early) under the person's own chain; a stage gate moves only for its owner or an admin, with a reason on the ledger, and a value for a skipped step stays the person's",
-  "flows.advance": "moves a record past its stage gate before the stage's tasks are done; only the stage's owner or an admin, in their own name, with a reason on the gate's ledger",
   "views.list": "lists the screens the installed modules declare; names and icons only, and what a screen shows is fetched later as the viewer",
   "views.get": "reads one screen a module declares; the data it shows is fetched as the viewer, under the viewer's own grants",
   "spaces.servers": "lists the person's own paired servers: names and addresses only, under the caller's own chain",
