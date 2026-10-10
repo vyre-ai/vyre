@@ -53,12 +53,17 @@ export function cheatsheet() {
   out.push("# Flows cheat sheet", "", "A Flow is a trigger and steps. Write it in the lines form (flows.code format lines; flows.patch edits it). Names a step makes are read as `steps.<id>`; the trigger as `trigger`; a failure path reads `error`; a check reads `output`.", "");
   out.push("## Shape", "```", "name: my_flow", "authorship: model", "trigger: {on: event, event: payment.received}", "steps:", "  who find type=client where=`record.email == trigger.email`", "  mark update type=client record=`steps.who.rows[0].id` set={tagged: true}", "on_failure:", "  tell assign to=role:partner title=\"A run failed\" output={kind: note}", "```", "A `key=value` value is a word, number, \"string\", [list], {key: value}, or a `backtick expression`. Optional keys: label, description, caps, concurrency, lock, stuck_after_ms, on_failure. In `if`, `where`, `over`, `from` and `check` the whole value is expression text; inside `set`, `match`, `input` and the like a value is a plain value, or a `backtick expression` to compute it.", "");
   out.push("## Triggers", ...Object.values(TRIGGER_REGISTRY).map(t => `- ${t.on.join(" | ")}: keys ${t.keys.join(", ")}; reads ${t.scope.join(", ")}${TRIGGER_EXAMPLES[t.on[0]] ? `; e.g. \`${JSON.stringify(TRIGGER_EXAMPLES[t.on[0]]).replace(/"/g, "")}\`` : ""}`), "");
-  out.push("## Steps (id kind key=value)");
+  out.push("## Steps (id kind key=value; each also takes timeout_ms, retry, on_fail, verify unless it says otherwise)");
   for (const kind of STEP_KINDS) {
     const keys = /** @type {Record<string, string[]>} */ (STEP_KEYS)[kind] || [];
-    const policy = kind === "branch" ? "nothing (its steps have their own)" : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (kind)] || kind === "subflow" ? "on_fail, verify" : kind === "wait" ? "retry, on_fail, verify" : "timeout_ms, retry, on_fail, verify";
-    out.push(`- ${kind}: ${keys.join(", ")}; also ${policy}`, `    ${EXAMPLES[kind] ? oneLine(EXAMPLES[kind]) : ""}`);
+    // the default policy keys are said once above; a step that takes fewer says which
+    const policy = kind === "branch" ? "no policy keys (its steps have their own)" : BLOCK_KINDS[/** @type {keyof typeof BLOCK_KINDS} */ (kind)] || kind === "subflow" ? "only on_fail, verify" : kind === "wait" ? "no timeout_ms" : "";
+    out.push(`- ${kind}: ${keys.join(", ")}${policy ? `; ${policy}` : ""}`, `    ${EXAMPLES[kind] ? oneLine(EXAMPLES[kind]) : ""}`);
   }
+  out.push("", "## Lanes, other Flows, schedules");
+  out.push("- `parallel`: lanes (2 to 8 `branch` steps) run together; the next step waits for all and reads any lane's step as `steps.<id>` (lanes cannot read each other). A failed lane fails the step; a retry reruns only it.");
+  out.push("- `subflow flow=<name> input={...}` runs another active Flow; its top-level `returns` is `steps.<id>.result`.");
+  out.push("- A time trigger: `hours=true` (weekdays 9 to 17) or `{days, from, to}`; `holidays=[dates]` or `space`; `catch_up=once|all|skip` after downtime.");
   out.push("", "## If it can fail");
   out.push(`- timeout_ms ${POLICY_LIMITS.timeoutMin}-${POLICY_LIMITS.timeoutMax}; retry false | {attempts 1-${POLICY_LIMITS.attempts}, backoff_ms n | [n...], on [${RETRY_CODES.join(", ")}]}. Defaults: ${Object.entries(POLICY).map(([k, p]) => `${k} ${ms(/** @type {any} */ (p).timeout_ms)} x${/** @type {any} */ (p).attempts}`).join(", ")}; other kinds do not retry. A refusal is never retried.`);
   out.push("- on_fail={then: continue|stop, steps}: steps run if this one fails for good (they read `error.code`, `error.message`, `error.step`); `continue` carries on, `stop` (default) fails the run after them. No on_fail inside an on_fail.");
