@@ -146,3 +146,21 @@ export async function listCaller(K, meta) {
   if (p) return p;
   return meta && PERSON_SURFACES.includes(String(meta.caller || "")) && !(meta.kernelFacts || meta.token) && typeof K.owner === "string" ? K.owner : null;
 }
+
+/**
+ * The Spaces this home's kernel hosts that a person is in, as spaces.merge-list lists them ({ space, name, color, link }). The module's own table holds only the Spaces it made itself; a server's team Spaces are
+ * the kernel's, so a module that asks "which Spaces is this person in" (Publish, the doors) must read them here. The home's own Space stays out: it is internal, as in spaces.list.
+ * @param {any} K @param {string} person @returns {Promise<{ space: string, name: string | null, color: null, link: string | null }[]>}
+ */
+export async function kernelTeamSpaces(K, person) {
+  const out = [];
+  if (!K || !K.spaces || typeof K.spaces.list !== "function" || typeof K.membership !== "function") return out;
+  for (const id of K.spaces.list()) {
+    if (id === K.space) continue;
+    let m = null; try { const r = await K.membership(person, id); if (r && r.member === true) m = r; } catch { m = null; }
+    if (!m) continue;
+    const d = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null, host = d && d.name ? `${String(d.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null;
+    out.push({ space: id, name: host, color: null, link: host ? `https://${host}` : null });
+  }
+  return out;
+}

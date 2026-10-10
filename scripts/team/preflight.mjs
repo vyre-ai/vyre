@@ -187,10 +187,14 @@ if (!STATIC) {
   // The files that failed, or ran fewer tests than recorded, from the runner's own summary.
   /** @type {Set<string>} */ const red = new Set();
   let section = "";
+  /** @type {Map<string, string[]>} */ const detail = new Map();
+  let detailFile = "";
   /** @type {Set<string>} */ const short = new Set();
   for (const l of `${r.stdout}\n${r.stderr}`.split("\n")) {
     if (/^test-counts: files that failed/.test(l)) { section = "failed"; continue; }
     if (/^test-counts: tests that did not run/.test(l)) { section = "short"; continue; }
+    if (/^test-counts: the first failure of each red file/.test(l)) { section = "detail"; continue; }
+    if (section === "detail") { if (/^  \S/.test(l)) { detailFile = l.trim(); detail.set(detailFile, []); } else if (/^    /.test(l) && detailFile) detail.get(detailFile)?.push(l.slice(4)); else section = ""; continue; }
     if (section && /^  \S/.test(l)) { const f = l.trim().replace(/:.*$/, ""); (section === "short" ? short : red).add(f); continue; }
     section = "";
   }
@@ -220,7 +224,7 @@ if (!STATIC) {
   const mineRed = strict ? [...red] : [...red].filter(f => !baseRed.includes(f));
   testsOk = !mineRed.length;
   if (baseRed.length) warns.push(`base red (already red on ${BASE} without your change; owned by release's red list, not blocking you):\n    ${baseRed.join("\n    ")}`);
-  if (!testsOk) fail("T2", `red because of this branch:\n    ${mineRed.join("\n    ")}\n  A guard names its rule in its message; fix the cause, never loosen the guard.`);
+  if (!testsOk) fail("T2", `red because of this branch:\n    ${mineRed.map(f => detail.has(f) ? `${f}\n${(detail.get(f) || []).map(l => `        ${l}`).join("\n")}` : f).join("\n    ")}\n  A guard names its rule in its message; fix the cause, never loosen the guard.`);
 
   // T5 red first: a branch that changes behaviour must carry a test that FAILS without that change. Its changed tests run
   // against the base's source (the branch's tests and test helpers copied in, nothing else); at least one must fail there.

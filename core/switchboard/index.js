@@ -56,7 +56,7 @@ import { tokensOfChars } from "../../lib/tokens.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, sheetCalls, sheetOf, receiptsOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
-import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js";
+import { withinOrThrow } from "../../lib/within.js"; import { scrubOut } from "./scrub.js"; import { checkResidency } from "./residency.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -874,7 +874,7 @@ export class Switchboard {
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
-      id = rec.id; box.id = id;
+      id = rec.id; box.id = id; await checkResidency(this.deps, rec.provider || "claude");   // the person's vendor policy (residency.js): every provider, every sign-in
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
@@ -899,7 +899,7 @@ export class Switchboard {
       at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
-      const provider = String(o.provider || "claude");
+      const provider = String(o.provider || "claude"); await checkResidency(this.deps, provider);
       if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) {
         throw Object.assign(new Error(`no session provider ${provider}; this machine has ${["claude", ...(this.deps.providers ? this.deps.providers.list() : [])].join(", ")}`), { code: "bad_input" });
       }
@@ -2402,7 +2402,7 @@ export class Switchboard {
 
   async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
     // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
-    const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); };
+    const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); }; { const r0 = this.record(id); if (r0) await checkResidency(this.deps, r0.provider || "claude"); }   // a running chat is held to the vendor policy at each turn too
     given();
     // A rollover in flight finishes first: its fresh session is what this message goes to, never a second start beside it.
     { const r = this.rolling.get(id); if (r) await r.catch(() => {}); given(); }

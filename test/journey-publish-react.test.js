@@ -15,6 +15,7 @@ import net from "node:net";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
+import { whileSettingUp } from "../apps/app/src/chat/preview-model.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -110,8 +111,9 @@ test("a files preview's card publishes its own folder: publish.quick { name, pre
   assert.ok(!opened.error, JSON.stringify(opened.error));
   const id = opened.data.id;
   // a Space made a moment ago is set up in the background (its name is registered with the directory); the card's tap comes after that, so the walk waits for it the way a person's tap would
-  let q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" });
-  for (let n = 0; q.error && q.error.code === "no_space" && n < 60; n++) { await new Promise(r => setTimeout(r, 500)); q = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" }); }
+  let q;
+  // the Publish button waits for it the same way (apps/app/src/chat/preview-model.js whileSettingUp); a refusal that is not "still being set up" ends the wait
+  q = await whileSettingUp(async () => { const r = await as("publish.quick", { name: "bakery", preview: id, space: "bakery.vyre.run" }); if (r.error && r.error.code === "no_space") { assert.match(r.error.message, /still being set up, try again in a moment/); throw Object.assign(new Error(r.error.message), { code: "no_space" }); } return r; }, { waitMs: 500 });
   assert.ok(!q.error, JSON.stringify(q.error));
   assert.equal(q.data.held, true);
   assert.deepEqual(q.data.plan.files.paths, ["index.html"]);
