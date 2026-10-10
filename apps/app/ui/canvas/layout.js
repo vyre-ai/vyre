@@ -85,7 +85,7 @@ export function nodeHeight(n, words, w) {
   const per = Math.max(10, Math.floor((w - 72) / 6.8));
   const lines = Math.min(2, Math.max(1, Math.ceil(String(n.label || "").length / per)));
   const flags = (n.state && n.state !== "pending") || n.outward || n.sealed || n.code;
-  return 20 + (words ? 16 : 0) + lines * 17 + (n.who ? 16 : 0) + (flags ? 30 : 0);
+  return Math.max(52, 20 + (words ? 16 : 0) + lines * 17 + (n.who ? 16 : 0) + (flags ? 30 : 0));
 }
 
 /**

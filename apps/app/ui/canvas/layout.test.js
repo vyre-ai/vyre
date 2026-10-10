@@ -90,4 +90,5 @@ test("every edge runs in the gaps and the columns, never across a card, and rows
   assert.ok(tall < m.h * 1.6, "no step is the old tall empty card");
   assert.ok(nodeHeight({ label: "x" }, false, m.w) < nodeHeight({ label: "x", state: "done", who: "Dana" }, true, m.w), "a step with more to say is taller");
   assert.ok(g.nodes.find((n) => n.id === "p:join").h < 60, "the join is a pill, not a card");
+  assert.ok(nodeHeight({ label: "x" }, false, m.w) >= 44, "a step is at least as tall as its icon");
 });

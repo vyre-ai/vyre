@@ -52,13 +52,15 @@ export function FlowCanvas({ nodes, edges, selected, onSelect, mode }: { nodes: 
   if (list) {
     return (
       <View accessibilityRole="list" className="overflow-hidden">
-        {listOrder(laid.nodes).map((n, i) => {
+        {listOrder(laid.nodes).map((n, i, all) => {
+          // steps are numbered, the way in and the join are not
+          const num = all.slice(0, i + 1).filter((x) => x.kind !== "trigger" && x.kind !== "join").length;
           const words = edgeWords(into.get(n.id) ?? "next");
           return (
             <View key={n.id} className={cn(i && "border-t border-edge", n.lane > 0 && "pl-s6")}>
               <Row selected={selected === n.id} onPress={onSelect ? () => onSelect(n.id) : undefined}
                 lead={<View className="h-control w-control items-center justify-center rounded-row bg-surface-3"><Icon name={ICON[n.kind] ?? "todo"} size={20} tone={n.state === "done" ? "ok" : n.state === "waiting" || n.state === "running" ? "accent" : n.state === "failed" ? "err" : "text-2"} /></View>}
-                title={<View className="gap-s1">{words ? <Text size="caption" tone="label">{words}</Text> : null}<Text strong>{n.kind === "trigger" || n.kind === "join" ? n.label : `${i}. ${n.label}`}</Text>{n.who ? <Text size="caption" tone="label">{n.who}</Text> : null}{n.note ? <Text size="caption" tone="muted">{n.note}</Text> : null}<Flags n={n} /></View>} />
+                title={<View className="gap-s1">{words ? <Text size="caption" tone="label">{words}</Text> : null}<Text strong>{n.kind === "trigger" || n.kind === "join" ? n.label : `${num}. ${n.label}`}</Text>{n.who ? <Text size="caption" tone="label">{n.who}</Text> : null}{n.note ? <Text size="caption" tone="muted">{n.note}</Text> : null}<Flags n={n} /></View>} />
             </View>
           );
         })}
