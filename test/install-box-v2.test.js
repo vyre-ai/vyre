@@ -543,7 +543,7 @@ test("install-box.sh v2: a root run on Ubuntu with no Docker installs it from Do
   assert.match(log, /curl .*download\.docker\.com\/linux\/ubuntu\/gpg/);
   assert.match(log, /apt-get install -y docker-ce docker-ce-cli containerd\.io docker-buildx-plugin docker-compose-plugin/);
   assert.doesNotMatch(log, /get\.docker\.com/);
-  assert.match(fs.readFileSync(path.join(aroot, "etc/apt/sources.list.d/docker.list"), "utf8"), /^deb \[arch=amd64 signed-by=\/etc\/apt\/keyrings\/docker\.asc\] https:\/\/download\.docker\.com\/linux\/ubuntu noble stable$/);
+  assert.match(fs.readFileSync(path.join(aroot, "etc/apt/sources.list.d/docker.list"), "utf8"), /^deb \[arch=amd64 signed-by=\/etc\/apt\/keyrings\/docker\.asc\] https:\/\/download\.docker\.com\/linux\/ubuntu noble stable\n?$/);
   // Another system keeps the older way: nothing from apt runs.
   fs.rmSync(calls);
   fs.rmSync(path.join(bin, "docker"), { force: true });
