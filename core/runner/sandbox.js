@@ -104,7 +104,13 @@ export function seatbeltProfile(o) {
     ...[...meta].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
   ];
   if (o.proxy.port) lines.push(`(allow network-outbound (remote ip "localhost:${o.proxy.port}"))`);
-  if (o.vyre) lines.push(`(allow network-outbound (remote unix-socket (path-literal ${q(real(o.vyre.socket))})))`);
+  if (o.vyre) {
+    // The session may open the door and see that it is there: a hook looks at VYRE_SOCKET before it trusts it (harness/lib/vyre.js socketThere), and without this the Harness hooks on a Mac thought Vyre was not set up
+    // and did nothing, the security floor among them. Only the socket and the folders on its way: never a listing.
+    const sock = real(o.vyre.socket);
+    lines.push(`(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`);
+    for (let d = sock; ; d = path.dirname(d)) { lines.push(`(allow file-read-metadata (literal ${q(d)}))`); if (d === path.dirname(d)) break; }
+  }
   return lines.join("\n") + "\n";
 }
 
