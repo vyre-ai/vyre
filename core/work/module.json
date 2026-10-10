@@ -278,9 +278,23 @@
         "effect": "write"
       },
       {
+        "name": "work.template.define-in-space",
+        "crossSpace": "records.create",
+        "summary": "write a project template as a new draft version (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.template.list",
         "summary": "the project templates, or the versions of one",
         "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.list-in-space",
+        "crossSpace": "records.read",
+        "summary": "the project templates, or the versions of one (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
         "effect": "read"
       },
       {
@@ -290,15 +304,36 @@
         "effect": "read"
       },
       {
+        "name": "work.template.get-in-space",
+        "crossSpace": "records.read",
+        "summary": "one template version with its body (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "work.template.golive",
         "summary": "put a draft version live (its owner or an admin)",
         "reach": "person",
         "effect": "write"
       },
       {
+        "name": "work.template.golive-in-space",
+        "crossSpace": "records.create",
+        "summary": "put a draft version live (its owner or an admin) (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.template.test",
         "summary": "try a template with nothing created, sent or changed",
         "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.test-in-space",
+        "crossSpace": "records.read",
+        "summary": "try a template with nothing created, sent or changed (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
         "effect": "read"
       },
       {
@@ -311,9 +346,26 @@
         "effect": "write"
       },
       {
+        "name": "work.template.from-project-in-space",
+        "crossSpace": "records.create",
+        "summary": "a draft template from a project that ran one (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "write",
+        "projectArg": [
+          "project"
+        ]
+      },
+      {
         "name": "work.template.library",
         "summary": "the project templates the Kits ship",
         "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.template.library-in-space",
+        "crossSpace": "records.read",
+        "summary": "the project templates the Kits ship (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
         "effect": "read"
       },
       {
@@ -323,9 +375,23 @@
         "effect": "write"
       },
       {
+        "name": "work.template.install-in-space",
+        "crossSpace": "records.create",
+        "summary": "a library template as a draft in this Space (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.start-project",
         "summary": "start a project from a live template",
         "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.start-project-in-space",
+        "crossSpace": "records.create",
+        "summary": "start a project from a live template (run inside another Space; the cross-Space door only)",
+        "reach": "modules",
         "effect": "write"
       },
       {

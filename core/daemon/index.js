@@ -669,10 +669,10 @@ async function startLocked(opts, root, p, release) {
         canResume: () => typeof (opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent) === "function",
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
         providerAccount: async (/** @type {any} */ i) => {
-          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
-          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          // the account is the asker's own: the home's own account for the owner, a member's own sign-in for a member, never another person's (sessions.accounts.resolve filters by person)
+          if (!i || typeof i.person !== "string" || !i.person) return null;
           try {
-            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude", person: String(i.person) }, "module:vyred")); const a = r && r.data;
             if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
             if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
             if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
