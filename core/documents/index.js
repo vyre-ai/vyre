@@ -158,7 +158,7 @@ export function registerDocuments(ctx) {
   });
 
   ctx.tool("documents.send-signed", {
-    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes covers both. No expiry unless days or the setting is given.",
+    description: "Email the signer their signed copy: { slug, email, days? }. Makes the link and emails it; one yes. Lasts until revoked unless days.",
     input: obj({ space: str, slug: str, email: str, days: { type: "integer" } }, ["slug", "email"]),
     callers: CALLERS, effect: "write",
     run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
