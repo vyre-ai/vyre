@@ -197,3 +197,21 @@ test("the lent process says it is starting on its computer from the first moment
   lent.emit("spawn");
   assert.equal(p.lent.state, "up");
 });
+
+test("on the real home: a new chat of the owner is placed at creation on the owner's ready computer, the row says mac under the thread's id, and the process is lent; with no computer ready it stays on the box", { timeout: 60_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const r = await rig(t);
+  const kernel = (/** @type {any} */ h) => ({ owner: BOB, id: { space: r.k.id.space, owner: BOB }, runnerHost: () => ({ lentSpawn: (/** @type {string} */ _s, /** @type {any} */ i) => h.spawn(i), placeNew: async (/** @type {string} */ _s, /** @type {any} */ i) => h.placeNew(i), placements: { spaces: () => [r.k.id.space], find: (/** @type {string} */ _s, /** @type {string} */ id) => h.book.find(id) } }) });
+  const q = { thread: "thr_new", chat: "chat_new", native: "thr_new", fresh: true, title: "Harlow intake" };
+  assert.equal(await lentSpawnFor(kernel(r.home), q), null, "no computer ready: the box");
+  assert.equal(r.home.book.find("thr_new"), null, "nothing was written");
+  const c = r.as(BOB, "dev_laptop");
+  await c.vault.lease(); await r.home.status(r.bob, { device_key: "KEY_LAPTOP" }); await c.beat({ sessions: [], well: true });
+  const spawn = await lentSpawnFor(kernel(r.home), q);
+  assert.ok(spawn, "a ready computer: the chat is placed there");
+  const row = r.home.book.find("thr_new");
+  assert.deepEqual([row.where, row.person, row.session], ["mac", BOB, "thr_new"]);
+  const proc = spawn("claude", ["--output-format", "stream-json"], {}, "/box/work", {});
+  assert.equal(typeof proc.kill, "function");
+  proc.kill();
+});
