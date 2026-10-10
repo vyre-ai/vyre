@@ -16,7 +16,7 @@ test("the default-browser setting is off, then on: the brief an assistant is tol
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const cli = (/** @type {string} */ tool, input = {}) => call(tool, input, { root, caller: "cli" });
-  const brief = async () => JSON.stringify((await d.registry.call("sessions.environment", {}, "mcp", { thread: "t-1" })).data || {});
+  const brief = async () => { const r = await d.registry.call("sessions.environment", {}, "mcp", { thread: "t-1" }); return JSON.stringify(r.data || r.error || {}); };
   const got = await cli("settings.get", { key: "computer.default-browser" });
   assert.equal(got.data.value, false, JSON.stringify(got));
   assert.doesNotMatch(await brief(), /default browser/);
