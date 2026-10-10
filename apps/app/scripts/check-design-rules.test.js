@@ -23,7 +23,7 @@ test("each rule finds its own case and leaves the ordinary alone", () => {
   ].join("\n"));
   assert.deepEqual(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "command-line": 1, "second-primitive": 1 } });
   assert.deepEqual(problems(scan(dir), {}).length, 5);
-  assert.deepEqual(problems(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "second-primitive": 1 } }), []);
+  assert.deepEqual(problems(scan(dir), { "screens/x.tsx": { "raw-colour": 1, "type-literal": 1, "style-sheet": 1, "command-line": 1, "second-primitive": 1 } }), []);
   assert.deepEqual(RULES.map((r) => r.id), ["raw-colour", "type-literal", "style-sheet", "command-line", "second-primitive"]);
   fs.rmSync(dir, { recursive: true });
 });
