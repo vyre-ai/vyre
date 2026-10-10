@@ -11,6 +11,7 @@
 //
 // An Exchange is { id, resourceType, request: { method, url, headers, body? }, response?: { status, headers, body?, contentType }, aborted? }, headers lower-cased.
 
+import { suggestRecipe } from "./htmlread.js";
 import { asText, escapeTemplate, escapeValue, fillSlotTemplate, fillTemplate, getAt, setAt, templateRefs, walk } from "./codec.js";
 import { inferShape, innerJson, parseBody, xssiOf } from "./extract.js";
 import { parseOperation, readOnly } from "./spec.js";
@@ -490,8 +491,8 @@ export function suggestExtract(root, values) {
   return bestArray?.path ?? holder?.path ?? anyArray?.path;
 }
 
-/** @param {Exchange} e @param {string[]} values @param {string[]} warnings */
-function learnResponse(e, values, warnings) {
+/** @param {Exchange} e @param {string[]} values @param {string[]} warnings @param {Record<string, string>} [page] */
+function learnResponse(e, values, warnings, page) {
   const r = e.response;
   if (!r) return { format: "json" };
   const body = r.body ?? "";
@@ -501,7 +502,18 @@ function learnResponse(e, values, warnings) {
     const extract = suggestExtract(data, values);
     return { format: "json", contentType: r.contentType, ...(xssiPrefix ? { xssiPrefix } : {}), ...(extract ? { extract } : {}), shape: inferShape(data) };
   }
-  warnings.push(/html/i.test(r.contentType) ? "the answer is a page (HTML): read it from the page with a recipe, or pick the data request" : `the answer is ${r.contentType || "untyped"} text, returned raw`);
+  if (/html/i.test(r.contentType) || /^\s*<(!doctype|html)/i.test(body)) {
+    if (page && Object.keys(page).length) {
+      const found = suggestRecipe(body, page);
+      if (found.recipe) {
+        if (found.missing.length) warnings.push(`not found on the page, left out: ${found.missing.join(", ")}`);
+        return { format: "html", contentType: r.contentType, html: found.recipe };
+      }
+      warnings.push(`the page recipe could not be found: ${found.reason || "no recipe"}; give the text exactly as the first row shows it`);
+    } else warnings.push("the answer is a page (HTML): give `page` fields (the text of the first row, per field) so Vyre can find its rows, or pick the data request");
+    return { format: "html", contentType: r.contentType };
+  }
+  warnings.push(`the answer is ${r.contentType || "untyped"} text, returned raw`);
   return { format: "html", contentType: r.contentType };
 }
 
@@ -562,6 +574,7 @@ function diffRuns(req1, req2, slots, args2, warnings) {
  * @property {string[]} [pages]
  * @property {string[]} [rungs]
  * @property {string} [now] ISO time for learnedAt
+ * @property {Record<string, string>} [page] for an answer that is a page: each field name with the text (or link) as it showed in the first row, from which the recipe is found
  * @property {boolean} [keepExamples] keep the example values in the params: only for a public example a kit ships, never for a person's own input
  */
 
@@ -725,7 +738,7 @@ export function learnOperation(input) {
   } else warnings.push("learned from one example; a second example separates inputs from nonces");
 
   // 8. response
-  const response = learnResponse(ex, Object.values(args1).map(v => String(v).toLowerCase()), warnings);
+  const response = learnResponse(ex, Object.values(args1).map(v => String(v).toLowerCase()), warnings, input.page);
 
   // An example is a value a person typed or a record they looked at: it does not stay in the operation unless the caller says it is a public one (a shipped site kit).
   const params = Object.entries(args1).map(([name, example]) => ({ name, type: types.get(name) ?? "string", required: true, ...(input.keepExamples ? { example } : {}) }));

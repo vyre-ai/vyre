@@ -12,6 +12,7 @@ import { segments } from "../../kernel/core/urn.js";
 import { fill, placeholders, MAX_BYTES } from "./fill.js";
 import { toPdf } from "./pdf.js";
 import { signingFlow } from "./signing.js";
+import { documentRow } from "./record.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -131,7 +132,8 @@ export function registerDocuments(ctx) {
       const text = String(i.note || "").trim();
       if (text.length > 1000) throw refuse("the note is at most 1000 characters", "bad_input");
       const note = text ? `${text}\n\n` : "";
-      const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) });
+      const asked = await use("appmods.signing.request", { name: "documents", template_id: i.template_id, email, ...(i.signer ? { signer: String(i.signer) } : {}) })
+        .catch((/** @type {any} */ e) => { throw e && e.code === "not_found" ? refuse("Documents is not running on this server: install or start it from Apps, then send again", "unavailable") : e; });
       const sent = await use("comms.send", { via: "email", to: email, subject: String(i.subject || "Your document is ready to sign"), body: `${note}Your document is ready to sign: ${asked.url}`, why: "signing request" });
       ctx.events.emit("documents.sent", { submission: asked.submission, template_id: i.template_id });
       return { ...asked, sent };
@@ -167,8 +169,8 @@ export function registerDocuments(ctx) {
     try { defs = (await d.gateway.definitions(d.chain)) || []; } catch { return null; }
     const t = defs.find((/** @type {any} */ x) => x.name === "document");
     if (!t) return null;
-    const known = new Set((t.fields || []).map((/** @type {any} */ f) => f.name));
-    const row = Object.fromEntries(Object.entries(data).filter(([k]) => known.has(k)));
+    const project = async (/** @type {string} */ ref) => { const r = await ctx.call("work.project.ref", { project: ref }); return r && !r.error && r.data && typeof r.data.urn === "string" ? r.data.urn : null; };
+    const row = await documentRow(t.fields || [], data, { space: String(ctx.kernel.space), project });
     const r = await d.gateway.records.create(d.chain, "document", row);
     return r && (r.urn || r.id || (r.record && (r.record.urn || r.record.id))) || null;
   }

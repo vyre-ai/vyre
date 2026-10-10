@@ -9,20 +9,21 @@ async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promis
 }
 
 export type RealFlow = { id: string; name: string; status: string; active: boolean; versions: number; paused: unknown; trigger: string };
-export type Graph = { nodes: any[]; edges: { from: string; to: string; kind: "next" | "then" | "else" | "each" }[]; trigger: string; warnings?: string[]; ok?: boolean };
-export type RunRow = { id: string; flow: string; version: number; state: string; started_at: number; finished_at: number | null; tainted?: boolean; error: { message?: string } | null };
+export type Graph = { nodes: any[]; edges: { from: string; to: string; kind: "next" | "then" | "else" | "each" | "lane" }[]; trigger: string; warnings?: (string | { path?: string; message: string })[]; ok?: boolean };
+export type RunRow = { id: string; flow: string; version: number; state: string; started_at: number; finished_at: number | null; tainted?: boolean; parent?: string; label?: string; error: { message?: string } | null };
 export type Card = { id: string; version: number; hash: string; authorship: string; effects: any; caps: any; warnings: string[]; changes: string[]; text: string };
 
 export async function listReal(): Promise<RealFlow[]> {
-  const rows = await ask<{ id: string; name?: string; status: string; active: boolean; versions: number; paused: unknown }[]>("flows.list");
+  const rows = await ask<{ id: string; name?: string; label?: string; status: string; active: boolean; versions: number; paused: unknown }[]>("flows.list");
   return Promise.all((Array.isArray(rows) ? rows : []).map(async (r) => {
     const g = await ask<Graph>("flows.graph", { id: r.id }).catch(() => null);
-    return { id: r.id, name: r.name || r.id, status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "" };
+    // the Flow's own words, never its id: flows.list carries the label (the name is the code's)
+    return { id: r.id, name: r.label || r.name || r.id, status: r.status, active: r.active, versions: r.versions, paused: r.paused, trigger: g?.trigger ?? "" };
   }));
 }
 
 export const graphReal = (id: string) => ask<Graph>("flows.graph", { id });
-export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown }>("flows.get", { id });
+export const getReal = (id: string) => ask<{ id: string; version: number; hash: string; status: string; approver: unknown; flow?: { label?: string; name?: string } }>("flows.get", { id });
 export const runsReal = (id: string) => ask<RunRow[]>("flows.runs", { id, limit: 20 });
 export const runReal = (run: string) => ask<{ run: any; painted: { nodes: any[]; edges?: any[] } | null }>("flows.run", { run });
 export const cardReal = (id: string, version: number) => ask<Card>("flows.card", { id, version });

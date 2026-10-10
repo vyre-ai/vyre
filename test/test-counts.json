@@ -652,7 +652,7 @@
  "lib/publish/domains.test.js": 7,
  "lib/publish/edge.test.js": 14,
  "lib/publish/flow.test.js": 6,
- "lib/publish/index.test.js": 22,
+ "lib/publish/index.test.js": 24,
  "lib/publish/runner.test.js": 6,
  "lib/publish/secrets.test.js": 11,
  "lib/queue-state.test.js": 4,
@@ -1008,5 +1008,6 @@
  "apps/app/scripts/check-design-rules.test.js": 2,
  "test/design-rules.test.js": 2,
  "apps/app/ui/blocks/symbols.test.js": 2,
- "test/agent-reach-classes.test.js": 3
+ "test/agent-reach-classes.test.js": 3,
+ "core/vault/links.test.js": 4
 }

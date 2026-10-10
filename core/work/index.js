@@ -151,7 +151,9 @@ export default {
     // The files a chat made or received, by name, with which are shared to its project. The chat's folders are sealed: the names come from the chat's own index, for the people in the chat only.
     // One timeline per record and project, and a chat's link to a record (core/work/timeline.js; R031-41, R031-46)
     /** @type {any} */ let tl = null;
-    const timelineOf = () => tl || (tl = createTimeline({ kernelOf, hub: hubOf, inChat: (/** @type {any} */ c, /** @type {string} */ n) => inChat(c, n), me: (/** @type {any} */ c) => String((c.hops[0] && c.hops[0].actor.id) || "") }));
+    const timelineOf = () => tl || (tl = createTimeline({ kernelOf, hub: hubOf, inChat: (/** @type {any} */ c, /** @type {string} */ n) => inChat(c, n), me: (/** @type {any} */ c) => String((c.hops[0] && c.hops[0].actor.id) || ""),
+      // the credentials linked to a record and how they were used (the Vault answers with names and times only)
+      vaultUses: async (/** @type {string} */ urn, /** @type {number} */ limit) => { const r = /** @type {any} */ (await ctx.call("vault.uses.for", { urn, limit })); return r && r.data && Array.isArray(r.data.uses) ? r.data.uses : []; } }));
     ctx.tool("work.timeline", { description: "Everything linked to a record or project, newest first: tasks, files, messages, documents, chats you may read. Give a record urn or project name.",
       input: obj({ record: { type: "string", description: "A record urn. A chat shows only if you are in it or its people shared it, and then only its title" }, project: { type: "string", description: "A project short name" }, limit: { type: "integer", minimum: 1, maximum: 200 } }), run: async (/** @type {any} */ i, /** @type {any} */ extra) => timelineOf().timeline(await chainOf(extra), i) });
     ctx.tool("work.link.suggest", { description: "Which records (client, contact, project) a piece of chat text names, for a link prompt. At most three you may read.",

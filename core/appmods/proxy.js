@@ -118,6 +118,7 @@ const readAll = (/** @type {http.IncomingMessage} */ res, cap = 1024 * 1024) => 
 
 /**
  * @param {{ app: (name: string) => Promise<null | { origin: string, origins: string[], login: null | { path: string, token: string, fields: Record<string, string>, ok: number[] }, public?: string[], rewriteHost?: boolean, passCookies?: boolean, allowEmbed?: boolean, viewerKey?: string, signing?: { routes?: { methods: string[], path: string }[], redirects?: { from: string, to: string }[], signed?: { list: string } }, credentials: () => Promise<Record<string, string>> }>,
+ *   alias?: (host: string) => string | null,   the app an own domain (sign.firm.com) is for, or null
  *   tickets: ReturnType<typeof createTickets>, log?: (m: string) => void, brand?: () => Promise<string>, linkKey?: (name: string) => Buffer | null, now?: () => number }} o
  * @returns {(req: http.IncomingMessage, res: http.ServerResponse, at: { url: URL }) => Promise<boolean>} true when the request was this module's (answered), false when it is for something else
  */
@@ -155,15 +156,23 @@ export function createHostProxy(o) {
     return /** @type {Promise<boolean>} */ (signing.get(name));
   }
 
+  /** Which app a host is for, and the address a person sees it at: an own domain the module lists (sign.firm.com), else <module>.<base>. @param {string} host */
+  function appHost(host) {
+    const own = o.alias ? o.alias(host.replace(/:\d+$/, "")) : null;
+    if (own) return { name: own, base: host, here: `https://${host}` };
+    const m = moduleHost(host);
+    return m ? { ...m, here: originFor(m.name, m.base) } : null;
+  }
+
   async function serve(req, res, { url }) {
     const host = String(req.headers.host || "").toLowerCase();
-    const mh = moduleHost(host);
+    const mh = appHost(host);
     if (!mh) return false;
     const app = await o.app(mh.name);
     if (!app) return false;
     const plain = (/** @type {number} */ code, /** @type {string} */ text, /** @type {Record<string, string>} */ more = {}) => { res.writeHead(code, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...more }); res.end(text); return true; };
     const secure = Boolean(/** @type {any} */ (req.socket).encrypted) || String(req.headers["x-forwarded-proto"] || "") === "https" || !/^localhost(?::\d+)?$/.test(mh.base);
-    const here = originFor(mh.name, mh.base);
+    const here = mh.here;
     // The way in: a ticket Vyre made for this host, traded once for this host's cookie.
     if (url.pathname === ENTER) {
       if (req.method !== "GET") return plain(404, "not found");
@@ -289,7 +298,7 @@ export function createHostProxy(o) {
    */
   serve.upgrade = async (req, socket, head) => {
     const host = String(req.headers.host || "").toLowerCase();
-    const mh = moduleHost(host);
+    const mh = appHost(host);
     if (!mh) return false;
     const app = await o.app(mh.name);
     if (!app) return false;

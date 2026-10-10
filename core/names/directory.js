@@ -70,6 +70,10 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = httpFetch, now 
     /** A challenge for the person's own domain, under <routehash>.acme.vyre.run. @param {string} token */
     acmeOwn: token => call("POST", "/v1/names/acme", { own: true, token }),
     acmeOwnClear: () => call("DELETE", "/v1/names/acme", { own: true }),
+    /** List an own domain this box serves through the tunnel; the directory reads the CNAME proof at _acme-challenge.<host> live. @param {string} name @param {string} host */
+    hostAdd: (name, host) => call("POST", "/v1/names/hosts", { name, host }),
+    /** @param {string} name @param {string} host */
+    hostRemove: (name, host) => call("DELETE", "/v1/names/hosts", { name, host }),
     /** This route's name, its state and the notices. */
     mine: () => call("GET", "/v1/names/mine"),
   };

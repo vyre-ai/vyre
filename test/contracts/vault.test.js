@@ -126,3 +126,17 @@ test("the phone is the device caller, never a bare `mobile`: the health tools No
     assert.ok(!callers.includes("mobile"), `${name} names no bare mobile (test/one-person-surfaces.test.js)`);
   }
 });
+
+test("linking a credential to a record answers in the contract's shapes, emits its events, and holds no value", async t => {
+  const homes = new Map();
+  const a = mk(t, "alex", homes);
+  await a.v.put({ name: "portal-login", kind: "login", fields: { username: "dana@harlow.test", password: "fixture-not-a-real-password" }, url: "https://portal.example.test/login", hosts: ["https://portal.example.test"] }, "cli");
+  const to = F.link.linked.to;
+  matches(a.v.links.link({ item: "portal-login", to }, "cli"), F.link);
+  matches(a.v.links.list({ to }), F.links);
+  a.v.audit("agent-fill", "portal-login", "mcp agent:kit", true, "agent:kit");
+  matches(a.v.links.usesFor({ urn: to }), F.usesFor);
+  matches(a.v.links.unlink({ item: "portal-login", to }, "cli"), F.unlink);
+  for (const type of ["vault.linked", "vault.unlinked"]) matches(a.events.find(e => e.type === type)?.payload, F.events[/** @type {"vault.linked"} */ (type)], type);
+  assert.ok(!JSON.stringify([a.events]).includes("fixture-not-a-real-password"));
+});

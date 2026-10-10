@@ -84,13 +84,13 @@ async function boxRegistry(t, o = {}) {
   });
   /** @type {any} */ (globalThis).__publishFakes = pf;
   t.after(() => { delete /** @type {any} */ (globalThis).__publishFakes; });
-  const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && f.manifest.name === "publish"), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
+  const found = [...discover([path.dirname(HERE)]).filter(f => f.manifest && (f.manifest.name === "publish" || (o.realBuilder && f.manifest.name === "builder"))), ...discover([extra]).filter(f => f.manifest && fakes.includes(f.manifest.name))];
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "box", name: "testbox" }, paths: p, log: () => {}, kernelFor: fakeKernelFor });
   await reg.start(found, { role: "box" });
   t.after(async () => { await reg.stop(); db.close(); });
-  for (const name of ["publish", ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
+  for (const name of ["publish", ...(o.realBuilder ? ["builder"] : []), ...fakes]) assert.equal(reg.modules.get(name)?.state, "running", `${name}: ${reg.modules.get(name)?.error}`);
   /** @type {any[]} */ const seen = [];
   events.on("deployment.*", /** @param {any} e */ e => { seen.push(e); });
   const log = /** @type {any[]} */ ([]);
@@ -551,4 +551,46 @@ test("publish: two previews at once keep both site folders (a folder is written 
     const row = JSON.parse(db.prepare("SELECT body FROM publish_deployments WHERE id = ?").get(id).body);
     assert.ok(row.site && fs.existsSync(path.join(sitesDir, row.site.name)), `${id}'s folder is there`);
   }
+});
+
+test("publish: a folder of ready files builds with the real builder, is checked, written for the box, previewed and refused when it needs a command", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "names", "projects"], realBuilder: true });
+  const dir = fs.mkdtempSync(path.join(b.home, "site-src-"));
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>Northwind Bakery</h1>");
+  fs.writeFileSync(path.join(dir, ".env"), "KEY=left-out");
+  const { deployment } = await b.ok("publish.create", { name: "bakery", source: { kind: "folder", ref: dir }, build: { image: "static" }, project: "bakery" });
+  assert.equal(deployment.stage, "Draft");
+  const pv = await b.ok("publish.preview", { deployment: deployment.id });
+  assert.equal(pv.deployment.stage, "Preview");
+  assert.match(pv.logs, /^Read 1 file \(1 KB\) from site-src-[A-Za-z0-9]+; left out: \.env\.$/);
+  const sitesDir = path.join(b.publishRoot, "sites");
+  const made = fs.readdirSync(sitesDir);
+  assert.equal(made.length, 1);
+  assert.deepEqual(fs.readdirSync(path.join(sitesDir, made[0])), ["index.html"], "only the site's files were written for the box; the .env stayed behind");
+  // a build command is for the container builder, which this server does not have: Publish says so in the builder's words
+  const { deployment: cmd } = await b.ok("publish.create", { name: "bakery-app", source: { kind: "folder", ref: dir }, build: { image: "static", command: "npm run build", output_dir: "dist" }, project: "bakery" });
+  const refused = await b.call("publish.preview", { deployment: cmd.id });
+  assert.match(refused.error.message, /needs the container builder, which is not installed here yet/);
+  // a folder that is not on this server is refused at create, before any draft exists
+  const gone = await b.call("publish.create", { name: "ghost", source: { kind: "folder", ref: path.join(b.home, "nope") }, build: { image: "static" } });
+  assert.equal(gone.error.code, "not_found");
+});
+
+test("publish: quick takes a folder of ready files to live on one decision, with the real builder; a decision for one site is not a decision for another", async t => {
+  const b = await boxRegistry(t, { fakes: ["spaces", "vault", "seal", "names", "projects"], realBuilder: true });
+  const dir = fs.mkdtempSync(path.join(b.home, "site-src-"));
+  fs.writeFileSync(path.join(dir, "index.html"), "<h1>Northwind Bakery</h1>");
+  const q = await b.ok("publish.quick", { name: "bakery", folder: dir, project: "bakery" });
+  assert.equal(q.held, true);
+  assert.equal(q.deployment.stage, "Preview");
+  assert.equal(q.plan.goes_public, true, "what the person says yes to is the public plan");
+  assert.match(q.logs, /^Read 1 file/);
+  const q2 = await b.ok("publish.quick", { name: "bakery-two", folder: dir, project: "bakery" });
+  const wrong = await b.call("publish.decide", { task: q2.task, approve: true, plan_hash: q.plan.hash });
+  assert.equal(wrong.error?.code, "approval_mismatch", "a hash for another plan is refused");
+  const done = await b.ok("publish.decide", { task: q.task, approve: true, plan_hash: q.plan.hash });
+  assert.equal(done.deployment.stage, "Production");
+  assert.equal((await b.ok("publish.status", { deployment: q2.deployment.id })).stage, "Preview", "the other site is still only a preview");
+  const refused = await b.call("publish.quick", { name: "ghost", folder: path.join(b.home, "nope") });
+  assert.equal(refused.error?.code, "not_found");
 });
