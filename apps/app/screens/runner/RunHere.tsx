@@ -15,26 +15,38 @@ export function RunHere() {
   const [cpu, setCpu] = useState("");
   const [mem, setMem] = useState("");
   const [problem, setProblem] = useState("");
+  const [shared, setShared] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
   const load = useCallback(() => {
     runner.settings().then((x: MacSettings | null) => { setS(x); if (x) { setCpu(String(x.cpuPercent)); setMem(String(x.memoryMb)); } }).catch(() => setS(null));
     runner.here().then((h: Here[]) => setHere(h)).catch(() => setHere([]));
+    runner.sharedWith().then(setShared).catch(() => setShared([]));
   }, []);
   useEffect(load, [load]);
   if (!s) return null;
   const save = (next: MacSettings) => runner.setSettings(next).then((x) => { setS(x); setProblem(""); }).catch((e) => setProblem(e instanceof Error ? e.message : "That did not go through."));
+  // The switch is the one yes: on lends this computer to its spaces (the box asks the person once) and then lets sessions run here; off stops it, then ends the lending, and never asks.
+  const flip = (on: boolean) => {
+    if (busy) return;
+    setBusy(true); setProblem("");
+    const done = on
+      ? runner.turnOn().then((r) => { setS(r.settings); setShared(r.lentTo); showToast("Sessions can run on this Mac."); })
+      : runner.turnOff().then((r) => { setS(r.settings); setShared([]); showToast(r.failed ? "Turned off. Sharing could not be ended for every space; try again from Devices." : "Turned off. Sessions here go back to the server."); });
+    void done.catch((e) => setProblem(e instanceof Error ? e.message : "That did not go through.")).finally(() => { setBusy(false); load(); });
+  };
   const saveLimits = () => {
     const c = parseLimit("cpuPercent", cpu), m = parseLimit("memoryMb", mem);
     const bad = c.error ?? m.error;
     if (bad) { setProblem(bad); return; }
     void save({ ...s, cpuPercent: Number(c.value), memoryMb: Number(m.value) }).then(() => showToast("Saved."));
   };
-  return <RunHereView s={s} here={here} cpu={cpu} mem={mem} problem={problem} setCpu={setCpu} setMem={setMem} onSave={(n) => void save(n)} onSaveLimits={saveLimits}
+  return <RunHereView s={s} here={here} shared={shared} busy={busy} onSwitch={flip} cpu={cpu} mem={mem} problem={problem} setCpu={setCpu} setMem={setMem} onSave={(n) => void save(n)} onSaveLimits={saveLimits}
     onPause={() => runner.pauseAll().then(() => { showToast("Paused. They stay on this Mac until you resume."); load(); }).catch(() => showToast("That did not go through."))}
     onResume={() => runner.resumeAll().then(() => { showToast("Resumed."); load(); }).catch(() => showToast("That did not go through."))} />;
 }
 
 /** The section, from what it is given: the container above reads the box, the gallery gives it a sample. */
-export function RunHereView({ s, here, cpu, mem, problem, setCpu, setMem, onSave, onSaveLimits, onPause, onResume }: { s: MacSettings; here: Here[]; cpu: string; mem: string; problem: string; setCpu: (v: string) => void; setMem: (v: string) => void;
+export function RunHereView({ s, here, shared = [], busy = false, onSwitch, cpu, mem, problem, setCpu, setMem, onSave, onSaveLimits, onPause, onResume }: { s: MacSettings; here: Here[]; shared?: string[]; busy?: boolean; onSwitch?: (on: boolean) => void; cpu: string; mem: string; problem: string; setCpu: (v: string) => void; setMem: (v: string) => void;
   onSave: (n: MacSettings) => void; onSaveLimits: () => void; onPause: () => void; onResume: () => void }) {
   const phone = useUiTheme().phone;
   return (
@@ -42,8 +54,8 @@ export function RunHereView({ s, here, cpu, mem, problem, setCpu, setMem, onSave
       <Card>
         <View className="gap-s3">
           <View className="flex-row items-center gap-s3">
-            <View className="min-w-0 flex-1"><Text strong>Let sessions run on this Mac</Text><Text size="secondary" tone="label">{switchNote(s)}</Text></View>
-            <Switch on={s.enabled} onChange={(enabled: boolean) => onSave({ ...s, enabled })} label="Let sessions run on this Mac" />
+            <View className="min-w-0 flex-1"><Text strong>Let sessions run on this Mac</Text><Text size="secondary" tone="label">{switchNote(s, shared)}</Text></View>
+            <Switch on={s.enabled} disabled={busy} onChange={(enabled: boolean) => (onSwitch ? onSwitch(enabled) : onSave({ ...s, enabled }))} label="Let sessions run on this Mac" />
           </View>
           {s.enabled ? (
             <>
