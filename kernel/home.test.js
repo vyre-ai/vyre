@@ -273,3 +273,27 @@ test("home: a home whose records live in Twenty refuses to start when no record 
   t.after(() => { try { db.close(); } catch { /* closed */ } });
   await assert.rejects(() => bootHomeKernel({ db, root, log: () => {}, isFirstParty: () => false, storeFor: async () => undefined, requireStore: true }), { code: "store_required" });
 });
+
+test("a restored Space's grants are adopted once: a restore.json left behind by a crash does not undo what the Space was given afterwards", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const rf = path.join(root, "kernel", "restore.json");
+  let d = await start({ root, log: () => {}, kernel: true });
+  const space = d.kernel.id.space, owner = d.kernel.id.owner;
+  const state = d.kernel.grants.state();
+  fs.mkdirSync(path.dirname(rf), { recursive: true });
+  const leave = () => fs.writeFileSync(rf, JSON.stringify({ grants: state, head: { seq: 1, hash: "h" }, bundle_hash: "bh_test_once" }));
+  leave();
+  await d.stop();
+  d = await start({ root, log: () => {}, kernel: true });
+  assert.equal(fs.existsSync(rf), false, "adopted and removed");
+  assert.equal(d.kernel.log.read({ type: "space.restored" }).length, 1);
+  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
+  const g = await d.kernel.grants.create(chain, { subject: { kind: "actor", actor: { kind: "agent", id: "kit", space } }, actions: ["records.read"], resource: { prefix: `vyre://${space}/contact/*` }, conditions: {}, source: "test:after-restore", reason: "given after the restore" });
+  await d.stop();
+  leave();   // the crash: the file is still there at the next start
+  d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  assert.equal(fs.existsSync(rf), false, "removed without adopting again");
+  assert.ok(d.kernel.grants.state().grants.some((/** @type {any} */ x) => x.id === g.id && x.status === "active"), "the grant given after the restore is still there");
+  assert.equal(d.kernel.log.read({ type: "space.restored" }).length, 1, "one restore on the log");
+});
