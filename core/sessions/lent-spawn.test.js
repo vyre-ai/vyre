@@ -8,6 +8,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { lentOrBox } from "./lent-spawn.js";
 import { lentSpawnFor, lentOf, carryOn } from "../../lib/lent-placement.js";
+import { Switchboard } from "../switchboard/index.js";
 import { spawnSession } from "./spawn.js";
 import { rig, BOB, SPACE } from "../runner/testing/lent-rig.js";
 import { lentSpawnFixtures as F, SESSION } from "../../test/contracts/lent-spawn.fixtures.js";
@@ -233,4 +234,19 @@ test("a chat that moved to the server under a running turn starts again here wit
   await carryOn(broken, "t", st);
   assert.equal(st.switching, false);
   assert.deepEqual(calls.map(c => c[0]), ["set", "thread.stopped"], "the thread ends, saying why");
+});
+
+test("the switchboard's onExit sends a chat whose process ended because it moved to the server through carryOn, and any other exit stays an exit", async () => {
+  const calls = /** @type {any[]} */ ([]);
+  const st = { turn: "t:2", lastPrompt: "again", launch: {}, switching: false, stopping: false };
+  const sb = /** @type {any} */ ({ live: new Map([["t", st]]), flush() {}, cancelTools() {}, releaseSlots() {}, record: () => ({ project: null }), libraryPlugin: async () => "p", sandboxFor: async () => undefined, gitEnv: async () => ({}), deps: {}, chatOf: () => null, nativeOf: () => "t", turnAsker: new Map(),
+    spawn: (/** @type {string} */ id, /** @type {any} */ o) => calls.push(["spawn", id, o.resume]), write: (/** @type {string} */ id, /** @type {string} */ text) => calls.push(["write", id, text]), emit: () => {}, set: () => {}, closeSocket() {}, asks: { open: () => [] } });
+  Switchboard.prototype.onExit.call(sb, "t", st, null, "SIGHUP", "", { to: "server", reason: "lid-closed", epoch: 2 });
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(calls, [["spawn", "t", true], ["write", "t", "again"]], "carried on, the cut turn sent again");
+  calls.length = 0;
+  const st2 = { turn: "t:3", lastPrompt: "x", launch: {}, switching: false, stopping: false };
+  sb.live.set("t", st2);
+  Switchboard.prototype.onExit.call(sb, "t", st2, 0, null, "");
+  assert.deepEqual(calls, [], "an ordinary exit starts nothing");
 });
