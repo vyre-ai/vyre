@@ -26,6 +26,18 @@ function box(o = {}) {
   return { call, seen };
 }
 
+test("a name and a site are shown as a person reads them; the name that is sent is the vault's own", { skip: !strip }, async () => {
+  const { displayName, hostWord, lineOf, toItem } = await import("./real-model.ts");
+  assert.equal(displayName("Airline-account"), "Airline account");
+  assert.equal(displayName("stripe_live--key"), "stripe live key");
+  assert.equal(hostWord("https://www.Example.com/login?x=1"), "Example.com");
+  assert.equal(hostWord(""), "");
+  const row = { name: "juniper-drive", kind: "login", description: "", fields: ["username", "password"], url: "https://drive.juniper.example/app", hosts: ["https://drive.juniper.example"], rotate: false, updated: 1, vault: "agents", grants: [] };
+  assert.equal(lineOf(row), "drive.juniper.example");
+  const item = toItem(row);
+  assert.deepEqual({ id: item.id, name: item.name, title: item.title }, { id: "juniper-drive", name: "juniper-drive", title: "juniper drive" });
+});
+
 test("the list becomes tabs: logins, cards, and everything else as keys", { skip: !strip }, async () => {
   const { vaultSource } = await import("./source.ts");
   const { itemsOf, toItem } = await import("./real-model.ts");

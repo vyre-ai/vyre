@@ -129,13 +129,14 @@ export default function RealVault() {
       <View className="gap-s3">
         <View className="gap-s1">
           <View className="flex-row flex-wrap items-center gap-s2">
-            <Text size="title" strong>{cur.name}</Text><Chip>{kindWord(cur.kind)}</Chip>
+            <Text size="title" strong>{cur.title}</Text><Chip>{kindWord(cur.kind)}</Chip>
             {cur.unverified ? <Chip tone="warn">Not verified</Chip> : null}
             {cur.rotate ? <Chip tone="warn">Replace soon</Chip> : null}
           </View>
           <Text tone="label" numberOfLines={1}>{cur.line}</Text>
         </View>
         <View className="gap-s2 rounded-card border border-edge bg-surface-3 p-s3">
+          {claimBlocked() && cur.fields.length ? <Text size="caption" tone="label">Reveal these in Vyre on your phone.</Text> : null}
           {cur.fields.length ? cur.fields.map((f) => {
             const on = shown?.key === `${cur.id}/${f}`;
             return (
@@ -144,7 +145,7 @@ export default function RealVault() {
                   <Text size="caption" tone="label">{f.charAt(0).toUpperCase() + f.slice(1)}</Text>
                   {on ? <Text mono size="headline" selectable>{shown!.value}</Text> : <SealedMask label={`${cur.name} ${f}`} />}
                 </View>
-                {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? <Text size="caption" tone="label">Reveal in Vyre on your phone</Text> : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}
+                {on ? <Button kind="ghost" size="sm" label="Hide" onPress={hide} /> : claimBlocked() ? null : <Button kind="ghost" size="sm" icon="face" label="Reveal" onPress={() => reveal(cur, f)} />}
               </View>
             );
           }) : <Text tone="muted">This item has no fields.</Text>}
@@ -182,7 +183,7 @@ export default function RealVault() {
   const editSheet = <EditSheet item={editing && cur ? { name: cur.id, description: rows?.find((r) => r.name === cur.id)?.description ?? "", fields: cur.fields } : null} onClose={() => setEditing(false)} onSaved={load} />;
 
   if (phone && pushed && cur) {
-    return <Frame title={cur.name} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
+    return <Frame title={cur.title} sub={cur.line} onBack={() => { hide(); setPushed(false); }}>{detail}{editSheet}</Frame>;
   }
 
   const ready = !err && rows && !locked;
@@ -252,7 +253,7 @@ export default function RealVault() {
             <Card flush>
               {items.length ? items.map((v, i) => (
                 <View key={v.id}>{i ? <Divider inset={60} /> : null}
-                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
+                  <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.title}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
               )) : <EmptyState title={query.trim() ? "Nothing matches" : "Nothing here yet"} body={query.trim() ? "Try a name, a site or a kind." : nothingHere(tab, rows!.length > 0, claimBlocked())} />}

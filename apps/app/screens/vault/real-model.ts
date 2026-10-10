@@ -10,7 +10,7 @@ export type ListRow = {
 export type UseRow = { at: number; action: string; item: string | null; who: string; origin?: string; surface?: string; ok: boolean };
 
 export type Tab = "Login" | "Key" | "Card";
-export type RealItem = { id: string; kind: string; tab: Tab; name: string; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
+export type RealItem = { id: string; kind: string; tab: Tab; name: string; title: string; line: string; fields: string[]; unverified: boolean; rotate: boolean; grants: { who: string; project?: string }[] };
 
 /** Logins and cards have their own tabs; every other kind (api keys, secrets, ssh keys, notes, env sets) is a Key. */
 export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind === "card" ? "Card" : "Key");
@@ -18,15 +18,21 @@ export const tabOf = (kind: string): Tab => (kind === "login" ? "Login" : kind =
 const KIND_WORD: Record<string, string> = { login: "Login", card: "Card", "api-key": "API key", secret: "Secret", "ssh-key": "SSH key", note: "Note", "env-set": "Env set", authenticator: "Authenticator", passkey: "Passkey", identity: "Identity", address: "Address", wifi: "Wi-Fi" };
 export const kindWord = (kind: string): string => KIND_WORD[kind] ?? kind;
 
+/** A name as a person reads it: the vault keeps letters, digits, dot, dash and underscore, so "Airline-account" is shown as "Airline account". The name itself is still what every action sends. */
+export const displayName = (name: string): string => name.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+/** A site as a person reads it: the host, with no scheme or path. */
+export const hostWord = (h: string): string => h.replace(/^[a-z]+:\/\//i, "").replace(/\/.*$/, "").replace(/^www\./, "");
+
 /** The line under a name: what the person wrote, else where it is used, else the kind. */
 export function lineOf(r: ListRow): string {
-  const host = (r.hosts[0] ?? (r.url ?? "")).replace(/^https?:\/\//, "").split("/")[0];
+  const host = hostWord(r.hosts[0] ?? r.url ?? "");
   return r.description || host || kindWord(r.kind);
 }
 
 export function toItem(r: ListRow): RealItem {
   return {
-    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
+    id: r.name, kind: r.kind, tab: tabOf(r.kind), name: r.name, title: displayName(r.name), line: lineOf(r), fields: r.fields, unverified: Boolean(r.unverified), rotate: r.rotate,
     grants: r.grants.map((g) => ({ who: g.watcher ? `${g.module}/${g.watcher}` : g.module, ...(g.project ? { project: g.project } : {}) })),
   };
 }
