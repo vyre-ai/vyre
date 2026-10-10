@@ -13536,7 +13536,7 @@ Join a shared vault from an invite.
 
 - Input:
   - `invite` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 - Needs a person present.
 
 ### `vault.members.invite`
@@ -13547,7 +13547,7 @@ Invite a person whose card you pinned and verified into a shared vault. Returns 
   - `person` string, required
   - `vault` string, required
   - `role` one of "admin", "member", "read-only"
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 - Needs a person present.
 
 ### `vault.members.remove`
@@ -13557,7 +13557,7 @@ Remove a member: a new key they never see, and every item they could read flagge
 - Input:
   - `person` string, required
   - `vault` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 - Needs a person present.
 
 ### `vault.members.role`
@@ -13568,7 +13568,7 @@ Change a member's role: admin, member or read-only.
   - `person` string, required
   - `role` one of "admin", "member", "read-only", required
   - `vault` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 - Needs a person present.
 
 ### `vault.mention.resolve`
@@ -14200,7 +14200,7 @@ Make a shared vault. This Vyre is its owner and its home.
 
 - Input:
   - `name` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 
 ### `vault.vaults.list`
 
@@ -14215,7 +14215,7 @@ Give a shared vault a new key. Members keep access; item keys are re-wrapped.
 
 - Input:
   - `vault` string, required
-- Callers: `cli`, `local`
+- Callers: `cli`, `device`, `local`
 - Needs a person present.
 
 ### `vault.vaults.sync`
@@ -14224,7 +14224,7 @@ Pull what changed in shared vaults from their homes.
 
 - Input:
   - `vault` string
-- Callers: `cli`, `local`, `mcp`
+- Callers: `cli`, `device`, `local`, `mcp`
 
 ### `vault.verify`
 

@@ -102,7 +102,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 53 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 56 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -1095,7 +1095,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [150](tools.md#vault), 21 of them only for other modules
-- Emits: [53 events](events.md#vault)
+- Emits: [56 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
