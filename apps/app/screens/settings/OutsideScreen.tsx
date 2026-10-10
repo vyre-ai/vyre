@@ -70,7 +70,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
               <View className="gap-s2 p-s3">
                 <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text><Chip>{a.status === "active" ? "Active" : a.status === "expired" ? "Expired" : "Ended"}</Chip></View>
                 {a.note ? <Text size="caption" tone="muted">{a.note}</Text> : null}
-                <Text size="caption" tone="label">{a.reach ? `It ${a.reach}.` : "It can reach nothing yet."}</Text>
+                {a.gives.length ? null : <Text size="caption" tone="label">It can reach nothing yet.</Text>}
                 <Text size="caption" tone="muted">{`${endsLine(a, now)}. ${usedLine(a, now)}.`}</Text>
                 {a.gives.map((g) => (
                   <Row key={g.id} dense title={givesLine(g)} end={a.status === "revoked" ? undefined : <Button size="sm" kind="ghost" label="Take back" disabled={busy === a.id} onPress={() => void act(a.id, () => outside.ungrant(a.id, g.id))} />} />
@@ -89,7 +89,7 @@ export default function OutsideScreen({ sample }: { sample?: OutsideSample } = {
                   </View>
                 ) : (
                   <View className="flex-row flex-wrap gap-s2">
-                    <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} />
+                    {a.status === "active" ? <Button size="sm" label="Give it something to read" onPress={() => startGiving(a.id)} /> : null}
                     <Button size="sm" kind="ghost" label="New token" disabled={busy === a.id} onPress={() => void act(a.id, async () => setShown(await outside.token(a.id)))} />
                     <Button size="sm" kind="ghost" label="End it" onPress={() => setEnding(a.id)} />
                   </View>
