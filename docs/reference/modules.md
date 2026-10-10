@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 18 | 6 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 20 | 6 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 13 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -39,7 +39,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
-| [`documents`](#documents) | `core/documents` | `box` | 5 | 0 | none |
+| [`documents`](#documents) | `core/documents` | `box` | 8 | 3 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
@@ -74,7 +74,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 23 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 40 | 25 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 9 | 7 | capsule, cli, deck |
@@ -107,7 +107,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`vyre`](#vyre) | `core/vyre-index` | `box`, `local` | 1 | 0 | cli |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 21 | 8 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box`, `local` | 66 | 37 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 67 | 37 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 59 | 0 | cli |
 
 ## about
@@ -152,7 +152,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [18](tools.md#appmods)
+- Tools: [20](tools.md#appmods)
 - Emits: [6 events](events.md#appmods)
 - Shows on: cli
 - Needs daemon: `flowsHost`
@@ -372,8 +372,8 @@ Make documents from Word templates and your records, deterministic, and file the
 - Folder: `core/documents`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [5](tools.md#documents)
-- Emits: no events
+- Tools: [8](tools.md#documents)
+- Emits: [3 events](events.md#documents)
 - Shows on: no surface
 
 ## events
@@ -767,9 +767,8 @@ The way to reach the box that always works: the box dials out to a relay, and de
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [40](tools.md#relay), 14 of them only for other modules
-- Emits: [23 events](events.md#relay)
+- Emits: [25 events](events.md#relay)
 - Shows on: capsule, cli, deck
-- Needs daemon: `tunnelEnd`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## releases
@@ -1155,7 +1154,7 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [66](tools.md#wink), 12 of them only for other modules
+- Tools: [67](tools.md#wink), 13 of them only for other modules
 - Emits: [37 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
