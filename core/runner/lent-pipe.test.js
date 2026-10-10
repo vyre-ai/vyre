@@ -153,3 +153,16 @@ test("a chat is not started on a computer while the server could not take it bac
   assert.deepEqual((await c.beat({ sessions: [], well: true })).directives.map((/** @type {any} */ d) => d.session), ["s_ok"]);
   yes.kill();
 });
+
+test("an ended pipe is remembered long enough for the lender's last call to hear it closed, and then forgotten", async () => {
+  /** @type {{ fn: () => void, ms: number }[]} */ const timers = [];
+  const pipes = createPipes({ setTimer: /** @type {any} */ ((/** @type {() => void} */ fn, /** @type {number} */ ms) => { const t = { fn, ms, unref() {} }; timers.push(t); return t; }), clearTimer: /** @type {any} */ ((/** @type {any} */ t) => { const i = timers.indexOf(t); if (i >= 0) timers.splice(i, 1); }) });
+  const proc = pipes.spawn({ session: "s_forget", person: BOB, device: "dev_laptop", command: "claude" });
+  await pipes.poll("s_forget", 1, "dev_laptop", { wait_ms: 0 });
+  pipes.end("s_forget", { signal: "SIGTERM" });
+  assert.equal((await pipes.poll("s_forget", 1, "dev_laptop", { wait_ms: 0 })).closed, true, "the lender's last call hears it is closed");
+  for (const t of timers.filter(x => x.ms === 60_000)) t.fn();
+  const gone = pipes.poll("s_forget", 1, "dev_laptop", { wait_ms: 0 });
+  assert.deepEqual(await gone, { down: [], acked: 0, idle: true }, "a minute later nothing is kept of it");
+  void proc;
+});
