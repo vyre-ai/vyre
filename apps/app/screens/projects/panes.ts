@@ -5,6 +5,9 @@ export type PaneId = "stages" | "chats" | "files" | "memory" | "timeline" | "tea
 export const WIDE = 1100;
 export const WIDER = 1280;
 
+/** The words on the header button that starts a chat about the project: short on a phone, where a longer label cuts the project's own name. */
+export const chatLabel = (width: number): string => (width < WIDE ? "Chat" : "Chat about this");
+
 export const LABEL: Record<PaneId, string> = { stages: "Stages", chats: "Chats", files: "Files", memory: "Memory", timeline: "Timeline", team: "Team" };
 
 /** A project started from a template carries its pinned stages (the work module writes `template_snapshot`); every other project is free-flow. */
