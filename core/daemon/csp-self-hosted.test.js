@@ -33,7 +33,9 @@ const siteFiles = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileT
 /** What a shipped file loads from outside: a font or script host, an imported or url() stylesheet, a tag that fetches from another origin. */
 const outsideLoads = (/** @type {string} */ text, /** @type {RegExp} */ ownOrigin) => {
   const found = [];
-  if (FONT_HOSTS.test(text)) found.push("names an outside font or script host");
+  // A page's words may talk about a host (the changelog does); what it loads is in its head and its tags.
+  const head = text.includes("</head>") ? text.slice(0, text.indexOf("</head>")) : text;
+  if (FONT_HOSTS.test(head)) found.push("names an outside font or script host");
   if (/@import\s+(?:url\()?["']?https?:/i.test(text)) found.push("imports an outside stylesheet");
   if (/url\(\s*["']?https?:\/\/(?!vyre\.run)/i.test(text)) found.push("reads an outside file from CSS");
   for (const tag of text.match(LOADERS) || []) {
