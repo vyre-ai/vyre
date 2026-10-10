@@ -11,7 +11,9 @@ import mod, { engineFor, CLASS } from "./index.js";
 async function boot({ role = "box", macs = [], connections = [], answers = {} } = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
   /** @type {{ tool: string, input: any }[]} */ const calls = [];
-  const ctx = { config: { role }, tool: (name, def) => tools.set(name, def),
+  // the kernel's view of who a call is for: the chain's first hop is the person (meta.person, the box owner unless a test says another)
+  const kernel = { owner: "per_owner", chain: async (/** @type {any} */ meta) => ({ hops: [{ actor: { kind: "person", id: meta && meta.person ? meta.person : "per_owner" } }] }) };
+  const ctx = { config: { role }, kernel, tool: (name, def) => tools.set(name, def),
     call: async (tool, input) => {
       calls.push({ tool, input });
       if (tool === "link.macs") return { data: macs };
@@ -21,7 +23,8 @@ async function boot({ role = "box", macs = [], connections = [], answers = {} } 
     } };
   await mod.start(ctx);
   const run = (input, caller = "mcp agent:kit", meta = {}) => tools.get("computer.use").run(input, { caller, ...meta });
-  return { tools, calls, run };
+  const targetsFor = (meta = {}) => tools.get("computer.targets").run({}, { caller: "deck", ...meta });
+  return { tools, calls, run, targetsFor };
 }
 
 const MACS = [{ mac: "m1", name: "Alex's MacBook", online: true }, { mac: "m2", name: "Office Mac mini", online: true }];
@@ -152,4 +155,18 @@ test("a login nobody lent turns into a sign-in card for the person, not a failur
   assert.deepEqual([r.signedIn, r.by], [true, "you"], "done by hand when the retry still finds nothing lent");
   const c = b.calls.find(c => c.tool === "previews.signin").input;
   assert.deepEqual([c.computer, c.site, c.thread], ["kit", "app.harlow.test", "t-1"]);
+});
+
+test("the paired Macs are the box owner's: another member's session sees only the cloud computer and cannot drive a Mac (audit: every paired Mac was a target for every caller)", async () => {
+  const b = await boot({ macs: MACS, answers: { "link.macs.call": [{ ok: true, data: { engine: "chrome.snapshot", title: "Inbox" } }] } });
+  const owner = await b.targetsFor();
+  assert.deepEqual(owner.computers.map((/** @type {any} */ c) => c.name), ["Cloud computer", "Alex's MacBook", "Office Mac mini"]);
+  const mate = await b.targetsFor({ person: "per_teammate" });
+  assert.deepEqual(mate.computers.map((/** @type {any} */ c) => c.name), ["Cloud computer"], "a teammate's session does not see the owner's Macs");
+  const r = await b.run({ do: "look", on: "Office Mac mini" }, "deck", { person: "per_teammate" });
+  assert.equal(r.asked, true, "naming the Mac is not a way to it: the name matches nothing for this person");
+  assert.ok(!b.calls.some(c => c.tool === "link.macs.call"), "no Mac was asked");
+  // a call with no resolvable person is nobody: no Mac either
+  const none = await boot({ macs: MACS });
+  none.tools.get("computer.targets");
 });
