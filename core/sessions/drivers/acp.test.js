@@ -180,6 +180,29 @@ test("acp: a permission question goes to the person as can_use_tool, and always-
   await s2.proc.stop(1000);
 });
 
+test("acp: an entry that carries on after a refusal allows a shell command the FLOOR denies at the question (it is refused at terminal/create), and still asks the person about one the floor lets through", async t => {
+  const w = world(t, { floorRefusalAsOutput: true });
+  const s = open(w);
+  s.proc.write({ type: "user", message: { role: "user", content: `bash cat ${path.join(w.home, "vault", "secret.txt")}` } });
+  await s.until(m => m.type === "result", "the result");
+  assert.ok(!s.got.some(m => m.type === "control_request"), "the floor's own denial is not put to the person");
+  assert.match(s.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), /Ran it\./, "the question was allowed (the agent then asks Vyre's terminal, which refuses)");
+  await s.proc.stop(500);
+  const q = open(w);
+  q.proc.write({ type: "user", message: { role: "user", content: "bash npm test" } });
+  const ask = await q.until(m => m.type === "control_request", "a command the floor allows is still asked");
+  q.proc.write({ type: "control_response", response: { request_id: ask.request_id, response: { behavior: "deny" } } });
+  await q.until(m => m.type === "result", "the result");
+  assert.match(q.got.filter(m => m.type === "stream_event").map(m => m.event.delta.text).join(""), /not allowed/, "the person's no is still a rejection");
+  await q.proc.stop(500);
+  // without the entry's flag the question is asked as before
+  const plain = world(t);
+  const p = open(plain);
+  p.proc.write({ type: "user", message: { role: "user", content: `bash cat ${path.join(plain.home, "vault", "secret.txt")}` } });
+  await p.until(m => m.type === "control_request", "asked as before");
+  await p.proc.stop(500);
+});
+
 test("acp: Codex's approval for an MCP tool names no server: Vyre's own is let through only when it is the one server and no project config exists; every other is denied and said once", async t => {
   const vyre = [{ name: "vyre", command: "node", args: ["x"], env: [] }];
   const textOf = s => s.got.filter(m => m.type === "stream_event" && m.event.delta && m.event.delta.text).map(m => m.event.delta.text).join("");
