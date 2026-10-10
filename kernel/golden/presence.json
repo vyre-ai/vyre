@@ -1,5 +1,182 @@
 [
  {
+  "tool": "appmods.remove",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; appmods.remove changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "flows.approve",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; flows.approve changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "learn.skill-retire",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; learn.skill-retire changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "names.domain.check",
+  "was": "person_session_required",
+  "callers": [
+   "device",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; names.domain.check changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "network.wink.leave",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; network.wink.leave changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "onboard.claude",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; onboard.claude changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "onboard.finish",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; onboard.finish changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "pluginagent.revoke",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; pluginagent.revoke changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "presence.person.renew-allow",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; presence.person.renew-allow changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "recall.sealscrub",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; recall.sealscrub changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "records.forget",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; records.forget changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "relay.devices.remove",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; relay.devices.remove changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "relay.disable",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; relay.disable changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
   "tool": "spaces.host-here",
   "was": "presence_required",
   "callers": [
@@ -13,6 +190,170 @@
   ],
   "ruling": "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership",
   "reason": "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership; spaces.host-here changed in 11391dc9d: hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof"
+ },
+ {
+  "tool": "vault.account.create",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.account.create changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.account.enroll-touchid",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.account.enroll-touchid changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.account.unlock",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.account.unlock changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.account.unlock-phone",
+  "was": "presence_required",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.account.unlock-phone changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.breach.check",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.breach.check changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.codes",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.codes changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.codes.import",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.codes.import changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.connect",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.connect changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.delete",
+  "was": "person_session_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.delete changed in 29f68e293: its yes is asked once at the registry floor now, in front of the tool (its moment), not by a presence declaration the tool carries"
+ },
+ {
+  "tool": "vault.delete",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.delete changed in 29f68e293: its yes is asked once at the registry floor now, in front of the tool (its moment), not by a presence declaration the tool carries"
+ },
+ {
+  "tool": "vault.edit",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.edit changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.emergency.refresh",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.emergency.refresh changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.emergency.request",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.emergency.request changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
  },
  {
   "tool": "vault.env.scan",
@@ -38,6 +379,16 @@
  },
  {
   "tool": "vault.import.preview",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.import.preview changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.import.preview",
   "was": "denied",
   "callers": [
    "deck",
@@ -48,5 +399,348 @@
   ],
   "ruling": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects",
   "reason": "team/ROADMAP.md R031-66 and R031-67, 9 Oct 2026, the user's Vault picks: the import screen in the app and the keys found in projects; vault.import.preview changed in work/vault-ux-031: the app previews the export a person picked, by name and count only, before it imports; it asks the person's presence"
+ },
+ {
+  "tool": "vault.members.accept",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.members.accept changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.members.accept",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.members.accept changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "vault.members.invite",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.members.invite changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "vault.members.remove",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.members.remove changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "vault.members.role",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.members.role changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "vault.migrate-key",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.migrate-key changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.move",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.move changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.people.verify",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.people.verify changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.person.add",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.person.add changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.provider.remove",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.provider.remove changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.provider.set",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.provider.set changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.put",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.put changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.revert",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.revert changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.rotate",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.rotate changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.ssh.add",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.ssh.add changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.sweep",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.sweep changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.unlock",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "device",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.unlock changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.unlock-passphrase",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "local"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.unlock-passphrase changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.update",
+  "was": "presence_required",
+  "callers": [
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.update changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "vault.vaults.create",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.vaults.create changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "vault.vaults.rotate",
+  "was": "denied",
+  "callers": [
+   "device"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; vault.vaults.rotate changed in 86dad5619: a person on a paired device now does this too (shared vaults take the person's devices); it is a vault moment, so the one yes is asked at the registry floor"
+ },
+ {
+  "tool": "wink.code.redeem",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.code.redeem changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.offer.set",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.offer.set changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.remove",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.remove changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.share",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.share changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.storage.bridge.drive",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.storage.bridge.drive changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.storage.pair",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.storage.pair changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.storage.pick",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.storage.pick changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
+ },
+ {
+  "tool": "wink.storage.remove",
+  "was": "presence_required",
+  "callers": [
+   "capsule",
+   "cli",
+   "deck",
+   "device",
+   "local",
+   "tailnet:owner"
+  ],
+  "ruling": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound",
+  "reason": "team/ROADMAP.md R031-74, one yes at the floor (lib/one-yes.js, team/0.3.1/SPEC-one-yes-clients.md), and the user's no-nagging rule: a fresh proof only for pairing, vault secrets and outbound; wink.storage.remove changed in 29f68e293: no longer asks a fresh proof: the one yes covers the pair, vault and outward moments only (lib/one-yes.js MOMENT_OPS), and this tool is none of them"
  }
 ]
