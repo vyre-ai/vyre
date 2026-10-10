@@ -49,6 +49,26 @@ export function bareImports(js) {
   return [...out];
 }
 
+/**
+ * The JavaScript for a piece of .jsx, .tsx or .ts source, or the plain reason it cannot be. `name` is the file's name, for the message and the loader.
+ * @param {string} source @param {string} name @returns {Promise<{ ok: true, js: string } | { ok: false, error: string }>}
+ */
+export async function compile(source, name) {
+  const loader = LOADER[path.extname(name).toLowerCase()];
+  try {
+    const { transform } = await esbuild();
+    const r = await transform(source, { loader, jsx: "automatic", target: "es2022", format: "esm", sourcefile: path.basename(name), logLevel: "silent" });
+    const unknown = bareImports(r.code).filter(n => !(n in libs()));
+    return unknown.length
+      ? { ok: /** @type {const} */ (false), error: `This page imports ${unknown.map(n => `"${n}"`).join(", ")}, which Vyre does not provide. It provides: ${libNames().join(", ")}.` }
+      : { ok: /** @type {const} */ (true), js: r.code };
+  } catch (e) {
+    const err = /** @type {any} */ (e);
+    const first = err && Array.isArray(err.errors) && err.errors[0];
+    return { ok: /** @type {const} */ (false), error: first ? `${path.basename(name)}${first.location ? `:${first.location.line}` : ""}: ${first.text}` : String(err && err.message || "that file could not be read as JSX").slice(0, 300) };
+  }
+}
+
 const cache = new Map();
 /**
  * The JavaScript for a .jsx, .tsx or .ts file, or the plain reason it cannot be. Cached by the file's size and time.
@@ -60,20 +80,9 @@ export async function build(file) {
   const key = `${file}|${st.size}|${st.mtimeMs}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  const loader = LOADER[path.extname(file).toLowerCase()];
-  let result;
-  try {
-    const { transform } = await esbuild();
-    const r = await transform(fs.readFileSync(file, "utf8"), { loader, jsx: "automatic", target: "es2022", format: "esm", sourcefile: path.basename(file), logLevel: "silent" });
-    const unknown = bareImports(r.code).filter(n => !(n in libs()));
-    result = unknown.length
-      ? { ok: /** @type {const} */ (false), error: `This page imports ${unknown.map(n => `"${n}"`).join(", ")}, which Vyre does not provide. It provides: ${libNames().join(", ")}.` }
-      : { ok: /** @type {const} */ (true), js: r.code };
-  } catch (e) {
-    const err = /** @type {any} */ (e);
-    const first = err && Array.isArray(err.errors) && err.errors[0];
-    result = { ok: /** @type {const} */ (false), error: first ? `${path.basename(file)}${first.location ? `:${first.location.line}` : ""}: ${first.text}` : String(err && err.message || "that file could not be read as JSX").slice(0, 300) };
-  }
+  let text;
+  try { text = fs.readFileSync(file, "utf8"); } catch { return { ok: false, error: "that file could not be read" }; }
+  const result = await compile(text, file);
   if (cache.size > 200) cache.clear();
   cache.set(key, result);
   return result;

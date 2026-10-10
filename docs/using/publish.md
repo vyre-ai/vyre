@@ -28,6 +28,10 @@ A site gets the keys it needs from the [Vault](vault.md), one at a time, and onl
 
 With a GitHub account connected (see [Connectors](connectors.md)), ask for a new repo for the folder: it is made under your account or an organisation you belong to, private unless you say public, and the folder goes there as the first commit.
 
+## A React page
+
+A folder with a React page (`index.jsx`, `index.tsx`, `App.jsx` or `App.tsx`, and no `index.html`) publishes the way the Preview pane shows it: the same page, the same libraries, nothing to build first. Publish compiles the files, puts the libraries the page uses beside them, and writes a plain site. A page can import only the libraries Vyre provides; if it imports another, Publish names it and builds nothing.
+
 ## Not here yet
 
-This server builds a folder of ready files. A site that needs a build command (a framework, a bundler), a build from a repo or a Drive folder, and apps with a server need the container builder, which is not installed here yet; Publish says so in those words when you ask. Serving the site on the public internet also depends on the server's public door being set up.
+This server builds a folder of ready files. A site that needs a build command (a framework, a bundler), a build from a repo or a Drive folder, and apps with a server need the container builder, which is not installed here yet; Publish says so in those words when you ask. Until the public door is on, `publish.quick` says "Public once the public door is on" with the answer: the address works on your own devices only. Serving the site on the public internet also depends on the server's public door being set up.

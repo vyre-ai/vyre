@@ -2,7 +2,7 @@
 // builder: answers Publish's `builder.build`. Today it reads a folder of ready files (lib/publish/folder-build.js) and runs nothing; a repo, a Drive folder or a build command is refused in plain words
 // that name what is missing, never silently skipped. The container builder (BuildKit, core/publish/builder-plan.js) answers the same tool when it exists.
 
-import { readSite } from "../../lib/publish/folder-build.js";
+import { readSite, digestOf } from "../../lib/publish/folder-build.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const NEEDS_CONTAINER = "this server builds a folder of ready files; a repo, a Drive folder or a build command needs the container builder, which is not installed here yet";
@@ -28,9 +28,17 @@ export default {
         const { dir, outputDir } = planOf(i.deployment);
         let site;
         try { site = readSite({ dir, outputDir }); } catch (/** @type {any} */ e) { throw refuse(e && e.message ? String(e.message) : "the folder could not be read", e && e.code ? String(e.code) : "failed"); }
+        // a React page (index.jsx or App.tsx with no index.html) is published as the Preview pane shows it: the previews module makes the page, the compiled files and the libraries it uses
+        let files = site.files, built = "";
+        if (files.some((/** @type {any} */ f) => /\.(jsx|tsx|ts)$/i.test(f.path))) {
+          const r = /** @type {any} */ (await ctx.call("previews.site", { files }));
+          if (r && r.error && /^(no_such_tool|not_available)$/.test(String(r.error.code))) throw refuse("a React page needs the previews module, which is not here; publish a folder of ready files instead", "refused");
+          if (r && r.error) throw refuse(String(r.error.message || "the page could not be built"), String(r.error.code || "failed"));
+          if (r && r.data && r.data.react) { files = r.data.files; built = ` ${r.data.notes.join("; ")}.`; }
+        }
         const kb = Math.max(1, Math.round(site.bytes / 1024));
         const left = site.skipped.length ? `; left out: ${site.skipped.slice(0, 5).join(", ")}${site.skipped.length > 5 ? ` and ${site.skipped.length - 5} more` : ""}` : "";
-        return { digest: site.digest, files: site.files, logs: `Read ${site.files.length} file${site.files.length === 1 ? "" : "s"} (${kb} KB) from ${site.name}${left}.`, runtime: { kind: "static" } };
+        return { digest: files === site.files ? site.digest : digestOf(files), files, logs: `Read ${site.files.length} file${site.files.length === 1 ? "" : "s"} (${kb} KB) from ${site.name}${left}.${built}`, runtime: { kind: "static" } };
       },
     });
     return { async stop() {} };
