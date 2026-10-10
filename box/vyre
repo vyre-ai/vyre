@@ -1844,6 +1844,17 @@ sp_in_rule() {
     sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -m comment --comment "$tg" -j DROP >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
   fi
   # a server Publish made has no door in (hook 0): the answers to what the daemon asked, and a drop for everything else
+  # and no door left over from before: a tag that once had a hook port (a catalog app of that name) loses every hook ACCEPT it still has
+  if [ "$hk" = 0 ]; then
+    stale=$(sp_fw_each "$fam" "$pid" -S INPUT 2>/dev/null | grep -F -e "--comment $tg " -e "--comment \"$tg\" " | grep -F -e "--dport" | grep -F -e "-j ACCEPT" | sed 's/"//g; s/^-A /-D /' || true)
+    printf '%s\n' "$stale" | while IFS= read -r old; do
+      [ -n "$old" ] || continue
+      set -f
+      # shellcheck disable=SC2086 # the words of a rule iptables itself listed, quotes removed
+      sp_fw_each "$fam" "$pid" $old >/dev/null 2>&1 || true
+      set +f
+    done
+  fi
   [ "$hk" = 0 ] || sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
     || [ "$hk" = 0 ] || sp_fw_each "$fam" "$pid" -I INPUT 1 -i "$ifn" -s "$sn" -p tcp --dport "$hk" -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
   sp_fw_each "$fam" "$pid" -C INPUT -i "$ifn" -m conntrack --ctstate ESTABLISHED,RELATED -m comment --comment "$tg" -j ACCEPT >/dev/null 2>&1 \
