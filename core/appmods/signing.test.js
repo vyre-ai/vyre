@@ -5,7 +5,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
+import { compile, matcher, dress, signerCookies, handOn, CREDIT_HTML, CREDIT_CSS, mintLink, checkLink, filePaths, EXPIRED_HTML, requestBody, readRequest } from "./signing.js";
 import crypto from "node:crypto";
 import { createHostProxy, createTickets, BRAND_CSS } from "./proxy.js";
 import { signingBrand, resolveBrand, normalizeBrand } from "../../lib/brand/profile.js";
