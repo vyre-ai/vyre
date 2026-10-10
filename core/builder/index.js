@@ -55,7 +55,7 @@ async function containerBuild(ctx, d, dir, secretArgs) {
 export async function buildByHelper(ctx, helper, d, files, port, secretArgs) {
   if (secretArgs && secretArgs.length) throw refuse("build secrets are not supported on a server that builds through its host helper yet; grant the secret for running, not building", "refused");
   const home = ctx.paths && ctx.paths.root;
-  if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here", "not_available");
+  if (!home) throw refuse("this server cannot build an image: the daemon's home is not known here: restart Vyre and try again", "not_available");
   const where = { home, space: String(d.space || ""), deployment: String(d.id || "") };
   try {
     writeServerFolder({ ...where, files, request: requestText({ name: String(d.name), version: Number(d.version) || 1, port, memoryMb: 512, cpus: 0.5, pids: 256, health: { path: HEALTH.path, ok: [...HEALTH.ok], startS: 60 }, secrets: [] }) });

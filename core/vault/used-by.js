@@ -30,7 +30,7 @@ export class UsedBy {
   async list({ item }, meta = {}) {
     const name = String(item || "");
     const row = this.v.row(name);
-    if (!row) throw Object.assign(new Error(`no item named ${name || "that"}`), { code: "not_found" });
+    if (!row) throw Object.assign(new Error(`no item named ${name || "that"} (vault.list shows the items)`), { code: "not_found" });
     /** @type {{ kind: keyof typeof RENEWS, id: string, label: string, since: number | null, last_used: number | null, restarts: boolean, renews: string }[]} */
     const users = [];
     const add = (/** @type {keyof typeof RENEWS} */ kind, /** @type {string} */ id, /** @type {string} */ label, /** @type {number | null} */ since = null, /** @type {number | null} */ last = null) => {
