@@ -30,6 +30,7 @@ import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind, ownerDevice } from "../modules/index.js";
+import { isAsker } from "./asker.js";
 import { normalize as normalizeApiCredential } from "./api-request.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
@@ -231,7 +232,6 @@ const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key", "env-set", "
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
-const kindOf = callerKind;
 /**
  * The provider sign-in tokens Vyre already stores: core/onboard makes them (from `claude setup-token`, or an Anthropic key pasted on the setup page) and sessions chooses between
  * them per session. One mechanism: these items, handed to the session launcher through the credentials port in index.js.
@@ -1241,7 +1241,7 @@ export class Vault {
     // scope): a put with a secret and no config carries the stored config over. The mirror: a put with a config and no secret carries the
     // stored secret over (and with it an oauth sign-in's sealed tokens), so who may use a connection can change without anyone knowing the
     // secret. Only a person's own surface may; the check below still refuses the rest, and a new name with no secret is still refused.
-    if (kind === "api-credential" && (["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) {
+    if (kind === "api-credential" && ((["cli", "local", "deck", "capsule"].includes(callerKind(who)) && !isAsker(who)) || ownerDevice(who))) {
       const had = /** @type {any} */ (this.db.prepare("SELECT kind FROM vault_items WHERE name = ?").get(String(name)));
       if (had && had.kind === "api-credential") {
         if (clean.config === undefined && (clean.secret !== undefined || clean.value !== undefined)) clean.config = JSON.stringify((await this.apiCredential(String(name))).config);
@@ -1264,10 +1264,10 @@ export class Vault {
     // A provider's sign-in token (claude-setup-token, anthropic-api-key) is the person's own: only they, or the setup page that runs `claude setup-token` for them (core/onboard), add or
     // replace one, and nothing may attach a module's read grant to it once the launcher takes it through the credentials port (config vault.launcherOnly).
     if (launcherItem(String(name))) {
-      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, add or replace it`);
+      if (!((["cli", "local", "deck", "capsule"].includes(callerKind(who)) && !isAsker(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, add or replace it`);
     }
     if (kind === "api-credential" || (prior && prior.kind === "api-credential")) {
-      if (!(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
+      if (!((["cli", "local", "deck", "capsule"].includes(callerKind(who)) && !isAsker(who)) || ownerDevice(who))) throw new Error("an api-credential is made and changed only from your own surfaces, never by a module, a watcher or an agent");
       if (kind !== "api-credential") throw new Error(`${name} is an api-credential; delete it before using the name for another kind`);
       if (clean.value !== undefined && clean.secret === undefined) { clean.secret = clean.value; delete clean.value; }
       let cfg;
@@ -1349,7 +1349,7 @@ export class Vault {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(String(name)));
     if (!r) throw new Error(`no item named ${name}`);
     if (isShared(r.vault)) throw new Error(`${name} is in a shared vault; deleting from a shared vault is not built yet`);
-    if (launcherItem(String(name)) && !(["cli", "local", "deck", "capsule"].includes(callerKind(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, remove it`);
+    if (launcherItem(String(name)) && !((["cli", "local", "deck", "capsule"].includes(callerKind(who)) && !isAsker(who)) || ownerDevice(who) || who === "module:onboard")) throw new Error(`${name} is a provider sign-in token: only you, or the setup page for you, remove it`);
     const inPass = this.activePasses().find(p => p.items.includes(name));
     if (inPass) throw new Error(`${name} is in pass ${inPass.id}; revoke the pass first`);
     removeSealed(this.dir, r.id);
@@ -1390,10 +1390,10 @@ export class Vault {
     const item = this.mustRow(name);
     if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
-    if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
+    if (callerKind(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
     if (project && !/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(String(project))) throw new Error("project is a project id");
-    const pending = kindOf(caller) === "mcp";
+    const pending = isAsker(caller);
     if (pending) {
       // Claude asking waits as a request that carries no authority; only a person's approval makes the grant.
       if (this.releases.views().some(v => v.item === name && v.module === module && v.watcher === watcher && v.project === project)) return { grant: this.grantOut({ id: "", item: name, module, watcher, project, status: "active" }) };
@@ -1729,7 +1729,7 @@ export class Vault {
       }
     }
     const id = "p_" + newId();
-    const status = kindOf(caller) === "mcp" ? "pending" : "active";
+    const status = isAsker(caller) ? "pending" : "active";
     this.db.prepare("INSERT INTO vault_passes (id, holder, holder_sign, holder_box, holder_login, items, mode, hosts, methods, paths, expires, note, status, by, created) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
       .run(id, holder, person.sign, person.box, person.login || null, JSON.stringify(items), mode, narrowed ? JSON.stringify(narrowed) : null,
         ms ? JSON.stringify(ms) : null, ps ? JSON.stringify(ps) : null, parseExpiry(expires), String(note), status, String(caller), now());
@@ -1996,7 +1996,7 @@ export class Vault {
     const t = relay.decodeTicket(ticket);
     const me = await this.identity();
     if (t.holderSign !== me.sign.public) throw new Error(`this ticket was made for another Vyre (${t.holder}), not this one`);
-    if (kindOf(caller) === "mcp") return this.share.request("accept", t.owner, String(ticket).trim(), caller, { items: t.items, mode: t.mode });
+    if (isAsker(caller)) return this.share.request("accept", t.owner, String(ticket).trim(), caller, { items: t.items, mode: t.mode });
     const owner = await this.share.pinOwner(relay.decodeCard(t.ownerCard), t.ownerCard, caller);
     const from = `pass:${owner}:${t.pass}`;
     const added = [];
