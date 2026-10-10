@@ -7,12 +7,11 @@ export default {
   id: "J2", title: "Intake to signed engagement", owner: "operations", world: "daemon", store: "plain",
   /** @param {any} w @param {ReturnType<typeof import("./lib/journey.mjs").stepper>} J */
   async steps(w, J) {
-    await J.step("explore: the record types and tools this server has", async () => {
-      const types = await w.call("records.types", {});
-      const names = (types.types || []).map(/** @param {any} t */ t => t.name);
-      const lib = await w.call("work.template.library", {});
-      const tools = await w.call("system.tools", {}).catch(/** @param {any} e */ e => ({ error: String(e && e.message) }));
-      return JSON.stringify({ names, lib: JSON.stringify(lib).slice(0, 400), tools: JSON.stringify(tools).slice(0, 300) });
+    await J.step("explore: a client and its contact", async () => {
+      const c = await w.call("records.create", { type: "contact", data: { name: "Dana Harlow", email: "dana@harlow.test" } });
+      const cl = await w.call("records.create", { type: "client", data: { contact: c.record.urn } });
+      const got = await w.call("records.get", { type: "client", id: cl.record.id });
+      return JSON.stringify({ c: c.record, cl: cl.record, got });
     });
   },
 };
