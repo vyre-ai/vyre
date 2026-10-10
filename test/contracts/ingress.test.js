@@ -105,3 +105,40 @@ test("ingress contract v2: an own domain is an app host with its own certificate
   assert.deepEqual(hostsSeen, [F.ownHost], "the front answers by the Host it was given");
   assert.equal(/** @type {any} */ (await visit(tlsPort, own.cert, F.ownHost, F.name, "GET", "/")).status, 404, "another Host riding the own host's SNI is refused at the gate");
 });
+
+test("ingress contract v2: the gate tells visitors apart through the tunnel: one stranger who spends its budget or is blocked does not lock out another (REVIEW-LEDGER row 8)", async t => {
+  const space = selfSigned({ ips: ["127.0.0.1"], names: [F.name, F.appHost] });
+  /** @type {string[]} */ const forwarded = [];
+  const front = http.createServer((q, r) => { q.resume(); forwarded.push(String(q.headers["x-forwarded-for"])); r.end("apps"); });
+  await new Promise(r => front.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => front.close());
+  const other = http.createServer((_q, r) => r.end("upstream"));
+  await new Promise(r => other.listen(0, "127.0.0.1", () => r(undefined))); t.after(() => other.close());
+  const gate = createGate({ listen: { host: "127.0.0.1", port: 0 }, tls: space, upstream: { port: /** @type {any} */ (other.address()).port }, limits: { appsPerWindow: 4 },
+    ingress: { hooks: () => null, share: () => null, appsSuffix: `.${F.name}`, apps: () => ({ port: /** @type {any} */ (front.address()).port, hosts: [F.appHost] }) } });
+  const at = await gate.listen(); t.after(() => gate.close());
+  const k = newRouteKey(), route = routeId(k.pub);
+  const relay = createRelay({ tunnel: { resolve: async h => (h === F.appHost ? { route } : null) } });
+  const base = await relay.listen(); const { tls: tlsPort } = await relay.listenTunnel(); t.after(() => relay.close());
+  const end = createTunnelEnd({ name: F.name, port: () => at.port });
+  const link = relayLink({ url: base, route, routeKey: k, boxKey: keyPair(), admit: async () => ({ v: 1 }), onchannel: () => {}, ontunnel: (s, v) => end.accept(s, v) });
+  t.after(() => link.stop());
+  assert.equal(await link.ready(), true);
+
+  // two strangers, two source addresses at the relay, one hop (the tunnel end) into the gate
+  const A = "127.0.0.2", B = "127.0.0.3";
+  const get = (/** @type {string} */ from) => new Promise(resolve => {
+    const req = https.request({ host: "127.0.0.1", port: tlsPort, localAddress: from, ca: space.cert, servername: F.appHost, method: "GET", path: "/", headers: { host: F.appHost }, agent: false, timeout: 4000 }, res => {
+      res.resume(); res.on("end", () => resolve(res.statusCode)); res.on("error", () => resolve("error"));
+    });
+    req.on("error", () => resolve("error")); req.on("timeout", () => req.destroy()); req.end();
+  });
+  assert.deepEqual([await get(A), await get(A), await get(A), await get(A)], [200, 200, 200, 200]);
+  assert.equal(await get(A), 429, "the stranger that spent its budget is limited");
+  assert.deepEqual([await get(B), await get(B)], [200, 200], "another stranger through the same tunnel is not");
+  assert.deepEqual([...new Set(forwarded)].sort(), [A, B], "the app front is told the visitors' addresses, not 127.0.0.1");
+
+  gate.block(A);
+  assert.equal(await get(A), "error", "a blocked stranger is shut out");
+  assert.equal(await get(B), 200, "and the others are served");
+  assert.equal(gate.isBlocked("127.0.0.1"), false);
+});
