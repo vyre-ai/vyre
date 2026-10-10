@@ -90,21 +90,22 @@ test("acp: an entry that says it takes images sends the image block to an agent 
   await s.proc.stop(1000);
 });
 
-test("acp: an entry that needs its MCP servers to come up holds the session's first prompt for that long, and only when it was given servers", async t => {
+test("acp: an entry with a barrier command asks it before the first prompt, drops its answer, and only when it was given servers", async t => {
   const servers = [{ name: "vyre", command: "node", args: ["-e", "0"], env: [] }];
-  const settled = world(t, { mcpSettleMs: 500 }), plain = world(t, { mcpSettleMs: 500 });
-  const t0 = Date.now();
-  const a = open(settled, { mcpServers: servers });
+  const withServers = world(t, { mcpBarrier: "/mcp" }), without = world(t, { mcpBarrier: "/mcp" });
+  const a = open(withServers, { mcpServers: servers });
   await a.until(m => m.type === "system" && m.subtype === "init", "init");
-  const held = Date.now() - t0;
+  assert.equal(await a.say("hello"), "echo: hello");
   await a.proc.stop(1000);
-  assert.ok(held >= 450, `the session was ready after ${held} ms, before its MCP servers had a chance to come up`);
-  const t1 = Date.now();
-  const b = open(plain);
+  const seen = withServers.launches().filter(l => l.prompt).map(l => l.prompt.join(""));
+  assert.deepEqual(seen, ["/mcp", "hello"], "the barrier goes first and the person's words second");
+  assert.ok(!a.got.some(m => m.type === "stream_event" && /\/mcp/.test(JSON.stringify(m))), "the barrier's answer is not shown to the person");
+  assert.equal(a.got.filter(m => m.type === "result").length, 1, "one result: the person's turn, not the barrier");
+  const b = open(without);
   await b.until(m => m.type === "system" && m.subtype === "init", "init");
-  const free = Date.now() - t1;
+  assert.equal(await b.say("hello"), "echo: hello");
   await b.proc.stop(1000);
-  assert.ok(free < held, `a session with no servers waited ${free} ms, as long as one with servers (${held} ms)`);
+  assert.deepEqual(without.launches().filter(l => l.prompt).map(l => l.prompt.join("")), ["hello"], "a session with no servers has nothing to wait for");
 });
 
 test("acp: the client advertises fs and terminal, and the entry's args and env reach the agent (never read from the agent's own config)", async t => {

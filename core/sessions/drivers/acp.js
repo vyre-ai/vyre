@@ -178,7 +178,7 @@ const remembered = new Map();
  *   capabilities?: Record<string, any>, floor?: (call: { tool: string, input: any, cwd?: string }) => { decision: "deny"|"ask"|null, reason?: string },
  *   allowModes?: RegExp, pinMode?: string[],
  *   authMethod?: (methods: { id: string, name?: string }[], run: any) => string|null, authTimeoutMs?: number,
- *   takesImages?: boolean, mcpSettleMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
+ *   takesImages?: boolean, mcpBarrier?: string, mcpBarrierMs?: number, authFirst?: boolean, clientCapabilities?: Record<string, any>, authParams?: (methodId: string, run: any) => Record<string, any>,
  *   sessions?: { get(id: string): string|undefined, set(id: string, agent: string): void } }} entry
  */
 export function acpProvider(entry) {
@@ -251,7 +251,7 @@ function runAcp(entry, known, o) {
   const child = spawnSession(entry.bin, args, { cwd, env: { ...(o.env || {}), ...extra }, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, sandboxSpawn: o.sandboxSpawn, ...(seed ? { seed } : {}), onSpawn: o.onSpawn });
   const say = m => { try { o.onMessage(m); } catch {} };
 
-  let buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false, imageOk = false;
+  let quiet = false, buf = "", err = "", exited = false, rpcId = 0, ready = false, busy = false, sid = "", loaded = false, imageOk = false;
   /** @type {Map<number, { resolve: (r: any) => void, reject: (e: any) => void }>} */ const calls = new Map();
   /** @type {Map<string, { rpc: number, options: any[] }>} permission questions open with a person */ const asks = new Map();
   /** @type {Set<string>} */ const announced = new Set();
@@ -350,6 +350,7 @@ function runAcp(entry, known, o) {
   }
 
   function update(u) {
+    if (quiet) return; // the answer to a barrier command (`mcpBarrier`) is for Vyre, not the person
     const kind = u.sessionUpdate;
     // A generation tool says its prompt on an earlier update than the one that finishes it: keep it by call id for the media's provenance.
     if ((kind === "tool_call" || kind === "tool_call_update") && u.rawInput && typeof u.rawInput.prompt === "string" && u.toolCallId) { toolPrompts.set(String(u.toolCallId), u.rawInput.prompt.slice(0, 2000)); if (toolPrompts.size > 64) toolPrompts.delete(toolPrompts.keys().next().value); }
@@ -638,10 +639,14 @@ function runAcp(entry, known, o) {
       mode = want;
     }
     const model = r.models && r.models.currentModelId || o.model || null;
-    // Codex starts the MCP servers it was given after session/new has answered and does not hold a prompt for them: a prompt sent at once finds none of Vyre's tools (live, 10 Oct: 7 of 8 fresh sessions had
-    // no Vyre finder on their first turn). The entry says how long to let them come up.
-    const settle = Number(entry.mcpSettleMs || 0);
-    if (settle > 0 && servers.length) await new Promise(r => setTimeout(r, settle));
+    // Codex starts the MCP servers it was given after session/new has answered and a prompt does not wait for them: sent at once, a first message found none of Vyre's tools (live, 10 Oct: 1 of 8
+    // fresh sessions had the finder on turn one, and a fixed wait of 4 s still failed on a loaded box). Its own `/mcp` command answers only when they are connected and calls no model, so the entry
+    // asks it first (`mcpBarrier`), the answer dropped, and the person's first message follows.
+    if (entry.mcpBarrier && servers.length) {
+      quiet = true;
+      try { await request("session/prompt", { sessionId: sid, prompt: [{ type: "text", text: String(entry.mcpBarrier) }] }, Number(entry.mcpBarrierMs) || 45_000); } catch { /* the first real prompt goes anyway */ }
+      quiet = false;
+    }
     ready = true;
     const offered = modelsOf(r);
     // What the agent said about itself in `initialize` (R031-85): names and booleans only, for the harness capability store.
