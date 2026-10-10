@@ -43,7 +43,7 @@ export function register({ ctx, vault, fetch = httpFetch }) {
   // Vault health for Now (the one calm row): what the daily Watchtower run found and the person has not yet fixed, read from the reminders it keeps. It decrypts nothing and writes nothing, so it can be asked often.
   const HEALTH_FIX = ["reused", "breached", "weak"], HEALTH_ROTATE = ["rotate", "expiring", "expired", "old"];
   ctx.tool("vault.health.summary", {
-    callers: ["cli", "local", "deck", "capsule", "mobile", "device", "tailnet", "module"],
+    callers: ["cli", "local", "deck", "capsule", "device", "tailnet", "module"],
     description: "How many vault items need attention (to rotate, to fix) from the last Watchtower run, counts only, never a name or a value; zero while the person has dismissed it. For the Now screen's one row.",
     input: obj({}),
     run: () => {

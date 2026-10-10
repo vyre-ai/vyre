@@ -1048,11 +1048,11 @@ Add a file to a chat: { thread, name, mime?, data } with data as base64. Returns
 
 ### `brand.draft`
 
-A draft brand profile from a company website's HTML: { html, url }. Fetch the page yourself and pass it in. Returns { draft, found, logoUrl }; nothing is saved. Show the person the draft; they save it with brand.set.
+Draft a brand profile from a company website's HTML (fetch it yourself). Returns { draft, found, logoUrl }, saves nothing; person saves with brand.set.
 
 - Input:
-  - `html` string, required
-  - `url` string
+  - `html` string, required: The page HTML, fetched by you
+  - `url` string: The page address
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `brand.get`
@@ -1064,7 +1064,7 @@ The space's brand profile as saved: { profile, version }. Empty when none was se
 
 ### `brand.resolve`
 
-What to use for this space by default: { names, theme, accent (as drawn in dark and paper, with a note when it moved), fonts, logos, letterhead, version }. Use it for every artifact, preview, document and message unless told otherwise.
+The space's default brand: names, theme, accent, fonts, logos, letterhead, version. Use it for every artifact, preview, document and message unless told otherwise.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
@@ -2662,11 +2662,11 @@ The custom CSS in force: [{ scope, css }] (only what is on). The web app draws i
 
 ### `design.css.propose`
 
-Propose custom CSS for the space or one screen: { scope: "space" | "screen:<id>", css, why }. Only the Engineer proposes it. It must pass the linter (hooks [data-screen] and [data-block], design tokens only); the owner sees it before and after. It styles the web app only: phones and Lumen keep the tokens.
+Propose custom CSS for the space or one screen. Only the Engineer proposes it; the owner sees it before and after. Web app only.
 
 - Input:
-  - `css` string, required
-  - `scope` string, required
+  - `css` string, required: Must pass the linter: hooks [data-screen] and [data-block], design tokens only. Phones and Lumen keep the tokens
+  - `scope` string, required: space, or screen:<id>
   - `why` string, required
 - Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
@@ -9177,10 +9177,10 @@ Read one regular file from inside an account's own folder, as that account (`fil
 
 ### `sessions.harness.get`
 
-What each harness can do, detected when a session of it last started: { provider, version, caps (true, false, or null for not shown), counts, auth, at }. A harness no session has started has no row, and nothing is hidden for it. provider narrows it.
+What each harness can do: { provider, version, caps, counts, auth, at }. Narrow with `provider`. A harness never started has no row.
 
 - Input:
-  - `provider` string
+  - `provider` string: Narrow to one harness. caps are true, false or null (not shown), detected when a session of it last started
 - Callers: any caller
 
 ### `sessions.harness.learn`
@@ -9844,10 +9844,10 @@ The title a stored skill change really has, or null. For the proposals path.
 
 ### `skills.draft`
 
-Write a skill or a plugin into the library as a DRAFT: nothing uses it until the level's owner approves (skills.approve, or flows.propose { what: "skill" } for a card in Now). kind skill: body is a SKILL.md with name and description in its front matter. kind plugin: body is JSON { name, description, skills?, commands?, hooks?, mcp? }; one with a hook or an MCP server has code and its draft says what it declares. level: space, personal, agent or project.
+Draft a skill or plugin into the library; nothing uses it until the level's owner approves. Body: SKILL.md, or plugin JSON for kind plugin.
 
 - Input:
-  - `body` string, required
+  - `body` string, required: kind skill: a SKILL.md with name and description in its front matter. kind plugin: JSON { name, description, skills?, commands?, hooks?, mcp? }; a hook or MCP server is code and the draft says what it declares
   - `level` one of "space", "personal", "agent", "project", required
   - `name` string, required
   - `kind` "skill" or "plugin"
@@ -9896,7 +9896,7 @@ Run one approved plugin hook in the script sandbox: no network of its own, only 
 
 ### `skills.list`
 
-The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre (Vyre's own), space (everyone's), personal (yours), account (installed on this machine), project or agent. Narrow with `project` or `level`. Nothing you may not use is listed. skills.find ranks them for what you are about to do.
+The skills you may use, each { id, name, level, scope, description, tokens }. level is vyre, space, personal, account, project or agent. Narrow with `project` or `level`. skills.find ranks them.
 
 - Input:
   - `harness` string
@@ -9930,7 +9930,7 @@ Go back to an earlier version of a skill: it is written again as a new approved 
 
 ### `skills.versions`
 
-The versions in the library, newest first, with who drafted each and which is in use; state: draft shows what is waiting for a yes. Narrow by name, level and scope.
+The library's versions, newest first, with who drafted each and which is in use. state: draft shows those waiting for a yes.
 
 - Input:
   - `level` one of "space", "personal", "agent", "project"
@@ -13351,7 +13351,7 @@ Hide the vault health row on Now for a while (default a week). The next Watchtow
 How many vault items need attention (to rotate, to fix) from the last Watchtower run, counts only, never a name or a value; zero while the person has dismissed it. For the Now screen's one row.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `module`, `tailnet`
 
 ### `vault.history`
 
@@ -15533,10 +15533,10 @@ Move to project: file a chat under another Project (a short name or a record add
 
 ### `work.chat.persistent`
 
-Your pinned chat with your assistant (kind assistant) or with @Engineer (kind engineer): its id, or null when there is none yet, and whether you may have one (the Engineer is for an owner or an admin). There is one of each per person; it stays the same chat as the session rolls over.
+Your pinned chat with your assistant or @Engineer (kind): its id or null if none yet, and whether you may have one.
 
 - Input:
-  - `kind` "assistant" or "engineer", required
+  - `kind` "assistant" or "engineer", required: One of each per person, the same chat as the session rolls over. The Engineer is for an owner or an admin
 - Callers: any caller
 
 ### `work.chat.pin`
@@ -15597,7 +15597,7 @@ What moving your chats from this Space to your other Space (Personal to My Cloud
 
 ### `work.file.list`
 
-The files this chat has: those it received (chat/) and those it made (made/), each with its name, size, time and whether it is shared with the project. Only for someone in the chat.
+The files this chat has, received (chat/) and made (made/): name, size, time, shared with the project or not. Only for someone in the chat.
 
 - Input:
   - `chat` string, required
@@ -15709,7 +15709,7 @@ Facts memory proposes for a record, each with the lines they came from. Nothing 
 
 ### `work.link.suggest`
 
-Which records (a client, a contact, a project) a piece of chat text names, for a "Link this chat to Northwind?" prompt. At most three, each one you may read.
+Which records (client, contact, project) a piece of chat text names, for a link prompt. At most three you may read.
 
 - Input:
   - `text` string, required
@@ -15967,12 +15967,12 @@ Try a template version with NOTHING created, sent or changed: every stage, task,
 
 ### `work.timeline`
 
-Everything that links to a record or a project, newest first: tasks, files, messages, documents and chats, each only if you may read it. A chat shows only if you are in it or its people shared it, and then only its title. Give a record urn or a project short name.
+Everything linked to a record or project, newest first: tasks, files, messages, documents, chats you may read. Give a record urn or project name.
 
 - Input:
   - `limit` integer
-  - `project` string
-  - `record` string
+  - `project` string: A project short name
+  - `record` string: A record urn. A chat shows only if you are in it or its people shared it, and then only its title
 - Callers: any caller
 
 ### `work.tools`
