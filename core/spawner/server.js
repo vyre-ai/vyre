@@ -32,7 +32,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { spawn, execFileSync } from "node:child_process";
+import { spawn, execFileSync, execFile } from "node:child_process";
 
 /** Environment keys a session child may get. Anything else (LD_PRELOAD, NODE_OPTIONS ...) is dropped. */
 const ENV_KEYS = /^(HOME|PATH|LANG|LC_[A-Z]+|TERM|TZ|USER|SHELL|TMPDIR|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|CLAUDE_CONFIG_DIR|ANTHROPIC_API_KEY|ANTHROPIC_BASE_URL|OPENAI_API_KEY|OPENAI_BASE_URL|XAI_API_KEY|XAI_BASE_URL|CODEX_HOME|DISABLE_[A-Z0-9_]+|MCP_[A-Z0-9_]+)$/;
@@ -45,7 +45,7 @@ const MAX_LIVE = 16;
  *   work?: string, home?: string, wrap?: (argv: string[], cwd: string, who: Who) => string[], makeDir?: (dir: string, who: Who) => void, grantGroup?: (home: string, who: Who) => void, seed?: (home: string, who: Who, files: Record<string, string>) => void, log?: (m: string) => void,
  *   seed?: (home: string, who: Who, files: Record<string, string>) => void,
  *   grantGroup?: (home: string, who: Who) => void,
- *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void } }} o
+ *   accounts?: { min: number, max: number, home: string, shared?: number[], stat?: (dir: string) => import("node:fs").Stats|null, wipe?: (dir: string, who: Who) => void, place?: (home: string, who: Who, file: string, bytes: Buffer) => void | Promise<void> } }} o
  *   allow: programs argv[0] may name (absolute paths). wrap: how the child is started as its user;
  *   the default is setpriv plus umask 002 plus tini as a subreaper. A test passes identity.
  *   watcher: the watcher wall (role "watcher"): { min, max, home, allow, status, reprobe?, heldCap?, wrap?, makeDir?, wipe? }; without it a watcher spawn is refused
@@ -103,6 +103,7 @@ export async function serve(o) {
   const watcherAllowed = new Set((wl ? wl.allow : []).map(real));
   /** The pool uids in use; one run holds one, and nothing else shares it. */
   const taken = new Set();
+  let placing = 0;
   const takeUid = () => { if (!wl) return null; for (let u = wl.min; u <= wl.max; u++) if (!taken.has(u)) { taken.add(u); return u; } return null; };
   /** @type {Map<string, { req: any, control: net.Socket, stdio?: net.Socket, stderr?: net.Socket, child?: import("node:child_process").ChildProcess, timer: NodeJS.Timeout }>} */
   const live = new Map();
@@ -341,25 +342,39 @@ export async function serve(o) {
       // may not), mode 0600, never through a link, never over anything that is not a plain file of the account's. The bytes follow the request line, exactly `size` of them, checked against `sha256`.
       const w = whoFor({ account: req.account });
       if (!w.who || !acc) { sock.end(JSON.stringify({ error: w.why || "no accounts here" }) + "\n"); return; }
+      // Never over the transcript of a session that is running: it would be replaced under a running program (as wipe, it waits for the session to end).
+      for (const s of live.values()) if (s.req.account === req.account) { sock.end(JSON.stringify({ error: `account ${req.account} still has a session running` }) + "\n"); return; }
+      // a few at a time: each holds up to 64 MiB in memory until it is written
+      if (placing >= 2) { sock.end(JSON.stringify({ error: "the spawner is placing other transcripts: try again in a moment" }) + "\n"); return; }
       const home = /** @type {string} */ (w.who.home), file = typeof req.path === "string" && path.isAbsolute(req.path) ? path.resolve(req.path) : "";
       const base = path.join(home, ".claude", "projects") + path.sep;
       if (!file || file !== req.path || !file.startsWith(base) || !/^[A-Za-z0-9_.-]{1,200}\/[A-Za-z0-9_-]{1,100}\.jsonl$/.test(file.slice(base.length)) || file.slice(base.length).split("/")[0] === "." || file.slice(base.length).split("/")[0] === "..") { sock.end(JSON.stringify({ error: "only <HOME>/.claude/projects/<folder>/<session>.jsonl of the account itself can be placed" }) + "\n"); return; }
       if (!Number.isInteger(req.size) || req.size < 1 || req.size > PLACE_MAX || typeof req.sha256 !== "string" || !/^[0-9a-f]{64}$/.test(req.sha256)) { sock.end(JSON.stringify({ error: "a transcript is 1 byte to 64 MiB, with its sha256" }) + "\n"); return; }
       /** @type {Buffer} */ let bytes;
+      placing++;
       try {
         bytes = await new Promise((resolve, reject) => {
-          /** @type {Buffer[]} */ const parts = []; let n = 0;
-          const timer = setTimeout(() => { sock.off("data", onData); reject(new Error("the transcript did not arrive")); }, 30_000);
+          /** @type {Buffer[]} */ let parts = []; let n = 0;
+          const timer = setTimeout(() => { sock.off("data", onData); parts = []; reject(new Error("the transcript did not arrive")); }, 30_000);
+          // a client that goes away mid-body frees what it sent
+          const gone = () => { clearTimeout(timer); sock.off("data", onData); parts = []; reject(new Error("the connection closed before the transcript arrived")); };
+          sock.once("end", gone); sock.once("close", gone);   // a half-open server socket gets "end" when the client leaves, "close" only later
           const onData = (/** @type {Buffer} */ d) => { n += d.length; if (n > req.size) { clearTimeout(timer); sock.off("data", onData); reject(new Error("more bytes than the request said")); return; } parts.push(d); if (n === req.size) { clearTimeout(timer); sock.off("data", onData); resolve(Buffer.concat(parts)); } };
           sock.on("data", onData); sock.resume();
         });
-      } catch (e) { sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
-      if (crypto.createHash("sha256").update(bytes).digest("hex") !== req.sha256) { sock.end(JSON.stringify({ error: "the transcript does not match its sha256" }) + "\n"); return; }
+      } catch (e) { placing--; sock.end(JSON.stringify({ error: /** @type {Error} */ (e).message }) + "\n"); return; }
+      if (crypto.createHash("sha256").update(bytes).digest("hex") !== req.sha256) { placing--; sock.end(JSON.stringify({ error: "the transcript does not match its sha256" }) + "\n"); return; }
       try {
-        if (acc.place) acc.place(home, w.who, file, bytes);
-        else execFileSync("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c", PLACE_SCRIPT, "sh", file, String(w.who.uid)], { input: bytes, stdio: ["pipe", "ignore", "ignore"] });
+        // asynchronous with a limit: this process relays every live session's stdio, and a large write must never hold it still
+        if (acc.place) await acc.place(home, w.who, file, bytes);
+        else await new Promise((resolve, reject) => {
+          const child = execFile("/usr/bin/setpriv", [`--reuid=${w.who.uid}`, `--regid=${w.who.gid}`, "--clear-groups", "--inh-caps=-all", "--", "/bin/sh", "-c", PLACE_SCRIPT, "sh", file, String(w.who.uid)], { timeout: 60_000, killSignal: "SIGKILL" }, e => (e ? reject(e) : resolve(undefined)));
+          child.stdin?.on("error", () => {});
+          child.stdin?.end(bytes);
+        });
         sock.end(JSON.stringify({ placed: true }) + "\n");
-      } catch (e) { sock.end(JSON.stringify({ error: `cannot place that transcript (${/** @type {any} */ (e).status ?? /** @type {Error} */ (e).message})` }) + "\n"); }
+      } catch (e) { sock.end(JSON.stringify({ error: `cannot place that transcript (${/** @type {any} */ (e).code ?? /** @type {Error} */ (e).message})` }) + "\n"); }
+      finally { placing--; }
       return;
     }
     sock.end(JSON.stringify({ error: "unknown op" }) + "\n");
