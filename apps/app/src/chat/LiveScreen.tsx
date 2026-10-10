@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { View } from "react-native";
 import { Banner, Button, Chip, Text, useUiTheme } from "@vyre/ui";
 import { GlassFrame } from "../../screens/glass/GlassFrame";
-import { frameUrl, useGlass } from "../../screens/glass/state";
+import { frameUrl, relayOnly, useGlass } from "../../screens/glass/state";
 import { badgeWord, overText } from "../../screens/glass/model";
 
 export function LiveScreen({ computer, private: priv = false, autoTake = false, onHandedBack }: { computer: string; private?: boolean; autoTake?: boolean; onHandedBack?: () => void }) {
@@ -20,7 +20,7 @@ export function LiveScreen({ computer, private: priv = false, autoTake = false, 
   return (
     <View style={{ gap: 8 }}>
       <View style={{ width: "100%", aspectRatio: g.size ? g.size.w / g.size.h : 16 / 10, backgroundColor: color["surface-3"], borderRadius: 10, overflow: "hidden" }} accessibilityLabel={`Live view of ${computer}'s screen`}>
-        <GlassFrame src={frameUrl()} onMessage={g.onFrame} frameRef={g.frame} label={`${computer}'s screen`} />
+        <GlassFrame src={frameUrl()} relay={relayOnly()} onMessage={g.onFrame} frameRef={g.frame} label={`${computer}'s screen`} />
         {g.conn !== "live" ? (
           <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center", padding: 12 }}>
             <View style={{ alignItems: "center", gap: 6, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-3"] }}>
