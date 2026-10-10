@@ -166,7 +166,4 @@ test("the paired Macs are the box owner's: another member's session sees only th
   const r = await b.run({ do: "look", on: "Office Mac mini" }, "deck", { person: "per_teammate" });
   assert.equal(r.asked, true, "naming the Mac is not a way to it: the name matches nothing for this person");
   assert.ok(!b.calls.some(c => c.tool === "link.macs.call"), "no Mac was asked");
-  // a call with no resolvable person is nobody: no Mac either
-  const none = await boot({ macs: MACS });
-  none.tools.get("computer.targets");
 });
