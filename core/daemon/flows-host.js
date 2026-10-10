@@ -246,20 +246,33 @@ export function createFlowsHost(o) {
     // The standing approval (kernel/flows/standing.js): the person's yes at turn-on is a kernel grant for exactly that approved version, made through the module's mint handle and ended when the
     // version stops being the one that runs. A send is covered only when the kernel, asked with the run's own chain, allows it: the budget and rate on the grant are the kernel's to count.
     const standingUrn = (/** @type {string} */ flow, /** @type {string} */ hash) => `vyre://${space}/flow-act/${flow}@${hash}`;
-    const reconcileStanding = async (/** @type {string} */ flow) => {
+    // The grant is made when a person approves (or resumes, or rolls back to) a version, never at a later use: if the approver is removed or changes role the grant ends, and being added back does not
+    // bring it back: the Flow asks again until someone approves it afresh.
+    const reconcileStanding = async (/** @type {string} */ flow, mint = false) => {
       if (!sh.mint) return null;
       const live = await store.active(flow).catch(() => null), want = live && live.approver ? standingUrn(flow, live.hash) : null;
       const have = (await sh.mint.list({ source: `flows:standing:${flow}@` })) || [];
       for (const g of have) if (g.resource.prefix !== want) await sh.mint.end({ id: g.id, reason: "the approved version changed, paused or ended" });
-      if (!want || have.some((/** @type {any} */ g) => g.resource.prefix === want)) return want;
+      if (!want) return null;
+      if (have.some((/** @type {any} */ g) => g.resource.prefix === want)) return want;
+      if (!mint) return null;
       const b = boundsOf(live.flow, await catalog().catch(() => null));
       await sh.mint.make({ subject: { kind: "actor", actor: { kind: "person", id: live.approver.id, space } }, actions: ["flows.act-standing"], resource: { prefix: want }, source: `flows:standing:${flow}@${live.hash}`,
         conditions: { budget: { meter: `flow-act:${flow}@${live.hash}`, limit: b.max }, rate: { n: b.per_minute, per_seconds: 60 } }, reason: "the person turned this Flow on" });
       return want;
     };
+    /** A member removed or given another role: every standing grant made on their approval ends now. */
+    const endStandingOf = async (/** @type {string} */ person) => {
+      if (!sh.mint) return;
+      for (const g of (await sh.mint.list({ source: "flows:standing:" })) || []) if (g.subject && g.subject.actor && g.subject.actor.id === person) await sh.mint.end({ id: g.id, reason: "the person who approved it was removed or changed role" });
+    };
+    k.log.subscribe("flows-standing", {}, async (/** @type {any} */ e) => {
+      const who = e && e.data ? (e.type === "member.removed" ? e.data.person : e.type === "member.set" && e.data.membership ? e.data.membership.person : null) : null;
+      if (typeof who === "string") await endStandingOf(who).catch((/** @type {any} */ err) => log(`flows ${space}: standing grant ${err && err.message}`));
+    });
     for (const name of ["flows.approve", "flows.pause", "flows.resume", "flows.disable", "flows.rollback", "flows.remove", "flows.delete"]) {
       const orig = flows.tools[name];
-      if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id)).catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
+      if (typeof orig === "function") flows.tools[name] = async (/** @type {any} */ c, /** @type {any} */ i) => { const r = await orig(c, i); if (i && i.id) await reconcileStanding(String(i.id), name !== "flows.pause" && name !== "flows.disable" && name !== "flows.remove" && name !== "flows.delete").catch((/** @type {any} */ e) => log(`flows ${space}: standing grant ${e && e.message}`)); return r; };
     }
     ports.standing = async (/** @type {any} */ x) => {
       const want = await reconcileStanding(x.flow);

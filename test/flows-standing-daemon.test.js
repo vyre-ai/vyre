@@ -185,8 +185,33 @@ test("when the person who approved is removed from the Space, the Flow's standin
   await host.flows.tools["flows.approve"](bob, { id: def.data.id, version: def.data.version, hash: def.data.hash });
   await run(host, def.data.id);
   await until(async () => notified(calls).length === 1, "the first send, while the approver is a member");
+  const live = async () => (await grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active").length;
+  assert.equal(await live(), 1, "the approval stands while the approver is an admin");
   await grants.removeMember(admin, { person: BOB }, { presence: { method: "stand-in" } });
+  await until(async () => (await live()) === 0, "the standing grant to end when its approver is removed");
   await run(host, def.data.id).catch(() => null);
   await new Promise(r => setTimeout(r, 2500));
   assert.equal(notified(calls).length, 1, "no second send once the approver is gone");
+  // added back: the old approval does not come back with them
+  await grants.setRole(admin, { person: BOB, role: "admin" }, { presence: { method: "stand-in" } });
+  await run(host, def.data.id).catch(() => null);
+  await new Promise(r => setTimeout(r, 2500));
+  assert.equal(await live(), 0, "re-adding the person does not bring the grant back");
+  assert.equal(notified(calls).length, 1, "the Flow asks again instead of sending");
+});
+
+test("when the person who approved is demoted, the standing grant ends", { timeout: 120_000 }, async t => {
+  const { d, host, admin, calls, space } = await boot(t, true);
+  const grants = d.kernel.gateway.grants, BOB = "per_" + "c".repeat(26);
+  await grants.setRole(admin, { person: BOB, role: "admin" }, { presence: { method: "stand-in" } });
+  const bob = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });
+  const def = await d.registry.call("flows.define", { flow: flowOf(space, { to: "sam@example.com", body: "hello" }) }, "cli", { token: (await d.kernel.surfaces.open(admin, {})).token });
+  await host.flows.tools["flows.approve"](bob, { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  const live = async () => (await grants.list(admin, {})).filter((/** @type {any} */ g) => String(g.source || "").startsWith("flows:standing:") && g.status === "active").length;
+  assert.equal(await live(), 1);
+  await grants.setRole(admin, { person: BOB, role: "member" }, { presence: { method: "stand-in" } });
+  await until(async () => (await live()) === 0, "the standing grant to end when its approver is demoted");
+  await run(host, def.data.id).catch(() => null);
+  await new Promise(r => setTimeout(r, 2000));
+  assert.equal(notified(calls).length, 0, "nothing goes out");
 });
