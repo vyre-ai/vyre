@@ -74,6 +74,14 @@ test("a port becomes a preview, opened on its own origin with a one-time ticket;
   assert.equal((await call("previews.url", { id }, "mcp")).error && (await call("previews.url", { id }, "mcp")).error.code !== undefined, true, "a model gets no address");
   const agentOpen = await call("previews.open", { title: "Agent page", port }, "mcp");
   assert.ok(agentOpen.data || agentOpen.error, JSON.stringify(agentOpen));
+  assert.equal(agentOpen.data && agentOpen.data.preview && agentOpen.data.preview.access, "me", "a model's preview is private to its person");
+  // a model cannot open a preview wider than its person or its own chat's project: that is previews.share, a person's act
+  for (const wide of [{ access: "team" }, { access: "project" }, { project: "someone-elses" }, { access: "team", project: "someone-elses" }]) {
+    const r = await call("previews.open", { title: "Too wide", port, ...wide }, "mcp");
+    assert.equal(r.error && r.error.code, "denied", JSON.stringify(wide));
+  }
+  const agentFiles = await call("previews.open", { title: "Wide files", path: root, access: "team" }, "mcp");
+  assert.equal(agentFiles.error && agentFiles.error.code, "denied", "the files form follows the same rule");
   const agentCmd = await call("previews.open", { title: "Run this", command: "rm -rf /", cwd: root }, "mcp");
   assert.ok(agentCmd.error, "a model never starts a command here");
   assert.equal((await call("previews.open", { title: "Vyre's own", port: frontPort })).error.code, "bad_input", "Vyre's own port is not a preview");
