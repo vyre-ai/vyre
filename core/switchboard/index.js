@@ -1696,7 +1696,7 @@ export class Switchboard {
     return p;
   }
 
-  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null }) {
+  async doSwitchProvider(id, { provider, account = null, model = null, reason = "asked", text = null, kernelTurn = null }) {
     const rec = this.must(id);
     provider = String(provider || "");
     if (provider !== "claude" && !(this.deps.providers && this.deps.providers.get(provider))) throw Object.assign(new Error(`no session provider ${provider}`), { code: "bad_input" });
@@ -1720,11 +1720,10 @@ export class Switchboard {
     this.db.prepare("UPDATE threads_runs SET provider = ?, account = ?, model = ?, driver = NULL, opts = ? WHERE id = ?").run(provider, acct ? acct.id : null, model || null, JSON.stringify(kept), id);
     const capsOf = p => (p === "claude" ? { streaming: true, resume: true, interrupt: true, modes: true, questions: true, transcripts: true, steering: true, rewind: true } : { ...((this.deps.providers && this.deps.providers.get(p) && this.deps.providers.get(p).capabilities) || {}) });
     const why = switchedLine({ from, to: provider, had, reason, fromCaps: capsOf(from), toCaps: capsOf(provider) });
-    this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project);
-    this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project);
-    // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back.
+    const said = () => { this.emit("thread.text", { message: "vyre", text: why, done: true, notice: true }, id, rec.project); this.emit("thread.provider", { from, to: provider, account: acct ? acct.id : null, model: modelName(model), reason, text: why, ...(reason === "once" ? { once: true } : {}) }, id, rec.project); }; if (!kernelTurn) said();
+    // A one-turn ask carries the history in front of its own turn (sendOnce), and a return has its own session back. A chat turn (kernelTurn: asker and chat) opens the asker's kernel session at launch; the notice is a message of that turn, said once the session is there.
     const words = reason === "once" || reason === "back" ? "" : [seed, text || ""].filter(Boolean).join("\n\n");
-    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}) });
+    await this.launch({ resume: id, rebind: !had, ...(words ? { prompt: words } : {}), ...(kernelTurn ? { kernelTurn } : {}) }); if (kernelTurn) said();
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
@@ -2509,7 +2508,7 @@ export class Switchboard {
     const { seed } = await this.transferSeed(id, rec, provider);
     this.once.set(id, { back, from: cur, to: provider, sent: String(text), reply: "" });
     try {
-      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once" });
+      await this.switchProvider(id, { provider, account: acct ? acct.id : null, reason: "once", ...(o && o.kernelTurn ? { kernelTurn: o.kernelTurn } : {}) });
       if (seed) this.carry.set(id, seed);
       const r = await this.send(id, text, surface, { ...o, queue: false });
       if (!r.sent) throw no(String(r.note || "The turn did not start."), "busy");
@@ -4247,7 +4246,7 @@ export default {
         if (chip.length > 1) throw Object.assign(new Error("one provider answers a turn: pick one account"), { code: "bad_input" });
         const [cp, ...ca] = chip.length ? String(chip[0].id).split(":") : [];
         const over = cp ? { provider: cp, account: ca.length ? ca.join(":") : null } : null;
-        if (over && !personTurn(caller)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
+        if (over && !personTurn(caller) && !kernelTurnOf(i, caller, firstParty)) throw Object.assign(new Error("only a person's surface asks another provider for a turn"), { code: "denied" });
         if (over && i.images && i.images.length) throw Object.assign(new Error("images cannot go to another provider's one-turn ask yet; send them on the session's own provider"), { code: "bad_input" });
         if (over && !sb.sentBefore(uuid)) await sb.onceTarget(i.thread, over);
         const mine = personTurn(caller) && sb.knows(i.thread) && !sb.sentBefore(uuid);

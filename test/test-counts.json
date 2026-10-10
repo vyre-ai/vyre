@@ -382,6 +382,7 @@
  "core/stream/kill.test.js": 4,
  "core/stream/log.test.js": 12,
  "core/stream/perf.test.js": 2,
+ "core/stream/person-turns-live.test.js": 1,
  "core/stream/protocol.test.js": 13,
  "core/stream/reply-mode.test.js": 2,
  "core/stream/retention.test.js": 3,
