@@ -14,7 +14,7 @@ export const isPersonal = (s) => s.who === "personal" || s.setup?.who === "perso
 
 /** @param {SpaceNameRow} s @returns {string} */
 export function spaceName(s) {
-  if (s.tier === "basic") return "My Home";
+  if (s.tier === "basic" && (isPersonal(s) || !nameable(s.displayName) && !nameable(s.label) && !nameable(s.name))) return "My Home";
   if (isPersonal(s) && s.tier === "cloud") return "My Cloud";
   const n = nameable(s.displayName) || nameable(s.label) || nameable(s.name);
   if (n && s.tier === "cloud" && !isPersonal(s)) return /\bcloud$/i.test(n) ? n : `${n}'s Cloud`;
