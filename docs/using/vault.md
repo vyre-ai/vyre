@@ -436,6 +436,12 @@ For a team, `vyre vault vaults create <name>` makes a shared vault and
 `vyre vault members invite <vault> <person>` adds people to it. Its items appear as
 `<vault>/<item>`.
 
+In the app, **Vault**, **Sharing**, **Shared vaults** does the same: **New shared vault**, **Invite**
+(pick a role, then send the person the code it makes), **Manage** to change a role or take someone
+out, and **Change the keys**. Only an admin sees those buttons. **Accept a share** takes an invite or
+a pass someone sent you. Taking someone out names the items to replace, because they could read
+them.
+
 ## Emergency access
 
 Emergency access lets someone you trust open your items if something happens to you. They have
