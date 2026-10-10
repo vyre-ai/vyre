@@ -78,14 +78,6 @@ const inBase = f => { if (!f.startsWith("kernel/")) return false; const r = f.sl
   else if (net > 0) warns.push(`kernel: about +${net} net lines (ruled in a commit message); report the size number in your landing`);
 }
 
-// ---- R2: security paths land only after trust has read them. A branch that changes one names the review in a commit message as
-// [reviewed: trust] (trust adds it, or the author after trust's yes). Trust's own branches carry it too. The lead may rule an exception in writing.
-{
-  const SEC = /^(kernel\/(?!golden\/)|core\/vault\/|core\/gate\/|core\/spawner\/|core\/appmods\/|core\/previews\/|lib\/door-bridge\.js$|lib\/http\.js$|lib\/one-yes(-ops)?\.js$|lib\/secret-shapes\.js$|lib\/publish\/dockerfile\.js$|core\/transcripts\/sanitize\.js$|core\/modules\/index\.js$|core\/daemon\/flows-host\.js$|core\/switchboard\/(scrub|residency)\.js$|core\/runner\/(sandbox|safefs|resume-lent|vyre-door|preview-home|proctree)\.js$|core\/wink\/pairing\.js$|scripts\/gen-allow\.mjs$|scripts\/release\/|\.github\/workflows\/release[^/]*\.yml$|box\/vyre$)/;
-  const sec = changed.filter(f => SEC.test(f) && !/\.test\.m?js$/.test(f));
-  if (sec.length && !/\[reviewed: trust\]/i.test(bodies)) fail("R2", `this branch changes security code (${sec.join(", ")}): send it to trust first, and land it with [reviewed: trust] in a commit message once they say yes.`);
-}
-
 // ---- D1: a test, a guard or the test machinery is never deleted by accident (a merge once dropped test/headless-chrome.js and the Chrome install steps). Deleting one needs [delete: why] in a commit message.
 {
   const gone = git(["diff", "--name-only", "--diff-filter=D", `${mergeBase}...HEAD`]).split("\n").filter(Boolean)

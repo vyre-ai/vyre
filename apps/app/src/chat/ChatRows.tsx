@@ -5,8 +5,6 @@
 
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
-import { Caret, Turning } from "./Live";
-import { showsCaret, thoughtWord } from "./feel.js";
 import { Button, Chip, Icon, Markdown, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { tool } from "../real/box";
 import { Face } from "./Face";
@@ -97,11 +95,10 @@ function Message({ who, family, meta, sub, dress, children, wide, provider }: { 
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <Pressable onHoverIn={() => setHover(true)} onHoverOut={() => setHover(false)} onLongPress={() => setHeld((v) => !v)} delayLongPress={450} accessible={false}>
       <ActionsOn.Provider value={hover || held || showActions()}>
-      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: wide ? "row" : "column", gap: wide ? 12 : 4, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        {wide ? <Face name={who} family={family} size={32} provider={provider} /> : null}
+      <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned || dress?.flash ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
+        <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
-          {/* on a phone the face is a small mark beside the name, so the words use the whole width instead of an indent */}
-          {wide ? <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /> : <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}><Face name={who} family={family} size={20} provider={provider} /><Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} /></View>}
+          <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
           {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
@@ -196,10 +193,10 @@ function AnswerActions({ text, ctx }: { text: string; ctx: BlockCtx }) {
 }
 
 /** An assistant's words as markdown (the design system's one renderer): while it streams in, what has arrived so far is drawn, an unclosed mark or fence kept as it is. */
-function StreamText({ store, k, text, done, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
+function StreamText({ store, k, text, ctx }: { store: ChatStore; k: string; text: string; done: boolean; ctx: BlockCtx }) {
   const n = store.shown(k);
   const cut = n === undefined ? text.length : Math.min(n, text.length);
-  return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} tail={showsCaret({ done }) ? <Caret /> : undefined} />;
+  return <Markdown text={cut >= text.length ? text : text.slice(0, cut)} onCopy={(code) => void copy(code, ctx)} textNode={refNodes} />;
 }
 
 export function Skeleton({ w, h = 12, r = 6 }: { w: number | `${number}%`; h?: number; r?: number }) {
@@ -312,8 +309,8 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={`${words}. ${open ? "Hide" : "Show"} the details`} onPress={() => setOpen((v) => !v)}>
       <View style={S.s9}>
-        {running ? <Turning name="refresh" /> : <Icon name={it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />}
-        <Text size="caption" tone={running ? "default" : "muted"} numberOfLines={1} style={S.s10}>{words}</Text>
+        <Icon name={running ? "refresh" : it.status === "failed" ? "failed" : "check"} tone={it.status === "failed" ? "err" : "text-2"} />
+        <Text size="caption" tone="muted" numberOfLines={1} style={S.s10}>{words}</Text>
         {running ? <Text size="caption" tone="label">running</Text> : null}
       </View>
       {open ? <Text size="caption" tone="label" mono style={{ paddingLeft: 28 }}>{`${it.tool}${it.status === "failed" ? " failed" : ""}`}</Text> : null}
@@ -325,14 +322,10 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
 function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
   const { color } = useUiTheme();
   const [open, setOpen] = useState(false);
-  // how long it thought, from the moment we saw it start to the moment it finished; a thread loaded from before has no start to quote
-  const t0 = useRef(streaming ? Date.now() : 0);
-  const [took, setTook] = useState(0);
-  useEffect(() => { if (streaming && !t0.current) t0.current = Date.now(); if (!streaming && t0.current) { setTook(Date.now() - t0.current); t0.current = 0; } }, [streaming]);
   return (
     <View style={{ gap: 4 }}>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? "Hide the thinking" : "Show the thinking"} onPress={() => setOpen((v) => !v)} style={{ minHeight: 22, justifyContent: "center", alignSelf: "flex-start" }}>
-        <Text size="caption" tone="label">{`${thoughtWord(streaming, took)} ${open ? "▾" : "▸"}`}</Text>
+        <Text size="caption" tone="label">{`${streaming ? "Thinking" : "Thought"} ${open ? "▾" : "▸"}`}</Text>
       </Pressable>
       {open ? <View style={{ borderLeftWidth: 2, borderLeftColor: color.edge ?? color.hover, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{text}</Text></View> : null}
     </View>

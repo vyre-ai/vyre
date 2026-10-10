@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
-import { Chip, Icon, Text, useUiTheme, type IconName } from "@vyre/ui";
+import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
@@ -53,16 +53,6 @@ export type ComposerProps = {
 };
 
 const T = 44;
-
-/** A quiet choice under the box (the model, where it runs, send now or queue): words with a small arrow, not a chip, so it reads as a thing you can change and not as a setting that is on. */
-function Quiet({ icon, label, onPress, name, T, active }: { icon?: IconName; label: string; onPress?: () => void; name: string; T: number; active?: boolean }) {
-  return (
-    <Pressable accessibilityRole="button" accessibilityLabel={name} onPress={onPress} style={{ minHeight: T, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 }}>
-      {icon ? <Icon name={icon} tone={active ? "accent" : "label"} size={14} /> : null}
-      <Text size="caption" tone={active ? "accent" : "label"} numberOfLines={1}>{`${label} \u25BE`}</Text>
-    </Pressable>
-  );
-}
 
 function Tool({ icon, label, onPress, big }: { icon: any; label: string; onPress?: () => void; big: boolean }) {
   const s = big ? T : 36;
@@ -154,19 +144,28 @@ export function ChatComposer(p: ComposerProps) {
   const chips = (
     <>
       {busyState(p.state) ? (
-        <Quiet T={big ? T : 32} icon={mode === "steer" ? "bolt" : "clock"} label={mode === "steer" ? "Send now" : "Queue"}
-          name={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} />
+        <Pressable accessibilityRole="button" accessibilityLabel={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip tone="accent" icon={mode === "steer" ? "bolt" : "clock"}>{mode === "steer" ? "Steer now" : "Queue"}</Chip>
+        </Pressable>
       ) : null}
       {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
-        <Quiet key={sl.id} T={big ? T : 32} label={sl.label} name={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} />
+        <Pressable key={sl.id} accessibilityRole="button" accessibilityLabel={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip>{sl.label}</Chip>
+        </Pressable>
       )) : p.models?.length ? (
-        <Quiet T={big ? T : 32} label={current ? current.label : "Model"} name="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip>{current ? current.label : "Model"}</Chip>
+        </Pressable>
       ) : null}
       {assistants > 1 ? (
-        <Quiet T={big ? T : 32} icon="agents" label={assistants === 2 ? "Ask both" : "Ask all"} active={askAll} name="Ask all assistants at once" onPress={() => setAskAll((a) => !a)} />
+        <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{assistants === 2 ? "Ask both" : "Ask all"}</Chip>
+        </Pressable>
       ) : null}
       {p.runsOn ? (
-        <Quiet T={big ? T : 32} icon={p.runsOn === "mac" ? "laptop" : "box"} label={p.runsOn === "mac" ? "This Mac" : "The server"} name={runsOnLabel(p.runsOn)} onPress={p.onRunsOn} />
+        <Pressable accessibilityRole="button" accessibilityLabel={runsOnLabel(p.runsOn)} onPress={p.onRunsOn} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip icon={p.runsOn === "mac" ? "laptop" : "box"}>{p.runsOn === "mac" ? "This Mac" : "The server"}</Chip>
+        </Pressable>
       ) : null}
     </>
   );

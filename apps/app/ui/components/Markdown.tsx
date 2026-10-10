@@ -34,14 +34,14 @@ function Inline({ nodes, ctx, base }: { nodes: Node[]; ctx: Ctx; base?: { bold?:
   );
 }
 
-function Para({ nodes, ctx, size = "read", strong, tail }: { nodes: Node[]; ctx: Ctx; size?: "read" | "title" | "headline"; strong?: boolean; tail?: React.ReactNode }) {
-  return <Text size={size} strong={strong} selectable><Inline nodes={nodes} ctx={ctx} base={{ bold: strong }} />{tail}</Text>;
+function Para({ nodes, ctx, size = "read", strong }: { nodes: Node[]; ctx: Ctx; size?: "read" | "title" | "headline"; strong?: boolean }) {
+  return <Text size={size} strong={strong} selectable><Inline nodes={nodes} ctx={ctx} base={{ bold: strong }} /></Text>;
 }
 
-function Block({ b, ctx, depth, tail }: { b: Node; ctx: Ctx; depth: number; tail?: React.ReactNode }) {
+function Block({ b, ctx, depth }: { b: Node; ctx: Ctx; depth: number }) {
   switch (b.t) {
-    case "p": return <Para nodes={b.c} ctx={ctx} tail={tail} />;
-    case "h": return <View style={{ paddingTop: b.level <= 2 ? 6 : 2 }}><Para nodes={b.c} ctx={ctx} size={b.level === 1 ? "title" : b.level === 2 ? "headline" : "read"} strong tail={tail} /></View>;
+    case "p": return <Para nodes={b.c} ctx={ctx} />;
+    case "h": return <View style={{ paddingTop: b.level <= 2 ? 6 : 2 }}><Para nodes={b.c} ctx={ctx} size={b.level === 1 ? "title" : b.level === 2 ? "headline" : "read"} strong /></View>;
     case "code": return <CodeBlock code={b.text} lang={b.lang} onCopy={ctx.onCopy} />;
     case "rule": return <View accessibilityRole="none" style={{ height: 1, backgroundColor: ctx.color.edge, marginVertical: 4 }} />;
     case "quote": return (
@@ -86,14 +86,12 @@ function Block({ b, ctx, depth, tail }: { b: Node; ctx: Ctx; depth: number; tail
  * Markdown as the design system draws it. `onCopy` is how a code block's Copy reaches the clipboard (the web's own when none is given); `textNode` draws a run of plain words (chat uses it to turn a Vault reference
  * into its chip); `onLink` replaces the default of opening outside. A tree is made once per text.
  */
-export function Markdown({ text, onCopy, onLink, textNode, tail }: { text: string; onCopy?: (code: string) => void; onLink?: (href: string) => void; textNode?: (v: string) => React.ReactNode; tail?: React.ReactNode }) {
+export function Markdown({ text, onCopy, onLink, textNode }: { text: string; onCopy?: (code: string) => void; onLink?: (href: string) => void; textNode?: (v: string) => React.ReactNode }) {
   const { color, phone } = useUiTheme();
   const tree = useMemo(() => parse(text), [text]);
   const ctx: Ctx = { onCopy, onLink: onLink ?? openOutside, textNode, color: color as unknown as Record<string, string>, phone };
-  if (!tree.length) return tail ? <Text size="read">{tail}</Text> : null;
-  const last = tree.length - 1, inLast = tree[last].t === "p" || tree[last].t === "h";
-  // `tail` (the soft caret of a reply still arriving) ends the last line of words; after a code block or a table it sits on a line of its own
-  return <View style={{ gap: 10, minWidth: 0 }}>{tree.map((b, i) => <Block key={i} b={b} ctx={ctx} depth={0} tail={i === last && inLast ? tail : undefined} />)}{tail && !inLast ? <Text size="read">{tail}</Text> : null}</View>;
+  if (!tree.length) return null;
+  return <View style={{ gap: 10, minWidth: 0 }}>{tree.map((b, i) => <Block key={i} b={b} ctx={ctx} depth={0} />)}</View>;
 }
 
 export { plainOf };

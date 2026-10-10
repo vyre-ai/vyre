@@ -862,6 +862,7 @@
  "test/install-mac-server.test.js": 40,
  "test/install-windows-served.test.js": 2,
  "test/installer-copy.test.js": 3,
+ "test/journey-run-explain-timeline.test.js": 1,
  "test/journey.test.js": 1,
  "test/link-cli.test.js": 2,
  "test/link-federation.test.js": 10,
@@ -1020,6 +1021,5 @@
  "core/vault/links.test.js": 2,
  "core/github/scan.test.js": 3,
  "apps/app/screens/runner/run-switch.test.js": 7,
- "test/a5-no-copies.test.js": 2,
- "apps/app/src/chat/feel.test.js": 2
+ "test/a5-no-copies.test.js": 2
 }
