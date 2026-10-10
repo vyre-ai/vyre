@@ -390,7 +390,16 @@ export default {
       input: obj({}),
       effect: "read",
       callers: [...SURFACES, "module"],
-      run: async () => /** @type {NonNullable<typeof items>} */ (items).list(),
+      run: async (/** @type {any} */ _input, /** @type {any} */ meta) => {
+        const out = await /** @type {NonNullable<typeof items>} */ (items).list();
+        if (!out.items.length) return out;
+        // What answering each card takes from THIS caller's device: whether it needs a proof at all (a yes does, a draft that sends does, access to a secret does) and whether the device already has a live presence
+        // session, so a swipe on a covered device can answer at once and any other opens the card. Read once for the whole list.
+        const r = /** @type {any} */ (await ctx.call("presence.covered", meta && meta.peer ? { peer: meta.peer } : {}).catch(() => null));
+        const covered = Boolean(r && r.data && r.data.covered), since = r && r.data && r.data.since != null ? r.data.since : null;
+        const needs = (/** @type {any} */ c) => c.kind === "approval" || c.kind === "access" || (c.kind === "draft" && Boolean(c.facts && c.facts.presence && c.facts.presence.required));
+        return { ...out, items: out.items.map((/** @type {any} */ c) => ({ ...c, presence: { required: needs(c), covered, since } })) };
+      },
     });
     items.start();
 

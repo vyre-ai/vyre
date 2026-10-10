@@ -26,6 +26,8 @@ import { createPlacementBook, fileStore, placementOf, REASONS, AUTO, HEARTBEAT_M
 import { RUNNER_PROTOCOL_MIN } from "./protocol.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
+/** How long the server's continuation of a session may take to answer before the sweep goes on without it. */
+const RESUME_MS = 30_000;
 const SESSION = /^[A-Za-z0-9_-]{1,100}$/;
 const MAX_UPLOADS = 8;
 /** The tighter of two lender limits: `provider` beats `internet` beats none. */
@@ -38,12 +40,13 @@ export const tighterCap = (a, b) => (a === "provider" || b === "provider" ? "pro
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
  *   caps?: any, fs?: any, key?: Buffer, book?: ReturnType<typeof createPlacementBook>, now?: () => number, emit?: (type: string, payload: any) => void,
  *   titleOf?: (chat: string) => Promise<string | null> | string | null,
+ *   lapseMs?: number,
  *   resume?: (i: { space: string, session: string, chat: string | null, person: string, device: string, epoch: number, reason: string | null, view: { checkpoint(): Promise<any>, transcript(from: number, limit?: number): Promise<any>, file(rel: string, version: number): Promise<any> } }) => Promise<any> | any }} o
  *   resume: the home's own continuation of a session the lender gave up (or lost): it runs on the server from the last acknowledged checkpoint. Told again at every sweep until it answers.
  */
 export function createLentHome(o) {
   const now = o.now || Date.now;
-  const book = o.book || createPlacementBook({ now, ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
+  const book = o.book || createPlacementBook({ now, ...(o.lapseMs ? { lapseMs: o.lapseMs } : {}), ...(o.emit ? { emit: o.emit } : {}), ...(o.root ? { store: fileStore(path.join(o.root, "placements.json")) } : {}) });
   const lent = new Map();
   // A restart of the home keeps the sessions that were on lenders' computers: they are lent again as they were, and each lender gets a whole lapse to show itself.
   for (const r of book.all()) if (r.where === "mac" && r.key !== undefined) lent.set(r.session, { person: r.person, device: r.device, key: r.key || undefined, ...(r.chat ? { chat: r.chat } : {}) });
@@ -87,8 +90,11 @@ export function createLentHome(o) {
     const row = book.get(session);
     if (!row || row.where !== "server") { owed.delete(session); return; }
     if (!o.resume) { owed.delete(session); return; }
-    try { await o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) }); owed.delete(session); }
-    catch { /* told again at the next sweep */ }
+    // a continuation that hangs must not stall the sweep for every other lender: it is given half a minute and told again at the next sweep
+    try {
+      await Promise.race([Promise.resolve(o.resume({ space: o.space, session, chat: row.chat, person: row.person, device: row.device, epoch: row.epoch, reason: row.reason, view: viewOf(session) })), new Promise((_, no) => { const t = setTimeout(() => no(new Error("the continuation did not answer")), RESUME_MS); t.unref?.(); })]);
+      owed.delete(session);
+    } catch { /* told again at the next sweep */ }
   };
   // The lender that stops beating is taken; what the server owes is tried again. One timer for the Space, never faster than the heartbeat.
   let timer = null;
@@ -98,7 +104,13 @@ export function createLentHome(o) {
     timer.unref?.();
     return () => { if (timer) clearInterval(timer); timer = null; };
   };
+  let sweeping = false;
   const sweepOnce = async () => {
+    if (sweeping) return;
+    sweeping = true;
+    try { await sweepAll(); } finally { sweeping = false; }
+  };
+  const sweepAll = async () => {
     for (const r of book.lapsed()) await takeOver(r.session, "offline");
     for (const r of book.overdue()) await takeOver(r.session, r.ask && r.ask.reason ? r.ask.reason : "you");
     for (const s of [...owed]) await resumeOwed(s);
@@ -122,7 +134,7 @@ export function createLentHome(o) {
   return {
     store,
     /** The book of where every lent session runs, and the timer that takes a lender that went quiet. */
-    book, watch, sweep: sweepOnce, takeOver,
+    book, watch, sweep: sweepOnce, takeOver, view: viewOf,
     /** Every session the book knows, as `runner.placement` answers it. */
     placements() { return book.all().map(r => ({ session: r.session, chat: r.chat, device: r.device, epoch: r.epoch, ...placementOf(r) })); },
     /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
