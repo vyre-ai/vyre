@@ -115,12 +115,12 @@ export default {
       if (e.type === "stopped") endOnHome(space, e.session, e.why);
     };
     // A session that ends tells the Space's home, or the home would count its silence and take it back to life on the server twenty seconds later. The person stopped it, or the program finished: the home forgets
-    // it. The program died: the home takes it at once from the last whole turn (reason crash). Handed over or fenced: the home already knows.
+    // it. The program died: its chat hears the exit it really had, then the home takes it from the last whole turn (reason crash). Handed over or fenced: the home already knows.
     const endOnHome = (/** @type {string} */ space, /** @type {string} */ session, /** @type {string} */ why) => {
       const p = lenders.get(space)?.ports; if (!p) return;
       // a chat's process (lent spawn) says how it ended through its pump first, so the SDK hears the exit it really had; the home forgetting the session comes after
       if (why === "stopped" || why === "finished") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.stop?.(session)).catch(() => {}); }
-      else if (why === "crashed") Promise.resolve(p.requestServer?.(space, session, "crash")).catch(() => {});
+      else if (why === "crashed") { const pump = pumps.get(session); within(pump ? pump.done : null, 10_000).then(() => p.requestServer?.(space, session, "crash")).catch(() => {}); }   // the SDK hears the exit code the program really had, then the home takes the session (reason crash) to carry on from the last whole turn
     };
     const forSpace = async space => {
       const p = await portsFor(space);

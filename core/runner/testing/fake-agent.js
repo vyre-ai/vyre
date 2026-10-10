@@ -81,6 +81,8 @@ async function handle(line) {
     let buf = "", err = ""; const replies = new Map();
     child.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i); buf = buf.slice(i + 1); try { const m = JSON.parse(l); replies.get(m.id)?.(m); } catch {} } });
     child.stderr.on("data", d => { err += d; });
+    child.on("error", e => { err += "spawn: " + e.message; for (const r of replies.values()) r({ timeout: true, err: err.slice(0, 600) }); });
+    child.on("exit", (c, sg) => { err += ` exit ${c} ${sg}`; });
     const rpc = (id, method, params) => new Promise(res => { const t = setTimeout(() => res({ timeout: true, err: err.slice(0, 600) }), 12000); replies.set(id, m => { clearTimeout(t); res(m); }); child.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n"); });
     const init = await rpc(1, "initialize", { protocolVersion: "2025-06-18" });
     const list = await rpc(2, "tools/list", {});
@@ -88,7 +90,7 @@ async function handle(line) {
     const [tname, ...tj] = arg.split(" ");
     const called = tname ? await rpc(3, "tools/call", { name: tname, arguments: JSON.parse(tj.join(" ") || "{}") }) : null;
     child.kill();
-    out({ type: "mcp", init: init.result ? "ok" : init, tools: list.result ? list.result.tools.map(x => x.name) : list, ...(called ? { called: called.result || called } : {}) });
+    out({ type: "mcp", init: init.result ? "ok" : init, err: err.slice(0, 500), tools: list.result ? list.result.tools.map(x => x.name) : list, ...(called ? { called: called.result || called } : {}) });
     out({ type: "result" });
   } else if (cmd === "argv") {
     out({ type: "argv", argv: process.argv.slice(2), socket: process.env.VYRE_SOCKET || null });
@@ -103,7 +105,19 @@ async function handle(line) {
       let o = "", e = ""; c.stdout.on("data", d => { o += d; }); c.stderr.on("data", d => { e += d; }); c.on("close", () => done({ stdout: o, stderr: e.slice(0, 400) }));
       c.stdin.end(rest.slice(1).join(" "));
     });
-    out({ type: "hook", ...res });
+    // what the hook's own imports and its first call say, so a hook that prints nothing can be told from one that could not start
+    const diag = await new Promise(done => {
+      if (!plugin) return done("");
+      const script = `const root=${JSON.stringify(path.resolve(plugin, ".."))};const bad=[];for(const f of ["core/daemon/client.js","core/harness/rules.js","core/harness/index.js","core/learn/checks.js","core/learn/offline.js","core/config/index.js","core/switchboard/sessions.js"]){try{await import("file://"+root+"/"+f)}catch(e){bad.push(f+": "+String(e&&e.message).slice(0,160))}}try{const v=await import("file://"+root+"/harness/lib/vyre.js");bad.push("locate: "+JSON.stringify(v.locate(root+"/harness",process.env)))}catch(e){bad.push("locate threw: "+e.message)}try{const {call}=await import("file://"+root+"/core/daemon/client.js");const r=await call("harness.rules",{tool_name:"Bash",tool_input:{}},{caller:"harness",timeout:3000});bad.push("call: "+JSON.stringify(r).slice(0,200))}catch(e){bad.push("call threw: "+e.message)}console.log(bad.join(" ; "))`;
+      const c = spawn(process.execPath, ["--input-type=module", "-e", script], { env: { PATH: process.env.PATH, HOME: process.env.HOME, VYRE_SOCKET: process.env.VYRE_SOCKET } });
+      let o = ""; c.stdout.on("data", d => { o += d; }); c.stderr.on("data", d => { o += d; }); c.on("close", () => {
+        // and the hook itself, started directly with the same input
+        const h = spawn(process.execPath, [path.join(plugin, "hooks", "hook.js"), rest[0]], { env: { PATH: process.env.PATH, HOME: process.env.HOME, VYRE_SOCKET: process.env.VYRE_SOCKET, VYRE_THREAD: process.env.VYRE_THREAD, CLAUDE_PLUGIN_ROOT: plugin } });
+        let q = ""; h.stdout.on("data", d => { q += d; }); h.stderr.on("data", d => { q += d; }); h.on("close", code => done((o + " || hook.js directly: exit " + code + " out " + q).slice(0, 1200)));
+        h.stdin.end(rest.slice(1).join(" "));
+      });
+    });
+    out({ type: "hook", ...res, diag });
     out({ type: "result" });
   } else if (cmd === "seedcheck") {
     // what the program finds where its resume looks: the agent home's transcript of session `rest[0]`, in the folder this program sees as its own
@@ -113,5 +127,6 @@ async function handle(line) {
     out({ type: "result" });
   } else if (cmd === "env") {
     out({ type: "env", name: rest[0], value: process.env[rest[0]] ?? null });
-  } else if (cmd === "exit") process.exit(0);
+  } else if (cmd === "crash") process.exit(Number(rest[0]) || 3);
+  else if (cmd === "exit") process.exit(0);
 }
