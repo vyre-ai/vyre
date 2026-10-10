@@ -79,7 +79,7 @@ test("buildImage writes the files it was given into a context, passes secrets by
 
 // ---- builder.build over the folder reader, with the image build stood in
 const tmp = (/** @type {import("node:test").TestContext} */ t) => { const d = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-builder-c-")); t.after(() => fs.rmSync(d, { recursive: true, force: true })); return d; };
-async function tool(/** @type {import("node:test").TestContext} */ t, config = {}) {
+async function tool(/** @type {import("node:test").TestContext} */ t, config = { publish: { servers: true } }) {
   const tools = new Map();
   const mod = await builder.start({ config, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d) });
   t.after(() => { seam.buildImage = null; return mod.stop(); });
