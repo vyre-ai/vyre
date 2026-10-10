@@ -1040,5 +1040,6 @@
  "core/cli/session.floor.test.js": 2,
  "core/cli/session.test.js": 8,
  "test/journey-signin-again.test.js": 2,
- "lib/types-extend.test.js": 3
+ "lib/types-extend.test.js": 3,
+ "core/previews/thumb-stop.test.js": 1
 }
