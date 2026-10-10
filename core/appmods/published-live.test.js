@@ -36,7 +36,7 @@ const SERVER = `const http = require("http"), fs = require("fs"), crypto = requi
 http.createServer((q, r) => {
   let root = "root-read-only"; try { fs.writeFileSync("/etc/x", "1"); root = "root-writable"; } catch { /* read-only */ }
   let data = "data-writable"; try { fs.writeFileSync("/data/n", "1"); } catch { data = "data-read-only"; }
-  const k = process.env.API_KEY;
+  const k = process.env.GREETING_PHRASE;
   r.setHeader("set-cookie", "s=1; Path=/; Domain=.localhost");
   r.end(JSON.stringify({ root, data, key: k ? crypto.createHash("sha256").update(k).digest("hex").slice(0, 8) : null, cookie: q.headers.cookie || null, host: q.headers.host || null, xff: q.headers["x-forwarded-for"] || null, method: q.method, url: q.url, vyre: Object.keys(q.headers).filter(h => h.startsWith("x-vyre")) }));
 }).listen(8080);
@@ -75,7 +75,7 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   const dep = (await call("publish.create", { name: "northwind", source: { kind: "folder", ref: src }, build: { image: "dockerfile" } })).deployment;
   assert.equal(dep.stage, "Draft");
   // the secret: a real one is held for the person; their yes makes the kernel grant the Vault answers on
-  const grant = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key", name: "API_KEY", use: ["runtime"] });
+  const grant = await call("publish.secret.grant", { deployment: dep.id, ref: "vault://greeting-key", name: "GREETING_PHRASE", use: ["runtime"] });
   assert.equal(grant.held, true, JSON.stringify(grant));
   await decide(grant.task);
   // preview builds the image with the real rootless BuildKit; nothing runs yet
@@ -85,7 +85,7 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.equal(pv.deployment.stage, "Preview", JSON.stringify(pv).slice(0, 400));
   assert.match(pv.logs, /Built an image from 2 files of northwind-.*left out: \.env/s);
   assert.equal(docker(["ps", "-q", "--filter", `name=${names.container}`]).stdout.trim(), "", "a preview runs no server");
-  assert.ok(!fs.existsSync(path.join(root, "publish")) || !JSON.stringify(fs.readdirSync(path.join(root, "publish"), { recursive: true })).includes("API_KEY"), "and no secret file is written before the yes");
+  assert.ok(!fs.existsSync(path.join(root, "publish")) || !JSON.stringify(fs.readdirSync(path.join(root, "publish"), { recursive: true })).includes("GREETING_PHRASE"), "and no secret file is written before the yes");
   // going live: the plan names the server; the yes starts it
   const held = await call("publish.go", { deployment: dep.id });
   assert.equal(held.held, true);
@@ -105,7 +105,7 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   const got = JSON.parse(hit.body);
   assert.equal(got.root, "root-read-only", "the root cannot be written");
   assert.equal(got.data, "data-writable", "and the data volume can");
-  assert.equal(got.key, crypto.createHash("sha256").update("live-secret-xyz").digest("hex").slice(0, 8), "the granted secret reached the process as API_KEY");
+  assert.equal(got.key, crypto.createHash("sha256").update("live-secret-xyz").digest("hex").slice(0, 8), "the granted secret reached the process as GREETING_PHRASE");
   assert.equal(got.cookie, "theme=dark", "the visitor's cookie, never Vyre's");
   assert.deepEqual(got.vyre, []);
   assert.deepEqual([got.method, got.url], ["GET", "/hello?a=1"]);
@@ -125,13 +125,13 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.deepEqual(ins.HostConfig.Binds || [], [`${names.volume("data")}:/data`].filter(() => false).concat(ins.HostConfig.Binds || []));
   assert.ok(!(ins.Mounts || []).some((/** @type {any} */ m) => m.Type === "bind"), "nothing of the server is mounted");
   // the secret's file in Publish's folder is private; the env file the container started from is gone
-  const secretFile = path.join(root, "publish", spaceId, "secrets", dep.id, "API_KEY");
+  const secretFile = path.join(root, "publish", spaceId, "secrets", dep.id, "GREETING_PHRASE");
   assert.equal(fs.statSync(secretFile).mode & 0o777, 0o600);
   assert.ok(!fs.existsSync(path.join(root, "appmods", d.kernel.id.space, "northwind", "env")), "the env file is deleted after the start");
   assert.ok(!JSON.stringify(await call("publish.status", { deployment: dep.id })).includes("live-secret-xyz"));
 
   // taking the secret away starts the server again without it
-  await call("publish.secret.revoke", { deployment: dep.id, name: "API_KEY" });
+  await call("publish.secret.revoke", { deployment: dep.id, name: "GREETING_PHRASE" });
   const after = JSON.parse(/** @type {any} */ (await visit("GET", "/")).body);
   assert.equal(after.key, null, "the revoked secret is not in the new process");
   assert.ok(!fs.existsSync(secretFile));
