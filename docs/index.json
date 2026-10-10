@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1618,"event":533,"config":300,"env":282,"screen":0,"concept":39},
+  "counts": {"command":345,"tool":1618,"event":533,"config":300,"env":283,"screen":0,"concept":39},
   "things": [
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
     {"kind":"event","name":"account.changed","definedIn":"core/sessions/index.js","page":"reference/events.md#sessions","module":"sessions","mentions":[]},
@@ -2804,6 +2804,7 @@
     {"kind":"env","name":"VYRE_PUBLIC_GATE_PORT","definedIn":"box/compose.yml","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_PUBLISH_DOCKER","definedIn":"core/publish/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PUBLISH_MAX_KB","definedIn":"box/vyre","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_PUBLISH_SERVERS","definedIn":"core/builder/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PUBLISH_TIMEOUT","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_RAM_BYTES","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_RECOVERY_CODE","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[]},
