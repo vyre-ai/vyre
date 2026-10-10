@@ -78,7 +78,7 @@
       "key": "comms.sms",
       "group": "comms",
       "label": "Text messages through Twilio",
-      "help": "Your Twilio account number (starts with AC) and the number texts come from: { \"account\": \"AC...\", \"from\": \"+15555550123\" }. Your Twilio auth token goes in the Vault as an API key named twilio, which Comms is allowed to use. Every text waits for your yes.",
+      "help": "Your Twilio account number (starts with AC) and the number texts come from: { \"account\": \"AC...\", \"from\": \"+15555550123\" }. Connect Twilio for Comms in the Vault (Connections) and paste your auth token. Every text waits for your yes.",
       "type": "object",
       "levels": [
         "account"

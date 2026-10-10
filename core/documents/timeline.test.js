@@ -44,3 +44,19 @@ test("a generated document is a Document record on the client and the project, a
     assert.ok(hit, `the ${what}'s timeline shows the document: ${JSON.stringify(tl).slice(0, 400)}`);
   }
 });
+
+test("the signing Flow documents.signing.flow makes is a Flow a real Space accepts, with its two outward steps in plain view", { timeout: 60_000 }, async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "documents-flow", vault: { keystore: "file" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: stubPresence() });
+  t.after(() => d.stop());
+  const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(admin, {})).token });
+  await d.kernel.gateway.records.define(admin, { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "email", kind: "text", label: "Email" }, { name: "signature_submission", kind: "text", label: "Signature" },
+    { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Out for signature", "Signed"] }], stages: [{ name: "Intake" }, { name: "Out for signature" }, { name: "Signed" }] }] });
+  const made = await d.registry.call("documents.signing.flow", { type: "matter", out_stage: "Out for signature", signed_stage: "Signed", template_id: 1, name_field: "name" }, "cli", await meta());
+  assert.ok(made.data && made.data.flow, JSON.stringify(made));
+  const def = await d.registry.call("flows.define", { flow: made.data.flow }, "cli", await meta());
+  assert.ok(def.data && def.data.ok, JSON.stringify(def.data && def.data.errors || def).slice(0, 600));
+  assert.deepEqual(def.data.effects.outward.map((/** @type {any} */ x) => x.action), ["documents.send", "documents.send-signed"], "the person approving the Flow sees both sends before it ever runs");
+});
