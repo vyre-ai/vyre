@@ -15,6 +15,8 @@ import { plan, seatbeltProfile, cleanEnv, unavailable } from "./sandbox.js";
 import { workspaceUnavailable, driverFor } from "./workspace.js";
 import { createSessionSync, restore, localReaderFor } from "./sync.js";
 import { createRunner } from "./runner.js";
+import { HARNESS_MARK } from "./pipe-home.js";
+const PLUGIN_FLAG = `--${"plugin-dir"}`;
 import { pidsUnder } from "./proctree.js";
 import { fakeSpace } from "./testing/fake-space.js";
 
@@ -285,7 +287,7 @@ async function rig(t, over = {}) {
   const runner = mk();
   const routes = [{ prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "x-api-key" }, allow: [{ method: "GET", path: "/v1/messages" }, { method: "POST", path: "/v1/messages" }] },
     { prefix: "/space", upstream: `http://127.0.0.1:${up.port}/api`, credential: { header: "authorization", prefix: "Bearer " }, allow: [{ method: "GET", path: "/gmail/*" }] }];
-  const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir, path.dirname(process.execPath)], routes,
+  const launch = (r, session, extra = {}) => r.start({ session, command: process.execPath, args: [path.join(agentDir, "agent.js"), ...(extra.moreArgs || [])], readOnly: [agentDir, path.dirname(process.execPath)], routes,
     env: { VYRE_PROBE_FILE: path.join(outsideDir, "private.txt"), VYRE_PROBE_HOME: process.env.HOME || process.env.USERPROFILE || "/root", VYRE_PROBE_PORT: String(up.port) }, ...extra });
   t.after(async () => { try { await runner.stopAll(); await runner.lock(); } catch {} await up.close(); for (const d of [base, agentDir, outsideDir]) rm(d); });
   return { base, runner, sp, up, routes, launch, server, mk };
@@ -635,8 +637,9 @@ test("runner: a chat's session gets a door to Vyre (VYRE_SOCKET) that asks the h
   const root = fs.mkdtempSync(path.join(SCRATCH, "vyre-root-")); t.after(() => rm(root));
   fs.mkdirSync(path.join(root, "harness", "mcp"), { recursive: true }); fs.writeFileSync(path.join(root, "harness", "mcp", "run.js"), "");
   /** @type {any[]} */ const asked = [];
-  const door = { call: async (/** @type {any} */ q) => { asked.push(q); return { status: 200, body: JSON.stringify({ data: "from the home" }) }; }, entry: path.join(root, "harness", "mcp", "run.js"), root };
-  const h = await r.launch(r.runner, "sd", { vyre: door });
+  fs.mkdirSync(path.join(root, "harness", "hooks"), { recursive: true }); fs.writeFileSync(path.join(root, "harness", "hooks", "run.js"), "");
+  const door = { call: async (/** @type {any} */ q) => { asked.push(q); return { status: 200, body: JSON.stringify({ data: "from the home" }) }; }, entry: path.join(root, "harness", "mcp", "run.js"), root, plugin: path.join(root, "harness") };
+  const h = await r.launch(r.runner, "sd", { vyre: door, moreArgs: ["--verbose", PLUGIN_FLAG, HARNESS_MARK] });
   const lines = []; h.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) lines.push(JSON.parse(l)); });
   h.send("vyre records.list {\"a\":1}");
   const said = await waitFor(() => lines.find(e => e.type === "vyre"));
@@ -646,14 +649,20 @@ test("runner: a chat's session gets a door to Vyre (VYRE_SOCKET) that asks the h
   const argv = await waitFor(() => lines.find(e => e.type === "argv"));
   assert.equal(argv.socket, "/run/vyre.sock");
   assert.ok(argv.argv.includes("--mcp-config"));
+  // the box's Harness is named by the mark; with the door up the lender's copy of it loads in its place, and the hooks have the door too
+  const at = argv.argv.indexOf(PLUGIN_FLAG);
+  assert.ok(at >= 0 && argv.argv[at + 1] === path.join(root, "harness") && !argv.argv.includes(HARNESS_MARK), JSON.stringify(argv.argv));
+  h.send("env VYRE_THREAD");
+  assert.equal((await waitFor(() => lines.find(e => e.type === "env"))).value, "sd", "Vyre's own session, as on the box");
   // a folder that holds a person's secret folder is never bound: no door, the session still runs
   const bad = fs.mkdtempSync(path.join(SCRATCH, "vyre-bad-")); t.after(() => rm(bad));
   fs.mkdirSync(path.join(bad, ".ssh")); fs.mkdirSync(path.join(bad, "harness", "mcp"), { recursive: true }); fs.writeFileSync(path.join(bad, "harness", "mcp", "run.js"), "");
-  const h2 = await r.launch(r.runner, "se", { vyre: { ...door, entry: path.join(bad, "harness", "mcp", "run.js"), root: bad } });
+  const h2 = await r.launch(r.runner, "se", { vyre: { ...door, entry: path.join(bad, "harness", "mcp", "run.js"), root: bad }, moreArgs: ["--verbose", PLUGIN_FLAG, HARNESS_MARK] });
   const lines2 = []; h2.child.stdout.on("data", d => { for (const l of String(d).split("\n").filter(Boolean)) lines2.push(JSON.parse(l)); });
   h2.send("argv");
   const argv2 = await waitFor(() => lines2.find(e => e.type === "argv"));
   assert.equal(argv2.socket, null, "no door");
+  assert.ok(!argv2.argv.includes(PLUGIN_FLAG) && !argv2.argv.includes(HARNESS_MARK) && argv2.argv.includes("--verbose"), "and no plugin flag left without a value or a door: " + JSON.stringify(argv2.argv));
   assert.ok(events.some(e => e.type === "vyre-unavailable" && e.session === "se"), "and the person's side is told");
 });
 
