@@ -41,6 +41,7 @@ import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { lentServiceFor, lentPlacements } from "./lent-service.js";
 import { lentRequest } from "./threadsock.js";
+import { available as spawnerThere } from "../spawner/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 import { proofSigner } from "../../lib/remote-proof.js";
 
@@ -680,7 +681,7 @@ async function startLocked(opts, root, p, release) {
       // The loader that carries a chat on from a computer of the person's: a host's own (opts.resumeLent, or the registry's), else the runner module's (`runner.resume-lent`), which needs the Switchboard to say where
       // the chat's transcript belongs. The packaged box leaves it off until the spawner can place a transcript for an account's own uid.
       const ownLoader = (/** @type {any} */ i) => registry.call("runner.resume-lent", { space: i.space, session: i.session, thread: i.thread || i.chat || i.session, chat: i.chat || null, person: i.person, device: i.device, epoch: i.epoch, reason: i.reason }, "module:vyred", { door: true }).then((/** @type {any} */ r) => { if (r && r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r && r.data; });
-      const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && process.env.VYRE_SUPERVISOR !== "docker" ? ownLoader : undefined);
+      const loaderOf = () => opts.resumeLent || /** @type {any} */ (registry.deps).resumeLent || (registry.tools.has("runner.resume-lent") && registry.tools.has("threads.transcript-target") && (process.env.VYRE_SUPERVISOR !== "docker" || spawnerThere()) ? ownLoader : undefined);
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // a chat's name for the computer's list (runner.here): the Work module's own read for the home, when it has one (work.chat.title { chat } -> { title })
         titleOf: async (/** @type {string} */ _space, /** @type {string} */ chat) => { if (!registry.tools.has("work.chat.title")) return null; try { const r = /** @type {any} */ (await registry.call("work.chat.title", { chat }, "module:vyred", { door: true })); return r && r.data && typeof r.data.title === "string" ? r.data.title : null; } catch { return null; } },

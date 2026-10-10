@@ -4812,17 +4812,24 @@ export default {
       },
     });
     // Where the transcript of a chat belongs on THIS server, whether or not the file exists yet: the loader that carries a chat on from a computer of the person's (core/runner/resume-lent.js) writes it there.
-    // Only a Claude thread this Switchboard has, and nothing on the packaged box, where the file belongs to an account's own uid and only the spawner may place one.
+    // Only a Claude thread this Switchboard has. On the packaged box the file belongs to the thread's account (its own uid and HOME): the answer then names the account, and only the spawner may place the file.
     ctx.tool("threads.transcript-target", {
-      description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of, a provider that keeps no such file, or a server where the transcript is an account's own.", internal: true, callers: ["module"],
+      description: "Where a chat's provider transcript lives (or will live) on this server, for the runner to put the lines of a chat that ran on a computer of the person's. Null for a thread this Switchboard has no record of or a provider that keeps no such file. On the packaged box it also names the account (uid) whose HOME holds the file.", internal: true, callers: ["module"],
       input: { type: "object", required: ["thread"], properties: { thread: str } },
       run: async i => {
         const id = String(i.thread);
         const rec = sb.record(sb.threadOfNative(id) || id);
-        if (!rec || (rec.provider || "claude") !== "claude" || process.env.VYRE_SUPERVISOR === "docker") return null;
-        const thread = String(rec.id || id), native = sb.nativeOf(thread), folders = sb.deps.transcripts || [];
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const thread = String(rec.id || id), native = sb.nativeOf(thread);
+        let folders = sb.deps.transcripts || [], account;
+        if (process.env.VYRE_SUPERVISOR === "docker") {
+          const acct = await sb.accountFor({ provider: "claude", account: rec.account, project: rec.project, agent: rec.agent }, thread).catch(() => null);
+          const home = acct && acct.uid != null && sb.deps.accountHome ? sb.deps.accountHome(acct) : null;
+          if (!home) return null;
+          folders = [path.join(home, ".claude", "projects")]; account = Number(acct.uid);
+        }
         const at = transcriptPlace(folders, String(rec.cwd || ""), native);
-        return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) } : null;
+        return at ? { thread, native, root: at.root, file: at.file, ...(rec.cwd ? { cwd: String(rec.cwd) } : {}), ...(account !== undefined ? { account } : {}) } : null;
       },
     });
     // Where a transcript goes inside a computer's runner workspace, for a chat that moves there from this server (the runner module writes it; only this module knows the layout).

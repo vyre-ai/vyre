@@ -235,6 +235,7 @@ export default {
     const resumeLent = createResumeLent({
       target: async thread => { const x = /** @type {any} */ (await ctx.call("threads.transcript-target", { thread })); return x && x.data ? x.data : null; },
       port: space => { try { return hostOf()?.ownServer?.port(space) || null; } catch { return null; } },
+      place: async (tg, bytes) => { const h = hostOf()?.ownServer; if (!h || typeof h.place !== "function") throw Object.assign(new Error("this server cannot place a transcript in an account's home"), { code: "unavailable" }); await h.place(Number(tg.account), tg.file, bytes); },
       say: (type, payload) => { try { ctx.events.emit(type, payload); } catch { /* a notice */ } },
     });
     ctx.tool("runner.resume-lent", { description: "Carry on a chat from the last whole turn its computer acknowledged. Internal: the daemon, when a lent session goes to the server.", internal: true, callers: ["module"],

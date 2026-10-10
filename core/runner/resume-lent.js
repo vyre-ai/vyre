@@ -22,7 +22,7 @@ const PAGE = 2000;
 const SAFE_REL = /^(?!\/)(?!.*(^|\/)\.\.(\/|$))[^\0]{1,400}$/;
 
 /**
- * @param {{ target: (thread: string) => Promise<{ file: string, root: string, native: string, cwd?: string } | null>, port?: (space: string) => any, say?: (type: string, payload: any) => void, fsx?: typeof fs }} o
+ * @param {{ target: (thread: string) => Promise<{ file: string, root: string, native: string, cwd?: string, account?: number } | null>, place?: (tg: { file: string, root: string, native: string, cwd?: string, account?: number }, bytes: Buffer) => Promise<void>, port?: (space: string) => any, say?: (type: string, payload: any) => void, fsx?: typeof fs }} o
  * @returns {(i: any) => Promise<{ resumed: boolean, turn: number, lines: number, files: number, conflicts: string[] }>}
  */
 export function createResumeLent(o) {
@@ -50,13 +50,21 @@ export function createResumeLent(o) {
       if (want.transcript !== got.transcript || want.manifest !== got.manifest || want.seq !== cp.seq || want.turn !== cp.turn) throw err("unavailable", "the lender's checkpoint does not match its transcript: it is not carried on");
     }
     // the provider's own file, whole: a temp file in the same folder, fsynced, renamed in
-    fsx.mkdirSync(path.dirname(tg.file), { recursive: true, mode: 0o700 });
-    // the real paths (a temp folder on a Mac is behind a link): the seal pins the file to its folder by them
-    const dir = fsx.realpathSync(path.dirname(tg.file)), file = path.join(dir, path.basename(tg.file)), root = fsx.realpathSync(tg.root);
-    const tmp = path.join(dir, `.${path.basename(file)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
-    const fd = fsx.openSync(tmp, "w", 0o600);
-    try { fsx.writeSync(fd, lines.join("\n") + "\n"); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
-    fsx.renameSync(tmp, file);
+    let file = tg.file, root = tg.root;
+    if (tg.account !== undefined) {
+      // the packaged box: the file belongs to the thread's account, and only the spawner can place one (whole, as the account, 0600); vyred then reads it to seal it
+      if (typeof o.place !== "function") throw err("unavailable", "this server cannot place a transcript in an account's home");
+      await o.place(tg, Buffer.from(lines.join("\n") + "\n"));
+    } else {
+      fsx.mkdirSync(path.dirname(tg.file), { recursive: true, mode: 0o700 });
+      // the real paths (a temp folder on a Mac is behind a link): the seal pins the file to its folder by them
+      const dir = fsx.realpathSync(path.dirname(tg.file));
+      file = path.join(dir, path.basename(tg.file)); root = fsx.realpathSync(tg.root);
+      const tmp = path.join(dir, `.${path.basename(file)}.${crypto.randomBytes(4).toString("hex")}.tmp`);
+      const fd = fsx.openSync(tmp, "w", 0o600);
+      try { fsx.writeSync(fd, lines.join("\n") + "\n"); fsx.fsyncSync(fd); } finally { fsx.closeSync(fd); }
+      fsx.renameSync(tmp, file);
+    }
     // the server's own store learns the same turn, so a later recover() lands here and not before it
     const port = o.port ? o.port(i.space) : null;
     let turn = Number(cp.turn) || 0;

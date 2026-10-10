@@ -4,9 +4,9 @@
 // the same store a lent computer writes to, on this home's disk, authorized per call by the kernel as the owner's chain (checkpoint.write and checkpoint.read are held by the owner role).
 import path from "node:path";
 import { createCheckpointStore } from "../runner/checkpoint-store.js";
-import { shareTranscript } from "../spawner/client.js";
+import { shareTranscript, placeTranscript } from "../spawner/client.js";
 
-/** @param {{ kernel: any, registry: any, root: string, log?: (m: string) => void }} o */
+/** @param {{ kernel: any, registry: any, root: string, log?: (m: string) => void, spawnerSocket?: string }} o */
 export function createOwnServerHost(o) {
   /** @type {any} */ let store = null;
   const space = () => o.kernel.id.space;
@@ -14,6 +14,8 @@ export function createOwnServerHost(o) {
   const storeOf = () => store || (store = createCheckpointStore({ space: space(), root: path.join(o.root, "checkpoints"),
     authorize: (/** @type {any} */ q) => o.kernel.gateway.authorize({ chain: q.chain, action: q.action, resource: q.resource }) }));
   return Object.freeze({
+    /** A chat carried on from a person's computer, on the packaged box: the transcript is placed in the thread's account's own HOME by the spawner (whole, as the account, 0600), then made readable for the seal like any account transcript. @param {number} account @param {string} file @param {Buffer} bytes */
+    place: async (account, file, bytes) => { const sock = o.spawnerSocket ? { socket: o.spawnerSocket } : {}; await placeTranscript(account, file, bytes, sock); await shareTranscript(account, file, sock); },
     /** The store's port for this home's own Space; any other Space's sessions are not this home's to seal. @param {string} s */
     port: s => { if (s !== space()) throw Object.assign(new Error("not this home's Space: give the Space this home belongs to (spaces.list shows them)"), { code: "not_found" }); return storeOf().port(chain); },
     /** @param {any} e a thread.finished event @returns {Promise<{ space: string, session: string, file: string, root: string, state: any } | null>} */

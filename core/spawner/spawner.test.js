@@ -219,3 +219,20 @@ test("spawner place, the real script (run as the current user): 0600, whole, the
   assert.equal(run(f, "x", String(process.getuid() + 1)).status, 13);
   fs.mkdirSync(path.join(dir, "projects", "-work-a", "d.jsonl")); assert.equal(run(path.join(dir, "projects", "-work-a", "d.jsonl"), "x").status, 14);
 });
+
+test("the daemon's own-server host places a transcript through the spawner and makes it readable for the seal (the packaged box carries a chat on from a computer)", async t => {
+  const { createOwnServerHost } = await import("../daemon/ownserver-host.js");
+  /** @type {any[]} */ const log = [];
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-spawner-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const acct = path.join(dir, "acct"); fs.mkdirSync(path.join(acct, "2000"), { recursive: true });
+  const stat = (/** @type {string} */ d) => ({ isDirectory: () => true, isSymbolicLink: () => false, uid: Number(path.basename(d)), mode: 0o40700 });
+  const socket = path.join(dir, "s.sock");
+  const srv = await serve({ socket, allow: ["/bin/sh"], work: path.join(dir, "work"), agent: { uid: 1001, gid: 1001, groups: [1002] }, accounts: { min: 2000, max: 2063, home: acct, shared: [1002], stat,
+    place: (home, who, file, bytes) => { log.push(["place", who.uid, file, bytes.toString()]); }, share: (home, who, file) => { log.push(["share", who.uid, file]); } } });
+  t.after(() => srv.close());
+  const host = createOwnServerHost({ kernel: { id: { space: "spc_aaaaaaaaaaaa", owner: "per_o" }, chains: {}, gateway: {} }, registry: {}, root: dir, spawnerSocket: socket });
+  const file = path.join(acct, "2000", ".claude", "projects", "-srv-acme", "s1.jsonl");
+  await host.place(2000, file, Buffer.from("one\ntwo\n"));
+  assert.deepEqual(log, [["place", 2000, file, "one\ntwo\n"], ["share", 2000, file]], "placed, then shared for the seal, in that order");
+  await assert.rejects(host.place(2001, file, Buffer.from("x")), /only <HOME>/);
+});

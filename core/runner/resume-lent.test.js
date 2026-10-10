@@ -32,7 +32,7 @@ async function world(/** @type {any} */ t, { whole = 4, extra = 2, files = /** @
   const resume = createResumeLent({ target: async thread => (thread === "thread_a" ? { file, root, native: NATIVE, cwd } : null), port: () => own, say: (type, p) => said.push([type, p]) });
   const view = { checkpoint: () => lent.getCheckpoint(LENT), transcript: (/** @type {number} */ f, /** @type {number} */ l) => lent.getTranscript(LENT, f, l), file: (/** @type {string} */ rel, /** @type {number} */ v) => lent.getFile(LENT, rel, v) };
   const go = (/** @type {any} */ over = {}) => resume({ space: SPACE, session: LENT, thread: "thread_a", chat: null, view, ...over });
-  return { dir, cwd, file, own, go, said };
+  return { dir, cwd, file, own, go, said, lentView: view };
 }
 
 test("the lender's last whole turn becomes the chat's own transcript here, and the cut turn is not in it", async t => {
@@ -83,4 +83,21 @@ test("a checkpoint whose cover does not match the transcript the home holds is n
   await assert.rejects(() => w.go({ view: view({ ...good, transcript: "0".repeat(64) }) }), (/** @type {any} */ e) => e.code === "unavailable" && /does not match/.test(e.message));
   assert.ok(!fs.existsSync(w.file), "nothing was written");
   assert.equal((await w.go({ view: view(good) })).resumed, true);
+});
+
+test("on the packaged box the transcript is placed for the thread's account by the spawner, not written by the server, and the server's own store learns the turn", async t => {
+  const w = await world(t, { whole: 3, extra: 1 });
+  /** @type {any[]} */ const placedFor = [];
+  const target = async () => ({ file: w.file, root: path.dirname(path.dirname(w.file)), native: NATIVE, cwd: w.cwd, account: 2007 });
+  const resume = createResumeLent({ target, port: () => w.own, place: async (tg, bytes) => { placedFor.push([tg.account, tg.file, bytes.toString()]); fs.mkdirSync(path.dirname(tg.file), { recursive: true }); fs.writeFileSync(tg.file, bytes); } });
+  const dir = path.dirname(w.file);
+  const r = await resume({ space: SPACE, session: LENT, thread: "thread_a", view: { checkpoint: () => w.lentView.checkpoint(), transcript: (/** @type {number} */ f, /** @type {number} */ l) => w.lentView.transcript(f, l), file: () => null } });
+  assert.equal(r.resumed, true);
+  assert.deepEqual(placedFor.map(x => [x[0], x[1]]), [[2007, w.file]], "placed for the account named by the target, at its file");
+  assert.equal(placedFor[0][2], [1, 2, 3].map(line).join("\n") + "\n", "the whole turns, nothing of the cut one");
+  assert.ok(!fs.readdirSync(dir).some(n => n.endsWith(".tmp")), "the server wrote no temp file of its own");
+  assert.equal((await w.own.getCheckpoint(NATIVE)).seq, 3);
+  // no way to place: refused, nothing half-done
+  const no = createResumeLent({ target, port: () => w.own });
+  await assert.rejects(() => no({ space: SPACE, session: LENT, thread: "thread_a", view: w.lentView }), (/** @type {any} */ e) => e.code === "unavailable");
 });
