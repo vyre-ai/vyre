@@ -275,6 +275,8 @@ export class FlowRunner {
     const versions = new Map();
     for (const r of await this.store.listRuns({ limit: 1000 })) {
       if (!r.attention || r.state === "done" || r.state === "cancelled") continue;
+      // a lane or sub-flow whose parent already reports the failure is one row, the parent's: Retry on it sends the failed lanes round again
+      if (r.parent) { const p = await this.store.getRun(r.parent.run); if (p && p.state === "failed" && p.error && /^(branch|subflow)_failed$/.test(p.error.code)) continue; }
       let label = r.gate ? `Stage gate: ${r.gate.type} ${r.gate.stage}` : r.flow;
       let stepLabel = r.attention.step || "";
       if (!r.gate) {
@@ -907,16 +909,16 @@ export class FlowRunner {
   }
 
   /**
-   * Stop a run that is not running: paused, failed or waiting. It is kept (its ledger and error stay), marked cancelled, and any card it waits on is withdrawn where the kernel can. A run that already finished is left as it is.
+   * Stop a run that is not running: paused, failed, waiting or held. It is kept (its ledger and error stay), marked cancelled, and any card it waits on is withdrawn where the kernel can. A run that already finished is left as it is.
    * @param {string} runId @param {{ by?: string, reason?: string }} [o]
    */
   async cancel(runId, o = {}) {
     return this.#locked(runId, async () => {
       const run = await this.store.getRun(runId);
       if (run && run.gate) throw Object.assign(new Error("a stage gate is not cancelled; move the record, or move it on early with flows.advance"), { code: "bad_state" });
-      if (!run || !["paused", "failed", "waiting"].includes(run.state)) return { ok: false, state: run ? run.state : null };
+      if (!run || !["paused", "failed", "waiting", "queued"].includes(run.state)) return { ok: false, state: run ? run.state : null };
       const w = run.waiting;
-      run.state = "cancelled"; run.waiting = undefined; run.finished_at = this.now(); run.updated_at = run.finished_at; run.attention = undefined;
+      run.state = "cancelled"; run.waiting = undefined; run.queued = undefined; run.finished_at = this.now(); run.updated_at = run.finished_at; run.attention = undefined;
       run.cancelled = { by: o.by || null, at: run.finished_at, ...(o.reason ? { reason: String(o.reason).slice(0, 200) } : {}) };
       await this.store.putRun(run);
       if (w && w.task && this.k.ask && typeof this.k.ask.cancel === "function") { try { await this.k.ask.cancel(this.#chain({ run, cat: null, flow: null }), w.task); } catch { /* the card stays; the run is stopped anyway */ } }

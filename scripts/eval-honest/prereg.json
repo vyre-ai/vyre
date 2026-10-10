@@ -1,0 +1,225 @@
+{
+ "version": 1,
+ "sealedBefore": "any paid run; the runner refuses a paid run when this file or heldout.json differ from PREREG.sha256, or when the tree has uncommitted changes under scripts/ or core/",
+ "orderSeed": 20261009,
+ "reps": 3,
+ "model": "claude-sonnet-5-5",
+ "permissions": "Both arms run with the same Claude Code permission mode (the person's answers come from the runner: Vyre tools allowed on the Vyre arm; Bash, Read, Write, Edit, Glob, Grep allowed on the plain arms). The Vyre arm is denied Claude Code's own tools, as in the token-proof rounds.",
+ "evalA": {
+  "cells": [
+   {
+    "id": "vyre",
+    "label": "Claude Code with Vyre"
+   },
+   {
+    "id": "plain-a1",
+    "label": "plain Claude Code, the prompts as given, an empty folder"
+   },
+   {
+    "id": "plain-a2",
+    "label": "plain Claude Code given the data as files and the two APIs by curl"
+   }
+  ],
+  "tasks": [
+   {
+    "id": "recall",
+    "check": "recall",
+    "needsVyre": false,
+    "prompt": "Using Vyre, find out what monthly retainer Harlow Legal pays us. Answer in one sentence with the amount.",
+    "plain": "Find out what monthly retainer Harlow Legal pays us. The notes are in notes.md. Answer in one sentence with the amount."
+   },
+   {
+    "id": "todo",
+    "check": "todo",
+    "needsVyre": false,
+    "prompt": "Add a todo in Vyre to renew the notary bond by Friday. Then say it is done.",
+    "plain": "Add a todo to renew the notary bond by Friday as one new line at the end of todo.txt. Then say it is done."
+   },
+   {
+    "id": "record",
+    "check": "record",
+    "needsVyre": false,
+    "prompt": "Find the client record for Dana Whitfield in Vyre and tell me her case type.",
+    "plain": "Find the client record for Dana Whitfield in clients.json and tell me her case type."
+   },
+   {
+    "id": "flow",
+    "check": "flow",
+    "needsVyre": true,
+    "prompt": "Run the Flow called intake-welcome in Vyre with the input {\"name\": \"Test Client\"} and tell me its run status.",
+    "plain": "Run the Flow called intake-welcome with the input {\"name\": \"Test Client\"} and tell me its run status."
+   },
+   {
+    "id": "connection",
+    "check": "connection",
+    "needsVyre": false,
+    "prompt": "Using the Orbit CRM connection in Vyre, list the customers (limit 1) and tell me how many came back.",
+    "plain": "Using curl, call GET $ORBIT_BASE/v1/customers?limit=1 with the bearer key in $ORBIT_KEY and tell me how many customers came back."
+   },
+   {
+    "id": "vault",
+    "check": "vault",
+    "needsVyre": false,
+    "prompt": "Without showing me the key, call the Acme API at /v1/status with the stored Acme key and tell me the HTTP status.",
+    "plain": "Without showing me the key, call GET $ACME_BASE/v1/status with curl using the bearer key in $ACME_KEY and tell me the HTTP status."
+   },
+   {
+    "id": "file",
+    "check": "file",
+    "needsVyre": false,
+    "prompt": "Find the file called engagement-letter in my projects folder with Vyre and show me its first line.",
+    "plain": "Find the file called engagement-letter in the northwind folder and show me its first line."
+   },
+   {
+    "id": "teammate",
+    "check": "teammate",
+    "needsVyre": true,
+    "prompt": "Ask the backend teammate in Vyre to look at the signup error and tell me you asked.",
+    "plain": "Ask the backend teammate to look at the signup error and tell me you asked."
+   },
+   {
+    "id": "doc",
+    "check": "doc",
+    "needsVyre": true,
+    "prompt": "Using Vyre, find the docs page that explains how to pair a phone and give me its path.",
+    "plain": "Find the docs page that explains how to pair a phone and give me its path."
+   },
+   {
+    "id": "skill",
+    "check": "skill",
+    "needsVyre": true,
+    "prompt": "Using Vyre, find the skill that helps keep a password out of a file and give me its id.",
+    "plain": "Find the skill that helps keep a password out of a file and give me its id."
+   }
+  ],
+  "rules": {
+   "a1": "A plain run that does not pass is classified declined when it says plainly it cannot or asks for what it needs (DECLINES in scripts/lib/eval-honest.js), else fail. A decline is a capability measure and is never counted a pass.",
+   "a2": "Plain gets: clients.json, matters.json, notes.md (the retainer), todo.txt, the northwind folder, and $ACME_BASE/$ACME_KEY and $ORBIT_BASE/$ORBIT_KEY for the two APIs. Tasks marked needsVyre have no plain equivalent and are measured as given (declined or fail), not given invented data.",
+   "headline": "Quote efficiency from plain-a2 against vyre on tasks that are possible for both (needsVyre false). Quote capability from plain-a1 against vyre on all tasks."
+  }
+ },
+ "heldOut": {
+  "file": "heldout.json",
+  "rule": "Written now, hashed in PREREG.sha256, run with the rest and reported in their own group. They are never looked at to tune anything. A fix made after seeing a held-out result shows as a different tree sha in the report."
+ },
+ "evalB": {
+  "arms": [
+   {
+    "id": "compact",
+    "label": "Claude Code's own /compact at the roll point",
+    "roll": "compact",
+    "processes": 1,
+    "env": {
+     "VYRE_ROLLOVER_SHEET": "off",
+     "VYRE_ROLLOVER_LINK": "off"
+    },
+    "rollover": false
+   },
+   {
+    "id": "seed-only",
+    "label": "Vyre rollover, seed only (no sheet, no link)",
+    "roll": "vyre",
+    "processes": 2,
+    "env": {
+     "VYRE_ROLLOVER_SHEET": "off",
+     "VYRE_ROLLOVER_LINK": "off"
+    },
+    "rollover": true
+   },
+   {
+    "id": "sheet-link",
+    "label": "Vyre rollover with the reference sheet and the link",
+    "roll": "vyre",
+    "processes": 2,
+    "env": {
+     "VYRE_ROLLOVER_SHEET": "on",
+     "VYRE_ROLLOVER_LINK": "on"
+    },
+    "rollover": true
+   },
+   {
+    "id": "no-roll",
+    "label": "no roll (the ceiling)",
+    "roll": "none",
+    "processes": 1,
+    "env": {
+     "VYRE_ROLLOVER_SHEET": "off",
+     "VYRE_ROLLOVER_LINK": "off"
+    },
+    "rollover": false
+   }
+  ],
+  "rollAfter": "m5",
+  "messages": [
+   {
+    "id": "m1",
+    "kind": "work",
+    "text": "In Vyre, list all the clients and tell me how many there are."
+   },
+   {
+    "id": "m2",
+    "kind": "work",
+    "text": "In Vyre, create three new clients named {tag} One, {tag} Two and {tag} Three with case type probate, and add a todo 'Prepare retainer for {tag} Two'. Give me the three client ids and the todo id."
+   },
+   {
+    "id": "m3",
+    "kind": "work",
+    "text": "With Vyre's file tools, read the three files in the northwind folder and tell me the monthly retainer they state. Then find the Vyre docs page about pairing a phone and give me its path."
+   },
+   {
+    "id": "m4",
+    "kind": "work",
+    "text": "Decision for the {tag} Two matter: use case type Estate, not Probate, because the real issue is her father's will. Update the client record in Vyre and keep a note of the decision."
+   },
+   {
+    "id": "m5",
+    "kind": "work",
+    "text": "With the stored Acme key in Vyre, post a note to the Acme API: POST /v1/notes with the body {\"text\": \"retainer ready\"}. Tell me what happened."
+   },
+   {
+    "id": "m6",
+    "kind": "question",
+    "answers": [
+     "{secondId}"
+    ],
+    "check": "q6",
+    "text": "What was the id of the second client you created for me earlier? Give just the id."
+   },
+   {
+    "id": "m7",
+    "kind": "question",
+    "answers": [
+     "retainer-terms-2026",
+     "3,850"
+    ],
+    "check": "q7",
+    "text": "Where did the monthly retainer figure come from? Name the file and the amount."
+   },
+   {
+    "id": "m8",
+    "kind": "question",
+    "answers": [
+     "Estate",
+     "father"
+    ],
+    "check": "q8",
+    "text": "What case type did we settle on for {tag} Two, and why was it changed?"
+   },
+   {
+    "id": "m9",
+    "kind": "question",
+    "answers": [
+     "held"
+    ],
+    "check": "q9",
+    "text": "Did the note to the Acme API go through? And what is {tag} Three's phone number?"
+   }
+  ],
+  "files": {
+   "engagement-letter.txt": "Engagement letter for Northwind Estate Planning, signed 2 October.\nScope: a trust, two wills and a power of attorney.\nFees are billed hourly at the rates in the schedule.\n",
+   "retainer-terms-2026.txt": "Retainer terms for 2026.\nThe monthly retainer is $3,850, billed on the first of each month.\n",
+   "intake-notes.txt": "Intake notes.\nThe firm has two offices and sees about 40 new matters a quarter.\nThe parking validation is $12 for visitors.\n"
+  },
+  "honestLimit": "The forced roll tests memory across a roll, not the 80 percent trigger. The trigger and the guard are tested free with the fake claude in core/sessions/rollover.test.js."
+ }
+}

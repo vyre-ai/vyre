@@ -56,7 +56,7 @@ function Computer({ name }: { name: string }) {
     return (
       <Frame title={`${name}'s computer`} sub="Glass">
         <Card><EmptyState title={g.loaded === "offline" ? "Your server is not answering" : `${name}'s computer runs on your server`}
-          body={g.loaded === "offline" ? "Glass opens once your server answers again. Check it with vyre status." : "No box is paired with this device, so there is no screen to watch. Pair one from a terminal: vyre box add you@your-server"} /></Card>
+          body={g.loaded === "offline" ? "Glass opens once your server answers again. Nothing was lost." : "No box is paired with this device, so there is no screen to watch. Add your server under Settings, Devices."} /></Card>
       </Frame>
     );
   }

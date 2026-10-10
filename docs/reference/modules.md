@@ -102,7 +102,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 150 | 56 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 154 | 58 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -312,6 +312,7 @@ Send an email or a text message as you, held at the Gate for your yes and logged
 - Shows on: no surface
 - Needs credentials: `[object Object]`
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`
 
 ## computer
 
@@ -390,6 +391,7 @@ Make documents from Word templates and your records, deterministic, and file the
 - Tools: [8](tools.md#documents)
 - Emits: [3 events](events.md#documents)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## events
 
@@ -1095,8 +1097,8 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [150](tools.md#vault), 21 of them only for other modules
-- Emits: [56 events](events.md#vault)
+- Tools: [154](tools.md#vault), 21 of them only for other modules
+- Emits: [58 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

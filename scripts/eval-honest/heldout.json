@@ -1,0 +1,26 @@
+{
+ "note": "Three tasks, written before any paid run and hashed in PREREG.sha256. Never tuned on.",
+ "tasks": [
+  {
+   "id": "h1-count",
+   "check": "heldout_count",
+   "needsVyre": false,
+   "prompt": "In Vyre, how many clients have the case type probate? Answer with the number only.",
+   "plain": "In clients.json, how many clients have the case type probate? Answer with the number only."
+  },
+  {
+   "id": "h2-lookup",
+   "check": "heldout_lookup",
+   "needsVyre": false,
+   "prompt": "In Vyre, what is the stage of the matter titled 'Dunn file 70', and who is its client?",
+   "plain": "In matters.json, what is the stage of the matter titled 'Dunn file 70', and who is its client?"
+  },
+  {
+   "id": "h3-todo",
+   "check": "heldout_todo",
+   "needsVyre": false,
+   "prompt": "In Vyre, find the client who comes last when clients are sorted by surname, then given name. Add a todo titled 'Call' followed by their full name, and tell me the todo's id.",
+   "plain": "In clients.json, find the client who comes last when clients are sorted by surname, then given name. Add a todo to todo.txt as one line titled 'Call' followed by their full name, in the form 'ID | title' with an id you make up as t- and four digits, and tell me the todo's id."
+  }
+ ]
+}

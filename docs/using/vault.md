@@ -436,10 +436,25 @@ For a team, `vyre vault vaults create <name>` makes a shared vault and
 `vyre vault members invite <vault> <person>` adds people to it. Its items appear as
 `<vault>/<item>`.
 
+In the app, **Vault**, **Sharing**, **Shared vaults** does the same: **New shared vault**, **Invite**
+(pick a role, then send the person the code it makes), **Manage** to change a role or take someone
+out, and **Change the keys**. Only an admin sees those buttons. **Accept a share** takes an invite or
+a pass someone sent you. Taking someone out names the items to replace, because they could read
+them.
+
 Your phone does the same from the app: it makes a shared vault, lists and syncs them with no
 question, and asks for your yes (the same one as for showing a secret) before it invites someone,
 changes a role, removes a member or changes the vault's key. An assistant or an outside agent can
 read the list and pull changes, and can do nothing else here.
+
+## A login linked to a client
+
+Link a login to the client, matter or project it belongs to (the portal login for this client) and
+every use of it shows on that record's timeline: "portal-login was used to sign in by the agent
+kit". Only the name and the time appear. The login itself is never on the record, the link or the
+timeline, and a link gives nobody access to anything; it only says which record the login is for.
+Deleting the login takes its links with it. In the app, open the login and choose **Link to a
+record**; in the terminal, `vyre call vault.link '{"item":"portal-login","to":"vyre://.../client/..."}'`.
 
 ## Keys for a published site
 
