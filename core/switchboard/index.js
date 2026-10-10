@@ -1546,8 +1546,7 @@ export class Switchboard {
       if (v && v.decision === "allow" && t.ask.tool === "Bash") { st.proc.write(answerLine(t.ask.request_id, "allow", t.ask.input)); t.ask = null; }   // the session's own vyre; the registry still holds a send
       else if (v && v.decision === "deny") {
         st.proc.write(answerLine(t.ask.request_id, "deny", t.ask.input, `Vyre's security floor refused this: ${v.reason || "not allowed"}`));
-        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project);
-        t.ask = null;
+        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project); t.ask = null;
       }
     }
     if (t.ask && t.ask.kind === "permission") {
