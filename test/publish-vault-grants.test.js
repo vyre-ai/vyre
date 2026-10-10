@@ -49,7 +49,7 @@ test("one key serves two deployments and the chat's transcripts, each on its own
   assert.ok(!(await d.registry.call("vault.grant", { name: "deepgram", module: "voice" }, "cli")).error);
   assert.equal((await release("module:voice", { name: "deepgram" })).data.value, KEY);
   // another module cannot borrow a deployment's grant
-  assert.match((await release("module:voice", { name: "deepgram", deployment: "dep_a" })).data ? "" : "refused", /refused/);
+  assert.match((await release("module:notes", { name: "deepgram", deployment: "dep_a" })).error.message, /not granted to notes/, "naming a deployment gives no other module anything");
   // ending one deployment's grant leaves the other deployment and the transcripts
   await publish.mint.end({ source: "publish:secret:dep_a:DEEPGRAM_KEY:secret:runtime" });
   assert.match((await release("module:publish", { name: "deepgram", deployment: "dep_a" })).error.message, /not granted to this deployment/);
