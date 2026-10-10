@@ -125,3 +125,19 @@ test("each chat that takes a computer is a line on the Space's log, owner-visibl
   const row = h.k.log.read({ type: "lease.borrowed" })[0];
   assert.deepEqual([row.vis, row.subject], ["owner", `vyre://${SPACE}/lease/${DEVICE}`]);
 });
+
+test("the app's \"Your computers, lately\" reads the real log: a lease, a borrow and a refusal come back from the same events read the Spaces screen makes, as plain lines", { timeout: 180_000 }, async t => {
+  const { leaseRows } = await import("../../apps/app/screens/runner/lease-model.js");
+  const h = await home(t, { cap: "provider" }), { client } = await lender(t, h);
+  await client.vault.lease();
+  h.k.gateway.leases.borrowed({ thread: "chat_1", session: "s_1", member: BOB, device: DEVICE, limit: "provider", epoch: 2 });
+  const g2 = await lender(t, h, { device: "dev_other" });
+  await g2.client.vault.lease().catch(() => null);
+  // the very read records.events makes for the Space's lease lines (subject prefix vyre://<space>/lease/)
+  const events = await h.k.gateway.events.read(h.owner, { subject_prefix: `vyre://${SPACE}/lease/`, limit: 50 });
+  assert.ok(events.length >= 3, "the lines are in the log the owner reads");
+  const rows = leaseRows(events, (/** @type {string} */ id) => ({ [DEVICE]: "Dana's MacBook" }[id] || ""), Date.now());
+  assert.ok(rows.some((/** @type {any} */ r) => r.title === "A chat borrowed Dana's MacBook" && /AI provider and nothing else/.test(r.subtitle)), JSON.stringify(rows));
+  assert.ok(rows.some((/** @type {any} */ r) => r.title === "Dana's MacBook was given its key"), "the key");
+  assert.ok(rows.some((/** @type {any} */ r) => /was refused its key/.test(r.title)), "the refusal of the computer that asked for another's lease");
+});
