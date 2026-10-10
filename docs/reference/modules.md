@@ -20,7 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 20 | 4 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
-| [`appmods`](#appmods) | `core/appmods` | `box` | 23 | 9 | cli |
+| [`appmods`](#appmods) | `core/appmods` | `box` | 25 | 9 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 14 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 29 | 10 | capsule, cli, deck |
@@ -41,7 +41,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`design`](#design) | `core/design` | `box`, `local` | 11 | 3 | cli |
 | [`docs`](#docs) | `core/docs` | `box`, `local` | 2 | 0 | cli |
-| [`documents`](#documents) | `core/documents` | `box` | 8 | 3 | none |
+| [`documents`](#documents) | `core/documents` | `box` | 11 | 4 | none |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 49 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 44 | 0 | none |
@@ -155,7 +155,7 @@ Apps from the open-source world as modules: a catalog of pinned apps (Documents 
 - Folder: `core/appmods`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [23](tools.md#appmods)
+- Tools: [25](tools.md#appmods)
 - Emits: [9 events](events.md#appmods)
 - Listens for: `vault.item-changed`
 - Shows on: cli
@@ -401,8 +401,8 @@ Make documents from Word templates and your records, deterministic, and file the
 - Folder: `core/documents`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [8](tools.md#documents)
-- Emits: [3 events](events.md#documents)
+- Tools: [11](tools.md#documents)
+- Emits: [4 events](events.md#documents)
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`
 
