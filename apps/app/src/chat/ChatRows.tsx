@@ -7,6 +7,7 @@ import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, 
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Chip, Icon, Sheet, SwipeActions, Text, allowsMock, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
+import { sizeWord } from "./attach-model.js";
 import { normalizeBlock, type Block } from "./blocks.js";
 import { BlockView, copy, type BlockCtx } from "./Blocks";
 import { codeBlocks, copyForms } from "./polish.js";
