@@ -3,6 +3,7 @@ import { collect, today } from "../calendar/logic.js";
 import { useEffect, useMemo, useState } from "react";
 import { useMembers } from "../spaces/state";
 import { PhoneApprovals } from "../shell/PhoneApprovals";
+import { actFrom } from "../../src/real/notice-act.js";
 import { ModuleNowCards } from "../modules/ModuleNowCards";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
 import { UpdateNotice } from "./UpdateNotice";
@@ -23,7 +24,8 @@ import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, Load
 /** /u/now: Now, a view over tasks. Pull to refresh on a phone; the title collapses into the bar as it scrolls. `?scenario=client-pays` plays "a client pays" on a fresh mock store and ends with the Welcome email waiting for one tap. */
 export default function NowScreen() {
   const router = useRouter();
-  const { scenario, scroll } = useLocalSearchParams<{ scenario?: string; scroll?: string }>();
+  const { scenario, scroll, act, card } = useLocalSearchParams<{ scenario?: string; scroll?: string; act?: string; card?: string }>();
+  const want = useMemo(() => actFrom({ act, card }), [act, card]);
   const play = usePlayScenario(scenario);
   const q = useWorld(play.epoch);
   // On a real vyred today's items are every dated record (screens/calendar/logic.js), not the store's own calendar; the sample world keeps its sample day.
@@ -59,7 +61,7 @@ export default function NowScreen() {
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />
         : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input) => void run(t, id, input)} onOpen={(t) => void run(t, "open")} />}
-      {real ? <PhoneApprovals /> : null}
+      {real ? <PhoneApprovals want={want} /> : null}
       {scenario ? <Button kind="ghost" size="sm" label="Play: client pays" onPress={play.replay} /> : null}
       {sheets}
     </LargeTitleScreen>

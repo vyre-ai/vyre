@@ -61,25 +61,29 @@ class VyreNotifyModule : Module() {
       }
     }
 
-    /** Show a notice now. `route` is an app path such as /u/now; a tap opens vyre://u/now?notice=1. */
-    AsyncFunction("show") { id: String, title: String, body: String?, route: String? ->
+    /** Show a notice now. `route` is an app path such as /u/now; a tap opens vyre://u/now?notice=1. `actions` are buttons (Approve, Deny), each a label and an app route it opens the same way. */
+    AsyncFunction("show") { id: String, title: String, body: String?, route: String?, actions: List<Map<String, String>>? ->
       val ctx = context
       if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) return@AsyncFunction false
       channel(ctx)
-      val open = Intent(Intent.ACTION_VIEW).apply {
-        setPackage(ctx.packageName)
-        data = Uri.parse(if (route != null && route.startsWith("/")) "vyre:/$route?notice=1" else "vyre://")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+      fun opens(code: Int, to: String?): PendingIntent {
+        val open = Intent(Intent.ACTION_VIEW).apply {
+          setPackage(ctx.packageName)
+          data = Uri.parse(if (to != null && to.startsWith("/")) "vyre:/$to${if (to.contains("?")) "&" else "?"}notice=1" else "vyre://")
+          addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        return PendingIntent.getActivity(ctx, code, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
       }
-      val tap = PendingIntent.getActivity(ctx, id.hashCode(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-      val n = NotificationCompat.Builder(ctx, CHANNEL)
+      val b = NotificationCompat.Builder(ctx, CHANNEL)
         .setSmallIcon(ctx.applicationInfo.icon)
         .setContentTitle(title)
         .setContentText(body)
-        .setContentIntent(tap)
+        .setContentIntent(opens(id.hashCode(), route))
         .setAutoCancel(true)
-        .build()
+      // a button opens the app at its route, so the answer is made by the same screen and the same Face ID as the card on Now
+      actions?.take(2)?.forEachIndexed { i, a -> b.addAction(0, a["label"] ?: "", opens(id.hashCode() + 1 + i, a["route"])) }
+      val n = b.build()
       NotificationManagerCompat.from(ctx).notify(id, 0, n)
       true
     }

@@ -11,6 +11,10 @@ test("a waiting group is one notice, a single card another, each told once", () 
   const a = approvalNotices(new Set(), PENDING);
   assert.deepEqual(a.notices.map((n) => [n.title, n.route]), [["2 calls wait for your yes", "/u/now"], ["Waiting for your approval", "/u/now"]]);
   assert.match(a.notices[0].body ?? "", /kit/);
+  assert.equal(a.notices[0].actions, undefined, "a group of two is read on Now, no buttons");
+  assert.deepEqual(a.notices[1].actions?.map((x) => [x.id, x.route]), [["approve", "/u/now?act=approve&card=s1"], ["deny", "/u/now?act=deny&card=s1"]], "a device card has Approve and Deny");
+  const alone = approvalNotices(new Set(), { approvals: [{ id: "h1", group: "gp_9" }], groups: [{ id: "gp_9", size: 1, line: "An assistant (kit) wants to send an email: Northwind" }] }).notices[0];
+  assert.deepEqual(alone.actions?.map((x) => x.route), ["/u/now?act=approve&group=gp_9", "/u/now?act=deny&group=gp_9"], "a held call alone has Approve and Deny");
   const b = approvalNotices(a.seen, PENDING);
   assert.deepEqual(b.notices, [], "told once");
   const grown = approvalNotices(a.seen, { ...PENDING, groups: [{ id: "gp_1", size: 3, line: "x" }] });

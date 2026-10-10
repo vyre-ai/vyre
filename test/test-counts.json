@@ -865,6 +865,7 @@
  "test/install-windows-served.test.js": 2,
  "test/installer-copy.test.js": 3,
  "test/journey-away-and-draft.test.js": 1,
+ "test/journey-notice-approve.test.js": 4,
  "test/journey.test.js": 1,
  "test/link-cli.test.js": 2,
  "test/link-federation.test.js": 10,
