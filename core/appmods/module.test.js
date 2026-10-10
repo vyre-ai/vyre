@@ -441,7 +441,7 @@ test("the PDF converter is a service: it installs like any app, modules reach it
   const w = await world(t);
   const card = await w.model("appmods.card", { name: "pdf" });
   assert.equal(card.error, undefined, JSON.stringify(card.error));
-  assert.deepEqual(card.data.reaches, []);
+  assert.deepEqual(card.data.reaches, ["nothing outside this server"]);
   const r = await w.cli("appmods.install", { name: "pdf" });
   assert.deepEqual({ ...r.data, kit: typeof r.data.kit }, { name: "pdf", state: "running", connection: null, kit: "object" }, JSON.stringify(r));
   const env = w.log.find(l => l[0] === "up");
