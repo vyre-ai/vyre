@@ -24,13 +24,13 @@ const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const waitFor = async (/** @type {() => any} */ fn, ms = 20_000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = await fn(); if (v) return v; await sleep(50); } throw new Error("timed out"); };
 const lines = (/** @type {any} */ stream) => { /** @type {string[]} */ const got = []; let buf = ""; stream.on("data", (/** @type {any} */ d) => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { got.push(buf.slice(0, i)); buf = buf.slice(i + 1); } }); return got; };
 
-async function world(/** @type {import("node:test").TestContext} */ t, /** @type {{ enrolled?: boolean, heartbeatMs?: number, http?: any }} */ o = {}) {
+async function world(/** @type {import("node:test").TestContext} */ t, /** @type {{ enrolled?: boolean, heartbeatMs?: number, http?: any, canResume?: () => boolean }} */ o = {}) {
   const agentDir = fs.mkdtempSync(path.join(SCRATCH, "lp-agent-"));
   const agent = path.join(agentDir, "agent.js");
   fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), agent);
   const was = process.env.VYRE_CLAUDE_BIN; process.env.VYRE_CLAUDE_BIN = agent;
   const root = fs.mkdtempSync(path.join(SCRATCH, "lp-root-"));
-  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
+  const r = await rig(t, { keyIsDevice: true, lapseMs: 20_000, ...(o.http ? { http: o.http } : {}), ...(o.canResume ? { canResume: o.canResume } : {}), specFor: async () => ({ command: "claude", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider", credentialRoutes: [] }) });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map();
   const handlers = new Map();
@@ -175,4 +175,20 @@ test("a lent session calls tools.find and a module tool and gets the same answer
   const reveal = await viaLender("vault.reveal", { name: "x" });
   assert.equal(reveal.error && reveal.error.code, "denied");
   proc.kill();
+});
+
+test("a program that crashes on a Mac ends for the SDK with the exit code it really had, even when the server can carry on; the home then takes the session with reason crash", { skip: SKIP || false, timeout: 120_000 }, async t => {
+  const keep = setInterval(() => {}, 100); t.after(() => clearInterval(keep));
+  const w = await world(t, { canResume: () => true });
+  await w.run("runner.start", { space: SPACE, session: "s0" });
+  await sleep(600);
+  // the lender's report of the exit is slow, the home's take-over is not: the order the SDK hears them in is what is under test
+  const pipe = w.r.home.pipe.bind(w.r.home); w.r.home.pipe = async (/** @type {any} */ chain, /** @type {any} */ i) => { if (i && i.exit) await sleep(1200); return pipe(chain, i); };
+  const proc = w.r.home.spawn({ session: "s_crash", person: BOB, args: ["--output-format", "stream-json"] });
+  await waitFor(() => proc.lent && proc.lent.state === "up", 15_000);
+  const closed = new Promise(res => proc.on("close", (/** @type {any} */ c, /** @type {any} */ s) => res([c, s])));
+  proc.stdin.write("crash 3\n");
+  assert.deepEqual(await closed, [3, null], "its own exit code, not a hang-up");
+  assert.equal(proc.moved ?? null, null, "not a move");
+  await waitFor(() => { const r = w.book.get("s_crash"); return r && r.where === "server" && r.reason === "crash"; }, 15_000);
 });

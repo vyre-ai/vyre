@@ -99,5 +99,6 @@ async function handle(line) {
     out({ type: "result" });
   } else if (cmd === "env") {
     out({ type: "env", name: rest[0], value: process.env[rest[0]] ?? null });
-  } else if (cmd === "exit") process.exit(0);
+  } else if (cmd === "crash") process.exit(Number(rest[0]) || 3);
+  else if (cmd === "exit") process.exit(0);
 }
