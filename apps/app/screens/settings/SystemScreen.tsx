@@ -2,7 +2,7 @@
 import { RC } from "../shell/rc";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Select, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Segmented, Select, Sheet, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
 import { RunHere } from "../runner/RunHere";
@@ -84,16 +84,52 @@ function Tests() {
   );
 }
 
-function Cmd({ say: s, line }: { say: string; line: string }) {
-  return <View className="gap-s1 pt-s1"><Text size="caption" tone="label">{s}</Text><Text mono selectable size="secondary">{line}</Text></View>;
+const SCHEMES: [string, string][] = [["hmac-sha256", "Signed body"], ["github", "GitHub"], ["stripe", "Stripe"]];
+
+/** One open route: a name, how the sender signs, and the Vault item that holds the shared secret (a name, never a value). */
+function RouteSheet({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [scheme, setScheme] = useState("hmac-sha256");
+  const [header, setHeader] = useState("");
+  const [secret, setSecret] = useState("");
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setName(""); setScheme("hmac-sha256"); setHeader(""); setSecret(""); setProblem(""); } }, [open]);
+  const go = () => {
+    if (!name.trim() || !secret.trim()) { setProblem("Give the route a name and the Vault item that holds its secret."); return; }
+    if (scheme === "hmac-sha256" && !header.trim()) { setProblem("Name the header the sender puts its signature in."); return; }
+    setBusy(true); setProblem("");
+    system.hooksOpen(name.trim(), scheme, header, secret.trim()).then(() => { showToast(`/hooks/${name.trim()} is open.`); onDone(); onClose(); }).catch((e) => setProblem(say(e))).finally(() => setBusy(false));
+  };
+  return (
+    <Sheet open={open} onClose={onClose} title="Open a route">
+      <View className="gap-s3">
+        <Field label="Name" value={name} onChangeText={setName} placeholder="northwind-orders" help="Lowercase words joined by dashes. The sender posts to /hooks/ and this name." />
+        <Segmented label="Signed by" value={scheme} onChange={setScheme} options={SCHEMES} />
+        {scheme === "hmac-sha256" ? <Field label="Signature header" value={header} onChangeText={setHeader} placeholder="x-signature" /> : null}
+        <Field label="Secret, in the Vault" value={secret} onChangeText={setSecret} placeholder="northwind-orders-hook" help="The name of the Vault item that holds the shared secret." />
+        {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+        <Button kind="primary" label={busy ? "Opening" : "Open the route"} disabled={busy} onPress={go} />
+      </View>
+    </Sheet>
+  );
 }
-function StatusCardView({ c }: { c: StatusCard }) {
+
+function StatusCardView({ c, reload }: { c: StatusCard; reload: () => void }) {
+  const [routing, setRouting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const act = (a: StatusCard["actions"][number]) => {
+    if (a.id === "hooks-open") { setRouting(true); return; }
+    setBusy(true);
+    (a.id === "hooks-on" ? system.hooksEnable(true) : a.id === "hooks-off" ? system.hooksEnable(false) : system.hooksClose(a.arg ?? "")).then(() => reload()).catch((e) => showToast(say(e))).finally(() => setBusy(false));
+  };
   return (
     <Card className="gap-s1">
       <View className="flex-row items-center gap-s2"><Text strong>{c.title}</Text>{c.state ? <Text tone="muted">{c.state}</Text> : null}</View>
       {c.lines.map((l, i) => <Text key={i} size="secondary" tone="muted">{l}</Text>)}
       {c.warn.map((l, i) => <Text key={i} size="secondary" tone="warn">{l}</Text>)}
-      {c.commands.map((m, i) => <Cmd key={i} say={m.say} line={m.line} />)}
+      {c.actions.length ? <View className="flex-row flex-wrap gap-s2 pt-s1">{c.actions.map((a, i) => <Button key={`${a.id}${a.arg ?? ""}${i}`} size="sm" kind={a.id === "hooks-on" ? "primary" : "ghost"} label={a.label} disabled={busy} onPress={() => act(a)} />)}</View> : null}
+      <RouteSheet open={routing} onClose={() => setRouting(false)} onDone={reload} />
     </Card>
   );
 }
@@ -101,19 +137,20 @@ function StatusCardView({ c }: { c: StatusCard }) {
 function Advanced() {
   const [cards, setCards] = useState<StatusCard[] | null>(null);
   const [hb, setHb] = useState<ReturnType<typeof handbackOf> | null>(null);
-  useEffect(() => {
+  const load = useCallback(() => {
     Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.egress(), system.handback()]).then(([h, hs, w, e, b]) => {
       // A tool this box does not have leaves its card out.
       setCards([h && hooksCard(h, hs), w && winkCard(w), RC.glass && e && egressCard(e)].filter(Boolean) as StatusCard[]);
       setHb(b ? handbackOf(b) : null);
     });
   }, []);
+  useEffect(load, [load]);
   const [said, setSaid] = useState("");
   if (!cards) return null;
   const setMinutes = (m: number) => system.setHandback(m).then((r) => { setHb(handbackOf(r)); setSaid("Saved. It applies to a take-over already running too."); }).catch((e) => setSaid(say(e)));
   return (
     <Sec title="Advanced">
-      {cards.map((c) => <StatusCardView key={c.title} c={c} />)}
+      {cards.map((c) => <StatusCardView key={c.title} c={c} reload={load} />)}
       {hb && RC.glass ? (
         <Card className="gap-s2">
           <Text strong>Glass hand-back</Text>
