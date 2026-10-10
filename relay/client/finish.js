@@ -27,7 +27,7 @@ async function callPending(conn, tool, input) {
  * @param {{ box: string, device: string, route: string, name?: string }} paired what pairTicket answered
  * @param {{ relay: string, ticket: string, typed?: boolean, owner: { id: string, name?: string, vyre?: string, pin?: { id: string, seq: number, head: string }, kind?: "identity" | "space" }, deviceName?: string, proof?: { eid: string, sig: string },
  *   signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string, esig?: string }> | { eid: string, sig: string, esig?: string },
- *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", crypto?: any, keyStore?: any, WebSocket?: any,
+ *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", keySigner?: string, keyRp?: string, crypto?: any, keyStore?: any, WebSocket?: any,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  *   typed: the ticket came from a typed code. The server names it `typed_tag`, asks no words when the person typed the ack back, and its words are made with no ticket (core/wink/pairing.js).
  * @returns {Promise<{ paired: true, relay: string, route: string, box: string, device: string, name: string, owner: any, session: boolean }>}
@@ -41,7 +41,7 @@ export async function adoptServer(paired, o) {
   // The proof that the identity's own key stands behind this pairing: its signature over this pairing's box and relay device and ticket tag (so it is good for this pairing only, PI-3); a phone's key adds its Face ID signature `esig`.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
   if (!proof && o.signIdentity) proof = await o.signIdentity(new TextEncoder().encode(`vyre-wink-pair-to-v1\n${paired.box}\n${paired.device}\n${await ticketTag(o.ticket)}`));
-  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}) };
+  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}), ...(o.keySigner ? { keySigner: o.keySigner } : {}), ...(o.keyRp ? { keyRp: o.keyRp } : {}) };
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;
