@@ -10,16 +10,18 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import crypto from "node:crypto";
-import { spawnSync } from "node:child_process";
+import net from "node:net";
+import { fileURLToPath } from "node:url";
+import { spawn, spawnSync } from "node:child_process";
 import { start } from "../daemon/index.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { namesOf } from "./runtime.js";
-import { canonical } from "../../kernel/core/canonical.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const LIVE = process.env.VYRE_APPMODS_LIVE === "1";
-const stubPresence = () => { const used = new Set(); return { check: async (/** @type {any} */ q) => (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof") }; };
+const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "standin-directory.mjs");
+const freePort = () => new Promise(res => { const s2 = net.createServer(); s2.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (s2.address()).port; s2.close(() => res(p)); }); });
 const docker = (/** @type {string[]} */ a) => spawnSync("docker", a, { encoding: "utf8" });
 
 const DOCKERFILE = `FROM node:22-alpine
@@ -41,22 +43,34 @@ http.createServer((q, r) => {
 `;
 
 test("a Dockerfile folder is built, run with its secret, served to a stranger and taken down, through Publish", { skip: !LIVE, timeout: 900_000 }, async t => {
+  const dirPort = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(dirPort)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   const root = tempHome(t);
-  const portProbe = http.createServer(); await new Promise(r => portProbe.listen(0, "127.0.0.1", r));
-  const frontPort = /** @type {any} */ (portProbe.address()).port; await new Promise(r => portProbe.close(r));
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "pub-live", vault: { keystore: "file" }, appmods: { base: `localhost:${frontPort}`, listen: frontPort } }));
-  const d = await start({ root, presence: present, log: m => { if (process.env.WLOG) console.error(m); }, kernel: true, kernelPresence: stubPresence() });
-  const space = d.kernel.id.space;
-  const names = namesOf(space, "northwind");
-  t.after(async () => { docker(["rm", "-f", names.container]); docker(["network", "rm", names.network]); docker(["volume", "rm", "-f", names.volume("data")]); await d.stop(); });
-  const ownerMeta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" }), {})).token });
-  const own = async () => ({ ...(await ownerMeta()), proof: { method: "passkey", id: "x" } });
-  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}, yes = false) => { const r = await d.registry.call(tool, input, "cli", yes ? await own() : await ownerMeta()); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
-  const decide = (/** @type {string} */ task) => call("publish.decide", { task, approve: true }, true);
+  const frontPort = await freePort();
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "pub-live", vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${dirPort}` }, appmods: { base: `localhost:${frontPort}`, listen: frontPort } }));
+  const d = await start({ root, presence: present, log: m => { if (process.env.WLOG) console.error(m); } });
+  /** @type {any} */ let names = null;
+  t.after(async () => { if (names) { docker(["rm", "-f", names.container]); docker(["network", "rm", names.network]); docker(["volume", "rm", "-f", names.volume("data")]); } await d.stop(); });
+  // the person's chain, built from whoever owns the home NOW: claiming a name changes the owner's id
+  const as = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
+    const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+    return d.registry.call(tool, input, "cli", { token: (await d.kernel.surfaces.open(owner, {})).token });
+  };
+  const made = await as("spaces.identity.create", { name: "alex" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const sp = await as("spaces.create", { name: "bakery", home: { kind: "this-computer", confirmed: true } });
+  assert.ok(!sp.error, JSON.stringify(sp.error));
+  const spaceId = String(sp.data.id || sp.data.space || "");
+  names = namesOf(d.kernel.id.space, "northwind");
+  const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await as(tool, { space: "bakery.vyre.run", ...input }); if (r.error) throw Object.assign(new Error(`${tool}: ${r.error.message}`), { code: r.error.code }); return r.data; };
+  const decide = (/** @type {string} */ task) => call("publish.decide", { task, approve: true });
 
   const src = fs.mkdtempSync(path.join(root, "northwind-"));
   fs.writeFileSync(path.join(src, "Dockerfile"), DOCKERFILE); fs.writeFileSync(path.join(src, "server.js"), SERVER); fs.writeFileSync(path.join(src, ".env"), "LEFT_OUT=not-in-the-build");
-  await d.registry.call("vault.put", { name: "greeting-key", kind: "secret", description: "test", value: "live-secret-xyz" }, "cli", await own());
+  const put = await as("vault.put", { name: "greeting-key", kind: "secret", description: "test", value: "live-secret-xyz" });
+  assert.ok(!put.error, JSON.stringify(put.error));
 
   const dep = (await call("publish.create", { name: "northwind", source: { kind: "folder", ref: src }, build: { image: "dockerfile" } })).deployment;
   assert.equal(dep.stage, "Draft");
@@ -111,9 +125,9 @@ test("a Dockerfile folder is built, run with its secret, served to a stranger an
   assert.deepEqual(ins.HostConfig.Binds || [], [`${names.volume("data")}:/data`].filter(() => false).concat(ins.HostConfig.Binds || []));
   assert.ok(!(ins.Mounts || []).some((/** @type {any} */ m) => m.Type === "bind"), "nothing of the server is mounted");
   // the secret's file in Publish's folder is private; the env file the container started from is gone
-  const secretFile = path.join(root, "publish", space, "secrets", dep.id, "API_KEY");
+  const secretFile = path.join(root, "publish", spaceId, "secrets", dep.id, "API_KEY");
   assert.equal(fs.statSync(secretFile).mode & 0o777, 0o600);
-  assert.ok(!fs.existsSync(path.join(root, "appmods", space, "northwind", "env")), "the env file is deleted after the start");
+  assert.ok(!fs.existsSync(path.join(root, "appmods", d.kernel.id.space, "northwind", "env")), "the env file is deleted after the start");
   assert.ok(!JSON.stringify(await call("publish.status", { deployment: dep.id })).includes("live-secret-xyz"));
 
   // taking the secret away starts the server again without it
