@@ -333,9 +333,17 @@
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
   },
+  "publish.go": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; held for a person's decision"
+  },
   "publish.publish": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person, or their own assistant, can do that"
+  },
+  "publish.quick": {
+   "class": "refused",
+   "why": "refused in the body for a plain session: only a person, or their own assistant, can do that; held for a person's decision"
   },
   "publish.rollback": {
    "class": "refused",
