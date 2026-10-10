@@ -17,7 +17,7 @@ import { createAddServer } from "../../../apps/app/src/real/add-server.js";
 import { withCoreProof } from "../../../apps/app/src/real/core-proof.js";
 import { installLine } from "../../../apps/app/screens/install/first-run.js";
 import { startPaired } from "../../../apps/app/src/auth/paired.ts";
-import { proofWith, devicePresence, keyIdFromXY } from "../../../apps/app/src/auth/person.ts";
+import { proofWith } from "../../../apps/app/src/auth/person.ts";
 import { reserveAnswer, nameOf, looksLikeName } from "../../../site/setup/reserve.js";
 import * as setupClient from "../../../relay/client/setup.js";
 import { connectSetup } from "../../../relay/client/setupchannel.js";
@@ -62,15 +62,10 @@ export function createApp(o) {
   // the key this device reports at pairing and signs its session start with (a browser's person key, ES256); software, since a runner has no secure chip
   const personKey = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const presenceKey = { public_key: personKey.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 };
-  // This device's presence key is the key it reported at pairing: the owner's yes enrolled it, and its id is its fingerprint (what the phone's devicePresence does with its biometric key).
-  const jwk = personKey.publicKey.export({ format: "jwk" });
-  const presence = devicePresence({
-    keyId: async () => keyIdFromXY(String(jwk.x), String(jwk.y)),
-    sign: async (/** @type {string} */ message) => crypto.sign("sha256", Buffer.from(message), { key: personKey.privateKey }).toString("base64url"),
-    nonce: () => crypto.randomBytes(16).toString("base64url"),
-    // a Mac server holds this Mac's key as its Capsule key (stand-in for the Secure Enclave: a release core counts the METHOD, and cannot tell the chip), so it proves as one
-    ...(o.capsule ? { method: /** @type {const} */ ("capsule") } : {}),
-  });
+  // The yes a call may need (lib/one-yes.js): the server answers presence_required with the exact act to sign (`sign`: op, space, fields), and the device sends the call again with its signed yes in
+  // x-vyre-yes (apps/app/src/real/box.ts). A runner has no secure chip, so the world hands in a development signer where the server takes one (setYes); with none, the call fails as it does for a
+  // device that cannot give a yes.
+  /** @type {null | ((sign: { op: string, space: string, fields: Record<string, any> }) => Promise<string>)} */ let yesWith = null;
   const signPerson = async (/** @type {Uint8Array} */ m) => new Uint8Array(crypto.sign("sha256", Buffer.from(m), { key: personKey.privateKey, dsaEncoding: "ieee-p1363" }));
 
   /** Step 1, on vyre.run/setup: type a name, get the reservation code. The page's own parser reads the directory's answer. @param {string} text */
@@ -186,20 +181,19 @@ export function createApp(o) {
   async function callTool(tool, input = {}) {
     if (!session) await openSession();
     const url = `/v1/tools/${tool}`, body = JSON.stringify(input);
+    let yes = "";
     for (let attempt = 0; attempt < 3; attempt++) {
       // every request carries the token and a proof signed by the same key (apps/app/src/auth/person.ts proofWith), plus this device's presence proof when the call needs a person
       const proof = await proofWith(async m => signPerson(new TextEncoder().encode(m)), { method: "POST", url, body });
-      const res = await session.conn.fetch(url, { method: "POST", headers: { "content-type": "application/json", authorization: `Vyre ${session.token}`, "x-vyre-proof": proof, ...(await presence.headers(tool, body)) }, body });
-      await presence.keep(res.headers && res.headers.get && res.headers.get("x-vyre-presence-session"));
+      const res = await session.conn.fetch(url, { method: "POST", headers: { "content-type": "application/json", authorization: `Vyre ${session.token}`, "x-vyre-proof": proof, ...(yes ? { "x-vyre-yes": yes } : {}) }, body });
       const r = /** @type {any} */ (await res.json().catch(() => ({})));
       if (r && r.error) {
-        if (presence.answered(tool, body, r)) continue;
-        throw Object.assign(new Error(`${tool}: ${r.error.message || r.error.code}`), { code: r.error.code });
+        if (r.error.code === "presence_required" && r.error.sign && yesWith && !yes) { yes = await yesWith(r.error.sign); continue; }
+        throw Object.assign(new Error(`${tool}: ${r.error.message || r.error.code}`), { code: r.error.code, ...(r.error.sign ? { sign: r.error.sign } : {}) });
       }
-      presence.answered(tool, body, r || {});
       return r ? r.data : null;
     }
-    throw new Error(`${tool}: the server kept asking for presence`);
+    throw new Error(`${tool}: the server kept asking for a yes`);
   }
 
   /** The computer's side of "Add a device": show the code (wink.phone.open), and when the new device asks, say yes to the three words it shows. Resolves when the owner has answered. */
@@ -310,7 +304,7 @@ export function createApp(o) {
   return {
     label: o.label, pairByTypedCodeNoProof, serveEnrol, joinTeam, makeTeamInvite, createTeamSpace, lastWords: () => lastWords, pairByTypedCode, showDeviceCode, answerDevice, sayYes, addThisDeviceToName,
     get identity() { return me; }, get pairing() { return pairing; }, get session() { return session; },
-    reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
+    setYes(f) { yesWith = f; }, reserve, becomeYourself, addServer, pairWithServer, openSession, reconnect, startDirect, callTool, installLine, until, claimServerSpace,
     close() { try { session && session.conn.close(); } catch { /* closed */ } },
   };
 }
