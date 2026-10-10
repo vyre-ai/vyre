@@ -321,7 +321,7 @@ vyre backup                  # vyre-backup-YYYY-MM-DD.vyre in /home/vyre, asks f
 It asks for a passphrase twice (12 characters or more) and seals the file with it: there is no
 unencrypted backup, and the file opens only with that passphrase. It holds `config.json`, a
 consistent copy of the store (taken with SQLite's `VACUUM INTO` while Vyre writes), `vault/`,
-`watchers/`, `modules/`, `certs/`, `names/` and `data/` (your artifacts), plus your project files
+`watchers/`, `modules/`, `certs/`, `names/` and `data/` (your artifacts), the Drive of every Space on the box (your documents and each project's files, still sealed), plus your project files
 (the box's `/work`) and your session transcripts. Add `--skip-projects` if your projects live in
 git or Drive, and `--skip-transcripts` to leave the transcripts out. It leaves out `models/`,
 `logs/`, the socket and the pid file, and your Claude, Codex and Grok sign-ins: sign in again after

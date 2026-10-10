@@ -29,6 +29,7 @@ import { newPrefixedId } from "../../lib/id.js";
  *   waiting?: { step: string, kind: 'task'|'time'|'event'|'gate', task?: string, wake_at?: number, event?: string, where?: string, deadline?: number },
  *   error?: { step: string, code: string, message: string },
  *   approver: ActorRef, dry?: boolean,
+ *   record?: string, label?: string,    the record the trigger names (flow-runs contract), and the Flow's words for the timeline
  * }} Run
  */
 
@@ -169,7 +170,8 @@ export const FLOW_TYPES = Object.freeze([
     { name: "flow_id", kind: "text", label: "Flow" }, { name: "last_fire", kind: "number", label: "Last ran" } ] },
   { name: "flow-run", label: "Flow run", icon: "run", fields: [
     { name: "run_id", kind: "text", label: "Id" }, { name: "flow_id", kind: "text", label: "Flow" }, { name: "state", kind: "text", label: "State" },
-    { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" } ] },
+    { name: "started_at", kind: "number", label: "Started" }, { name: "body", kind: "text", label: "Run" },
+    { name: "title", kind: "text", label: "Flow" }, { name: "record", kind: "link", label: "About" } ] },
 ]);
 
 export class RecordsFlowStore {
@@ -297,15 +299,24 @@ export class RecordsFlowStore {
   async putRun(run) {
     const body = JSON.stringify(run);
     const known = this.ids.get(run.id);
-    const data = { run_id: run.id, flow_id: run.flow, state: run.state, started_at: run.started_at, body };
-    if (known) {
-      const cur = await this.k.records.get(this.chain, "flow-run", known);
-      if (cur) { await this.k.records.update(this.chain, "flow-run", known, data, cur.version); return; }
+    const data = { run_id: run.id, flow_id: run.flow, state: run.state, started_at: run.started_at, body, ...(run.label ? { title: run.label } : {}), ...(run.record ? { record: { urn: run.record } } : {}) };
+    // The link is a courtesy to the record's timeline: a record that is gone (or a home whose type has no `record` field yet) must not lose the run itself.
+    const write = async (/** @type {any} */ d) => {
+      if (known) {
+        const cur = await this.k.records.get(this.chain, "flow-run", known);
+        if (cur) { await this.k.records.update(this.chain, "flow-run", known, d, cur.version); return; }
+      }
+      const found = (await this.#find("flow-run", "run_id", run.id))[0];
+      if (found) { this.ids.set(run.id, found.id); await this.k.records.update(this.chain, "flow-run", found.id, d, found.version); return; }
+      const rec = await this.k.records.create(this.chain, "flow-run", d);
+      this.ids.set(run.id, rec.id);
+    };
+    try { await write(data); }
+    catch (e) {
+      if (!(e && /** @type {any} */ (e).code === "bad_input" && data.record)) throw e;
+      const { record: _gone, ...bare } = data;
+      await write(bare);
     }
-    const found = (await this.#find("flow-run", "run_id", run.id))[0];
-    if (found) { this.ids.set(run.id, found.id); await this.k.records.update(this.chain, "flow-run", found.id, data, found.version); return; }
-    const rec = await this.k.records.create(this.chain, "flow-run", data);
-    this.ids.set(run.id, rec.id);
   }
   /** @param {string} id @returns {Promise<Run|null>} */
   async getRun(id) { const f = (await this.#find("flow-run", "run_id", id))[0]; return f ? JSON.parse(f.data.body) : null; }

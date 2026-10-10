@@ -248,7 +248,7 @@ export function createFlows(o) {
       const r = await runner.resumeFlow(i.id, o); return { ...r, control: await runner.controlState() };
     },
     "flows.control": async () => runner.controlState(),
-    "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
+    "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, ...(r.record ? { record: r.record } : {}), ...(r.label ? { label: r.label } : {}), error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
     "flows.run": async (chain, i) => { const r = await runner.getRun(need(i, "run", "the run's id (flows.start and flows.runs give it)")); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.
     "flows.budget": async (chain, i) => {
