@@ -78,3 +78,16 @@ test("nobody else gets anything: a non-member, an agent's or a delegated chain, 
   const home = await d.registry.call("work.chat.list", {}, "cli", {});
   assert.ok(!JSON.stringify(home).includes(String(made.chat)), "the home's own list never shows the team's chat: the call ran in the team's Space");
 });
+
+test("the boundary: work.chat.serve is the daemon's door alone, runs only in a Space under a member's chain, and the five calls are the whole list", { timeout: 90_000 }, async t => {
+  const { d, svc } = await world(t);
+  assert.deepEqual(Object.keys(svc).sort(), [...CALLS.chat].sort(), "the service answers exactly the wire's list");
+  for (const caller of ["cli", "mcp", "device:abcdefghijklmnop", "module:sneaky", "space:per_zed@spc_abcdefghijkl", "capsule"]) {
+    const r = await d.registry.call("work.chat.serve", { call: "list", input: {} }, caller, {});
+    assert.ok(r.error, `${caller} is refused: ${JSON.stringify(r).slice(0, 160)}`);
+  }
+  const bare = await d.registry.call("work.chat.serve", { call: "list", input: {} }, "module:vyred", { door: true });
+  assert.ok(bare.error && /member door/.test(String(bare.error.message)), `the daemon itself, outside a Space and without a member's chain, is refused: ${JSON.stringify(bare)}`);
+  assert.equal(svc.keys, undefined, "a chat key call is not on the list");
+  assert.equal(svc.rename, undefined);
+});
