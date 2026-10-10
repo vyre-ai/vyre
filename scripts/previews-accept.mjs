@@ -3,6 +3,7 @@
 // real daemon: the viewer allows each capability, tasks are added and live-update, they survive a reload, a download is offered. Needs playwright (PW_FROM=<folder with playwright installed>/).
 //   PW_FROM=~/shots/ node scripts/previews-accept.mjs
 import fs from "node:fs";
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
@@ -36,7 +37,7 @@ try {
   // on localhost the front has a port, so the address names it (the ticket is made for that exact host)
   const ticket = new URL((await call("previews.url", { id: pv.data.id, origin: `http://localhost:${frontPort}` })).data.url);
   const url = ticket.href;
-  browser = await chromium.launch();
+  browser = await chromium.launch({ args: [...CHROME_SAFE] });
   for (const scheme of ["light", "dark"]) {
     const ctx = await browser.newContext({ viewport: { width: 420, height: 800 }, colorScheme: scheme, acceptDownloads: true });
     const page = await ctx.newPage();

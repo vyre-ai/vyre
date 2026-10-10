@@ -23,3 +23,13 @@ export const APPROVE_LABEL = "Approve";
 
 /** What a run that shrank to one line says, or null for a run that kept its details. @param {any} run @returns {string | null} */
 export const shrunkNote = (run) => (run && run.pruned ? String(run.summary || "This run kept only its outcome.") : null);
+
+/**
+ * What a row in the Flows list says about how the Flow is doing: its trigger and the kernel's health line (last run, how many went well this week, what needs you, the next time), and one chip only when it
+ * is red (a connection it uses is down, a saved test fails, most runs this week failed). Never invented here: the words come from flows.list.
+ * @param {{ trigger?: string, level?: string, line?: string }} f @returns {{ sub: string | undefined, chip: string | null }}
+ */
+export const healthRow = (f) => {
+  const sub = [f.trigger, f.line].filter(Boolean).join(" · ");
+  return { sub: sub || undefined, chip: f.level === "red" ? "Needs a look" : null };
+};

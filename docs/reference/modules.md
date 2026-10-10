@@ -73,7 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`previews`](#previews) | `core/previews` | `box` | 21 | 6 | cli |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 21 | 6 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 21 | 7 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 18 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
@@ -99,11 +99,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 11 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 70 | 41 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 70 | 42 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 5 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 156 | 58 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 157 | 58 | capsule, cli, deck |
 | [`views`](#views) | `core/views` | `box`, `local` | 6 | 0 | cli |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
@@ -684,7 +684,7 @@ Outside agents: Dots, Muse, Hermes, ChatGPT or your own Claude Code elsewhere re
 - Tools: [9](tools.md#outside), 3 of them only for other modules
 - Emits: [6 events](events.md#outside)
 - Shows on: no surface
-- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory/*","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
+- Needs kernel: `{"outside":true,"actions":[],"mints":[{"prefix":"*","actions":["records.read","records.create","records.update"]},{"prefix":"memory","actions":["memory.read"]},{"prefix":"project/*","actions":["project.reach"]},{"prefix":"file/*","actions":["drive.read"]}]}`
 
 ## planner
 
@@ -763,7 +763,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Runs on: `box`
 - Requires: none
 - Tools: [21](tools.md#publish)
-- Emits: [6 events](events.md#publish)
+- Emits: [7 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"mints":[{"prefix":"credential/*","actions":["vault.run"]}]}`
 - Needs vault: `per-deployment`
@@ -1065,7 +1065,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [70](tools.md#threads), 24 of them only for other modules
-- Emits: [41 events](events.md#threads)
+- Emits: [42 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
@@ -1110,7 +1110,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [156](tools.md#vault), 23 of them only for other modules
+- Tools: [157](tools.md#vault), 23 of them only for other modules
 - Emits: [58 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"reach":true}`
