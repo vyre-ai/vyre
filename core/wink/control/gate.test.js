@@ -518,7 +518,7 @@ test("gate apps over TLS: an own host is served with its own certificate by SNI,
   gate.dropHostTls("sign.firm.example");
   assert.equal((await via("sign.firm.example", "sign.firm.example")).pin, certPin(space.cert));
   assert.doesNotMatch((await via("sign.firm.example", "sign.firm.example")).text, /^HTTP\/1\.1 200 /);
-  assert.equal(f.seen.length, 2);
+  assert.equal(f.seen.length, 3);
 });
 
 // ---- the Vault MCP route: exactly POST /vault-mcp, the Authorization header through, nothing else opened ----
