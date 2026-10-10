@@ -27,9 +27,6 @@
   "style-sheet": 1,
   "type-literal": 1
  },
- "app/vault/index.tsx": {
-  "style-sheet": 1
- },
  "screens/chat-tools/FilesPane.tsx": {
   "raw-colour": 1
  },
@@ -82,9 +79,5 @@
  },
  "src/terminal/Terminal.tsx": {
   "type-literal": 1
- },
- "src/vault/views.tsx": {
-  "second-primitive": 4,
-  "style-sheet": 1
  }
 }
