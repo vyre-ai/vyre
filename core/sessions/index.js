@@ -594,7 +594,7 @@ export default {
       async (i, meta) => { await mine(accounts.row(String(i.account)), meta); return accounts.setPrivacy(String(i.account), Boolean(i.privacy)); });
     ctx.tool("sessions.accounts.resolve", {
       description: "Which account a session on this provider uses, for a project/agent/explicit choice, scope-checked either way.", internal: true,
-      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str } },
+      input: { type: "object", required: ["provider"], properties: { provider: str, account: str, project: str, agent: str, person: str } },
       run: async i => accounts.resolve(i),
     });
 

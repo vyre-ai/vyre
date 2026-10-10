@@ -32,6 +32,11 @@ test("a member's AI account is theirs: listed, bound and removed by them only; t
   assert.equal((await as(BOB, "sessions.accounts.bind", { id: o.data.id, project: "x" })).error?.code, "not_found");
   assert.equal((await as(BOB, "sessions.accounts.add", { provider: "grok", label: "Bob second", kind: "login" })).error?.code, "too_many", "a member has one sign-in account on the server");
 
+  // the home resolves an account for a turn by its person: Bob's turn gets Bob's, the owner's gets the home's own, a person with none gets none
+  const resolve = async (/** @type {any} */ q) => (await d.registry.call("sessions.accounts.resolve", { provider: "codex", ...q }, "module:vyred")).data;
+  assert.equal((await resolve({ person: BOB })).id, b.data.id);
+  assert.equal((await resolve({ person: owner })).id, o.data.id);
+  assert.equal(await resolve({ person: "per_" + "e".repeat(26) }), null, "a person with no account of their own gets none, not the owner's");
   assert.ok(!(await as(BOB, "sessions.accounts.remove", { id: b.data.id })).error, "Bob removes his own");
   assert.deepEqual(await mine(BOB), []);
   assert.deepEqual(await mine(owner), ["Owner login"]);
