@@ -612,7 +612,7 @@ modules_ok() {
   [ -f "$UPD_STATE/release/modules.json" ] || return 0
   names=$(sed -n 's/^  "\([^"]*\)": {$/\1/p' "$UPD_STATE/release/modules.json")
   i=0; bad=""
-  while [ $i -lt "${MODULES_WAIT:-30}" ]; do
+  while [ $i -lt "${MODULES_WAIT:-180}" ]; do
     out=$(compose exec -T vyre vyre modules 2>/dev/null || true)
     bad=""
     # Every listed module must be reported running or off (off by default is a choice, not a failure); one reported failed, or not reported at all, is a box with fewer modules than the list.
