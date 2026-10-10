@@ -6,8 +6,8 @@ export const LIMITS = Object.freeze({ perMessage: 5, imageBytes: 5 * 1024 * 1024
 const IMAGES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 /** @typedef {{ id: string, name: string, mime: string, bytes: number }} Attachment */
-/** @typedef {{ key: string, name: string, mime: string, bytes: number, state: "uploading" | "ready" | "failed", attachment?: Attachment, why?: string }} Chip */
-/** @typedef {{ name: string, mime: string, bytes: number }} Candidate */
+/** @typedef {{ key: string, name: string, mime: string, bytes: number, state: "uploading" | "ready" | "failed", attachment?: Attachment, why?: string, thumb?: string }} Chip */
+/** @typedef {{ name: string, mime: string, bytes: number, base64?: string }} Candidate */
 
 /** "2.4 MB", "340 KB". @param {number} n */
 export function sizeWord(n) {
@@ -31,7 +31,7 @@ export function whyNot(chips, f) {
 }
 
 /** The chip a new file starts as. @param {string} key @param {Candidate} f @returns {Chip} */
-export const uploading = (key, f) => ({ key, name: f.name, mime: f.mime, bytes: f.bytes, state: "uploading" });
+export const uploading = (key, f) => ({ key, name: f.name, mime: f.mime, bytes: f.bytes, state: "uploading", ...(thumbOf(f) ? { thumb: thumbOf(f) } : {}) });
 /** @param {readonly Chip[]} chips @param {string} key @param {Attachment} a @returns {Chip[]} */
 export const ready = (chips, key, a) => chips.map((c) => (c.key === key ? { ...c, state: "ready", attachment: a } : c));
 /** @param {readonly Chip[]} chips @param {string} key @param {string} why @returns {Chip[]} */
@@ -49,3 +49,18 @@ export const chipLine = (c) => (c.state === "failed" ? c.why || "Did not upload"
 
 /** The words to send when the person added files and typed nothing. @param {number} n */
 export const defaultWords = (n) => (n === 1 ? "Here is a file." : "Here are some files.");
+
+/** Whether a file is a picture the chat can show as a thumbnail. @param {string} mime */
+export const isImage = (mime) => IMAGES.includes(String(mime).toLowerCase());
+
+/** A picture's thumbnail source, from the bytes already read to upload it: a data address for a picture of up to 2 MB, nothing for any other file. @param {Candidate} f @returns {string | undefined} */
+export function thumbOf(f) {
+  return f.base64 && isImage(f.mime) && f.bytes <= 2 * 1024 * 1024 ? `data:${String(f.mime).toLowerCase()};base64,${f.base64}` : undefined;
+}
+
+/** Thumbnails by attachment id, for the pictures this session sent: the box keeps the file, not a small copy, so a message sent now shows its picture and one loaded later shows the file's name. @type {Map<string, string>} */
+const SENT = new Map();
+/** @param {string} id @param {string | undefined} thumb */
+export const rememberThumb = (id, thumb) => { if (thumb) { SENT.set(id, thumb); if (SENT.size > 40) SENT.delete(/** @type {string} */ (SENT.keys().next().value)); } };
+/** @param {string} id */
+export const thumbFor = (id) => SENT.get(id);

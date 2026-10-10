@@ -19,6 +19,7 @@ import type { TranscriptRow } from "../session/model";
 import { ChatComposer, type ComposerProps } from "./ChatComposer";
 import { GroupApprovals } from "../../screens/shell/GroupApprovals";
 import { ChatRow, SkeletonThread } from "./ChatRows";
+import { groupToolRuns } from "./tool-runs.js";
 import type { BlockCtx } from "./Blocks";
 import { createFollow, follow, pillLabel } from "./follow.js";
 import type { StreamSource } from "./mock-stream";
@@ -106,7 +107,9 @@ function JumpPill({ go, count, base, bottom }: { go: () => void; count: number; 
 export function ChatScreen(p: ChatScreenProps) {
   const { color, phone } = useUiTheme();
   const insets = useSafeAreaInsets();
-  const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
+  const { store, rows: layoutRows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
+  // steps in a row are one folded line (tool-runs.js); the items behind them stay as they are
+  const rows = useMemo(() => groupToolRuns(layoutRows, (k) => store.item(k)) as unknown as typeof layoutRows, [layoutRows, store]);
   const viewer = store.group.viewer;
   // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
   const here = useChatMembers(p.sessionId, meta.busy);
@@ -429,7 +432,7 @@ export function ChatScreen(p: ChatScreenProps) {
           slots={slots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
-          attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state }))}
+          attachments={att.chips.map((c) => ({ key: c.key, name: c.name, line: chipLine(c), state: c.state, thumb: c.thumb }))}
           onRemoveAttachment={att.remove}
           attachProblem={att.problem}
           onAttachFile={() => void att.choose(false)}
